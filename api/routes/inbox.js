@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -17,7 +18,7 @@ router.get('/api/admin/inbox', requireAuth, requireAdmin, async (_req, res) => {
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []), messages: tryJson(r.messages, []) })));
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -51,7 +52,7 @@ router.post('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
     );
     res.json({ ok: true, id });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -61,7 +62,7 @@ router.delete('/api/admin/inbox/:id', requireAuth, requireAdmin, async (req, res
     await pool.query('DELETE FROM inbox_conversations WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

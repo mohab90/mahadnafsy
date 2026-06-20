@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -35,7 +36,7 @@ router.post('/api/orders/reserve', async (req, res) => {
        paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[orders/reserve]', e.message); console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[orders/reserve]', e.message); logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Paymob: shared helper — finalises an order after verified payment ─────────
@@ -46,7 +47,7 @@ const _paymobProcessingOrders = new Set();
 async function finalisePaymobOrder(merchantOrderId, transactionId) {
   // Race condition guard: if already being processed by another concurrent webhook, skip
   if (_paymobProcessingOrders.has(merchantOrderId)) {
-    console.warn(`[paymob] Order ${merchantOrderId} already in-flight — skipping duplicate webhook`);
+    logger.warn(`[paymob] Order ${merchantOrderId} already in-flight — skipping duplicate webhook`);
     return { found: true, alreadyProcessed: true };
   }
   _paymobProcessingOrders.add(merchantOrderId);
@@ -63,7 +64,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
      customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
      course_id, bundle_id, notes, staff_id, staff_name, created_at, paid_at
      FROM orders WHERE id = ? LIMIT 1`, [merchantOrderId]);
-  if (!order) { console.warn(`[paymob] Order not found: ${merchantOrderId}`); return { found: false }; }
+  if (!order) { logger.warn(`[paymob] Order not found: ${merchantOrderId}`); return { found: false }; }
   if (order.status === 'paid') return { found: true, alreadyProcessed: true };
 
   // Additional idempotency check: if transactionId already in payments table, skip
@@ -72,7 +73,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       'SELECT id FROM payments WHERE transaction_id = ? LIMIT 1', [transactionId]
     );
     if (existingPay) {
-      console.log(`[paymob] transactionId ${transactionId} already recorded — skipping`);
+      logger.info(`[paymob] transactionId ${transactionId} already recorded — skipping`);
       return { found: true, alreadyProcessed: true };
     }
   }
@@ -120,7 +121,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
           [uuidv4(), sub.id, cid]
         );
       }
-      console.log(`[paymob] Enrolled ${order.customer_email} in ${courseIds.join(',')} (order ${merchantOrderId})`);
+      logger.info(`[paymob] Enrolled ${order.customer_email} in ${courseIds.join(',')} (order ${merchantOrderId})`);
     }
 
     // 3. Auto-create consultation record
@@ -158,10 +159,10 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     );
 
     await conn.commit();
-    console.log(`[paymob] Transaction committed: order ${merchantOrderId}, payment ${payId}`);
+    logger.info(`[paymob] Transaction committed: order ${merchantOrderId}, payment ${payId}`);
   } catch (e) {
     await conn.rollback();
-    console.error('[paymob] finalisePaymobOrder transaction rolled back:', e.message);
+    logger.error('[paymob] finalisePaymobOrder transaction rolled back:', e.message);
     throw e;
   } finally {
     conn.release();
@@ -199,9 +200,9 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
              JSON.stringify({ rate: commRate, calc_type: 'PERCENTAGE', rule_id: rule?.id||null, trigger: 'paymob_payment' }),
              now.getMonth()+1, now.getFullYear()]
           );
-          console.log(`[paymob] Commission ${commAmount} (${commRate}%) → staff ${finalStaffId}`);
+          logger.info(`[paymob] Commission ${commAmount} (${commRate}%) → staff ${finalStaffId}`);
         }
-      } catch (commErr) { console.warn('[paymob] commission calc error:', commErr.message); }
+      } catch (commErr) { logger.warn('[paymob] commission calc error:', commErr.message); }
     });
   }
   // Notify admin on new Paymob payment
@@ -230,9 +231,9 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         }
         if (leadId) {
           await pool.query("UPDATE leads SET status='converted' WHERE id=? AND LOWER(status) NOT IN ('converted','lost')", [leadId]);
-          console.log(`[paymob] Lead ${leadId} auto-converted after payment`);
+          logger.info(`[paymob] Lead ${leadId} auto-converted after payment`);
         }
-      } catch (e) { console.warn('[paymob] lead auto-convert error:', e.message); }
+      } catch (e) { logger.warn('[paymob] lead auto-convert error:', e.message); }
     });
   }
 
@@ -255,7 +256,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         <p>يمكنك البدء في التعلم الآن من خلال <a href="https://mahadnafsy.com/dashboard" style="color:#7c3aed">لوحة التحكم</a>.</p>
         <p style="color:#9ca3af;font-size:12px">معهد نفسي — mahadnafsy.com</p>
       </div>`
-    ).catch(e => console.warn('[email] payment confirmation failed:', e.message));
+    ).catch(e => logger.warn('[email] payment confirmation failed:', e.message));
   }
 
   return { found: true, alreadyProcessed: false };

@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { pool } = require('../lib/db');
@@ -18,7 +19,7 @@ router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
     const cfg = rows[0]?.value ? JSON.parse(rows[0].value) : {};
     // Never return the token to frontend
     res.json({ instanceId: cfg.instanceId || '', hasToken: !!(cfg.apiToken) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/facebook-lead-ads-config
@@ -27,7 +28,7 @@ router.get('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, asy
     const cfg = await getFbLeadConfig();
     // Mask token for security
     res.json({ ...cfg, pageAccessToken: cfg.pageAccessToken ? '••••••••' : '', hasToken: !!(cfg.pageAccessToken) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PUT /api/admin/facebook-lead-ads-config
@@ -45,7 +46,7 @@ router.put('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, asy
       [JSON.stringify(merged)]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PUT /api/admin/whatsapp-config
@@ -58,7 +59,7 @@ router.put('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
       [JSON.stringify({ instanceId: instanceId.trim(), apiToken: apiToken.trim() })]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/whatsapp-send  — send a single WhatsApp (admin manual send)
@@ -69,7 +70,7 @@ router.post('/api/admin/whatsapp-send', requireAuth, requireAdmin, async (req, r
     const result = await sendWhatsApp(phone, message);
     if (!result.ok) return res.status(400).json({ error: 'WhatsApp send failed', detail: result.reason });
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/whatsapp-bulk  — send WhatsApp to multiple leads/subscribers
@@ -89,7 +90,7 @@ router.post('/api/admin/whatsapp-bulk', requireAuth, requireAdmin, async (req, r
       else { results.failed++; results.errors.push({ phone, reason: String(r.reason) }); }
     }
     res.json({ ok: true, ...results });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ router.post('/api/admin/leads/import', requireAuth, requireAdmin, async (req, re
       }
     }
     res.json({ ok: true, imported, skipped, errors: errors.slice(0, 20) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
@@ -159,7 +160,7 @@ router.post('/api/admin/whatsapp-proxy/chats', requireAuth, requireAdmin, async 
     const r = await fetch(`https://api.green-api.com/waInstance${instanceId}/getChats/${apiToken}`);
     const data = await r.json();
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/whatsapp-proxy/history — chat message history for a specific instance
@@ -177,7 +178,7 @@ router.post('/api/admin/whatsapp-proxy/history', requireAuth, requireAdmin, asyn
     });
     const data = await r.json();
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/whatsapp-proxy/send — send msg via a specific rep's WA instance
@@ -198,7 +199,7 @@ router.post('/api/admin/whatsapp-proxy/send', requireAuth, requireAdmin, whatsap
     const data = await r.json();
     if (data.idMessage) res.json({ ok: true, idMessage: data.idMessage });
     else res.status(400).json({ ok: false, reason: JSON.stringify(data) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 

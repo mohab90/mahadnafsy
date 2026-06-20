@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { pool } = require('../lib/db');
@@ -62,7 +63,7 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
     }
 
     res.json({ ok: true, fixedFromCrmData: fixed, normalizedColumn: crmFixed, total: rows.length });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, async (req, res) => {
@@ -117,7 +118,7 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, async (req, 
         branch: p.branch || null,
       };
     }));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/payments/review — Central payment review: all payments with full details
@@ -213,6 +214,17 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async
     let onlineOrders = [];
     if ((!staffId || source === 'paymob') && (!branch || branch === 'all')) {
       let oWhere = `status = 'paid'`;
+      // Dedupe: a successful paymob order is ALSO written into `payments`
+      // (id = 'paymob-' + order.id, same transaction_id). Without this guard the
+      // same online sale appears twice in the unified list (once as a payment,
+      // once as an order) and inflates any client-side total. Only surface orders
+      // that have NO twin payment row (e.g. legacy orders predating the sync).
+      oWhere += ` AND NOT EXISTS (
+        SELECT 1 FROM payments pp
+        WHERE pp.id = CONCAT('paymob-', orders.id)
+           OR (orders.transaction_id IS NOT NULL AND orders.transaction_id <> ''
+               AND pp.transaction_id = orders.transaction_id)
+      )`;
       const oParams = [];
       if (dateFrom) { oWhere += ` AND DATE(created_at) >= ?`; oParams.push(dateFrom); }
       if (dateTo)   { oWhere += ` AND DATE(created_at) <= ?`; oParams.push(dateTo); }
@@ -292,7 +304,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async
         pendingCount: Number(t.pending_count) || 0,
       })),
     });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

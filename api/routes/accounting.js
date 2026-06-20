@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -30,7 +31,7 @@ router.post('/api/waitlist', publicLimiter, async (req, res) => {
       [id, safeName, safePhone, safeEmail, courseId || null, safeCourse, safeNotes, branchVal]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Admin: list waitlist
@@ -45,7 +46,7 @@ router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, async (req, 
     sql += ' ORDER BY created_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { console.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Admin: update waitlist entry status
@@ -63,7 +64,7 @@ router.patch('/api/admin/waitlist/:id', requireAuth, requireAdminOrStaff, async 
     params.push(id);
     await pool.query(`UPDATE daqqi_waitlist SET ${sets.join(', ')} WHERE id=?`, params);
     res.json({ ok: true });
-  } catch (e) { console.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ router.get('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, as
   try {
     const [rows] = await pool.query('SELECT * FROM accounting_periods ORDER BY opened_at DESC LIMIT 100');
     res.json(rows);
-  } catch (e) { console.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/accounting-periods', requireAuth, requireAdmin, async (req, res) => {
@@ -90,7 +91,7 @@ router.post('/api/admin/accounting-periods', requireAuth, requireAdmin, async (r
       [id, label]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin, async (req, res) => {
@@ -127,7 +128,7 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
       [actor, JSON.stringify(summary), id]
     );
     res.json({ ok: true, summary });
-  } catch (e) { console.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdmin, async (req, res) => {
@@ -135,7 +136,7 @@ router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdmi
     const { id } = req.params;
     await pool.query(`UPDATE accounting_periods SET status='open', closed_at=NULL, closed_by=NULL WHERE id=?`, [id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 

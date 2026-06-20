@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 
@@ -14,7 +15,7 @@ router.get('/api/admin/settings', requireAuth, requireAdmin, async (_req, res) =
     const val = rows[0]?.value;
     res.json(val ? JSON.parse(val) : {});
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -27,7 +28,7 @@ router.put('/api/admin/settings', requireAuth, requireAdmin, async (req, res) =>
     );
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -71,7 +72,7 @@ router.get('/api/admin/content', requireAuth, requireAdminOrStaff, async (_req, 
     const val = rows[0]?.value;
     res.json(val ? JSON.parse(val) : {});
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -91,7 +92,7 @@ router.put('/api/admin/content', requireAuth, requireAdmin, async (req, res) => 
     const existingKeys = Object.keys(existing).length;
     const incomingKeys = Object.keys(incoming).length;
     if (existingKeys > 5 && incomingKeys < Math.ceil(existingKeys * 0.6)) {
-      console.warn(`[content] PUT rejected: would shrink ${existingKeys}→${incomingKeys} keys (partial-wipe guard)`);
+      logger.warn(`[content] PUT rejected: would shrink ${existingKeys}→${incomingKeys} keys (partial-wipe guard)`);
       return res.status(409).json({
         error: `Refused: PUT would drop ${existingKeys - incomingKeys} settings keys (${existingKeys}→${incomingKeys}). Send the full content object, or use PATCH for partial updates.`,
       });
@@ -106,7 +107,7 @@ router.put('/api/admin/content', requireAuth, requireAdmin, async (req, res) => 
     loadTemplates().catch(() => {});     // re-sync editable message templates immediately
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -125,7 +126,7 @@ router.patch('/api/admin/content', requireAuth, requireAdmin, async (req, res) =
     loadTemplates().catch(() => {});     // re-sync editable message templates immediately
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -151,7 +152,7 @@ router.post('/api/admin/fx-rates/refresh', requireAuth, requireAdminOrStaff, asy
     cacheInvalidate('site_content');
     res.json({ ok: true, sar_to_egp, usd_to_egp, updatedAt: new Date().toISOString() });
   } catch (e) {
-    console.error('[fx-rates]', e.message);
+    logger.error('[fx-rates]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -162,7 +163,7 @@ router.get('/api/admin/discounts', requireAuth, requireAdmin, async (_req, res) 
     const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'discounts'");
     res.json(rows[0]?.value ? JSON.parse(rows[0].value) : []);
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -175,7 +176,7 @@ router.put('/api/admin/discounts', requireAuth, requireAdmin, async (req, res) =
     );
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -186,7 +187,7 @@ router.get('/api/admin/notification-settings', requireAuth, requireAdmin, async 
     const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'notifications'");
     res.json(rows[0]?.value ? JSON.parse(rows[0].value) : []);
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -199,7 +200,7 @@ router.put('/api/admin/notification-settings', requireAuth, requireAdmin, async 
     );
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

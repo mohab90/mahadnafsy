@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -59,7 +60,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (r
     }));
     res.json(result);
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -136,7 +137,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
     res.json({ ok: true, id });
   } catch (e) {
     await conn.rollback().catch(() => {});
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     conn.release();
@@ -148,7 +149,7 @@ router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdmin, async (r
     await pool.query('DELETE FROM daqqi_rounds WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -215,7 +216,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
 
     res.json(result);
   } catch (e) {
-    console.error('[daqqi/attendance-report]', e.message);
+    logger.error('[daqqi/attendance-report]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -277,7 +278,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
     res.setHeader('Content-Disposition', `attachment; filename="daqqi_attendance_${new Date().toISOString().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (e) {
-    console.error('[daqqi/attendance-export]', e.message);
+    logger.error('[daqqi/attendance-export]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -359,7 +360,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
 
     res.json({ months: monthsOut, totals });
   } catch (e) {
-    console.error('[daqqi/attendance-monthly]', e.message);
+    logger.error('[daqqi/attendance-monthly]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

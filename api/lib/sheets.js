@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 const https = require('https');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
@@ -57,9 +58,9 @@ async function syncAllConfiguredSheets() {
         const gidList = rawGids.length > 0 ? rawGids : [''];
         for (const gid of gidList) {
         const csvUrl = `https://docs.google.com/spreadsheets/d/${sheet.sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
-        const csvText = await fetchCsvFollowRedirects(csvUrl).catch(err => { console.warn(`[gsheet-auto] fetch error for "${sheet.name}" gid=${gid||'default'}: ${err.message}`); return ''; });
+        const csvText = await fetchCsvFollowRedirects(csvUrl).catch(err => { logger.warn(`[gsheet-auto] fetch error for "${sheet.name}" gid=${gid||'default'}: ${err.message}`); return ''; });
         if (!csvText || isHtmlResponse(csvText)) {
-          console.warn(`[gsheet-auto] Sheet "${sheet.name}" (${sheet.sheetId}) is PRIVATE or unreachable — Fix: Google Sheets → Share → Anyone with link → Viewer`);
+          logger.warn(`[gsheet-auto] Sheet "${sheet.name}" (${sheet.sheetId}) is PRIVATE or unreachable — Fix: Google Sheets → Share → Anyone with link → Viewer`);
           continue;
         }
         const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
@@ -80,11 +81,11 @@ async function syncAllConfiguredSheets() {
         const courseCol = colIdx(['اختر_نوع','اختر نوع','دبلومة','دبلوم','الكورس','كورس','course','program','البرنامج','دورة','diploma','برنامج الدراسة','اختر البرنامج']);
         // If branchCol still not found, scan ALL headers for Arabic text containing 'فرع' clue
         const resolvedBranchCol = branchCol !== -1 ? branchCol : headers.findIndex(h => h.includes('فرع') || h.includes('branch') || h.includes('مدين') || h.includes('location'));
-        console.log(`[gsheet-auto] Sheet "${sheet.name}" gid=${gid||'default'} headers: ${JSON.stringify(headers.slice(0,12))} | branchCol=${resolvedBranchCol}`);
+        logger.info(`[gsheet-auto] Sheet "${sheet.name}" gid=${gid||'default'} headers: ${JSON.stringify(headers.slice(0,12))} | branchCol=${resolvedBranchCol}`);
         const resolvedCourseCol = courseCol !== -1 ? courseCol : headers.findIndex(h => h.includes('كورس') || h.includes('دبلوم') || h.includes('برنامج') || h.includes('course'));
 
-        if (isHtmlResponse(lines[0] + lines[1])) { console.warn(`[gsheet-auto] Sheet "${sheet.name}" returned HTML — not public`); continue; }
-        if (nameCol === -1 && phoneCol === -1) { console.warn(`[gsheet-auto] Sheet "${sheet.name}" columns not recognized. Headers: ${JSON.stringify(headers.slice(0,8))}`); continue; }
+        if (isHtmlResponse(lines[0] + lines[1])) { logger.warn(`[gsheet-auto] Sheet "${sheet.name}" returned HTML — not public`); continue; }
+        if (nameCol === -1 && phoneCol === -1) { logger.warn(`[gsheet-auto] Sheet "${sheet.name}" columns not recognized. Headers: ${JSON.stringify(headers.slice(0,8))}`); continue; }
         // Normalize branch string → DB ENUM value
         const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
         // Load courses for fuzzy matching (use is_published not is_active)
@@ -169,10 +170,10 @@ async function syncAllConfiguredSheets() {
           await pool.query("INSERT INTO site_config (`key`,`value`) VALUES ('crm_rr_index',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", [String(rrRaw)]);
         }
         } // end gidList loop
-      } catch(sheetErr) { console.error('[gsheet-sync-all] sheet error:', sheetErr.message); }
+      } catch(sheetErr) { logger.error('[gsheet-sync-all] sheet error:', sheetErr.message); }
     }
     return { imported: totalImported, skipped: totalSkipped };
-  } catch(e) { console.error('[gsheet-sync-all]', e.message); return { imported: 0, skipped: 0 }; }
+  } catch(e) { logger.error('[gsheet-sync-all]', e.message); return { imported: 0, skipped: 0 }; }
 }
 
 module.exports = { DEFAULT_GSHEETS, isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets };

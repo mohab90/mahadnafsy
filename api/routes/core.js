@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const crypto   = require('crypto');
 const express  = require('express');
 const router   = express.Router();
@@ -26,7 +27,7 @@ router.get('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =>
        vat_rate, vat_amount, amount_before_vat, created_at
        FROM expenses ORDER BY date DESC LIMIT 500`);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PATCH /api/admin/payments/:id/status — approve or reject a payment (admin/manager)
@@ -160,7 +161,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
                   );
                 }
               }
-            } catch (commErr) { console.warn('[patch-payment] commission calc error:', commErr.message); }
+            } catch (commErr) { logger.warn('[patch-payment] commission calc error:', commErr.message); }
           }
           // Send WhatsApp payment confirmation to subscriber
           const [[subPhone]] = await pool.query('SELECT phone FROM subscribers WHERE id=? LIMIT 1', [pay.subscriber_id]).catch(() => [[null]]);
@@ -179,7 +180,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     }
 
     res.json({ ok: true, id, status });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/staff
@@ -203,7 +204,7 @@ router.post('/api/admin/staff', requireAuth, requireAdmin, async (req, res) => {
       [id, firebaseUid, s.name||'', s.email||'', s.phone||'', role, s.image||null, s.specialization||null, joinedAt, isActive, s.notes||null, commissionRate, permissionsJson]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/staff
@@ -235,7 +236,7 @@ router.get('/api/staff/me', requireAuth, async (req, res) => {
       notes: r.notes || null,
       permissions: r.permissions_json ? tryJson(r.permissions_json, []) : [],
     });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PATCH /api/staff/me — update own safe profile fields (name, phone, image)
@@ -253,7 +254,7 @@ router.patch('/api/staff/me', requireAuth, async (req, res) => {
     vals.push(email);
     await pool.query(`UPDATE staff SET ${fields.join(', ')} WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ?`, vals);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/consultations
@@ -266,7 +267,7 @@ router.get('/api/admin/consultations', requireAuth, requireAdmin, async (req, re
        LEFT JOIN therapists t ON t.id = c.therapist_id
        ORDER BY c.session_date DESC LIMIT ?`, [limit]);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/activity-logs
@@ -277,7 +278,7 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
     const [rows] = await pool.query(
       'SELECT id, action, entity, entity_id, label, actor, at FROM activity_logs ORDER BY at DESC LIMIT ? OFFSET ?', [limit, offset]);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Initialize extra tables on startup ───────────────────────────────────────
@@ -394,10 +395,10 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
     // ── Force utf8mb4_unicode_ci on all main tables (unconditional — safe to re-run) ────
     for (const tbl of ['staff', 'leads', 'subscribers', 'users']) {
       await pool.query(`ALTER TABLE ${tbl} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(e => {
-        console.warn(`[startup] collation fix skipped for ${tbl}:`, e.message);
+        logger.warn(`[startup] collation fix skipped for ${tbl}:`, e.message);
       });
     }
-    console.log('[startup] Collation fix applied to staff/leads/subscribers/users tables');
+    logger.info('[startup] Collation fix applied to staff/leads/subscribers/users tables');
     // ── Ensure payments table has all required columns (schema evolution) ─────────────
     const paymentsExtraCols = [
       "ALTER TABLE payments ADD COLUMN IF NOT EXISTS staff_name VARCHAR(255) DEFAULT NULL",
@@ -411,10 +412,10 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
     await pool.query(`ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_staff (staff_id)`).catch(() => {});
     // Index on transaction_id for fast idempotency checks in Paymob webhook handler
     await pool.query(`ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_txn_id (transaction_id(191))`).catch(() => {});
-    console.log('[startup] payments columns ensured');
+    logger.info('[startup] payments columns ensured');
     // ── Ensure staff table has permissions_json column (schema evolution) ────
     await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions_json TEXT DEFAULT NULL`).catch(() => {});
-    console.log('[startup] staff permissions_json column ensured');
+    logger.info('[startup] staff permissions_json column ensured');
     // ── Daqqi tables ────────────────────────────────────────────────────────
     await pool.query(`CREATE TABLE IF NOT EXISTS daqqi_rounds (
       id VARCHAR(36) NOT NULL,
@@ -444,7 +445,7 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
       attended_lectures INT NOT NULL DEFAULT 0,
       PRIMARY KEY (round_id, subscriber_id)
     ) CHARACTER SET utf8mb4`);
-    console.log('✅ Extra tables OK');
+    logger.info('✅ Extra tables OK');
     // ── Ensure phone columns are nullable (required for UNIQUE constraint to work with missing phones) ──
     await pool.query(`ALTER TABLE subscribers MODIFY COLUMN phone VARCHAR(50) NULL DEFAULT NULL`).catch(() => {});
     await pool.query(`ALTER TABLE leads MODIFY COLUMN phone VARCHAR(50) NULL DEFAULT NULL`).catch(() => {});
@@ -461,8 +462,8 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
     // users: email unique
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON users (email(191))`).catch(() => {});
     // plain_password column removed — never store plaintext passwords
-    console.log('[startup] Unique indexes ensured');
-  } catch (e) { console.error('Table init error:', e.message); }
+    logger.info('[startup] Unique indexes ensured');
+  } catch (e) { logger.error('Table init error:', e.message); }
 })();
 
 // ── DELETE endpoints for basic entities ───────────────────────────────────────
@@ -483,26 +484,26 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdmin, async (re
       await conn.query('DELETE FROM otp_codes WHERE email = ?', [normEmail]);
     }
 
-    console.log(`[delete-subscriber] fully deleted id=${sub.id} email=${sub.email}`);
+    logger.info(`[delete-subscriber] fully deleted id=${sub.id} email=${sub.email}`);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
   finally { conn.release(); }
 });
 router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('UPDATE leads SET hidden = 1 WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/staff/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM staff WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM course_lectures WHERE id = ?', [req.params.id]); cacheInvalidate('courses'); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/chapters/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM course_chapters WHERE id = ?', [req.params.id]); cacheInvalidate('courses'); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // GET /api/admin/therapists — all therapists (including inactive) with slots
 router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) => {
@@ -523,15 +524,15 @@ router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) 
       therapists.forEach(t => { t.slots = slotMap[t.id] || []; });
     }
     res.json(therapists.map(mapTherapist));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/therapists/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM therapists WHERE id = ?', [req.params.id]); cacheInvalidate('therapists'); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/testimonials/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM testimonials WHERE id = ?', [req.params.id]); cacheInvalidate('testimonials'); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Bundles CRUD ───────────────────────────────────────────────────────────────
@@ -548,7 +549,7 @@ router.get('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => 
     const [courses] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE is_published = 1`);
     const mappedCourses = courses.map(mapCourse);
     res.json(rows.map(r => mapBundle(r, mappedCourses)));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => {
@@ -597,7 +598,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) =>
     }
     cacheInvalidate('bundles');
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -605,7 +606,7 @@ router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, r
     await pool.query('DELETE FROM bundles WHERE id = ?', [req.params.id]);
     cacheInvalidate('bundles');
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Quizzes CRUD ──────────────────────────────────────────────────────────────
@@ -628,11 +629,11 @@ router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) =>
        q.created_at||new Date().toISOString()]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/quizzes/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM course_quizzes WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Live Streams CRUD ─────────────────────────────────────────────────────────
@@ -666,11 +667,11 @@ router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, re
        s.created_at||new Date().toISOString()]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/live-streams/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM live_streams WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Consultations CRUD ────────────────────────────────────────────────────────
@@ -691,7 +692,7 @@ router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, r
        c.created_at||new Date().toISOString()]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.patch('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -701,11 +702,11 @@ router.patch('/api/admin/consultations/:id', requireAuth, requireAdmin, async (r
       [status||'pending', notes||null, meeting_link||null, req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM consultations WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Financial Reconciliation — enrollments without matching payment ────────────
@@ -749,9 +750,9 @@ router.post('/api/admin/backfill-payments', requireAuth, requireAdmin, async (re
         } catch (_) { skipped++; }
       }
     }
-    console.log(`[backfill-payments] inserted=${inserted} skipped=${skipped}`);
+    logger.info(`[backfill-payments] inserted=${inserted} skipped=${skipped}`);
     res.json({ ok: true, inserted, skipped });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Shows every subscriber who has access to a course but no payment record.
@@ -788,7 +789,7 @@ router.get('/api/admin/reconcile-payments', requireAuth, requireAdmin, async (re
       WHERE p.id IS NULL
     `);
     res.json({ summary: totals, unpaid: rows });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Payment Audit Log ────────────────────────────────────────────────────────
@@ -820,7 +821,7 @@ router.get('/api/admin/payment-audit', requireAuth, requireAdmin, async (req, re
       [...params, limit, offset]
     );
     res.json({ total, page, limit, rows });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Server Monitor ────────────────────────────────────────────────────────────
@@ -946,7 +947,7 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
       postExpenseJournal({ ...e2, id }, +1, req.user?.email).catch(() => {});
     }
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -963,7 +964,7 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, r
         .catch(() => {});
     }
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -972,7 +973,7 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, 
     if (oldExp) postExpenseJournal(oldExp, -1, req.user?.email).catch(() => {});
     res.json({ ok: true });
   }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Activity Logs POST ────────────────────────────────────────────────────────
@@ -986,7 +987,7 @@ router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, r
        a.at||new Date().toISOString()]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Subscriber enrollments & payments ─────────────────────────────────────────
@@ -1029,11 +1030,11 @@ router.post('/api/admin/enrollments', requireAuth, requireAdminOrStaff, async (r
             <p style="color:#9ca3af;font-size:12px">معهد نفسي — mahadnafsy.com</p>
           </div>`
         );
-      } catch (e) { console.warn('[email] enrollment confirmation failed:', e.message); }
+      } catch (e) { logger.warn('[email] enrollment confirmation failed:', e.message); }
     });
 
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // ── Join-Us Applications admin GET/PUT/DELETE ────────────────────────────────
 router.get('/api/admin/join-us', requireAuth, requireAdmin, async (req, res) => {
@@ -1042,7 +1043,7 @@ router.get('/api/admin/join-us', requireAuth, requireAdmin, async (req, res) => 
       `SELECT id, name, email, phone, specialty, experience, type, linkedin, message, status, admin_note, created_at
        FROM join_us_applications ORDER BY created_at DESC LIMIT 500`);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.patch('/api/admin/join-us/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -1050,11 +1051,11 @@ router.patch('/api/admin/join-us/:id', requireAuth, requireAdmin, async (req, re
     await pool.query('UPDATE join_us_applications SET status=?, message=COALESCE(?,message) WHERE id=?',
       [status||'new', notes||null, req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/join-us/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM join_us_applications WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Contact Messages admin GET/PATCH/DELETE ───────────────────────────────────
@@ -1064,18 +1065,18 @@ router.get('/api/admin/contact-messages', requireAuth, requireAdmin, async (req,
       `SELECT id, name, email, phone, subject, message, status, admin_note, created_at
        FROM contact_messages ORDER BY created_at DESC LIMIT 500`);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('UPDATE contact_messages SET status=? WHERE id=?',
       [req.body.status||'new', req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM contact_messages WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 
@@ -1088,7 +1089,7 @@ router.get('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, re
       [limit]
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.post('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -1122,14 +1123,14 @@ router.post('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, r
             ).catch(() => {});
           }
         }
-      } catch (cerr) { console.warn('[quiz] auto-cert error:', cerr.message); }
+      } catch (cerr) { logger.warn('[quiz] auto-cert error:', cerr.message); }
     }
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/quiz-attempts/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM quiz_attempts WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Client Code Counter (atomic) ──────────────────────────────────────────────
@@ -1139,7 +1140,7 @@ router.post('/api/admin/next-client-code', requireAuth, requireAdmin, async (req
     const [[row]] = await pool.query('SELECT next_value FROM client_code_counter WHERE id = 1');
     const code = `C${(row.next_value - 1)}`;
     res.json({ ok: true, code });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Sync counter to MAX existing code ─────────────────────────────────────────
@@ -1167,7 +1168,7 @@ router.post('/api/admin/sync-client-code-counter', requireAuth, requireAdmin, as
     res.json({ ok: true, maxExisting: maxVal, counterNow: counterRow.next_value });
   } catch (e) {
     await conn.rollback();
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -1216,7 +1217,7 @@ router.post('/api/admin/leads/migrate-branches', requireAuth, requireAdmin, asyn
       results.push({ id: row.id, raw, branch });
     }
     res.json({ ok: true, updated, total: rows.length, results });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/cleanup-junk-leads — hides leads with no phone AND no real name (e.g. 'lead-123')
@@ -1231,7 +1232,7 @@ router.post('/api/admin/cleanup-junk-leads', requireAuth, requireAdmin, async (r
       `UPDATE leads SET hidden=1 WHERE hidden=0 AND (phone IS NULL OR TRIM(phone)='') AND (name IS NULL OR TRIM(name)='')`
     );
     res.json({ ok: true, hidden: r1.affectedRows + r2.affectedRows });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/cleanup-staff-subscribers — deletes subscribers + hides leads whose email matches staff/admin
@@ -1245,7 +1246,7 @@ router.post('/api/admin/cleanup-staff-subscribers', requireAuth, requireAdmin, a
     const [del] = await pool.query(`DELETE FROM subscribers WHERE LOWER(email) IN (${ph})`, allExcluded);
     const [hid] = await pool.query(`UPDATE leads SET hidden = 1 WHERE LOWER(email) IN (${ph})`, allExcluded);
     res.json({ ok: true, deleted: del.affectedRows, hidden: hid.affectedRows, emails: allExcluded });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/fix-auto-subscribers
@@ -1333,7 +1334,7 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
     res.json({ ok: true, deleted, merged, coded, branchFixed });
   } catch (e) {
     await conn.rollback().catch(() => {});
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -1398,7 +1399,7 @@ router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, as
     res.json({ ok: true, assigned: totalNeeded, nextCounter: nextVal });
   } catch (e) {
     await conn.rollback();
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -1500,7 +1501,7 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, async (req, r
     });
   } catch (e) {
     await conn.rollback();
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -1516,7 +1517,7 @@ router.get('/api/me/is-staff', requireAuth, async (req, res) => {
       [uid, email||'']
     );
     res.json({ isStaff: !!row, isAdmin: false, staffId: row?.id, role: row?.role });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Register activity (logged-in user opts in for a course / confirms interest) ─
@@ -1533,7 +1534,7 @@ router.post('/api/me/register-interest', requireAuth, async (req, res) => {
       [id, name||email?.split('@')[0]||'مستخدم', email||'', phone||'', source||'تسجيل اهتمام', 'new']
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Health check ──────────────────────────────────────────────────────────────
@@ -1558,7 +1559,7 @@ router.post('/api/admin/client-code', requireAuth, requireAdmin, async (req, res
     res.json({ ok: true, code: `C${next}` });
   } catch (e) {
     await conn.rollback();
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -1592,7 +1593,7 @@ router.post('/api/registrations', async (req, res) => {
     res.json({ ok: true, id, clientCode: code });
   } catch (e) {
     try { conn.release(); } catch { /* ignore */ }
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1618,7 +1619,7 @@ router.post('/api/leads-public', publicLimiter,
       [id, code, name.trim().slice(0, 120), phone.trim().slice(0, 30), (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50)]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── CRM Settings (sources, auto-assign, gsheet) ──────────────────────────────
@@ -1626,7 +1627,7 @@ router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, async (r
   try {
     const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'crm_settings'");
     res.json(rows[0]?.value ? JSON.parse(rows[0].value) : {});
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.put('/api/admin/crm-settings', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -1635,7 +1636,7 @@ router.put('/api/admin/crm-settings', requireAuth, requireAdmin, async (req, res
       [JSON.stringify(req.body)]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 
@@ -1676,7 +1677,7 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
       [String(rrIdx)]
     );
     res.json({ ok: true, assigned: count, reps: reps.length });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Abandoned Checkout Lead Capture ──────────────────────────────────────────
@@ -1709,7 +1710,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     );
     res.json({ ok: true });
   } catch (e) {
-    console.warn('[checkout-intent]', e.message);
+    logger.warn('[checkout-intent]', e.message);
     res.json({ ok: false, reason: e.message }); // best-effort — don't fail the checkout page
   }
 });
@@ -1753,7 +1754,7 @@ router.get('/api/admin/subscribers/:id/payments', requireAuth, requireAdminOrSta
       };
     });
     res.json(payments);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1798,7 +1799,7 @@ router.get('/api/admin/subscribers/:id/progress', requireAuth, requireAdmin, asy
       }
     }
     res.json({ lpRows, crmProgress, courseStats });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

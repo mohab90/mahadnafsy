@@ -29,7 +29,7 @@ function mapCourse(r) {
     price:         { EGP: r.price_egp     || 0, SAR: r.price_sar     || 0, USD: r.price_usd     || 0 },
     originalPrice: { EGP: r.orig_price_egp|| 0, SAR: r.orig_price_sar|| 0, USD: r.orig_price_usd|| 0 },
     rating: r.rating,
-    students: r.students,
+    students: Math.max(0, Number(r.students) || 0),
     duration: r.duration,
     level: r.level,
     hours: r.hours,

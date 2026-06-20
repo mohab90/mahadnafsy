@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const { uuidv4 } = require('../lib/id');
 const router  = express.Router();
@@ -159,8 +160,8 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
 
     res.json({ ok: true, imported, skipped, total: dataLines.length });
   } catch (e) {
-    console.error('[gsheet-sync]', e.message);
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[gsheet-sync]', e.message);
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -169,7 +170,7 @@ router.post('/api/admin/leads/gsheet-sync-all', requireAuth, requireAdmin, async
   try {
     const result = await syncAllConfiguredSheets();
     res.json({ ok: true, ...result });
-  } catch(e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch(e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Auto-sync cron: every 15 minutes, sync all sheets flagged with autoSync:true
@@ -185,9 +186,9 @@ setInterval(async () => {
     // Also run if any DEFAULT_GSHEETS have autoSync
     if (sheets.some(s => s.autoSync) || DEFAULT_GSHEETS.some(s => s.autoSync)) {
       const r = await syncAllConfiguredSheets();
-      if (r.imported > 0) console.log(`[gsheet-auto] imported ${r.imported} leads from sheets`);
+      if (r.imported > 0) logger.info(`[gsheet-auto] imported ${r.imported} leads from sheets`);
     }
-  } catch(e) { console.error('[gsheet-auto]', e.message); }
+  } catch(e) { logger.error('[gsheet-auto]', e.message); }
   finally { _gsheetAutoRunning = false; }
 }, 15 * 60 * 1000);
 

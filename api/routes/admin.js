@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const crypto   = require('crypto');
 const bcrypt   = require('bcryptjs');
 const express  = require('express');
@@ -40,7 +41,7 @@ router.get('/api/admin/courses', requireAuth, requireAdmin, async (req, res) => 
       [limit, offset]
     );
     res.json(rows.map(mapCourse));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/courses
@@ -123,7 +124,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
     );
     cacheInvalidate('courses', 'bundles');
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/admin/courses/:id
@@ -132,7 +133,7 @@ router.delete('/api/admin/courses/:id', requireAuth, requireAdmin, async (req, r
     await pool.query('DELETE FROM courses WHERE id = ?', [req.params.id]);
     cacheInvalidate('courses', 'bundles');
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/subscribers?limit=500&offset=0
@@ -238,7 +239,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -353,7 +354,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
-  } catch (e) { console.error('[/api/staff/subscribers]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[/api/staff/subscribers]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -403,7 +404,7 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, async (req, res
       paidAmount: r.paid_amount, clientCode: r.client_code,
       hidden: !!r.hidden, branch: r.branch, clientType: r.client_type || null,
     })));
-  } catch (e) { console.error('[/api/staff/leads]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[/api/staff/leads]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/staff/my-subscribers — SALES staff fetch their own subscribers (assigned_sales_id = me)
@@ -481,7 +482,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, async 
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/staff/my-collection-clients — collection staff fetch their own assigned subscribers
@@ -545,7 +546,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/staff/my-daqqi-clients — reception_daqqi staff fetch subscribers with branch=DAQQI
@@ -609,7 +610,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, asyn
         installmentPlans: crm.installmentPlans || [],
       };
     }));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PUT /api/admin/subscribers/:id/assign-collection — assign a subscriber to a collection staff
@@ -631,7 +632,7 @@ router.put('/api/admin/subscribers/:id/assign-collection', requireAuth, requireA
       await pool.query('UPDATE subscribers SET crm_json=? WHERE id=?', [JSON.stringify(crm), subId]);
     }
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/bulk-assign-collection — round-robin assign all unassigned subscribers to collection staff
@@ -666,7 +667,7 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, asyn
       assigned += chunk.length;
     }
     res.json({ ok: true, assigned, staffCount: csRows.length, staff: csRows.map(s => s.name) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/staff/client/:code — fetch ONE subscriber or lead by clientCode/id (staff-accessible)
@@ -780,7 +781,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
     }
 
     return res.status(404).json({ error: 'لم يتم العثور على العميل' });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/staff/enrollment-welcome — create account + send welcome email + WA after staff booking
@@ -863,21 +864,21 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
       `,
     });
 
-    console.log(`[enrollment-welcome] Email sent to ${normEmail} | new=${isNew} | online=${isOnline}`);
+    logger.info(`[enrollment-welcome] Email sent to ${normEmail} | new=${isNew} | online=${isOnline}`);
 
     // Send WhatsApp welcome if phone provided
     if (phone) {
       const waMsg = isOnline
         ? `مرحباً ${safeName} 🎉\nتم تسجيلك بنجاح في: ${safeTitle}\n✅ تم فتح أول 20 درس تلقائياً — يمكنك البدء الآن!\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`
         : `مرحباً ${safeName} 🎉\nتم تسجيلك بنجاح في: ${safeTitle}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`;
-      try { await sendWhatsApp(phone, waMsg); console.log(`[enrollment-welcome] WA sent to ${phone}`); }
-      catch (waErr) { console.warn('[enrollment-welcome] WA failed:', waErr.message); }
+      try { await sendWhatsApp(phone, waMsg); logger.info(`[enrollment-welcome] WA sent to ${phone}`); }
+      catch (waErr) { logger.warn('[enrollment-welcome] WA failed:', waErr.message); }
     }
 
     res.json({ ok: true, newAccount: isNew });
   } catch (e) {
-    console.error('[enrollment-welcome]', e.message);
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[enrollment-welcome]', e.message);
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -1134,9 +1135,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
                  cert_type=COALESCE(VALUES(cert_type),cert_type),
                  course_expected=COALESCE(course_expected,VALUES(course_expected))`,
               payBatchParams
-            ).catch(e => console.error('[payment-sync] batch', e.message));
+            ).catch(e => logger.error('[payment-sync] batch', e.message));
           }
-        } catch (syncErr) { console.error('[payment-sync] subscriber', id, syncErr.message); }
+        } catch (syncErr) { logger.error('[payment-sync] subscriber', id, syncErr.message); }
       });
     }
     // Return the server-side updatedAt so the frontend can update OCC state
@@ -1151,7 +1152,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     if (e.code === 'ER_DUP_ENTRY' && e.message.includes('email')) {
       return res.status(409).json({ error: `البريد الإلكتروني ${req.body.email} مسجل بالفعل` });
     }
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1330,7 +1331,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, re
     }
 
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── POST /api/admin/import/daqqi — bulk import subscribers + enrollments + payments for DAQQI branch ──
@@ -1466,7 +1467,7 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
     }
 
     res.json({ ok: true, dryRun: !!dryRun, stats, results });
-  } catch (e) { console.error('[import/daqqi]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[import/daqqi]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/leads/bulk-assign — assign all unassigned NEW/INTERESTED leads to sales round-robin
@@ -1522,7 +1523,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, as
     );
 
     res.json({ assigned: unassigned.length, reps: reps.length, message: `تم توزيع ${unassigned.length} ليد على ${reps.length} مندوب` });
-  } catch (e) { console.error('[bulk-assign]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[bulk-assign]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/leads/bulk-whatsapp — send WhatsApp message to multiple leads
@@ -1558,7 +1559,7 @@ router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, 
     }
 
     res.json({ ok: true, sent, failed, total: leads.length });
-  } catch (e) { console.error('[bulk-whatsapp]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[bulk-whatsapp]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/leads/dedup-cleanup — delete duplicate leads (leads matching subscriber phones + dup-phone leads)
@@ -1604,7 +1605,7 @@ router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, async (
     }
 
     res.json({ ok: true, deleted: ids.length });
-  } catch (e) { console.error('[dedup-cleanup]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[dedup-cleanup]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/leads/:id/timeline
@@ -1629,7 +1630,7 @@ router.get('/api/admin/leads/:id/timeline', requireAuth, requireAdminOrStaff, as
       meta: tryJson(r.meta_json, {}),
       at: r.at,
     })));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1801,7 +1802,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
           <a href="https://mahadnafsy.com/login" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:10px 24px;border-radius:8px;font-weight:bold;">الدخول للمنصة ←</a>
           <p style="color:#9ca3af;font-size:12px;margin-top:24px;">معهد الدراسات النفسية — mahadnafsy.com</p>
         </div>`,
-      }).catch(e => console.warn('[lead-convert] credentials email failed:', e.message));
+      }).catch(e => logger.warn('[lead-convert] credentials email failed:', e.message));
     }
     createNotification('subscriber', '🎉 تحويل ليد → مشترك',
       `${lead.name} تم تحويله من ليد إلى مشترك`,
@@ -1812,7 +1813,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
   } catch (e) {
     await conn.rollback().catch(() => {});
     conn.release();
-    console.error('[lead-convert]', e.message);
+    logger.error('[lead-convert]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1880,7 +1881,7 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
         lastFollowUp: r.last_follow_up || crm.lastFollowUp || null,
       };
     }));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/payments?startDate=&endDate=&channel=&paymentType=

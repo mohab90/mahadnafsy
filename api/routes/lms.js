@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -361,8 +362,8 @@ setInterval(async () => {
           [mailErr.message?.slice(0,500) || 'error', item.id]);
       }
     }
-    if (due.length) console.log(`[email-seq] Sent ${due.length} scheduled emails`);
-  } catch (e) { console.warn('[email-seq] scheduler error:', e.message); }
+    if (due.length) logger.info(`[email-seq] Sent ${due.length} scheduled emails`);
+  } catch (e) { logger.warn('[email-seq] scheduler error:', e.message); }
 }, 5 * 60 * 1000);
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -525,7 +526,7 @@ pool.query(`
     KEY idx_pa_staff  (staff_id),
     KEY idx_pa_period (period_year, period_month)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-`).catch(e => console.warn('[schema] performance_appraisals:', e.message));
+`).catch(e => logger.warn('[schema] performance_appraisals:', e.message));
 
 // GET /api/admin/appraisals?staff_id=&year=&month=&status=
 router.get('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) => {
@@ -663,8 +664,8 @@ router.get('/api/admin/appraisals/summary', requireAuth, requireAdmin, async (re
         KEY idx_wl_sub    (subscriber_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    console.log('[schema] course_waitlist + courses.max_students ready');
-  } catch (e) { console.warn('[schema] waitlist:', e.message); }
+    logger.info('[schema] course_waitlist + courses.max_students ready');
+  } catch (e) { logger.warn('[schema] waitlist:', e.message); }
 })();
 
 // GET /api/admin/courses/:courseId/waitlist â€” list waitlist entries
@@ -956,7 +957,7 @@ pool.query(`
     KEY idx_fp_author  (author_id),
     KEY idx_fp_pinned  (is_pinned, created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-`).catch(e => console.warn('[schema] forum_posts:', e.message));
+`).catch(e => logger.warn('[schema] forum_posts:', e.message));
 
 pool.query(`
   CREATE TABLE IF NOT EXISTS forum_upvotes (
@@ -965,7 +966,7 @@ pool.query(`
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (post_id, subscriber_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-`).catch(e => console.warn('[schema] forum_upvotes:', e.message));
+`).catch(e => logger.warn('[schema] forum_upvotes:', e.message));
 
 // GET /api/community/posts?course_id=&page=&limit=
 // Public to authenticated clients â€” list posts (top-level only by default)

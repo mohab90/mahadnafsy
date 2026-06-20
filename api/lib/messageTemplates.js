@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 /**
  * Message-template engine. The admin edits WhatsApp templates in the Settings page
  * (saved to site_config content['msg.templates'] as JSON: { key: text }). This
@@ -58,14 +59,14 @@ async function loadTemplates() {
     if (raw) { try { tpls = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { tpls = {}; } }
     return setTemplates(tpls);
   } catch (e) {
-    console.error('[messageTemplates] load failed:', e.message);
+    logger.error('[messageTemplates] load failed:', e.message);
     return null;
   }
 }
 
 function startTemplatesRefresh(intervalMs = 60 * 1000) {
   loadTemplates()
-    .then(t => { if (t) console.log(`[messageTemplates] loaded ${Object.keys(t).length} custom template(s)`); })
+    .then(t => { if (t) logger.info(`[messageTemplates] loaded ${Object.keys(t).length} custom template(s)`); })
     .catch(() => {});
   if (_timer) clearInterval(_timer);
   _timer = setInterval(() => { loadTemplates().catch(() => {}); }, intervalMs);

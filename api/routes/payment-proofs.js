@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -48,7 +49,7 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
        payment_method || 'instapay', proof_image || null, safeNote]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PATCH /api/me/progress — client saves their own lecture progress (no admin needed)
@@ -107,10 +108,10 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
             }
           }
         }
-      } catch (cerr) { console.warn('[progress] completion check error:', cerr.message); }
+      } catch (cerr) { logger.warn('[progress] completion check error:', cerr.message); }
     }
     res.json({ ok: true, ...(completionData || {}) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Client: get own payment proofs
@@ -127,7 +128,7 @@ router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
       [sub.id]
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Admin: list payment proofs (default: pending only)
@@ -145,7 +146,7 @@ router.get('/api/admin/payment-proofs', requireAuth, requireAdmin, async (req, r
     sql += ' ORDER BY pp.submitted_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Admin: approve or reject a payment proof
@@ -210,13 +211,13 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdmin, async (
         await sendWhatsApp(sub.phone, msg);
       }
     } catch (notifyErr) {
-      console.warn('[payment-proof] WhatsApp notify failed:', notifyErr.message);
+      logger.warn('[payment-proof] WhatsApp notify failed:', notifyErr.message);
     }
 
     res.json({ ok: true, status: newStatus });
   } catch (e) {
     await conn.rollback();
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
 
@@ -226,7 +227,7 @@ router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdmin, asy
     const [[row]] = await pool.query('SELECT proof_image FROM payment_proofs WHERE id = ?', [req.params.id]);
     if (!row || !row.proof_image) return res.status(404).json({ error: 'No image' });
     res.json({ image: row.proof_image });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 

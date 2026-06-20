@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 const { pool } = require('./db');
 
 // Helper: enqueue all steps for a sequence for a given recipient
@@ -25,7 +26,7 @@ async function enqueueEmailSequence(triggerEvent, recipientEmail, recipientName,
         );
       }
     }
-  } catch (e) { console.warn('[email-seq] enqueue error:', e.message); }
+  } catch (e) { logger.warn('[email-seq] enqueue error:', e.message); }
 }
 
 module.exports = { enqueueEmailSequence };

@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
 
@@ -11,7 +12,7 @@ async function logLeadEvent(leadId, eventType, description, meta = {}) {
       [uuidv4(), leadId, eventType, description, JSON.stringify(meta)]
     );
   } catch (e) {
-    console.warn('[lead_timeline] log error:', e.message);
+    logger.warn('[lead_timeline] log error:', e.message);
   }
 }
 

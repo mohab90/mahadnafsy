@@ -28,7 +28,7 @@ async function revokeToken(jti, expMs) {
       'INSERT INTO token_blacklist (jti, expires_at) VALUES (?, ?) ON DUPLICATE KEY UPDATE expires_at=VALUES(expires_at)',
       [jti, expiresAt]
     );
-  } catch (e) { console.warn('[blacklist] DB write failed (token revoked in memory only):', e.message); }
+  } catch (e) { logger.warn('[blacklist] DB write failed (token revoked in memory only):', e.message); }
 }
 
 // Purge expired entries every hour
@@ -46,7 +46,7 @@ async function loadBlacklistFromDB() {
     );
     for (const { jti, exp_ms } of rows) tokenBlacklist.set(jti, Number(exp_ms));
     if (rows.length) logger.info(`[blacklist] Loaded ${rows.length} revoked tokens from DB`);
-  } catch (e) { console.warn('[blacklist] Could not load from DB on startup:', e.message); }
+  } catch (e) { logger.warn('[blacklist] Could not load from DB on startup:', e.message); }
 }
 
 module.exports = { JWT_SECRET, JWT_EXPIRY, tokenBlacklist, revokeToken, loadBlacklistFromDB };

@@ -72,16 +72,16 @@ process.on('uncaughtException', (err) => {
     // Port is busy — another instance is already running (e.g. supervisor started one, PM2 tried too).
     // DO NOT kill the existing process — it's the healthy one. Just exit so supervisor backs off.
     const port = err.port || process.env.PORT || 3001;
-    console.warn(`[EADDRINUSE] Port ${port} is busy — another instance running, exiting quietly (supervisor handles restart)`);
+    logger.warn(`[EADDRINUSE] Port ${port} is busy — another instance running, exiting quietly (supervisor handles restart)`);
     setTimeout(() => { process.exit(1); }, 500);
     return;
   }
-  console.error('[uncaughtException]', err.message, err.stack);
+  logger.error('[uncaughtException]', err.message, err.stack);
   try { require('./lib/errorMonitor').captureException(err, { kind: 'uncaughtException' }); } catch { /* noop */ }
   // Do NOT exit — let the server keep running despite the error
 });
 process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason);
+  logger.error('[unhandledRejection]', reason);
   try { require('./lib/errorMonitor').captureException(reason instanceof Error ? reason : new Error(String(reason)), { kind: 'unhandledRejection' }); } catch { /* noop */ }
   // Do NOT exit — promises rejecting should never kill the server
 });
@@ -98,7 +98,7 @@ process.on('SIGTERM', () => {
   const now = Date.now();
   const mem = process.memoryUsage();
   const rapid = (_sigtermCount > 1) && (now - _sigtermFirst < 5000);
-  console.log(`[SIGTERM] #${_sigtermCount} received — memRss=${Math.round(mem.rss/1048576)}MB — ${rapid ? 'rapid=yes → shutting down' : 'isolated → ignoring'}`);
+  logger.info(`[SIGTERM] #${_sigtermCount} received — memRss=${Math.round(mem.rss/1048576)}MB — ${rapid ? 'rapid=yes → shutting down' : 'isolated → ignoring'}`);
   if (_sigtermCount === 1) _sigtermFirst = now;
   if (!rapid) return; // ignore isolated SIGTERMs — hosting sends these periodically
   if (_isShuttingDown) return;
@@ -107,12 +107,12 @@ process.on('SIGTERM', () => {
   if (_httpServer) {
     _httpServer.close(() => {
       pool.end().catch(() => {}).finally(() => {
-        console.log('[SIGTERM] graceful shutdown complete');
+        logger.info('[SIGTERM] graceful shutdown complete');
         process.exit(0);
       });
     });
     // Hard-kill after 15s in case something hangs
-    setTimeout(() => { console.log('[SIGTERM] force exit after 15s timeout'); process.exit(0); }, 15000);
+    setTimeout(() => { logger.info('[SIGTERM] force exit after 15s timeout'); process.exit(0); }, 15000);
   } else {
     setTimeout(() => process.exit(0), 3000);
   }
@@ -120,7 +120,7 @@ process.on('SIGTERM', () => {
 // Log memory usage every 10 minutes so we can correlate with crashes
 setInterval(() => {
   const mem = process.memoryUsage();
-  console.log(`[memory] rss=${Math.round(mem.rss/1048576)}MB heap=${Math.round(mem.heapUsed/1048576)}MB/${Math.round(mem.heapTotal/1048576)}MB ext=${Math.round(mem.external/1048576)}MB`);
+  logger.info(`[memory] rss=${Math.round(mem.rss/1048576)}MB heap=${Math.round(mem.heapUsed/1048576)}MB/${Math.round(mem.heapTotal/1048576)}MB ext=${Math.round(mem.external/1048576)}MB`);
 }, 10 * 60 * 1000);
 
 // Startup schema/data tasks live in lib/startupTasks.js until fully converted to numbered SQL migrations.
@@ -159,7 +159,7 @@ const _cronLine = `*/1 * * * * /bin/bash ${_watchdog} >> ${require('path').join(
     const dumpFile = require('path').join(_pm2Home, 'dump.pm2');
     if (_fs.existsSync(dumpFile)) {
       _fs.writeFileSync(dumpFile, '{}');
-      console.log('[pm2-dump] dump.pm2 cleared — PM2 resurrect will not start competing processes');
+      logger.info('[pm2-dump] dump.pm2 cleared — PM2 resurrect will not start competing processes');
     }
   } catch (_) {}
 })();
@@ -239,9 +239,9 @@ fi
 `;
 try {
   _fs.writeFileSync(_watchdog, _watchdogContent, { mode: 0o755 });
-  console.log('[watchdog] watchdog.sh written to', _watchdog);
+  logger.info('[watchdog] watchdog.sh written to', _watchdog);
 } catch (e) {
-  console.warn('[watchdog] Could not write watchdog.sh:', e.message);
+  logger.warn('[watchdog] Could not write watchdog.sh:', e.message);
 }
 (function installCron() {
   const bins = ['/usr/bin/crontab', '/bin/crontab', '/usr/local/bin/crontab'];
@@ -260,7 +260,7 @@ try {
     }
     exec(`[ -x "${bins[i]}" ] && (${bins[i]} -l 2>/dev/null | grep -vF watchdog.sh; echo "${_cronLine}") | ${bins[i]} - && echo "[cron] installed via ${bins[i]}"`,
       (e, out) => {
-        if (!e && out && out.includes('[cron]')) console.log(out.trim());
+        if (!e && out && out.includes('[cron]')) logger.info(out.trim());
         else tryBin(i + 1);
       });
   };
@@ -281,7 +281,7 @@ setInterval(() => {
     _healInProgress = true;
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const memMB = (memUsed / 1024 / 1024).toFixed(1);
-    console.log(`[auto-heal] Memory at ${memMB}MB — exiting cleanly (watchdog will restart)`);
+    logger.info(`[auto-heal] Memory at ${memMB}MB — exiting cleanly (watchdog will restart)`);
     try {
       _fs.appendFileSync(_crashHistoryLog,
         `${ts} [AUTO-HEAL] Clean exit at ${memMB}MB (threshold 170MB)\n`
@@ -301,7 +301,7 @@ setInterval(() => {
     const _dumpBak  = require('path').join(_pm2Home, 'dump.pm2.bak');
     try { _fs.writeFileSync(_dumpFile, '{"apps":[]}', 'utf8'); } catch (_) {}
     try { _fs.writeFileSync(_dumpBak,  '{"apps":[]}', 'utf8'); } catch (_) {}
-    console.log('[pm2-dump] cleared — resurrect blocked');
+    logger.info('[pm2-dump] cleared — resurrect blocked');
   } catch (_) {}
 }, 30 * 60 * 1000);
 
@@ -309,18 +309,18 @@ setInterval(() => {
 // Runs on startup (after 20s to allow DB pool to stabilise) then every 30 min
 setTimeout(() => {
   syncAllConfiguredSheets()
-    .then(r => { if (r && r.imported > 0) console.log(`[GSheet startup-sync] Imported ${r.imported} new leads`); })
-    .catch(e => console.warn('[GSheet startup-sync] error:', e.message));
+    .then(r => { if (r && r.imported > 0) logger.info(`[GSheet startup-sync] Imported ${r.imported} new leads`); })
+    .catch(e => logger.warn('[GSheet startup-sync] error:', e.message));
 }, 20_000);
 
 setInterval(() => {
   syncAllConfiguredSheets()
-    .then(r => { if (r && r.imported > 0) console.log(`[GSheet auto-sync] Imported ${r.imported} new leads`); })
-    .catch(e => console.warn('[GSheet auto-sync] error:', e.message));
+    .then(r => { if (r && r.imported > 0) logger.info(`[GSheet auto-sync] Imported ${r.imported} new leads`); })
+    .catch(e => logger.warn('[GSheet auto-sync] error:', e.message));
 }, 30 * 60 * 1000);
 
 if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
-  console.error('[FATAL] DB_USER / DB_PASSWORD / DB_NAME must be set in .env');
+  logger.error('[FATAL] DB_USER / DB_PASSWORD / DB_NAME must be set in .env');
   process.exit(1);
 }
 
@@ -381,6 +381,10 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-ID', req.reqId);
   next();
 });
+
+// Multi-tenancy seam (Phase 2): resolves req.tenantId from sub-domain/header/JWT.
+// Single-tenant today → always 'mahad'; no behavior change. See docs/MULTI-TENANCY.md.
+app.use(require('./middleware/tenantContext').resolveTenant);
 
 // Structured HTTP access log — one JSON line per request (method/path/status/ms).
 // Skips health probes to avoid flooding logs. Warn-level for 5xx so they stand out.
@@ -449,7 +453,7 @@ const _criticalEnvVars = [
 ];
 _criticalEnvVars.forEach(({ key, purpose }) => {
   if (!process.env[key]) {
-    console.error(`[CONFIG] ⚠️  ${key} is not set in .env (${purpose}) — server may fail to start correctly.`);
+    logger.error(`[CONFIG] ⚠️  ${key} is not set in .env (${purpose}) — server may fail to start correctly.`);
   }
 });
 
@@ -557,9 +561,9 @@ const server = app.listen(PORT, () => {
   // Expose server to SIGTERM handler for graceful shutdown
   // eslint-disable-next-line no-global-assign
   _httpServer = server;
-  console.log(`✅ Mahad API running on port ${PORT}`);
-  console.log(`   Live:  http://localhost:${PORT}/api/health/live`);
-  console.log(`   Ready: http://localhost:${PORT}/api/health`);
+  logger.info(`✅ Mahad API running on port ${PORT}`);
+  logger.info(`   Live:  http://localhost:${PORT}/api/health/live`);
+  logger.info(`   Ready: http://localhost:${PORT}/api/health`);
 
   // Load token blacklist from DB so revoked tokens survive restarts
   loadBlacklistFromDB().catch(() => {});
@@ -622,9 +626,9 @@ const server = app.listen(PORT, () => {
           }
         }
       }
-      if (sentCount) console.log(`[Cron] installmentReminder: sent ${sentCount} WA reminders`);
+      if (sentCount) logger.info(`[Cron] installmentReminder: sent ${sentCount} WA reminders`);
     } catch (e) {
-      console.warn('[Cron] installmentReminderCron error:', e.message);
+      logger.warn('[Cron] installmentReminderCron error:', e.message);
     }
   }
   // Run once at startup then every hour
@@ -649,10 +653,10 @@ const server = app.listen(PORT, () => {
         await new Promise(r => setTimeout(r, 2000));
       }
       if (pendingRows.length) {
-        console.log(`[Cron] pendingPaymentReminder: sent ${pendingRows.length} reminders`);
+        logger.info(`[Cron] pendingPaymentReminder: sent ${pendingRows.length} reminders`);
         await createNotification('reminder', 'تذكيرات دفع مُرسلة', `تم إرسال ${pendingRows.length} تذكير للمدفوعات المعلّقة تلقائياً`, { count: pendingRows.length });
       }
-    } catch (e) { console.warn('[Cron] pendingPaymentReminderCron error:', e.message); }
+    } catch (e) { logger.warn('[Cron] pendingPaymentReminderCron error:', e.message); }
   }
   // Run daily (24h interval), first run after 2 min startup delay
   setTimeout(() => {
@@ -677,8 +681,8 @@ const server = app.listen(PORT, () => {
         [JSON.stringify(merged)]
       );
       cacheInvalidate('site_content');
-      console.log(`[FX] Auto-refreshed: SAR=${sar_to_egp}, USD=${usd_to_egp}`);
-    } catch (e) { console.warn('[FX] Auto-refresh failed:', e.message); }
+      logger.info(`[FX] Auto-refreshed: SAR=${sar_to_egp}, USD=${usd_to_egp}`);
+    } catch (e) { logger.warn('[FX] Auto-refresh failed:', e.message); }
   }
   // Run on startup (after 30s), then every 24h
   setTimeout(() => {
@@ -745,9 +749,9 @@ const server = app.listen(PORT, () => {
         }
         totalActions += actionsRun;
       }
-      console.log(`[auto-cron] Automation engine ran: ${workflows.length} workflows, ${totalActions} actions executed`);
+      logger.info(`[auto-cron] Automation engine ran: ${workflows.length} workflows, ${totalActions} actions executed`);
     } catch (e) {
-      console.warn('[auto-cron] Automation engine error:', e.message);
+      logger.warn('[auto-cron] Automation engine error:', e.message);
     }
   }
   // First run delayed 90s after boot, then every 24 hours
@@ -814,9 +818,9 @@ const server = app.listen(PORT, () => {
             sent++;
           }
         }
-        if (sent) console.log(`[Cron] daqqiReminder (${label}): sent ${sent} reminders`);
+        if (sent) logger.info(`[Cron] daqqiReminder (${label}): sent ${sent} reminders`);
       }
-    } catch (e) { console.warn('[Cron] daqqiSessionReminderCron error:', e.message); }
+    } catch (e) { logger.warn('[Cron] daqqiSessionReminderCron error:', e.message); }
   }
   // Run every hour
   setTimeout(() => {
@@ -855,8 +859,8 @@ const server = app.listen(PORT, () => {
           sent++;
         }
       }
-      if (sent) console.log(`[Cron] leadRetargeting: sent ${sent} reactivation messages`);
-    } catch (e) { console.warn('[Cron] leadRetargetingCron error:', e.message); }
+      if (sent) logger.info(`[Cron] leadRetargeting: sent ${sent} reactivation messages`);
+    } catch (e) { logger.warn('[Cron] leadRetargetingCron error:', e.message); }
   }
   // Run daily (first run after 5min)
   setTimeout(() => {
@@ -876,7 +880,7 @@ const server = app.listen(PORT, () => {
       const dbUser = process.env.DB_USER || 'root';
       const dbPass = process.env.DB_PASS || '';
       const dbName = process.env.DB_NAME || '';
-      if (!dbName) { console.warn('[Backup] DB_NAME not set — skipping backup'); return; }
+      if (!dbName) { logger.warn('[Backup] DB_NAME not set — skipping backup'); return; }
       const filename = `backup_${new Date().toISOString().slice(0,10)}.sql.gz`;
       const filepath = `${bkDir}/${filename}`;
       const cmd = `mysqldump -h${dbHost} -u${dbUser} -p'${dbPass}' --single-transaction --quick ${dbName} | gzip > ${filepath}`;
@@ -887,11 +891,11 @@ const server = app.listen(PORT, () => {
         `INSERT IGNORE INTO backup_logs (id, filename, size_bytes, status) VALUES (UUID(), ?, ?, 'SUCCESS')`,
         [filename, size]
       ).catch(() => {});
-      console.log(`[Backup] Daily backup done: ${filename} (${Math.round(size/1024)}KB)`);
+      logger.info(`[Backup] Daily backup done: ${filename} (${Math.round(size/1024)}KB)`);
       // Cleanup backups older than 7 days
       exec(`find ${bkDir} -name 'backup_*.sql.gz' -mtime +7 -delete`, () => {});
     } catch (e) {
-      console.warn('[Backup] autoDailyBackup error:', e.message);
+      logger.warn('[Backup] autoDailyBackup error:', e.message);
       await pool.query(
         `INSERT IGNORE INTO backup_logs (id, filename, size_bytes, status, error) VALUES (UUID(), 'backup_failed', 0, 'FAILED', ?)`,
         [e.message?.slice(0, 500) || 'unknown']
@@ -909,7 +913,7 @@ const server = app.listen(PORT, () => {
       autoDailyBackup();
       setInterval(autoDailyBackup, 24 * 60 * 60 * 1000);
     }, msToFirst);
-    console.log(`[Backup] Scheduled daily backup at 02:00 (in ${Math.round(msToFirst / 60000)}min)`);
+    logger.info(`[Backup] Scheduled daily backup at 02:00 (in ${Math.round(msToFirst / 60000)}min)`);
   }, 10 * 60 * 1000);
 
   // ── Waitlist Auto-Notify: when Daqqi round opens a spot ──────────────────
@@ -937,8 +941,8 @@ const server = app.listen(PORT, () => {
         await sendWhatsApp(w.phone, msg).catch(() => {});
         await pool.query('UPDATE course_waitlist SET notify_sent=1, notified_at=NOW() WHERE id=?', [w.id]).catch(() => {});
       }
-      if (waitlisted.length) console.log(`[Cron] waitlistNotify: notified ${waitlisted.length} subscribers`);
-    } catch (e) { console.warn('[Cron] waitlistNotifyCron error:', e.message); }
+      if (waitlisted.length) logger.info(`[Cron] waitlistNotify: notified ${waitlisted.length} subscribers`);
+    } catch (e) { logger.warn('[Cron] waitlistNotifyCron error:', e.message); }
   }
   // Run every 30 minutes
   setTimeout(() => {

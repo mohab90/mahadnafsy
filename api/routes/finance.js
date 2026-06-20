@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const crypto  = require('crypto');
 const express = require('express');
 const router  = express.Router();
@@ -216,7 +217,7 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.send(html);
-  } catch (e) { console.error('[receipt]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[receipt]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/invoice/:paymentId — returns printable HTML invoice (A4)
@@ -350,7 +351,7 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
 </html>`;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -418,7 +419,7 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdmin,
         new_subscribers: diff(newSubs.n, prevSubs.n),
       }
     });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -505,7 +506,7 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdmin, async (req, res) 
       expenses: { accounts: Object.values(expensesByAccount), total: totalExpenses },
       net_income: netIncome
     });
-  } catch (e) { console.error('[reports/pl]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[reports/pl]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/reports/trial-balance?from=&to=
@@ -551,7 +552,7 @@ router.get('/api/admin/reports/trial-balance', requireAuth, requireAdmin, async 
       accounts,
       totals: { debit: totalDebit, credit: totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 }
     });
-  } catch (e) { console.error('[reports/trial-balance]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[reports/trial-balance]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/reports/journal?from=&to=&account_code=&ref_type=&page=&limit=
@@ -612,7 +613,7 @@ router.get('/api/admin/reports/journal', requireAuth, requireAdmin, async (req, 
       lines: linesByEntry,
       pagination: { total, page, limit, pages: Math.ceil(total / limit) }
     });
-  } catch (e) { console.error('[reports/journal]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[reports/journal]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/reports/pl/html?from=&to= — printable P&L HTML report
@@ -723,7 +724,7 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.send(html);
-  } catch (e) { console.error('[reports/pl/html]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[reports/pl/html]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -748,7 +749,7 @@ pool.query(`
     INDEX idx_token (token),
     INDEX idx_expires (expires_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-`).catch(e => console.warn('[Startup] payment_links table check:', e.message));
+`).catch(e => logger.warn('[Startup] payment_links table check:', e.message));
 
 // POST /api/admin/payment-links — generate a payment link
 router.post('/api/admin/payment-links', requireAuth, requireAdmin, async (req, res) => {
@@ -766,7 +767,7 @@ router.post('/api/admin/payment-links', requireAuth, requireAdmin, async (req, r
     const baseUrl = 'https://mahadnafsy.com';
     const link = `${baseUrl}/#/pay/${token}`;
     res.json({ ok: true, id, link, token, expires_at: expiresAt });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/payment-links — list all payment links
@@ -781,7 +782,7 @@ router.get('/api/admin/payment-links', requireAuth, requireAdmin, async (req, re
     const baseUrl = 'https://mahadnafsy.com';
     const result = rows.map(r => ({ ...r, link: `${baseUrl}/#/pay/${r.token}` }));
     res.json(result);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/payment-links/:token — public validate (used by client checkout)
@@ -805,7 +806,7 @@ router.get('/api/payment-links/:token', async (req, res) => {
       item = b;
     }
     res.json({ ok: true, pl: { ...pl, token: undefined }, item });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 
@@ -825,7 +826,7 @@ async function enforceIpWhitelist(req, res, next) {
     const clientIp = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
     const ok = _ipwlCache.some(e => e === clientIp || (e.endsWith('.*') && clientIp.startsWith(e.slice(0, -2) + '.')));
     if (ok) return next();
-    console.warn(`[ip-whitelist] BLOCKED: ${clientIp}`);
+    logger.warn(`[ip-whitelist] BLOCKED: ${clientIp}`);
     return res.status(403).json({ error: 'IP not whitelisted' });
   } catch (_) { return next(); } // fail-open to avoid accidental lockout
 }
@@ -994,7 +995,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdmin, async (req, 
       generatedAt: new Date().toISOString(),
     });
   } catch (e) {
-    console.error('[finance/cockpit]', e.message);
+    logger.error('[finance/cockpit]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1030,7 +1031,7 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, 
       notes: r.notes || '',
     })));
   } catch (e) {
-    console.error('[finance/budgets GET]', e.message);
+    logger.error('[finance/budgets GET]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1051,7 +1052,7 @@ router.put('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, 
     }
     res.json({ ok: true });
   } catch (e) {
-    console.error('[finance/budgets PUT]', e.message);
+    logger.error('[finance/budgets PUT]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1070,7 +1071,7 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdmin, async (req, 
     `).catch(() => [[]]);
     res.json(rows);
   } catch (e) {
-    console.error('[finance/refunds]', e.message);
+    logger.error('[finance/refunds]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1087,7 +1088,7 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdmin, async (r
     );
     res.json({ ok: true });
   } catch (e) {
-    console.error('[finance/refunds PUT]', e.message);
+    logger.error('[finance/refunds PUT]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -39,3 +39,6 @@ Thumbs.db
 coverage/
 tmp/
 *.local
+
+# local npm cache (from e2e install)
+.npm-cache/

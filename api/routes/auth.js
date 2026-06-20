@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const { Router } = require('express');
 const router = Router();
 
@@ -60,7 +61,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
     }
     // Generate ONE shared client code — same code on both lead and subscriber for this person
     let sharedClientCode = null;
-    try { sharedClientCode = await getNextClientCode(conn); } catch (codeErr) { console.warn('[register] Could not get client code:', codeErr.message); }
+    try { sharedClientCode = await getNextClientCode(conn); } catch (codeErr) { logger.warn('[register] Could not get client code:', codeErr.message); }
     // Auto-create lead in CRM so admin sees new registrations in العملاء المحتملين (best-effort)
     let createdLeadId = null;
     try {
@@ -90,7 +91,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
           'UPDATE leads SET name = IF(LENGTH(?) > 0, ?, name), client_code = IF(client_code IS NULL, ?, client_code) WHERE id = ?',
           [newName, newName, sharedClientCode, existingLeadId]
         );
-        console.log(`[register] Reused existing lead ${existingLeadId} for ${normalizedEmail}`);
+        logger.info(`[register] Reused existing lead ${existingLeadId} for ${normalizedEmail}`);
       } else {
         const leadId = `lead-reg-${uuidv4()}`;
         createdLeadId = leadId;
@@ -99,10 +100,10 @@ router.post('/api/auth/register', registerLimiter, requireDb,
            VALUES (?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, NOW())`,
           [leadId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail, phone || '']
         );
-        console.log(`[register] Created lead ${leadId} code=${sharedClientCode} for ${normalizedEmail}`);
+        logger.info(`[register] Created lead ${leadId} code=${sharedClientCode} for ${normalizedEmail}`);
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }).catch(() => {});
       }
-    } catch (leadErr) { console.warn('[register] Could not create lead:', leadErr.message); }
+    } catch (leadErr) { logger.warn('[register] Could not create lead:', leadErr.message); }
     // NOTE: No subscriber record created on register — client stays in عملاء محتملين until admin manually
     // converts them after payment (admin moves them to عملاء الأونلاين and assigns a course).
     const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
@@ -122,7 +123,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
     // Enqueue registration email sequence (best-effort)
     enqueueEmailSequence('registration', email.toLowerCase().trim(), (name || '').trim(), Date.now()).catch(() => {});
   } catch (err) {
-    console.error('[auth/register]', err);
+    logger.error('[auth/register]', err);
     res.status(500).json({ error: 'Registration failed' });
   } finally { conn.release(); }
 });
@@ -188,7 +189,7 @@ router.post('/api/user/signup', registerLimiter,
     res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
     if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`).catch(() => {});
   } catch (err) {
-    console.error('[user/signup]', err);
+    logger.error('[user/signup]', err);
     res.status(500).json({ error: 'Registration failed' });
   } finally { conn.release(); }
 });
@@ -228,7 +229,7 @@ router.post('/api/admin/staff-account', requireAuth, requireAdmin,
     );
     res.json({ ok: true, uid, staffId: id });
   } catch (err) {
-    console.error('[admin/staff-account]', err);
+    logger.error('[admin/staff-account]', err);
     res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
@@ -432,7 +433,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
           );
         }
       } catch (payErr) {
-        console.warn('[create-account] firstPayment insert failed:', payErr.message);
+        logger.warn('[create-account] firstPayment insert failed:', payErr.message);
       }
     }
 
@@ -455,9 +456,9 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
           <p style="color:#9ca3af;font-size:12px;margin-top:16px;">يرجى تغيير كلمة المرور بعد أول تسجيل دخول.</p>
         </div>`,
       });
-      console.log(`[create-account] ${action} + email sent → ${normEmail}`);
+      logger.info(`[create-account] ${action} + email sent → ${normEmail}`);
     } catch (mailErr) {
-      console.warn('[create-account] email failed:', mailErr.message);
+      logger.warn('[create-account] email failed:', mailErr.message);
     }
 
     res.json({ ok: true, action, email: normEmail, tempPass });
@@ -487,7 +488,7 @@ router.get('/api/admin/subscribers/:id/activity', requireAuth, requireAdminOrOnl
       last_login: user?.last_login ?? null,
     });
   } catch (err) {
-    console.error('[admin/subscribers/activity]', err);
+    logger.error('[admin/subscribers/activity]', err);
     res.json({ login_count: 0, last_login: null });
   }
 });
@@ -551,7 +552,7 @@ router.post('/api/admin/bulk-create-accounts', requireAuth, requireAdmin, async 
         } catch { /* continue even if email fails */ }
       } catch { failed++; }
     }
-    console.log(`[bulk-create-accounts] created=${created} failed=${failed} emails=${emailsSent}`);
+    logger.info(`[bulk-create-accounts] created=${created} failed=${failed} emails=${emailsSent}`);
     res.json({ ok: true, created, failed, emailsSent, total: rows.length });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
   finally { conn.release(); }
@@ -580,19 +581,19 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         [email.toLowerCase().trim()]
       );
       if (subExists) {
-        console.log('[login] subscriber exists but no users record — directing to reset:', email.toLowerCase().trim());
+        logger.info('[login] subscriber exists but no users record — directing to reset:', email.toLowerCase().trim());
         return res.status(401).json({
           error: 'لم يتم تعيين كلمة مرور لهذا الحساب بعد. يرجى الضغط على "نسيت كلمة المرور" لتعيين كلمة مرور جديدة.',
           needsPasswordReset: true,
         });
       }
-      console.log('[login] no active account for:', email.toLowerCase().trim());
+      logger.info('[login] no active account for:', email.toLowerCase().trim());
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const user = rows[0];
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
-      console.log('[login] wrong password for:', email.toLowerCase().trim());
+      logger.info('[login] wrong password for:', email.toLowerCase().trim());
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     // ── Admin 2FA: check if this user is a staff member with TOTP enabled ──
@@ -631,7 +632,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     res.setHeader('Set-Cookie', `authToken=${token}; ${cookieOpts}`);
     res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
   } catch (err) {
-    console.error('[auth/login]', err);
+    logger.error('[auth/login]', err);
     res.status(500).json({ error: 'Login failed' });
   } finally { conn.release(); }
 });
@@ -666,7 +667,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     }
     res.json({ uid: u.id, email: u.email, displayName: u.name || '', isAdmin });
   } catch (err) {
-    console.error('[auth/me]', err);
+    logger.error('[auth/me]', err);
     res.status(500).json({ error: 'Server error' });
   } finally { conn.release(); }
 });
@@ -700,14 +701,14 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
         const [[createdUser]] = await pool.query('SELECT id, name FROM users WHERE email = ? LIMIT 1', [safeEmail]);
         if (createdUser) {
           user = createdUser;
-          console.log('[forgot-password] auto-created users record for subscriber:', safeEmail);
+          logger.info('[forgot-password] auto-created users record for subscriber:', safeEmail);
         }
       }
     }
 
     // Always return success to prevent user enumeration
     if (!user) {
-      console.log('[forgot-password] no active account found for:', safeEmail);
+      logger.info('[forgot-password] no active account found for:', safeEmail);
       return res.json({ ok: true });
     }
 
@@ -726,15 +727,15 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
          <div class="otp-box">${otp}</div>
          <p style="color:#888;font-size:13px;text-align:center;">صالح لمدة 15 دقيقة فقط. إذا لم تطلب ذلك، تجاهل هذا البريد.</p>`
       );
-      console.log('[forgot-password] OTP sent to:', safeEmail);
+      logger.info('[forgot-password] OTP sent to:', safeEmail);
       res.json({ ok: true });
     } catch (mailErr) {
-      console.error('[forgot-password] SMTP error for', safeEmail, ':', mailErr.message);
+      logger.error('[forgot-password] SMTP error for', safeEmail, ':', mailErr.message);
       // Invalidate the OTP we just created since email didn't go out
       await pool.query("UPDATE otp_codes SET used=1 WHERE email=? AND type='password_reset' AND used=0", [safeEmail]).catch(() => {});
       res.status(422).json({ error: 'فشل إرسال البريد الإلكتروني — تحقق من البريد الصحيح أو تواصل مع الدعم' });
     }
-  } catch (e) { console.error('[forgot-password]', e); res.status(500).json({ error: 'فشل الإرسال' }); }
+  } catch (e) { logger.error('[forgot-password]', e); res.status(500).json({ error: 'فشل الإرسال' }); }
 });
 
 // POST /api/auth/verify-otp — verify OTP and return a short-lived reset token
@@ -808,7 +809,7 @@ router.put('/api/auth/update-profile', requireAuth, async (req, res) => {
     );
     res.json({ ok: true });
   } catch (err) {
-    console.error('[auth/update-profile]', err);
+    logger.error('[auth/update-profile]', err);
     res.status(500).json({ error: 'Update failed' });
   } finally { conn.release(); }
 });
@@ -828,7 +829,7 @@ router.put('/api/auth/update-password', requireAuth, async (req, res) => {
     await conn.execute('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.uid]);
     res.json({ ok: true });
   } catch (err) {
-    console.error('[auth/update-password]', err);
+    logger.error('[auth/update-password]', err);
     res.status(500).json({ error: 'Update failed' });
   } finally { conn.release(); }
 });
@@ -844,7 +845,7 @@ router.post('/api/admin/force-reset-password', requireAuth, requireAdmin, async 
     if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ ok: true });
   } catch (err) {
-    console.error('[admin/force-reset-password]', err);
+    logger.error('[admin/force-reset-password]', err);
     res.status(500).json({ error: 'Reset failed' });
   } finally { conn.release(); }
 });
@@ -890,7 +891,7 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
     }
     res.json({ ok: true });
   } catch (err) {
-    console.error('[admin/subscribers/credentials]', err);
+    logger.error('[admin/subscribers/credentials]', err);
     res.status(500).json({ error: 'Internal server error' });
   } finally { conn.release(); }
 });
@@ -949,7 +950,7 @@ router.post('/api/auth/2fa/setup', requireAuth, async (req, res) => {
     await pool.query('UPDATE staff SET totp_secret=?, totp_enabled=0 WHERE id=?', [secret, staff.id]);
     res.json({ secret, qrDataUrl, otpAuthUrl });
   } catch (e) {
-    console.error('[2fa/setup]', e);
+    logger.error('[2fa/setup]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -970,7 +971,7 @@ router.post('/api/auth/2fa/enable', requireAuth, loginLimiter, async (req, res) 
     await pool.query('UPDATE staff SET totp_enabled=1 WHERE id=?', [staff.id]);
     res.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
   } catch (e) {
-    console.error('[2fa/enable]', e);
+    logger.error('[2fa/enable]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -994,7 +995,7 @@ router.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
     await pool.query('UPDATE staff SET totp_enabled=0, totp_secret=NULL WHERE id=?', [staff.id]);
     res.json({ ok: true, message: 'تم تعطيل المصادقة الثنائية' });
   } catch (e) {
-    console.error('[2fa/disable]', e);
+    logger.error('[2fa/disable]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1035,7 +1036,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
     res.setHeader('Set-Cookie', `authToken=${fullToken}; ${cookieOpts}`);
     res.json({ ok: true, token: fullToken });
   } catch (e) {
-    console.error('[2fa/verify]', e);
+    logger.error('[2fa/verify]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

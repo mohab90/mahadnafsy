@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -20,7 +21,7 @@ router.get('/api/admin/automation-workflows', requireAuth, requireAdmin, async (
       conditions: tryJson(r.conditions, []),
       action_config: tryJson(r.action_config, {}),
     })));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.post('/api/admin/automation-workflows', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -37,11 +38,11 @@ router.post('/api/admin/automation-workflows', requireAuth, requireAdmin, async 
        w.lastTriggeredAt||null, w.triggerCount||0, w.createdAt||new Date().toISOString()]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/automation-workflows/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM automation_workflows WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Automation Engine: Execute enabled workflows ──────────────────────────────
@@ -447,8 +448,8 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
 
     res.json({ ok: true, ran: results.length, results });
   } catch (e) {
-    console.error('[automation-run]', e.message);
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[automation-run]', e.message);
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -479,7 +480,7 @@ router.post('/api/admin/automation-workflows/run-single/:id', requireAuth, requi
       matchedLeads = cnt;
     }
     res.json({ ok: true, dryRun: true, workflowId: wf.id, trigger: wf.trigger, action: wf.action, matchedLeads });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Create automation_log table silently (best-effort on startup)

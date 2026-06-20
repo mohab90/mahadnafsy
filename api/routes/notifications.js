@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 
@@ -17,7 +18,7 @@ router.get('/api/admin/notifications', requireAuth, requireAdmin, async (_req, r
     const unread = rows.filter(r => !r.read_at).length;
     res.json({ rows, unread });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -29,7 +30,7 @@ router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, asy
     await pool.query('UPDATE notifications SET read_at=NOW() WHERE read_at IS NULL');
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -41,7 +42,7 @@ router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdmin, asy
     await pool.query('UPDATE notifications SET read_at=NOW() WHERE id=?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

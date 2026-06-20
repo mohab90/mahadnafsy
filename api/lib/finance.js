@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
 
@@ -10,7 +11,7 @@ async function logPaymentAudit(paymentId, action, oldStatus, newStatus, amount, 
        VALUES (?,?,?,?,?,?,?,?)`,
       [uuidv4(), paymentId, action, oldStatus || null, newStatus || null, amount || null, subscriberId || null, actor || 'system']
     );
-  } catch (e) { console.warn('[audit] logPaymentAudit error:', e.message); }
+  } catch (e) { logger.warn('[audit] logPaymentAudit error:', e.message); }
 }
 
 // Chart of accounts:
@@ -39,7 +40,7 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
       );
     }
     return entryId;
-  } catch (e) { console.warn('[journal] postJournalEntry error:', e.message); return null; }
+  } catch (e) { logger.warn('[journal] postJournalEntry error:', e.message); return null; }
 }
 
 // Returns [accountCode, accountName] for a given payment type.

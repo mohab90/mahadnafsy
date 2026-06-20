@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 
@@ -20,7 +21,7 @@ router.get('/api/admin/certificate-requests', requireAuth, requireAdmin, async (
        LEFT JOIN courses c ON c.id = cr.course_id
        ORDER BY cr.requested_at DESC LIMIT ?`, [limit]);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.patch('/api/admin/certificate-requests/:id',
@@ -41,14 +42,14 @@ router.patch('/api/admin/certificate-requests/:id',
     params.push(req.params.id);
     await pool.query(`UPDATE certificate_requests SET ${sets.join(',')} WHERE id=?`, params);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM certificate_requests WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

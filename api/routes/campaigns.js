@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -21,7 +22,7 @@ router.get('/api/admin/email-campaigns', requireAuth, requireAdmin, async (req, 
        FROM email_campaigns ORDER BY created_at DESC LIMIT 200`
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/email-campaigns', requireAuth, requireAdmin, async (req, res) => {
@@ -35,7 +36,7 @@ router.post('/api/admin/email-campaigns', requireAuth, requireAdmin, async (req,
       [id, title, subject, body_html, audience || 'all', audience_filter ? JSON.stringify(audience_filter) : null, req.user.uid || null]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/api/admin/email-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -46,14 +47,14 @@ router.put('/api/admin/email-campaigns/:id', requireAuth, requireAdmin, async (r
       [title, subject, body_html, audience || 'all', audience_filter ? JSON.stringify(audience_filter) : null, req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/email-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM email_campaigns WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/email-campaigns/:id/send — fire the campaign
@@ -107,7 +108,7 @@ router.post('/api/admin/email-campaigns/:id/send', requireAuth, requireAdmin, as
     res.json({ ok: true, sentCount, failCount });
   } catch (e) {
     await pool.query("UPDATE email_campaigns SET status='failed' WHERE id=?", [req.params.id]).catch(() => {});
-    console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -125,7 +126,7 @@ router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, async (req, res
        FROM tasks ${where} ORDER BY due_date ASC, created_at DESC LIMIT 500`, params
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, async (req, res) => {
@@ -140,7 +141,7 @@ router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, async (req, re
        t.status || 'todo', t.due_date || null, req.user.uid || null]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
@@ -156,14 +157,14 @@ router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (req,
        t.related_sub_id || null, t.related_lead_id || null, req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     await pool.query('DELETE FROM tasks WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -181,7 +182,7 @@ router.get('/api/admin/tickets', requireAuth, requireAdmin, async (req, res) => 
       params
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -197,7 +198,7 @@ router.get('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res)
       [req.params.id]
     );
     res.json({ ...ticket, replies });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -209,7 +210,7 @@ router.put('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res)
       [status, priority, assigned_to || null, status, status, req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (req, res) => {
@@ -237,11 +238,11 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (re
           <p>يمكنك الاطلاع على تذكرتك والرد من خلال <a href="https://mahadnafsy.com/dashboard" style="color:#7c3aed">لوحة التحكم</a>.</p>
           <p style="color:#9ca3af;font-size:12px">معهد نفسي — mahadnafsy.com</p>
         </div>`
-      ).catch(e => console.warn('[email] ticket reply notification failed:', e.message));
+      ).catch(e => logger.warn('[email] ticket reply notification failed:', e.message));
     }
 
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Client: submit a support ticket
@@ -261,7 +262,7 @@ router.post('/api/me/tickets', requireAuth, async (req, res) => {
     );
     await createNotification('ticket', 'تذكرة دعم جديدة', `${sub?.name || req.user.email} فتح تذكرة: ${subject}`, { ticketId: id });
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Client: get own tickets
@@ -276,7 +277,7 @@ router.get('/api/me/tickets', requireAuth, async (req, res) => {
       [email]
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -287,7 +288,7 @@ router.get('/api/admin/webhooks', requireAuth, requireAdmin, async (req, res) =>
   try {
     const [rows] = await pool.query('SELECT id, name, url, events, is_active, last_triggered_at, last_status, created_at FROM webhooks ORDER BY created_at DESC');
     res.json(rows.map(r => ({ ...r, events: tryJson(r.events, []) })));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/webhooks', requireAuth, requireAdmin, async (req, res) => {
@@ -300,7 +301,7 @@ router.post('/api/admin/webhooks', requireAuth, requireAdmin, async (req, res) =
       [id, name, url, secret || null, JSON.stringify(events || [])]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/api/admin/webhooks/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -311,14 +312,14 @@ router.put('/api/admin/webhooks/:id', requireAuth, requireAdmin, async (req, res
       [name, url, secret || null, JSON.stringify(events || []), is_active ? 1 : 0, req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/webhooks/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM webhooks WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/webhooks/:id/test — send a test payload
@@ -389,7 +390,7 @@ router.get('/api/admin/budgets', requireAuth, requireAdmin, async (req, res) => 
       actual = exp;
     }
     res.json({ budgets: rows, actual });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/budgets', requireAuth, requireAdmin, async (req, res) => {
@@ -402,14 +403,14 @@ router.post('/api/admin/budgets', requireAuth, requireAdmin, async (req, res) =>
       [month, category, budgeted_amount || 0, currency || 'EGP', notes || null]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/budgets/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM budgets WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -427,7 +428,7 @@ router.get('/api/admin/nps', requireAuth, requireAdmin, async (req, res) => {
     const a = agg[0];
     const npsScore = a.total > 0 ? Math.round(((a.promoters - a.detractors) / a.total) * 100) : null;
     res.json({ rows, avg: a.avg_score ? parseFloat((+a.avg_score).toFixed(1)) : null, total: a.total, npsScore });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Client: submit NPS response (via link from email)
@@ -441,7 +442,7 @@ router.post('/api/nps/respond', async (req, res) => {
       [numScore, comment || null, id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Admin: manually send NPS to subscriber
@@ -467,7 +468,7 @@ router.post('/api/admin/nps/send', requireAuth, requireAdmin, async (req, res) =
       `)
     ).catch(() => {});
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -482,7 +483,7 @@ router.get('/api/admin/sms-campaigns', requireAuth, requireAdmin, async (req, re
        FROM sms_campaigns ORDER BY created_at DESC LIMIT 200`
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/sms-campaigns', requireAuth, requireAdmin, async (req, res) => {
@@ -495,7 +496,7 @@ router.post('/api/admin/sms-campaigns', requireAuth, requireAdmin, async (req, r
       [id, title, message, audience || 'all', audience_filter ? JSON.stringify(audience_filter) : null, req.user.uid || null]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/api/admin/sms-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -506,14 +507,14 @@ router.put('/api/admin/sms-campaigns/:id', requireAuth, requireAdmin, async (req
       [title, message, audience || 'all', audience_filter ? JSON.stringify(audience_filter) : null, req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/sms-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM sms_campaigns WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, async (req, res) => {
@@ -548,7 +549,7 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
       [totalCount, campaign.id]
     );
     res.json({ ok: true, totalCount, note: 'SMS queued for delivery. Configure SMS_API_KEY in env to enable actual sending.' });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -573,7 +574,7 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id)
     ) CHARACTER SET utf8mb4`);
-  } catch (e) { console.warn('[drip_campaigns table]', e.message); }
+  } catch (e) { logger.warn('[drip_campaigns table]', e.message); }
 })();
 
 router.get('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, res) => {
@@ -582,7 +583,7 @@ router.get('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, r
       'SELECT id, name, trigger_event, audience, status, enrolled_count, completed_count, steps, created_at FROM drip_campaigns ORDER BY created_at DESC LIMIT 200'
     );
     res.json(rows.map(r => ({ ...r, steps: tryJson(r.steps, []) })));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, res) => {
@@ -595,7 +596,7 @@ router.post('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, 
       [id, name, trigger_event || 'subscription_created', audience || 'subscribers', JSON.stringify(steps || []), req.user.uid || null]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/api/admin/drip-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -606,14 +607,14 @@ router.put('/api/admin/drip-campaigns/:id', requireAuth, requireAdmin, async (re
       [name, trigger_event || 'subscription_created', audience || 'subscribers', status || 'draft', JSON.stringify(steps || []), req.params.id]
     );
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/drip-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM drip_campaigns WHERE id=?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

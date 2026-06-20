@@ -14,7 +14,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, currency }) => {
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
   // Use real student count from the database
-  const displayStudents = course.students || 0;
+  const displayStudents = Math.max(0, Number(course.students) || 0);
 
   // Use real rating from the database
   const displayRating = course.rating || 0;

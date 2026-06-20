@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 // ── WhatsApp helper (Green-API) ───────────────────────────────────────────────
 const { pool } = require('./db');
 
@@ -22,7 +23,7 @@ async function sendWhatsApp(phone, message) {
     const instanceId = cfg.instanceId || process.env.WA_INSTANCE_ID;
     const apiToken   = cfg.apiToken   || process.env.WA_API_TOKEN;
     if (!instanceId || !apiToken) {
-      console.warn('[WhatsApp] No credentials configured — skipping notification');
+      logger.warn('[WhatsApp] No credentials configured — skipping notification');
       return { ok: false, reason: 'not_configured' };
     }
     const normalized = phone.replace(/\D/g, '').replace(/^0+/, '');
@@ -35,12 +36,12 @@ async function sendWhatsApp(phone, message) {
     });
     const data = await res.json();
     if (!res.ok) {
-      console.warn('[WhatsApp] API error:', data);
+      logger.warn('[WhatsApp] API error:', data);
       return { ok: false, reason: data };
     }
     return { ok: true, idMessage: data.idMessage };
   } catch (e) {
-    console.warn('[WhatsApp] sendWhatsApp error:', e.message);
+    logger.warn('[WhatsApp] sendWhatsApp error:', e.message);
     return { ok: false, reason: e.message };
   }
 }

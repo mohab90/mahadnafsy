@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -16,7 +17,7 @@ router.get('/api/admin/community/posts', requireAuth, requireAdmin, async (_req,
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -29,7 +30,7 @@ router.get('/api/community/posts', async (_req, res) => {
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -52,7 +53,7 @@ router.post('/api/admin/community/posts', requireAuth, requireAdmin, async (req,
     );
     res.json({ ok: true, id });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -62,7 +63,7 @@ router.delete('/api/admin/community/posts/:id', requireAuth, requireAdmin, async
     await pool.query('DELETE FROM community_posts WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -76,7 +77,7 @@ router.get('/api/community/library', async (_req, res) => {
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -97,7 +98,7 @@ router.post('/api/admin/community/library', requireAuth, requireAdmin, async (re
     );
     res.json({ ok: true, id });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -107,7 +108,7 @@ router.delete('/api/admin/community/library/:id', requireAuth, requireAdmin, asy
     await pool.query('DELETE FROM community_library WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -121,7 +122,7 @@ router.get('/api/community/videos', async (_req, res) => {
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -142,7 +143,7 @@ router.post('/api/admin/community/videos', requireAuth, requireAdmin, async (req
     );
     res.json({ ok: true, id });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -152,7 +153,7 @@ router.delete('/api/admin/community/videos/:id', requireAuth, requireAdmin, asyn
     await pool.query('DELETE FROM community_videos WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -167,7 +168,7 @@ router.get('/api/community/events', async (_req, res) => {
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -192,7 +193,7 @@ router.post('/api/admin/community/events', requireAuth, requireAdmin, async (req
     );
     res.json({ ok: true, id });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -202,7 +203,7 @@ router.delete('/api/admin/community/events/:id', requireAuth, requireAdmin, asyn
     await pool.query('DELETE FROM community_events WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

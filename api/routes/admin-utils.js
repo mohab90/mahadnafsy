@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -39,7 +40,7 @@ router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, 
     res.setHeader('Content-Disposition', `attachment; filename="subscriber-${subId}-export.json"`);
     res.setHeader('Content-Type', 'application/json');
     res.json(exportData);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/subscribers/:id/delete-data', requireAuth, requireAdmin, async (req, res) => {
@@ -58,7 +59,7 @@ router.delete('/api/admin/subscribers/:id/delete-data', requireAuth, requireAdmi
     await pool.query('DELETE FROM nps_responses WHERE subscriber_id=?', [subId]);
     await pool.query('DELETE FROM lecture_progress WHERE subscriber_id=?', [subId]);
     res.json({ ok: true, message: 'Subscriber data anonymized per GDPR' });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -69,7 +70,7 @@ router.get('/api/admin/backup-status', requireAuth, requireAdmin, async (req, re
   try {
     const [[row]] = await pool.query("SELECT value FROM site_config WHERE `key`='last_backup_at' LIMIT 1");
     res.json({ lastBackupAt: row?.value || null });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/api/admin/backup-now', requireAuth, requireAdmin, async (req, res) => {
@@ -86,7 +87,7 @@ router.post('/api/admin/backup-now', requireAuth, requireAdmin, async (req, res)
       [new Date().toISOString()]
     );
     res.json({ ok: true, triggeredAt: new Date().toISOString(), counts, note: 'Full mysqldump is triggered by cron on the server. Configure BACKUP_CRON in .env.' });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/backups — list backup logs from DB + check file existence
@@ -105,7 +106,7 @@ router.get('/api/admin/backups', requireAuth, requireAdmin, async (req, res) => 
     }));
 
     res.json({ backups: withSize, backupDir: BACKUP_DIR });
-  } catch (e) { console.error('[backups-list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[backups-list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/backups/download/:filename — stream backup file to client
@@ -126,7 +127,7 @@ router.get('/api/admin/backups/download/:filename', requireAuth, requireAdmin, a
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', filename.endsWith('.gz') ? 'application/gzip' : 'application/sql');
     fs.createReadStream(filePath).pipe(res);
-  } catch (e) { console.error('[backup-download]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[backup-download]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -162,7 +163,7 @@ router.get('/api/admin/forecast', requireAuth, requireAdmin, async (req, res) =>
       }
     }
     res.json({ monthly, forecast });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -209,7 +210,7 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, async (re
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="subscribers-${new Date().toISOString().slice(0,10)}.csv"`);
     res.send('\uFEFF' + csv); // BOM for Excel Arabic support
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/export/leads — export leads as CSV
@@ -235,7 +236,7 @@ router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, async (r
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0,10)}.csv"`);
     res.send('\uFEFF' + csv);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/export/payments — export payments as CSV
@@ -273,7 +274,7 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, async (req, 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="payments-${new Date().toISOString().slice(0,10)}.csv"`);
     res.send('\uFEFF' + csv);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -337,12 +338,12 @@ setInterval(async () => {
         emailsSent++;
       } catch (_) {}
     }
-    console.log(`[FollowUpReminder] Sent ${emailsSent} emails for ${overdue.length} overdue leads`);
+    logger.info(`[FollowUpReminder] Sent ${emailsSent} emails for ${overdue.length} overdue leads`);
     await pool.query(
       'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
       [uuidv4(), 'auto_reminder', 'leads', null, `تذكير متابعات تلقائي — ${overdue.length} ليد لـ ${emailsSent} موظف`, 'system']
     ).catch(() => {});
-  } catch (e) { console.warn('[FollowUpReminder] error:', e.message); }
+  } catch (e) { logger.warn('[FollowUpReminder] error:', e.message); }
 }, 60 * 60 * 1000); // check every hour
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -475,8 +476,8 @@ setInterval(async () => {
        'system']
     ).catch(() => {});
 
-    console.log(`[InstallmentReminder] ${overdueList.length} overdue installments, WA sent: ${waSent}`);
-  } catch (e) { console.warn('[InstallmentReminder] error:', e.message); }
+    logger.info(`[InstallmentReminder] ${overdueList.length} overdue installments, WA sent: ${waSent}`);
+  } catch (e) { logger.warn('[InstallmentReminder] error:', e.message); }
 }, 60 * 60 * 1000); // check every hour
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -501,7 +502,7 @@ pool.query(`
     INDEX idx_subscriber (subscriber_id),
     INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-`).catch(e => console.warn('[Startup] refund_requests table check:', e.message));
+`).catch(e => logger.warn('[Startup] refund_requests table check:', e.message));
 
 // POST /api/me/refund-request — subscriber submits refund request
 router.post('/api/me/refund-request', requireAuth, async (req, res) => {
@@ -529,7 +530,7 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
       </div>`
     ).catch(() => {});
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/refund-requests/by-admin — admin initiates a refund request for a subscriber
@@ -554,7 +555,7 @@ router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrOn
       [uuidv4(), 'refund_created', 'refund_requests', id, `طلب استرداد بقيمة ${amount} ${currency} — بواسطة ${actor}`, actor]
     ).catch(() => {});
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/refund-requests — list all refund requests
@@ -573,7 +574,7 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrOnlineManage
     sql += ' ORDER BY r.created_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PATCH /api/admin/refund-requests/:id — approve or reject
@@ -603,13 +604,13 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrOnline
         pool.query(
           "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | ملغى بسبب الاسترداد') WHERE payment_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
           [rr.payment_id]
-        ).catch(e => console.warn('[refund] commission cancel:', e.message));
+        ).catch(e => logger.warn('[refund] commission cancel:', e.message));
         // Remove enrollment if course/bundle payment was refunded
         if (oldPay.course_id || oldPay.bundle_id) {
           pool.query(
             'DELETE FROM enrollments WHERE subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
             [oldPay.subscriber_id, oldPay.course_id || null, oldPay.bundle_id || null]
-          ).catch(e => console.warn('[refund] enrollment remove:', e.message));
+          ).catch(e => logger.warn('[refund] enrollment remove:', e.message));
         }
         // Post reversal journal entry (normalised to EGP like all journal postings)
         const amt = parseFloat(oldPay.amount) || 0;
@@ -645,7 +646,7 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrOnline
        `استرداد ${status === 'APPROVED' ? 'موافق عليه' : 'مرفوض'} — ${rr?.sname || id}`, actor]
     ).catch(() => {});
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -756,11 +757,11 @@ setInterval(async () => {
 
     for (const email of adminEmails) {
       await sendEmail({ to: email, subject, html }).catch(e =>
-        console.warn('[WeeklyEmail] send error:', e.message)
+        logger.warn('[WeeklyEmail] send error:', e.message)
       );
     }
-    console.log(`[WeeklyEmail] Sent to ${adminEmails.length} admin(s) for week ${today}`);
-  } catch (e) { console.warn('[WeeklyEmail] error:', e.message); }
+    logger.info(`[WeeklyEmail] Sent to ${adminEmails.length} admin(s) for week ${today}`);
+  } catch (e) { logger.warn('[WeeklyEmail] error:', e.message); }
 }, 60 * 60 * 1000);
 
 module.exports = router;

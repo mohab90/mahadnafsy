@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
 
@@ -36,7 +37,7 @@ async function createNotification(type, title, message, data = {}) {
       [uuidv4(), type || 'info', title || null, message || null, JSON.stringify(data)]
     );
   } catch (e) {
-    console.warn('[notify] createNotification error:', e.message);
+    logger.warn('[notify] createNotification error:', e.message);
   }
 }
 

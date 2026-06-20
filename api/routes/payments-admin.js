@@ -1,5 +1,6 @@
 'use strict';
 
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 
@@ -108,7 +109,7 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
     })).sort((a, b) => b.grandTotal - a.grandTotal);
 
     res.json({ from, months: allMonths, staff: matrix });
-  } catch (e) { console.error('[commissions/monthly]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[commissions/monthly]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -203,7 +204,7 @@ router.get('/api/admin/export/orders', requireAuth, requireAdmin, async (req, re
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
-  } catch (e) { console.error('[export/orders]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[export/orders]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -125,7 +126,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
               : { mode: 'limited', lectureLimit: 2 }; // default 2 preview lectures for partial pay
           }
           await pool.query('UPDATE subscribers SET crm_json=? WHERE id=?', [JSON.stringify(crm2), subscriber_id]);
-        } catch (crmSyncErr) { console.error('[payment] crm enrolledCourseIds sync failed', crmSyncErr.message); }
+        } catch (crmSyncErr) { logger.error('[payment] crm enrolledCourseIds sync failed', crmSyncErr.message); }
       });
     }
 
@@ -195,7 +196,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
             );
           }
         }
-      } catch (feeErr) { console.warn('[subscriber-payments] instructor fee auto-calc:', feeErr.message); }
+      } catch (feeErr) { logger.warn('[subscriber-payments] instructor fee auto-calc:', feeErr.message); }
     }
 
     await conn.commit();
@@ -249,7 +250,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
             await pool.query('UPDATE subscribers SET crm_json = ? WHERE id = ?', [JSON.stringify(crm), subscriber_id]);
           }
         }
-      } catch (crmErr) { console.error('[subscriber-payments] crm_json sync failed', id, crmErr.message); }
+      } catch (crmErr) { logger.error('[subscriber-payments] crm_json sync failed', id, crmErr.message); }
     });
     // Audit log
     logPaymentAudit(id, 'create', null, payment.status || 'paid', payment.amount || 0, subscriber_id, req.user?.email || req.user?.uid).catch(() => {});
@@ -278,7 +279,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
              ${payment.transactionId ? `<tr style="background:#f0f4ff;"><td style="padding:8px 12px;font-weight:bold;color:#4f46e5;">رقم المعاملة</td><td style="padding:8px 12px;">${payment.transactionId}</td></tr>` : ''}
            </table>
            <p style="color:#888;font-size:13px;">احتفظ بهذا الإيصال لسجلاتك. للاستفسار تواصل معنا عبر الموقع.</p>`
-        ).catch(e => console.error('[receipt-email]', e.message));
+        ).catch(e => logger.error('[receipt-email]', e.message));
         // Send WhatsApp payment confirmation to subscriber
         const subPhone = await pool.query('SELECT phone FROM subscribers WHERE id=? LIMIT 1', [subscriber_id])
           .then(([[r]]) => r?.phone || null).catch(() => null);
@@ -304,7 +305,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     res.json({ ok: true, id });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); conn = null; }
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

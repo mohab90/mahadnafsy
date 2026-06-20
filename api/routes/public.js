@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const { Router } = require('express');
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/courses/:id  (accepts id OR slug)
@@ -46,7 +47,7 @@ router.get('/api/courses/:id', async (req, res) => {
       'SELECT id, course_id, title, sort_order FROM course_chapters WHERE course_id = ? ORDER BY sort_order ASC', [row.id]);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json({ ...mapCourse(row), lectures: lectures.map(mapLecture), chapters: chapters.map(mapChapter) });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/courses/:id/rate  (requires auth, subscriber must be enrolled)
@@ -68,7 +69,7 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
     );
     const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=?', [courseId]);
     res.json({ ok: true, avg: parseFloat((+agg.avg || 0).toFixed(1)), count: agg.cnt });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/courses/:id/ratings
@@ -85,7 +86,7 @@ router.get('/api/courses/:id/ratings', optionalAuth, async (req, res) => {
       }
     }
     res.json({ avg: parseFloat((+agg.avg || 0).toFixed(1)), count: agg.cnt, myRating });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Content Analytics: POST /api/lectures/:id/view ──────────────────────────
@@ -93,7 +94,7 @@ router.post('/api/lectures/:id/view', optionalAuth, async (req, res) => {
   try {
     await pool.query('UPDATE course_lectures SET view_count = view_count + 1 WHERE id = ?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Admin: GET /api/admin/lesson-analytics/:courseId ─────────────────────────
@@ -104,7 +105,7 @@ router.get('/api/admin/lesson-analytics/:courseId', requireAuth, requireAdmin, a
       [req.params.courseId]
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Course Completions ───────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
       [sub.id]
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/completions/verify/:code — public certificate verification (JSON)
@@ -138,7 +139,7 @@ router.get('/api/completions/verify/:code', async (req, res) => {
     );
     if (!row) return res.status(404).json({ error: 'الشهادة غير موجودة' });
     res.json(row);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/completions/:code/certificate — printable HTML certificate (A4 portrait)
@@ -335,7 +336,7 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.send(html);
-  } catch (e) { console.error('[certificate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[certificate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Referral System ──────────────────────────────────────────────────────────
@@ -357,7 +358,7 @@ router.get('/api/referral/my-code', requireAuth, async (req, res) => {
       [[ref]] = await pool.query(`SELECT ${_refCols} FROM referral_codes WHERE subscriber_id=? LIMIT 1`, [sub.id]);
     }
     res.json({ code: ref.code, uses: ref.uses, earnings: ref.earnings });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/referrals — admin view of all referral codes + stats
@@ -371,7 +372,7 @@ router.get('/api/admin/referrals', requireAuth, requireAdmin, async (req, res) =
        LIMIT 500`
     );
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/bundles?limit=50
@@ -392,7 +393,7 @@ router.get('/api/bundles', async (req, res) => {
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/lectures?limit=500&offset=0
@@ -405,7 +406,7 @@ router.get('/api/lectures', async (req, res) => {
       [limit, offset]
     );
     res.json(rows.map(mapLecture));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/chapters?limit=500
@@ -415,7 +416,7 @@ router.get('/api/chapters', async (req, res) => {
     const [rows] = await pool.query(
       'SELECT id, course_id, title, sort_order FROM course_chapters ORDER BY course_id, sort_order ASC LIMIT ?', [limit]);
     res.json(rows.map(mapChapter));
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/therapists?limit=50
@@ -442,7 +443,7 @@ router.get('/api/therapists', async (req, res) => {
     });
     res.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=60');
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/testimonials
@@ -455,7 +456,7 @@ router.get('/api/testimonials', async (req, res) => {
     });
     res.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=60');
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/content  (public site content key-value store)
@@ -467,7 +468,7 @@ router.get('/api/content', async (req, res) => {
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/quizzes
@@ -478,7 +479,7 @@ router.get('/api/quizzes', async (req, res) => {
       `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, created_at
        FROM course_quizzes ORDER BY created_at DESC LIMIT ?`, [limit]);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/live-streams
@@ -490,7 +491,7 @@ router.get('/api/live-streams', async (req, res) => {
        description, created_at
        FROM live_streams ORDER BY scheduled_at DESC LIMIT 200`);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/contact  (نموذج التواصل)
@@ -505,7 +506,7 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
       [id, name, email || null, phone, subject || null, message]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/join-us  (طلب انضمام)
@@ -520,7 +521,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
       [id, name, email, phone, specialty, experience || '', type, linkedin || null, message || null]
     );
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -579,7 +580,7 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       enrolledCoursesData = courseRows.map(mapCourse);
     }
     res.json({ ...mapped, enrolledCoursesData });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/me/consultations
@@ -594,7 +595,7 @@ router.get('/api/me/consultations', requireAuth, async (req, res) => {
        WHERE c.client_email = ?
        ORDER BY c.session_date DESC LIMIT 100`, [email]);
     res.json(rows);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/me/heartbeat — تسجيل العميل كـ"متصل الآن"

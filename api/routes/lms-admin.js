@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -33,7 +34,7 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
     );
     cacheInvalidate('courses');
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/admin/lectures/:id
@@ -55,7 +56,7 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
     );
     cacheInvalidate('courses');
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/admin/chapters/:id
@@ -116,7 +117,7 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
     );
     cacheInvalidate('therapists');
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/testimonials
@@ -135,7 +136,7 @@ router.post('/api/admin/testimonials', requireAuth, requireAdmin, async (req, re
     );
     cacheInvalidate('testimonials');
     res.json({ ok: true, id });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

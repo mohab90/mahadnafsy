@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
@@ -61,7 +62,7 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
 
     res.json([...rows, ...crmOrders]);
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -87,7 +88,7 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
     );
     res.json({ ok: true, id });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -119,7 +120,7 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res
     }
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -133,7 +134,7 @@ router.delete('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, re
     logPaymentAudit(req.params.id, 'delete', delPay?.status || null, null, delPay?.amount || null, delPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
-    console.error('[route]', e.message);
+    logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

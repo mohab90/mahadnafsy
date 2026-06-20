@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const { Router } = require('express');
 const router = Router();
 
@@ -1946,7 +1947,7 @@ router.get('/api/admin/hr/attendance-report', requireAuth, requireAdmin, async (
     });
 
     res.json({ month, workDays, staff: report });
-  } catch (e) { console.error('[hr/attendance-report]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/attendance-report]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

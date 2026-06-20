@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('./logger');
 /**
  * RBAC role-override loader.
  * The admin edits per-role permissions in the Settings page; those are persisted
@@ -27,7 +28,7 @@ async function loadRoleOverrides() {
     const applied = setRoleOverrides(overrides);
     return applied;
   } catch (e) {
-    console.error('[rbacOverrides] load failed:', e.message);
+    logger.error('[rbacOverrides] load failed:', e.message);
     return null;
   }
 }
@@ -35,7 +36,7 @@ async function loadRoleOverrides() {
 /** Load once now, then refresh every `intervalMs` (default 60s). */
 function startRbacRefresh(intervalMs = 60 * 1000) {
   loadRoleOverrides()
-    .then(o => { if (o) console.log(`[rbacOverrides] loaded overrides for ${Object.keys(o).length} role(s)`); })
+    .then(o => { if (o) logger.info(`[rbacOverrides] loaded overrides for ${Object.keys(o).length} role(s)`); })
     .catch(() => {});
   if (_timer) clearInterval(_timer);
   _timer = setInterval(() => { loadRoleOverrides().catch(() => {}); }, intervalMs);

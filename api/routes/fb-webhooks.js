@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const crypto = require('crypto');
 const express = require('express');
 const router  = express.Router();
@@ -13,7 +14,7 @@ const { enqueueEmailSequence } = require('../lib/emailSequence');
 const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN || 'mahad_fb_verify_2024';
 
 // ── Facebook Lead Ads Webhook ─────────────────────────────────────────────────
-if (!process.env.FB_VERIFY_TOKEN) console.warn('[FB] FB_VERIFY_TOKEN not set — using built-in default token');
+if (!process.env.FB_VERIFY_TOKEN) logger.warn('[FB] FB_VERIFY_TOKEN not set — using built-in default token');
 
 /** Fetch Facebook Lead Ads config from site_config */
 async function getFbLeadConfig() {
@@ -65,7 +66,7 @@ router.get('/api/webhooks/facebook-leads', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
   if (mode === 'subscribe' && token === FB_VERIFY_TOKEN) {
-    console.log('✅ Facebook webhook verified');
+    logger.info('✅ Facebook webhook verified');
     res.status(200).send(challenge);
   } else {
     res.status(403).json({ error: 'Verification failed' });
@@ -79,7 +80,7 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
   if (FB_APP_SECRET) {
     const sigHeader = (req.headers['x-hub-signature-256'] || '').toString();
     if (!sigHeader) {
-      console.warn('[FB] Missing X-Hub-Signature-256 — rejecting webhook');
+      logger.warn('[FB] Missing X-Hub-Signature-256 — rejecting webhook');
       return res.sendStatus(403);
     }
     const expectedSig = 'sha256=' + crypto.createHmac('sha256', FB_APP_SECRET)
@@ -91,7 +92,7 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
       valid = a.length === b.length && crypto.timingSafeEqual(a, b);
     } catch { valid = false; }
     if (!valid) {
-      console.warn('[FB] Invalid X-Hub-Signature-256 — rejecting webhook');
+      logger.warn('[FB] Invalid X-Hub-Signature-256 — rejecting webhook');
       return res.sendStatus(403);
     }
   }
@@ -133,7 +134,7 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
               else if (key === 'email') email = val;
             }
           } catch (err) {
-            console.error('FB lead fetch error:', err.message);
+            logger.error('FB lead fetch error:', err.message);
           }
         }
 
@@ -166,10 +167,10 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
             rep ? rep.name : null,
           ]
         );
-        console.log(`📥 FB lead saved: ${name} | ${phone} | branch=${branchVal} | course=${fbConfig.defaultInterestedCourseId||'none'} | assigned→${rep?.name || 'unassigned'}`);
+        logger.info(`📥 FB lead saved: ${name} | ${phone} | branch=${branchVal} | course=${fbConfig.defaultInterestedCourseId||'none'} | assigned→${rep?.name || 'unassigned'}`);
       }
     }
-  } catch (e) { console.error('FB webhook error:', e.message); }
+  } catch (e) { logger.error('FB webhook error:', e.message); }
 });
 
 // ── Static frontend serving (when STATIC_DIR env is set — single-domain mode) ──

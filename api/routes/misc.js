@@ -1,4 +1,5 @@
-﻿'use strict';
+'use strict';
+const logger = require('../lib/logger');
 const express  = require('express');
 const router   = express.Router();
 const bcrypt   = require('bcryptjs');
@@ -25,7 +26,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middlewar
       is_active TINYINT DEFAULT 0,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
-  } catch (e) { console.warn('[sms_settings]', e.message); }
+  } catch (e) { logger.warn('[sms_settings]', e.message); }
 })();
 
 // GET /api/admin/sms-settings
@@ -94,7 +95,7 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
       ['sms_sent', JSON.stringify({ to, provider: cfg.provider })]).catch(() => {});
 
     res.json({ ok: true, result });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/sms/bulk  — bulk SMS to subscribers or leads
@@ -175,7 +176,7 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, async (req, res) =
       INDEX idx_next_billing (next_billing_date),
       INDEX idx_subscriber (subscriber_id)
     )`);
-  } catch (e) { console.warn('[subscription tables]', e.message); }
+  } catch (e) { logger.warn('[subscription tables]', e.message); }
 })();
 
 // GET /api/admin/subscription-plans
@@ -268,7 +269,7 @@ setInterval(async () => {
           billingPayParams
         );
         billingInsertOk = true;
-      } catch (e) { console.warn('[subscription billing] payment INSERT failed — billing dates NOT advanced:', e.message); }
+      } catch (e) { logger.warn('[subscription billing] payment INSERT failed — billing dates NOT advanced:', e.message); }
 
       // Only advance next_billing_date if payment stubs were created successfully
       if (billingInsertOk) {
@@ -290,12 +291,12 @@ setInterval(async () => {
           await pool.query(
             `UPDATE subscriber_subscriptions SET next_billing_date = CASE ${bCaseWhen} END WHERE id IN (${bIds.map(() => '?').join(',')})`,
             [...bCaseParams, ...bIds]
-          ).catch(e => console.warn('[subscription billing] date update chunk failed:', e.message));
+          ).catch(e => logger.warn('[subscription billing] date update chunk failed:', e.message));
         }
-        console.log(`[subscription billing] processed ${due.length} renewals`);
+        logger.info(`[subscription billing] processed ${due.length} renewals`);
       }
     }
-  } catch (e) { console.warn('[subscription billing cron]', e.message); }
+  } catch (e) { logger.warn('[subscription billing cron]', e.message); }
 }, 24 * 60 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -429,7 +430,7 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -492,7 +493,7 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
       })),
       byStaff,
     });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/analytics/revenue-forecast?months=3
@@ -533,7 +534,7 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdmin, a
     }
 
     res.json({ history, forecast, trend: slope > 0 ? 'up' : 'down', slope: Math.round(slope) });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -556,7 +557,7 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdmin, a
       INDEX idx_created (created_at),
       INDEX idx_status (status)
     )`);
-  } catch (e) { console.warn('[login_history table]', e.message); }
+  } catch (e) { logger.warn('[login_history table]', e.message); }
 })();
 
 // Helper to log login events — called from login endpoints
@@ -693,10 +694,10 @@ async function sendDailyReport() {
         to: admin.email,
         subject: `📊 تقرير يومي — ${today} | المعهد النفسي`,
         html,
-      }).catch(e => console.warn('[daily-report] send error:', e.message));
+      }).catch(e => logger.warn('[daily-report] send error:', e.message));
     }
-    console.log(`[daily-report] sent to ${adminStaff.length} admin(s)`);
-  } catch (e) { console.warn('[daily-report] error:', e.message); }
+    logger.info(`[daily-report] sent to ${adminStaff.length} admin(s)`);
+  } catch (e) { logger.warn('[daily-report] error:', e.message); }
 }
 
 // Schedule: every day at 7:00 AM server time
@@ -710,7 +711,7 @@ function scheduleDailyReport() {
     sendDailyReport();
     setInterval(sendDailyReport, 24 * 60 * 60 * 1000);
   }, msUntil);
-  console.log(`[daily-report] scheduled — next run in ${Math.round(msUntil / 3600000)}h`);
+  logger.info(`[daily-report] scheduled — next run in ${Math.round(msUntil / 3600000)}h`);
 }
 scheduleDailyReport();
 
@@ -786,7 +787,7 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
       inactiveClients: inactive,
       cohorts: cohorts.map(c => ({ ...c, retentionRate: c.total > 0 ? Math.round(c.still_active / c.total * 100) : 0 })),
     });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/analytics/churn-risk — clients most likely to churn
@@ -882,7 +883,7 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdmin, 
     result.forEach((s, i) => { s.rank = i + 1; });
 
     res.json({ period: { from, to }, staff: result });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -935,7 +936,7 @@ router.get('/api/admin/analytics/expenses', requireAuth, requireAdmin, async (re
       INDEX idx_read (is_read),
       INDEX idx_created (created_at)
     )`);
-  } catch (e) { console.warn('[admin_notifications]', e.message); }
+  } catch (e) { logger.warn('[admin_notifications]', e.message); }
 })();
 
 // Push a notification
@@ -1017,7 +1018,7 @@ setInterval(async () => {
       sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_type_ref_day (type, ref_id, sent_at)
     )`);
-  } catch (e) { console.warn('[reminder_log]', e.message); }
+  } catch (e) { logger.warn('[reminder_log]', e.message); }
 })();
 
 async function runFollowUpReminders() {
@@ -1081,8 +1082,8 @@ async function runFollowUpReminders() {
       pool.query(`INSERT IGNORE INTO reminder_log (type, ref_id) VALUES ('followup', ?)`, [logKey]).catch(() => {});
       sent++;
     }
-    if (sent > 0) console.log(`[followup-reminders] sent ${sent} reminder(s) for ${today}`);
-  } catch (e) { console.warn('[followup-reminders] error:', e.message); }
+    if (sent > 0) logger.info(`[followup-reminders] sent ${sent} reminder(s) for ${today}`);
+  } catch (e) { logger.warn('[followup-reminders] error:', e.message); }
 }
 
 // Run daily at 8:00 AM
@@ -1096,7 +1097,7 @@ function scheduleFollowUpReminders() {
     runFollowUpReminders();
     setInterval(runFollowUpReminders, 24 * 60 * 60 * 1000);
   }, ms);
-  console.log(`[followup-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
+  logger.info(`[followup-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
 }
 scheduleFollowUpReminders();
 
@@ -1191,8 +1192,8 @@ async function runPaymentDueReminders() {
       pool.query(`INSERT IGNORE INTO reminder_log (type, ref_id) VALUES ('payment_due', ?)`, [logKey]).catch(() => {});
       sent++;
     }
-    if (sent > 0) console.log(`[payment-reminders] sent ${sent} reminder(s)`);
-  } catch (e) { console.warn('[payment-reminders] error:', e.message); }
+    if (sent > 0) logger.info(`[payment-reminders] sent ${sent} reminder(s)`);
+  } catch (e) { logger.warn('[payment-reminders] error:', e.message); }
 }
 
 // Run daily at 9:00 AM
@@ -1206,7 +1207,7 @@ function schedulePaymentReminders() {
     runPaymentDueReminders();
     setInterval(runPaymentDueReminders, 24 * 60 * 60 * 1000);
   }, ms);
-  console.log(`[payment-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
+  logger.info(`[payment-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
 }
 schedulePaymentReminders();
 
@@ -1304,7 +1305,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdmin, as
       topClients: topClients.map((c) => ({ ...c, total_paid: parseFloat(c.total_paid) })),
       byBranch: byBranch.map((b) => ({ ...b, total: parseFloat(b.total), pct: grand_total > 0 ? Math.round(b.total / grand_total * 100) : 0 })),
     });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1711,7 +1712,7 @@ router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireAdmin, asy
         'UPDATE subscribers SET assigned_cs_id=NULL, assigned_cs_name=NULL WHERE assigned_cs_id=?',
         [staff.id]
       ).catch(() => {});
-      console.log(`[staff] deactivated ${staff.id} — leads and subscribers unassigned`);
+      logger.info(`[staff] deactivated ${staff.id} — leads and subscribers unassigned`);
     }
     res.json({ ok: true, is_active: !!newActive });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -1733,7 +1734,7 @@ router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireAdmin, asy
       PRIMARY KEY (id),
       UNIQUE KEY uq_ip (ip)
     ) CHARACTER SET utf8mb4`);
-  } catch (e) { console.warn('[ip_whitelist table]', e.message); }
+  } catch (e) { logger.warn('[ip_whitelist table]', e.message); }
 })();
 
 router.get('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, res) => {

@@ -23,13 +23,13 @@ const pool = mysql.createPool({
 // Force utf8mb4_unicode_ci collation on every new connection (fixes MariaDB default uca1400)
 pool.on('connection', (conn) => {
   conn.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci", (err) => {
-    if (err) console.warn('[pool] SET NAMES error:', err.message);
+    if (err) logger.warn('[pool] SET NAMES error:', err.message);
   });
 });
 
 // Pool-level error handler — critical on shared hosting where MySQL drops idle connections.
 pool.on('error', (err) => {
-  console.error('[Pool] Connection error (will auto-recover):', err.message, err.code);
+  logger.error('[Pool] Connection error (will auto-recover):', err.message, err.code);
 });
 
 // ── DB state tracker — fast-fail when tunnel is known down ───────────────────
@@ -44,7 +44,7 @@ function _markDbUp()   { _dbDown = false; }
 function isDbDown()    { return _dbDown && (Date.now() - _dbDownAt < DB_RECHECK_INTERVAL); }
 
 pool.on('error', (err) => {
-  console.error('[Pool] Connection error (will auto-recover):', err.message, err.code);
+  logger.error('[Pool] Connection error (will auto-recover):', err.message, err.code);
   _markDbDown();
 });
 
@@ -65,7 +65,7 @@ pool.query = async (...args) => {
     _markDbUp();
     return result;
   } catch (err) {
-    if (RETRYABLE.has(err.code)) { console.warn('[DB] Stale connection, retrying…', err.code); return await _origQuery(...args); }
+    if (RETRYABLE.has(err.code)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origQuery(...args); }
     if (err.code === 'ECONNREFUSED') _markDbDown();
     throw err;
   }
@@ -76,7 +76,7 @@ pool.execute = async (...args) => {
     _markDbUp();
     return result;
   } catch (err) {
-    if (RETRYABLE.has(err.code)) { console.warn('[DB] Stale connection, retrying…', err.code); return await _origExecute(...args); }
+    if (RETRYABLE.has(err.code)) { logger.warn('[DB] Stale connection, retrying…', err.code); return await _origExecute(...args); }
     if (err.code === 'ECONNREFUSED') _markDbDown();
     throw err;
   }

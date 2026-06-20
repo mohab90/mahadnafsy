@@ -1,4 +1,5 @@
 'use strict';
+const logger = require('../lib/logger');
 // ── Auth Middleware ───────────────────────────────────────────────────────────
 const jwt  = require('jsonwebtoken');
 const { pool } = require('../lib/db');
@@ -73,7 +74,7 @@ async function requireAdmin(req, res, next) {
       req.isSuperAdmin = true;
       return next();
     }
-  } catch (e) { console.error('[requireAdmin]', e.message); }
+  } catch (e) { logger.error('[requireAdmin]', e.message); }
   res.status(403).json({ error: 'Admin only' });
 }
 
@@ -86,7 +87,7 @@ async function requireAdminOrOnlineManager(req, res, next) {
       [(email || '').toLowerCase().trim()]
     );
     if (staff && (staff.role || '').toLowerCase() === 'online_manager') { req.staffRecord = staff; return next(); }
-  } catch (e) { console.error('[requireAdminOrOnlineManager]', e.message); }
+  } catch (e) { logger.error('[requireAdminOrOnlineManager]', e.message); }
   res.status(403).json({ error: 'Insufficient permissions' });
 }
 
@@ -99,7 +100,7 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
       [(email || '').toLowerCase().trim()]
     );
     if (staff && ['online_manager', 'collection'].includes((staff.role || '').toLowerCase())) { req.staffRecord = staff; return next(); }
-  } catch (e) { console.error('[requireAdminOrOnlineManagerOrCollection]', e.message); }
+  } catch (e) { logger.error('[requireAdminOrOnlineManagerOrCollection]', e.message); }
   res.status(403).json({ error: 'Insufficient permissions' });
 }
 
@@ -125,7 +126,7 @@ async function requireAdminOrStaff(req, res, next) {
       }
       return next();
     }
-  } catch (e) { console.error('[requireAdminOrStaff]', e.message); }
+  } catch (e) { logger.error('[requireAdminOrStaff]', e.message); }
   res.status(403).json({ error: 'Admin only' });
 }
 
