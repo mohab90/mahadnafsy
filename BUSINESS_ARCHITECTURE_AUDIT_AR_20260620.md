@@ -3,6 +3,14 @@
 > مرجع دائم. التقييم الإجمالي كـSaaS اليوم: 4.5/10 — كمنتج single-tenant: 8/10.
 > ملاحظة: جزء الـPipeline مُستبعد بطلب المالك (غير مهم حالياً).
 
+## ⚠️ تصحيحات بعد فحص الـruntime (2026-06-20)
+التقييم الأصلي اتعمل قبل رؤية كل الكود التشغيلي. الواقع أنضج:
+- **Caching موجود** (db.js `cached` + `cacheInvalidate` على الكتابات) → Performance أعلى من 5.5.
+- **Branches كيان ديناميكي موجود** (جدول per-tenant: branch_key/slug/label/branch_type/timezone/currency/modules_json) → Scalability أعلى من 4.5.
+- **Backup يومي مؤتمت موجود** (`autoDailyBackup`، 7 أيام) → خطر البيانات أقل (الناقص: اختبار استعادة).
+- **جدول communications علائقي موجود ومستخدم** → crm_json يكرّره فقط.
+الخلاصة: درجات Performance/Scalability/Data-risk/Tech-debt أعلى من التقييم الأصلي بدرجة–درجتين لكل منها.
+
 ## تقييم الأقسام
 | القسم | الدرجة |
 |---|---:|
