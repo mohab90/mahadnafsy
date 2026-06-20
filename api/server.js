@@ -62,12 +62,7 @@ const lmsRouter             = require('./routes/lms');
 const hrRouter     = require('./routes/hr');
 const authRouter   = require('./routes/auth');
 const publicRouter = require('./routes/public');
-const progressRouter        = require('./routes/progress');
-const staffRouter           = require('./routes/staff');
-const profileRouter         = require('./routes/profile');
-const clientMaintenanceRouter = require('./routes/client-maintenance');
 const paymentsAdminRouter   = require('./routes/payments-admin');
-const adminContentRouter    = require('./routes/admin-content');
 const { loadBlacklistFromDB } = require('./lib/token');
 const { registerStartupTasks } = require('./lib/startupTasks');
 
@@ -527,13 +522,8 @@ app.use('/', accountingRouter);
 app.use('/', lmsRouter);
 app.use('/', gsheetsRouter);
 app.use('/', hrRouter);
-app.use('/', progressRouter);
 app.use('/', require('./routes/docs')); // /api/docs (Swagger UI) + /api/openapi.json
-app.use('/', staffRouter);
-app.use('/', profileRouter);
-app.use('/', clientMaintenanceRouter);
 app.use('/', paymentsAdminRouter);
-app.use('/', adminContentRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 // SPA catch-all — serve index.html with no-cache so browsers always get latest asset hashes
 const _STATIC_DIR = process.env.STATIC_DIR || null;

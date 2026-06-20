@@ -37,13 +37,7 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
 });
 
 // DELETE /api/admin/lectures/:id
-router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM course_lectures WHERE id = ?', [req.params.id]);
-    cacheInvalidate('courses');
-    res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate DELETE /api/admin/lectures/:id — live in an earlier-mounted router)
 
 // POST /api/admin/chapters
 router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) => {
@@ -65,13 +59,7 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
 });
 
 // DELETE /api/admin/chapters/:id
-router.delete('/api/admin/chapters/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM course_chapters WHERE id = ?', [req.params.id]);
-    cacheInvalidate('courses');
-    res.json({ ok: true });
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate DELETE /api/admin/chapters/:id — live in an earlier-mounted router)
 
 // POST /api/admin/therapists
 router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) => {

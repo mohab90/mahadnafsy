@@ -672,108 +672,13 @@ function toCsv(rows, cols) {
 }
 
 // GET /api/admin/export/payments?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get('/api/admin/export/payments', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { from, to, format = 'csv' } = req.query;
-    let sql = `SELECT p.id, p.amount, p.method, p.status, p.created_at,
-                      s.name AS client_name, s.phone AS client_phone, s.client_code
-               FROM payments p
-               LEFT JOIN subscribers s ON s.id = p.subscriber_id
-               WHERE 1=1`;
-    const params = [];
-    if (from) { sql += ' AND DATE(p.created_at) >= ?'; params.push(from); }
-    if (to)   { sql += ' AND DATE(p.created_at) <= ?'; params.push(to); }
-    sql += ' ORDER BY p.created_at DESC LIMIT 50000';
-    const [rows] = await pool.query(sql, params);
-    const cols = [
-      { key: 'id', label: 'ID' },
-      { key: 'client_code', label: 'كود العميل' },
-      { key: 'client_name', label: 'اسم العميل' },
-      { key: 'client_phone', label: 'الهاتف' },
-      { key: 'amount', label: 'المبلغ' },
-      { key: 'method', label: 'طريقة الدفع' },
-      { key: 'status', label: 'الحالة' },
-      { key: 'created_at', label: 'التاريخ' },
-    ];
-    const csv = toCsv(rows, cols);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="payments-${Date.now()}.csv"`);
-    res.send('\uFEFF' + csv); // BOM for Excel Arabic
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/admin/export/payments — live in an earlier-mounted router)
 
 // GET /api/admin/export/subscribers
-router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { status, branch } = req.query;
-    let sql = `SELECT s.client_code, s.name, s.email, s.phone, s.status,
-                      s.branch, s.total_paid, s.remaining_amount, s.created_at,
-                      st.name AS staff_name
-               FROM subscribers s
-               LEFT JOIN staff st ON st.id = s.assigned_to
-               WHERE 1=1`;
-    const params = [];
-    if (status) { sql += ' AND s.status = ?'; params.push(status); }
-    if (branch) { sql += ' AND s.branch = ?'; params.push(branch); }
-    sql += ' ORDER BY s.created_at DESC LIMIT 50000';
-    const [rows] = await pool.query(sql, params);
-    const cols = [
-      { key: 'client_code', label: 'كود العميل' },
-      { key: 'name', label: 'الاسم' },
-      { key: 'email', label: 'البريد الإلكتروني' },
-      { key: 'phone', label: 'الهاتف' },
-      { key: 'status', label: 'الحالة' },
-      { key: 'branch', label: 'الفرع' },
-      { key: 'total_paid', label: 'إجمالي المدفوع' },
-      { key: 'remaining_amount', label: 'المتبقي' },
-      { key: 'staff_name', label: 'الموظف المسؤول' },
-      { key: 'created_at', label: 'تاريخ التسجيل' },
-    ];
-    const csv = toCsv(rows, cols);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="subscribers-${Date.now()}.csv"`);
-    res.send('\uFEFF' + csv);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/admin/export/subscribers — live in an earlier-mounted router)
 
 // GET /api/admin/export/leads
-router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, async (req, res) => {
-  try {
-    const { status, branch, from, to } = req.query;
-    let sql = `SELECT l.id, l.name, l.email, l.phone, l.status, l.source,
-                      l.lead_type, l.branch, l.created_at,
-                      st.name AS assigned_staff,
-                      l.follow_up_date, l.notes
-               FROM leads l
-               LEFT JOIN staff st ON st.id = l.assigned_to
-               WHERE 1=1`;
-    const params = [];
-    if (status) { sql += ' AND l.status = ?'; params.push(status); }
-    if (branch) { sql += ' AND l.branch = ?'; params.push(branch); }
-    if (from)   { sql += ' AND DATE(l.created_at) >= ?'; params.push(from); }
-    if (to)     { sql += ' AND DATE(l.created_at) <= ?'; params.push(to); }
-    sql += ' ORDER BY l.created_at DESC LIMIT 50000';
-    const [rows] = await pool.query(sql, params);
-    const cols = [
-      { key: 'id', label: 'ID' },
-      { key: 'name', label: 'الاسم' },
-      { key: 'email', label: 'البريد الإلكتروني' },
-      { key: 'phone', label: 'الهاتف' },
-      { key: 'status', label: 'الحالة' },
-      { key: 'source', label: 'المصدر' },
-      { key: 'lead_type', label: 'النوع' },
-      { key: 'branch', label: 'الفرع' },
-      { key: 'assigned_staff', label: 'الموظف المسؤول' },
-      { key: 'follow_up_date', label: 'موعد المتابعة' },
-      { key: 'notes', label: 'ملاحظات' },
-      { key: 'created_at', label: 'التاريخ' },
-    ];
-    const csv = toCsv(rows, cols);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="leads-${Date.now()}.csv"`);
-    res.send('\uFEFF' + csv);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/admin/export/leads — live in an earlier-mounted router)
 
 // GET /api/admin/export/expenses
 router.get('/api/admin/export/expenses', requireAuth, requireAdmin, async (req, res) => {

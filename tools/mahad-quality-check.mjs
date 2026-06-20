@@ -259,7 +259,7 @@ else fail(`admin mutating endpoints with NO authz guard (any logged-in user can 
 // count can only DECREASE. Lowering DUP_BASELINE as duplicates are cleaned keeps
 // it honest. It FAILS if a NEW duplicate is introduced.
 console.log('\n13. Duplicate-route guard');
-const DUP_BASELINE = 40; // known legacy duplicates pending a careful per-endpoint cleanup (was 41; removed dead subscriber-payments dup)
+const DUP_BASELINE = 0; // all duplicate routes cleaned (removed 5 dead files + 20 dead handlers, 2026-06-20). Keep at 0.
 const routeDefs = [];
 for (const f of walk(join(ROOT, 'api/routes'), '.js')) {
   const t = readText(f) || '';

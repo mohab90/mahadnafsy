@@ -907,21 +907,7 @@ router.get('/api/admin/completions', requireAuth, requireAdminOrStaff, async (re
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // GET /api/admin/referrals â€” admin view all referral codes + earnings
-router.get('/api/admin/referrals', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const [rows] = await pool.query(`
-      SELECT rc.*, s.name AS owner_name, s.email AS owner_email, s.client_code
-      FROM referral_codes rc
-      LEFT JOIN subscribers s ON s.id = rc.subscriber_id
-      ORDER BY rc.uses DESC, rc.earnings DESC
-      LIMIT 500
-    `);
-    const [[totals]] = await pool.query(
-      'SELECT SUM(uses) AS total_uses, SUM(earnings) AS total_earnings, COUNT(*) AS total_codes FROM referral_codes'
-    );
-    res.json({ codes: rows, totals });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/admin/referrals — live in an earlier-mounted router)
 
 // GET /api/admin/referrals/:code/subscribers â€” who registered with this code
 router.get('/api/admin/referrals/:code/subscribers', requireAuth, requireAdmin, async (req, res) => {
@@ -983,31 +969,7 @@ pool.query(`
 
 // GET /api/community/posts?course_id=&page=&limit=
 // Public to authenticated clients â€” list posts (top-level only by default)
-router.get('/api/community/posts', requireAuth, async (req, res) => {
-  try {
-    const courseId = req.query.course_id || null;
-    const page     = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit    = Math.min(100, parseInt(req.query.limit) || 20);
-    const offset   = (page - 1) * limit;
-
-    let where = 'WHERE fp.parent_id IS NULL AND fp.is_hidden = 0';
-    const params = [];
-    if (courseId) { where += ' AND fp.course_id = ?'; params.push(courseId); }
-    else           { where += ' AND fp.course_id IS NULL'; }
-
-    const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM forum_posts fp ${where}`, params);
-    const [posts] = await pool.query(`
-      SELECT fp.*,
-             (SELECT COUNT(*) FROM forum_posts r WHERE r.parent_id = fp.id AND r.is_hidden = 0) AS reply_count
-      FROM forum_posts fp
-      ${where}
-      ORDER BY fp.is_pinned DESC, fp.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...params, limit, offset]);
-
-    res.json({ posts, pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/community/posts — live in an earlier-mounted router)
 
 // GET /api/community/posts/:id â€” single post with replies
 router.get('/api/community/posts/:id', requireAuth, async (req, res) => {
@@ -1092,38 +1054,10 @@ router.patch('/api/admin/community/posts/:id', requireAuth, requireAdmin, async 
 });
 
 // DELETE /api/admin/community/posts/:id â€” admin delete
-router.delete('/api/admin/community/posts/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    // Soft-delete: hide post and all its replies
-    await pool.query('UPDATE forum_posts SET is_hidden = 1 WHERE id = ? OR parent_id = ?', [req.params.id, req.params.id]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate DELETE /api/admin/community/posts/:id — live in an earlier-mounted router)
 
 // GET /api/admin/community/posts?hidden=1 â€” admin: list all including hidden
-router.get('/api/admin/community/posts', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const showHidden = req.query.hidden === '1';
-    const course_id  = req.query.course_id || null;
-    const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(200, parseInt(req.query.limit) || 50);
-    const offset = (page - 1) * limit;
-
-    let where = showHidden ? 'WHERE fp.parent_id IS NULL' : 'WHERE fp.parent_id IS NULL AND fp.is_hidden = 0';
-    const params = [];
-    if (course_id) { where += ' AND fp.course_id = ?'; params.push(course_id); }
-
-    const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM forum_posts fp ${where}`, params);
-    const [posts] = await pool.query(`
-      SELECT fp.*,
-             (SELECT COUNT(*) FROM forum_posts r WHERE r.parent_id = fp.id) AS reply_count
-      FROM forum_posts fp ${where}
-      ORDER BY fp.is_pinned DESC, fp.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...params, limit, offset]);
-    res.json({ posts, pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/admin/community/posts — live in an earlier-mounted router)
 
 
 module.exports = router;

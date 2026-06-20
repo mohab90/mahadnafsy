@@ -207,35 +207,7 @@ router.post('/api/admin/staff', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // GET /api/admin/staff
-router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res) => {
-  try {
-    const reqRole = (req.staffRecord?.role || '').toLowerCase();
-    // Non-admin staff only see name/id/role/status (no sensitive fields like notes, phone, etc.)
-    const isAdminUser = req.isAdmin === true;
-    const [rows] = await pool.query(
-      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff ORDER BY name ASC'
-    );
-    const mapped = rows.map(r => {
-      const base = {
-        id: r.id,
-        name: r.name || '',
-        email: isAdminUser ? (r.email || '') : '',
-        phone: isAdminUser ? (r.phone || '') : '',
-        role: (r.role || 'other').toLowerCase(),
-        status: r.is_active ? 'active' : 'inactive',
-        image: r.image || null,
-        specialization: r.specialization || null,
-        joinedAt: r.joined_at || r.created_at || null,
-        firebaseUid: isAdminUser ? (r.firebase_uid || null) : null,
-        commissionRate: isAdminUser ? (r.commission_rate || null) : null,
-        notes: isAdminUser ? (r.notes || null) : null,
-        permissions: isAdminUser ? (r.permissions_json ? tryJson(r.permissions_json, []) : []) : [],
-      };
-      return base;
-    });
-    res.json(mapped);
-  } catch (e) { console.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+// (removed dead duplicate GET /api/admin/staff — live in an earlier-mounted router)
 
 // GET /api/staff/me — any authenticated user can get their own staff record (for role-based dashboard)
 router.get('/api/staff/me', requireAuth, async (req, res) => {
