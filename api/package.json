@@ -21,7 +21,7 @@
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.9.7",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.1",
     "otplib": "^13.4.0",
     "qrcode": "^1.5.4",
     "ssh2-sftp-client": "^12.1.1"

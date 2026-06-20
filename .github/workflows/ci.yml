@@ -31,6 +31,15 @@ jobs:
         run: npm --prefix api run test:unit
       - name: Quality gate (48 checks)
         run: node tools/mahad-quality-check.mjs
+      - name: Dependency audit (api / admin / client)
+        run: |
+          npm --prefix api    audit --omit=dev --audit-level=high
+          npm --prefix admin  audit --audit-level=moderate
+          npm --prefix client audit --audit-level=moderate
+      - name: E2E compile check (Playwright --list)
+        run: |
+          npm --prefix e2e ci || npm --prefix e2e install
+          npm --prefix e2e exec -- playwright test --list
 
   admin:
     name: Admin — type-check + build

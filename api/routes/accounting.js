@@ -8,6 +8,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middlewar
 const { publicLimiter } = require('../middleware/rateLimits');
 const { safeDateOnly } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
+const { isBranch, normalizeBranch } = require('../constants/branches');
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ router.post('/api/waitlist', publicLimiter, async (req, res) => {
     const safeEmail  = sanitize(email || '', 200) || null;
     const safeCourse = sanitize(courseName || '', 200) || null;
     const safeNotes  = sanitize(notes || '', 1000) || null;
-    const branchVal  = ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'].includes(branch) ? branch : 'DAQQI';
+    const branchVal  = isBranch(branch) ? normalizeBranch(branch) : 'DAQQI';
     const { uuidv4 } = require('../lib/id');
     const id = uuidv4();
     await pool.query(
