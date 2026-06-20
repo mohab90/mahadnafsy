@@ -960,22 +960,22 @@ const saveChapter = () => {
                 <label className="block text-xs font-semibold text-gray-600 mb-1">عنوان SEO (seo_title) — يظهر في نتائج البحث</label>
                 <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
                   placeholder="عنوان مُحسَّن للبحث (50-60 حرفاً)" maxLength={120}
-                  value={(courseDraft as any).seo_title || ''}
-                  onChange={e => setCourseDraft({ ...courseDraft, seo_title: e.target.value } as any)} />
+                  value={courseDraft.seo_title || ''}
+                  onChange={e => setCourseDraft({ ...courseDraft, seo_title: e.target.value })} />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">وصف SEO (meta description)</label>
                 <textarea className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none"
                   rows={2} placeholder="وصف مختصر يظهر في نتائج جوجل (150-160 حرفاً)" maxLength={300}
-                  value={(courseDraft as any).seo_description || ''}
-                  onChange={e => setCourseDraft({ ...courseDraft, seo_description: e.target.value } as any)} />
+                  value={courseDraft.seo_description || ''}
+                  onChange={e => setCourseDraft({ ...courseDraft, seo_description: e.target.value })} />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">الكلمات المفتاحية (keywords) — مفصولة بفاصلة</label>
                 <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
                   placeholder="علاج نفسي, صحة نفسية, دورات معهد..."
-                  value={(courseDraft as any).seo_keywords || ''}
-                  onChange={e => setCourseDraft({ ...courseDraft, seo_keywords: e.target.value } as any)} />
+                  value={courseDraft.seo_keywords || ''}
+                  onChange={e => setCourseDraft({ ...courseDraft, seo_keywords: e.target.value })} />
               </div>
             </div>
           </div>

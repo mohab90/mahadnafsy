@@ -87,6 +87,9 @@ export interface Course {
   materials?: CourseMaterial[];
   titleAr?: string;
   hours?: number;
+  seo_title?: string;
+  seo_description?: string;
+  seo_keywords?: string;
   createdAt?: string;
   aliases?: string[];  // alternative names for Facebook lead matching
   status?: string;     // legacy publication status ('active' | ...); missing = active

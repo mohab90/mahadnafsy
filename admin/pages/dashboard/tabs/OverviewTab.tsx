@@ -138,12 +138,12 @@ export default function OverviewTab({
 
                 // Recent conversions
                 const recentConversions = myLeads.filter(l => l.status === 'converted')
-                  .sort((a, b) => ((b as any).updatedAt || b.createdAt || '') > ((a as any).updatedAt || a.createdAt || '') ? 1 : -1)
+                  .sort((a, b) => (b.updatedAt || b.createdAt || '') > (a.updatedAt || a.createdAt || '') ? 1 : -1)
                   .slice(0, 5);
 
                 const myCards = [
                   { title: 'عملائي المحتملون', value: myLeads.length, icon: UserPlus, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
-                  { title: 'محوّلون هذا الشهر', value: myLeads.filter(l => l.status === 'converted' && ((l as any).updatedAt || l.createdAt || '').slice(0,7) === thisMonthStr).length, icon: TrendingUp, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
+                  { title: 'محوّلون هذا الشهر', value: myLeads.filter(l => l.status === 'converted' && (l.updatedAt || l.createdAt || '').slice(0,7) === thisMonthStr).length, icon: TrendingUp, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
                   { title: 'عملائي', value: mySubs.length, icon: UserCheck, bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-200' },
                   { title: 'مكالمات اليوم', value: todayCalls, icon: Activity, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
                   { title: 'إيراداتي هذا الشهر', value: `${Math.round(myRevenueSubs.thisMonth).toLocaleString('ar-EG')} ج`, icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
@@ -290,7 +290,7 @@ export default function OverviewTab({
                                       className="font-semibold text-gray-800 text-sm hover:text-primary-700 hover:underline truncate text-right block">
                                       {l.name}
                                     </button>
-                                    <p className="text-[11px] text-gray-400">{((l as any).updatedAt || l.createdAt || '').slice(0, 10)}</p>
+                                    <p className="text-[11px] text-gray-400">{(l.updatedAt || l.createdAt || '').slice(0, 10)}</p>
                                   </div>
                                   <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex-shrink-0">محوّل ✓</span>
                                 </div>
