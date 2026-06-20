@@ -1,0 +1,464 @@
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, User, Tag, ChevronDown, Flame, Star, ArrowRight, X, Send, TrendingUp, Zap } from 'lucide-react';
+import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+
+type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+interface Props { notify: NotifyFn; }
+
+type TicketStatus = 'open' | 'inprogress' | 'resolved' | 'closed';
+type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+type TicketCategory = 'technical' | 'billing' | 'course' | 'consultation' | 'complaint' | 'other';
+
+interface SupportTicket {
+  id: string;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  category: TicketCategory;
+  clientName: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  assigneeId?: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  respondedAt?: string;
+  slaHours?: number;
+  slaBreached?: boolean;
+  escalatedTo?: string;
+  escalatedAt?: string;
+  messages: TicketMessage[];
+  tags?: string[];
+}
+
+// Default SLA hours per priority
+const SLA_BY_PRIORITY: Record<TicketPriority, number> = { urgent: 4, high: 12, medium: 24, low: 72 };
+
+// Built-in canned responses
+const CANNED_RESPONSES = [
+  { id: '1', title: 'تأكيد استلام', body: 'شكراً لتواصلك معنا. تم استلام طلبك وسيتم الرد عليك في أقرب وقت.' },
+  { id: '2', title: 'طلب بيانات إضافية', body: 'لنتمكن من مساعدتك، نرجو منك تزويدنا ببيانات إضافية: [أذكر المطلوب]' },
+  { id: '3', title: 'تأكيد الحل', body: 'تم حل مشكلتك بنجاح. إذا كنت لا تزال تواجه أي صعوبة، لا تتردد في التواصل معنا.' },
+  { id: '4', title: 'تحويل للدعم الفني', body: 'تم تحويل طلبك إلى فريق الدعم الفني المختص وسيتواصل معك في أقرب وقت.' },
+  { id: '5', title: 'اعتذار عن التأخير', body: 'نعتذر عن التأخير في الرد. نحن نعمل حالياً على حل مشكلتك وسنعود إليك قريباً.' },
+];
+
+interface TicketMessage {
+  id: string;
+  text: string;
+  author: string;
+  isStaff: boolean;
+  at: string;
+}
+
+const TODAY = new Date().toISOString().slice(0, 10);
+
+const STATUS_CFG: Record<TicketStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+  open:       { label: 'مفتوح',       color: 'text-blue-700',  bg: 'bg-blue-50 border-blue-200',   icon: <AlertCircle size={13} /> },
+  inprogress: { label: 'جارٍ المعالجة', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: <Clock size={13} /> },
+  resolved:   { label: 'محلول',       color: 'text-green-700', bg: 'bg-green-50 border-green-200',  icon: <CheckCircle size={13} /> },
+  closed:     { label: 'مغلق',        color: 'text-gray-600',  bg: 'bg-gray-50 border-gray-200',    icon: <XCircle size={13} /> },
+};
+
+const PRIORITY_CFG: Record<TicketPriority, { label: string; color: string; icon: string }> = {
+  low:    { label: 'منخفضة', color: 'text-gray-500', icon: '🔵' },
+  medium: { label: 'متوسطة', color: 'text-yellow-600', icon: '🟡' },
+  high:   { label: 'عالية',  color: 'text-orange-600', icon: '🟠' },
+  urgent: { label: 'عاجلة',  color: 'text-red-600', icon: '🔴' },
+};
+
+const CAT_LABELS: Record<TicketCategory, string> = {
+  technical: '💻 تقني', billing: '💳 مالي', course: '📚 كورس',
+  consultation: '🩺 استشارة', complaint: '⚠️ شكوى', other: '📌 أخرى',
+};
+
+const TicketsTab: React.FC<Props> = ({ notify }) => {
+  const { staffMembers, contactMessages } = useSiteData();
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialLoadDone = useRef(false);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [slaFilter, setSlaFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [draft, setDraft] = useState<Partial<SupportTicket>>({});
+  const [showCanned, setShowCanned] = useState(false);
+
+  useEffect(() => {
+    mysqlAdmin.adminGet<{ ok: boolean; data: SupportTicket[] | null }>('/admin/kv/support_tickets')
+      .then(res => { if (res.data) setTickets(res.data); })
+      .catch(() => {})
+      .finally(() => { setLoading(false); initialLoadDone.current = true; });
+  }, []);
+
+  // Debounced save to API
+  const persistTickets = (updated: SupportTicket[]) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      mysqlAdmin.adminPut('/admin/kv/support_tickets', updated).catch(() => {});
+    }, 800);
+  };
+
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    persistTickets(tickets);
+  }, [tickets]);
+
+  useEffect(() => {
+    if (selectedTicket) {
+      const updated = tickets.find(t => t.id === selectedTicket.id);
+      if (updated) setSelectedTicket(updated);
+    }
+  }, [tickets]);
+
+  const supportTeam = staffMembers.filter(s => s.status === 'active' && (s.role === 'support' || s.role === 'manager' || s.role === 'admin'));
+
+  const filtered = useMemo(() => tickets.filter(t => {
+    if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+    if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
+    if (slaFilter === 'breached' && !t.slaBreached) return false;
+    if (slaFilter === 'ok' && t.slaBreached) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return t.title.toLowerCase().includes(q) || t.clientName.toLowerCase().includes(q) || (t.clientPhone || '').includes(q);
+    }
+    return true;
+  }), [tickets, statusFilter, priorityFilter, slaFilter, search]);
+
+  const stats = {
+    open: tickets.filter(t => t.status === 'open').length,
+    inprogress: tickets.filter(t => t.status === 'inprogress').length,
+    resolved: tickets.filter(t => t.status === 'resolved').length,
+    urgent: tickets.filter(t => t.priority === 'urgent' && t.status !== 'closed' && t.status !== 'resolved').length,
+    breached: tickets.filter(t => t.slaBreached && t.status !== 'closed' && t.status !== 'resolved').length,
+  };
+
+  const createTicket = () => {
+    if (!draft.title?.trim() || !draft.clientName?.trim()) { notify('error', 'أدخل العنوان واسم العميل'); return; }
+    const priority = (draft.priority || 'medium') as TicketPriority;
+    const ticket: SupportTicket = {
+      id: Date.now().toString(),
+      title: draft.title,
+      description: draft.description || '',
+      status: 'open',
+      priority,
+      category: draft.category || 'other',
+      clientName: draft.clientName,
+      clientPhone: draft.clientPhone,
+      clientEmail: draft.clientEmail,
+      assigneeId: draft.assigneeId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      slaHours: SLA_BY_PRIORITY[priority],
+      slaBreached: false,
+      messages: draft.description ? [{ id: Date.now().toString(), text: draft.description, author: draft.clientName, isStaff: false, at: new Date().toISOString() }] : [],
+    };
+    setTickets(prev => [ticket, ...prev]);
+    setDraft({});
+    setShowCreate(false);
+    notify('success', 'تم إنشاء التذكرة');
+  };
+
+  const updateStatus = (id: string, status: TicketStatus) => {
+    setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString(), ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) } : t));
+    notify('success', `تم تحديث الحالة إلى "${STATUS_CFG[status].label}"`);
+  };
+
+  const addReply = () => {
+    if (!replyText.trim() || !selectedTicket) return;
+    const msg: TicketMessage = { id: Date.now().toString(), text: replyText, author: 'الإدارة', isStaff: true, at: new Date().toISOString() };
+    setTickets(prev => prev.map(t => t.id === selectedTicket.id
+      ? { ...t, messages: [...t.messages, msg], updatedAt: new Date().toISOString(), respondedAt: t.respondedAt || new Date().toISOString() }
+      : t
+    ));
+    setReplyText('');
+    setShowCanned(false);
+    notify('success', 'تم إضافة الرد');
+  };
+
+  const escalateTicket = (id: string) => {
+    const admins = supportTeam.filter(s => s.role === 'admin' || s.role === 'manager');
+    if (!admins.length) { notify('error', 'لا يوجد مدير للتصعيد إليه'); return; }
+    const manager = admins[0];
+    setTickets(prev => prev.map(t => t.id === id
+      ? { ...t, escalatedTo: manager.id, escalatedAt: new Date().toISOString(), priority: 'urgent' as TicketPriority, updatedAt: new Date().toISOString() }
+      : t
+    ));
+    notify('info', `تم تصعيد التذكرة إلى ${manager.name}`);
+  };
+
+  // Check SLA breaches every minute
+  useEffect(() => {
+    const check = () => {
+      setTickets(prev => prev.map(t => {
+        if (t.status === 'resolved' || t.status === 'closed') return t;
+        const slaMs = (t.slaHours ?? SLA_BY_PRIORITY[t.priority]) * 3600 * 1000;
+        const breached = Date.now() - new Date(t.createdAt).getTime() > slaMs;
+        if (breached !== !!t.slaBreached) return { ...t, slaBreached: breached };
+        return t;
+      }));
+    };
+    check();
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const deleteTicket = (id: string) => {
+    setTickets(prev => prev.filter(t => t.id !== id));
+    if (selectedTicket?.id === id) setSelectedTicket(null);
+    notify('success', 'تم حذف التذكرة');
+  };
+
+  return (
+    <div className="space-y-5" dir="rtl">
+      {loading && (
+        <div className="flex items-center justify-center py-12 text-gray-400">
+          <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mr-3" />
+          جاري تحميل التذاكر...
+        </div>
+      )}
+      {!loading && (<>
+      {/* Header */}
+      <div className="bg-gradient-to-l from-cyan-700 to-blue-600 rounded-2xl p-5 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2"><Ticket size={22} /> تذاكر الدعم الفني</h2>
+            <p className="text-blue-200 text-sm mt-0.5">إدارة ومتابعة طلبات وشكاوى العملاء</p>
+          </div>
+          <button onClick={() => { setShowCreate(true); setDraft({}); }}
+            className="flex items-center gap-2 bg-white text-blue-700 font-bold px-4 py-2 rounded-xl hover:bg-blue-50 transition-colors text-sm">
+            <Plus size={16} /> تذكرة جديدة
+          </button>
+        </div>
+        <div className="grid grid-cols-5 gap-3 mt-4">
+          {[
+            { label: 'مفتوحة', value: stats.open, bg: 'bg-blue-500/30' },
+            { label: 'جارية', value: stats.inprogress, bg: 'bg-amber-500/30' },
+            { label: 'محلولة', value: stats.resolved, bg: 'bg-green-500/30' },
+            { label: 'عاجلة', value: stats.urgent, bg: stats.urgent > 0 ? 'bg-red-500/30' : 'bg-white/10' },
+            { label: 'تجاوزت SLA', value: stats.breached, bg: stats.breached > 0 ? 'bg-pink-500/30' : 'bg-white/10' },
+          ].map(s => (
+            <div key={s.label} className={`${s.bg} rounded-xl p-2 text-center`}>
+              <div className="text-2xl font-black">{s.value}</div>
+              <div className="text-xs text-blue-200">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Create modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" dir="rtl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-800 text-lg">إنشاء تذكرة جديدة</h3>
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <input value={draft.title || ''} onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
+                placeholder="عنوان المشكلة *" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <textarea value={draft.description || ''} onChange={e => setDraft(p => ({ ...p, description: e.target.value }))}
+                placeholder="وصف تفصيلي للمشكلة..." rows={3}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+              <div className="grid grid-cols-2 gap-3">
+                <input value={draft.clientName || ''} onChange={e => setDraft(p => ({ ...p, clientName: e.target.value }))}
+                  placeholder="اسم العميل *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <input value={draft.clientPhone || ''} onChange={e => setDraft(p => ({ ...p, clientPhone: e.target.value }))}
+                  placeholder="رقم الهاتف" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <select value={draft.priority || 'medium'} onChange={e => setDraft(p => ({ ...p, priority: e.target.value as TicketPriority }))}
+                  className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none">
+                  {Object.entries(PRIORITY_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                </select>
+                <select value={draft.category || 'other'} onChange={e => setDraft(p => ({ ...p, category: e.target.value as TicketCategory }))}
+                  className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none">
+                  {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <select value={draft.assigneeId || ''} onChange={e => setDraft(p => ({ ...p, assigneeId: e.target.value }))}
+                  className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none">
+                  <option value="">— تعيين —</option>
+                  {supportTeam.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 mt-2">
+                <button onClick={createTicket} className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm hover:bg-blue-700">إنشاء التذكرة</button>
+                <button onClick={() => setShowCreate(false)} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl font-bold text-sm hover:bg-gray-200">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative">
+          <Search size={14} className="absolute right-3 top-2.5 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..."
+            className="pr-8 pl-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-48" />
+        </div>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          <option value="all">كل الحالات</option>
+          {Object.entries(STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          <option value="all">كل الأولويات</option>
+          {Object.entries(PRIORITY_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+        </select>
+        <select value={slaFilter} onChange={e => setSlaFilter(e.target.value)}
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
+          <option value="all">كل SLA</option>
+          <option value="breached">⚠️ تجاوزت SLA</option>
+          <option value="ok">✅ ضمن SLA</option>
+        </select>
+        <span className="text-sm text-gray-400 mr-auto">{filtered.length} تذكرة</span>
+      </div>
+
+      {/* Layout: list + detail */}
+      <div className="flex gap-4" style={{ minHeight: '400px' }}>
+        {/* Ticket list */}
+        <div className={`space-y-2 ${selectedTicket ? 'w-[40%]' : 'w-full'} transition-all`}>
+          {filtered.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <Ticket size={40} className="mx-auto mb-3 opacity-20" />
+              <p>لا توجد تذاكر</p>
+            </div>
+          ) : filtered.map(ticket => {
+            const s = STATUS_CFG[ticket.status];
+            const p = PRIORITY_CFG[ticket.priority];
+            const assignee = supportTeam.find(m => m.id === ticket.assigneeId);
+            const age = Math.round((Date.now() - new Date(ticket.createdAt).getTime()) / 3600000);
+            const ageLabel = age < 24 ? `منذ ${age}س` : `${Math.round(age / 24)} يوم`;
+            const slaHours = ticket.slaHours ?? SLA_BY_PRIORITY[ticket.priority];
+            const slaRemainingH = slaHours - age;
+            const slaLabel = ticket.slaBreached ? '⚠️ تجاوز SLA' : slaRemainingH <= 2 ? `⏰ ${slaRemainingH}س` : null;
+            const isSelected = selectedTicket?.id === ticket.id;
+            return (
+              <div key={ticket.id}
+                onClick={() => setSelectedTicket(isSelected ? null : ticket)}
+                className={`bg-white border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all ${isSelected ? 'border-blue-400 shadow-md' : 'border-gray-200'} ${ticket.slaBreached ? 'border-l-4 border-l-pink-500' : ticket.priority === 'urgent' ? 'border-r-4 border-r-red-500' : ticket.priority === 'high' ? 'border-r-4 border-r-orange-400' : ''}`}>
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-800 truncate">{ticket.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{ticket.clientName} {ticket.clientPhone && `· ${ticket.clientPhone}`}</p>
+                  </div>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full border shrink-0 flex items-center gap-0.5 ${s.bg} ${s.color}`}>
+                    {s.icon} {s.label}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs">
+                  <span className={`${p.color} font-medium`}>{p.icon} {p.label}</span>
+                  <span className="text-gray-400">·</span>
+                  <span className="text-gray-400">{CAT_LABELS[ticket.category]}</span>
+                  <span className="text-gray-300 mr-auto">·</span>
+                  <span className="text-gray-400">{ageLabel}</span>
+                  {assignee && <span className="text-indigo-500">@{assignee.name.split(' ')[0]}</span>}
+                  {ticket.messages.length > 0 && <span className="text-gray-400 flex items-center gap-0.5"><MessageSquare size={9} /> {ticket.messages.length}</span>}
+                  {slaLabel && <span className={`font-bold text-xs ${ticket.slaBreached ? 'text-pink-600' : 'text-amber-600'}`}>{slaLabel}</span>}
+                  {ticket.escalatedAt && <span className="text-purple-500 text-xs flex items-center gap-0.5"><TrendingUp size={9} /> مُصعَّد</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Ticket detail */}
+        {selectedTicket && (
+          <div className="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: '600px' }}>
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-800">{selectedTicket.title}</h3>
+                <p className="text-xs text-gray-400">{selectedTicket.clientName} · {selectedTicket.createdAt.slice(0, 10)}</p>
+              </div>
+              <button onClick={() => setSelectedTicket(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            {/* Actions */}
+            <div className="px-4 py-2 border-b border-gray-50 flex gap-2 flex-wrap">
+              {(['open', 'inprogress', 'resolved', 'closed'] as TicketStatus[]).map(s => (
+                <button key={s} onClick={() => updateStatus(selectedTicket.id, s)}
+                  className={`text-xs px-2 py-1 rounded-lg border transition-colors ${selectedTicket.status === s ? `${STATUS_CFG[s].bg} ${STATUS_CFG[s].color} font-bold` : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                  {STATUS_CFG[s].label}
+                </button>
+              ))}
+              {!selectedTicket.escalatedAt && (
+                <button onClick={() => escalateTicket(selectedTicket.id)}
+                  className="text-xs px-2 py-1 rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 flex items-center gap-1">
+                  <TrendingUp size={11} /> تصعيد
+                </button>
+              )}
+              {selectedTicket.escalatedAt && (
+                <span className="text-xs px-2 py-1 rounded-lg bg-purple-50 text-purple-600 flex items-center gap-1">
+                  <TrendingUp size={11} /> مُصعَّد {selectedTicket.escalatedAt.slice(0, 10)}
+                </span>
+              )}
+              {selectedTicket.slaBreached && (
+                <span className="text-xs px-2 py-1 rounded-lg bg-pink-50 text-pink-600 flex items-center gap-1">
+                  <Zap size={11} /> تجاوز SLA
+                </span>
+              )}
+              <button onClick={() => deleteTicket(selectedTicket.id)}
+                className="text-xs px-2 py-1 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mr-auto">حذف</button>
+            </div>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {selectedTicket.description && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-1">وصف المشكلة:</p>
+                  <p className="text-sm text-gray-700">{selectedTicket.description}</p>
+                </div>
+              )}
+              {selectedTicket.messages.map(msg => (
+                <div key={msg.id} className={`flex ${msg.isStaff ? 'justify-start' : 'justify-end'}`}>
+                  <div className={`max-w-[85%] rounded-xl px-3 py-2 ${msg.isStaff ? 'bg-blue-50 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                    <p className="text-xs font-bold mb-0.5 opacity-60">{msg.author}</p>
+                    <p className="text-sm">{msg.text}</p>
+                    <p className="text-xs opacity-50 mt-1">{msg.at.slice(0, 16).replace('T', ' ')}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Canned responses picker */}
+            {showCanned && (
+              <div className="px-4 pb-2 border-t border-gray-100">
+                <p className="text-xs text-gray-400 my-1.5">ردود جاهزة:</p>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {CANNED_RESPONSES.map(c => (
+                    <button key={c.id} onClick={() => { setReplyText(c.body); setShowCanned(false); }}
+                      className="w-full text-right text-xs px-3 py-1.5 bg-gray-50 hover:bg-blue-50 rounded-lg text-gray-700 hover:text-blue-700 transition-colors">
+                      <span className="font-bold">{c.title}</span> — <span className="opacity-70">{c.body.slice(0, 50)}…</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Reply */}
+            <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
+              <button onClick={() => setShowCanned(p => !p)} title="ردود جاهزة"
+                className={`px-2 py-2 rounded-xl border text-xs transition-colors ${showCanned ? 'bg-blue-50 border-blue-300 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <Star size={14} />
+              </button>
+              <input value={replyText} onChange={e => setReplyText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addReply(); } }}
+                placeholder="اكتب ردك هنا..."
+                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <button onClick={addReply} className="bg-blue-600 text-white px-3 py-2 rounded-xl hover:bg-blue-700 transition-colors">
+                <Send size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      </>)}
+    </div>
+  );
+};
+
+export default TicketsTab;

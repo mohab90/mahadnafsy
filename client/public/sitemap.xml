@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <url>
+    <loc>https://mahadnafsy.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/about</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/about" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/courses</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/courses" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/bundles</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/bundles" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/consultations</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/consultations" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/community</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/community" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/instructors</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/instructors" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/institute-gallery</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/institute-gallery" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/contact</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/contact" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/join</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://mahadnafsy.com/join" />
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+  <url>
+    <loc>https://mahadnafsy.com/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+</urlset>

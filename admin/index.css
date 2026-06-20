@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Brand palette defaults = the system's classic red. Both `primary` and `brand`
+   Tailwind colors read these vars, so the whole admin is themed from one place.
+   lib/brandTheme.ts overrides them at runtime ONLY when the admin picks a custom
+   brand.primary; otherwise this exact red scale is preserved. */
+:root {
+  --brand-50: #fef2f2;  --brand-100: #fee2e2; --brand-200: #fecaca;
+  --brand-300: #fca5a5; --brand-400: #f87171; --brand-500: #ef4444;
+  --brand-600: #dc2626; --brand-700: #b91c1c; --brand-800: #991b1b;
+  --brand-900: #7f1d1d; --brand: #dc2626;     --brand-fg: #ffffff;
+}
+
+body {
+  font-family: 'Tajawal', sans-serif;
+}
+
+input, select, textarea, button {
+  font-family: inherit;
+}
+
+/* ── Resizable column handle ───────────────────────────────── */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  border-left: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  border-left-color: #6366f1;
+}
+
+
+/* -- Dashboard Dark Mode ------------------------------------------------ */
+.dark-dash { background: #111827 !important; color: #f9fafb !important; }
+.dark-dash .bg-white { background-color: #1f2937 !important; }
+.dark-dash .bg-gray-50 { background-color: #111827 !important; }
+.dark-dash .bg-gray-100 { background-color: #374151 !important; }
+.dark-dash .text-gray-900 { color: #f9fafb !important; }
+.dark-dash .text-gray-800 { color: #f3f4f6 !important; }
+.dark-dash .text-gray-700 { color: #e5e7eb !important; }
+.dark-dash .text-gray-600 { color: #d1d5db !important; }
+.dark-dash .text-gray-500 { color: #9ca3af !important; }
+.dark-dash .border-gray-100 { border-color: #374151 !important; }
+.dark-dash .border-gray-200 { border-color: #4b5563 !important; }
+.dark-dash .divide-gray-50 > * { border-color: #374151 !important; }
+.dark-dash .hover\:bg-gray-50:hover { background-color: #2d3748 !important; }
+.dark-dash .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,.4) !important; }
+.dark-dash input, .dark-dash textarea, .dark-dash select { background-color: #374151 !important; color: #f9fafb !important; border-color: #4b5563 !important; }

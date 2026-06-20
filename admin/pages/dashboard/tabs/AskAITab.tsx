@@ -1,0 +1,674 @@
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign, BarChart2 } from 'lucide-react';
+import { useSiteData } from '../../../context/SiteDataContext';
+type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+
+export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
+  const {
+    leads, subscribers, orders, courses, bundles, therapists, consultations,
+    communityPosts, joinUsApplications, contactMessages, staffMembers, adminAiConfig,
+  } = useSiteData();
+
+  // ── Chat state (moved from Dashboard) ─────────────────────────────────────
+  const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('mahad-ai-messages') || '[]'); } catch { return []; }
+  });
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiChatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mahad-ai-messages', JSON.stringify(aiMessages.slice(-50)));
+    } catch {
+      try { localStorage.setItem('mahad-ai-messages', JSON.stringify(aiMessages.slice(-20))); } catch { /* silent */ }
+    }
+  }, [aiMessages]);
+
+  // ── Pre-computed AI analysis data ──────────────────────────────────────────
+  const _aiBranchLabels: Record<string, string> = {
+    daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
+    'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
+  };
+  const _aiToEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
+
+  const _aiAllManual = useMemo(() =>
+    subscribers.flatMap(s =>
+      (s.paymentHistory || []).map(p => ({
+        ...p,
+        subName: s.name,
+        subPhone: s.phone,
+        branchCode: s.branch || 'other',
+        branchLabel: _aiBranchLabels[s.branch || 'other'] || s.branch || '—',
+        assignedSalesName: s.assignedSalesName || '—',
+      }))
+    ),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [subscribers]);
+
+  const _aiStaffPerf = useMemo(() => {
+    const salesStaff = staffMembers.filter(s => s.role === 'sales');
+    return salesStaff.map(s => {
+      const sl = leads.filter(l => l.assignedSalesName === s.name || l.assignedSalesId === s.id);
+      const assignedSubs = subscribers.filter(sub => sub.assignedSalesId === s.id);
+      const now2 = new Date(); const tM2 = now2.getMonth(), tY2 = now2.getFullYear();
+      const isT = (d: string) => !!d && new Date(d).toDateString() === now2.toDateString();
+      const isW = (d: string) => { if (!d) return false; const st = new Date(now2); st.setDate(now2.getDate() - now2.getDay()); st.setHours(0, 0, 0, 0); return new Date(d) >= st; };
+      const isTM = (d: string) => { if (!d) return false; const x = new Date(d); return x.getMonth() === tM2 && x.getFullYear() === tY2; };
+      const allPayments = assignedSubs.flatMap(sub => (sub.paymentHistory || []).map(p => ({ ...p, subId: sub.id })));
+      const toRevEGP = (payments: typeof allPayments) => Math.round(payments.reduce((sum, p) => sum + _aiToEGP(p.amount, p.currency), 0));
+      const revTotal = toRevEGP(allPayments);
+      const revToday = toRevEGP(allPayments.filter(p => isT(p.at || '')));
+      const revWeek  = toRevEGP(allPayments.filter(p => isW(p.at || '')));
+      const revMonth = toRevEGP(allPayments.filter(p => isTM(p.at || '')));
+      const cr = s.commissionRate || 0;
+      return {
+        id: s.id, name: s.name, role: s.role, commissionRate: cr,
+        total: sl.length, today: sl.filter(l => isT(l.createdAt || '')).length,
+        week: sl.filter(l => isW(l.createdAt || '')).length, month: sl.filter(l => isTM(l.createdAt || '')).length,
+        contacted: sl.filter(l => l.status === 'contacted').length,
+        converted: sl.filter(l => l.status === 'converted').length,
+        convertedMonth: sl.filter(l => l.status === 'converted' && isTM(l.createdAt || '')).length,
+        lost: sl.filter(l => l.status === 'lost').length,
+        pending: sl.filter(l => l.status === 'new').length,
+        noAnswer: sl.filter(l => l.status === 'no_answer').length,
+        notInterested: sl.filter(l => l.status === 'not_interested').length,
+        revTotal, revToday, revWeek, revMonth,
+        commission: cr ? Math.round(revTotal * cr / 100) : 0,
+        commissionMonth: cr ? Math.round(revMonth * cr / 100) : 0,
+        leads: sl,
+        subs: assignedSubs,
+      };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffMembers, leads, subscribers]);
+
+  const _aiAllManualForBranch = _aiAllManual;
+  const _aiBranchStats = useMemo(() => {
+    const now = new Date(); const tM = now.getMonth(), tY = now.getFullYear();
+    const isToday = (d: string) => !!d && new Date(d).toDateString() === now.toDateString();
+    const isThisMonth = (d: string) => { if (!d) return false; const x = new Date(d); return x.getMonth() === tM && x.getFullYear() === tY; };
+    const toEGP = _aiToEGP;
+    const branchCodes = [...new Set(subscribers.map(s => s.branch || 'other'))] as string[];
+    return branchCodes.map(code => {
+      const bSubs = subscribers.filter(s => (s.branch || 'other') === code);
+      const bPayments = _aiAllManualForBranch.filter(p => p.branchCode === code);
+      return {
+        code, label: _aiBranchLabels[code] || code, subs: bSubs.length,
+        todayNew: bSubs.filter(s => isToday(s.createdAt || '')).length,
+        todayRev: Math.round(bPayments.filter(p => isToday(p.at || '')).reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
+        monthRev: Math.round(bPayments.filter(p => isThisMonth(p.at || '')).reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
+        allRev: Math.round(bPayments.reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
+      };
+    }).sort((a, b) => b.subs - a.subs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscribers, _aiAllManualForBranch]);
+
+  // Use saved AI config (adminAiConfig from MySQL, alias as adminAiDraft for body code compatibility)
+  const adminAiDraft = adminAiConfig || { provider: 'gemini', apiKey: '', model: 'gemini-2.0-flash-lite', temperature: 0.7, maxTokens: 1500, systemPrompt: '' };
+
+  // ═══ PRE-COMPUTE everything once at IIFE top ═══════════════════
+  const _now = new Date();
+  const _todayISO = _now.toISOString().slice(0, 10);
+  const _tM = _now.getMonth(), _tY = _now.getFullYear();
+  const _lM = _tM === 0 ? 11 : _tM - 1, _lMY = _tM === 0 ? _tY - 1 : _tY;
+  const _monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+  // Date filters
+  const _isToday    = (d: string) => !!d && (d.startsWith(_todayISO) || new Date(d).toDateString() === _now.toDateString());
+  const _isWeek     = (d: string) => { if (!d) return false; const s=new Date(_now);s.setDate(_now.getDate()-_now.getDay());s.setHours(0,0,0,0);return new Date(d)>=s; };
+  const _isThisMonth= (d: string) => { if (!d) return false; const x=new Date(d);return x.getMonth()===_tM&&x.getFullYear()===_tY; };
+  const _isLastMonth= (d: string) => { if (!d) return false; const x=new Date(d);return x.getMonth()===_lM&&x.getFullYear()===_lMY; };
+  const _isThisYear = (d: string) => { if (!d) return false; return new Date(d).getFullYear()===_tY; };
+  const _toEGP = (amt: number, cur: string) => cur==='EGP'?amt:cur==='SAR'?amt*13:amt*50;
+
+  // Branch label mapping
+  const BRANCH_LABELS: Record<string,string> = {
+    daqqi:'الدقي', tagamoa:'التجمع', 'online-egypt':'أون لاين - مصر',
+    'online-saudi':'أون لاين - السعودية', 'online-abroad':'خارج مصر', other:'أخرى',
+  };
+  const BRANCH_ALIAS: Record<string,string> = {
+    'دقي':'daqqi','الدقي':'daqqi','daqqi':'daqqi',
+    'تجمع':'tagamoa','التجمع':'tagamoa','tagamoa':'tagamoa',
+    'أون لاين مصر':'online-egypt','اونلاين مصر':'online-egypt',
+    'سعودية':'online-saudi','السعودية':'online-saudi',
+    'خارج مصر':'online-abroad','الخارج':'online-abroad',
+  };
+
+  // ── All manual payments (pre-memoized above for performance) ──────────────────
+  const _allManual = _aiAllManual;
+
+  // ── Daily stats ────────────────────────────────────────────────
+  const _todayLeads   = leads.filter(l => _isToday(l.createdAt||''));
+  const _todaySubs    = subscribers.filter(s => _isToday(s.createdAt||''));
+  const _todayOrders  = orders.filter(o => o.status==='paid' && _isToday(o.paidAt||o.createdAt||''));
+  const _todayManual  = _allManual.filter(p => _isToday(p.at||''));
+  const _todayOnlineRev = _todayOrders.reduce((s,o)=>s+_toEGP(o.amount,o.currency),0);
+  const _todayManualRev = _todayManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
+
+  // ── Staff performance (pre-memoized above) ────────────────────
+  const _staffPerf = _aiStaffPerf;
+
+  // ── Branch stats (pre-memoized above) ─────────────────────────
+  const _branchStats = _aiBranchStats;
+
+  // Total revenue
+  const _totalRevEGP = orders.filter(o=>o.status==='paid').reduce((s,o)=>s+_toEGP(o.amount,o.currency),0)
+    + _allManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
+
+  // Build full system context
+  const buildSystemContext = () => {
+    const totalRevEGP = _totalRevEGP;
+    const convRate = leads.length > 0 ? ((leads.filter(l => l.status === 'converted').length / leads.length) * 100).toFixed(1) : '0';
+    const todayStr = _now.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+    const todayISO = _todayISO;
+    return `## هويتك وشخصيتك
+أنت **مساعد إداري ذكي** خاص بـ **معهد الدراسات النفسية**.
+اسمك: مساعد المعهد.
+تتحدث بالعربية العامية المصرية المهنية — واضح، مباشر، محترم، وودود.
+لا تُجيب إلا عن بيانات المعهد — لا تناقش أي موضوع خارجي.
+لا تخترع أرقاماً — كل رقم تذكره موجود حرفياً في البيانات المُرفَقة.
+
+## ما الذي تفعله بالضبط
+لديك قاعدة بيانات كاملة ومحدَّثة لحظياً للمعهد تشمل:
+- **المشتركين**: الأسماء، الهواتف، الفروع، الكورسات، تواريخ التسجيل، حالة الاشتراك
+- **العملاء المحتملين (Leads)**: من تواصل، من السيلز المسؤول، مصدر العميل، حالته (جديد/تم التواصل/تحوَّل/ضائع)
+- **الإيرادات**: الطلبات الأونلاين + الدفعات اليدوية، مفصَّلة بالفرع والعملة والتاريخ
+- **الفروع**: الدقي، التجمع، أونلاين مصر، أونلاين السعودية، أونلاين الخارج
+- **فريق السيلز**: أداء كل فرد يومياً/أسبوعياً/شهرياً، عدد التابعات والتحويلات
+- **الكورسات والدبلومات**: أعداد الطلاب، الأسعار، التصنيفات
+- **الاستشارات**: المواعيد، الأطباء، الحالات
+- **الرسائل وطلبات التواصل**
+
+## كيف تتعامل مع الأسئلة
+- إذا سألك بالعامي: "النهاردة كام عميل دخل؟" — أجب فوراً بالعدد والتفاصيل
+- إذا سألك عن موظف: "ياسمين عملت إيه النهاردة؟" — اذكر عدد عملاؤها، التابعات، التحويلات
+- إذا سألك عن فرع: "الدقي الشهر ده دخل كام؟" — اذكر الإيراد والدفعات والمشتركين
+- إذا سألك عن مقارنة: قدِّم جدولاً أو قائمة منظمة بالأرقام
+- إذا سألك سؤالاً تحليلياً: قدِّم رأيك بناءً على الأرقام الفعلية فقط
+
+## قواعد الإجابة
+1. ابدأ دائماً بالرقم أو الإجابة المباشرة — لا تطوِّل في المقدمة
+2. استخدم **تمييز النص** للأرقام الأساسية
+3. إذا كانت الإجابة قائمة، رتِّبها من الأعلى للأدنى
+4. إذا لم تجد البيانات، قل ذلك بوضوح ولا تخترع
+5. في نهاية أي إجابة إحصائية طويلة، أضف سطراً: "هل تريد تفاصيل إضافية؟"
+6. لا تذكر أسماء المرضى أو بياناتهم الصحية الحساسة بشكل غير ضروري
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 التاريخ والوقت
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+اليوم: ${todayStr}
+التاريخ (ISO): ${todayISO}
+الشهر الحالي: ${_monthNames[_tM]} ${_tY}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 إحصائيات اليوم — ${todayISO} — LIVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+عملاء محتملين جدد اليوم: ${_todayLeads.length}
+مشتركون سجلوا اليوم: ${_todaySubs.length}
+إيراد أونلاين اليوم: ${Math.round(_todayOnlineRev).toLocaleString()} ج.م (${_todayOrders.length} طلب)
+إيراد يدوي اليوم: ${Math.round(_todayManualRev).toLocaleString()} ج.م (${_todayManual.length} دفعة)
+إجمالي إيراد اليوم: ${Math.round(_todayOnlineRev+_todayManualRev).toLocaleString()} ج.م
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📥 العملاء المحتملين الجدد اليوم — تفاصيل كاملة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${_todayLeads.length > 0 ? _todayLeads.map((l,i)=>`${i+1}. ${l.name} | هاتف: ${l.phone} | المصدر: ${l.source} | السيلز: ${l.assignedSalesName||'غير مُسند'} | الحالة: ${l.status} | النوع: ${l.leadType||'—'} | الفرع: ${BRANCH_LABELS[l.branch||'']||l.branch||'—'}`).join('\n') : '← لا يوجد عملاء محتملين اليوم بعد'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 الدفعات اليدوية اليوم — تفاصيل كاملة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${_todayManual.length > 0 ? _todayManual.map((p,i)=>`${i+1}. ${p.subName} (${p.subPhone}) | ${p.amount} ${p.currency} | النوع: ${p.paymentType||'دفعة'} | الفرع: ${p.branchLabel} | ملاحظة: ${p.note||'—'}`).join('\n') : '← لا توجد دفعات يدوية اليوم بعد'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👥 أداء فريق المبيعات — كل الأوقات والتفصيل
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${_staffPerf.length > 0 ? _staffPerf.map(s =>
+`[${s.name}] (${s.role==='reception_daqqi'?'ريسبشن دقي':'سيلز'})
+  ▸ اليوم: ${s.today} عميل | الأسبوع: ${s.week} | الشهر: ${s.month} | الإجمالي: ${s.total}
+  ▸ تم التواصل: ${s.contacted} | تحوّل لمشترك: ${s.converted} | ضائع: ${s.lost} | لم يُتابَع: ${s.pending}
+  ▸ آخر 5 عملاء: ${s.leads.slice(-5).map(l=>`${l.name}(${l.status})`).join(', ')||'—'}`
+).join('\n\n') : '← لا يوجد موظفين مبيعات مسجلين'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏢 الفروع — إحصائيات وإيرادات
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${_branchStats.map(b=>`${b.label} (${b.code}): مشتركون=${b.subs} | جديد اليوم=${b.todayNew} | إيراد اليوم=${b.todayRev.toLocaleString()} ج.م | إيراد الشهر=${b.monthRev.toLocaleString()} ج.م | إيراد كلي=${b.allRev.toLocaleString()} ج.م`).join('\n')||'← لا توجد فروع مسجلة'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 الإحصائيات الإجمالية الكاملة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+المشتركون: ${subscribers.length} (نشط: ${subscribers.filter(s=>s.status==='active').length} | موقوف: ${subscribers.filter(s=>s.status==='paused').length})
+العملاء المحتملون: ${leads.length}
+  → جديد: ${leads.filter(l=>l.status==='new').length} | تواصل: ${leads.filter(l=>l.status==='contacted').length} | تحوّل: ${leads.filter(l=>l.status==='converted').length} | ضائع: ${leads.filter(l=>l.status==='lost').length}
+  → معدل التحويل: ${convRate}%
+الاستشارات: ${consultations.length} (انتظار: ${consultations.filter(c=>c.status==='pending').length} | مؤكد: ${consultations.filter(c=>c.status==='confirmed').length} | مكتمل: ${consultations.filter(c=>c.status==='completed').length})
+الكورسات: ${courses.length} | المعالجون: ${therapists.length} | المسارات: ${bundles.length}
+طلبات (paid): ${orders.filter(o=>o.status==='paid').length} | معلقة: ${orders.filter(o=>o.status==='pending').length}
+الإيراد الإجمالي الكلي: ~${Math.round(totalRevEGP).toLocaleString()} ج.م
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 كل العملاء المحتملين — آخر 60 (الأحدث أولاً)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${[...leads].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,60).map((l,i)=>
+  `${i+1}. [${l.createdAt?.slice(0,10)||'؟'}] ${l.name} | ${l.phone} | ${l.source} | ${l.status} | سيلز: ${l.assignedSalesName||'—'} | فرع: ${BRANCH_LABELS[l.branch||'']||'—'} | نوع: ${l.leadType||'—'}`
+).join('\n')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ المشتركون — آخر 30 (الأحدث أولاً)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${[...subscribers].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,30).map((s,i)=>
+  `${i+1}. [${s.createdAt?.slice(0,10)||'؟'}] ${s.name} | ${s.phone} | فرع: ${BRANCH_LABELS[s.branch||'']||'—'} | كورسات: ${s.enrolledCourseIds.length} | الحالة: ${s.status} | سيلز: ${s.assignedSalesName||'—'}`
+).join('\n')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 آخر 20 دفعة يدوية
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${[..._allManual].sort((a,b)=>(b.at||'').localeCompare(a.at||'')).slice(0,20).map((p,i)=>
+  `${i+1}. [${p.at?.slice(0,10)||'؟'}] ${p.subName} | ${p.amount} ${p.currency} | ${p.paymentType||'دفعة'} | فرع: ${p.branchLabel} | ملاحظة: ${p.note||'—'}`
+).join('\n')||'← لا توجد دفعات يدوية بعد'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 الكورسات (أكثر 15 تسجيلاً)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${[...courses].sort((a,b)=>(b.students||0)-(a.students||0)).slice(0,15).map((c,i)=>`${i+1}. ${c.title}: ${c.students||0} طالب | ${c.type} | السعر: ${c.price?.EGP??0} ج.م`).join('\n')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌟 المعالجون والمتخصصون
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${therapists.map(t=>`- ${t.name} | ${t.specialty} | تقييم: ${t.rating||'—'} | استشارات: ${consultations.filter(c=>c.therapistId===t.id).length}`).join('\n')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📣 رسائل التواصل الجديدة (لم يُرَد عليها)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${contactMessages.filter(c=>c.status==='new').slice(0,10).map(c=>`• ${c.name} | ${c.phone||''} | "${c.message?.slice(0,100)}"`).join('\n')||'← لا توجد رسائل جديدة'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+مصادر العملاء المحتملين (Top 8)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${(Object.entries(leads.reduce((a:Record<string,number>,l)=>{a[l.source]=(a[l.source]||0)+1;return a},{})) as [string,number][]).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([s,n])=>`- ${s}: ${n} عميل`).join('\n')}`;
+  };
+
+  const handleAiSend = async () => {
+    if (!aiInput.trim() || aiLoading) return;
+    const userMsg = aiInput.trim();
+    setAiInput('');
+    setAiMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setAiLoading(true);
+    // Scroll to bottom
+    setTimeout(() => { aiChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, 100);
+
+    try {
+      // Use adminAiDraft (admin AI settings) for this chat
+      const provider = adminAiDraft.provider || 'gemini';
+      const model = adminAiDraft.model || 'gemini-2.0-flash-lite';
+      const apiKey = adminAiDraft.apiKey || '';
+
+      if (!apiKey) {
+        throw new Error(
+          provider === 'gemini'
+            ? 'مفتاح Gemini API غير مُفعَّل. أدخل المفتاح في إعدادات AI Agent.'
+            : 'مفتاح OpenAI API غير مُفعَّل. أدخل المفتاح في إعدادات AI Agent.'
+        );
+      }
+
+      const customPrompt = adminAiDraft.systemPrompt?.trim();
+      // Always include full data context; custom prompt is prepended as extra instructions
+      const dataCtx = buildSystemContext();
+      const systemCtx = customPrompt
+        ? `## تعليمات الأدمن (أولوية عليا)
+${customPrompt}
+
+` + dataCtx
+        : dataCtx;
+
+      // Keep last 8 turns of history for context
+      const history = aiMessages.slice(-16);
+
+      if (provider === 'gemini') {
+        // Build multi-turn Gemini contents
+        const geminiContents: { role: string; parts: { text: string }[] }[] = [
+          { role: 'user', parts: [{ text: systemCtx + '\n\n---\nهذه هي المحادثة حتى الآن. أجب على آخر سؤال.' }] },
+          { role: 'model', parts: [{ text: 'فهمت. أنا مساعد إداري معهد الدراسات النفسية. لدي كل البيانات. سأجيب بناءً على الأرقام الحقيقية الموجودة في القاعدة.' }] },
+          ...history.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
+          { role: 'user', parts: [{ text: userMsg }] },
+        ];
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: geminiContents,
+              generationConfig: { temperature: adminAiDraft.temperature ?? 0.7, maxOutputTokens: adminAiDraft.maxTokens ?? 1500 },
+            }),
+          }
+        );
+        if (!response.ok) {
+          const err = await response.json() as { error?: { message?: string } };
+          throw new Error(err.error?.message || `خطأ HTTP: ${response.status}`);
+        }
+        const data = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'لم أتمكن من الحصول على إجابة. حاول مجدداً.';
+        setAiMessages(prev => [...prev, { role: 'assistant', text: answer }]);
+      } else {
+        // OpenAI / Claude (OpenAI-compatible)
+        const baseUrl = provider === 'claude'
+          ? 'https://api.anthropic.com/v1/messages'
+          : 'https://api.openai.com/v1/chat/completions';
+        const response = await fetch(baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            ...(provider === 'claude' ? { 'anthropic-version': '2023-06-01' } : {}),
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemCtx },
+              ...history.map(m => ({ role: m.role, content: m.text })),
+              { role: 'user', content: userMsg },
+            ],
+            temperature: adminAiDraft.temperature ?? 0.7,
+            max_tokens: adminAiDraft.maxTokens ?? 1500,
+          }),
+        });
+        if (!response.ok) {
+          const err = await response.json() as { error?: { message?: string } };
+          throw new Error(err.error?.message || `خطأ HTTP: ${response.status}`);
+        }
+        const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+        const answer = data.choices?.[0]?.message?.content || 'لم أتمكن من الحصول على إجابة. حاول مجدداً.';
+        setAiMessages(prev => [...prev, { role: 'assistant', text: answer }]);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
+      setAiMessages(prev => [...prev, { role: 'assistant', text: `⚠️ خطأ: ${msg}` }]);
+    } finally {
+      setAiLoading(false);
+      setTimeout(() => { aiChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, 150);
+    }
+  };
+
+  // ── Simple markdown rendering ─────────────────────────────────────────────
+  const renderMsg = useCallback((text: string) => {
+    const lines = text.split('\n');
+    return lines.map((line, i) => {
+      // Bold: **text**
+      const parts = line.split(/(\*\*[^*]+\*\*)/g);
+      const formatted = parts.map((p, j) =>
+        p.startsWith('**') && p.endsWith('**')
+          ? <strong key={j} className="font-bold text-gray-900">{p.slice(2, -2)}</strong>
+          : <span key={j}>{p}</span>
+      );
+      // Heading-like lines (━━━ or ##)
+      if (line.startsWith('##') || line.startsWith('━')) {
+        return <div key={i} className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-3 mb-1 border-b border-gray-100 pb-0.5">{line.replace(/^#+\s*/, '').replace(/━+/g, '').trim()}</div>;
+      }
+      // Bullet-like: starts with ▸ or • or -
+      if (/^[▸•\-]\s/.test(line)) {
+        return <div key={i} className="flex gap-1.5 mt-0.5"><span className="text-primary-400 mt-0.5 shrink-0">▸</span><span>{formatted}</span></div>;
+      }
+      return <div key={i} className={line === '' ? 'h-2' : 'mt-0.5'}>{formatted}</div>;
+    });
+  }, []);
+
+  // ── Categorized questions ─────────────────────────────────────────────────
+  type QCategory = { label: string; icon: React.ElementType; color: string; q: string[] };
+  const qCategories: QCategory[] = [
+    {
+      label: 'اليوم',
+      icon: Zap,
+      color: 'text-amber-600',
+      q: [
+        'النهاردة كام عميل محتمل دخل؟',
+        'النهاردة دخل فلوس كام؟',
+        'ملخص كامل لليوم',
+        'مشتركون سجلوا النهاردة',
+      ],
+    },
+    {
+      label: 'فريق السيلز',
+      icon: Users,
+      color: 'text-emerald-600',
+      q: [
+        `${_staffPerf[0]?.name || 'السيلز'} تابعت مع كام عميل النهاردة؟`,
+        'أداء كل فريق السيلز الشهر ده',
+        'مين أحسن سيلز الشهر ده؟',
+        'كام عميل محتمل غير متابَع؟',
+      ],
+    },
+    {
+      label: 'الإيراد والفروع',
+      icon: DollarSign,
+      color: 'text-violet-600',
+      q: [
+        'إيراد الشهر ده كله',
+        'مقارنة كل الفروع في الإيراد',
+        'فرع الدقي الشهر ده دخل كام؟',
+        'آخر 10 دفعات يدوية',
+      ],
+    },
+    {
+      label: 'تحليلات',
+      icon: TrendingUp,
+      color: 'text-sky-600',
+      q: [
+        'معدل تحويل العملاء المحتملين؟',
+        'أكثر الكورسات تسجيلاً؟',
+        'مصادر العملاء الأكثر فاعلية',
+        'إيراد هذا الشهر مقارنة بالسابق',
+      ],
+    },
+  ];
+  const [activeQCat, setActiveQCat] = useState(0);
+
+  // ── Copied message state ──────────────────────────────────────────────────
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const copyMsg = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 2000);
+    });
+  };
+
+  // ── Expand/collapse long messages ─────────────────────────────────────────
+  const [expandedMsgs, setExpandedMsgs] = useState<Set<number>>(new Set());
+  const toggleExpand = (idx: number) => setExpandedMsgs(prev => { const s = new Set(prev); s.has(idx) ? s.delete(idx) : s.add(idx); return s; });
+  const MSG_COLLAPSE_LINES = 18;
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-violet-600 to-primary-600 rounded-2xl p-5 text-white">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
+              <Bot size={22} />
+            </div>
+            <div>
+              <h2 className="text-xl font-extrabold flex items-center gap-2">
+                <Sparkles size={18} className="text-amber-300" />
+                AI المساعد الإداري
+              </h2>
+              <p className="text-white/75 text-xs">يعرف كل شيء في السيستم — سأله بالعربي العادي</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-[11px] bg-white/20 px-3 py-1 rounded-full font-bold">
+              {adminAiDraft.provider === 'openai' ? `🤖 ${adminAiDraft.model||'gpt-4o-mini'}`
+                : adminAiDraft.provider === 'claude' ? `🧠 ${adminAiDraft.model||'claude-3-haiku'}`
+                : `✨ ${adminAiDraft.model||'gemini-2.0-flash-lite'}`}
+            </div>
+            {aiMessages.length > 0 && (
+              <button onClick={() => setAiMessages([])} title="مسح المحادثة"
+                className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-xl flex items-center justify-center transition">
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Live stats strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { label: 'عملاء اليوم', value: _todayLeads.length, accent: 'bg-red-400/30', icon: '📥' },
+            { label: 'مشتركون اليوم', value: _todaySubs.length, accent: 'bg-green-400/30', icon: '✅' },
+            { label: 'إيراد اليوم', value: `${Math.round(_todayOnlineRev+_todayManualRev).toLocaleString()} ج`, accent: 'bg-yellow-400/30', icon: '💰' },
+            { label: 'دفعات يدوية', value: _todayManual.length, accent: 'bg-blue-400/30', icon: '💳' },
+          ].map(s => (
+            <div key={s.label} className={`${s.accent} rounded-xl px-3 py-2 text-center backdrop-blur-sm`}>
+              <div className="text-base font-extrabold leading-tight">{s.icon} {s.value}</div>
+              <div className="text-[10px] text-white/80 mt-0.5">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Categorized suggested questions */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex border-b border-gray-100 overflow-x-auto">
+          {qCategories.map((cat, ci) => {
+            const Icon = cat.icon;
+            return (
+              <button key={ci} onClick={() => setActiveQCat(ci)}
+                className={`flex items-center gap-2 px-4 py-3 text-xs font-bold whitespace-nowrap flex-shrink-0 border-b-2 transition-all ${activeQCat === ci ? `border-primary-500 text-primary-700 bg-primary-50` : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
+                <Icon size={13} className={activeQCat === ci ? 'text-primary-600' : cat.color} />
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="p-3 flex flex-wrap gap-2">
+          {qCategories[activeQCat].q.map(q => (
+            <button key={q} onClick={() => { setAiInput(q); }}
+              className="text-xs bg-gray-50 text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition font-medium">
+              {q}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chat Window */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ minHeight: '480px' }}>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 max-h-[600px]">
+          {aiMessages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-primary-100 flex items-center justify-center mb-4">
+                <Bot size={32} className="text-primary-500 opacity-60" />
+              </div>
+              <p className="text-sm font-semibold text-gray-600">ابدأ المحادثة</p>
+              <p className="text-xs text-gray-400 mt-1">اختر سؤالاً من الأعلى أو اكتب سؤالك</p>
+              <div className="mt-4 flex flex-wrap gap-2 justify-center max-w-md">
+                {['ملخص اليوم', 'إيراد الشهر', 'أداء السيلز'].map(q => (
+                  <button key={q} onClick={() => setAiInput(q)}
+                    className="text-xs bg-primary-50 text-primary-700 border border-primary-200 px-3 py-1.5 rounded-full hover:bg-primary-100 transition">{q}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {aiMessages.map((msg, i) => {
+            const isUser = msg.role === 'user';
+            const msgLines = msg.text.split('\n').length;
+            const isLong = msgLines > MSG_COLLAPSE_LINES;
+            const isExpanded = expandedMsgs.has(i);
+            return (
+              <div key={i} className={`flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                {!isUser && (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-primary-600 flex items-center justify-center flex-shrink-0 mt-1 shadow-sm">
+                    <Bot size={15} className="text-white" />
+                  </div>
+                )}
+                <div className={`relative group ${isUser ? 'max-w-[75%]' : 'max-w-[85%]'}`}>
+                  <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    isUser
+                      ? 'bg-primary-600 text-white rounded-tr-sm'
+                      : 'bg-gray-50 border border-gray-200 text-gray-800 rounded-tl-sm'
+                  } ${isLong && !isExpanded ? 'overflow-hidden' : ''}`} style={isLong && !isExpanded ? { maxHeight: '320px' } : {}}>
+                    {isUser
+                      ? <span className="whitespace-pre-wrap">{msg.text}</span>
+                      : <div className="whitespace-pre-wrap">{renderMsg(msg.text)}</div>
+                    }
+                  </div>
+                  {/* Controls */}
+                  <div className={`flex items-center gap-1 mt-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    {isLong && (
+                      <button onClick={() => toggleExpand(i)}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 transition">
+                        {isExpanded ? <><ChevronUp size={10} /> تصغير</> : <><ChevronDown size={10} /> عرض الكل</>}
+                      </button>
+                    )}
+                    {!isUser && (
+                      <button onClick={() => copyMsg(msg.text, i)}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 transition">
+                        {copiedIdx === i ? <><Check size={10} className="text-emerald-500" /> تم النسخ</> : <><Copy size={10} /> نسخ</>}
+                      </button>
+                    )}
+                    <button onClick={() => setAiMessages(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-[10px] text-gray-300 hover:text-red-500 px-1.5 py-0.5 transition opacity-0 group-hover:opacity-100">✕</button>
+                  </div>
+                </div>
+                {isUser && (
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
+                    <Users size={14} className="text-gray-600" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {aiLoading && (
+            <div className="flex justify-start items-start gap-2">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Bot size={15} className="text-white" />
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
+                <div className="flex gap-1 items-center h-5">
+                  <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={aiChatEndRef} />
+        </div>
+
+        {/* Input Area */}
+        <div className="border-t border-gray-100 p-4 bg-gray-50/80">
+          {aiMessages.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {qCategories[activeQCat].q.slice(0, 4).map(q => (
+                <button key={q} onClick={() => setAiInput(q)}
+                  className="text-[11px] bg-white border border-gray-200 text-gray-600 px-2.5 py-1 rounded-lg hover:border-primary-400 hover:text-primary-700 transition">{q}</button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={aiInput}
+              onChange={e => setAiInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAiSend(); } }}
+              placeholder='اكتب سؤالك بالعربي... "النهاردة دخل فلوس كام؟"'
+              className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:border-primary-400 focus:outline-none bg-white shadow-sm"
+              disabled={aiLoading}
+            />
+            <button
+              onClick={handleAiSend}
+              disabled={aiLoading || !aiInput.trim()}
+              className="bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 text-white px-5 py-2.5 rounded-xl transition flex items-center gap-2 font-bold text-sm shadow-sm"
+            >
+              {aiLoading ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+              {aiLoading ? 'جارٍ...' : 'إرسال'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1">
+            <AlertCircle size={10} />
+            AI يرى كل بيانات السيستم مباشرة ولحظياً — اسأل بالعربي العادي
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

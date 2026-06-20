@@ -1,0 +1,17 @@
+# ── Secrets — NEVER commit these ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Runtime logs ──────────────────────────────────────────────────────────────
+*.log
+logs/
+crash-history.log
+nohup.out
+
+# ── Node modules ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Uploads / user files ──────────────────────────────────────────────────────
+uploads/
+dist/

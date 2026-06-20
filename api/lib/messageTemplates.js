@@ -1,0 +1,76 @@
+'use strict';
+/**
+ * Message-template engine. The admin edits WhatsApp templates in the Settings page
+ * (saved to site_config content['msg.templates'] as JSON: { key: text }). This
+ * module loads them at startup + on change and renders {{var}} placeholders against
+ * runtime values. If a template is not customized, the built-in default is used.
+ *
+ * Keys + variables MUST stay in sync with admin/pages/dashboard/messageTemplates.ts.
+ */
+const { pool } = require('./db');
+
+// Built-in defaults (the original hardcoded texts). {{var}} placeholders are filled
+// by renderTemplate. Keep var names identical to the frontend defs.
+const TEMPLATE_DEFAULTS = Object.freeze({
+  installment_reminder:
+    '⏰ تذكير: لديك قسط بمبلغ {{amount}} {{currency}} مستحق بعد 3 أيام ({{dueDate}}) - {{courseName}}. يرجى التواصل معنا لتسوية الدفع. — معهد مهاد',
+  pending_payment_reminder:
+    '⏰ تذكير: لديك دفعة معلّقة بمبلغ {{amount}} {{currency}} منذ {{date}}. يرجى إتمام الدفع أو التواصل معنا. — معهد مهاد 🌿',
+  daqqi_session_reminder:
+    'مرحباً {{name}} 💚\nتذكير بجلسة الدقي القادمة:\n📚 الكورس: {{courseTitle}}\n📅 التاريخ: {{sessionDate}}\n⏰ الوقت: {{timeLabel}}\n\nنتطلع لرؤيتك! 🌿\n— مهاد نفسي',
+  lead_retargeting:
+    'أهلاً {{name}} 💜\nمهاد نفسي — المعهد المتخصص في الصحة النفسية 🌱\n\nنحن هنا لدعمك في رحلتك نحو التطور المهني.\nتواصل معنا الآن لمعرفة أحدث البرامج المتاحة 📚\n\nللاستفسار تواصل معنا عبر الواتساب 💚',
+});
+
+let _custom = Object.create(null);
+let _timer = null;
+
+function setTemplates(obj) {
+  const next = Object.create(null);
+  if (obj && typeof obj === 'object') {
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v === 'string' && v.trim() && Object.prototype.hasOwnProperty.call(TEMPLATE_DEFAULTS, k)) {
+        next[k] = v;
+      }
+    }
+  }
+  _custom = next;
+  return _custom;
+}
+
+/** Fill {{var}} (whitespace-tolerant) from `vars`; unknown placeholders become ''. */
+function renderTemplate(key, vars = {}) {
+  const tpl = _custom[key] || TEMPLATE_DEFAULTS[key] || '';
+  return tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, name) => {
+    const val = vars[name];
+    return val === undefined || val === null ? '' : String(val);
+  });
+}
+
+async function loadTemplates() {
+  try {
+    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
+    if (!rows.length) { setTemplates({}); return {}; }
+    let content = rows[0].value;
+    if (typeof content === 'string') { try { content = JSON.parse(content); } catch { content = {}; } }
+    const raw = content && content['msg.templates'];
+    let tpls = {};
+    if (raw) { try { tpls = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { tpls = {}; } }
+    return setTemplates(tpls);
+  } catch (e) {
+    console.error('[messageTemplates] load failed:', e.message);
+    return null;
+  }
+}
+
+function startTemplatesRefresh(intervalMs = 60 * 1000) {
+  loadTemplates()
+    .then(t => { if (t) console.log(`[messageTemplates] loaded ${Object.keys(t).length} custom template(s)`); })
+    .catch(() => {});
+  if (_timer) clearInterval(_timer);
+  _timer = setInterval(() => { loadTemplates().catch(() => {}); }, intervalMs);
+  if (_timer.unref) _timer.unref();
+  return _timer;
+}
+
+module.exports = { TEMPLATE_DEFAULTS, setTemplates, renderTemplate, loadTemplates, startTemplatesRefresh };

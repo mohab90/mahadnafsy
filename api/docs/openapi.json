@@ -1,0 +1,135 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Mahad Nafsy API",
+    "version": "2.0.0",
+    "description": "REST API for the Mahad Nafsy platform (courses, CRM, accounting). This spec documents the health, authentication, and public catalog/checkout endpoints. Admin endpoints (`/api/admin/*`) require an authenticated staff session (cookie `authToken` or `Authorization: Bearer`) and are gated by role permissions."
+  },
+  "servers": [
+    { "url": "http://localhost:3001", "description": "Local (SSH-tunnelled DB)" }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Liveness & readiness probes" },
+    { "name": "Auth", "description": "Authentication, OTP, 2FA, profile" },
+    { "name": "Catalog", "description": "Public course/bundle catalog" },
+    { "name": "Orders", "description": "Public checkout / reservations" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": { "type": "apiKey", "in": "cookie", "name": "authToken" },
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Error": { "type": "object", "properties": { "error": { "type": "string" } } },
+      "HealthReady": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "db": { "type": "string", "example": "connected" },
+          "time": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Credentials": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "format": "password" }
+        }
+      },
+      "Course": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "price": { "type": "number" },
+          "currency": { "type": "string", "example": "EGP" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health/live": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Liveness probe (no DB)",
+        "responses": { "200": { "description": "Service is up" } }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Readiness probe (checks DB)",
+        "responses": {
+          "200": {
+            "description": "Ready",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthReady" } } }
+          },
+          "503": { "description": "DB unavailable" }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new client account",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Credentials" } } }
+        },
+        "responses": { "200": { "description": "Account created" }, "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log in (sets authToken cookie; may require 2FA)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Credentials" } } }
+        },
+        "responses": { "200": { "description": "Logged in / 2FA pending" }, "401": { "description": "Invalid credentials" } }
+      }
+    },
+    "/api/auth/logout": {
+      "post": { "tags": ["Auth"], "summary": "Log out (clears session)", "security": [{ "cookieAuth": [] }], "responses": { "200": { "description": "Logged out" } } }
+    },
+    "/api/auth/me": {
+      "get": { "tags": ["Auth"], "summary": "Current authenticated user", "security": [{ "cookieAuth": [] }, { "bearerAuth": [] }], "responses": { "200": { "description": "User profile" }, "401": { "description": "Unauthorized" } } }
+    },
+    "/api/auth/verify-otp": {
+      "post": { "tags": ["Auth"], "summary": "Verify an email OTP code", "responses": { "200": { "description": "Verified" }, "400": { "description": "Invalid/expired code" } } }
+    },
+    "/api/auth/verify-2fa": {
+      "post": { "tags": ["Auth"], "summary": "Complete 2FA (TOTP) after login", "responses": { "200": { "description": "Session granted" }, "401": { "description": "Invalid code" } } }
+    },
+    "/api/courses": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "List published courses",
+        "responses": { "200": { "description": "Array of courses", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Course" } } } } } }
+      }
+    },
+    "/api/courses/{id}": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Get a course by id",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Course", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Course" } } } }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/bundles": {
+      "get": { "tags": ["Catalog"], "summary": "List bundles/paths", "responses": { "200": { "description": "Array of bundles" } } }
+    },
+    "/api/testimonials": {
+      "get": { "tags": ["Catalog"], "summary": "List published testimonials", "responses": { "200": { "description": "Array of testimonials" } } }
+    },
+    "/api/orders/reserve": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Reserve / start checkout for a course or bundle",
+        "responses": { "200": { "description": "Reservation created" }, "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } }
+      }
+    }
+  }
+}

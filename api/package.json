@@ -1,0 +1,32 @@
+{
+  "name": "mahad-api",
+  "version": "1.0.0",
+  "description": "REST API — المعهد الجديد MySQL Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:auto": "node supervisor.js",
+    "dev": "node kill-port.js --watch",
+    "dev:clean": "node kill-port.js",
+    "test:unit": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.5.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.9.7",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.7",
+    "otplib": "^13.4.0",
+    "qrcode": "^1.5.4",
+    "ssh2-sftp-client": "^12.1.1"
+  },
+  "devDependencies": {
+    "ssh2": "^1.17.0"
+  }
+}

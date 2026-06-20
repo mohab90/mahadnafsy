@@ -1,0 +1,133 @@
+﻿lib/exportUtils.ts(6,38): error TS2307: Cannot find module 'write-excel-file' or its corresponding type declarations.
+pages/Auth.tsx(143,53): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+pages/Dashboard.tsx(337,34): error TS2339: Property 'isRead' does not exist on type 'NotificationBroadcast'.
+pages/Dashboard.tsx(345,48): error TS2304: Cannot find name 'BranchEntry'.
+pages/Dashboard.tsx(346,28): error TS2304: Cannot find name 'BranchEntry'.
+pages/Dashboard.tsx(630,54): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(685,29): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(2555,17): error TS2352: Conversion of type 'Price' to type 'Record<string, number>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/Dashboard.tsx(2555,84): error TS2352: Conversion of type 'Price' to type 'Record<string, number>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/Dashboard.tsx(6002,58): error TS2339: Property 'totalValue' does not exist on type 'SubscriberItem'.
+pages/Dashboard.tsx(6141,50): error TS2339: Property 'totalValue' does not exist on type 'SubscriberItem'.
+pages/Dashboard.tsx(6189,130): error TS2339: Property 'totalValue' does not exist on type 'SubscriberItem'.
+pages/Dashboard.tsx(6231,44): error TS2552: Cannot find name 'setSubscribers'. Did you mean 'subscribers'?
+pages/Dashboard.tsx(6236,69): error TS2353: Object literal may only specify known properties, and 'collectionStaffId' does not exist in type 'SubscriberItem'.
+pages/Dashboard.tsx(6238,44): error TS2552: Cannot find name 'setSubscribers'. Did you mean 'subscribers'?
+pages/Dashboard.tsx(6246,44): error TS2552: Cannot find name 'setSubscribers'. Did you mean 'subscribers'?
+pages/Dashboard.tsx(6314,56): error TS2551: Property 'updateSubscriber' does not exist on type '{ adminGet: <T = AR>(path: string) => Promise<T>; adminPost: <T = AR>(path: string, body: AR) => Promise<T>; adminPatch: <T = AR>(path: string, body: AR) => Promise<...>; ... 138 more ...; listReferrals: () => Promise<...>; }'. Did you mean 'saveSubscriber'?
+pages/Dashboard.tsx(6708,74): error TS2339: Property 'bundleId' does not exist on type 'PaymentHistoryEntry'.
+pages/Dashboard.tsx(6743,133): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(6744,184): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(6745,68): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(6788,48): error TS2304: Cannot find name 'setSubscribers'.
+pages/Dashboard.tsx(6857,211): error TS2304: Cannot find name 'setSubscribers'.
+pages/Dashboard.tsx(7128,97): error TS2551: Property 'titleAr' does not exist on type 'Bundle'. Did you mean 'title'?
+pages/Dashboard.tsx(7295,117): error TS2551: Property 'titleAr' does not exist on type 'Bundle'. Did you mean 'title'?
+pages/Dashboard.tsx(7517,187): error TS2367: This comparison appears to be unintentional because the types '"daqqi" | "paused" | "finished" | "refunded" | "leads" | "online"' and '""' have no overlap.
+pages/Dashboard.tsx(7581,203): error TS2367: This comparison appears to be unintentional because the types '"daqqi"' and '"leads"' have no overlap.
+pages/Dashboard.tsx(7581,251): error TS2367: This comparison appears to be unintentional because the types '"daqqi"' and '"online"' have no overlap.
+pages/Dashboard.tsx(7676,127): error TS2304: Cannot find name 'p'.
+pages/Dashboard.tsx(7676,159): error TS2304: Cannot find name 'p'.
+pages/Dashboard.tsx(7927,99): error TS2367: This comparison appears to be unintentional because the types '"paid"' and '"refunded"' have no overlap.
+pages/Dashboard.tsx(7928,77): error TS2367: This comparison appears to be unintentional because the types '"pending" | "paid"' and '"refunded"' have no overlap.
+pages/Dashboard.tsx(8030,59): error TS2367: This comparison appears to be unintentional because the types '"pending" | "paid"' and '"refunded"' have no overlap.
+pages/Dashboard.tsx(8031,156): error TS2367: This comparison appears to be unintentional because the types '"failed"' and '"refunded"' have no overlap.
+pages/Dashboard.tsx(8043,58): error TS2345: Argument of type '{ paymentHistory: (PaymentHistoryEntry | { status: string; id: string; amount: number; currency: "EGP" | "SAR" | "USD"; note?: string; paymentType?: PaymentItemType; ... 13 more ...; staffName?: string; })[]; ... 33 more ...; transferDate?: string; }' is not assignable to parameter of type 'SubscriberItem'.
+pages/Dashboard.tsx(8052,58): error TS2345: Argument of type '{ paymentHistory: (PaymentHistoryEntry | { status: string; id: string; amount: number; currency: "EGP" | "SAR" | "USD"; note?: string; paymentType?: PaymentItemType; ... 13 more ...; staffName?: string; })[]; ... 33 more ...; transferDate?: string; }' is not assignable to parameter of type 'SubscriberItem'.
+pages/dashboard/lazyTabs.tsx(24,40): error TS1261: Already included file name 'D:/mahadnew_backups/mahadnew_20260611_133511/admin/pages/dashboard/tabs/HrTab.tsx' differs from file name 'D:/mahadnew_backups/mahadnew_20260611_133511/admin/pages/dashboard/tabs/HRTab.tsx' only in casing.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(39,22): error TS2339: Property 'scheduledAt' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(39,39): error TS2339: Property 'date' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(52,56): error TS2339: Property 'scheduledAt' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(52,73): error TS2339: Property 'date' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(75,54): error TS2339: Property 'scheduledAt' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(75,71): error TS2339: Property 'date' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(79,42): error TS2367: This comparison appears to be unintentional because the types '"pending" | "confirmed" | "completed" | "cancelled"' and '"scheduled"' have no overlap.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(161,65): error TS2339: Property 'consultantId' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(161,92): error TS2339: Property 'staffId' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(169,106): error TS2339: Property 'name' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(170,28): error TS2339: Property 'phone' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(170,89): error TS2339: Property 'phone' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(172,29): error TS2339: Property 'scheduledAt' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(172,46): error TS2339: Property 'date' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(174,52): error TS2339: Property 'scheduledAt' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ConsultationCalendarTab.tsx(174,69): error TS2339: Property 'date' does not exist on type 'ConsultationItem'.
+pages/dashboard/tabs/ExpenseAnalyticsTab.tsx(170,93): error TS2339: Property 'title' does not exist on type 'ExpenseItem'.
+pages/dashboard/tabs/FinancialTab.tsx(482,51): error TS2345: Argument of type 'PaymentHistoryEntry' is not assignable to parameter of type 'AR'.
+pages/dashboard/tabs/FinancialTab.tsx(553,44): error TS2352: Conversion of type 'OrderItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/dashboard/tabs/FinancialTab.tsx(555,32): error TS2352: Conversion of type 'Course' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/dashboard/tabs/FinancialTab.tsx(561,31): error TS2339: Property 'payments' does not exist on type 'InstallmentPlan'.
+pages/dashboard/tabs/FinancialTab.tsx(564,28): error TS2339: Property 'nextDueDate' does not exist on type 'InstallmentPlan'.
+pages/dashboard/tabs/FinancialTab.tsx(564,48): error TS2339: Property 'startDate' does not exist on type 'InstallmentPlan'.
+pages/dashboard/tabs/FinancialTab.tsx(722,72): error TS2345: Argument of type '{ subscriberId: string; amount: number; currency: "EGP"; paymentType: "course"; paymentMethod: string; transactionId: string; date: string; note: string; courseId: string; isInstallment: false; }' is not assignable to parameter of type 'SetStateAction<{ subscriberId: string; amount: number; currency: "EGP" | "SAR" | "USD"; paymentType: PaymentItemType; paymentMethod: string; transactionId: string; fromAccountNumber: string; date: string; note: string; courseId: string; isInstallment: boolean; }>'.
+pages/dashboard/tabs/FinancialTab.tsx(2456,12): error TS2304: Cannot find name 'BulkStubPanel'.
+pages/dashboard/tabs/FinancialTab.tsx(2572,30): error TS2352: Conversion of type 'SubscriberItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/dashboard/tabs/FinancialTab.tsx(2776,10): error TS2304: Cannot find name 'PeriodClosingPanel'.
+pages/dashboard/tabs/LeadsTab.tsx(41,3): error TS2440: Import declaration conflicts with local declaration of 'getScoreBreakdown'.
+pages/dashboard/tabs/LeadTable.tsx(356,106): error TS2304: Cannot find name 'BranchType'.
+pages/dashboard/tabs/MarketingHubTab.tsx(159,39): error TS2339: Property 'subscribedAt' does not exist on type 'SubscriberItem'.
+pages/dashboard/tabs/MarketingHubTab.tsx(165,65): error TS2551: Property 'isActive' does not exist on type 'DiscountRule'. Did you mean 'active'?
+pages/dashboard/tabs/MarketingHubTab.tsx(166,64): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(178,81): error TS2339: Property 'clientEmail' does not exist on type 'OrderItem'.
+pages/dashboard/tabs/MarketingHubTab.tsx(219,54): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(219,76): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(221,11): error TS2367: This comparison appears to be unintentional because the types '"course" | "bundle" | "all_courses" | "therapist_consultation" | "all_consultations"' and '"fixed"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(221,46): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(221,68): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(437,88): error TS2339: Property 'code' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(439,26): error TS2367: This comparison appears to be unintentional because the types '"course" | "bundle" | "all_courses" | "therapist_consultation" | "all_consultations"' and '"percent"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(439,54): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(439,70): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(441,74): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(441,101): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(441,122): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(443,47): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(443,71): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(443,96): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(465,76): error TS2339: Property 'sentAt' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/MarketingHubTab.tsx(587,69): error TS2551: Property 'isActive' does not exist on type 'DiscountRule'. Did you mean 'active'?
+pages/dashboard/tabs/MarketingHubTab.tsx(600,83): error TS2339: Property 'code' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(602,24): error TS2367: This comparison appears to be unintentional because the types '"course" | "bundle" | "all_courses" | "therapist_consultation" | "all_consultations"' and '"percent"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(602,52): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(602,68): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(605,45): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(605,97): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(607,89): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(642,40): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(642,59): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(642,78): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(644,90): error TS2551: Property 'isActive' does not exist on type 'DiscountRule'. Did you mean 'active'?
+pages/dashboard/tabs/MarketingHubTab.tsx(647,86): error TS2339: Property 'code' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(648,87): error TS2339: Property 'code' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(655,80): error TS2367: This comparison appears to be unintentional because the types '"course" | "bundle" | "all_courses" | "therapist_consultation" | "all_consultations"' and '"percent"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(656,30): error TS2367: This comparison appears to be unintentional because the types '"course" | "bundle" | "all_courses" | "therapist_consultation" | "all_consultations"' and '"percent"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(660,28): error TS2367: This comparison appears to be unintentional because the types '"course" | "bundle" | "all_courses" | "therapist_consultation" | "all_consultations"' and '"percent"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(660,56): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(660,72): error TS2339: Property 'value' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(662,70): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(663,74): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(665,30): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(667,53): error TS2339: Property 'usageCount' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(667,77): error TS2339: Property 'usageLimit' does not exist on type 'DiscountRule'.
+pages/dashboard/tabs/MarketingHubTab.tsx(673,30): error TS2551: Property 'isActive' does not exist on type 'DiscountRule'. Did you mean 'active'?
+pages/dashboard/tabs/MarketingHubTab.tsx(750,82): error TS2367: This comparison appears to be unintentional because the types '"new" | "reviewed" | "accepted" | "rejected"' and '"pending"' have no overlap.
+pages/dashboard/tabs/MarketingHubTab.tsx(775,78): error TS2339: Property 'sentAt' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/MarketingHubTab.tsx(776,82): error TS2339: Property 'sentAt' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/MarketingHubTab.tsx(803,78): error TS2339: Property 'sentAt' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/NotifInboxMgmtTab.tsx(40,31): error TS2339: Property 'isRead' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/NotifInboxMgmtTab.tsx(41,23): error TS2339: Property 'message' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/NotifInboxMgmtTab.tsx(59,48): error TS2339: Property 'isRead' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/NotifInboxMgmtTab.tsx(140,32): error TS2339: Property 'isRead' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/NotifInboxMgmtTab.tsx(148,109): error TS2339: Property 'message' does not exist on type 'NotificationBroadcast'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(51,11): error TS2551: Property 'assignedStaffId' does not exist on type 'SubscriberItem'. Did you mean 'assignedCsId'?
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(51,43): error TS2339: Property 'consultantId' does not exist on type 'SubscriberItem'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(147,34): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(147,60): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(149,53): error TS2551: Property 'enrolledCourseId' does not exist on type 'SubscriberItem'. Did you mean 'enrolledCourseIds'?
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(149,75): error TS2551: Property 'enrolledCourseId' does not exist on type 'SubscriberItem'. Did you mean 'enrolledCourseIds'?
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(159,82): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(159,108): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(160,22): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(160,48): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(160,67): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/RetentionTab.tsx(44,45): error TS2551: Property 'enrolledCourseId' does not exist on type 'SubscriberItem'. Did you mean 'enrolledCourseIds'?
+pages/dashboard/tabs/RetentionTab.tsx(44,67): error TS2551: Property 'enrolledCourseId' does not exist on type 'SubscriberItem'. Did you mean 'enrolledCourseIds'?

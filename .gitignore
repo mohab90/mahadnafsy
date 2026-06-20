@@ -1,0 +1,41 @@
+# ── Secrets (NEVER commit) ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.p12
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Build output ─────────────────────────────────────────────────────────────
+dist/
+**/dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# ── Logs & runtime ───────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+pids/
+*.pid
+
+# ── OS / editor cruft ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+coverage/
+tmp/
+*.local

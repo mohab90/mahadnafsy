@@ -1,0 +1,43 @@
+/**
+ * AnalyticsHub — consolidates analytics/CX dashboards (KPIs, NPS, revenue sources,
+ * expense analytics) under one menu entry with an internal sub-tab bar.
+ * Gives previously URL-only tabs a discoverable home.
+ */
+import React, { Suspense, lazy, useState } from 'react';
+import { BarChart3, TrendingUp, PieChart, Wallet } from 'lucide-react';
+import type { NotifyFn } from '../../types';
+
+const KpiDashboardTab = lazy(() => import('./tabs/KpiDashboardTab'));
+const NpsDashboardTab = lazy(() => import('./tabs/NpsDashboardTab'));
+const RevenueSourcesTab = lazy(() => import('./tabs/RevenueSourcesTab'));
+const ExpenseAnalyticsTab = lazy(() => import('./tabs/ExpenseAnalyticsTab'));
+
+const SUBS = [
+  { key: 'kpi_dashboard', label: 'مؤشرات الأداء (KPIs)', icon: BarChart3, Comp: KpiDashboardTab },
+  { key: 'revenue_sources', label: 'مصادر الإيراد', icon: TrendingUp, Comp: RevenueSourcesTab },
+  { key: 'expense_analytics', label: 'تحليل المصروفات', icon: Wallet, Comp: ExpenseAnalyticsTab },
+  { key: 'nps_dashboard', label: 'رضا العملاء (NPS)', icon: PieChart, Comp: NpsDashboardTab },
+] as const;
+
+export default function AnalyticsHub({ notify, initial }: { notify: NotifyFn; initial?: string }) {
+  const [sub, setSub] = useState<string>(SUBS.some(s => s.key === initial) ? (initial as string) : 'kpi_dashboard');
+  const Active = SUBS.find(s => s.key === sub)?.Comp;
+  return (
+    <div className="space-y-4" dir="rtl">
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+        {SUBS.map(s => {
+          const Ic = s.icon;
+          return (
+            <button key={s.key} onClick={() => setSub(s.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold transition ${sub === s.key ? 'bg-violet-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              <Ic size={15} /> {s.label}
+            </button>
+          );
+        })}
+      </div>
+      <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600" /></div>}>
+        {Active && <Active notify={notify} />}
+      </Suspense>
+    </div>
+  );
+}

@@ -1,0 +1,28 @@
+name: Smoke (DB-backed)
+
+# The smoke test hits the running API (health, public catalog, auth guards) and
+# needs the live SSH-tunnelled production DB. GitHub-hosted runners have neither,
+# so this targets a SELF-HOSTED runner on the server where the API + tunnel run.
+# Enable by registering a self-hosted runner; until then this workflow simply
+# stays manual (workflow_dispatch) and never blocks CI.
+on:
+  workflow_dispatch:
+    inputs:
+      api_port:
+        description: 'API port to probe'
+        required: false
+        default: '3001'
+
+jobs:
+  smoke:
+    name: API smoke test
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run smoke test against running API
+        env:
+          API_PORT: ${{ github.event.inputs.api_port || '3001' }}
+        run: node tools/mahad-api-smoke.mjs

@@ -1,0 +1,41 @@
+{
+  "name": "newmahad-admin",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 4000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && node deploy_admin.cjs"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.13.24",
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.3.3",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "lucide-react": "^0.555.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-is": "^19.2.6",
+    "react-router-dom": "^7.17.0",
+    "recharts": "^3.5.1",
+    "write-excel-file": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "archiver": "^8.0.0",
+    "autoprefixer": "^10.4.27",
+    "dotenv": "^17.4.2",
+    "postcss": "^8.5.8",
+    "ssh2": "^1.17.0",
+    "tailwindcss": "^3.4.19",
+    "terser": "^5.47.1",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

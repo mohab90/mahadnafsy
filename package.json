@@ -1,0 +1,25 @@
+{
+  "name": "mahad-nafsy",
+  "version": "2.0.0",
+  "description": "Mahad Nafsy — API + Admin + Client monorepo (mahadnafsy25)",
+  "main": "index.js",
+  "scripts": {
+    "smoke": "node tools/mahad-api-smoke.mjs",
+    "smoke:db": "API_PORT=3001 node tools/mahad-api-smoke.mjs",
+    "lint:api": "npx --yes eslint@8.57.0 --no-eslintrc --env node,es2022 --parser-options=ecmaVersion:2022 --rule \"{\\\"no-undef\\\":\\\"error\\\"}\" api/routes/ api/lib/ api/middleware/ api/server.js",
+    "lint:admin": "cd admin && npx tsc --noEmit 2>&1 | head -50",
+    "lint:client": "cd client && npx tsc --noEmit 2>&1 | head -50",
+    "test:unit": "npm --prefix api run test:unit",
+    "test": "npm run lint:api && npm run test:unit && npm run smoke",
+    "quality": "node tools/mahad-quality-check.mjs",
+    "start:api": "cd api && node server.js",
+    "start:tunnel": "cd api && node tunnel.js",
+    "start:admin": "cd admin && npx vite --port 4000",
+    "start:client": "cd client && npx vite --port 3000",
+    "install:all": "cd api && npm install && cd ../admin && npm install && cd ../client && npm install"
+  },
+  "keywords": ["mahad", "nafsy", "education", "psychology"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

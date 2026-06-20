@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="100" fill="#C0121B"/>
+  <!-- Body/arm raised -->
+  <path d="M100 155 Q78 130 72 105 Q66 80 85 68 Q95 62 100 65 Q105 62 115 68 Q134 80 128 105 Q122 130 100 155Z" fill="white"/>
+  <!-- Head -->
+  <circle cx="100" cy="58" r="18" fill="white"/>
+  <!-- Graduation cap -->
+  <polygon points="100,28 135,42 100,56 65,42" fill="white"/>
+  <rect x="127" y="41" width="4" height="18" fill="white"/>
+  <rect x="123" y="57" width="12" height="5" rx="2" fill="white"/>
+</svg>

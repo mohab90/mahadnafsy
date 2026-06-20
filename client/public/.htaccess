@@ -1,0 +1,83 @@
+Options +FollowSymLinks -Indexes
+
+# ── Disable MultiViews safely ──
+<IfModule mod_negotiation.c>
+  Options -MultiViews
+</IfModule>
+
+# ── MIME types ── critical: use application/javascript for strict MIME checking
+AddType application/javascript .js .mjs
+AddType text/css .css
+AddType image/svg+xml .svg
+AddType font/woff2 .woff2
+AddType font/woff .woff
+AddType application/json .json
+AddType image/webp .webp
+AddType image/x-icon .ico
+
+# ── Compression ─────────────────────────────────────────────────────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css
+  AddOutputFilterByType DEFLATE application/javascript application/json
+  AddOutputFilterByType DEFLATE image/svg+xml font/woff2
+</IfModule>
+
+# ── Browser Caching ──────────────────────────────────────────────────────────
+<IfModule mod_expires.c>
+  ExpiresActive On
+  # index.html: never cache — always fetch latest (so new deployments apply instantly)
+  <FilesMatch "^index\.html$">
+    ExpiresDefault "access plus 0 seconds"
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+  </FilesMatch>
+  # Hashed assets (JS/CSS): cache 1 year — Vite puts content hash in filename
+  <FilesMatch "\.(js|css)$">
+    ExpiresDefault "access plus 1 year"
+    Header set Cache-Control "public, max-age=31536000"
+  </FilesMatch>
+  # Images & fonts: cache 30 days
+  <FilesMatch "\.(ico|jpg|jpeg|png|gif|webp|svg|woff|woff2|ttf|eot)$">
+    ExpiresDefault "access plus 30 days"
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>
+
+# ── Security headers ──
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header unset X-Powered-By
+</IfModule>
+
+# ── Routing ──────────────────────────────────────────────────────────────────
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Legacy /new/* URLs now live at the site root.
+  RewriteRule ^new/(.*)$ /$1 [R=301,L]
+
+  # ── API calls → proxy through PHP to Node.js on port 3001 ──────────────────
+  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteRule ^api/(.*)$ api-proxy.php [QSA,L]
+
+  # Never rewrite index.html itself
+  RewriteRule ^index\.html$ - [L]
+
+  # ─ Bypass the assets folder entirely
+  RewriteRule ^assets/ - [L]
+
+  # Bypass common static root files
+  RewriteRule ^(robots\.txt|sitemap\.xml|favicon\.|manifest\.|_proxy\.php) - [L]
+
+  # Serve existing files & directories directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Everything else → React SPA
+  RewriteRule ^ index.html [L]
+</IfModule>

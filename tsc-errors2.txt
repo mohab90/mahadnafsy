@@ -1,0 +1,39 @@
+﻿pages/Dashboard.tsx(345,48): error TS2304: Cannot find name 'BranchEntry'.
+pages/Dashboard.tsx(346,28): error TS2304: Cannot find name 'BranchEntry'.
+pages/Dashboard.tsx(630,54): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(685,29): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(2555,17): error TS2352: Conversion of type 'Price' to type 'Record<string, number>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/Dashboard.tsx(2555,84): error TS2352: Conversion of type 'Price' to type 'Record<string, number>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/Dashboard.tsx(6231,44): error TS2552: Cannot find name 'setSubscribers'. Did you mean 'subscribers'?
+pages/Dashboard.tsx(6238,44): error TS2552: Cannot find name 'setSubscribers'. Did you mean 'subscribers'?
+pages/Dashboard.tsx(6246,44): error TS2552: Cannot find name 'setSubscribers'. Did you mean 'subscribers'?
+pages/Dashboard.tsx(6314,56): error TS2551: Property 'updateSubscriber' does not exist on type '{ adminGet: <T = AR>(path: string) => Promise<T>; adminPost: <T = AR>(path: string, body: AR) => Promise<T>; adminPatch: <T = AR>(path: string, body: AR) => Promise<...>; ... 138 more ...; listReferrals: () => Promise<...>; }'. Did you mean 'saveSubscriber'?
+pages/Dashboard.tsx(6743,133): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(6744,184): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(6745,68): error TS2304: Cannot find name 'SubStatus'.
+pages/Dashboard.tsx(6788,48): error TS2304: Cannot find name 'setSubscribers'.
+pages/Dashboard.tsx(6857,211): error TS2304: Cannot find name 'setSubscribers'.
+pages/Dashboard.tsx(7517,187): error TS2367: This comparison appears to be unintentional because the types '"daqqi" | "refunded" | "paused" | "finished" | "leads" | "online"' and '""' have no overlap.
+pages/Dashboard.tsx(7581,203): error TS2367: This comparison appears to be unintentional because the types '"daqqi"' and '"leads"' have no overlap.
+pages/Dashboard.tsx(7581,251): error TS2367: This comparison appears to be unintentional because the types '"daqqi"' and '"online"' have no overlap.
+pages/Dashboard.tsx(7676,127): error TS2304: Cannot find name 'p'.
+pages/Dashboard.tsx(7676,159): error TS2304: Cannot find name 'p'.
+pages/Dashboard.tsx(8043,58): error TS2345: Argument of type '{ paymentHistory: (PaymentHistoryEntry | { status: string; id: string; amount: number; currency: "EGP" | "SAR" | "USD"; note?: string; paymentType?: PaymentItemType; ... 14 more ...; staffName?: string; })[]; ... 39 more ...; transferDate?: string; }' is not assignable to parameter of type 'SubscriberItem'.
+pages/Dashboard.tsx(8052,58): error TS2345: Argument of type '{ paymentHistory: (PaymentHistoryEntry | { status: string; id: string; amount: number; currency: "EGP" | "SAR" | "USD"; note?: string; paymentType?: PaymentItemType; ... 14 more ...; staffName?: string; })[]; ... 39 more ...; transferDate?: string; }' is not assignable to parameter of type 'SubscriberItem'.
+pages/dashboard/tabs/ExpenseAnalyticsTab.tsx(170,93): error TS2339: Property 'title' does not exist on type 'ExpenseItem'.
+pages/dashboard/tabs/FinancialTab.tsx(482,51): error TS2345: Argument of type 'PaymentHistoryEntry' is not assignable to parameter of type 'AR'.
+pages/dashboard/tabs/FinancialTab.tsx(553,44): error TS2352: Conversion of type 'OrderItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/dashboard/tabs/FinancialTab.tsx(555,32): error TS2352: Conversion of type 'Course' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/dashboard/tabs/FinancialTab.tsx(722,72): error TS2345: Argument of type '{ subscriberId: string; amount: number; currency: "EGP"; paymentType: "course"; paymentMethod: string; transactionId: string; date: string; note: string; courseId: string; isInstallment: false; }' is not assignable to parameter of type 'SetStateAction<{ subscriberId: string; amount: number; currency: "EGP" | "SAR" | "USD"; paymentType: PaymentItemType; paymentMethod: string; transactionId: string; fromAccountNumber: string; date: string; note: string; courseId: string; isInstallment: boolean; }>'.
+pages/dashboard/tabs/FinancialTab.tsx(2456,12): error TS2304: Cannot find name 'BulkStubPanel'.
+pages/dashboard/tabs/FinancialTab.tsx(2572,30): error TS2352: Conversion of type 'SubscriberItem' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+pages/dashboard/tabs/FinancialTab.tsx(2776,10): error TS2304: Cannot find name 'PeriodClosingPanel'.
+pages/dashboard/tabs/JoinUsAdminTab.tsx(11,9): error TS2741: Property 'pending' is missing in type '{ new: { label: string; cls: string; }; reviewed: { label: string; cls: string; }; accepted: { label: string; cls: string; }; rejected: { label: string; cls: string; }; }' but required in type 'Record<"pending" | "new" | "reviewed" | "accepted" | "rejected", { label: string; cls: string; }>'.
+pages/dashboard/tabs/MarketingHubTab.tsx(178,81): error TS2339: Property 'clientEmail' does not exist on type 'OrderItem'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(147,34): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(147,60): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(159,82): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(159,108): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(160,22): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(160,48): error TS2339: Property 'status' does not exist on type 'Course'.
+pages/dashboard/tabs/OnlineTeamMgmtTab.tsx(160,67): error TS2339: Property 'status' does not exist on type 'Course'.
