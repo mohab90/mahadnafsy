@@ -252,6 +252,27 @@ for (const f of routeFiles) {
 if (unguarded.length === 0) pass(`all ${adminMutating.length} admin mutating endpoints carry an authz guard`);
 else fail(`admin mutating endpoints with NO authz guard (any logged-in user can call): ${unguarded.join(', ')}`);
 
+// ── 13. Duplicate-route guard (regression lock) ──────────────────────────────
+// All 37 route files are mounted, so a (method+path) defined in two files means
+// the later-mounted handler is DEAD (Express first-match wins) — a maintenance
+// hazard. There is a known backlog of such duplicates; this guard locks it so the
+// count can only DECREASE. Lowering DUP_BASELINE as duplicates are cleaned keeps
+// it honest. It FAILS if a NEW duplicate is introduced.
+console.log('\n13. Duplicate-route guard');
+const DUP_BASELINE = 40; // known legacy duplicates pending a careful per-endpoint cleanup (was 41; removed dead subscriber-payments dup)
+const routeDefs = [];
+for (const f of walk(join(ROOT, 'api/routes'), '.js')) {
+  const t = readText(f) || '';
+  const re = /router\.(get|post|put|patch|delete)\('(\/api\/[^']+)'/g;
+  let m;
+  while ((m = re.exec(t))) routeDefs.push(`${m[1]} ${m[2]}`);
+}
+const seen = new Map();
+for (const r of routeDefs) seen.set(r, (seen.get(r) || 0) + 1);
+const dupCount = [...seen.values()].filter(n => n > 1).length;
+if (dupCount <= DUP_BASELINE) pass(`duplicate routes: ${dupCount} (≤ baseline ${DUP_BASELINE}; lower the baseline as you clean them)`);
+else fail(`duplicate routes increased to ${dupCount} (baseline ${DUP_BASELINE}) — a new endpoint shadows an existing one`);
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {
