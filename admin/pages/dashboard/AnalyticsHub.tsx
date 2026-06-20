@@ -4,15 +4,17 @@
  * Gives previously URL-only tabs a discoverable home.
  */
 import React, { Suspense, lazy, useState } from 'react';
-import { BarChart3, TrendingUp, PieChart, Wallet } from 'lucide-react';
+import { BarChart3, TrendingUp, PieChart, Wallet, Filter } from 'lucide-react';
 import type { NotifyFn } from '../../types';
 
+const FunnelTab = lazy(() => import('./tabs/FunnelTab'));
 const KpiDashboardTab = lazy(() => import('./tabs/KpiDashboardTab'));
 const NpsDashboardTab = lazy(() => import('./tabs/NpsDashboardTab'));
 const RevenueSourcesTab = lazy(() => import('./tabs/RevenueSourcesTab'));
 const ExpenseAnalyticsTab = lazy(() => import('./tabs/ExpenseAnalyticsTab'));
 
 const SUBS = [
+  { key: 'funnel', label: 'قمع التحويل', icon: Filter, Comp: FunnelTab },
   { key: 'kpi_dashboard', label: 'مؤشرات الأداء (KPIs)', icon: BarChart3, Comp: KpiDashboardTab },
   { key: 'revenue_sources', label: 'مصادر الإيراد', icon: TrendingUp, Comp: RevenueSourcesTab },
   { key: 'expense_analytics', label: 'تحليل المصروفات', icon: Wallet, Comp: ExpenseAnalyticsTab },
