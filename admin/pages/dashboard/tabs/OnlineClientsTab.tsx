@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Calendar, Download, ExternalLink, Eye, MessageSquareText,
   Phone, Plus, Receipt, RefreshCw, Search, Trash2, Users, Wallet, X,
@@ -79,8 +79,14 @@ export default function OnlineClientsTab({
   setSubInstRow, setSubInstDraft, setSubWaRow,
 }: Props) {
   const navigate = useNavigate();
-  // Collection role — online clients tab state
-  const [collOnlineSubTab, setCollOnlineSubTab] = useState<'all' | 'local' | 'intl' | 'mine'>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Collection role — online clients tab state. Seeded from the URL so each tab
+  // is deep-linkable and the back/forward buttons move between tabs.
+  const _SEG = ['all', 'local', 'intl', 'mine'] as const;
+  const _VIEW = ['active', 'real-local', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl'] as const;
+  const [collOnlineSubTab, setCollOnlineSubTab] = useState<typeof _SEG[number]>(
+    () => (_SEG as readonly string[]).includes(searchParams.get('seg') || '') ? (searchParams.get('seg') as typeof _SEG[number]) : 'all'
+  );
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
   const [collOnlineStatusFilter, setCollOnlineStatusFilter] = useState('');
@@ -100,7 +106,28 @@ export default function OnlineClientsTab({
   const [collOnlineCollectionFilter, setCollOnlineCollectionFilter] = useState('');
   const [collOnlineCertFilter, setCollOnlineCertFilter] = useState<'all'|'has_cert'|'no_cert'>('all');
   // Collection/online_manager — client sub-view tabs
-  const [collOnlineViewTab, setCollOnlineViewTab] = useState<'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'>('active');
+  const [collOnlineViewTab, setCollOnlineViewTab] = useState<typeof _VIEW[number]>(
+    () => (_VIEW as readonly string[]).includes(searchParams.get('view') || '') ? (searchParams.get('view') as typeof _VIEW[number]) : 'active'
+  );
+  // ── Sync the online-clients tabs ↔ the URL (?view= & ?seg=) so each tab is a
+  //    deep-linkable "page" and back/forward navigate between them. Online tab only.
+  useEffect(() => {
+    if (activeTab !== 'online_clients') return;
+    if (searchParams.get('view') === collOnlineViewTab && searchParams.get('seg') === collOnlineSubTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('view', collOnlineViewTab);
+    next.set('seg', collOnlineSubTab);
+    setSearchParams(next); // pushes history → back button moves between tabs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collOnlineViewTab, collOnlineSubTab, activeTab]);
+  useEffect(() => {
+    if (activeTab !== 'online_clients') return;
+    const v = searchParams.get('view');
+    const s = searchParams.get('seg');
+    if (v && (_VIEW as readonly string[]).includes(v) && v !== collOnlineViewTab) setCollOnlineViewTab(v as typeof _VIEW[number]);
+    if (s && (_SEG as readonly string[]).includes(s) && s !== collOnlineSubTab) setCollOnlineSubTab(s as typeof _SEG[number]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, activeTab]);
   // Daqqi clients tab — housing + old data state
   const [daqqiHousingFilter, setDaqqiHousingFilter] = useState<'all'|'housed'|'unhoused'>('all');
   const [daqqiRoundFilter, setDaqqiRoundFilter] = useState('');
