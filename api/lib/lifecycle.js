@@ -66,6 +66,20 @@ const JOURNEY = {
         <p><a class="btn" href="${SITE}/dashboard">ابدأ المحاضرة الأولى</a></p>`,
     },
   ],
+  abandoned_interest: [
+    {
+      key: 'abandoned_email', channel: 'email', delayH: 0,
+      subject: (c) => `لسه فاكر ${c.courseTitle || 'البرنامج'}؟ مكانك محجوز 🎓`,
+      build: (c) => `<p>أهلاً ${c.name || ''},</p>
+        <p>لاحظنا اهتمامك${c.courseTitle ? ` بـ <b>${c.courseTitle}</b>` : ' ببرامجنا'} وما أكملتش الحجز. الأماكن محدودة وحبينا نفكّرك:</p>
+        <p><a class="btn" href="${SITE}/courses">أكمل حجزك الآن</a></p>
+        <p>عندك سؤال أو محتاج تقسيط؟ رد على الرسالة دي ونرتّبلك 💚</p>`,
+    },
+    {
+      key: 'abandoned_wa', channel: 'whatsapp', delayH: 0,
+      build: (c) => `أهلاً ${c.name || ''} 🌿\nلاحظنا اهتمامك${c.courseTitle ? ` بـ ${c.courseTitle}` : ''} وما أكملتش الحجز.\nمكانك لسه محجوز — أكمل من هنا: ${SITE}/courses\nفيه تقسيط متاح، كلّمنا ونرتّبلك 💚`,
+    },
+  ],
   learner_stalled: [
     {
       key: 'stalled_email', channel: 'email', delayH: 0,
@@ -118,9 +132,10 @@ async function trigger(event, ctx = {}, opts = {}) {
       const recipient = step.channel === 'email' ? ctx.email : (ctx.phone || '').replace(/\D/g, '');
       if (!recipient) continue;
       const content = step.build(ctx);
+      const subject = typeof step.subject === 'function' ? step.subject(ctx) : (step.subject || null);
       const payload = step.channel === 'email' ? { body: content } : { message: content };
       await outbox.enqueue({
-        channel: step.channel, recipient, subject: step.subject || null, payload,
+        channel: step.channel, recipient, subject, payload,
         tenantId: ctx.tenantId || 'mahad',
         sendAt: step.delayH ? Date.now() + H(step.delayH) : null,
         dedupeKey: opts.dedupeKey ? `${opts.dedupeKey}:${step.key}` : null,
@@ -167,8 +182,36 @@ async function scanScheduled() {
       stalled++;
     }
     if (stalled) logger.info('[lifecycle] scanScheduled: queued stalled-learner nudges', { count: stalled });
-  } catch (e) { logger.warn('[lifecycle] scanScheduled failed', { err: e.message }); }
-  return { stalled };
+  } catch (e) { logger.warn('[lifecycle] scanScheduled (stalled) failed', { err: e.message }); }
+
+  // Abandoned interest: interested leads (not converted/lost) created 3–21 days
+  // ago with no payment yet → remind them about the course they wanted.
+  let abandoned = 0;
+  try {
+    const [rows] = await pool.query(`
+      SELECT l.id, l.name, l.email, l.phone, c.title AS course_title
+      FROM leads l
+      LEFT JOIN courses c ON c.id = l.enrolled_course_id
+      WHERE l.hidden = 0
+        AND LOWER(l.status) NOT IN ('converted','lost')
+        AND l.created_at < (NOW() - INTERVAL 3 DAY)
+        AND l.created_at > (NOW() - INTERVAL 21 DAY)
+        AND (l.deal_value IS NULL OR l.deal_value = 0)
+        AND (l.email IS NOT NULL OR l.phone IS NOT NULL)
+        AND (l.enrolled_course_id IS NOT NULL OR l.interested_course_ids_json IS NOT NULL)
+      LIMIT 300
+    `);
+    const wk = weekStamp();
+    for (const l of rows) {
+      await trigger('abandoned_interest',
+        { name: l.name, email: l.email, phone: l.phone, courseTitle: l.course_title },
+        { dedupeKey: `abandoned:${l.id}:${wk}` });
+      abandoned++;
+    }
+    if (abandoned) logger.info('[lifecycle] scanScheduled: queued abandoned-interest nudges', { count: abandoned });
+  } catch (e) { logger.warn('[lifecycle] scanScheduled (abandoned) failed', { err: e.message }); }
+
+  return { stalled, abandoned };
 }
 
 module.exports = { trigger, scanScheduled, getConfig, JOURNEY };
