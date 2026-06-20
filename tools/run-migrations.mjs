@@ -12,12 +12,17 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { createConnection } from 'mysql2/promise';
+import { createRequire } from 'module';
 
 const __dir  = dirname(fileURLToPath(import.meta.url));
 const ROOT   = resolve(__dir, '..');
 const ENV_PATH     = join(ROOT, 'api', '.env');
 const MIGRATIONS   = join(ROOT, 'api', 'migrations');
+
+// mysql2 lives in api/node_modules (not the repo root) — resolve it from there
+// so the runner works when invoked from the repo root.
+const apiRequire = createRequire(join(ROOT, 'api', 'package.json'));
+const { createConnection } = apiRequire('mysql2/promise');
 
 // ── Parse .env manually (no extra deps) ─────────────────────────────────────
 function parseEnv(path) {
