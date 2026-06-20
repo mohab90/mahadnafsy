@@ -195,7 +195,17 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async
       countParams
     );
 
-    const dataParams = [...params, pageSize, offset];
+    // Cursor (keyset) pagination — opt-in via ?cursor=, else offset. Perf #14.
+    let pagWhere = where, pagParams = [...params, pageSize, offset], pagTail = 'LIMIT ? OFFSET ?', nextCursorFn = null;
+    if (req.query.cursor) {
+      const { keyset } = require('../lib/pagination');
+      const ks = keyset(req.query, { col: 'p.date', idCol: 'p.id', limit: pageSize, maxLimit: 200 });
+      pagWhere = `${where} AND ${ks.where}`;
+      pagParams = [...params, ...ks.params, ks.limit];
+      pagTail = 'LIMIT ?';
+      nextCursorFn = ks.nextCursor;
+    }
+    const dataParams = pagParams;
     const [rows] = await pool.query(
       `SELECT p.*,
               s.name AS subscriber_name, s.phone AS subscriber_phone,
@@ -204,11 +214,12 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id
        LEFT JOIN courses c ON c.id = p.course_id
-       WHERE ${where}
+       WHERE ${pagWhere}
        ORDER BY p.date DESC, p.id DESC
-       LIMIT ? OFFSET ?`,
+       ${pagTail}`,
       dataParams
     );
+    if (nextCursorFn) { const nc = nextCursorFn(rows); if (nc) res.set('X-Next-Cursor', nc); }
 
     // Also get paymob/online orders (from orders table) for unified view
     // Only when not filtering by staffId (those are online/automatic)

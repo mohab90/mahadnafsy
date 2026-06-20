@@ -35,6 +35,15 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET /api/branches — active branches (dynamic, cached). Falls back to constants.
+router.get('/api/branches', publicLimiter, async (req, res) => {
+  try {
+    const { listBranches } = require('../lib/branchesRepo');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json(await listBranches(req.tenantId));
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/courses/:id  (accepts id OR slug)
 router.get('/api/courses/:id', async (req, res) => {
   try {
