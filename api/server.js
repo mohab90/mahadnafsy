@@ -36,6 +36,7 @@ const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('./constants/
 const gsheetsRouter = require('./routes/gsheets');
 const monitoringRouter = require('./routes/monitoring');
 const refundsRouter = require('./routes/refunds');
+const adminMaintenanceRouter = require('./routes/admin-maintenance');
 const automationRouter = require('./routes/automation');
 const campaignsRouter  = require('./routes/campaigns');
 const adminUtilsRouter = require('./routes/admin-utils');
@@ -527,6 +528,7 @@ app.use('/', fbWebhooksRouter);
 app.use('/', accountingRouter);
 app.use('/', monitoringRouter);
 app.use('/', refundsRouter);
+app.use('/', adminMaintenanceRouter);
 app.use('/', lmsRouter);
 app.use('/', gsheetsRouter);
 app.use('/', hrRouter);
