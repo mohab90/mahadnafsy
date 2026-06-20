@@ -77,6 +77,41 @@ router.post('/api/admin/settings/email/test', requireAuth, requireAdmin, async (
   } catch (e) { res.status(502).json({ error: 'فشل الإرسال: ' + e.message }); }
 });
 
+// ── Customer-journey (lifecycle) settings + activity ────────────────────────
+const lifecycle = require('../lib/lifecycle');
+
+router.get('/api/admin/settings/lifecycle', requireAuth, requireAdmin, async (_req, res) => {
+  try { res.json(await lifecycle.describe()); }
+  catch (e) { logger.error('[lifecycle-settings]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.put('/api/admin/settings/lifecycle', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const enabled = req.body.enabled !== false;
+    const steps = (req.body.steps && typeof req.body.steps === 'object') ? req.body.steps : {};
+    await pool.query(
+      "INSERT INTO site_config (`key`,`value`) VALUES ('lifecycle', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
+      [JSON.stringify({ enabled, steps })]
+    );
+    lifecycle.invalidateConfig();
+    res.json({ ok: true });
+  } catch (e) { logger.error('[lifecycle-settings]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Recent journey activity (outbox feed) — shows the automation is alive.
+router.get('/api/admin/lifecycle/activity', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT channel, recipient, subject, status, attempts, created_at, sent_at
+       FROM message_outbox ORDER BY created_at DESC LIMIT 60`
+    ).catch(() => [[]]);
+    const [[counts]] = await pool.query(
+      `SELECT SUM(status='pending') AS pending, SUM(status='sent') AS sent, SUM(status IN ('failed','dead')) AS failed FROM message_outbox`
+    ).catch(() => [[{ pending: 0, sent: 0, failed: 0 }]]);
+    res.json({ counts, recent: rows });
+  } catch (e) { logger.error('[lifecycle-activity]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // Certificate Auto-Issue Settings
 router.get('/api/admin/settings/certificate', requireAuth, requireAdmin, async (_req, res) => {
   try {

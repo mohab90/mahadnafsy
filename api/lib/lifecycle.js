@@ -12,7 +12,7 @@
  * Events:  lead_created · payment_received · enrolled · certificate_ready
  * Scans :  learner_stalled · installment_due
  */
-const { pool, cached } = require('./db');
+const { pool, cached, cacheInvalidate } = require('./db');
 const logger = require('./logger');
 const outbox = require('./outbox');
 
@@ -214,4 +214,27 @@ async function scanScheduled() {
   return { stalled, abandoned };
 }
 
-module.exports = { trigger, scanScheduled, getConfig, JOURNEY };
+function invalidateConfig() { cacheInvalidate('lifecycle_config'); }
+
+const EVENT_LABELS = {
+  lead_created: 'عميل محتمل جديد (ترحيب فوري)',
+  payment_received: 'استلام دفعة (إيصال)',
+  enrolled: 'تسجيل في كورس (Onboarding)',
+  abandoned_interest: 'اهتمام بلا حجز (سلة متروكة)',
+  learner_stalled: 'طالب لم يبدأ (مناغشة)',
+  certificate_ready: 'الشهادة جاهزة (تهنئة + ترشيح)',
+};
+const STEP_LABELS = { email: 'بريد', whatsapp: 'واتساب' };
+
+// Structure for the admin UI: events → steps (key/channel/label), enabled state.
+async function describe() {
+  const cfg = await getConfig();
+  const events = Object.entries(JOURNEY).map(([event, steps]) => ({
+    event,
+    label: EVENT_LABELS[event] || event,
+    steps: steps.map((s) => ({ key: s.key, channel: s.channel, channelLabel: STEP_LABELS[s.channel] || s.channel, enabled: cfg.steps[s.key] !== false })),
+  }));
+  return { enabled: cfg.enabled, events };
+}
+
+module.exports = { trigger, scanScheduled, getConfig, invalidateConfig, describe, JOURNEY };
