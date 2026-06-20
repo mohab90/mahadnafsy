@@ -7,7 +7,7 @@
  *   RIGHT main    → overview tab first, then contextual tabs
  */
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight, Phone, MessageSquare, Plus, Edit2, Trash2, Mail,
   CheckCircle, Clock, CreditCard, Info, Copy,
@@ -86,11 +86,30 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
   // ── tabs ──────────────────────────────────────────────────────────────────
   type Tab = 'overview' | 'communications' | 'payments' | 'courses' | 'certificates' | 'installments' | 'consultations' | 'daqqi' | 'edit';
+  const TABS: Tab[] = ['overview', 'communications', 'payments', 'courses', 'certificates', 'installments', 'consultations', 'daqqi', 'edit'];
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Seed from the URL (?tab=) so each client tab is deep-linkable and the
+  // browser back/forward buttons move between tabs; falls back to nav state.
   const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const urlTab = searchParams.get('tab');
+    if (urlTab && TABS.includes(urlTab as Tab)) return urlTab as Tab;
     const s = (location.state as { openTab?: string } | null)?.openTab;
     return (s as Tab) || 'overview';
   });
+  // Two-way sync activeTab ↔ ?tab=
+  useEffect(() => {
+    if (searchParams.get('tab') === activeTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', activeTab);
+    setSearchParams(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (urlTab && TABS.includes(urlTab as Tab) && urlTab !== activeTab) setActiveTab(urlTab as Tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   // scroll to section from navigation state (e.g. 📅 button in Dashboard)
   useEffect(() => {
     const s = (location.state as { openTab?: string } | null)?.openTab;
