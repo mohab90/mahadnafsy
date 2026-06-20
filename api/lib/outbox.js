@@ -12,13 +12,15 @@ const MAX_ATTEMPTS = 6;
 
 // Enqueue. Pass `conn` to enlist in an existing transaction. `sendAt` (Date or
 // ms-from-epoch) schedules a delayed send (used by the lifecycle journey).
-async function enqueue({ channel, recipient, subject, payload, tenantId = 'mahad', sendAt = null }, conn = pool) {
+async function enqueue({ channel, recipient, subject, payload, tenantId = 'mahad', sendAt = null, dedupeKey = null }, conn = pool) {
   const when = sendAt ? new Date(sendAt) : null;
+  // dedupeKey (unique) makes re-enqueues within the same period a no-op.
   await conn.query(
-    `INSERT INTO message_outbox (id, tenant_id, channel, recipient, subject, payload_json, next_attempt_at)
-     VALUES (?,?,?,?,?,?, COALESCE(?, NOW()))`,
+    `INSERT INTO message_outbox (id, tenant_id, channel, recipient, subject, payload_json, next_attempt_at, dedupe_key)
+     VALUES (?,?,?,?,?,?, COALESCE(?, NOW()), ?)
+     ON DUPLICATE KEY UPDATE id = id`,
     [uuidv4(), tenantId, channel, recipient, subject || null, JSON.stringify(payload || {}),
-     when && !isNaN(when.getTime()) ? when : null]
+     when && !isNaN(when.getTime()) ? when : null, dedupeKey]
   );
 }
 

@@ -66,6 +66,20 @@ const JOURNEY = {
         <p><a class="btn" href="${SITE}/dashboard">ابدأ المحاضرة الأولى</a></p>`,
     },
   ],
+  learner_stalled: [
+    {
+      key: 'stalled_email', channel: 'email', delayH: 0,
+      subject: 'محاضرتك الأولى في انتظارك 🎓',
+      build: (c) => `<p>أهلاً ${c.name || ''},</p>
+        <p>لاحظنا إنك سجّلت معانا بس لسه ما بدأتش التعلّم. أول خطوة هي الأهم — ابدأ دلوقتي وكمّل على راحتك:</p>
+        <p><a class="btn" href="${SITE}/dashboard">ابدأ التعلّم الآن</a></p>
+        <p>محتاج مساعدة للدخول؟ رد على الرسالة دي ونحن معاك 💚</p>`,
+    },
+    {
+      key: 'stalled_wa', channel: 'whatsapp', delayH: 0,
+      build: (c) => `أهلاً ${c.name || ''} 🌿\nسجّلت معانا بس لسه ما بدأتش — أول محاضرة مستنياك!\nابدأ من هنا: ${SITE}/dashboard\nأي مساعدة احنا معاك 💚`,
+    },
+  ],
   certificate_ready: [
     {
       key: 'certificate_email', channel: 'email', delayH: 0,
@@ -109,10 +123,52 @@ async function trigger(event, ctx = {}, opts = {}) {
         channel: step.channel, recipient, subject: step.subject || null, payload,
         tenantId: ctx.tenantId || 'mahad',
         sendAt: step.delayH ? Date.now() + H(step.delayH) : null,
+        dedupeKey: opts.dedupeKey ? `${opts.dedupeKey}:${step.key}` : null,
       });
     }
     logger.info('[lifecycle] triggered', { event, to: ctx.email || ctx.phone });
   } catch (e) { logger.warn('[lifecycle] trigger failed', { event, err: e.message }); }
 }
 
-module.exports = { trigger, getConfig, JOURNEY };
+// ISO-week stamp for weekly dedupe keys.
+function weekStamp(d = new Date()) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (t.getUTCDay() + 6) % 7;
+  t.setUTCDate(t.getUTCDate() - day + 3);
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  return `${t.getUTCFullYear()}W${week}`;
+}
+
+// Time-based nudges, evaluated against live state (so they self-cancel). Run daily.
+// v1: re-engage learners who paid/enrolled 7+ days ago but never watched anything.
+// (Installment reminders are already handled by the server's installment cron.)
+async function scanScheduled() {
+  const cfg = await getConfig();
+  if (!cfg.enabled) return { stalled: 0 };
+  let stalled = 0;
+  try {
+    const [rows] = await pool.query(`
+      SELECT DISTINCT s.id, s.name, s.email, s.phone
+      FROM subscribers s
+      JOIN enrollments e ON e.subscriber_id = s.id
+      LEFT JOIN lecture_progress lp ON lp.subscriber_id = s.id
+      WHERE e.enrolled_at < (NOW() - INTERVAL 7 DAY)
+        AND e.enrolled_at > (NOW() - INTERVAL 60 DAY)
+        AND lp.id IS NULL
+        AND (s.email IS NOT NULL OR s.phone IS NOT NULL)
+      LIMIT 300
+    `);
+    const wk = weekStamp();
+    for (const s of rows) {
+      await trigger('learner_stalled',
+        { name: s.name, email: s.email, phone: s.phone },
+        { dedupeKey: `stalled:${s.id}:${wk}` }); // once per subscriber per week
+      stalled++;
+    }
+    if (stalled) logger.info('[lifecycle] scanScheduled: queued stalled-learner nudges', { count: stalled });
+  } catch (e) { logger.warn('[lifecycle] scanScheduled failed', { err: e.message }); }
+  return { stalled };
+}
+
+module.exports = { trigger, scanScheduled, getConfig, JOURNEY };
