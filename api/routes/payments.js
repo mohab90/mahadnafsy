@@ -5,11 +5,12 @@ const router  = express.Router();
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
+const { BRANCHES, normalizeBranch } = require('../constants/branches');
 
 router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const VALID = ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'];
-    const normBranch = (v) => v ? String(v).toUpperCase().replace(/[-\s]/g, '_') : null;
+    const VALID = BRANCHES;
+    const normBranch = normalizeBranch;
 
     // 1. Get leads with NULL/empty branch but crm_data has a branch value
     const [rows] = await pool.query(

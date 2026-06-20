@@ -8,7 +8,8 @@
     "start:auto": "node supervisor.js",
     "dev": "node kill-port.js --watch",
     "dev:clean": "node kill-port.js",
-    "test:unit": "node --test tests/*.test.js"
+    "test:unit": "node --test tests/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

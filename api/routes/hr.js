@@ -8,7 +8,7 @@ const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
 const { createNotification } = require('../lib/notification');
 const { uuidv4 } = require('../lib/id');
-const { postJournalEntry, toEgp, getFxToEgp } = require('../lib/finance');
+const { postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('../lib/finance');
 
 // ══════════════════════════════════════════════════════════════
 // HR SYSTEM ENDPOINTS
@@ -709,6 +709,16 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdmin, asy
       'SELECT id, month, year, status, total_amount, currency FROM payroll_runs WHERE id=? LIMIT 1', [runId]
     );
     if (!prevRun) return res.status(404).json({ error: 'Not found' });
+    // Enforce the approval workflow: DRAFT/CALCULATED → APPROVED → PAID.
+    // A run can never be paid without being approved first (Top20 #15).
+    const transitions = {
+      APPROVED:  ['DRAFT', 'CALCULATED'],
+      PAID:      ['APPROVED'],
+      CANCELLED: ['DRAFT', 'CALCULATED', 'APPROVED'],
+    };
+    if (!transitions[status].includes(prevRun.status)) {
+      return res.status(409).json({ error: `انتقال غير مسموح: ${prevRun.status} → ${status}. لا يمكن صرف الرواتب قبل اعتمادها.` });
+    }
     const colMap = { APPROVED: 'approved_by', PAID: 'paid_by', CANCELLED: null };
     const timeMap = { APPROVED: 'approved_at', PAID: 'paid_at', CANCELLED: null };
     let sql = `UPDATE payroll_runs SET status=?`;
@@ -736,6 +746,12 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdmin, asy
         [runId]
       ).catch(() => {});
     }
+    await logFinancialAudit({
+      entityType: 'payroll', entityId: runId, action: status.toLowerCase(),
+      oldData: { status: prevRun.status }, newData: { status },
+      amount: Number(prevRun.total_amount) || null,
+      actor: req.user?.email || req.user?.name || 'admin',
+    });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

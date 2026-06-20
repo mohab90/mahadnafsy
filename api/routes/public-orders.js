@@ -9,6 +9,7 @@ const { sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { tryJson } = require('../lib/helpers');
 const { paymobLimiter } = require('../middleware/rateLimits');
+const { postPaymentJournal } = require('../lib/finance');
 
 // ── Paymob: SUSPENDED — account currently inactive ───────────────────────────
 // All Paymob endpoints return 503 until the account is reactivated.
@@ -160,6 +161,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
 
     await conn.commit();
     logger.info(`[paymob] Transaction committed: order ${merchantOrderId}, payment ${payId}`);
+    // Ledger-first: post the cash/revenue journal for this online payment (post-commit).
+    postPaymentJournal({ paymentId: payId, amount: order.amount, currency: order.currency || 'EGP', payType: 'COURSE', actor: 'paymob' });
   } catch (e) {
     await conn.rollback();
     logger.error('[paymob] finalisePaymobOrder transaction rolled back:', e.message);

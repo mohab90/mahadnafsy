@@ -27,8 +27,10 @@ jobs:
           node-version: '20'
       - name: ESLint (api — no-undef)
         run: npm run lint:api
-      - name: Unit tests (finance / RBAC / templates / helpers)
+      - name: Unit tests (finance / RBAC / templates / helpers / tenant / pagination)
         run: npm --prefix api run test:unit
+      - name: Integration tests (skip cleanly without TEST_DB_*)
+        run: npm --prefix api run test:integration
       - name: Quality gate (48 checks)
         run: node tools/mahad-quality-check.mjs
       - name: Dependency audit (api / admin / client)

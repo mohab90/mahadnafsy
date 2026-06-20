@@ -18,6 +18,7 @@ const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePer
 const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../constants/permissions');
 const { onlineMap } = require('../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../lib/dates');
+const { keyset } = require('../lib/pagination');
 
 // GET /api/admin/online-users — العملاء المتصلون الآن (آخر دقيقتين)
 router.get('/api/admin/online-users', requireAuth, requireAdmin, (_req, res) => {
@@ -1851,9 +1852,19 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
       }
       // MANAGER / ACCOUNTANT / DAQQI_MANAGER see all — no additional filter
     }
-    sql += ' ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    // Cursor (keyset) pagination — opt-in via ?cursor=, falls back to offset.
+    let nextCursorFn = null;
+    if (req.query.cursor) {
+      const ks = keyset(req.query, { col: 'l.created_at', idCol: 'l.id', limit, maxLimit: 5000 });
+      sql += ` AND ${ks.where} ORDER BY l.created_at DESC, l.id DESC LIMIT ?`;
+      params.push(...ks.params, ks.limit);
+      nextCursorFn = ks.nextCursor;
+    } else {
+      sql += ' ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+    }
     const [rows] = await pool.query(sql, params);
+    if (nextCursorFn) { const nc = nextCursorFn(rows); if (nc) res.set('X-Next-Cursor', nc); }
     res.json(rows.map(r => {
       const crm = parseCrm(r.crm_json);
       // client_code column is authoritative; crm_json clientCode is a fallback

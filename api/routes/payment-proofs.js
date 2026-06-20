@@ -6,6 +6,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { mailer, htmlEmail, sendEmail } = require('../lib/email');
 const { tryJson } = require('../lib/helpers');
+const { postPaymentJournal } = require('../lib/finance');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { syncLeadDealValue } = require('./public-orders');
 const { createNotification } = require('../lib/notification');
@@ -198,6 +199,8 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdmin, async (
     // Auto-sync lead deal_value after payment approval
     if (action === 'approve' && proof.subscriber_id) {
       syncLeadDealValue(proof.subscriber_id).catch(() => {});
+      // Ledger-first: post the cash/revenue journal for the approved payment.
+      postPaymentJournal({ paymentId: `pp-${proof.id}`, amount: proof.amount, currency: proof.currency || 'EGP', payType: 'COURSE', actor: req.user?.email || 'system' });
     }
 
     // Send WhatsApp notification to subscriber (best-effort, after commit)
