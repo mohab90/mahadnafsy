@@ -1,19 +1,22 @@
 #!/usr/bin/env node
-// Backfill crm_json → relational tables (Top20 #12 / supports #6).
-// Reads subscribers.crm_json.installmentPlans and writes them into the
-// installment_plans / installment_entries tables (migration 014). Idempotent:
-// uses INSERT IGNORE keyed on the original plan/entry ids.
+// Normalise installment schedules → installment_entries (Top20 #12).
+// Source of truth is the EXISTING installment_plans table, whose schedule lives
+// in JSON arrays (installment_amounts / due_dates / paid_dates). This explodes
+// each plan into one installment_entries row per installment. Idempotent via the
+// (plan_id, seq) unique key.
 //
 // Usage:  node tools/backfill-crm-json.mjs [--dry-run]
 // Reads DB creds from api/.env (same parser as run-migrations.mjs).
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { createConnection } from 'mysql2/promise';
+import { createRequire } from 'module';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dir, '..');
 const DRY = process.argv.includes('--dry-run');
+const apiRequire = createRequire(join(ROOT, 'api', 'package.json'));
+const { createConnection } = apiRequire('mysql2/promise');
 
 function parseEnv(path) {
   const out = {};
@@ -24,6 +27,7 @@ function parseEnv(path) {
   }
   return out;
 }
+const toArr = (v) => { try { return Array.isArray(v) ? v : JSON.parse(v || '[]'); } catch { return []; } };
 
 const env = parseEnv(join(ROOT, 'api', '.env'));
 const conn = await createConnection({
@@ -31,37 +35,27 @@ const conn = await createConnection({
   user: env.DB_USER, password: env.DB_PASSWORD, database: env.DB_NAME,
 });
 
-const [subs] = await conn.query(
-  "SELECT id, tenant_id, crm_json FROM subscribers WHERE crm_json LIKE '%installmentPlans%'"
+const [plans] = await conn.query(
+  'SELECT id, subscriber_id, installment_amounts, due_dates, paid_dates FROM installment_plans'
 );
-let plans = 0, entries = 0;
-for (const s of subs) {
-  let crm = {};
-  try { crm = typeof s.crm_json === 'string' ? JSON.parse(s.crm_json) : (s.crm_json || {}); } catch { continue; }
-  for (const p of (crm.installmentPlans || [])) {
-    if (!p.id) continue;
-    plans++;
+let entries = 0;
+for (const p of plans) {
+  const amounts = toArr(p.installment_amounts);
+  const dues = toArr(p.due_dates);
+  const paids = toArr(p.paid_dates); // array of paid dates (or nulls) per installment
+  for (let i = 0; i < amounts.length; i++) {
+    const paidAt = paids[i] || null;
+    entries++;
     if (!DRY) {
       await conn.query(
-        `INSERT IGNORE INTO installment_plans (id, tenant_id, subscriber_id, course_id, bundle_id, total_amount, currency, status)
-         VALUES (?,?,?,?,?,?,?,?)`,
-        [p.id, s.tenant_id || 'mahad', s.id, p.courseId || null, p.bundleId || null,
-         Number(p.total || p.totalAmount || 0), p.currency || 'EGP', p.status || 'active']
+        `INSERT INTO installment_entries (id, plan_id, seq, due_date, amount, paid, paid_at)
+         VALUES (?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE due_date=VALUES(due_date), amount=VALUES(amount),
+           paid=VALUES(paid), paid_at=VALUES(paid_at)`,
+        [`${p.id}-${i}`, p.id, i, dues[i] || null, Number(amounts[i]) || 0, paidAt ? 1 : 0, paidAt]
       );
-    }
-    for (const e of (p.entries || p.schedule || [])) {
-      if (!e.id) continue;
-      entries++;
-      if (!DRY) {
-        await conn.query(
-          `INSERT IGNORE INTO installment_entries (id, plan_id, tenant_id, due_date, amount, paid, paid_at, payment_id)
-           VALUES (?,?,?,?,?,?,?,?)`,
-          [e.id, p.id, s.tenant_id || 'mahad', e.dueDate || null, Number(e.amount || 0),
-           e.paid ? 1 : 0, e.paidAt || null, e.paymentId || null]
-        );
-      }
     }
   }
 }
-console.log(`${DRY ? '[dry-run] ' : ''}backfill: ${subs.length} subscribers, ${plans} plans, ${entries} entries`);
+console.log(`${DRY ? '[dry-run] ' : ''}normalised ${plans.length} plans → ${entries} installment_entries`);
 await conn.end();
