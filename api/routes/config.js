@@ -33,6 +33,50 @@ router.put('/api/admin/settings', requireAuth, requireAdmin, async (req, res) =>
   }
 });
 
+// ── Email settings (sender, SMTP, template) — Admin → Settings → البريد ──────
+const { getEmailConfig, invalidateEmailConfig } = require('../lib/email');
+
+// GET current email config (password masked — never sent to the browser).
+router.get('/api/admin/settings/email', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const c = await getEmailConfig();
+    res.json({ ...c, smtpPass: c.smtpPass ? '********' : '' });
+  } catch (e) { logger.error('[email-settings]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// PUT email config. Merges into the saved blob; only overwrites the password when
+// a real (non-masked, non-empty) value is supplied.
+router.put('/api/admin/settings/email', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const allowed = ['smtpHost','smtpPort','smtpUser','smtpPass','senderName','senderAddress','brandColor','headerTitle','headerSubtitle','logoUrl','footerText'];
+    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='email_config' LIMIT 1");
+    const current = rows[0]?.value ? (typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value) : {};
+    const next = { ...current };
+    for (const k of allowed) {
+      if (req.body[k] === undefined) continue;
+      if (k === 'smtpPass' && (!req.body[k] || req.body[k] === '********')) continue; // keep existing password
+      next[k] = k === 'smtpPort' ? parseInt(req.body[k]) || 465 : req.body[k];
+    }
+    await pool.query(
+      "INSERT INTO site_config (`key`,`value`) VALUES ('email_config', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
+      [JSON.stringify(next)]
+    );
+    invalidateEmailConfig();
+    res.json({ ok: true });
+  } catch (e) { logger.error('[email-settings]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST send a test email to verify the configured SMTP end-to-end.
+router.post('/api/admin/settings/email/test', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const to = req.body?.to;
+    if (!to) return res.status(400).json({ error: 'البريد المُستلِم مطلوب' });
+    const { sendEmail } = require('../lib/email');
+    await sendEmail(to, 'اختبار البريد — معهد الدراسات النفسية', '<p>لو وصلتك الرسالة دي يبقى إعدادات البريد شغّالة ✅</p>');
+    res.json({ ok: true });
+  } catch (e) { res.status(502).json({ error: 'فشل الإرسال: ' + e.message }); }
+});
+
 // Certificate Auto-Issue Settings
 router.get('/api/admin/settings/certificate', requireAuth, requireAdmin, async (_req, res) => {
   try {

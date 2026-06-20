@@ -4,7 +4,7 @@ import {
   Globe, Award, Hash, Users, MapPin, Tag, Loader2, CheckCircle,
   Eye, EyeOff, Clock, ArrowLeftRight, DollarSign, Shield, Database,
   Download, RefreshCw, HardDrive, Sliders, Lock, Gauge, MessageSquareText,
-  Bot, Zap, Activity,
+  Bot, Zap, Activity, Mail,
 } from 'lucide-react';
 import { mysqlAuth } from '../../../lib/mysqlapi';
 import FeatureFlagsPanel from '../FeatureFlagsPanel';
@@ -12,6 +12,7 @@ import SiteIdentityPanel from '../SiteIdentityPanel';
 import SettingsOverviewPanel from '../SettingsOverviewPanel';
 import MessageTemplatesPanel from '../MessageTemplatesPanel';
 import RbacSettingsTab from './RbacSettingsTab';
+import EmailSettingsTab from './EmailSettingsTab';
 import {
   MessagingAgentTab, AdminAiSettingsTab, WebhooksTab,
   SecurityDashboardTab, ServerMonitorTab, PgMigrateTab,
@@ -54,6 +55,7 @@ const SECTIONS = [
   // ── المنصّة ──
   { key: 'features',           label: 'الميزات والوحدات',    icon: Sliders,         color: 'cyan',    source: 'features', group: 'platform' },
   { key: 'templates',          label: 'قوالب الرسائل',       icon: MessageSquareText, color: 'green', source: 'templates', group: 'platform' },
+  { key: 'email_settings',     label: 'البريد الإلكتروني',   icon: Mail,            color: 'blue',    source: 'embed',    group: 'platform' },
   { key: 'webhooks',           label: 'Webhooks',            icon: Zap,             color: 'amber',   source: 'embed',    group: 'platform' },
   // ── الذكاء الاصطناعي ──
   { key: 'messaging_agent',    label: 'عميل المراسلة AI',    icon: Bot,             color: 'sky',     source: 'embed',    group: 'ai' },
@@ -295,6 +297,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify, isAdmin = true }) => {
     webhooks:           <WebhooksTab notify={notify} />,
     messaging_agent:    <MessagingAgentTab notify={notify} />,
     admin_ai_settings:  <AdminAiSettingsTab notify={notify} />,
+    email_settings:     <EmailSettingsTab notify={notify} />,
     security_dashboard: <SecurityDashboardTab notify={notify} />,
     server_monitor:     <ServerMonitorTab notify={notify} />,
     pg_migrate:         <PgMigrateTab />,
