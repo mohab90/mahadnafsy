@@ -10,12 +10,15 @@ const logger = require('./logger');
 
 const MAX_ATTEMPTS = 6;
 
-// Enqueue. Pass `conn` to enlist in an existing transaction.
-async function enqueue({ channel, recipient, subject, payload, tenantId = 'mahad' }, conn = pool) {
+// Enqueue. Pass `conn` to enlist in an existing transaction. `sendAt` (Date or
+// ms-from-epoch) schedules a delayed send (used by the lifecycle journey).
+async function enqueue({ channel, recipient, subject, payload, tenantId = 'mahad', sendAt = null }, conn = pool) {
+  const when = sendAt ? new Date(sendAt) : null;
   await conn.query(
-    `INSERT INTO message_outbox (id, tenant_id, channel, recipient, subject, payload_json)
-     VALUES (?,?,?,?,?,?)`,
-    [uuidv4(), tenantId, channel, recipient, subject || null, JSON.stringify(payload || {})]
+    `INSERT INTO message_outbox (id, tenant_id, channel, recipient, subject, payload_json, next_attempt_at)
+     VALUES (?,?,?,?,?,?, COALESCE(?, NOW()))`,
+    [uuidv4(), tenantId, channel, recipient, subject || null, JSON.stringify(payload || {}),
+     when && !isNaN(when.getTime()) ? when : null]
   );
 }
 

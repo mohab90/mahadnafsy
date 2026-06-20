@@ -205,7 +205,13 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdmin, async (
 
     // Send WhatsApp notification to subscriber (best-effort, after commit)
     try {
-      const [[sub]] = await pool.query('SELECT name, phone FROM subscribers WHERE id = ?', [proof.subscriber_id]);
+      const [[sub]] = await pool.query('SELECT name, phone, email FROM subscribers WHERE id = ?', [proof.subscriber_id]);
+      // Lifecycle: email receipt on approval (whatsapp handled just below to avoid dup).
+      if (action === 'approve' && sub?.email) {
+        require('../lib/lifecycle').trigger('payment_received',
+          { name: sub.name, email: sub.email, amount: proof.amount, currency: proof.currency || 'EGP', itemTitle: proof.course_title },
+          { channels: ['email'] });
+      }
       if (sub?.phone) {
         const statusAr = action === 'approve' ? 'تم اعتماد' : 'تم رفض';
         const msg = action === 'approve'

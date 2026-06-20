@@ -1343,6 +1343,8 @@ router.post('/api/leads-public', publicLimiter,
        VALUES (?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', NOW(), 0)`,
       [id, code, name.trim().slice(0, 120), phone.trim().slice(0, 30), (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50)]
     );
+    // Lifecycle: instant welcome to the new lead (whatsapp; email skipped if absent).
+    require('../lib/lifecycle').trigger('lead_created', { name: name.trim(), phone: phone.trim() });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

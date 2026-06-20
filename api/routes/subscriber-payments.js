@@ -301,6 +301,10 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // Enqueue enrollment email sequence (best-effort)
     if (isPaid && subRow.email) {
       enqueueEmailSequence('enrollment', subRow.email, null, Date.now()).catch(() => {});
+      // Lifecycle: instant payment receipt (email; whatsapp handled above).
+      require('../lib/lifecycle').trigger('payment_received',
+        { name: subRow.name, email: subRow.email, amount: payment.amount, currency: payment.currency },
+        { channels: ['email'] });
     }
     res.json({ ok: true, id });
   } catch (e) {
