@@ -950,6 +950,24 @@ const server = app.listen(PORT, () => {
     setInterval(waitlistNotifyCron, 30 * 60 * 1000);
   }, 7 * 60 * 1000);
 
+  // ── Outbox + job-queue drain worker (Top20 #7/#8) ─────────────────────────
+  // Durable delivery for email/whatsapp + retryable background jobs. No-op while
+  // the queues are empty, so it is safe to run unconditionally every minute.
+  const _outbox = require('./lib/outbox');
+  const _jobQueue = require('./lib/jobQueue');
+  const _email = require('./lib/email');
+  const _jobHandlers = {}; // register handlers here as cron jobs migrate to the queue
+  async function backgroundWorkerTick() {
+    try {
+      await _outbox.drain({
+        email:    ({ recipient, subject, body, html }) => _email.sendEmail(recipient, subject, html || body || ''),
+        whatsapp: ({ recipient, message }) => sendWhatsApp(recipient, message || ''),
+      });
+      await _jobQueue.processBatch(_jobHandlers, `srv-${process.pid}`);
+    } catch (e) { logger.warn('[worker] tick error:', e.message); }
+  }
+  setInterval(backgroundWorkerTick, 60 * 1000);
+
   // ── Self-ping every 10-13 minutes (randomized) ────────────────────────────
   // Hostinger kills Node.js processes on :00/:30 boundaries via resource sweep.
   // Randomized interval avoids syncing with the scheduler's fixed cron times.

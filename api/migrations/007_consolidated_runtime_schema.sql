@@ -1,4 +1,4 @@
-﻿-- ══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════
 -- 008_consolidated_runtime_schema.sql
 -- ══════════════════════════════════════════════════════════════
 -- Generated from api/lib/startupTasks.js (tools/extract-runtime-ddl.cjs).
@@ -1290,6 +1290,8 @@ CREATE TABLE IF NOT EXISTS ip_whitelist (
       UNIQUE KEY uq_ip (ip)
     ) CHARACTER SET utf8mb4;
 
+ALTER TABLE leads ADD COLUMN deal_value DECIMAL(10,2) DEFAULT NULL;
+
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS subscriber_id VARCHAR(100) DEFAULT NULL AFTER id;
 
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data_json TEXT DEFAULT NULL AFTER message;
@@ -1476,13 +1478,5 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS cert_type VARCHAR(100) DEFAULT NUL
 
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS max_students INT UNSIGNED NULL COMMENT 'NULL = unlimited';
 
-ALTER TABLE leads ADD COLUMN deal_value DECIMAL(10,2) DEFAULT NULL;
-
--- Manually resolved from addIndexIfColumnsExist() calls in startupTasks.js:
-ALTER TABLE users ADD INDEX IF NOT EXISTS idx_users_firebase (firebase_uid(191));
-
-ALTER TABLE subscribers ADD INDEX IF NOT EXISTS idx_subs_status (status);
-
 SET FOREIGN_KEY_CHECKS = 1;
 -- 201 statements extracted.
-

@@ -11,7 +11,8 @@ const { sendWhatsApp } = require('../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, validate } = require('../lib/helpers');
 const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode } = require('../lib/mappers');
 const { createNotification } = require('../lib/notification');
-const { logPaymentAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp } = require('../lib/finance');
+const { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp } = require('../lib/finance');
+const { assertWritable } = require('../lib/periodLock');
 const { syncLeadDealValue } = require('./public-orders');
 const { logLeadEvent } = require('../lib/crm');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
@@ -933,6 +934,8 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
   try {
     const e2 = req.body;
     const id = e2.id || uuidv4();
+    const expDate = e2.date || new Date().toISOString().slice(0, 10);
+    await assertWritable(expDate); // reject writes into a closed accounting period
     const [result] = await pool.query(
       `INSERT INTO expenses (id, date, description, amount, currency, category, notes, created_at)
        VALUES (?,?,?,?,?,?,?,?)
@@ -947,7 +950,10 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
       postExpenseJournal({ ...e2, id }, +1, req.user?.email).catch(() => {});
     }
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
 });
 router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {

@@ -9,6 +9,7 @@ const { publicLimiter } = require('../middleware/rateLimits');
 const { safeDateOnly } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
 const { isBranch, normalizeBranch } = require('../constants/branches');
+const { logFinancialAudit } = require('../lib/finance');
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,7 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
       `UPDATE accounting_periods SET status='closed', closed_at=NOW(), closed_by=?, summary_json=? WHERE id=?`,
       [actor, JSON.stringify(summary), id]
     );
+    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'close', newData: { period_label: period.period_label }, actor });
     res.json({ ok: true, summary });
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -135,7 +137,9 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
 router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const actor = req.user?.email || req.user?.name || 'admin';
     await pool.query(`UPDATE accounting_periods SET status='open', closed_at=NULL, closed_by=NULL WHERE id=?`, [id]);
+    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'reopen', actor });
     res.json({ ok: true });
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

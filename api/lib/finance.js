@@ -14,6 +14,20 @@ async function logPaymentAudit(paymentId, action, oldStatus, newStatus, amount, 
   } catch (e) { logger.warn('[audit] logPaymentAudit error:', e.message); }
 }
 
+// Generalised financial audit (Top20 #6): any money-moving action across
+// payments / expenses / refunds / payroll / accounting periods.
+async function logFinancialAudit({ entityType, entityId, action, oldData, newData, amount, actor, tenantId = 'mahad' }) {
+  try {
+    await pool.query(
+      `INSERT INTO financial_audit_log (id, tenant_id, entity_type, entity_id, action, old_json, new_json, amount, actor)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [uuidv4(), tenantId, entityType, entityId || null, action,
+       oldData ? JSON.stringify(oldData) : null, newData ? JSON.stringify(newData) : null,
+       amount != null ? amount : null, actor || 'system']
+    );
+  } catch (e) { logger.warn('[audit] logFinancialAudit error:', e.message); }
+}
+
 // Chart of accounts:
 //  1100 = نقدية وبنوك      (Cash / Bank)
 //  4100 = إيرادات كورسات   (Course Revenue)
@@ -100,4 +114,4 @@ async function toEgp(amount, currency) {
   return parseFloat((amt * (rates[cur] || 1)).toFixed(2));
 }
 
-module.exports = { logPaymentAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp };
+module.exports = { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp };
