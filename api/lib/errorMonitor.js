@@ -43,4 +43,38 @@ function captureException(err, context) {
 
 function isActive() { return !!_sentry; }
 
-module.exports = { initErrorMonitor, captureException, isActive };
+// ── Threshold alerting (Observability #18) ────────────────────────────────────
+// Fires a webhook (ALERT_WEBHOOK_URL — Slack/Discord/generic) when the 5xx rate
+// in a rolling window crosses a threshold, or on demand. No-op without the URL.
+// Debounced so one incident doesn't spam. Never throws into the request path.
+const ALERT_URL = () => process.env.ALERT_WEBHOOK_URL;
+const WINDOW_MS = Number(process.env.ALERT_WINDOW_MS || 5 * 60 * 1000);
+const THRESHOLD = Number(process.env.ALERT_5XX_THRESHOLD || 10);
+const COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS || 15 * 60 * 1000);
+let _errTimes = [];
+let _lastAlert = 0;
+
+async function alert(title, detail) {
+  const url = ALERT_URL();
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `🚨 ${title}`, title, detail, ts: new Date().toISOString(), app: 'mahad-api' }),
+    });
+  } catch (e) { logger.warn('[alert] webhook failed', { err: e.message }); }
+}
+
+// Call on every 5xx. Tracks a rolling window; alerts (once per cooldown) on spikes.
+function recordError(meta) {
+  const now = Date.now();
+  _errTimes.push(now);
+  _errTimes = _errTimes.filter((t) => now - t < WINDOW_MS);
+  if (_errTimes.length >= THRESHOLD && now - _lastAlert > COOLDOWN_MS) {
+    _lastAlert = now;
+    alert(`${_errTimes.length} server errors in ${Math.round(WINDOW_MS / 60000)}m`, meta || {});
+  }
+}
+
+module.exports = { initErrorMonitor, captureException, isActive, alert, recordError };

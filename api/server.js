@@ -397,7 +397,7 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const ms = Date.now() - start;
     const meta = { reqId: req.reqId, method: req.method, path: req.path, status: res.statusCode, ms };
-    if (res.statusCode >= 500) _httpLogger.error('http', meta);
+    if (res.statusCode >= 500) { _httpLogger.error('http', meta); try { require('./lib/errorMonitor').recordError(meta); } catch { /* noop */ } }
     else if (res.statusCode >= 400) _httpLogger.warn('http', meta);
     else _httpLogger.info('http', meta);
   });
