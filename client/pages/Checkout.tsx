@@ -21,6 +21,12 @@ const Checkout: React.FC = () => {
   const [orderSent, setOrderSent] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState('');
+  // Self-service receipt upload (after order is placed)
+  const [proofImage, setProofImage] = useState('');
+  const [proofMethod, setProofMethod] = useState('انستا باي');
+  const [proofSubmitting, setProofSubmitting] = useState(false);
+  const [proofDone, setProofDone] = useState(false);
+  const [proofError, setProofError] = useState('');
 
   // Auto-fill name & email from logged-in user
   useEffect(() => {
@@ -133,6 +139,39 @@ const Checkout: React.FC = () => {
     }
   };
 
+  // Convert the chosen receipt file → base64 for upload.
+  const onProofFile = (file?: File) => {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { setProofError('الصورة أكبر من 4 ميجا'); return; }
+    const reader = new FileReader();
+    reader.onload = () => { setProofImage(String(reader.result || '')); setProofError(''); };
+    reader.readAsDataURL(file);
+  };
+
+  // Self-service: submit the transfer receipt → goes to admin review → on approval
+  // the payment is recorded, access enrolled, and the lifecycle receipt fires.
+  const submitProof = async () => {
+    if (!proofImage) { setProofError('ارفع صورة الإيصال أولاً'); return; }
+    setProofSubmitting(true); setProofError('');
+    try {
+      const token = localStorage.getItem('mahad-token');
+      const res = await fetch('/api/me/payment-proof', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          amount: itemEGPPrice, currency: 'EGP',
+          course_id: type === 'course' ? id : null,
+          payment_method: proofMethod, proof_image: proofImage,
+          note: `طلب ذاتي: ${itemTitle}`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'تعذّر إرسال الإيصال');
+      setProofDone(true);
+    } catch (e) { setProofError(e instanceof Error ? e.message : 'تعذّر إرسال الإيصال'); }
+    finally { setProofSubmitting(false); }
+  };
+
   // Require login for course/bundle purchases
   if (requiresLogin && authUser === null) {
     return (
@@ -195,30 +234,58 @@ const Checkout: React.FC = () => {
                 {/* Contact / payment form */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 order-2 md:order-1">
                   {orderSent ? (
+                    proofDone ? (
                     <div className="text-center py-4">
                       <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Check size={32} className="text-green-600" />
                       </div>
-                      <h3 className="text-lg font-extrabold text-gray-900 mb-2">تم استلام طلبك!</h3>
-                      <p className="text-gray-500 text-sm mb-6">
-                        سيتواصل معك فريقنا على <strong>{customerPhone}</strong> لإتمام الدفع وتفعيل حسابك.
-                      </p>
-                      {/* WhatsApp quick confirm */}
+                      <h3 className="text-lg font-extrabold text-gray-900 mb-2">تم استلام إيصالك ✅</h3>
+                      <p className="text-gray-500 text-sm mb-6">هنراجع الإيصال ونفعّل وصولك للكورس خلال وقت قصير — وهيوصلك تأكيد على بريدك وواتساب.</p>
+                      <Link to="/dashboard" className="inline-block w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition text-sm">الذهاب لحسابي</Link>
+                    </div>
+                    ) : (
+                    <div className="py-2">
+                      <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Check size={28} className="text-green-600" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-gray-900 mb-1 text-center">تم استلام طلبك! 🎉</h3>
+                      <p className="text-gray-500 text-xs mb-4 text-center">حوّل المبلغ ({finalAmount} {currencySymbol}) ثم ارفع صورة الإيصال هنا لتفعيل وصولك فوراً بعد المراجعة.</p>
+
+                      {/* Payment instructions (configurable from admin content) */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-900 whitespace-pre-line leading-6">
+                        <p className="font-bold flex items-center gap-1 mb-1"><Banknote size={14}/> تعليمات التحويل</p>
+                        {content['finance.payment_instructions'] || 'إنستاباي / فودافون كاش / تحويل بنكي — راسلنا واتساب لطلب رقم الحساب إن لم يظهر هنا.'}
+                      </div>
+
+                      {/* Receipt upload */}
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">طريقة الدفع</label>
+                      <select value={proofMethod} onChange={e => setProofMethod(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-3">
+                        {['انستا باي', 'فودافون كاش', 'تحويل بنكي', 'اخرى'].map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">صورة الإيصال</label>
+                      <input type="file" accept="image/*" onChange={e => onProofFile(e.target.files?.[0])}
+                        className="w-full text-xs mb-2 file:ml-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700" />
+                      {proofImage && <img src={proofImage} alt="receipt" className="max-h-36 rounded-lg border border-gray-100 mb-3 mx-auto object-contain" />}
+
+                      {proofError && <p className="text-red-600 text-xs mb-2">{proofError}</p>}
+                      <button onClick={submitProof} disabled={proofSubmitting || !proofImage}
+                        className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition text-sm mb-3">
+                        {proofSubmitting ? <><Loader2 size={16} className="animate-spin" /> جارٍ الإرسال...</> : 'إرسال الإيصال وتفعيل الوصول'}
+                      </button>
+
                       {whatsapp && (
                         <a
-                          href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، قدّمت طلب الاشتراك في: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}\nالبريد: ${customerEmail}`)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm mb-3"
+                          href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، حوّلت لاشتراك: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}`)}`}
+                          target="_blank" rel="noreferrer"
+                          className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"
                         >
-                          <MessageCircle size={17} />
-                          تابع عبر واتساب الآن
+                          <MessageCircle size={17} /> أرسل الإيصال عبر واتساب بدلاً من ذلك
                         </a>
                       )}
-                      <button onClick={() => setOrderSent(false)} className="text-xs text-gray-400 underline">
-                        تعديل البيانات
-                      </button>
+                      <button onClick={() => setOrderSent(false)} className="block w-full text-center mt-3 text-xs text-gray-400 underline">تعديل البيانات</button>
                     </div>
+                    )
                   ) : (
                     <>
                       <h2 className="text-lg font-bold mb-4 text-gray-900">بياناتك</h2>
