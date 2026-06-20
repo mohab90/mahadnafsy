@@ -11,6 +11,7 @@ import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import type { PaymentProof } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCertificate from '../components/CourseCertificate';
+import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentCoursesTab } from '../components/student-dashboard/StudentCoursesTab';
 import { StudentPaymentsTab } from '../components/student-dashboard/StudentPaymentsTab';
 import { StudentMaterialsTab } from '../components/student-dashboard/StudentMaterialsTab';
@@ -679,6 +680,15 @@ const UserDashboard: React.FC = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* Engagement hero — continue learning + progress + certificate */}
+                <StudentEngagementHero
+                  enrolledCourses={enrolledCourses}
+                  lectureProgress={subscriber?.lectureProgress || {}}
+                  getCourseLectures={getCourseLectures}
+                  onResume={(cid) => { setActiveTab('learning'); setLearningSection('courses'); setPlayerCourseId(cid); }}
+                  onBrowse={() => navigate('/courses')}
+                />
 
                 {/* Total paid summary */}
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white shadow">
