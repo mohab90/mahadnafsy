@@ -32,6 +32,8 @@ import {
   statusColors, statusLabels, EXTRA_TYPE_LABELS,
   normalizeAccess, generatePromoCode, SideRow,
 } from './unifiedClient.constants';
+import CommunicationsTab from './unifiedClient/CommunicationsTab';
+import CertificatesTab from './unifiedClient/CertificatesTab';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -1879,63 +1881,14 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
               {/* ══ 💬 التواصل ══ */}
               {activeTab === 'communications' && (
-                <div id="section-communications" className="space-y-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-1 h-5 rounded-full bg-blue-500 flex-shrink-0" />
-                    <h3 className="font-extrabold text-gray-800 text-sm flex items-center gap-2 flex-1">
-                      <Phone size={14} className="text-blue-500" /> التواصل
-                    </h3>
-                    <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{allComms.length}</span>
-                  </div>
-                  <button onClick={() => setShowAddComm(true)}
-                    className="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-blue-600 hover:border-blue-400 hover:bg-blue-50 text-sm flex items-center justify-center gap-2">
-                    <Plus size={18} /> تسجيل تواصل جديد
-                  </button>
-                  {allComms.length === 0 ? (
-                    <div className="text-center py-10 text-gray-400">
-                      <Activity size={40} className="mx-auto mb-2 text-gray-200" />
-                      <p>لا يوجد تواصل مسجل</p>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <div className="absolute right-5 top-0 bottom-0 w-px bg-gray-100" />
-                      <div className="space-y-4">
-                        {allComms.map(comm => {
-                          const c = comm as CommunicationRecord & { _src?: string };
-                          const meta = commTypeMeta[c.type] || commTypeMeta.note;
-                          // build WhatsApp link if phone available
-                          const waPhone = clientPhone.replace(/\D/g, '');
-                          const waMsg = encodeURIComponent(`مرحباً ${clientName}،`);
-                          const waLink = waPhone ? `https://wa.me/${waPhone}?text=${waMsg}` : null;
-                          return (
-                            <div key={c.id} className="flex gap-4 group">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 z-10 ${meta.color}`}>{meta.icon}</div>
-                              <div className="flex-1 bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex items-center flex-wrap gap-2">
-                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${meta.color}`}>{meta.label}</span>
-                                    <span className="text-xs text-gray-400">{c.date}</span>
-                                    {waLink && (
-                                      <a href={waLink} target="_blank" rel="noopener noreferrer"
-                                        className="text-[10px] font-bold text-green-700 bg-green-50 hover:bg-green-100 px-2 py-0.5 rounded-full border border-green-200 flex items-center gap-1 transition">
-                                        <MessageSquare size={10} /> رد واتساب
-                                      </a>
-                                    )}
-                                  </div>
-                                  <button onClick={() => handleDeleteComm(c.id, (c._src ?? (isSub ? 'subscriber' : 'lead')) as 'lead' | 'subscriber')}
-                                    className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
-                                </div>
-                                {c.notes && <p className="text-sm text-gray-700 mt-2 leading-relaxed">{c.notes}</p>}
-                                {c.outcome && <div className="mt-2 flex items-center gap-2 text-xs text-green-700 bg-green-50 px-3 py-1.5 rounded-lg"><CheckCircle size={12} />{c.outcome}</div>}
-                                {c.nextFollowUp && <div className="mt-1 flex items-center gap-2 text-xs text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg"><Clock size={12} />موعد المتابعة: {c.nextFollowUp}</div>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <CommunicationsTab
+                  allComms={allComms as (CommunicationRecord & { _src?: string })[]}
+                  clientName={clientName}
+                  clientPhone={clientPhone}
+                  isSub={isSub}
+                  onAdd={() => setShowAddComm(true)}
+                  onDelete={handleDeleteComm}
+                />
               )}
 
               {/* ══ 💳 الدفعات ══ */}
@@ -2362,78 +2315,15 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
               {/* ══ 🏆 الشهادات ══ */}
               {isSub && activeTab === 'certificates' && (
-                <div id="section-certificates" className="space-y-3">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-1 h-5 rounded-full bg-amber-500 flex-shrink-0" />
-                    <h3 className="font-extrabold text-gray-800 text-sm flex items-center gap-2 flex-1">
-                      <Award size={14} className="text-amber-500" /> الشهادات
-                    </h3>
-                    <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{subCerts.length + extraReqs.length}</span>
-                  </div>
-                  {/* Extra cert request form */}
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-gray-700 text-sm">شهادات الكورسات ({subCerts.length})</p>
-                    {subscriber!.enrolledCourseIds.length > 0 && (
-                      <button onClick={() => { setShowExtraCertForm(true); setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' }); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100 border border-emerald-200">
-                        <Plus size={12} /> طلب شهادة إضافية
-                      </button>
-                    )}
-                  </div>
-
-                  {subCerts.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400"><Award size={36} className="mx-auto mb-2 text-gray-200" /><p>لا توجد شهادات</p></div>
-                  ) : subCerts.map(cert => {
-                    const certCourse = courses.find(c => c.id === cert.courseId);
-                    return (
-                      <div key={cert.id} className="border border-emerald-200 bg-emerald-50 rounded-xl p-4 group flex items-start justify-between gap-3">
-                        <div className="flex gap-3">
-                          <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base flex-shrink-0">🏆</div>
-                          <div>
-                            <p className="font-bold text-emerald-800 text-sm">{certCourse?.title || cert.courseId}</p>
-                            <p className="text-xs font-mono bg-emerald-100 inline-block px-2 py-0.5 rounded mt-0.5">{cert.certificateNumber}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">صدرت في {cert.issuedAt}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <button onClick={() => setViewCertId(cert.id)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100">
-                            <Eye size={12} /> عرض
-                          </button>
-                          <button onClick={() => updateSubscriber({ ...subscriber!, certificates: subCerts.filter(c => c.id !== cert.id) })}
-                            className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* Extra cert requests */}
-                  {extraReqs.length > 0 && (
-                    <>
-                      <p className="font-bold text-gray-700 text-sm mt-4">الشهادات الإضافية ({extraReqs.length})</p>
-                      {extraReqs.map(req => (
-                        <div key={req.id} className={`border rounded-xl p-4 ${req.status === 'issued' ? 'border-green-200 bg-green-50' : req.status === 'paid' ? 'border-blue-200 bg-blue-50' : req.status === 'priced' ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50'}`}>
-                          <div className="flex justify-between items-start">
-                            <p className="font-bold text-sm text-gray-900">{req.customName || EXTRA_TYPE_LABELS[req.type]}</p>
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${req.status === 'issued' ? 'bg-green-100 text-green-700' : req.status === 'paid' ? 'bg-blue-100 text-blue-700' : req.status === 'priced' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {req.status === 'issued' ? '✅ صدرت' : req.status === 'paid' ? '💳 مدفوعة' : req.status === 'priced' ? '💰 بانتظار الدفع' : '⏳ قيد المراجعة'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-400 mt-1">طُلبت في {req.requestedAt}</p>
-                          {req.price && req.price > 0 && (
-                            <div className="flex items-center gap-3 mt-1 flex-wrap text-xs">
-                              <span className="text-gray-600">السعر: <span className="font-bold">{req.price.toLocaleString()} {req.currency || 'ج.م'}</span></span>
-                              {req.paidAmount != null && <span className="text-green-700">مدفوع: <span className="font-bold">{req.paidAmount.toLocaleString()}</span></span>}
-                              {req.paidAmount != null && req.price > req.paidAmount && <span className="text-red-600 font-bold">متبقي: {(req.price - req.paidAmount).toLocaleString()}</span>}
-                              {req.paidAmount != null && req.paidAmount >= req.price && <span className="text-emerald-600 font-bold">✅ مكتمل</span>}
-                            </div>
-                          )}
-                          {req.nationality && <p className="text-xs text-gray-500 mt-0.5">{req.nationality === 'egyptian' ? '🇪🇬 مصري' : req.nationality === 'non_egyptian_egypt' ? '👤 غير مصري مقيم في مصر' : req.nationality === 'saudi_resident' ? '🇸🇦 مقيم في السعودية' : '✈️ دولي'}</p>}
-                          {req.idNumber && <p className="text-xs font-mono text-gray-600 mt-0.5">🪪 {req.idNumber}</p>}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
+                <CertificatesTab
+                  subscriber={subscriber!}
+                  subCerts={subCerts}
+                  extraReqs={extraReqs}
+                  courses={courses}
+                  onRequestExtra={() => { setShowExtraCertForm(true); setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' }); }}
+                  onView={(certId) => setViewCertId(certId)}
+                  onDeleteCert={(certId) => updateSubscriber({ ...subscriber!, certificates: subCerts.filter(c => c.id !== certId) })}
+                />
               )}
 
               {/* ══ 📅 الأقساط ══ */}
