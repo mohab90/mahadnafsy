@@ -91,7 +91,7 @@ router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, r
     } catch { /* table shape差 */ }
     const items = [
       { key: 'pending_proofs',     label: 'إيصالات تنتظر الاعتماد', count: pendingProofs,    severity: pendingProofs ? 'high' : 'ok',  link: 'orders' },
-      { key: 'overdue_followups',  label: 'متابعات متأخرة',          count: overdueFollowups, severity: overdueFollowups ? 'high' : 'ok', link: 'leads' },
+      { key: 'overdue_followups',  label: 'متابعات متأخرة',          count: overdueFollowups, severity: overdueFollowups ? 'high' : 'ok', link: 'followup_reminders' },
       { key: 'uncontacted',        label: 'عملاء جدد بلا تواصل',     count: uncontacted,      severity: uncontacted ? 'warn' : 'ok',    link: 'leads' },
       { key: 'pending_certs',      label: 'شهادات قيد الطلب',        count: pendingCerts,     severity: pendingCerts ? 'warn' : 'ok',   link: 'cert_requests' },
       { key: 'join_us',            label: 'طلبات انضمام جديدة',      count: newJoinUs,        severity: newJoinUs ? 'warn' : 'ok',      link: 'join_us' },

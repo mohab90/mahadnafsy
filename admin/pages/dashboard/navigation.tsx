@@ -17,7 +17,6 @@ import {
   Globe,
   GraduationCap,
   Headphones,
-  Image,
   LayoutDashboard,
   ListOrdered,
   Mail,
@@ -269,7 +268,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'live_streams', label: 'البث المباشر', icon: Video },
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
       { key: 'content_hub', label: 'صفحات الموقع', icon: Globe },
-      { key: 'institute_gallery', label: 'معرض الصور', icon: Image },
     ],
   },
   {

@@ -740,6 +740,7 @@ const ContentHubTab: React.FC<Props> = ({
     { key: 'page_instructors', label: 'صفحة الخبراء', icon: '🧑‍🏫' },
     { key: 'page_contact', label: 'صفحة التواصل', icon: '✉️' },
     { key: 'page_joinus', label: 'صفحة انضم إلينا', icon: '🤝' },
+    { key: 'institute_gallery', label: 'معرض الصور', icon: '🖼️' },
     { key: 'hub_advanced', label: 'متقدم', icon: '⚙️' },
   ];
 
