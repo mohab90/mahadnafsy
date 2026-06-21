@@ -105,6 +105,11 @@ export const pageCoursesFields: ContentField[] = [
   { key: 'courses.categories.child', label: 'فلتر: أطفال ومراهقين', multiline: false },
   { key: 'courses.categories.diagnosis', label: 'فلتر: تشخيص', multiline: false },
   { key: 'courses.emptyState', label: 'رسالة عدم وجود نتائج', multiline: false },
+  // ── صفحة تفاصيل الكورس (عناصر التحويل) ──
+  { key: 'courseDetails.guaranteeText', label: 'تفاصيل الكورس: نص ضمان الاسترداد', multiline: true },
+  { key: 'courseDetails.seatsNote', label: 'تفاصيل الكورس: نص المقاعد المحدودة', multiline: true },
+  { key: 'courseDetails.faqTitle', label: 'تفاصيل الكورس: عنوان الأسئلة الشائعة', multiline: false },
+  { key: 'courseDetails.faqList', label: 'تفاصيل الكورس: الأسئلة الشائعة (سطر لكل سؤال بصيغة: السؤال :: الجواب)', multiline: true },
 ];
 
 export const pageBundlesFields: ContentField[] = [

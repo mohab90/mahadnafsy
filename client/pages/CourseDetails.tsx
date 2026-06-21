@@ -1,10 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Check, PlayCircle, Calendar, Award, MessageCircle, Share2, AlertCircle, ChevronDown, ChevronUp, Users, Play, FileText, Send, Lock, Star, Quote, X, Gift } from 'lucide-react';
+import { Check, PlayCircle, Calendar, Award, MessageCircle, Share2, AlertCircle, ChevronDown, ChevronUp, Users, Play, FileText, Send, Lock, Star, Quote, X, Gift, ShieldCheck, Clock, HelpCircle } from 'lucide-react';
 import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { SafeHtml } from '../components/SafeHtml';
 import { mysqlClient, mysqlCatalog } from '../lib/mysqlapi';
+
+// Default FAQ — editable from لوحة التحكم → صفحات الموقع → صفحة الكورسات (key: courseDetails.faqList).
+// Format: one "السؤال :: الجواب" per line.
+const DEFAULT_FAQ = [
+  'هل الشهادة معتمدة وموثّقة؟ :: نعم، شهاداتنا معتمدة وموثّقة برقم تسلسلي، ويمكن توثيقها من جهات خارجية حسب البرنامج.',
+  'المحتوى مسجّل أم مباشر؟ :: حسب نوع البرنامج (مسجّل / مباشر / هجين) موضّح أعلى الصفحة، والمسجّل تقدر تشاهده في أي وقت.',
+  'كم مدة الوصول للمحتوى؟ :: وصول كامل لمدة سنة من تاريخ الاشتراك.',
+  'هل يوجد تقسيط؟ :: نعم، نوفّر خطط تقسيط مرنة — تواصل معنا على واتساب لمعرفة التفاصيل.',
+  'ماذا لو لم يناسبني البرنامج؟ :: لديك ضمان استرداد خلال 7 أيام إن لم يكن البرنامج مناسباً لك.',
+  'هل أحصل على دعم أثناء الدراسة؟ :: نعم، دعم مستمر عبر المجتمع والواتساب طوال فترة البرنامج.',
+].join('\n');
 
 const CourseDetails: React.FC = () => {
                 const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
@@ -204,6 +215,7 @@ const CourseDetails: React.FC = () => {
     };
 
   // ── Course rating state ────────────────────────────────────────────────────
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [ratingData, setRatingData] = useState<{ avg: number; count: number; myRating: { rating: number; comment: string } | null } | null>(null);
   const [hoverStar, setHoverStar] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
@@ -373,6 +385,18 @@ const CourseDetails: React.FC = () => {
                                          <p className="flex items-center gap-2"><Check size={16} className="text-green-500" /> {content['courseDetails.price.feature1'] || 'وصول لمدة سنة واحدة للمحتوى'}</p>
                                          <p className="flex items-center gap-2"><Check size={16} className="text-green-500" /> {content['courseDetails.price.feature2'] || 'شهادة إتمام موثقة برقم تسلسلي'}</p>
                                          <p className="flex items-center gap-2"><Check size={16} className="text-green-500" /> {content['courseDetails.price.feature3'] || 'المادة العلمية + نماذج العمل'}</p>
+                  </div>
+
+                  {/* Trust strip — guarantee + limited seats (editable: لوحة التحكم → صفحات الموقع → صفحة الكورسات) */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-start gap-2 bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-xs text-green-800">
+                      <ShieldCheck size={15} className="shrink-0 mt-0.5 text-green-600" />
+                      <span>{content['courseDetails.guaranteeText'] || 'ضمان استرداد خلال 7 أيام إن لم يناسبك البرنامج — اشترك بثقة.'}</span>
+                    </div>
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-xs text-amber-800">
+                      <Clock size={15} className="shrink-0 mt-0.5 text-amber-600" />
+                      <span>{content['courseDetails.seatsNote'] || 'المقاعد محدودة لكل دفعة لضمان جودة المتابعة — احجز مكانك مبكراً.'}</span>
+                    </div>
                   </div>
 
                   <div className="flex justify-center gap-4">
@@ -924,8 +948,27 @@ const CourseDetails: React.FC = () => {
                   )}
                 </section>
 
+                {/* FAQ — editable: لوحة التحكم → صفحات الموقع → صفحة الكورسات (courseDetails.faqList) */}
+                <section>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+                    <HelpCircle size={20} className="text-primary-600" /> {content['courseDetails.faqTitle'] || 'الأسئلة الشائعة'}
+                  </h2>
+                  <div className="space-y-2">
+                    {(content['courseDetails.faqList'] || DEFAULT_FAQ).split('\n').map(l => l.split('::')).filter(p => p[0]?.trim() && p[1]?.trim()).map((p, i) => (
+                      <div key={i} className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+                        <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-right hover:bg-gray-50 transition">
+                          <span className="font-bold text-gray-800 text-sm">{p[0].trim()}</span>
+                          {openFaq === i ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
+                        </button>
+                        {openFaq === i && <div className="px-4 pb-3 text-sm text-gray-600 leading-relaxed">{p[1].trim()}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
             </div>
-            
+
             <div className="hidden lg:block">
                 {/* Sidebar place holder for related courses or generic info */}
                 <div className="bg-gray-50 p-6 rounded-2xl sticky top-[500px] border border-gray-200">
