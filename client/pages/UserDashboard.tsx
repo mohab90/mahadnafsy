@@ -1659,9 +1659,34 @@ const UserDashboard: React.FC = () => {
                           onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/auth?ref=${referralCode}`).catch(() => {}); setReferralCopied(true); setTimeout(() => setReferralCopied(false), 2000); }}
                           className="bg-purple-600 text-white text-xs rounded-lg px-3 py-2 hover:bg-purple-700 flex items-center gap-1"
                         >
-                          <Share2 size={12} /> مشاركة
+                          <Share2 size={12} /> نسخ
                         </button>
                       </div>
+                      {/* One-tap share — the viral loop */}
+                      {(() => {
+                        const link = `${window.location.origin}/auth?ref=${referralCode}`;
+                        const msg = `اتعلّمت في معهد الدراسات النفسية وأنصحك بيه! 🌿\nسجّل من اللينك ده واحصل على مكافأة:\n${link}`;
+                        return (
+                          <div className="flex gap-2 mt-3">
+                            <a
+                              href={`https://wa.me/?text=${encodeURIComponent(msg)}`}
+                              target="_blank" rel="noreferrer"
+                              className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg py-2.5"
+                            >
+                              <Share2 size={13} /> شارك على واتساب
+                            </a>
+                            <button
+                              onClick={() => {
+                                if (navigator.share) navigator.share({ title: 'معهد الدراسات النفسية', text: msg, url: link }).catch(() => {});
+                                else { navigator.clipboard.writeText(msg).catch(() => {}); setReferralCopied(true); setTimeout(() => setReferralCopied(false), 2000); }
+                              }}
+                              className="px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg py-2.5"
+                            >
+                              مشاركة أخرى
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 ) : (

@@ -134,7 +134,7 @@ router.post('/api/user/signup', registerLimiter,
     password: v => isString(v, 200) && (v || '').length >= 6 || 'Password must be at least 6 characters',
   }),
   async (req, res) => {
-  const { email, password, name, phone, country, interest } = req.body || {};
+  const { email, password, name, phone, country, interest, ref } = req.body || {};
   const conn = await pool.getConnection();
   try {
     await ensureUsersTable(conn);
@@ -146,6 +146,12 @@ router.post('/api/user/signup', registerLimiter,
       'INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)',
       [id, email.toLowerCase().trim(), hash, (name || '').trim(), 'user']
     );
+    // Referral attribution (best-effort): credit the referrer + tag the new user.
+    if (ref) {
+      const refCode = String(ref).trim().toUpperCase();
+      conn.query('UPDATE referral_codes SET uses = uses + 1 WHERE code = ?', [refCode]).catch(() => {});
+      conn.query('UPDATE subscribers SET referred_by = ? WHERE LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, email.toLowerCase().trim()]).catch(() => {});
+    }
     try {
       await conn.execute(
         `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,

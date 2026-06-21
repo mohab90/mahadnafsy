@@ -414,7 +414,7 @@ export const mysqlPaymob = {
 export const mysqlAuth = {
   login: (email: string, password: string) =>
     apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
-  register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string }) =>
+  register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string; ref?: string }) =>
     apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
   updateProfile: (name: string) =>
