@@ -22,6 +22,7 @@ const authAr: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 const Enrollment: React.FC = () => {
+  useEffect(() => { document.title = 'التسجيل في الكورس | معهد الدراسات النفسية'; }, []);
   const { courses, bundles, currency, content } = useSiteData();
 
   // Available courses with a price

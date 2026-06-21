@@ -5,6 +5,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { getTherapistSessionPrice } from '../lib/consultations';
 
 const Checkout: React.FC = () => {
+  useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { courses, bundles, therapists, content, currency, authUser, subscribers } = useSiteData();

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Receipt } from 'lucide-react';
 
@@ -16,6 +16,7 @@ const STEPS = [
 ];
 
 const PaymentSuccess: React.FC = () => {
+  useEffect(() => { document.title = 'تم استلام طلبك | معهد الدراسات النفسية'; }, []);
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
       <div className="bg-white w-full max-w-lg rounded-3xl shadow-xl p-8 sm:p-10 border border-gray-100">

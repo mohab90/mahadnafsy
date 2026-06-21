@@ -36,6 +36,7 @@ type AccountSection = 'payments' | 'notifications' | 'referral' | 'support' | 's
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
+  useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
   const { courses, subscribers, notifications, communityPosts, consultations, getCourseLectures, updateSubscriber, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, currency, courseQuizzes, quizAttempts, addQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const navigate = useNavigate();
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Star, Shield, Users, BookOpen, Facebook, Twitter, Linkedin, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
 import { Currency } from '../types';
@@ -11,6 +11,7 @@ const InstructorDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const instructor = therapists.find((t) => t.id === id);
+  useEffect(() => { document.title = (instructor?.name || 'المحاضرون والخبراء') + ' | معهد الدراسات النفسية'; }, [instructor?.name]);
 
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState('');

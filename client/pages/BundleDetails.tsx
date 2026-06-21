@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   CheckCircle, Award, ArrowRight, PlayCircle, Briefcase, TrendingUp,
@@ -45,6 +45,7 @@ const BundleDetails: React.FC = () => {
 
   // Match by id OR slug
   const bundle = bundles.find(b => b.id === id || b.slug === id);
+  useEffect(() => { document.title = (bundle?.title ? `${bundle.title} — مسار` : 'المسارات والباقات') + ' | معهد الدراسات النفسية'; }, [bundle?.title]);
   if (!bundle) return <div className="text-center py-20 text-gray-500">{globalContent['bundleDetails.notFound'] || 'المسار غير موجود'}</div>;
 
   const content = { ...globalContent, ...(bundle.detailsContent || {}) };

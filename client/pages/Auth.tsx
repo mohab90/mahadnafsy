@@ -6,6 +6,7 @@ import { useSiteData } from '../context/SiteDataContext';
 type AR = Record<string, unknown>;
 
 const Auth: React.FC = () => {
+  useEffect(() => { document.title = 'تسجيل الدخول | معهد الدراسات النفسية'; }, []);
   const [isLogin, setIsLogin] = useState(true);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
