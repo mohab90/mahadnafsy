@@ -19,6 +19,14 @@ const ContactsTab: React.FC = () => {
   const statusLabels: Record<string, string> = { new: 'جديد', read: 'تمت القراءة', replied: 'تم الرد' };
   const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', read: 'bg-amber-100 text-amber-700', replied: 'bg-emerald-100 text-emerald-700' };
 
+  // Normalise an Egyptian phone for a wa.me link (digits only, 0xxxx → 20xxxx).
+  const waNum = (p?: string) => {
+    let d = (p || '').replace(/\D/g, '');
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.startsWith('0')) d = '2' + d;
+    return d;
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -53,6 +61,18 @@ const ContactsTab: React.FC = () => {
                 {msg.subject && <div className="col-span-2"><span className="text-gray-400 text-xs">الموضوع:</span> <span className="font-medium text-gray-700">{msg.subject}</span></div>}
               </div>
               <p className="text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2 leading-relaxed"><span className="font-bold text-gray-700 block mb-0.5">الرسالة:</span>{msg.message}</p>
+              {/* Quick reply — turns the log into an actionable inbox; marks replied */}
+              <div className="flex gap-2">
+                <a href={`https://wa.me/${waNum(msg.phone)}?text=${encodeURIComponent(`مرحباً ${msg.name}، بخصوص رسالتك لمعهد الدراسات النفسية:`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  onClick={() => { if (msg.status !== 'replied') updateContactMessage({ ...msg, status: 'replied' }); }}
+                  className="flex-1 text-center py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition">💬 رد واتساب</a>
+                {msg.email && (
+                  <a href={`mailto:${msg.email}?subject=${encodeURIComponent('رد على رسالتك — معهد الدراسات النفسية')}`}
+                    onClick={() => { if (msg.status !== 'replied') updateContactMessage({ ...msg, status: 'replied' }); }}
+                    className="flex-1 text-center py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition">✉️ رد إيميل</a>
+                )}
+              </div>
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">الحالة</label>
                 <select value={msg.status} onChange={e => updateContactMessage({ ...msg, status: e.target.value as typeof msg.status })}
