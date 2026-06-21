@@ -514,6 +514,8 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
       'INSERT INTO contact_messages (id, name, email, phone, subject, message) VALUES (?,?,?,?,?,?)',
       [id, name, email || null, phone, subject || null, message]
     );
+    // Lifecycle: instant acknowledgment to the sender.
+    require('../lib/lifecycle').trigger('contact_received', { name, email, phone });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -531,6 +533,9 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
       'INSERT INTO join_us_applications (id, name, email, phone, specialty, experience, type, linkedin, message) VALUES (?,?,?,?,?,?,?,?,?)',
       [id, name, email, phone, specialty, experience || '', safeType, linkedin || null, message || null]
     );
+    // Lifecycle: instant acknowledgment to the applicant.
+    const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
+    require('../lib/lifecycle').trigger('join_us_received', { name, email, phone, roleLabel });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

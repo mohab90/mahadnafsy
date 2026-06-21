@@ -66,6 +66,30 @@ const JOURNEY = {
         <p><a class="btn" href="${SITE}/dashboard">ابدأ المحاضرة الأولى</a></p>`,
     },
   ],
+  contact_received: [
+    {
+      key: 'contact_ack_email', channel: 'email', delayH: 0,
+      subject: 'استلمنا رسالتك ✅',
+      build: (c) => `<p>أهلاً ${c.name || ''},</p>
+        <p>وصلتنا رسالتك وفريقنا هيرد عليك في أقرب وقت. شكراً لتواصلك مع معهد الدراسات النفسية 🌿</p>`,
+    },
+    {
+      key: 'contact_ack_wa', channel: 'whatsapp', delayH: 0,
+      build: (c) => `أهلاً ${c.name || ''} 🌿\nوصلتنا رسالتك وهنرد عليك قريب. شكراً لتواصلك مع معهد الدراسات النفسية 💚`,
+    },
+  ],
+  join_us_received: [
+    {
+      key: 'joinus_ack_email', channel: 'email', delayH: 0,
+      subject: 'استلمنا طلب انضمامك 🎓',
+      build: (c) => `<p>أهلاً ${c.name || ''},</p>
+        <p>استلمنا طلب انضمامك${c.roleLabel ? ` (${c.roleLabel})` : ''} وفريقنا هيراجعه ويتواصل معك قريباً. سعداء باهتمامك بالانضمام لمعهد الدراسات النفسية 🌿</p>`,
+    },
+    {
+      key: 'joinus_ack_wa', channel: 'whatsapp', delayH: 0,
+      build: (c) => `أهلاً ${c.name || ''} 🌿\nاستلمنا طلب انضمامك${c.roleLabel ? ` (${c.roleLabel})` : ''} وفريقنا هيراجعه ويكلّمك قريب. شكراً لاهتمامك 💚`,
+    },
+  ],
   abandoned_interest: [
     {
       key: 'abandoned_email', channel: 'email', delayH: 0,
