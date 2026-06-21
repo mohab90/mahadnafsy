@@ -3,7 +3,8 @@
  * expense analytics) under one menu entry with an internal sub-tab bar.
  * Gives previously URL-only tabs a discoverable home.
  */
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BarChart3, TrendingUp, PieChart, Wallet, Filter, Users, Layers } from 'lucide-react';
 import type { NotifyFn } from '../../types';
 
@@ -26,7 +27,13 @@ const SUBS = [
 ] as const;
 
 export default function AnalyticsHub({ notify, initial }: { notify: NotifyFn; initial?: string }) {
-  const [sub, setSub] = useState<string>(SUBS.some(s => s.key === initial) ? (initial as string) : 'kpi_dashboard');
+  // Sub-tab is URL-driven (?sub=) so each analytics view is deep-linkable and
+  // browser back/forward moves between them.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const valid = (k?: string | null) => SUBS.some(s => s.key === k);
+  const urlSub = searchParams.get('sub');
+  const sub = valid(urlSub) ? (urlSub as string) : (valid(initial) ? (initial as string) : 'kpi_dashboard');
+  const setSub = (k: string) => { const next = new URLSearchParams(searchParams); next.set('sub', k); setSearchParams(next); };
   const Active = SUBS.find(s => s.key === sub)?.Comp;
   return (
     <div className="space-y-4" dir="rtl">
