@@ -378,8 +378,8 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdmin,
       WHERE YEAR(date) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
         AND MONTH(date) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
     `);
-    const [[curExp]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS expenses FROM expenses WHERE YEAR(date)=YEAR(CURDATE()) AND MONTH(date)=MONTH(CURDATE())`);
-    const [[prevExp]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS expenses FROM expenses WHERE YEAR(date)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(date)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`);
+    const [[curExp]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS expenses FROM expenses WHERE deleted_at IS NULL AND YEAR(date)=YEAR(CURDATE()) AND MONTH(date)=MONTH(CURDATE())`);
+    const [[prevExp]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS expenses FROM expenses WHERE deleted_at IS NULL AND YEAR(date)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(date)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`);
     const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`);
     const [[prevLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`);
     const [[newSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`);
@@ -854,7 +854,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdmin, async (req, 
     const [[prevRev]]   = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND date<? AND status='paid'`, [prevMonthStart, prevMonthEnd]);
 
     // ── Expense this month ─────────────────────────────────────────────
-    const [[monthExp]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM expenses WHERE date>=?`, [monthStart]);
+    const [[monthExp]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM expenses WHERE deleted_at IS NULL AND date>=?`, [monthStart]);
 
     // ── Revenue forecast: project month based on days elapsed ──────────
     const dayOfMonth = now.getDate();
@@ -903,7 +903,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdmin, async (req, 
 
     // ── Expense by category this month ────────────────────────────────
     const [byCategory] = await pool.query(`
-      SELECT category, SUM(amount) AS total FROM expenses WHERE date >= ? GROUP BY category ORDER BY total DESC
+      SELECT category, SUM(amount) AS total FROM expenses WHERE deleted_at IS NULL AND date >= ? GROUP BY category ORDER BY total DESC
     `, [monthStart]);
 
     // ── Budget utilization ─────────────────────────────────────────────
@@ -1015,7 +1015,7 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, 
     const monthStart = `${month}-01`;
     const monthEnd   = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 1).toISOString().slice(0, 10);
     const [spending] = await pool.query(
-      `SELECT category, COALESCE(SUM(amount),0) AS spent FROM expenses WHERE date >= ? AND date < ? GROUP BY category`,
+      `SELECT category, COALESCE(SUM(amount),0) AS spent FROM expenses WHERE deleted_at IS NULL AND date >= ? AND date < ? GROUP BY category`,
       [monthStart, monthEnd]
     );
     const spendMap = {};

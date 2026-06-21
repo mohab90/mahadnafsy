@@ -26,7 +26,7 @@ router.get('/api/admin/financial/pnl', requireAuth, requireAdmin, async (req, re
 
     const [expRows] = await pool.query(`
       SELECT category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count
-      FROM expenses WHERE DATE(\`date\`) BETWEEN ? AND ?
+      FROM expenses WHERE deleted_at IS NULL AND DATE(\`date\`) BETWEEN ? AND ?
       GROUP BY category ORDER BY total DESC`, [from, to]);
 
     const [monthly] = await pool.query(`
@@ -35,11 +35,11 @@ router.get('/api/admin/financial/pnl', requireAuth, requireAdmin, async (req, re
       FROM (
         SELECT DATE_FORMAT(d, '%Y-%m') AS month FROM
           (SELECT \`date\` AS d FROM payments WHERE status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ?
-           UNION SELECT \`date\` AS d FROM expenses WHERE DATE(\`date\`) BETWEEN ? AND ?) t
+           UNION SELECT \`date\` AS d FROM expenses WHERE deleted_at IS NULL AND DATE(\`date\`) BETWEEN ? AND ?) t
         GROUP BY month
       ) m
       LEFT JOIN (SELECT DATE_FORMAT(\`date\`,'%Y-%m') AS month, SUM(CASE currency WHEN 'SAR' THEN amount*13 WHEN 'USD' THEN amount*50 ELSE amount END) AS revenue FROM payments WHERE status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? GROUP BY month) r ON r.month=m.month
-      LEFT JOIN (SELECT DATE_FORMAT(\`date\`,'%Y-%m') AS month, SUM(amount) AS expenses FROM expenses WHERE DATE(\`date\`) BETWEEN ? AND ? GROUP BY month) e ON e.month=m.month
+      LEFT JOIN (SELECT DATE_FORMAT(\`date\`,'%Y-%m') AS month, SUM(amount) AS expenses FROM expenses WHERE deleted_at IS NULL AND DATE(\`date\`) BETWEEN ? AND ? GROUP BY month) e ON e.month=m.month
       ORDER BY m.month`, [from, to, from, to, from, to, from, to]);
 
     const totalRevenue  = revRows.reduce((s, r) => s + Number(r.total_egp), 0);
@@ -534,7 +534,7 @@ router.get('/api/admin/financial/vat-summary', requireAuth, requireAdmin, async 
   try {
     const from = req.query.from || `${new Date().getFullYear()}-01-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
-    const [[exp]] = await pool.query(`SELECT COALESCE(SUM(vat_amount),0) AS total_vat_paid, COALESCE(SUM(amount),0) AS total_expenses FROM expenses WHERE DATE(\`date\`) BETWEEN ? AND ?`, [from, to]);
+    const [[exp]] = await pool.query(`SELECT COALESCE(SUM(vat_amount),0) AS total_vat_paid, COALESCE(SUM(amount),0) AS total_expenses FROM expenses WHERE deleted_at IS NULL AND DATE(\`date\`) BETWEEN ? AND ?`, [from, to]);
     const [[rev]] = await pool.query(`SELECT COALESCE(SUM(CASE currency WHEN 'SAR' THEN amount*13 WHEN 'USD' THEN amount*50 ELSE amount END),0) AS revenue FROM payments WHERE status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ?`, [from, to]);
     res.json({ from, to, total_vat_paid: Number(exp.total_vat_paid), total_expenses: Number(exp.total_expenses), estimated_output_vat: Math.round(rev.revenue * 0.14), vat_rate_standard: 14 });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -685,7 +685,7 @@ function toCsv(rows, cols) {
 router.get('/api/admin/export/expenses', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { from, to } = req.query;
-    let sql = `SELECT id, title, amount, category, recurrence, date, notes FROM expenses WHERE 1=1`;
+    let sql = `SELECT id, title, amount, category, recurrence, date, notes FROM expenses WHERE deleted_at IS NULL AND 1=1`;
     const params = [];
     if (from) { sql += ' AND date >= ?'; params.push(from); }
     if (to)   { sql += ' AND date <= ?'; params.push(to); }
@@ -726,7 +726,7 @@ router.get('/api/admin/financial/balance-sheet', requireAuth, requireAdmin, asyn
 
     // Expenses up to asOf
     const [[{ totalExpenses }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS totalExpenses FROM expenses WHERE DATE(date) <= ?`, [asOf]);
+      `SELECT COALESCE(SUM(amount), 0) AS totalExpenses FROM expenses WHERE deleted_at IS NULL AND DATE(date) <= ?`, [asOf]);
 
     // Refunds issued up to asOf
     const [[{ totalRefunds }]] = await pool.query(
@@ -777,7 +777,7 @@ router.get('/api/admin/financial/cash-flow', requireAuth, requireAdmin, async (r
 
     // Operating Outflows: expenses paid
     const [[{ outflows }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS outflows FROM expenses WHERE DATE(date) BETWEEN ? AND ?`, [from, to]);
+      `SELECT COALESCE(SUM(amount), 0) AS outflows FROM expenses WHERE deleted_at IS NULL AND DATE(date) BETWEEN ? AND ?`, [from, to]);
 
     // Refunds
     const [[{ refunds }]] = await pool.query(
@@ -794,7 +794,7 @@ router.get('/api/admin/financial/cash-flow', requireAuth, requireAdmin, async (r
 
     const [monthlyExp] = await pool.query(`
       SELECT DATE_FORMAT(date, '%Y-%m') AS month, SUM(amount) AS expenses
-      FROM expenses WHERE DATE(date) BETWEEN ? AND ?
+      FROM expenses WHERE deleted_at IS NULL AND DATE(date) BETWEEN ? AND ?
       GROUP BY month ORDER BY month`, [from, to]);
 
     const expMap = Object.fromEntries(monthlyExp.map(r => [r.month, parseFloat(r.expenses)]));

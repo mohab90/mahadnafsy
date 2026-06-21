@@ -899,15 +899,15 @@ router.get('/api/admin/analytics/expenses', requireAuth, requireAdmin, async (re
 
     const [byCategory] = await pool.query(`
       SELECT category, COUNT(*) AS count, SUM(amount) AS total
-      FROM expenses WHERE date BETWEEN ? AND ?
+      FROM expenses WHERE deleted_at IS NULL AND date BETWEEN ? AND ?
       GROUP BY category ORDER BY total DESC`, [from, to]);
 
     const [monthly] = await pool.query(`
       SELECT DATE_FORMAT(date,'%Y-%m') AS month, category, SUM(amount) AS total
-      FROM expenses WHERE date BETWEEN ? AND ?
+      FROM expenses WHERE deleted_at IS NULL AND date BETWEEN ? AND ?
       GROUP BY month, category ORDER BY month, total DESC`, [from, to]);
 
-    const [[{ grand_total }]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS grand_total FROM expenses WHERE date BETWEEN ? AND ?`, [from, to]);
+    const [[{ grand_total }]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS grand_total FROM expenses WHERE deleted_at IS NULL AND date BETWEEN ? AND ?`, [from, to]);
 
     res.json({
       period: { from, to },

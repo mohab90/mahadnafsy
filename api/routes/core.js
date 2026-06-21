@@ -26,7 +26,7 @@ router.get('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =>
     const [rows] = await pool.query(
       `SELECT id, description, amount, currency, category, date, receipt_url, note, staff_id,
        vat_rate, vat_amount, amount_before_vat, created_at
-       FROM expenses ORDER BY date DESC LIMIT 500`);
+       FROM expenses WHERE deleted_at IS NULL ORDER BY date DESC LIMIT 500`);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -974,9 +974,10 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, r
 });
 router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [[oldExp]] = await pool.query('SELECT id, date, description, amount, currency, category FROM expenses WHERE id=? LIMIT 1', [req.params.id]);
-    await pool.query('DELETE FROM expenses WHERE id = ?', [req.params.id]);
-    if (oldExp) postExpenseJournal(oldExp, -1, req.user?.email).catch(() => {});
+    const [[oldExp]] = await pool.query('SELECT id, date, description, amount, currency, category FROM expenses WHERE id=? AND deleted_at IS NULL LIMIT 1', [req.params.id]);
+    // Soft delete (recoverable) — reverse the ledger entry only on a real transition.
+    const [del] = await pool.query('UPDATE expenses SET deleted_at=NOW() WHERE id=? AND deleted_at IS NULL', [req.params.id]);
+    if (oldExp && del.affectedRows > 0) postExpenseJournal(oldExp, -1, req.user?.email).catch(() => {});
     res.json({ ok: true });
   }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

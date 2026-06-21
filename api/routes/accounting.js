@@ -120,7 +120,7 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
     );
     const [exps] = await pool.query(
       `SELECT SUM(amount) AS total, currency FROM expenses
-       WHERE date >= ? AND date < ?
+       WHERE deleted_at IS NULL AND date >= ? AND date < ?
        GROUP BY currency`,
       [startDate, endDate]
     ).catch(() => [[]]);

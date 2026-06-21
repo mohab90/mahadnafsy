@@ -384,7 +384,7 @@ router.get('/api/admin/budgets', requireAuth, requireAdmin, async (req, res) => 
     let actual = [];
     if (month) {
       const [exp] = await pool.query(
-        `SELECT category, SUM(amount) AS actual FROM expenses WHERE DATE_FORMAT(date, '%Y-%m')=? GROUP BY category`,
+        `SELECT category, SUM(amount) AS actual FROM expenses WHERE deleted_at IS NULL AND DATE_FORMAT(date, '%Y-%m')=? GROUP BY category`,
         [month]
       );
       actual = exp;
