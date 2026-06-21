@@ -65,6 +65,10 @@ const JOURNEY = {
         <li>تابع تقدّمك واكمل عشان تستحق الشهادة 🏆</li></ol>
         <p><a class="btn" href="${SITE}/dashboard">ابدأ المحاضرة الأولى</a></p>`,
     },
+    {
+      key: 'onboarding_wa', channel: 'whatsapp', delayH: 0,
+      build: (c) => `مبروك ${c.name || ''} 🎉\nتم تسجيلك${c.courseTitle ? ` في ${c.courseTitle}` : ''}! ابدأ أول محاضرة من حسابك: ${SITE}/dashboard 💚`,
+    },
   ],
   contact_received: [
     {

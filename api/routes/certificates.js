@@ -41,6 +41,26 @@ router.patch('/api/admin/certificate-requests/:id',
     if (issued_at)               { sets.push('issued_at=?');  params.push(issued_at); }
     params.push(req.params.id);
     await pool.query(`UPDATE certificate_requests SET ${sets.join(',')} WHERE id=?`, params);
+    // Lifecycle: notify the learner when their certificate is issued/delivered.
+    if (['ISSUED', 'AT_BRANCH', 'DELIVERED'].includes(status.toUpperCase())) {
+      setImmediate(async () => {
+        try {
+          const [[row]] = await pool.query(
+            `SELECT s.name, s.email, s.phone, c.title AS course_title
+             FROM certificate_requests cr
+             LEFT JOIN subscribers s ON s.id = cr.subscriber_id
+             LEFT JOIN courses c ON c.id = cr.course_id
+             WHERE cr.id=? LIMIT 1`, [req.params.id]);
+          if (row?.email || row?.phone) {
+            require('../lib/lifecycle').trigger(
+              'certificate_ready',
+              { name: row.name, email: row.email, phone: row.phone, courseTitle: row.course_title },
+              { dedupeKey: `cert_ready:${req.params.id}` }
+            );
+          }
+        } catch (e) { logger.warn('[lifecycle] certificate_ready failed:', e.message); }
+      });
+    }
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

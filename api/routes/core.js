@@ -1017,7 +1017,7 @@ router.post('/api/admin/enrollments', requireAuth, requireAdminOrStaff, async (r
     // Send enrollment confirmation email
     setImmediate(async () => {
       try {
-        const [[subData]] = await pool.query('SELECT name, email FROM subscribers WHERE id=? LIMIT 1', [subscriber_id]);
+        const [[subData]] = await pool.query('SELECT name, email, phone FROM subscribers WHERE id=? LIMIT 1', [subscriber_id]);
         if (!subData?.email) return;
         let itemName = 'الاشتراك';
         if (course_id) {
@@ -1027,6 +1027,12 @@ router.post('/api/admin/enrollments', requireAuth, requireAdminOrStaff, async (r
           const [[bundleRow]] = await pool.query('SELECT title FROM bundles WHERE id=? LIMIT 1', [bundle_id]);
           itemName = bundleRow?.title || 'الباقة';
         }
+        // Lifecycle "enrolled" — WhatsApp only (the branded email below covers email).
+        require('../lib/lifecycle').trigger(
+          'enrolled',
+          { name: subData.name, email: subData.email, phone: subData.phone, courseTitle: itemName },
+          { channels: ['whatsapp'], dedupeKey: `enrolled:${subscriber_id}:${course_id || bundle_id || ''}` }
+        );
         await sendEmail(subData.email,
           `🎓 تم تسجيلك في ${itemName}`,
           `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
