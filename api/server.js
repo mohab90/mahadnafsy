@@ -981,7 +981,9 @@ const server = app.listen(PORT, () => {
   // ── Lifecycle daily scan (re-engage stalled learners, etc.) ───────────────
   const _lifecycle = require('./lib/lifecycle');
   async function lifecycleScanTick() { try { await _lifecycle.scanScheduled(); } catch (e) { logger.warn('[lifecycle] scan tick error:', e.message); } }
-  setTimeout(() => { lifecycleScanTick(); setInterval(lifecycleScanTick, 24 * 60 * 60 * 1000); }, 10 * 60 * 1000);
+  // Hourly scan keeps the checkout-abandoned nudge responsive; all triggers are
+  // deduped (per-week for stalled/abandoned, once-ever for checkout) so it can't spam.
+  setTimeout(() => { lifecycleScanTick(); setInterval(lifecycleScanTick, 60 * 60 * 1000); }, 10 * 60 * 1000);
 
   // ── Self-ping every 10-13 minutes (randomized) ────────────────────────────
   // Hostinger kills Node.js processes on :00/:30 boundaries via resource sweep.

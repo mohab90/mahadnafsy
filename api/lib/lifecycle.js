@@ -94,6 +94,12 @@ const JOURNEY = {
       build: (c) => `أهلاً ${c.name || ''} 🌿\nاستلمنا طلب انضمامك${c.roleLabel ? ` (${c.roleLabel})` : ''} وفريقنا هيراجعه ويكلّمك قريب. شكراً لاهتمامك 💚`,
     },
   ],
+  checkout_abandoned: [
+    {
+      key: 'checkout_wa', channel: 'whatsapp', delayH: 0,
+      build: (c) => `${c.name || ''}، لاحظنا إنك بدأت الاشتراك${c.courseTitle ? ` في «${c.courseTitle}»` : ''} وما كمّلتش 😊\nفي أي حاجة واقفة معاك في الدفع؟ احنا هنا — رُدّ على الرسالة دي ونكمّلها معاك في دقيقة 💚`,
+    },
+  ],
   abandoned_interest: [
     {
       key: 'abandoned_email', channel: 'email', delayH: 0,
@@ -239,7 +245,33 @@ async function scanScheduled() {
     if (abandoned) logger.info('[lifecycle] scanScheduled: queued abandoned-interest nudges', { count: abandoned });
   } catch (e) { logger.warn('[lifecycle] scanScheduled (abandoned) failed', { err: e.message }); }
 
-  return { stalled, abandoned };
+  // Abandoned checkout: leads who reached the checkout page (source='checkout_intent')
+  // 2h–3d ago without paying → quick WhatsApp nudge to finish (once per lead).
+  let checkout = 0;
+  try {
+    const [rows] = await pool.query(`
+      SELECT l.id, l.name, l.email, l.phone, c.title AS course_title
+      FROM leads l
+      LEFT JOIN courses c ON c.id = l.enrolled_course_id
+      WHERE l.hidden = 0
+        AND l.source = 'checkout_intent'
+        AND LOWER(l.status) NOT IN ('converted','lost')
+        AND l.created_at < (NOW() - INTERVAL 2 HOUR)
+        AND l.created_at > (NOW() - INTERVAL 3 DAY)
+        AND (l.deal_value IS NULL OR l.deal_value = 0)
+        AND l.phone IS NOT NULL
+      LIMIT 300
+    `);
+    for (const l of rows) {
+      await trigger('checkout_abandoned',
+        { name: l.name, email: l.email, phone: l.phone, courseTitle: l.course_title },
+        { channels: ['whatsapp'], dedupeKey: `checkout:${l.id}` }); // once per lead, ever
+      checkout++;
+    }
+    if (checkout) logger.info('[lifecycle] scanScheduled: queued checkout-abandoned nudges', { count: checkout });
+  } catch (e) { logger.warn('[lifecycle] scanScheduled (checkout) failed', { err: e.message }); }
+
+  return { stalled, abandoned, checkout };
 }
 
 function invalidateConfig() { cacheInvalidate('lifecycle_config'); }
@@ -248,6 +280,9 @@ const EVENT_LABELS = {
   lead_created: 'عميل محتمل جديد (ترحيب فوري)',
   payment_received: 'استلام دفعة (إيصال)',
   enrolled: 'تسجيل في كورس (Onboarding)',
+  contact_received: 'رسالة تواصل (رد تلقائي)',
+  join_us_received: 'طلب انضمام (رد تلقائي)',
+  checkout_abandoned: 'بدأ الدفع ولم يكمل (نكزة سريعة)',
   abandoned_interest: 'اهتمام بلا حجز (سلة متروكة)',
   learner_stalled: 'طالب لم يبدأ (مناغشة)',
   certificate_ready: 'الشهادة جاهزة (تهنئة + ترشيح)',
