@@ -60,6 +60,7 @@ import {
   SystemSettingsTab,
   TasksBoardTab,
   TicketsTab,
+  SupportInboxTab,
   WaitlistTab,
   WebhooksTab,
 } from './dashboard/lazyTabs';
@@ -2790,6 +2791,7 @@ const Dashboard: React.FC = () => {
             {/* ── Restored tab renders (were imported in lazyTabs + present in menu but missing here → blank pages) ── */}
             {activeTab === 'hr' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><HrTab notify={notify} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'tickets' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><TicketsTab notify={notify} /></TabErrorBoundary></Suspense>)}
+            {activeTab === 'support_inbox' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><SupportInboxTab /></TabErrorBoundary></Suspense>)}
             {activeTab === 'waitlist' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><WaitlistTab notify={notify} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'tasks_board' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><TasksBoardTab notify={notify} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'nps_dashboard' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><NpsDashboardTab notify={notify} /></TabErrorBoundary></Suspense>)}

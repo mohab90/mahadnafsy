@@ -41,6 +41,7 @@ import {
 
 export type TabKey =
   | 'overview'
+  | 'support_inbox'
   | 'content'
   | 'staff_management'
   | 'policies'
@@ -220,6 +221,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Headphones,
     color: 'text-rose-500',
     items: [
+      { key: 'support_inbox', label: 'صندوق الوارد الموحّد', icon: Headphones },
       { key: 'tickets', label: 'تذاكر الدعم', icon: Mail },
       { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
       { key: 'cert_requests', label: 'طلبات الشهادات', icon: Star },

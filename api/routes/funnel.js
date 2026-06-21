@@ -102,4 +102,30 @@ router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, r
   } catch (e) { logger.error('[action-center]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Unified support inbox (tickets + contact messages in one feed) ───────────
+router.get('/api/admin/support-inbox', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const kind = req.query.kind; // all | ticket | contact
+    let tickets = [], contacts = [];
+    if (kind !== 'contact') {
+      try {
+        const [rows] = await pool.query(
+          `SELECT id, subscriber_name AS name, subscriber_email AS email, subject,
+                  status, created_at FROM support_tickets ORDER BY created_at DESC LIMIT 100`);
+        tickets = rows.map(r => ({ source: 'ticket', id: r.id, name: r.name, email: r.email, phone: null, subject: r.subject, preview: null, status: (r.status || 'open'), at: r.created_at }));
+      } catch { /* table shape */ }
+    }
+    if (kind !== 'ticket') {
+      try {
+        const [rows] = await pool.query(
+          `SELECT id, name, email, phone, subject, message, status, created_at
+           FROM contact_messages ORDER BY created_at DESC LIMIT 100`);
+        contacts = rows.map(r => ({ source: 'contact', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: r.subject || 'رسالة تواصل', preview: String(r.message || '').slice(0, 120), status: (r.status || 'new'), at: r.created_at }));
+      } catch { /* table shape */ }
+    }
+    const items = [...tickets, ...contacts].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 150);
+    res.json({ items, counts: { tickets: tickets.length, contacts: contacts.length, total: items.length } });
+  } catch (e) { logger.error('[support-inbox]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 module.exports = router;
