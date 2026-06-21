@@ -1854,8 +1854,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                     });
                     // communications (already shown above — just show in timeline too)
                     allComms.forEach(c => {
-                      const cm = commTypeMeta[(c as any).type] || commTypeMeta.note;
-                      events.push({ date: c.date || '', type: 'comm', icon: cm.icon, color: `${cm.color}`, title: cm.label, subtitle: (c as any).notes?.slice(0, 80) || undefined });
+                      const cm = commTypeMeta[c.type] || commTypeMeta.note;
+                      events.push({ date: c.date || '', type: 'comm', icon: cm.icon, color: `${cm.color}`, title: cm.label, subtitle: c.notes?.slice(0, 80) || undefined });
                     });
                     if (events.length === 0) return null;
                     const sorted = events.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
