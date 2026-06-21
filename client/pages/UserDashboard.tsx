@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen, Award, Clock, LogOut, User, ChevronRight, Star, CheckCircle,
   Bell, Settings, MessageSquare, CreditCard, Play, Lock, Edit3, Camera,
@@ -65,6 +65,19 @@ const UserDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [learningSection, setLearningSection] = useState<LearningSection>('courses');
   const [accountSection, setAccountSection] = useState<AccountSection>('payments');
+
+  // Deep-link portal sections: ?tab=account&section=payments (used by PaymentSuccess, emails, etc.)
+  const [dashSearchParams] = useSearchParams();
+  useEffect(() => {
+    const t = dashSearchParams.get('tab');
+    const s = dashSearchParams.get('section');
+    if (t && ['overview', 'learning', 'consultations', 'community', 'account'].includes(t)) setActiveTab(t as Tab);
+    if (s && ['payments', 'notifications', 'referral', 'support', 'settings'].includes(s)) {
+      setActiveTab('account');
+      setAccountSection(s as AccountSection);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Refresh subscriber data when switching to courses tab (picks up newly-granted enrollments)
   useEffect(() => {
