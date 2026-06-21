@@ -167,16 +167,11 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: LayoutDashboard,
     color: 'text-slate-700',
     items: [
-      { key: 'kpi_dashboard', label: 'لوحة KPI للمدير', icon: BarChart3 },
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
+      { key: 'analytics_hub', label: 'التحليلات والمؤشرات', icon: TrendingUp },
       { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
-      // التحليلات (مدمجة داخل الإدارة)
-      { key: 'retention', label: 'الاستبقاء الشهري', icon: TrendingUp },
-      { key: 'cohort_analysis', label: 'تحليل الكوهورت', icon: BarChart3 },
-      { key: 'revenue_sources', label: 'مصادر الإيرادات', icon: TrendingUp },
-      { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
     ],
   },
   {
@@ -238,7 +233,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'financial', label: 'النظام المحاسبي', icon: BarChart3 },
       { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
       { key: 'financial_reports', label: 'التقارير المالية', icon: BarChart3 },
-      { key: 'analytics_hub', label: 'التحليلات والمؤشرات', icon: TrendingUp },
     ],
   },
   {
