@@ -704,6 +704,20 @@ const UserDashboard: React.FC = () => {
                   onBrowse={() => navigate('/courses')}
                 />
 
+                {/* Referral CTA — surfaced on the home tab (was buried in account → referral) */}
+                <button
+                  onClick={() => { setActiveTab('account'); setAccountSection('referral'); }}
+                  className="w-full text-right bg-gradient-to-l from-emerald-600 to-teal-600 rounded-2xl p-5 text-white shadow flex items-center justify-between gap-3 hover:from-emerald-700 hover:to-teal-700 transition">
+                  <div className="flex items-center gap-3">
+                    <span className="w-11 h-11 rounded-2xl bg-white/20 grid place-items-center text-2xl">🎁</span>
+                    <div>
+                      <p className="font-extrabold text-base">ادعُ أصدقاءك واكسب مكافآت</p>
+                      <p className="text-xs text-white/80">شارك كود الدعوة — كل صديق يشترك يفيدكما معاً</p>
+                    </div>
+                  </div>
+                  <Share2 size={20} className="shrink-0 opacity-80" />
+                </button>
+
                 {/* Total paid summary */}
                 <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white shadow">
                   <p className="text-sm font-bold text-white/70 mb-1">إجمالي ما دفعته</p>
