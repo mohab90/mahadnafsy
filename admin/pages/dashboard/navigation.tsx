@@ -201,6 +201,20 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     ],
   },
   {
+    key: 'daqqi',
+    label: 'الدقي',
+    icon: CalendarDays,
+    color: 'text-teal-600',
+    items: [
+      { key: 'daqqi_schedule', label: 'الجدول والعملاء', icon: CalendarDays },
+      { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
+      { key: 'daqqi_team', label: 'فريق الدقي', icon: Users },
+      { key: 'daqqi_accounting', label: 'محاسبة الدقي', icon: CreditCard },
+      { key: 'daqqi_stats', label: 'الإحصائيات والحضور', icon: BarChart3 },
+      { key: 'waitlist', label: 'قائمة الانتظار', icon: Clock },
+    ],
+  },
+  {
     key: 'cx_group',
     label: 'خدمة العملاء',
     icon: Headphones,
@@ -211,21 +225,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'cert_requests', label: 'طلبات الشهادات', icon: Star },
       { key: 'contacts', label: 'رسائل التواصل', icon: Mail },
       { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck2 },
-    ],
-  },
-  {
-    key: 'daqqi',
-    label: 'الدقي',
-    icon: CalendarDays,
-    color: 'text-teal-600',
-    items: [
-      { key: 'daqqi_attendance', label: 'كشف الحضور', icon: BarChart3 },
-      { key: 'daqqi_schedule', label: 'الجدول والعملاء', icon: CalendarDays },
-      { key: 'daqqi_clients', label: 'عملاء الدقي', icon: Users },
-      { key: 'daqqi_team', label: 'فريق الدقي', icon: Users },
-      { key: 'daqqi_accounting', label: 'محاسبة الدقي', icon: CreditCard },
-      { key: 'daqqi_stats', label: 'الإحصائيات', icon: BarChart3 },
-      { key: 'waitlist', label: 'قائمة الانتظار', icon: Clock },
     ],
   },
   {
