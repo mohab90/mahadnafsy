@@ -3,7 +3,7 @@ import { Loader2, RefreshCw, Inbox, Mail, LifeBuoy, Phone } from 'lucide-react';
 
 interface Item { source: 'ticket' | 'contact'; id: string; name: string | null; email: string | null; phone: string | null; subject: string; preview: string | null; status: string; at: string; }
 
-export default function SupportInboxTab() {
+export default function SupportInboxTab({ onOpen }: { onOpen?: (tab: string) => void }) {
   const [items, setItems] = useState<Item[]>([]);
   const [counts, setCounts] = useState<{ tickets: number; contacts: number; total: number }>({ tickets: 0, contacts: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,11 @@ export default function SupportInboxTab() {
       ) : (
         <div className="bg-white border border-gray-100 rounded-2xl divide-y divide-gray-50">
           {items.map(it => (
-            <div key={`${it.source}-${it.id}`} className="flex items-start gap-3 p-3.5 hover:bg-gray-50 transition">
+            <div key={`${it.source}-${it.id}`}
+              onClick={() => onOpen?.(it.source === 'ticket' ? 'tickets' : 'contacts')}
+              role={onOpen ? 'button' : undefined}
+              title={onOpen ? (it.source === 'ticket' ? 'فتح في تذاكر الدعم' : 'فتح في رسائل التواصل') : undefined}
+              className={`flex items-start gap-3 p-3.5 transition ${onOpen ? 'cursor-pointer hover:bg-indigo-50' : 'hover:bg-gray-50'}`}>
               <span className={`mt-0.5 w-8 h-8 rounded-lg grid place-items-center shrink-0 ${it.source === 'ticket' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
                 {it.source === 'ticket' ? <LifeBuoy size={15} /> : <Mail size={15} />}
               </span>
@@ -66,7 +70,7 @@ export default function SupportInboxTab() {
           ))}
         </div>
       )}
-      <p className="text-[11px] text-gray-400 text-center">يجمع تذاكر الدعم ورسائل التواصل في مكان واحد — للرد التفصيلي افتح تبويب "تذاكر الدعم" أو "رسائل التواصل".</p>
+      <p className="text-[11px] text-gray-400 text-center">يجمع تذاكر الدعم ورسائل التواصل في مكان واحد — اضغط أي عنصر للرد التفصيلي في قسمه.</p>
     </div>
   );
 }
