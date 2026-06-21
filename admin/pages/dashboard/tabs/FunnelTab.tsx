@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, TrendingDown, Users, DollarSign, RefreshCw } from 'lucide-react';
+import { BRANCHES, BRANCH_LABELS_AR } from '../../../constants/branches';
 
 interface Stage { key: string; label: string; value: number; pctOfTop: number; stepPct: number; dropoff: number; }
 interface FunnelData {
@@ -13,15 +14,22 @@ const BAR = ['bg-indigo-500', 'bg-blue-500', 'bg-sky-500', 'bg-emerald-500', 'bg
 export default function FunnelTab() {
   const [data, setData] = useState<FunnelData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [branch, setBranch] = useState('all');
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
-    fetch('/api/admin/funnel', { credentials: 'include' })
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    if (branch && branch !== 'all') qs.set('branch', branch);
+    fetch(`/api/admin/funnel?${qs.toString()}`, { credentials: 'include' })
       .then(r => r.json()).then(setData).catch(() => {}).finally(() => setLoading(false));
-  };
-  useEffect(load, []);
+  }, [from, to, branch]);
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="animate-spin text-indigo-500" size={28} /></div>;
+  if (loading && !data) return <div className="flex items-center justify-center h-64"><Loader2 className="animate-spin text-indigo-500" size={28} /></div>;
   if (!data) return <p className="text-gray-400 text-sm text-center py-10">تعذّر تحميل القمع</p>;
 
   return (
@@ -29,6 +37,22 @@ export default function FunnelTab() {
       <div className="flex items-center justify-between">
         <h3 className="font-extrabold text-gray-800 text-base">قمع التحويل — رحلة العميل بالأرقام</h3>
         <button onClick={load} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><RefreshCw size={12} /> تحديث</button>
+      </div>
+
+      {/* Filters: date range + branch */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-gray-500">من</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5" />
+        <span className="text-gray-500">إلى</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5" />
+        <select value={branch} onChange={e => setBranch(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5">
+          <option value="all">كل الفروع</option>
+          {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS_AR[b]}</option>)}
+        </select>
+        {(from || to || branch !== 'all') && (
+          <button onClick={() => { setFrom(''); setTo(''); setBranch('all'); }} className="text-indigo-600 hover:underline">مسح</button>
+        )}
+        {loading && <Loader2 size={13} className="animate-spin text-indigo-500" />}
       </div>
 
       {/* Headline cards */}

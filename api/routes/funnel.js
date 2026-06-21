@@ -15,19 +15,28 @@ const n = async (sql, params = []) => {
   catch { return 0; }
 };
 
-router.get('/api/admin/funnel', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const data = await cached('funnel', 5 * 60 * 1000, async () => {
+    const { from, to, branch } = req.query;
+    const br = branch && branch !== 'all' ? String(branch).toUpperCase() : null;
+    // Build per-table WHERE fragments honouring date range (+ branch where present).
+    const range = (col) => { const c = [], p = []; if (from) { c.push(`${col} >= ?`); p.push(from); } if (to) { c.push(`${col} < DATE_ADD(?, INTERVAL 1 DAY)`); p.push(to); } return { c, p }; };
+    const lr = range('created_at'); const lw = ['hidden=0', ...lr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const lp = [...lr.p, ...(br ? [br] : [])];
+    const pr = range('date');       const pw = ["status='paid'", ...pr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const pp = [...pr.p, ...(br ? [br] : [])];
+    const sr = range('created_at'); const sw = ['1=1', ...sr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const sp = [...sr.p, ...(br ? [br] : [])];
+    const brJoin = br ? 'JOIN subscribers s ON s.id=t.subscriber_id WHERE s.branch=?' : 'WHERE 1=1';
+    const brP = br ? [br] : [];
+    const data = await cached(`funnel:${from || ''}:${to || ''}:${br || 'all'}`, 5 * 60 * 1000, async () => {
       const [leads, contacted, interested, converted, subscribers, paying, learners, certified, revenue] = await Promise.all([
-        n("SELECT COUNT(*) FROM leads WHERE hidden=0"),
-        n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND LOWER(status) <> 'new'"),
-        n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND (LOWER(status)='interested' OR interest_level='HIGH')"),
-        n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND LOWER(status)='converted'"),
-        n("SELECT COUNT(*) FROM subscribers"),
-        n("SELECT COUNT(DISTINCT subscriber_id) FROM payments WHERE status='paid'"),
-        n("SELECT COUNT(DISTINCT subscriber_id) FROM lecture_progress"),
-        n("SELECT COUNT(DISTINCT subscriber_id) FROM issued_certificates"),
-        n("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='paid' AND (currency IS NULL OR currency='EGP')"),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw}`, lp),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND LOWER(status) <> 'new'`, lp),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND (LOWER(status)='interested' OR interest_level='HIGH')`, lp),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND LOWER(status)='converted'`, lp),
+        n(`SELECT COUNT(*) FROM subscribers WHERE ${sw}`, sp),
+        n(`SELECT COUNT(DISTINCT subscriber_id) FROM payments WHERE ${pw}`, pp),
+        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM lecture_progress t ${brJoin}`, brP),
+        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM issued_certificates t ${brJoin}`, brP),
+        n(`SELECT COALESCE(SUM(amount),0) FROM payments WHERE ${pw} AND (currency IS NULL OR currency='EGP')`, pp),
       ]);
       const stages = [
         { key: 'leads', label: 'عملاء محتملون', value: leads },
@@ -52,6 +61,7 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (_req, res) => 
       return {
         stages, subscribers, converted, revenueEGP: revenue,
         biggestLeak: worst,
+        filters: { from: from || null, to: to || null, branch: br || 'all' },
         generatedAt: new Date().toISOString(),
       };
     });
