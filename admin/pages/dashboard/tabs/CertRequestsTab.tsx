@@ -1,5 +1,6 @@
 ﻿import React, { useState } from 'react';
-import { Search, Star, Trash2, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Star, Trash2, X, ExternalLink } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -23,12 +24,13 @@ export default function CertRequestsTab({
   certSearch, setCertSearch, certTypeFilter, setCertTypeFilter,
   certStatusFilter, setCertStatusFilter,
 }: Props) {
+              const navigate = useNavigate();
               // Gather all extra certificate requests from all subscribers
-              type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string };
+              type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string; subscriberCode?: string };
               const allRequests: CertReqRow[] = [];
               subscribers.forEach(sub => {
                 (sub.extraCertificateRequests || []).forEach(req => {
-                  allRequests.push({ ...req, subscriberName: sub.name, subscriberPhone: sub.phone, subscriberEmail: sub.email, subscriberId: sub.id });
+                  allRequests.push({ ...req, subscriberName: sub.name, subscriberPhone: sub.phone, subscriberEmail: sub.email, subscriberId: sub.id, subscriberCode: sub.clientCode });
                 });
               });
               allRequests.sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
@@ -200,7 +202,15 @@ export default function CertRequestsTab({
                               <tr key={req.id} className="hover:bg-gray-50 border border-gray-100">
                                 {/* Client */}
                                 <td className="px-3 py-2 border border-gray-100">
-                                  <div className="font-bold text-gray-900 text-xs">{req.subscriberName}</div>
+                                  {req.subscriberCode ? (
+                                    <button onClick={() => navigate(`/client/${req.subscriberCode}`)}
+                                      title="فتح ملف العميل"
+                                      className="font-bold text-gray-900 hover:text-primary-600 text-xs flex items-center gap-1 transition">
+                                      {req.subscriberName} <ExternalLink size={11} className="text-gray-300" />
+                                    </button>
+                                  ) : (
+                                    <div className="font-bold text-gray-900 text-xs">{req.subscriberName}</div>
+                                  )}
                                   <div className="text-[11px] text-gray-400">{req.subscriberPhone}</div>
                                 </td>
                                 {/* Cert type */}
