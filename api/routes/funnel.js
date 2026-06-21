@@ -59,4 +59,37 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (_req, res) => 
   } catch (e) { logger.error('[funnel]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Action Center (mission control) — what the team must act on NOW ──────────
+router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const [pendingProofs, overdueFollowups, uncontacted, pendingCerts, newJoinUs, newContact, failedMsgs] = await Promise.all([
+      n("SELECT COUNT(*) FROM payment_proofs WHERE status='PENDING'"),
+      n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND LOWER(status) NOT IN ('converted','lost')"),
+      n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND LOWER(status)='new' AND created_at < (NOW() - INTERVAL 1 DAY)"),
+      n("SELECT COUNT(*) FROM certificate_requests WHERE status='PENDING'"),
+      n("SELECT COUNT(*) FROM join_us_applications WHERE LOWER(COALESCE(status,'new')) IN ('new','pending')"),
+      n("SELECT COUNT(*) FROM contact_messages WHERE LOWER(COALESCE(status,'new')) IN ('new','pending','unread')"),
+      n("SELECT COUNT(*) FROM message_outbox WHERE status IN ('failed','dead')"),
+    ]);
+    let proofList = [];
+    try {
+      const [rows] = await pool.query(
+        `SELECT pp.id, pp.amount, pp.currency, pp.submitted_at, s.name AS subscriber_name
+         FROM payment_proofs pp LEFT JOIN subscribers s ON s.id=pp.subscriber_id
+         WHERE pp.status='PENDING' ORDER BY pp.submitted_at ASC LIMIT 8`);
+      proofList = rows;
+    } catch { /* table shape差 */ }
+    const items = [
+      { key: 'pending_proofs',     label: 'إيصالات تنتظر الاعتماد', count: pendingProofs,    severity: pendingProofs ? 'high' : 'ok',  link: 'payment_proofs' },
+      { key: 'overdue_followups',  label: 'متابعات متأخرة',          count: overdueFollowups, severity: overdueFollowups ? 'high' : 'ok', link: 'leads' },
+      { key: 'uncontacted',        label: 'عملاء جدد بلا تواصل',     count: uncontacted,      severity: uncontacted ? 'warn' : 'ok',    link: 'leads' },
+      { key: 'pending_certs',      label: 'شهادات قيد الطلب',        count: pendingCerts,     severity: pendingCerts ? 'warn' : 'ok',   link: 'certificates' },
+      { key: 'join_us',            label: 'طلبات توظيف جديدة',       count: newJoinUs,        severity: newJoinUs ? 'warn' : 'ok',      link: 'join_us' },
+      { key: 'contact',            label: 'رسائل تواصل جديدة',       count: newContact,       severity: newContact ? 'warn' : 'ok',     link: 'messages' },
+      { key: 'failed_msgs',        label: 'رسائل فشل إرسالها',       count: failedMsgs,       severity: failedMsgs ? 'high' : 'ok',     link: 'lifecycle' },
+    ];
+    res.json({ items, totalActions: items.reduce((s, i) => s + i.count, 0), pendingProofs: proofList, generatedAt: new Date().toISOString() });
+  } catch (e) { logger.error('[action-center]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 module.exports = router;
