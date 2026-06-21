@@ -90,13 +90,13 @@ router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, r
       proofList = rows;
     } catch { /* table shape差 */ }
     const items = [
-      { key: 'pending_proofs',     label: 'إيصالات تنتظر الاعتماد', count: pendingProofs,    severity: pendingProofs ? 'high' : 'ok',  link: 'payment_proofs' },
+      { key: 'pending_proofs',     label: 'إيصالات تنتظر الاعتماد', count: pendingProofs,    severity: pendingProofs ? 'high' : 'ok',  link: 'orders' },
       { key: 'overdue_followups',  label: 'متابعات متأخرة',          count: overdueFollowups, severity: overdueFollowups ? 'high' : 'ok', link: 'leads' },
       { key: 'uncontacted',        label: 'عملاء جدد بلا تواصل',     count: uncontacted,      severity: uncontacted ? 'warn' : 'ok',    link: 'leads' },
-      { key: 'pending_certs',      label: 'شهادات قيد الطلب',        count: pendingCerts,     severity: pendingCerts ? 'warn' : 'ok',   link: 'certificates' },
-      { key: 'join_us',            label: 'طلبات توظيف جديدة',       count: newJoinUs,        severity: newJoinUs ? 'warn' : 'ok',      link: 'join_us' },
-      { key: 'contact',            label: 'رسائل تواصل جديدة',       count: newContact,       severity: newContact ? 'warn' : 'ok',     link: 'messages' },
-      { key: 'failed_msgs',        label: 'رسائل فشل إرسالها',       count: failedMsgs,       severity: failedMsgs ? 'high' : 'ok',     link: 'lifecycle' },
+      { key: 'pending_certs',      label: 'شهادات قيد الطلب',        count: pendingCerts,     severity: pendingCerts ? 'warn' : 'ok',   link: 'cert_requests' },
+      { key: 'join_us',            label: 'طلبات انضمام جديدة',      count: newJoinUs,        severity: newJoinUs ? 'warn' : 'ok',      link: 'join_us' },
+      { key: 'contact',            label: 'رسائل تواصل جديدة',       count: newContact,       severity: newContact ? 'warn' : 'ok',     link: 'support_inbox' },
+      { key: 'failed_msgs',        label: 'رسائل فشل إرسالها',       count: failedMsgs,       severity: failedMsgs ? 'high' : 'ok',     link: 'system_settings' },
     ];
     res.json({ items, totalActions: items.reduce((s, i) => s + i.count, 0), pendingProofs: proofList, generatedAt: new Date().toISOString() });
   } catch (e) { logger.error('[action-center]', e.message); res.status(500).json({ error: 'Internal server error' }); }

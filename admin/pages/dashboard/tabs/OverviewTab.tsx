@@ -155,7 +155,7 @@ export default function OverviewTab({
                 return (
                   <div className="space-y-6">
                     {/* Mission control — what needs action now (admin-gated; null for others) */}
-                    <ActionCenter onNavigate={(link) => { if (link === 'leads') setActiveTab('leads'); }} />
+                    <ActionCenter onNavigate={(link) => { if (link) setActiveTab(link); }} />
                     {/* Welcome banner */}
                     <div className="bg-gradient-to-l from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 text-amber-800 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-amber-200 flex items-center justify-center text-amber-800 font-extrabold text-lg flex-shrink-0">
