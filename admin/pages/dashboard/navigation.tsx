@@ -161,16 +161,6 @@ export type DashboardMenuGroup = {
 
 export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
   {
-    key: 'my_portal',
-    label: 'بوابتي',
-    icon: User,
-    color: 'text-indigo-600',
-    items: [
-      { key: 'staff_home', label: 'الرئيسية', icon: LayoutDashboard },
-      { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
-    ],
-  },
-  {
     key: 'admin',
     label: 'الإدارة',
     icon: LayoutDashboard,
@@ -181,15 +171,11 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
-    ],
-  },
-  {
-    key: 'branches_group',
-    label: 'الفروع',
-    icon: Building2,
-    color: 'text-blue-700',
-    items: [
-      { key: 'branch_workspace', label: 'مساحات عمل الفروع', icon: Building2 },
+      // التحليلات (مدمجة داخل الإدارة)
+      { key: 'retention', label: 'الاستبقاء الشهري', icon: TrendingUp },
+      { key: 'cohort_analysis', label: 'تحليل الكوهورت', icon: BarChart3 },
+      { key: 'revenue_sources', label: 'مصادر الإيرادات', icon: TrendingUp },
+      { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
     ],
   },
   {
@@ -289,18 +275,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
       { key: 'content_hub', label: 'صفحات الموقع', icon: Globe },
       { key: 'institute_gallery', label: 'معرض الصور', icon: Image },
-    ],
-  },
-  {
-    key: 'analytics_group',
-    label: 'التحليلات',
-    icon: BarChart3,
-    color: 'text-cyan-600',
-    items: [
-      { key: 'retention', label: 'الاستبقاء الشهري', icon: TrendingUp },
-      { key: 'cohort_analysis', label: 'تحليل الكوهورت', icon: BarChart3 },
-      { key: 'revenue_sources', label: 'مصادر الإيرادات', icon: TrendingUp },
-      { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
     ],
   },
   {

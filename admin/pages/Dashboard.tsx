@@ -2171,6 +2171,22 @@ const Dashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
+                {/* Profile menu — personal account + job profile */}
+                <details className="relative group">
+                  <summary className="list-none [&::-webkit-details-marker]:hidden w-8 h-8 rounded-xl bg-gray-100 hover:bg-primary-50 hover:text-primary-600 text-gray-500 grid place-items-center transition cursor-pointer" title="حسابي">
+                    <User size={15} />
+                  </summary>
+                  <div className="absolute top-10 left-0 z-[200] w-48 bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden" dir="rtl">
+                    <button onClick={(e) => { setActiveTab('staff_home'); (e.currentTarget.closest('details') as HTMLDetailsElement)?.removeAttribute('open'); }}
+                      className="w-full text-right px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                      <LayoutDashboard size={14} /> حسابي الشخصي
+                    </button>
+                    <button onClick={(e) => { setActiveTab('my_hr'); (e.currentTarget.closest('details') as HTMLDetailsElement)?.removeAttribute('open'); }}
+                      className="w-full text-right px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 border-t border-gray-50">
+                      <Briefcase size={14} /> ملفي الوظيفي
+                    </button>
+                  </div>
+                </details>
                 <button onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
                   className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
                   title="تسجيل الخروج">
