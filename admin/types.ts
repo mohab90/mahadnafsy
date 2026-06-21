@@ -481,7 +481,7 @@ export interface JoinUsApplication {
   phone: string;
   specialty: string;
   experience: string;
-  type: 'instructor' | 'consultant';
+  type: 'instructor' | 'consultant' | 'employee';
   linkedin?: string;
   message?: string;
   status: 'new' | 'reviewed' | 'accepted' | 'rejected' | 'pending';

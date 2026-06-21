@@ -525,9 +525,11 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'required|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000' });
     if (verr) return res.status(400).json({ error: verr });
     const id = uuidv4();
+    const safeType = ['INSTRUCTOR', 'CONSULTANT', 'EMPLOYEE'].includes(String(type || '').toUpperCase())
+      ? String(type).toUpperCase() : 'INSTRUCTOR';
     await pool.query(
       'INSERT INTO join_us_applications (id, name, email, phone, specialty, experience, type, linkedin, message) VALUES (?,?,?,?,?,?,?,?,?)',
-      [id, name, email, phone, specialty, experience || '', type, linkedin || null, message || null]
+      [id, name, email, phone, specialty, experience || '', safeType, linkedin || null, message || null]
     );
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

@@ -26,7 +26,7 @@ const JoinUs: React.FC = () => {
       phone: form.phone,
       specialty: form.specialty,
       experience: form.experience,
-      type: form.type as 'instructor' | 'consultant',
+      type: form.type as 'instructor' | 'consultant' | 'employee',
       linkedin: form.linkedin || undefined,
       message: form.message || undefined,
       status: 'new',
@@ -154,6 +154,7 @@ const JoinUs: React.FC = () => {
                     {[
                       { value: 'instructor', label: '👨‍🏫 محاضر / مدرب', desc: 'تدريس دبلومات وبرامج تعليمية' },
                       { value: 'consultant', label: '🩺 مستشار نفسي', desc: 'تقديم جلسات استشارية للعملاء' },
+                      { value: 'employee', label: '💼 وظيفة إدارية', desc: 'انضم لفريق العمل (مبيعات، خدمة عملاء، إلخ)' },
                     ].map((t) => (
                       <label
                         key={t.value}
