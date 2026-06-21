@@ -690,10 +690,11 @@ const server = app.listen(PORT, () => {
       logger.info(`[FX] Auto-refreshed: SAR=${sar_to_egp}, USD=${usd_to_egp}`);
     } catch (e) { logger.warn('[FX] Auto-refresh failed:', e.message); }
   }
-  // Run on startup (after 30s), then every 24h
+  // Run on startup (after 30s), then daily — enqueued onto the durable job queue
+  // so the fetch is retried on transient failure (handled by the worker tick).
   setTimeout(() => {
-    refreshFxRatesAuto();
-    setInterval(refreshFxRatesAuto, 24 * 60 * 60 * 1000);
+    require('./lib/jobQueue').enqueue('fx_refresh', {}).catch(() => {});
+    setInterval(() => require('./lib/jobQueue').enqueue('fx_refresh', {}).catch(() => {}), 24 * 60 * 60 * 1000);
   }, 30 * 1000);
 
   // ── Automation Engine: daily auto-run ─────────────────────────────────────
@@ -962,7 +963,10 @@ const server = app.listen(PORT, () => {
   const _outbox = require('./lib/outbox');
   const _jobQueue = require('./lib/jobQueue');
   const _email = require('./lib/email');
-  const _jobHandlers = {}; // register handlers here as cron jobs migrate to the queue
+  // Cron jobs migrated to the durable, retryable queue. Register handlers here.
+  const _jobHandlers = {
+    fx_refresh: async () => { await refreshFxRatesAuto(); },
+  };
   async function backgroundWorkerTick() {
     try {
       await _outbox.drain({
