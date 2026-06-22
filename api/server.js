@@ -637,9 +637,9 @@ const server = app.listen(PORT, () => {
       logger.warn('[Cron] installmentReminderCron error:', e.message);
     }
   }
-  // Run once at startup then every hour
-  installmentReminderCron();
-  setInterval(installmentReminderCron, CRON_INTERVAL_MS);
+  // Enqueued onto the durable job queue (retryable) — startup + hourly.
+  require('./lib/jobQueue').enqueue('installment_reminder', {}).catch(() => {});
+  setInterval(() => require('./lib/jobQueue').enqueue('installment_reminder', {}).catch(() => {}), CRON_INTERVAL_MS);
 
   // ── Pending payment reminder (runs daily — reminds clients with pending > 3 days) ──
   async function pendingPaymentReminderCron() {
@@ -664,10 +664,10 @@ const server = app.listen(PORT, () => {
       }
     } catch (e) { logger.warn('[Cron] pendingPaymentReminderCron error:', e.message); }
   }
-  // Run daily (24h interval), first run after 2 min startup delay
+  // Daily, via the durable job queue (retryable). First enqueue after 2 min.
   setTimeout(() => {
-    pendingPaymentReminderCron();
-    setInterval(pendingPaymentReminderCron, 24 * 60 * 60 * 1000);
+    require('./lib/jobQueue').enqueue('pending_payment_reminder', {}).catch(() => {});
+    setInterval(() => require('./lib/jobQueue').enqueue('pending_payment_reminder', {}).catch(() => {}), 24 * 60 * 60 * 1000);
   }, 2 * 60 * 1000);
 
   // ── FX Rates auto-refresh (runs on startup + every 24h) ──────────────────
@@ -966,6 +966,8 @@ const server = app.listen(PORT, () => {
   // Cron jobs migrated to the durable, retryable queue. Register handlers here.
   const _jobHandlers = {
     fx_refresh: async () => { await refreshFxRatesAuto(); },
+    installment_reminder: async () => { await installmentReminderCron(); },
+    pending_payment_reminder: async () => { await pendingPaymentReminderCron(); },
   };
   async function backgroundWorkerTick() {
     try {
