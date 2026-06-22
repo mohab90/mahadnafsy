@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight, CheckCircle, Clock, CreditCard, Download,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { exportOrdersCsv } from '../dashboardExports';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -42,81 +43,64 @@ interface Props {
 
   // OM + Daqqi views
   salesOwnSubscribers: SubscriberItem[];
-  daqqiSubSearch: string;
-  setDaqqiSubSearch: (v: string) => void;
-  daqqiAccDateFrom: string;
-  setDaqqiAccDateFrom: (v: string) => void;
-  daqqiAccDateTo: string;
-  setDaqqiAccDateTo: (v: string) => void;
   updateSubscriber: (s: SubscriberItem) => void;
 
-  // OM only
-  omOrdReviewTab: 'review' | 'accepted' | 'failed';
-  setOmOrdReviewTab: (v: 'review' | 'accepted' | 'failed') => void;
-
-  // Admin view
+  // Admin view — raw data + stats; all filters/modals are now tab-local state below
   effectiveOrders: OrderItem[];
-  filteredOrders: OrderItem[];
   ordersStats: OrdersStats;
-  orderSearch: string;
-  setOrderSearch: (v: string) => void;
-  orderStatusFilter: 'all' | 'paid' | 'failed' | 'refunded';
-  setOrderStatusFilter: (v: 'all' | 'paid' | 'failed' | 'refunded') => void;
-  orderTypeFilter: 'all' | 'course' | 'bundle' | 'consultation';
-  setOrderTypeFilter: (v: 'all' | 'course' | 'bundle' | 'consultation') => void;
-  orderMethodFilter: string;
-  setOrderMethodFilter: (v: string) => void;
-  orderDateFrom: string;
-  setOrderDateFrom: (v: string) => void;
-  orderDateTo: string;
-  setOrderDateTo: (v: string) => void;
-  orderStaffFilter: string;
-  setOrderStaffFilter: (v: string) => void;
-  orderReviewTab: 'review' | 'accepted' | 'failed' | 'transfers';
-  setOrderReviewTab: (v: 'review' | 'accepted' | 'failed' | 'transfers') => void;
-  showAddTransfer: boolean;
-  setShowAddTransfer: (v: boolean) => void;
-  linkTransferModal: { row: OrderItem } | null;
-  setLinkTransferModal: (v: { row: OrderItem } | null) => void;
-  linkOrderModal: { row: OrderItem } | null;
-  setLinkOrderModal: (v: { row: OrderItem } | null) => void;
-  transferForm: TransferForm;
-  setTransferForm: React.Dispatch<React.SetStateAction<TransferForm>>;
   currentStaff: StaffMember | null;
   authUser: { displayName?: string | null; email?: string | null; uid?: string } | null;
   content: Record<string, string>;
   updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => void;
   addOrder: (order: OrderItem) => void;
   deleteOrder: (id: string) => void;
-  exportFilteredOrdersCsv: () => void;
 }
 
 export default function OrdersTab({
   isOnlineManager, isDaqqiManager, isAdmin,
   notify, courses, bundles,
-  salesOwnSubscribers,
-  daqqiSubSearch, setDaqqiSubSearch,
-  daqqiAccDateFrom, setDaqqiAccDateFrom,
-  daqqiAccDateTo, setDaqqiAccDateTo,
-  updateSubscriber,
-  omOrdReviewTab, setOmOrdReviewTab,
-  effectiveOrders, filteredOrders, ordersStats,
-  orderSearch, setOrderSearch,
-  orderStatusFilter, setOrderStatusFilter,
-  orderTypeFilter, setOrderTypeFilter,
-  orderMethodFilter, setOrderMethodFilter,
-  orderDateFrom, setOrderDateFrom,
-  orderDateTo, setOrderDateTo,
-  orderStaffFilter, setOrderStaffFilter,
-  orderReviewTab, setOrderReviewTab,
-  showAddTransfer, setShowAddTransfer,
-  linkTransferModal, setLinkTransferModal,
-  linkOrderModal, setLinkOrderModal,
-  transferForm, setTransferForm,
+  salesOwnSubscribers, updateSubscriber,
+  effectiveOrders, ordersStats,
   currentStaff, authUser, content,
-  updateOrderStatus, addOrder, deleteOrder, exportFilteredOrdersCsv,
+  updateOrderStatus, addOrder, deleteOrder,
 }: Props) {
   const navigate = useNavigate();
+
+  // ── Tab-local state (lifted out of the Dashboard god-hub) ──────────────────
+  const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
+  const [daqqiAccDateFrom, setDaqqiAccDateFrom] = useState('');
+  const [daqqiAccDateTo, setDaqqiAccDateTo] = useState('');
+  const [omOrdReviewTab, setOmOrdReviewTab] = useState<'review' | 'accepted' | 'failed'>('review');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'paid' | 'failed' | 'refunded'>('all');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'course' | 'bundle' | 'consultation'>('all');
+  const [orderMethodFilter, setOrderMethodFilter] = useState<string>('all');
+  const [orderDateFrom, setOrderDateFrom] = useState('');
+  const [orderDateTo, setOrderDateTo] = useState('');
+  const [orderStaffFilter, setOrderStaffFilter] = useState<string>('all');
+  const [orderReviewTab, setOrderReviewTab] = useState<'review' | 'accepted' | 'failed' | 'transfers'>('review');
+  const [showAddTransfer, setShowAddTransfer] = useState(false);
+  const [linkTransferModal, setLinkTransferModal] = useState<{ row: OrderItem } | null>(null);
+  const [linkOrderModal, setLinkOrderModal] = useState<{ row: OrderItem } | null>(null);
+  const [transferForm, setTransferForm] = useState<TransferForm>({
+    amount: '', currency: 'EGP', method: '', senderName: '', senderPhone: '',
+    reference: '', note: '', date: new Date().toISOString().slice(0, 10),
+    time: new Date().toTimeString().slice(0, 5), status: 'paid',
+  });
+  const filteredOrders = useMemo(() => effectiveOrders.filter((row) => {
+    const text = `${row.id} ${row.itemTitle} ${row.customerName} ${row.staffName || ''}`.toLowerCase();
+    const matchesSearch = text.includes(orderSearch.toLowerCase());
+    const matchesStatus = orderStatusFilter === 'all' || row.status === orderStatusFilter;
+    const matchesType = orderTypeFilter === 'all' || row.type === orderTypeFilter;
+    const matchesMethod = orderMethodFilter === 'all' || row.paymentMethod === orderMethodFilter;
+    const matchesStaff = orderStaffFilter === 'all' || (row.staffName || '') === orderStaffFilter;
+    const rowTime = new Date(row.createdAt.replace(' ', 'T')).getTime();
+    const fromTime = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`).getTime() : null;
+    const toTime = orderDateTo ? new Date(`${orderDateTo}T23:59:59`).getTime() : null;
+    const hasValidTime = !Number.isNaN(rowTime);
+    const matchesDate = hasValidTime && (fromTime === null || rowTime >= fromTime) && (toTime === null || rowTime <= toTime);
+    return matchesSearch && matchesStatus && matchesType && matchesMethod && matchesStaff && matchesDate;
+  }), [effectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo]);
 
   const handleConfirmOrder = (row: OrderItem) => {
     if (!isAdmin && currentStaff?.role !== 'manager') {
@@ -660,7 +644,7 @@ export default function OrdersTab({
                         {tabRows.length} طلب · {tabTotal.toLocaleString()} ج
                       </span>
                       {/* Export */}
-                      <button onClick={exportFilteredOrdersCsv} disabled={filteredOrders.length === 0}
+                      <button onClick={() => exportOrdersCsv(filteredOrders)} disabled={filteredOrders.length === 0}
                         className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition ${filteredOrders.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
                         <Download size={12} /> تصدير CSV
                       </button>

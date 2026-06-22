@@ -415,7 +415,6 @@ const Dashboard: React.FC = () => {
   const [salesSubscriberSubTab, setSalesSubscriberSubTab] = useState<'all' | 'daqqi' | 'local' | 'abroad' | 'qatameya'>('all');
   const [salesSubSearch, setSalesSubSearch] = useState('');
   // Reception Daqqi role — daqqi clients tab state
-  const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
   const [daqqiSubPage, setDaqqiSubPage] = useState(1);
   const [daqqiStatusFilter, setDaqqiStatusFilter] = useState('');
   const [daqqiDateFrom, setDaqqiDateFrom] = useState('');
@@ -423,8 +422,6 @@ const Dashboard: React.FC = () => {
   const [daqqiRemainingFilter, setDaqqiRemainingFilter] = useState<'all'|'has_remaining'|'paid'>('all');
   const [daqqiCourseFilter, setDaqqiCourseFilter] = useState('');
   const [daqqiSubTab, setDaqqiSubTab] = useState<'all'|'assigned'|'unassigned'>('all');
-  const [daqqiAccDateFrom, setDaqqiAccDateFrom] = useState('');
-  const [daqqiAccDateTo, setDaqqiAccDateTo] = useState('');
   const [daqqiAccView, setDaqqiAccView] = useState<'daily'|'by_course'|'by_method'|'by_staff'|'payments'>('daily');
   const [daqqiTaskinSub, setDaqqiTaskinSub] = useState<SubscriberItem | null>(null);
   const daqqiCreateRoundRef = React.useRef<(() => void) | null>(null);
@@ -674,37 +671,12 @@ const Dashboard: React.FC = () => {
   });
 
 
-  const [orderSearch, setOrderSearch] = useState('');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'paid' | 'failed' | 'refunded'>('all');
-  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'course' | 'bundle' | 'consultation'>('all');
-  const [orderMethodFilter, setOrderMethodFilter] = useState<string>('all');
-  const [orderDateFrom, setOrderDateFrom] = useState('');
-  const [orderDateTo, setOrderDateTo] = useState('');
-  const [orderReviewTab, setOrderReviewTab] = useState<'review' | 'accepted' | 'failed' | 'transfers'>('review');
-  const [orderStaffFilter, setOrderStaffFilter] = useState<string>('all');
-  const [omOrdReviewTab, setOmOrdReviewTab] = useState<'review' | 'accepted' | 'failed'>('review');
+  // Orders filters/review-tab state now lives inside OrdersTab (lifted out of this hub).
   const [reviewedOrders, setReviewedOrders] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem('reviewedOrders') || '[]')); } catch { return new Set(); }
   });
 
-  // ── Add Transfer Modal ──
-  const [showAddTransfer, setShowAddTransfer] = useState(false);
-  // ── Link Transfer → Pending Order modal ──
-  const [linkTransferModal, setLinkTransferModal] = useState<{ row: OrderItem } | null>(null);
-  // ── Link Pending Order → Transfer modal ──
-  const [linkOrderModal, setLinkOrderModal] = useState<{ row: OrderItem } | null>(null);
-  const [transferForm, setTransferForm] = useState({
-    amount: '',
-    currency: 'EGP' as 'EGP' | 'SAR' | 'USD',
-    method: '' as string,
-    senderName: '',
-    senderPhone: '',
-    reference: '',
-    note: '',
-    date: new Date().toISOString().slice(0, 10),
-    time: new Date().toTimeString().slice(0, 5),
-    status: 'paid' as 'paid' | 'pending',
-  });
+  // Add/Link-transfer modals + transferForm now live inside OrdersTab.
 
   // Discount management state
   const [featuredCourseId, setFeaturedCourseId] = useState(() => content['home.featured.courseId'] || '');
@@ -1286,20 +1258,6 @@ const Dashboard: React.FC = () => {
   const selectedConsultationTherapist = consultationDraft.therapistId
     ? therapists.find((row) => row.id === consultationDraft.therapistId)
     : therapists.find((row) => row.name === consultationDraft.therapistName);
-  const filteredOrders = useMemo(() => effectiveOrders.filter((row) => {
-    const text = `${row.id} ${row.itemTitle} ${row.customerName} ${row.staffName || ''}`.toLowerCase();
-    const matchesSearch = text.includes(orderSearch.toLowerCase());
-    const matchesStatus = orderStatusFilter === 'all' || row.status === orderStatusFilter;
-    const matchesType = orderTypeFilter === 'all' || row.type === orderTypeFilter;
-    const matchesMethod = orderMethodFilter === 'all' || row.paymentMethod === orderMethodFilter;
-    const matchesStaff = orderStaffFilter === 'all' || (row.staffName || '') === orderStaffFilter;
-    const rowTime = new Date(row.createdAt.replace(' ', 'T')).getTime();
-    const fromTime = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`).getTime() : null;
-    const toTime = orderDateTo ? new Date(`${orderDateTo}T23:59:59`).getTime() : null;
-    const hasValidTime = !Number.isNaN(rowTime);
-    const matchesDate = hasValidTime && (fromTime === null || rowTime >= fromTime) && (toTime === null || rowTime <= toTime);
-    return matchesSearch && matchesStatus && matchesType && matchesMethod && matchesStaff && matchesDate;
-  }), [effectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo]);
 
 
   const handleConfirmOrder = (row: OrderItem) => {
@@ -2429,49 +2387,15 @@ const Dashboard: React.FC = () => {
                 courses={courses}
                 bundles={bundles}
                 salesOwnSubscribers={salesOwnSubscribers}
-                daqqiSubSearch={daqqiSubSearch}
-                setDaqqiSubSearch={setDaqqiSubSearch}
-                daqqiAccDateFrom={daqqiAccDateFrom}
-                setDaqqiAccDateFrom={setDaqqiAccDateFrom}
-                daqqiAccDateTo={daqqiAccDateTo}
-                setDaqqiAccDateTo={setDaqqiAccDateTo}
                 updateSubscriber={updateSubscriber}
-                omOrdReviewTab={omOrdReviewTab}
-                setOmOrdReviewTab={setOmOrdReviewTab}
                 effectiveOrders={effectiveOrders}
-                filteredOrders={filteredOrders}
                 ordersStats={ordersStats}
-                orderSearch={orderSearch}
-                setOrderSearch={setOrderSearch}
-                orderStatusFilter={orderStatusFilter}
-                setOrderStatusFilter={setOrderStatusFilter}
-                orderTypeFilter={orderTypeFilter}
-                setOrderTypeFilter={setOrderTypeFilter}
-                orderMethodFilter={orderMethodFilter}
-                setOrderMethodFilter={setOrderMethodFilter}
-                orderDateFrom={orderDateFrom}
-                setOrderDateFrom={setOrderDateFrom}
-                orderDateTo={orderDateTo}
-                setOrderDateTo={setOrderDateTo}
-                orderStaffFilter={orderStaffFilter}
-                setOrderStaffFilter={setOrderStaffFilter}
-                orderReviewTab={orderReviewTab}
-                setOrderReviewTab={setOrderReviewTab}
-                showAddTransfer={showAddTransfer}
-                setShowAddTransfer={setShowAddTransfer}
-                linkTransferModal={linkTransferModal}
-                setLinkTransferModal={setLinkTransferModal}
-                linkOrderModal={linkOrderModal}
-                setLinkOrderModal={setLinkOrderModal}
-                transferForm={transferForm}
-                setTransferForm={setTransferForm}
                 currentStaff={currentStaff}
                 authUser={authUser ?? null}
                 content={content}
                 updateOrderStatus={updateOrderStatus}
                 addOrder={addOrder}
                 deleteOrder={deleteOrder}
-                exportFilteredOrdersCsv={() => exportOrdersCsv(filteredOrders)}
               />
               </TabErrorBoundary>
               </Suspense>
