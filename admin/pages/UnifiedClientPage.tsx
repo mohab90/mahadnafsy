@@ -43,6 +43,11 @@ import ContactPopupModal from './unifiedClient/ContactPopupModal';
 import InstallmentPlanModal from './unifiedClient/InstallmentPlanModal';
 import ConvertModal from './unifiedClient/ConvertModal';
 import AddCommModal from './unifiedClient/AddCommModal';
+import LeadPaymentModal from './unifiedClient/LeadPaymentModal';
+import ExtraCertRequestModal from './unifiedClient/ExtraCertRequestModal';
+import LegacyPaymentModal from './unifiedClient/LegacyPaymentModal';
+import CertificateViewModal from './unifiedClient/CertificateViewModal';
+import PaymentDetailModal from './unifiedClient/PaymentDetailModal';
 import PaymentsTab from './unifiedClient/PaymentsTab';
 import EditClientTab from './unifiedClient/EditClientTab';
 import OverviewClientTab from './unifiedClient/OverviewClientTab';
@@ -1729,346 +1734,67 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
       {/* ══ Lead Payment Modal ══ */}
       {showLeadPayForm && !isSub && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowLeadPayForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="bg-gradient-to-l from-red-700 to-red-500 px-5 py-4 rounded-t-2xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white/20 rounded-xl p-2"><CreditCard size={20} className="text-white" /></div>
-                  <div>
-                    <p className="font-extrabold text-white text-base leading-tight">تسجيل دفعة جديدة</p>
-                    <p className="text-red-100 text-xs mt-0.5">{clientName}</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowLeadPayForm(false)} className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition"><X size={16} /></button>
-              </div>
-            </div>
-            <div className="p-5 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs text-gray-600 mb-1 block">المبلغ</label>
-                  <input type="number" min="0" value={leadPayDraft.amount || ''} onChange={e => setLeadPayDraft({ ...leadPayDraft, amount: Number(e.target.value) })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label className="text-xs text-gray-600 mb-1 block">العملة</label>
-                  <select value={leadPayDraft.currency} onChange={e => setLeadPayDraft({ ...leadPayDraft, currency: e.target.value as 'EGP' | 'SAR' | 'USD' })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm">
-                    <option value="EGP">ج.م</option><option value="SAR">ر.س</option><option value="USD">$</option>
-                  </select></div>
-                <div><label className="text-xs text-gray-600 mb-1 block">الكورس</label>
-                  <select value={leadPayDraft.courseId} onChange={e => setLeadPayDraft({ ...leadPayDraft, courseId: e.target.value })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm">
-                    <option value="">اختر</option>
-                    {(() => {
-                      const bundledIds = new Set(bundles.flatMap(b => b.courses.map(x => x.id)));
-                      return (<>
-                        {bundles.map(b => (
-                          <optgroup key={b.id} label={`📌 ${b.title}`}>
-                            {b.courses.map(bc => <option key={bc.id} value={bc.id}>{bc.title}</option>)}
-                          </optgroup>
-                        ))}
-                        <optgroup label="🎓 الكورسات الفردية">
-                          {courses.filter(bc => !bundledIds.has(bc.id)).map(bc => <option key={bc.id} value={bc.id}>{bc.title}</option>)}
-                        </optgroup>
-                      </>);
-                    })()}
-                  </select></div>
-                <div><label className="text-xs text-gray-600 mb-1 block">التاريخ</label>
-                  <input type="date" value={leadPayDraft.date} onChange={e => setLeadPayDraft({ ...leadPayDraft, date: e.target.value })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm" /></div>
-              </div>
-              <div><label className="text-xs text-gray-600 mb-1 block">ملاحظة</label>
-                <input value={leadPayDraft.note || ''} onChange={e => setLeadPayDraft({ ...leadPayDraft, note: e.target.value })}
-                  className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm" /></div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={handleAddLeadPayment} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 flex items-center justify-center gap-2"><CreditCard size={15} /> تسجيل الدفعة</button>
-                <button onClick={() => setShowLeadPayForm(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <LeadPaymentModal
+          clientName={clientName}
+          leadPayDraft={leadPayDraft}
+          setLeadPayDraft={setLeadPayDraft}
+          courses={courses}
+          bundles={bundles}
+          onSave={handleAddLeadPayment}
+          onClose={() => setShowLeadPayForm(false)}
+        />
       )}
 
       {/* ══ Extra Certificate Request Modal ══ */}
-      {showExtraCertForm && isSub && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowExtraCertForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-lg shadow">🏆</div>
-                <div>
-                  <p className="font-extrabold text-gray-900 text-sm">طلب شهادة إضافية</p>
-                  <p className="text-[11px] text-gray-400">{clientName}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowExtraCertForm(false)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><X size={16} /></button>
-            </div>
-            <div className="p-5 space-y-3">
-              <div>
-                <label className="text-xs text-gray-600 mb-1.5 block font-medium">الكورس</label>
-                <select value={extraCertDraft.courseId}
-                  onChange={e => setExtraCertDraft({ ...extraCertDraft, courseId: e.target.value })}
-                  className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm">
-                  <option value="">— اختر الكورس —</option>
-                  {subscriber!.enrolledCourseIds.map(cId => {
-                    const ec = courses.find(x => x.id === cId);
-                    return <option key={cId} value={cId}>{ec?.title || cId}</option>;
-                  })}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 mb-1.5 block font-medium">نوع الشهادة</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(Object.entries(EXTRA_TYPE_LABELS) as [ExtraCertificateType, string][]).map(([val, label]) => (
-                    <button key={val} onClick={() => setExtraCertDraft({ ...extraCertDraft, type: val })}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-medium border transition text-right ${extraCertDraft.type === val ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-bold shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-200'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">سعر الشهادة (اختياري)</label>
-                  <input type="number" min="0" placeholder="0 ج.م" value={extraCertDraft.certExpected}
-                    onChange={e => setExtraCertDraft({ ...extraCertDraft, certExpected: e.target.value })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-2 py-1.5 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">مدفوع منها (اختياري)</label>
-                  <input type="number" min="0" placeholder="0 ج.م" value={extraCertDraft.certPaid}
-                    onChange={e => setExtraCertDraft({ ...extraCertDraft, certPaid: e.target.value })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-2 py-1.5 text-sm" />
-                </div>
-              </div>
-              {extraCertDraft.certExpected && Number(extraCertDraft.certExpected) > 0 && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
-                  <span className="text-blue-600">متبقي</span>
-                  <span className="font-extrabold text-red-600">{Math.max(0, Number(extraCertDraft.certExpected) - Number(extraCertDraft.certPaid || 0)).toLocaleString()} ج.م</span>
-                </div>
-              )}
-              <div className="flex gap-2 pt-1">
-                <button onClick={handleAddExtraCertRequest}
-                  disabled={!extraCertDraft.courseId || !extraCertDraft.type}
-                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-40">
-                  💾 إضافة الطلب
-                </button>
-                <button onClick={() => setShowExtraCertForm(false)}
-                  className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {showExtraCertForm && isSub && subscriber && (
+        <ExtraCertRequestModal
+          clientName={clientName}
+          subscriber={subscriber}
+          courses={courses}
+          extraCertDraft={extraCertDraft}
+          setExtraCertDraft={setExtraCertDraft}
+          onSave={handleAddExtraCertRequest}
+          onClose={() => setShowExtraCertForm(false)}
+        />
       )}
 
       {/* ══ Legacy Payment Modal (مدفوع قديم) ══ */}
       {showLegacyPayForm && isSub && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowLegacyPayForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow">
-                  <Clock size={18} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-gray-900 text-sm">تسجيل مدفوع قديم</p>
-                  <p className="text-[11px] text-gray-400">{clientName}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowLegacyPayForm(false)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><X size={16} /></button>
-            </div>
-            <div className="p-5 space-y-3">
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700">
-                لتسجيل عميل قديم سبق أن دفع قبل النظام الحالي
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 mb-1 block">الكورس *</label>
-                <select value={legacyPayDraft.courseId} onChange={e => setLegacyPayDraft({ ...legacyPayDraft, courseId: e.target.value })}
-                  className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm">
-                  <option value="">— اختر الكورس —</option>
-                  {(() => {
-                    const bundledIds = new Set(bundles.flatMap(b => b.courses.map(x => x.id)));
-                    return (<>
-                      {bundles.map(b => (
-                        <optgroup key={b.id} label={`📌 ${b.title}`}>
-                          {b.courses.map(bc => <option key={bc.id} value={bc.id}>{bc.title}</option>)}
-                        </optgroup>
-                      ))}
-                      <optgroup label="🎓 الكورسات الفردية">
-                        {courses.filter(bc => !bundledIds.has(bc.id)).map(bc => <option key={bc.id} value={bc.id}>{bc.title}</option>)}
-                      </optgroup>
-                    </>);
-                  })()}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">سعر الكورس الكامل *</label>
-                  <input type="number" min="0" placeholder="مثال: 3000" value={legacyPayDraft.courseExpected}
-                    onChange={e => setLegacyPayDraft({ ...legacyPayDraft, courseExpected: e.target.value })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">المبلغ المدفوع *</label>
-                  <input type="number" min="0" placeholder="مثال: 2000" value={legacyPayDraft.amountPaid}
-                    onChange={e => setLegacyPayDraft({ ...legacyPayDraft, amountPaid: e.target.value })}
-                    className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm" />
-                </div>
-              </div>
-              {legacyPayDraft.courseExpected && legacyPayDraft.amountPaid && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
-                  <span className="text-blue-600">متبقي</span>
-                  <span className="font-extrabold text-red-600">
-                    {Math.max(0, Number(legacyPayDraft.courseExpected) - Number(legacyPayDraft.amountPaid)).toLocaleString()} ج.م
-                  </span>
-                </div>
-              )}
-              <div>
-                <label className="text-xs text-gray-600 mb-1 block">ملاحظة (اختياري)</label>
-                <input value={legacyPayDraft.note} onChange={e => setLegacyPayDraft({ ...legacyPayDraft, note: e.target.value })}
-                  placeholder="مثال: دفع نقدي قبل النظام"
-                  className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm" />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={handleAddLegacyPayment}
-                  disabled={!legacyPayDraft.courseId || !legacyPayDraft.courseExpected || !legacyPayDraft.amountPaid}
-                  className="flex-1 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 disabled:opacity-40">
-                  💾 تسجيل المدفوع
-                </button>
-                <button onClick={() => setShowLegacyPayForm(false)}
-                  className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <LegacyPaymentModal
+          clientName={clientName}
+          legacyPayDraft={legacyPayDraft}
+          setLegacyPayDraft={setLegacyPayDraft}
+          courses={courses}
+          bundles={bundles}
+          onSave={handleAddLegacyPayment}
+          onClose={() => setShowLegacyPayForm(false)}
+        />
       )}
 
       {/* ══ Certificate View Modal ══ */}
-      {viewCertId && isSub && (() => {
-        const cert = subCerts.find(c => c.id === viewCertId);
-        if (!cert) return null;
-        const certCourse = courses.find(c => c.id === cert.courseId);
-        return (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setViewCertId(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" dir="rtl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-lg shadow">🏆</div>
-                  <div>
-                    <p className="font-extrabold text-gray-900 text-sm">شهادة إتمام الكورس</p>
-                    <p className="text-[11px] text-gray-400">{clientName}</p>
-                  </div>
-                </div>
-                <button onClick={() => setViewCertId(null)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><X size={16} /></button>
-              </div>
-              <div className="p-5 space-y-4">
-                <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-5 text-center space-y-3">
-                  <div className="text-4xl">🏆</div>
-                  <div>
-                    <p className="font-extrabold text-gray-900 text-lg">{subscriber!.name}</p>
-                    <p className="text-sm text-gray-500 mt-1">أتمّ بنجاح كورس</p>
-                    <p className="font-bold text-amber-700 text-base mt-1">{certCourse?.title || cert.courseId}</p>
-                  </div>
-                  <div className="pt-2 border-t border-amber-200 space-y-1">
-                    <p className="text-xs text-gray-500">رقم الشهادة</p>
-                    <p className="font-mono font-bold text-gray-800 text-sm bg-white border border-amber-200 rounded-lg px-3 py-1.5 inline-block">{cert.certificateNumber}</p>
-                  </div>
-                  <p className="text-xs text-gray-400">صدرت في {cert.issuedAt}</p>
-                </div>
-                <button onClick={() => window.print()} className="w-full py-2.5 bg-gray-800 text-white rounded-xl text-sm font-bold hover:bg-gray-700 flex items-center justify-center gap-2">
-                  <Printer size={16} /> طباعة الشهادة
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {viewCertId && isSub && subscriber && (
+        <CertificateViewModal
+          viewCertId={viewCertId}
+          subCerts={subCerts}
+          courses={courses}
+          subscriberName={subscriber.name}
+          clientName={clientName}
+          onClose={() => setViewCertId(null)}
+        />
+      )}
 
       {/* ══ Payment Detail Modal ══ */}
-      {showPayDetailModal && isSub && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowPayDetailModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow">
-                  <CreditCard size={18} />
-                </div>
-                <div>
-                  <p className="font-extrabold text-gray-900 text-sm">التفاصيل المالية</p>
-                  <p className="text-[11px] text-gray-400">{clientName}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowPayDetailModal(false)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"><X size={16} /></button>
-            </div>
-            <div className="overflow-y-auto p-5 space-y-4">
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {subPaidTotals.EGP > 0 && (
-                  <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
-                    <p className="font-extrabold text-emerald-700 text-base">{subPaidTotals.EGP.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ج.م</p>
-                  </div>
-                )}
-                {subRemainingEGP > 0 && (
-                  <div className="bg-red-50 rounded-xl p-3 border border-red-100">
-                    <p className="font-extrabold text-red-600 text-base">{subRemainingEGP.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">متبقي ج.م</p>
-                  </div>
-                )}
-                {subPaidTotals.SAR > 0 && (
-                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                    <p className="font-extrabold text-blue-700 text-base">{subPaidTotals.SAR.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ر.س</p>
-                  </div>
-                )}
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">تفاصيل كل كورس</p>
-                {subscriber!.enrolledCourseIds.map(cId => {
-                  const course = courses.find(x => x.id === cId);
-                  const bm = bookingMap[cId];
-                  const remaining = bm?.expectedEGP != null ? Math.max(0, bm.expectedEGP - bm.paidEGP) : null;
-                  return (
-                    <div key={cId} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                      <p className="font-bold text-gray-800 text-sm mb-2">{course?.title || cId}</p>
-                      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                        {bm?.expectedEGP != null && (
-                          <div>
-                            <p className="text-gray-400">السعر</p>
-                            <p className="font-bold text-gray-700">{bm.expectedEGP.toLocaleString()}</p>
-                          </div>
-                        )}
-                        {bm && (
-                          <div>
-                            <p className="text-gray-400">مدفوع</p>
-                            <p className="font-bold text-emerald-700">{bm.paidEGP.toLocaleString()}</p>
-                          </div>
-                        )}
-                        {remaining !== null && (
-                          <div>
-                            <p className="text-gray-400">متبقي</p>
-                            <p className={`font-bold ${remaining > 0 ? 'text-red-600' : 'text-green-600'}`}>{remaining > 0 ? remaining.toLocaleString() : '✅'}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {confirmedHistory.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">سجل المدفوعات ({confirmedHistory.length})</p>
-                  {confirmedHistory.slice().reverse().map((p, i) => (
-                    <div key={i} className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-3 py-2.5">
-                      <div>
-                        <p className="text-xs font-bold text-gray-800">{p.amount.toLocaleString()} {p.currency === 'SAR' ? 'ر.س' : p.currency === 'USD' ? '$' : 'ج.م'}</p>
-                        {p.note && <p className="text-[11px] text-gray-400 mt-0.5">{p.note}</p>}
-                      </div>
-                      <p className="text-[11px] text-gray-400">{p.at || ''}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {showPayDetailModal && isSub && subscriber && (
+        <PaymentDetailModal
+          clientName={clientName}
+          subscriber={subscriber}
+          courses={courses}
+          subPaidTotals={subPaidTotals}
+          subRemainingEGP={subRemainingEGP}
+          bookingMap={bookingMap}
+          confirmedHistory={confirmedHistory}
+          onClose={() => setShowPayDetailModal(false)}
+        />
       )}
 
     </div>
