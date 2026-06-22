@@ -412,39 +412,14 @@ const Dashboard: React.FC = () => {
 
   const [editingSubscriberId, setEditingSubscriberId] = useState('');
   const [subscriberSubTab, setSubscriberSubTab] = useState<'local' | 'abroad' | 'all' | 'online25'>('all');
-  const [salesSubscriberSubTab, setSalesSubscriberSubTab] = useState<'all' | 'daqqi' | 'local' | 'abroad' | 'qatameya'>('all');
-  const [salesSubSearch, setSalesSubSearch] = useState('');
   // Reception Daqqi role — daqqi clients tab state
-  const [daqqiSubPage, setDaqqiSubPage] = useState(1);
-  const [daqqiStatusFilter, setDaqqiStatusFilter] = useState('');
-  const [daqqiDateFrom, setDaqqiDateFrom] = useState('');
-  const [daqqiDateTo, setDaqqiDateTo] = useState('');
-  const [daqqiRemainingFilter, setDaqqiRemainingFilter] = useState<'all'|'has_remaining'|'paid'>('all');
-  const [daqqiCourseFilter, setDaqqiCourseFilter] = useState('');
-  const [daqqiSubTab, setDaqqiSubTab] = useState<'all'|'assigned'|'unassigned'>('all');
-  const [daqqiAccView, setDaqqiAccView] = useState<'daily'|'by_course'|'by_method'|'by_staff'|'payments'>('daily');
-  const [daqqiTaskinSub, setDaqqiTaskinSub] = useState<SubscriberItem | null>(null);
   const daqqiCreateRoundRef = React.useRef<(() => void) | null>(null);
-  const [daqqiAddClientOpen, setDaqqiAddClientOpen] = useState(false);
-  const [daqqiAddClientDraft, setDaqqiAddClientDraft] = useState({ name: '', phone: '', email: '', courseId: '', nationalId: '', gender: '', notes: '' });
-  const [salesSubDateFrom, setSalesSubDateFrom] = useState('');
-  const [salesSubDateTo, setSalesSubDateTo] = useState('');
-  const [salesSubContactRow, setSalesSubContactRow] = useState<SubscriberItem | null>(null);
-  const [salesSubContactNote, setSalesSubContactNote] = useState('');
-  const [o25Search, setO25Search] = useState('');
-  const [o25Page, setO25Page] = useState(1);
-  const [o25Distributing, setO25Distributing] = useState(false);
   const [subCsDistributing, setSubCsDistributing] = useState(false);
   // Daqqi old-data distribution
   const [daqqiOldDistribPlan, setDaqqiOldDistribPlan] = useState<{staffId:string;count:string}[]>([{staffId:'',count:''}]);
   const [daqqiOldDistributing, setDaqqiOldDistributing] = useState(false);
-  const [missingAccountsCount, setMissingAccountsCount] = useState<number | null>(null);
-  const [bulkCreateLoading, setBulkCreateLoading] = useState(false);
-  const [bulkCreateResult, setBulkCreateResult] = useState<{ created: number; failed: number; emailsSent: number } | null>(null);
-  const [o25ClassFilter, setO25ClassFilter] = useState<'all' | 'paid' | 'partial' | 'none'>('all');
   const [subscriberCourseFilter, setSubscriberCourseFilter] = useState('');
   const [subscriberSearch, setSubscriberSearch] = useState('');
-  const [subscriberBranchFilter, setSubscriberBranchFilter] = useState('all');
   const [subscriberSalesFilter, setSubscriberSalesFilter] = useState('all');
   const [subscriberCsFilter, setSubscriberCsFilter] = useState('all');
   const [subscriberInstFilter, setSubscriberInstFilter] = useState(''); // '' | 'overdue' | 'soon'
@@ -452,8 +427,6 @@ const Dashboard: React.FC = () => {
   const [subscriberCertFilter, setSubscriberCertFilter] = useState(''); // '' | 'has' | 'pending' | 'issued'
   const [subscriberPayFilter, setSubscriberPayFilter] = useState(''); // '' | 'pending'
   const [subscriberPage, setSubscriberPage] = useState(1);
-  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
-  const [bulkSubStatus, setBulkSubStatus] = useState<SubStatus | ''>('');
   const [isSubscriberFormOpen, setIsSubscriberFormOpen] = useState(false);
   const [grantSubscriberId, setGrantSubscriberId] = useState('');
   const [grantEnrolledCourseIds, setGrantEnrolledCourseIds] = useState<string[]>([]);
@@ -467,7 +440,6 @@ const Dashboard: React.FC = () => {
   const [subPayDraft, setSubPayDraft] = useState<PaymentDraft>(blankPaymentDraft());
 
   // Per-course pay detail popup
-  const [payDetailSub, setPayDetailSub] = useState<SubscriberItem | null>(null);
   // Extra certificate request action
   const [certActionSub, setCertActionSub] = useState<SubscriberItem | null>(null);
   const [certActionDraft, setCertActionDraft] = useState<{ courseId: string; type: ExtraCertificateType | ''; certExpected: string; certPaid: string }>({ courseId: '', type: '', certExpected: '', certPaid: '' });
@@ -519,7 +491,6 @@ const Dashboard: React.FC = () => {
   const [salesNotifOpen, setSalesNotifOpen] = useState(false);
   const [onlineMgrFollowupOpen, setOnlineMgrFollowupOpen] = useState(false);
   const [onlineMgrNewEventsOpen, setOnlineMgrNewEventsOpen] = useState(false);
-  const [activeLeadsTab, setActiveLeadsTab] = useState<'courses' | 'settings'>('courses');
   const [leadDraft, setLeadDraft] = useState<LeadItem>(blankLead());
   const [convertLeadModal, setConvertLeadModal] = useState<{ lead: LeadItem | null; courseId: string; accessMode: AccessMode }>({ lead: null, courseId: '', accessMode: 'full' });
   const [bulkUploadNotice, setBulkUploadNotice] = useState('');
@@ -541,7 +512,6 @@ const Dashboard: React.FC = () => {
 
   const [leadsSearch, setLeadsSearch] = useState('');
   const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]); // empty = hide converted+hidden
-  const [leadsStatusDropOpen, setLeadsStatusDropOpen] = useState(false);
   const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue'>('all');
   const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
   const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
@@ -555,7 +525,6 @@ const Dashboard: React.FC = () => {
   const [staffPassword, setStaffPassword] = useState('');
   const [staffShowPassword, setStaffShowPassword] = useState(false);
   const [staffAuthLoading, setStaffAuthLoading] = useState(false);
-  const [subscriberAuthPanelId, setSubscriberAuthPanelId] = useState('');
   const navigate = useNavigate();
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
@@ -567,9 +536,7 @@ const Dashboard: React.FC = () => {
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [pendingProofsCount, setPendingProofsCount] = useState(0);
-  const [openFloatGroup, setOpenFloatGroup] = useState<string | null>(null);
   const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);
   const [monitorPanel, setMonitorPanel] = useState<boolean>(false);
   // ── Horizontal dropdown nav state ──
@@ -647,7 +614,6 @@ const Dashboard: React.FC = () => {
 
   const [editingConsultationId, setEditingConsultationId] = useState('');
   const [isConsultationFormOpen, setIsConsultationFormOpen] = useState(false);
-  const [consultationStatusFilter, setConsultationStatusFilter] = useState<string>('all');
   const [consultationDraft, setConsultationDraft] = useState<ConsultationItem>({
     id: '',
     clientName: '',
@@ -679,18 +645,11 @@ const Dashboard: React.FC = () => {
   // Add/Link-transfer modals + transferForm now live inside OrdersTab.
 
   // Discount management state
-  const [featuredCourseId, setFeaturedCourseId] = useState(() => content['home.featured.courseId'] || '');
-  const [featuredDiscountPct, setFeaturedDiscountPct] = useState(() => content['home.featured.discountPercent'] || '');
 
   // Notification state moved to NotificationsAdminTab.tsx
 
   // Quiz + LiveStream state moved to their own tab components
 
-  const [codeMigrating, setCodeMigrating] = useState(false);
-  const [recodeMigrating, setRecodeMigrating] = useState(false);
-  const [deduping, setDeduping] = useState(false);
-  const [autoConverting, setAutoConverting] = useState(false);
-  const [staffCleanupRunning, setStaffCleanupRunning] = useState(false);
 
   // Auto-dedup on first load (silent — keeps oldest lead when duplicates found)
   const _dedupedRef = React.useRef(false);
@@ -743,12 +702,7 @@ const Dashboard: React.FC = () => {
   // Activity log filters moved to ActivityTab.tsx
 
   // Leads view mode: table or kanban
-  const [leadsView, setLeadsView] = useState<'table' | 'kanban' | 'performance' | 'proposals' | 'funnel'>('table');
-  const [kanbanDragId, setKanbanDragId] = useState<string | null>(null);
 
-  const [quickEditLeadId, setQuickEditLeadId] = useState<string | null>(null);
-  const [qeCommNote, setQeCommNote] = useState('');
-  const [qeCommType, setQeCommType] = useState<CommunicationRecord['type']>('call');
   const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>(() => {
     try {
       // Try content first (Firebase-persisted), fallback to localStorage for migration
@@ -757,7 +711,6 @@ const Dashboard: React.FC = () => {
       return JSON.parse(localStorage.getItem('crm.salesTargets') || '[]');
     } catch { return []; }
   });
-  const [leadTargetMonth, setLeadTargetMonth] = useState(new Date().toISOString().slice(0, 7));
   // CSV general import state
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
@@ -765,7 +718,6 @@ const Dashboard: React.FC = () => {
   const [csvMapping, setCsvMapping] = useState<Record<string, string>>({});
   const [csvImporting, setCsvImporting] = useState(false);
   // Tag input (keyed by lead id being edited)
-  const [tagInputVal, setTagInputVal] = useState('');
 
 
 
@@ -815,8 +767,6 @@ const Dashboard: React.FC = () => {
   const [aiDevMessages, setAiDevMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('mahad-ai-dev-messages') || '[]') as { role: 'user' | 'assistant'; text: string }[]; } catch { return []; }
   });
-  const [aiDevInput, setAiDevInput] = useState('');
-  const [aiDevLoading, setAiDevLoading] = useState(false);
   const aiDevChatEndRef = React.useRef<HTMLDivElement>(null);
   useEffect(() => {
     try { localStorage.setItem('mahad-ai-dev-messages', JSON.stringify(aiDevMessages.slice(-80))); } catch { /* quota exceeded — trim further */ try { localStorage.setItem('mahad-ai-dev-messages', JSON.stringify(aiDevMessages.slice(-30))); } catch { /* silent */ } }
