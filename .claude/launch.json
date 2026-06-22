@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "admin",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "4000"],
+      "cwd": "admin",
+      "port": 4000
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "3000"],
+      "cwd": "client",
+      "port": 3000
+    }
+  ]
+}

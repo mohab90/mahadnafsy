@@ -136,8 +136,9 @@ export default function CoursesManager(p: Props) {
               <label className="block text-xs font-bold text-gray-600 mb-1">عنوان الكورس (عربي)</label>
               <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.title} onChange={(e) => {
                 const title = e.target.value;
-                const autoSlug = !editingCourseId && (!courseDraft.slug || courseDraft.slug === slugify(courseDraft.title))
-                  ? slugify(title)
+                // Auto-fill the slug only while it's still the auto value (English title preferred as source).
+                const autoSlug = !editingCourseId && (!courseDraft.slug || courseDraft.slug === slugify(courseDraft.titleEn || courseDraft.title))
+                  ? slugify(courseDraft.titleEn || title)
                   : courseDraft.slug;
                 setCourseDraft({ ...courseDraft, title, slug: autoSlug });
               }} />
@@ -151,7 +152,14 @@ export default function CoursesManager(p: Props) {
                 dir="ltr"
                 placeholder="e.g. Cognitive Behavioral Therapy Diploma"
                 value={courseDraft.titleEn || ''}
-                onChange={(e) => setCourseDraft({ ...courseDraft, titleEn: e.target.value })}
+                onChange={(e) => {
+                  const titleEn = e.target.value;
+                  // When the slug is still auto, upgrade it to the (more accurate) English-title slug.
+                  const autoSlug = !editingCourseId && (!courseDraft.slug || courseDraft.slug === slugify(courseDraft.titleEn || courseDraft.title))
+                    ? slugify(titleEn || courseDraft.title)
+                    : courseDraft.slug;
+                  setCourseDraft({ ...courseDraft, titleEn, slug: autoSlug });
+                }}
               />
             </div>
             <div>
@@ -168,7 +176,7 @@ export default function CoursesManager(p: Props) {
                 />
                 <button
                   type="button"
-                  onClick={() => setCourseDraft({ ...courseDraft, slug: slugify(courseDraft.title) })}
+                  onClick={() => setCourseDraft({ ...courseDraft, slug: slugify(courseDraft.titleEn || courseDraft.title) })}
                   className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 border border-gray-300 whitespace-nowrap"
                 >
                   توليد تلقائي

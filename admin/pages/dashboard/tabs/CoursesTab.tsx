@@ -21,9 +21,94 @@ const _vk = '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
 const obfV = (u: string): string => { if (!u || u.startsWith('enc:')) return u; try { return 'enc:' + btoa(u.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))).join('')); } catch { return u; } };
 const deobfV = (u: string): string => { if (!u || !u.startsWith('enc:')) return u; try { return atob(u.slice(4)).split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))).join(''); } catch { return u; } };
 
+// \u2500\u2500 Slug generation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Produces a REAL English slug (never Franco/transliteration). Strategy:
+//   1. English input (titleEn) \u2192 just lowercase + hyphenate.
+//   2. Arabic input \u2192 translate via a domain dictionary (full phrases first, then
+//      single words) + keep any Latin acronym present (NLP/ACT/CBT\u2026).
+//   3. Nothing recognised \u2192 '' (empty), so the field stays blank for manual entry.
+const asciiSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+
+// Full-phrase map (normalised bare-stem Arabic \u2192 English), longest/most-specific first.
+const SLUG_PHRASES: [string, string][] = [
+  ['\u0628\u0631\u0645\u062c\u0647 \u0644\u063a\u0648\u064a\u0647 \u0639\u0635\u0628\u064a\u0647', 'nlp'],
+  ['\u0641\u0646 \u0643\u0644\u0627\u0645 \u062a\u0627\u062b\u064a\u0631', 'art-of-speaking-and-influencing'],
+  ['\u0627\u0639\u062f\u0627\u062f \u0645\u0639\u0627\u0644\u062c \u0627\u062f\u0645\u0627\u0646', 'addiction-therapist-preparation'],
+  ['\u0645\u0639\u0627\u0644\u062c \u0627\u062f\u0645\u0627\u0646', 'addiction-therapist'],
+  ['\u0644\u0627\u064a\u0641 \u0643\u0648\u062a\u0634\u064a\u0646\u062c', 'life-coaching'],
+  ['\u062a\u0646\u0645\u064a\u0647 \u0645\u0647\u0627\u0631\u0627\u062a \u0627\u0637\u0641\u0627\u0644', 'developing-childrens-skills'],
+  ['\u062a\u0646\u0645\u064a\u0647 \u0645\u0647\u0627\u0631\u0627\u062a', 'skills-development'],
+  ['\u0639\u0644\u0645 \u0646\u0641\u0633 \u0627\u064a\u062c\u0627\u0628\u064a', 'positive-psychology'],
+  ['\u0639\u0644\u0645 \u0646\u0641\u0633 \u0645\u0638\u0644\u0645', 'dark-psychology'],
+  ['\u0639\u0644\u0645 \u0646\u0641\u0633 \u0627\u0643\u0644\u064a\u0646\u064a\u0643\u064a', 'clinical-psychology'],
+  ['\u062a\u0644\u0627\u0639\u0628 \u062a\u062d\u0635\u064a\u0646 \u0646\u0641\u0633\u064a', 'dark-psychology'],
+  ['\u0627\u0636\u0637\u0631\u0627\u0628 \u0637\u064a\u0641 \u062a\u0648\u062d\u062f', 'autism-spectrum-disorder'],
+  ['\u0637\u064a\u0641 \u062a\u0648\u062d\u062f', 'autism-spectrum'],
+  ['\u062a\u062f\u062e\u0644 \u0645\u0628\u0643\u0631', 'early-intervention'],
+  ['\u062a\u0631\u0628\u064a\u0647 \u062e\u0627\u0635\u0647', 'special-education'],
+  ['\u062a\u0631\u0628\u064a\u0647 \u0627\u064a\u062c\u0627\u0628\u064a\u0647', 'positive-parenting'],
+  ['\u062a\u0639\u062f\u064a\u0644 \u0633\u0644\u0648\u0643', 'behavior-modification'],
+  ['\u0635\u0639\u0648\u0628\u0627\u062a \u062a\u0639\u0644\u0645', 'learning-difficulties'],
+  ['\u0639\u0644\u0627\u062c \u0645\u062e\u0637\u0637\u0627\u062a \u0645\u0639\u0631\u0641\u064a\u0647', 'schema-therapy'],
+  ['\u0645\u062e\u0637\u0637\u0627\u062a \u0645\u0639\u0631\u0641\u064a\u0647', 'schema-therapy'],
+  ['\u0639\u0644\u0627\u062c \u0642\u0628\u0648\u0644 \u0627\u0644\u062a\u0632\u0627\u0645', 'act'],
+  ['\u0639\u0644\u0627\u062c \u0633\u0644\u0648\u0643\u064a \u0645\u0639\u0631\u0641\u064a', 'cbt'],
+  ['\u0639\u0644\u0627\u062c \u062c\u062f\u0644\u064a \u0633\u0644\u0648\u0643\u064a', 'dbt'],
+  ['\u0639\u0644\u0627\u062c \u0646\u0641\u0633\u064a', 'psychotherapy'],
+  ['\u0635\u062d\u0647 \u0646\u0641\u0633\u064a\u0647', 'mental-health'],
+  ['\u0627\u0631\u0634\u0627\u062f \u0632\u0648\u0627\u062c\u064a \u0627\u0633\u0631\u064a', 'family-counseling'],
+  ['\u0627\u0631\u0634\u0627\u062f \u0632\u0648\u0627\u062c\u064a', 'marital-counseling'],
+  ['\u0627\u0631\u0634\u0627\u062f \u0627\u0633\u0631\u064a', 'family-counseling'],
+  ['\u0627\u0631\u0634\u0627\u062f \u0646\u0641\u0633\u064a', 'psychological-counseling'],
+  ['\u062a\u062e\u0627\u0637\u0628', 'speech-therapy'],
+];
+// Single-word map (normalised bare stem \u2192 English) for whatever the phrases leave behind.
+const SLUG_WORDS: Record<string, string> = {
+  '\u0646\u0641\u0633': 'psychology', '\u0646\u0641\u0633\u064a': 'psychology', '\u0646\u0641\u0633\u064a\u0647': 'mental', '\u0639\u0644\u0645': 'science',
+  '\u0639\u0644\u0627\u062c': 'therapy', '\u0645\u0639\u0627\u0644\u062c': 'therapist', '\u0627\u062e\u0635\u0627\u064a\u064a': 'specialist', '\u0627\u062e\u0635\u0627\u064a': 'specialist',
+  '\u0627\u0639\u062f\u0627\u062f': 'preparation', '\u0627\u062d\u062a\u0631\u0627\u0641': 'mastering', '\u062f\u0628\u0644\u0648\u0645\u0647': 'diploma', '\u0627\u0633\u0627\u0633\u064a\u0627\u062a': 'fundamentals', '\u0645\u0642\u062f\u0645\u0647': 'intro',
+  '\u0627\u0637\u0641\u0627\u0644': 'children', '\u0637\u0641\u0644': 'child', '\u0645\u0631\u0627\u0647\u0642\u064a\u0646': 'adolescents', '\u0627\u0633\u0631\u064a': 'family', '\u0632\u0648\u0627\u062c\u064a': 'marital',
+  '\u0627\u062f\u0645\u0627\u0646': 'addiction', '\u0633\u0644\u0648\u0643': 'behavior', '\u0633\u0644\u0648\u0643\u064a': 'behavioral', '\u0645\u0639\u0631\u0641\u064a': 'cognitive', '\u0645\u0639\u0631\u0641\u064a\u0647': 'cognitive',
+  '\u062a\u0639\u0644\u0645': 'learning', '\u062a\u0639\u0644\u064a\u0645': 'education', '\u0645\u0647\u0627\u0631\u0627\u062a': 'skills', '\u062a\u0646\u0645\u064a\u0647': 'development', '\u062a\u0637\u0648\u064a\u0631': 'development',
+  '\u062a\u0631\u0628\u064a\u0647': 'education', '\u062e\u0627\u0635\u0647': 'special', '\u0627\u064a\u062c\u0627\u0628\u064a': 'positive', '\u0627\u064a\u062c\u0627\u0628\u064a\u0647': 'positive', '\u0645\u0638\u0644\u0645': 'dark',
+  '\u0635\u062d\u0647': 'health', '\u0627\u0636\u0637\u0631\u0627\u0628': 'disorder', '\u0627\u0636\u0637\u0631\u0627\u0628\u0627\u062a': 'disorders', '\u0642\u0644\u0642': 'anxiety', '\u0627\u0643\u062a\u064a\u0627\u0628': 'depression',
+  '\u0636\u063a\u0648\u0637': 'stress', '\u063a\u0636\u0628': 'anger', '\u062a\u0646\u0648\u064a\u0645': 'hypnosis', '\u0627\u0633\u062a\u0631\u062e\u0627\u0621': 'relaxation',
+  '\u0637\u064a\u0641': 'spectrum', '\u062a\u0648\u062d\u062f': 'autism', '\u0645\u0628\u0643\u0631': 'early', '\u062a\u062f\u062e\u0644': 'intervention', '\u062a\u062e\u0627\u0637\u0628': 'speech-therapy',
+  '\u0627\u0631\u0634\u0627\u062f': 'counseling', '\u0627\u0633\u062a\u0634\u0627\u0631\u0627\u062a': 'consulting', '\u062a\u0627\u0645\u0644': 'meditation', '\u0630\u0643\u0627\u0621': 'intelligence', '\u0639\u0627\u0637\u0641\u064a': 'emotional',
+  '\u0641\u0646': 'art', '\u0643\u0644\u0627\u0645': 'speaking', '\u062a\u0627\u062b\u064a\u0631': 'influence', '\u0627\u0642\u0646\u0627\u0639': 'persuasion', '\u062a\u0641\u0627\u0648\u0636': 'negotiation',
+  '\u0642\u064a\u0627\u062f\u0647': 'leadership', '\u0627\u062f\u0627\u0631\u0647': 'management', '\u0648\u0642\u062a': 'time', '\u0630\u0627\u062a': 'self', '\u062b\u0642\u0647': 'confidence',
+  '\u062a\u0644\u0627\u0639\u0628': 'manipulation', '\u062a\u062d\u0635\u064a\u0646': 'protection', '\u0643\u0648\u062a\u0634\u064a\u0646\u062c': 'coaching', '\u0643\u0648\u062a\u0634': 'coach', '\u0644\u0627\u064a\u0641': 'life',
+  '\u0627\u0643\u0644\u064a\u0646\u064a\u0643\u064a': 'clinical', '\u062c\u062f\u0644\u064a': 'dialectical', '\u0642\u0628\u0648\u0644': 'acceptance', '\u0627\u0644\u062a\u0632\u0627\u0645': 'commitment', '\u0645\u062e\u0637\u0637\u0627\u062a': 'schemas',
+};
+const normalizeArabic = (x: string): string =>
+  x.replace(/[\u0640\u064b-\u0652\u0670]/g, '').replace(/[\u0623\u0625\u0622]/g, '\u0627')
+   .replace(/\u0649/g, '\u064a').replace(/\u0629/g, '\u0647').replace(/\u0624/g, '\u0648')
+   .replace(/\u0626/g, '\u064a').replace(/\u0621/g, '');
+const stripArticle = (tok: string): string =>
+  tok.replace(/^(?:\u0648)?(?:\u0628\u0627\u0644|\u0643\u0627\u0644|\u0641\u0627\u0644|\u0644\u0627\u0644|\u0648\u0627\u0644|\u0644\u0644)/, '').replace(/^\u0627\u0644/, '');
+
 const slugify = (text: string): string => {
-  const arabicToLatin: Record<string, string> = { '\u0623':'a','\u0625':'a','\u0622':'a','\u0627':'a','\u0628':'b','\u062a':'t','\u062b':'th','\u062c':'j','\u062d':'h','\u062e':'kh','\u062f':'d','\u0630':'z','\u0631':'r','\u0632':'z','\u0633':'s','\u0634':'sh','\u0635':'s','\u0636':'d','\u0637':'t','\u0638':'z','\u0639':'a','\u063a':'g','\u0641':'f','\u0642':'q','\u0643':'k','\u0644':'l','\u0645':'m','\u0646':'n','\u0647':'h','\u0648':'w','\u064a':'y','\u0649':'a','\u0629':'a','\u0621':'a' };
-  return text.split('').map(c => arabicToLatin[c] ?? c).join('').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  if (!text || !text.trim()) return '';
+  // English (or any non-Arabic) input \u2192 straight asciify.
+  if (!/[\u0600-\u06ff]/.test(text)) return asciiSlug(text);
+  // Arabic input \u2192 dictionary translation.
+  const latin = (text.match(/[A-Za-z][A-Za-z0-9]+/g) || []).map(w => w.toLowerCase());
+  const toks = normalizeArabic(text)
+    .replace(/[^\u0600-\u06ff\s]/g, ' ').split(/\s+/).filter(Boolean)
+    .map(stripArticle).filter(Boolean);
+  let s = ' ' + toks.join(' ') + ' ';
+  const out: string[] = [];
+  // Tokens are single-space separated, so plain substring matching is enough (and avoids regex escaping).
+  for (const [ar, en] of SLUG_PHRASES) {
+    if (s.includes(' ' + ar + ' ')) { out.push(en); s = s.replace(' ' + ar + ' ', ' '); }
+  }
+  for (const tok of s.split(/\s+/).filter(Boolean)) {
+    const en = SLUG_WORDS[tok];
+    if (en) out.push(en);
+  }
+  // Append Latin acronyms (NLP/ACT…) unless already covered by a phrase result (e.g. schema-therapy).
+  for (const w of latin) if (!out.some(o => o.split('-').includes(w))) out.push(w);
+  return asciiSlug([...new Set(out)].join('-'));
 };
 
 const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '', isPublished: true });
