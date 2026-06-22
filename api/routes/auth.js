@@ -671,7 +671,22 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
       );
       if (staff && FULL_ACCESS_ROLES_AUTH.includes(staff.role)) isAdmin = true;
     }
-    res.json({ uid: u.id, email: u.email, displayName: u.name || '', isAdmin });
+    // Surface the user's phone (users table has none) — prefer subscriber, then most recent lead.
+    let phone = '';
+    try {
+      const em = (u.email || '').toLowerCase().trim();
+      const [[subRow]] = await conn.execute(
+        "SELECT phone FROM subscribers WHERE LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [em]
+      );
+      phone = subRow?.phone || '';
+      if (!phone) {
+        const [[leadRow]] = await conn.execute(
+          "SELECT phone FROM leads WHERE LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT 1", [em]
+        );
+        phone = leadRow?.phone || '';
+      }
+    } catch { /* phone is best-effort */ }
+    res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin });
   } catch (err) {
     logger.error('[auth/me]', err);
     res.status(500).json({ error: 'Server error' });

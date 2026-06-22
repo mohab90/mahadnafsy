@@ -34,11 +34,12 @@ const Checkout: React.FC = () => {
     if (authUser) {
       setCustomerName(authUser.displayName || authUser.email?.split('@')[0] || '');
       setCustomerEmail(authUser.email || '');
-      // Pre-fill phone from existing subscriber record if available
+      // Pre-fill phone from existing subscriber record, else from the auth profile (lead phone).
       const sub = subscribers.find(
         s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim()
       );
-      if (sub?.phone) setCustomerPhone(sub.phone);
+      const phone = sub?.phone || (authUser as { phone?: string }).phone || '';
+      if (phone) setCustomerPhone(phone);
     }
   }, [authUser, subscribers]);
 
