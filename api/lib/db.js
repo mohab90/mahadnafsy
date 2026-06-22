@@ -90,6 +90,9 @@ async function dbExecute(sql, params) { return pool.execute(sql, params); }
 const CACHE_MAX = 500;
 const _cache = new Map();
 function cached(key, ttlMs, fn) {
+  // In development, keep the catalog cache very short so admin edits (new courses,
+  // price changes, etc.) appear almost immediately instead of after the full TTL.
+  if (process.env.NODE_ENV !== 'production') ttlMs = Math.min(ttlMs, 3000);
   const hit = _cache.get(key);
   if (hit && Date.now() - hit.ts < ttlMs) return Promise.resolve(hit.data);
   return fn().then(data => {

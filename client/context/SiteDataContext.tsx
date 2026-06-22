@@ -848,6 +848,34 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
+  // Auto-refresh the catalog when the visitor returns to the tab, so courses/bundles
+  // added or edited in the admin show up without a manual page reload. Throttled to ~15s.
+  useEffect(() => {
+    if (isAdmin) return;
+    let last = Date.now();
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - last < 15000) return;
+      last = Date.now();
+      Promise.allSettled([mysqlCatalog.listCourses(200), mysqlCatalog.listBundles(100)]).then(([cRes, bRes]) => {
+        if (cRes.status === 'fulfilled' && (cRes.value as unknown[]).length > 0)
+          setCourses((cRes.value as unknown as Course[]).sort((a, b) => {
+            const so = ((a as any).sortOrder ?? 9999) - ((b as any).sortOrder ?? 9999);
+            if (so !== 0) return so;
+            return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
+          }));
+        if (bRes.status === 'fulfilled' && (bRes.value as unknown[]).length > 0)
+          setBundles(bRes.value as unknown as Bundle[]);
+      }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [isAdmin]);
+
 
 
   const addCourse = (course: Course) => {
