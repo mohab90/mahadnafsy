@@ -36,18 +36,18 @@ async function logFinancialAudit({ entityType, entityId, action, oldData, newDat
 //  4900 = إيرادات أخرى    (Other Revenue)
 //  5100 = رواتب موظفين    (Staff Salaries)
 //  2100 = مستحقات الرواتب  (Accrued Salaries Payable)
-async function postJournalEntry(refType, refId, entryDate, description, lines, postedBy) {
+async function postJournalEntry(refType, refId, entryDate, description, lines, postedBy, db = pool) {
   try {
     const entryId = uuidv4();
     const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
-    await pool.query(
+    await db.query(
       `INSERT INTO journal_entries (id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by)
        VALUES (?,?,?,?,?,?,?,?)`,
       [entryId, refType, refId || null, entryDate, description || null, totalDebit, totalCredit, postedBy || 'system']
     );
     for (const line of lines) {
-      await pool.query(
+      await db.query(
         `INSERT INTO journal_entry_lines (id, entry_id, account_code, account_name, debit, credit)
          VALUES (?,?,?,?,?,?)`,
         [uuidv4(), entryId, line.account_code, line.account_name, Number(line.debit) || 0, Number(line.credit) || 0]
@@ -117,7 +117,7 @@ async function toEgp(amount, currency) {
 // Ledger-first helper (Top20 #13): every paid payment must post a double-entry
 // journal (cash 1100 debit / revenue credit), normalised to EGP. Best-effort,
 // call post-commit. Shared by all payment write paths so none bypass the ledger.
-async function postPaymentJournal({ paymentId, amount, currency, payType, date, actor }) {
+async function postPaymentJournal({ paymentId, amount, currency, payType, date, actor }, db = pool) {
   try {
     const [accCode, accName] = _paymentAccountCode((payType || 'OTHER').toUpperCase());
     const amtEgp = await toEgp(Number(amount) || 0, currency);
@@ -128,7 +128,7 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
         { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
         { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
       ],
-      actor || 'system'
+      actor || 'system', db
     );
   } catch (e) { logger.warn('[finance] postPaymentJournal error:', e.message); }
 }
