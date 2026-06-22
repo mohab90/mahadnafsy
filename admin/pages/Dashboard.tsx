@@ -414,10 +414,7 @@ const Dashboard: React.FC = () => {
   const [subscriberSubTab, setSubscriberSubTab] = useState<'local' | 'abroad' | 'all' | 'online25'>('all');
   // Reception Daqqi role — daqqi clients tab state
   const daqqiCreateRoundRef = React.useRef<(() => void) | null>(null);
-  const [subCsDistributing, setSubCsDistributing] = useState(false);
-  // Daqqi old-data distribution
-  const [daqqiOldDistribPlan, setDaqqiOldDistribPlan] = useState<{staffId:string;count:string}[]>([{staffId:'',count:''}]);
-  const [daqqiOldDistributing, setDaqqiOldDistributing] = useState(false);
+  // CS / Daqqi-old distribution UI state now lives inside OnlineClientsTab.
   const [subscriberCourseFilter, setSubscriberCourseFilter] = useState('');
   const [subscriberSearch, setSubscriberSearch] = useState('');
   const [subscriberSalesFilter, setSubscriberSalesFilter] = useState('all');
@@ -2298,12 +2295,6 @@ const Dashboard: React.FC = () => {
                 currentStaff={currentStaff ?? null}
                 staffSelf={staffSelf}
                 onlineTeamMembers={onlineTeamMembers}
-                subCsDistributing={subCsDistributing}
-                setSubCsDistributing={setSubCsDistributing}
-                daqqiOldDistribPlan={daqqiOldDistribPlan}
-                setDaqqiOldDistribPlan={setDaqqiOldDistribPlan}
-                daqqiOldDistributing={daqqiOldDistributing}
-                setDaqqiOldDistributing={setDaqqiOldDistributing}
                 setSubPayRow={setSubPayRow}
                 setSubPayDraft={setSubPayDraft}
                 setSubContactRow={setSubContactRow}

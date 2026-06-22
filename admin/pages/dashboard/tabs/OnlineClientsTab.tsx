@@ -53,12 +53,6 @@ interface Props {
   currentStaff: StaffMember | null;
   staffSelf: StaffMember | null;
   onlineTeamMembers: StaffMember[];
-  subCsDistributing: boolean;
-  setSubCsDistributing: (v: boolean) => void;
-  daqqiOldDistribPlan: {staffId: string; count: string}[];
-  setDaqqiOldDistribPlan: React.Dispatch<React.SetStateAction<{staffId: string; count: string}[]>>;
-  daqqiOldDistributing: boolean;
-  setDaqqiOldDistributing: (v: boolean) => void;
   setSubPayRow: (row: SubscriberItem | null) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<PaymentDraft>>;
   setSubContactRow: (row: SubscriberItem | null) => void;
@@ -73,11 +67,14 @@ export default function OnlineClientsTab({
   courses, bundles, staffMembers, content, salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
   salesOwnLeads, updateSubscriber, addSubscriber, addLead, deleteSubscriber, notify,
   isDaqqiManager, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
-  staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
-  daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
+  staffSelf, onlineTeamMembers,
   setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
   setSubInstRow, setSubInstDraft, setSubWaRow,
 }: Props) {
+  // Distribution UI state — lifted out of the Dashboard god-hub (tab-local).
+  const [subCsDistributing, setSubCsDistributing] = useState(false);
+  const [daqqiOldDistribPlan, setDaqqiOldDistribPlan] = useState<{staffId: string; count: string}[]>([{ staffId: '', count: '' }]);
+  const [daqqiOldDistributing, setDaqqiOldDistributing] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   // Collection role — online clients tab state. Seeded from the URL so each tab
