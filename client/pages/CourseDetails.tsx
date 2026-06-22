@@ -28,16 +28,21 @@ const CourseDetails: React.FC = () => {
   const [apiFallbackCourse, setApiFallbackCourse] = useState<typeof courses[0] | null>(null);
   const [apiFallbackLectures, setApiFallbackLectures] = useState<ReturnType<typeof getCourseLectures>>([]);
   const [apiFallbackChapters, setApiFallbackChapters] = useState<ReturnType<typeof getCourseChapters>>([]);
+  // Whether the direct API fallback has finished trying — distinguishes "still loading"
+  // from "genuinely not found", so freshly-added courses (not yet in the cached list)
+  // show a loader instead of flashing "الكورس غير موجود".
+  const [fallbackTried, setFallbackTried] = useState(false);
   useEffect(() => {
+    setFallbackTried(false);
     if (courseFromCtx) { setApiFallbackCourse(null); return; }
     const lookup = id ?? slug;
-    if (!lookup) return;
+    if (!lookup) { setFallbackTried(true); return; }
     mysqlCatalog.getCourse(lookup).then(data => {
       if (!data?.id) return;
       setApiFallbackCourse(data as unknown as typeof courses[0]);
       setApiFallbackLectures(((data.lectures || []) as unknown as ReturnType<typeof getCourseLectures>));
       setApiFallbackChapters(((data.chapters || []) as unknown as ReturnType<typeof getCourseChapters>));
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setFallbackTried(true));
   }, [id, slug, courseFromCtx]);
   const course = courseFromCtx ?? apiFallbackCourse;
   const [showLeadForm, setShowLeadForm] = useState(true);
@@ -139,7 +144,16 @@ const CourseDetails: React.FC = () => {
     }, [authUser?.uid]);
 
   if (!course) {
-                return <div className="text-center py-20">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
+    // Still resolving (context list not loaded yet, or direct API fallback in-flight) → loader, not an error.
+    if (!fallbackTried) {
+      return (
+        <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-400">
+          <div className="w-10 h-10 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin"></div>
+          <p className="text-sm">{globalContent['common.loading'] || 'جارٍ التحميل...'}</p>
+        </div>
+      );
+    }
+    return <div className="text-center py-20">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
   }
 
     // --- deobfuscate stored video URL ---
