@@ -47,6 +47,8 @@ const CourseDetails: React.FC = () => {
   const course = courseFromCtx ?? apiFallbackCourse;
   const [showLeadForm, setShowLeadForm] = useState(true);
     const [selectedLectureId, setSelectedLectureId] = useState('');
+    // Resolved playable URL — paid lectures no longer ship their URL publicly; fetched on demand.
+    const [resolvedLectureUrl, setResolvedLectureUrl] = useState('');
     const [lectureGateNotice, setLectureGateNotice] = useState('');
     const [leadName, setLeadName] = useState('');
     const [leadPhone, setLeadPhone] = useState('');
@@ -125,6 +127,19 @@ const CourseDetails: React.FC = () => {
             () => lecturesWithLock.find((lecture) => lecture.id === selectedLectureId) || null,
             [lecturesWithLock, selectedLectureId]
         );
+    // Resolve the playable URL: preview lectures carry it; paid (unlocked) ones are fetched
+    // on demand from the auth-gated endpoint (the public catalog withholds paid URLs).
+    useEffect(() => {
+        let cancelled = false;
+        setResolvedLectureUrl('');
+        if (!selectedLecture || selectedLecture.locked) return;
+        if (selectedLecture.videoUrl) { setResolvedLectureUrl(selectedLecture.videoUrl); return; }
+        mysqlClient.getLectureAccess(selectedLecture.id)
+            .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedLectureUrl(r.video_url); })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedLectureId, selectedLecture?.locked, selectedLecture?.videoUrl]);
     const curriculumItems = lectures.length > 0 ? lectures.map((l) => l.title) :
       course?.courseModules ? course.courseModules.map((m) => m.title) : (course?.modules ?? []);
 
@@ -563,10 +578,15 @@ const CourseDetails: React.FC = () => {
                                 onContextMenu={(e) => e.preventDefault()}
                             >
                                 {selectedLecture && !selectedLecture.locked ? (
-                                    (selectedLecture.videoUrl || '').includes('youtube.com') || (selectedLecture.videoUrl || '').includes('youtu.be') || (selectedLecture.videoUrl || '').startsWith('enc:') ? (
+                                    !resolvedLectureUrl ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white/70">
+                                            <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-3"></div>
+                                            <p className="text-sm">جاري تحميل الفيديو...</p>
+                                        </div>
+                                    ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') ? (
                                         <div className="relative w-full h-full">
                                           <iframe
-                                            src={getEmbedUrl(selectedLecture.videoUrl)}
+                                            src={getEmbedUrl(resolvedLectureUrl)}
                                             className="w-full h-full"
                                             allow="autoplay; encrypted-media; fullscreen"
                                             allowFullScreen
@@ -592,7 +612,7 @@ const CourseDetails: React.FC = () => {
                                           </div>
                                         </div>
                                     ) : (
-                                        <video className="w-full h-full" controls src={selectedLecture.videoUrl} />
+                                        <video className="w-full h-full" controls src={resolvedLectureUrl} />
                                     )
                                 ) : (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 relative">

@@ -71,6 +71,9 @@ export const mysqlClient = {
   getStaffSelf: () => apiFetch<AR>('/staff/me', {}, true),
   saveLectureProgress: (lectureId: string, pct: number) =>
     apiFetch<{ ok: boolean }>('/me/progress', { method: 'PATCH', body: JSON.stringify({ lectureId, pct }) }, true),
+  // Auth-gated: returns the real video URL only if the user is enrolled & allowed for this lecture.
+  getLectureAccess: (lectureId: string) =>
+    apiFetch<{ accessible: boolean; video_url?: string; reason?: string }>(`/me/lectures/${encodeURIComponent(lectureId)}/access`, {}, true),
   // Payment proofs
   submitPaymentProof: (data: { amount: number; currency: string; course_id?: string | null; payment_method: string; proof_image?: string | null; note?: string }) =>
     apiFetch<{ ok: boolean; id: string }>('/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true),

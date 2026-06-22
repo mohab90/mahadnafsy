@@ -84,6 +84,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   const [notesOpen, setNotesOpen] = useState(false);
   const [openChapters, setOpenChapters] = useState<Record<string, boolean>>({});
   const [lecturesLoading, setLecturesLoading] = useState(false);
+  // Resolved playable URL for the selected lecture. Paid lectures no longer ship their URL in
+  // the public catalog — it's fetched on demand from the auth-gated access endpoint.
+  const [resolvedUrl, setResolvedUrl] = useState('');
 
   const subscriber = authUser?.email
     ? subscribers.find(s =>
@@ -178,6 +181,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   }, [selectedId, subscriber?.id, courseId]);
 
   const selected = lectures.find(l => l.id === selectedId) || null;
+
+  // Resolve the playable URL: preview lectures carry it directly; paid ones are fetched
+  // on demand from the auth-gated endpoint (which verifies enrollment + limit + drip).
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedUrl('');
+    if (!selected || selected.locked) return;
+    if (selected.videoUrl) { setResolvedUrl(selected.videoUrl); return; }
+    mysqlClient.getLectureAccess(selected.id)
+      .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedUrl(r.video_url); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, selected?.locked, selected?.videoUrl]);
 
   // Mark a lecture as 100% complete and persist to subscriber record
   const markLectureComplete = (lectureId: string) => {
@@ -284,10 +301,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         {/* Video panel */}
         <div className="bg-black flex items-center justify-center flex-shrink-0 w-full aspect-video sm:aspect-auto sm:flex-1 sm:min-w-0">
           {selected && !selected.locked ? (
-            selected.videoUrl.includes('youtube') || selected.videoUrl.includes('youtu.be') || selected.videoUrl.startsWith('enc:') ? (
+            !resolvedUrl ? (
+              <div className="text-gray-500 text-center">
+                <div className="w-8 h-8 border-2 border-gray-500 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
+                <p className="text-sm">جاري تحميل الفيديو...</p>
+              </div>
+            ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') ? (
               <iframe
                 key={selected.id}
-                src={getEmbedUrl(selected.videoUrl, getSavedTime(selected.id))}
+                src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
                 className="w-full h-full"
                 allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
                 allowFullScreen
@@ -296,7 +318,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
             ) : (
               <HlsVideoPlayer
                 key={selected.id}
-                src={deobfV2(selected.videoUrl)}
+                src={deobfV2(resolvedUrl)}
                 startTime={getSavedTime(selected.id)}
                 onTimeUpdate={(currentTime, duration) => {
                   if (Math.floor(currentTime) % 5 === 0) saveTime(selected.id, currentTime);

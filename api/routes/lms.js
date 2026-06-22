@@ -135,7 +135,7 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
     const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
     if (!sub) return res.status(403).json({ accessible: false, reason: 'not_subscribed' });
     const [[lecture]] = await pool.query(
-      'SELECT id, course_id, sort_order, drip_unlock_days FROM course_lectures WHERE id=? LIMIT 1',
+      'SELECT id, course_id, sort_order, drip_unlock_days, video_url FROM course_lectures WHERE id=? LIMIT 1',
       [req.params.lectureId]
     );
     if (!lecture) return res.status(404).json({ accessible: false, reason: 'not_found' });
@@ -167,7 +167,8 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
         return res.json({ accessible: false, reason: 'drip_locked', unlocks_at: unlockAt.toISOString() });
       }
     }
-    res.json({ accessible: true });
+    // Access granted → return the video URL (the public catalog withholds it for paid lectures).
+    res.json({ accessible: true, video_url: lecture.video_url || '' });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

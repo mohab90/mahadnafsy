@@ -44,6 +44,27 @@ router.get('/api/branches', publicLimiter, async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// How many lectures per course are watchable for free (positional preview) — matches the
+// client's courseDetails.previewLectureLimit. Cached with the rest of site content.
+async function getPreviewLimit() {
+  try {
+    const content = await cached('site_content', 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
+      return rows[0]?.value ? JSON.parse(rows[0].value) : {};
+    });
+    const n = Number(content['courseDetails.previewLectureLimit']);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
+  } catch { return 2; }
+}
+// Public-safe lecture: expose the real video URL only for free-previewable lectures
+// (explicit is_preview, or within the first `previewLimit` of the course by position).
+// Everything else is withheld — enrolled users fetch it from the auth-gated access endpoint.
+const publicLecture = (r, positionInCourse, previewLimit) => {
+  const m = mapLecture(r);
+  if (!m.isPreview && positionInCourse >= previewLimit) m.videoUrl = '';
+  return m;
+};
+
 // GET /api/courses/:id  (accepts id OR slug)
 router.get('/api/courses/:id', async (req, res) => {
   try {
@@ -54,8 +75,9 @@ router.get('/api/courses/:id', async (req, res) => {
       'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE course_id = ? ORDER BY sort_order ASC', [row.id]);
     const [chapters] = await pool.query(
       'SELECT id, course_id, title, sort_order FROM course_chapters WHERE course_id = ? ORDER BY sort_order ASC', [row.id]);
+    const previewLimit = await getPreviewLimit();
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
-    res.json({ ...mapCourse(row), lectures: lectures.map(mapLecture), chapters: chapters.map(mapChapter) });
+    res.json({ ...mapCourse(row), lectures: lectures.map((r, i) => publicLecture(r, i, previewLimit)), chapters: chapters.map(mapChapter) });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -414,7 +436,12 @@ router.get('/api/lectures', async (req, res) => {
       'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE is_published = 1 ORDER BY course_id, sort_order ASC LIMIT ? OFFSET ?',
       [limit, offset]
     );
-    res.json(rows.map(mapLecture));
+    const previewLimit = await getPreviewLimit();
+    const posByCourse = {};
+    res.json(rows.map(r => {
+      const pos = (posByCourse[r.course_id] = (posByCourse[r.course_id] ?? -1) + 1);
+      return publicLecture(r, pos, previewLimit);
+    }));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
