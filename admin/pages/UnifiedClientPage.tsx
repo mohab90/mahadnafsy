@@ -39,6 +39,7 @@ import ConsultationsTab from './unifiedClient/ConsultationsTab';
 import DaqqiRoundsTab from './unifiedClient/DaqqiRoundsTab';
 import InstallmentsTab from './unifiedClient/InstallmentsTab';
 import AccessControlModal from './unifiedClient/AccessControlModal';
+import ContactPopupModal from './unifiedClient/ContactPopupModal';
 import PaymentsTab from './unifiedClient/PaymentsTab';
 import EditClientTab from './unifiedClient/EditClientTab';
 import OverviewClientTab from './unifiedClient/OverviewClientTab';
@@ -1669,95 +1670,14 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
       {/* ══ Contact Popup Modal ══ */}
       {showContactPopup && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowContactPopup(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full space-y-4" onClick={e => e.stopPropagation()} dir="rtl">
-            <div className="flex items-center justify-between">
-              <h2 className="font-extrabold text-lg text-gray-900 flex items-center gap-2">
-                <span className="text-xl">📞</span> تسجيل تواصل جديد
-              </h2>
-              <button onClick={() => setShowContactPopup(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
-            </div>
-
-            {/* type + date */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block font-semibold">نوع التواصل</label>
-                <select value={contactPopupDraft.type} onChange={e => setContactPopupDraft(d => ({ ...d, type: e.target.value as CommunicationRecord['type'] }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                  {Object.entries(commTypeMeta).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block font-semibold">التاريخ والوقت</label>
-                <input type="datetime-local" value={contactPopupDraft.date}
-                  onChange={e => setContactPopupDraft(d => ({ ...d, date: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-            </div>
-
-            {/* notes */}
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block font-semibold">الملاحظات *</label>
-              <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {['تم التواصل ولا يرد', 'مهتم وطلب التفكير', 'طلب تأجيل الدفع', 'تذكير بالقسط', 'تم الانتهاء من الكورس'].map(t => (
-                  <button key={t} type="button" onClick={() => setContactPopupDraft(d => ({ ...d, notes: t }))}
-                    className="text-[10px] bg-gray-100 hover:bg-indigo-50 hover:text-indigo-700 text-gray-600 px-2 py-1 rounded-full border border-gray-200 transition">
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <textarea value={contactPopupDraft.notes}
-                onChange={e => setContactPopupDraft(d => ({ ...d, notes: e.target.value }))}
-                placeholder="ماذا تم في هذا التواصل؟"
-                rows={3}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block font-semibold">النتيجة</label>
-                <input value={contactPopupDraft.outcome}
-                  onChange={e => setContactPopupDraft(d => ({ ...d, outcome: e.target.value }))}
-                  placeholder="مثال: سيدفع الأسبوع القادم"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block font-semibold">موعد المتابعة</label>
-                <input type="date" value={contactPopupDraft.nextFollowUp}
-                  onChange={e => setContactPopupDraft(d => ({ ...d, nextFollowUp: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-            </div>
-
-            {/* status change (lead only) */}
-            {!isSub && lead && (
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block font-semibold">تغيير الحالة (اختياري)</label>
-                <select value={contactPopupDraft.newStatus}
-                  onChange={e => setContactPopupDraft(d => ({ ...d, newStatus: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                  <option value="">— بدون تغيير —</option>
-                  <option value="contacted">تم التواصل</option>
-                  <option value="interested">مهتم</option>
-                  <option value="interested_followup">مهتم ومتابعة</option>
-                  <option value="not_interested">غير مهتم</option>
-                  <option value="lost">خسرنا</option>
-                </select>
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <button onClick={handleSaveContactPopup} disabled={isSaving || !contactPopupDraft.notes.trim()}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition">
-                {isSaving ? 'جاري الحفظ...' : '💾 حفظ التواصل'}
-              </button>
-              <button onClick={() => setShowContactPopup(false)}
-                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition">
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
+        <ContactPopupModal
+          draft={contactPopupDraft}
+          setDraft={setContactPopupDraft}
+          isLead={!isSub && !!lead}
+          isSaving={isSaving}
+          onSave={handleSaveContactPopup}
+          onClose={() => setShowContactPopup(false)}
+        />
       )}
 
       {/* ══ Convert Modal ══ */}
