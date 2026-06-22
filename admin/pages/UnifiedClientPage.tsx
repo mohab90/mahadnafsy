@@ -42,6 +42,7 @@ import AccessControlModal from './unifiedClient/AccessControlModal';
 import ContactPopupModal from './unifiedClient/ContactPopupModal';
 import InstallmentPlanModal from './unifiedClient/InstallmentPlanModal';
 import ConvertModal from './unifiedClient/ConvertModal';
+import GrantCourseModal from './unifiedClient/GrantCourseModal';
 import AddCommModal from './unifiedClient/AddCommModal';
 import LeadPaymentModal from './unifiedClient/LeadPaymentModal';
 import ExtraCertRequestModal from './unifiedClient/ExtraCertRequestModal';
@@ -1702,6 +1703,19 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
           isSaving={isSaving}
           onConvert={handleConvert}
           onClose={() => setShowConvertModal(false)}
+        />
+      )}
+
+      {/* ══ Grant Course Modal ══ */}
+      {showGrantForm && isSub && subscriber && (
+        <GrantCourseModal
+          subscriber={subscriber}
+          courses={courses}
+          bundles={bundles}
+          grantDraft={grantDraft}
+          setGrantDraft={setGrantDraft}
+          onGrant={handleGrant}
+          onClose={() => setShowGrantForm(false)}
         />
       )}
 
