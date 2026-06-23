@@ -89,6 +89,7 @@ import { handleCsvFileChangeFn, handleCsvImportFn, handleFetchFbFormsFn, handleF
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
+import { useRoleDefaultTab } from './dashboard/useRoleDefaultTab';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SafeHtml } from '../components/SafeHtml';
 import {
@@ -818,35 +819,12 @@ const Dashboard: React.FC = () => {
   const isSalesOnly = currentStaff?.role === 'sales';
   // Collection staff sees all subscribers but no leads — still needs own data fetch
   const isCollectionRole = (currentStaff?.role||'').toLowerCase() === 'collection';
-  // Non-admin staff: default to staff_home portal (universal starting point)
-  useEffect(() => {
-    if (!isAdmin && currentStaff && !urlTab) setActiveTabState('staff_home');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, currentStaff?.id]);
-  // Reception Daqqi staff — sees only DAQQI branch subscribers
   const isReceptionDaqqi = currentStaff?.role === 'reception_daqqi';
-  useEffect(() => {
-    if (isReceptionDaqqi && !urlTab) setActiveTabState('daqqi_schedule');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReceptionDaqqi]);
-  // Daqqi Manager — manages the whole Daqqi branch
   const isDaqqiManager = currentStaff?.role === 'daqqi_manager';
-  useEffect(() => {
-    if (isDaqqiManager && !urlTab) setActiveTabState('daqqi_schedule');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDaqqiManager]);
-  // Online Manager — manages all online-branch subscribers + financial view
   const isOnlineManager = (currentStaff?.role as string) === 'online_manager';
-  useEffect(() => {
-    if (isOnlineManager && !urlTab) setActiveTabState('online_clients');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnlineManager]);
-  // Sales & Collection Manager — manages both sales team and online/collection team
   const isSalesCollectionManager = (currentStaff?.role as string) === 'sales_collection_manager';
-  useEffect(() => {
-    if (isSalesCollectionManager && !urlTab) setActiveTabState('leads');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSalesCollectionManager]);
+  // Default landing tab per role (no-op once urlTab is set) — extracted to ./dashboard/useRoleDefaultTab
+  useRoleDefaultTab({ isAdmin, currentStaff, urlTab, setActiveTabState, isReceptionDaqqi, isDaqqiManager, isOnlineManager, isSalesCollectionManager });
 
   // ── URL: when staff_settings tab is active, reflect username in URL ──────
   useEffect(() => {
