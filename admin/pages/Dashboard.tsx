@@ -573,7 +573,7 @@ const Dashboard: React.FC = () => {
   }, [notifOpen]);
 
   const [onlineUsers] = useState<{ uid: string; email?: string; displayName?: string; lastActiveAt: string }[]>([]);
-  const [kpiModal, setKpiModal] = useState<{ title: string; rows: { label: string; sub?: string }[] } | null>(null);
+  // kpiModal now lives inside OverviewTab.
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!urlTab) return;
@@ -2203,8 +2203,6 @@ const Dashboard: React.FC = () => {
                 isSalesOnly={isSalesOnly}
                 onlineTeamMembers={onlineTeamMembers}
                 onlineUsers={onlineUsers}
-                kpiModal={kpiModal}
-                setKpiModal={setKpiModal}
                 notify={notify}
                 setActiveTab={(tab: string) => setActiveTab(tab as TabKey)}
                 navigate={navigate}

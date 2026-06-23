@@ -1,4 +1,4 @@
-﻿import React, { Suspense, useMemo } from 'react';
+﻿import React, { Suspense, useMemo, useState } from 'react';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -35,8 +35,6 @@ interface Props {
   isReceptionDaqqi: boolean;
   onlineTeamMembers: StaffMember[];
   onlineUsers: OnlineUser[];
-  kpiModal: KpiModal;
-  setKpiModal: (m: KpiModal) => void;
   notify: NotifyFn;
   setActiveTab: (tab: string) => void;
   navigate: (path: string) => void;
@@ -46,9 +44,10 @@ export default function OverviewTab({
   orders, isSalesOnly, currentStaff, salesOwnLeads, salesOwnSubscribers, salesOwnOrders,
   subscribers, courses, staffMembers, leads, consultations, therapists, communityPosts, content,
   isAdmin, isOnlineManager, isCollectionRole, isReceptionDaqqi,
-  onlineTeamMembers, onlineUsers, kpiModal, setKpiModal,
+  onlineTeamMembers, onlineUsers,
   notify, setActiveTab, navigate,
 }: Props) {
+  const [kpiModal, setKpiModal] = useState<KpiModal>(null); // lifted out of Dashboard god-hub
   const { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue } = useMemo(() => {
     const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
     const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
