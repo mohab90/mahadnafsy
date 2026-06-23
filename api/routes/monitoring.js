@@ -78,13 +78,9 @@ router.get('/api/admin/reconcile-ledger', requireAuth, requireAdmin, async (_req
   }
 });
 
-// Serve the generated OpenAPI spec (Top20 #17).
-router.get('/api/openapi.json', requireAuth, requireAdmin, (_req, res) => {
-  try {
-    res.json(require('../docs/openapi.json'));
-  } catch {
-    res.status(404).json({ error: 'spec not generated — run tools/gen-openapi.mjs' });
-  }
-});
+// NOTE: GET /api/openapi.json is owned by routes/docs.js (which also mounts the
+// Swagger UI at /api/docs and needs the spec public). A duplicate registration
+// here shadowed it (monitoring mounts before docs in server.js), so it was removed
+// to keep a single source of truth for the spec route.
 
 module.exports = router;
