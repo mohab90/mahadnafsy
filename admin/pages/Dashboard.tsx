@@ -86,6 +86,7 @@ const DashboardMonitorPanel = React.lazy(() => import('./dashboard/DashboardMoni
 const OnlineManagerPanels = React.lazy(() => import('./dashboard/OnlineManagerPanels'));
 import { handleSubPaymentFn, handleLeadPaymentFn, handleDashInstCreateFn, normalizeCourseAccess } from './dashboard/dashboardPaymentHandlers';
 import { handleCsvFileChangeFn, handleCsvImportFn, handleFetchFbFormsFn, handleFbApiSyncFn } from './dashboard/dashboardCsvFbHandlers';
+import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SafeHtml } from '../components/SafeHtml';
 import {
@@ -897,39 +898,11 @@ const Dashboard: React.FC = () => {
   const [salesOwnDaqqiRounds, setSalesOwnDaqqiRounds] = useState<DaqqiRound[] | null>(null);
   const [onlineTeamMembers, setOnlineTeamMembers] = useState<StaffMember[]>([]);
   const [salesDataLoading, setSalesDataLoading] = useState(false);
-  // Badge count for staff notification bell (overdue + today followup leads)
-  const _staffNotifTodayStr = new Date().toISOString().slice(0, 10);
-  const staffNotifBadge = currentStaff ? (isNonAdminStaff ? salesOwnLeads : leads).filter(l =>
-    !['converted', 'lost'].includes(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
-  ).length : 0;
-
-  // Online manager: collection/installment follow-up badge
-  const onlineMgrFollowupBadge = React.useMemo(() => {
-    if (!isOnlineManager) return 0;
-    const today = new Date().toISOString().slice(0, 10);
-    const subs = isNonAdminStaff ? salesOwnSubscribers : subscribers;
-    let count = 0;
-    for (const sub of subs) {
-      for (const plan of (sub.installmentPlans || [])) {
-        for (const entry of (plan.entries || [])) {
-          if (!entry.paidAt && entry.dueDate && entry.dueDate <= today) count++;
-        }
-      }
-    }
-    return count;
-  }, [isOnlineManager, isNonAdminStaff, salesOwnSubscribers, subscribers]);
-
-  // Online manager: new subscribers + payments in last 7 days badge
-  const onlineMgrNewEventsBadge = React.useMemo(() => {
-    if (!isOnlineManager) return 0;
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const subs = isNonAdminStaff ? salesOwnSubscribers : subscribers;
-    const newSubs = subs.filter(s => s.createdAt && s.createdAt.slice(0, 10) >= since).length;
-    const newPayments = subs.reduce((acc, s) =>
-      acc + (s.paymentHistory || []).filter(p => p.at && p.at.slice(0, 10) >= since).length
-    , 0);
-    return newSubs + newPayments;
-  }, [isOnlineManager, isNonAdminStaff, salesOwnSubscribers, subscribers]);
+  // Nav notification-badge counts — extracted verbatim to ./dashboard/useDashboardBadges
+  // (pure derived reads; called here so the internal useMemo order is unchanged).
+  const { staffNotifBadge, onlineMgrFollowupBadge, onlineMgrNewEventsBadge } = useDashboardBadges({
+    currentStaff, isNonAdminStaff, isOnlineManager, leads, salesOwnLeads, subscribers, salesOwnSubscribers,
+  });
 
   // ── ClientDbTab booking callback — opens subPayRow or leadPayRow modal ────
   const handleClientDbBook = useCallback((clientId: string, type: 'subscriber' | 'lead') => {
