@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Lock, NotebookPen, Play, X } from 'lucide-react';
-import Hls from 'hls.js';
+import type HlsType from 'hls.js';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 
@@ -27,34 +27,42 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
-    let hls: Hls | null = null;
+    let hls: HlsType | null = null;
+    let cancelled = false;
+
+    // Native playback (MP4 / direct URL / Safari-native HLS).
+    const startNative = () => {
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => {
+        if (startTime > 0) video.currentTime = startTime;
+        video.play().catch(() => {});
+      }, { once: true });
+    };
 
     const isHls = src.includes('.m3u8') || src.includes('/hls/');
-    if (isHls && Hls.isSupported()) {
-      hls = new Hls({ enableWorker: false });
-      hls.loadSource(src);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (startTime > 0) video.currentTime = startTime;
-        video.play().catch(() => {});
-      });
-    } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
-      video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-        if (startTime > 0) video.currentTime = startTime;
-        video.play().catch(() => {});
-      }, { once: true });
+    if (isHls) {
+      // hls.js (~500KB) is loaded on demand ONLY when an HLS stream actually
+      // plays, so it never ships in the initial student-dashboard bundle.
+      import('hls.js').then(({ default: Hls }) => {
+        if (cancelled || !videoRef.current) return;
+        if (Hls.isSupported()) {
+          hls = new Hls({ enableWorker: false });
+          hls.loadSource(src);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (startTime > 0) video.currentTime = startTime;
+            video.play().catch(() => {});
+          });
+        } else {
+          // Safari native HLS or fallback
+          startNative();
+        }
+      }).catch(() => { if (!cancelled) startNative(); });
     } else {
-      // Regular MP4 / direct URL
-      video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-        if (startTime > 0) video.currentTime = startTime;
-        video.play().catch(() => {});
-      }, { once: true });
+      startNative();
     }
 
-    return () => { hls?.destroy(); };
+    return () => { cancelled = true; hls?.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 

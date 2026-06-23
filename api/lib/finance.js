@@ -37,24 +37,38 @@ async function logFinancialAudit({ entityType, entityId, action, oldData, newDat
 //  5100 = رواتب موظفين    (Staff Salaries)
 //  2100 = مستحقات الرواتب  (Accrued Salaries Payable)
 async function postJournalEntry(refType, refId, entryDate, description, lines, postedBy, db = pool) {
+  const entryId = uuidv4();
+  const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
+  const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+  // When no external connection is supplied, wrap the header + all lines in our
+  // OWN transaction so a mid-loop failure can never leave a half-written,
+  // unbalanced journal entry in the ledger. When a caller injects its own
+  // connection (db !== pool), it owns the transaction — we just use it.
+  const ownTx = (db === pool);
+  let conn = db;
   try {
-    const entryId = uuidv4();
-    const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
-    const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
-    await db.query(
+    if (ownTx) { conn = await pool.getConnection(); await conn.beginTransaction(); }
+    await conn.query(
       `INSERT INTO journal_entries (id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by)
        VALUES (?,?,?,?,?,?,?,?)`,
       [entryId, refType, refId || null, entryDate, description || null, totalDebit, totalCredit, postedBy || 'system']
     );
     for (const line of lines) {
-      await db.query(
+      await conn.query(
         `INSERT INTO journal_entry_lines (id, entry_id, account_code, account_name, debit, credit)
          VALUES (?,?,?,?,?,?)`,
         [uuidv4(), entryId, line.account_code, line.account_name, Number(line.debit) || 0, Number(line.credit) || 0]
       );
     }
+    if (ownTx) await conn.commit();
     return entryId;
-  } catch (e) { logger.warn('[journal] postJournalEntry error:', e.message); return null; }
+  } catch (e) {
+    if (ownTx && conn) { try { await conn.rollback(); } catch { /* already dead */ } }
+    logger.warn('[journal] postJournalEntry error:', e.message);
+    return null;
+  } finally {
+    if (ownTx && conn && conn.release) conn.release();
+  }
 }
 
 // Returns [accountCode, accountName] for a given payment type.

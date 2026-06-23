@@ -6,7 +6,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
-const { safeDateOnly } = require('../lib/dates');
+const { safeDateOnly, monthRange } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
 const { isBranch, normalizeBranch } = require('../constants/branches');
 const { logFinancialAudit } = require('../lib/finance');
@@ -104,17 +104,17 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
     const [[period]] = await pool.query('SELECT * FROM accounting_periods WHERE id=? LIMIT 1', [id]);
     if (!period) return res.status(404).json({ error: 'Period not found' });
     if (period.status === 'closed') return res.status(409).json({ error: 'Already closed' });
-    const startDate = period.period_label + '-01';
-    // End = first day of next month
-    const [endDateRow] = await pool.query(
-      `SELECT DATE_FORMAT(DATE_ADD(?, INTERVAL 1 MONTH), '%Y-%m-01') AS end_date`,
-      [startDate]
-    );
-    const endDate = endDateRow[0]?.end_date || startDate;
+    // Pure, tested half-open range [startDate, endDate) — no DB round-trip.
+    const range = monthRange(period.period_label);
+    if (!range) return res.status(400).json({ error: 'تنسيق الفترة غير صالح (متوقع YYYY-MM)' });
+    const { startDate, endDate } = range;
+    // Snapshot revenue by the payment's BUSINESS date (`date`), not `created_at`.
+    // A payment collected in month M but entered later must fall in M's period.
+    // `date` is also indexed (idx_payments_date) whereas created_at is not.
     const [pmts] = await pool.query(
       `SELECT SUM(amount) AS total, currency, COUNT(*) AS count
        FROM payments WHERE status='paid'
-         AND created_at >= ? AND created_at < ?
+         AND \`date\` >= ? AND \`date\` < ?
        GROUP BY currency`,
       [startDate, endDate]
     );

@@ -162,10 +162,13 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, async (req, res) =
       description TEXT,
       is_active TINYINT DEFAULT 1,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )`);
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    // subscriber_id is VARCHAR(36) to match subscribers.id — an INT here can never
+    // join the (string) subscriber PK. Explicit COLLATE prevents drift on MariaDB
+    // (whose server default collation is utf8mb4_uca1400, which breaks cross-table joins).
     await pool.query(`CREATE TABLE IF NOT EXISTS subscriber_subscriptions (
       id INT PRIMARY KEY AUTO_INCREMENT,
-      subscriber_id INT NOT NULL,
+      subscriber_id VARCHAR(36) NOT NULL,
       plan_id INT NOT NULL,
       status ENUM('active','paused','cancelled','expired') DEFAULT 'active',
       start_date DATE NOT NULL,
@@ -175,7 +178,7 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, async (req, res) =
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_next_billing (next_billing_date),
       INDEX idx_subscriber (subscriber_id)
-    )`);
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   } catch (e) { logger.warn('[subscription tables]', e.message); }
 })();
 

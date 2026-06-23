@@ -55,6 +55,24 @@ test('unknown payment type routes to other-revenue (4900)', async () => {
   assert.equal(revenue.params[2], '4900');
 });
 
+test('postJournalEntry never manages an INJECTED connection (caller owns the transaction)', async () => {
+  // Mock connection that throws on the 2nd insert (a journal_entry_lines row).
+  let calls = 0;
+  const conn = {
+    async query() { calls++; if (calls === 2) throw new Error('line insert failed'); return [{}]; },
+    commit()   { throw new Error('must NOT commit an injected connection'); },
+    rollback() { throw new Error('must NOT rollback an injected connection'); },
+    release()  { throw new Error('must NOT release an injected connection'); },
+  };
+  const result = await postJournalEntry('payment', 'PX', '2026-06-01', 'd', [
+    { account_code: '1100', account_name: 'نقدية', debit: 100, credit: 0 },
+    { account_code: '4100', account_name: 'إيراد', debit: 0, credit: 100 },
+  ], 'tester', conn);
+  // Returns null on failure; reaching here proves commit/rollback/release were never
+  // called (they would have thrown) — the caller's transaction is left intact.
+  assert.equal(result, null);
+});
+
 test('postJournalEntry sums arbitrary lines into the header totals', async () => {
   const db = recordingDb();
   await postJournalEntry('expense', 'E1', '2026-06-01', 'test', [
