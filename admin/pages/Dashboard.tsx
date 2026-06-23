@@ -1445,10 +1445,7 @@ const Dashboard: React.FC = () => {
   // ── Staff Profile Modal ────────────────────────────────────────────────────
   const [staffProfileModalId, setStaffProfileModalId] = useState<string | null>(null);
 
-  // ── Cert Requests filter state ────────────────────────────────────────────
-  const [certSearch, setCertSearch] = useState('');
-  const [certTypeFilter, setCertTypeFilter] = useState('all');
-  const [certStatusFilter, setCertStatusFilter] = useState('all');
+  // Cert Requests filters now live inside CertRequestsTab.
 
   const startEditSubscriber = (row: typeof subscribers[number]) => {
     setEditingSubscriberId(row.id);
@@ -2243,12 +2240,6 @@ const Dashboard: React.FC = () => {
                 courses={courses}
                 subscribers={subscribers}
                 updateSubscriber={updateSubscriber}
-                certSearch={certSearch}
-                setCertSearch={setCertSearch}
-                certTypeFilter={certTypeFilter}
-                setCertTypeFilter={setCertTypeFilter}
-                certStatusFilter={certStatusFilter}
-                setCertStatusFilter={setCertStatusFilter}
               />
             )}
 

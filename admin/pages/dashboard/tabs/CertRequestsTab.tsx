@@ -11,20 +11,16 @@ interface Props {
   courses: Course[];
   subscribers: SubscriberItem[];
   updateSubscriber: (s: SubscriberItem) => void;
-  certSearch: string;
-  setCertSearch: (v: string) => void;
-  certTypeFilter: string;
-  setCertTypeFilter: (v: string) => void;
-  certStatusFilter: string;
-  setCertStatusFilter: (v: string) => void;
 }
 
 export default function CertRequestsTab({
   notify, courses, subscribers, updateSubscriber,
-  certSearch, setCertSearch, certTypeFilter, setCertTypeFilter,
-  certStatusFilter, setCertStatusFilter,
 }: Props) {
               const navigate = useNavigate();
+              // Filters — tab-local (lifted out of the Dashboard god-hub).
+              const [certSearch, setCertSearch] = useState('');
+              const [certTypeFilter, setCertTypeFilter] = useState('all');
+              const [certStatusFilter, setCertStatusFilter] = useState('all');
               // Gather all extra certificate requests from all subscribers
               type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string; subscriberCode?: string };
               const allRequests: CertReqRow[] = [];
