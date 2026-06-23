@@ -8,7 +8,7 @@ const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { postJournalEntry, logPaymentAudit, toEgp } = require('../lib/finance');
+const { postJournalEntry, logPaymentAudit, toEgp, _paymentAccountCode } = require('../lib/finance');
 const { syncLeadDealValue } = require('./public-orders');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 
@@ -594,7 +594,7 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrOnline
       [id]
     );
     if (status === 'APPROVED' && rr?.payment_id) {
-      const [[oldPay]] = await pool.query('SELECT status, amount, currency, subscriber_id, course_id, bundle_id FROM payments WHERE id=? LIMIT 1', [rr.payment_id]).catch(() => [[null]]);
+      const [[oldPay]] = await pool.query('SELECT status, amount, currency, payment_type, subscriber_id, course_id, bundle_id FROM payments WHERE id=? LIMIT 1', [rr.payment_id]).catch(() => [[null]]);
       if (oldPay) {
         await pool.query('UPDATE payments SET status=\'failed\', note=CONCAT(COALESCE(note,\'\'),(IF(note IS NOT NULL AND note!=\'\',\' | \',\'\')),(\' مسترد — \',?)) WHERE id=?',
           [actor, rr.payment_id]).catch(() => {});
@@ -615,12 +615,16 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrOnline
         // Post reversal journal entry (normalised to EGP like all journal postings)
         const amt = parseFloat(oldPay.amount) || 0;
         if (amt > 0) {
+          // Reverse against the SAME revenue account the original payment credited
+          // (e.g. a refunded COURSE sale debits 4100, not a generic 4900) so the
+          // reversal is symmetric and revenue per category nets to zero.
+          const [revCode, revName] = _paymentAccountCode((oldPay.payment_type || 'OTHER').toUpperCase());
           toEgp(amt, oldPay.currency).then(amtEgp =>
             postJournalEntry('refund', rr.payment_id, new Date().toISOString().slice(0,10),
               `استرداد مبلغ ${amt} ${oldPay.currency || 'EGP'} (= ${amtEgp} EGP) — موافقة بواسطة ${actor}`,
               [
-                { account_code: '4900', account_name: 'إيرادات مستردة', debit: amtEgp, credit: 0 },
-                { account_code: '1100', account_name: 'نقدية وبنوك',    debit: 0,      credit: amtEgp },
+                { account_code: revCode, account_name: revName,        debit: amtEgp, credit: 0 },
+                { account_code: '1100',  account_name: 'نقدية وبنوك',   debit: 0,      credit: amtEgp },
               ],
               actor
             )
