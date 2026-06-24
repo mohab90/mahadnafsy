@@ -23,6 +23,24 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentItemType, PaymentHistoryEntry, ExpenseItem, InstallmentEntry, InstallmentPlan, Currency, PaymentProof } from '../../../types';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
+// Financial sub-tabs grouped into 5 logical sections (2-tier nav) so the bar is
+// not a 16-button wall. Keys are unchanged → every render block + deep-link still
+// works exactly as before; only the navigation is grouped.
+const FIN_LABELS: Record<string, string> = {
+  cockpit: '🎯 لوحة القيادة', overview: 'نظرة مالية',
+  orders: 'الإيرادات', expenses: 'المصروفات', pl: 'الأرباح والخسائر',
+  installments: 'الأقساط والمديونيات', outstanding: 'أرصدة مستحقة', aging: 'تقرير التقادم', review: 'مراجعة الدفعات',
+  monthly: 'التقرير الشهري', budget: 'الميزانية', commissions: 'عمولات الفريق',
+  proofs: 'إيصالات التحويل', refunds: 'الاسترجاعات', period_closing: 'إقفال الفترة', audit: 'سجل التدقيق',
+};
+const FIN_GROUPS: { key: string; label: string; icon: React.ElementType; subs: string[] }[] = [
+  { key: 'g_overview', label: 'نظرة عامة',            icon: BarChart3,    subs: ['cockpit', 'overview'] },
+  { key: 'g_inout',    label: 'الإيرادات والمصروفات', icon: Wallet,       subs: ['orders', 'expenses', 'pl'] },
+  { key: 'g_collect',  label: 'التحصيل والمتأخرات',   icon: CalendarDays, subs: ['installments', 'outstanding', 'aging', 'review'] },
+  { key: 'g_reports',  label: 'التقارير',             icon: PieChart,     subs: ['monthly', 'budget', 'commissions'] },
+  { key: 'g_ops',      label: 'العمليات والتدقيق',    icon: CheckCircle2, subs: ['proofs', 'refunds', 'period_closing', 'audit'] },
+];
+
 const paymentTypeLabels: Record<PaymentItemType, string> = {
   course: 'كورس', certificate: 'شهادة', consultation: 'استشارة',
   book: 'كتاب', carneh: 'كارنيه', other: 'أخرى',
@@ -412,11 +430,17 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
       {/* Sub-tabs + quick action buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2 flex-wrap">
-          {([['cockpit','🎯 لوحة القيادة',BarChart3],['budget','📊 الميزانية',TrendingDown],['refunds','↩️ الاسترجاعات',XCircle],['overview','نظرة مالية',BarChart3],['orders','الإيرادات',CreditCard],['expenses','المصروفات',Wallet],['pl','الأرباح والخسائر',PieChart],['installments','الأقساط والمديونيات',CalendarDays],['aging','تقرير التقادم',AlertCircle],['outstanding','أرصدة مستحقة',TrendingDown],['monthly','التقرير الشهري',BarChart3],['commissions','عمولات الفريق',Percent],['proofs','إيصالات التحويل',Receipt],['audit','سجل التدقيق',AlertCircle],['review','مراجعة الدفعات',Eye],['period_closing','إقفال الفترة',CheckCircle2]] as [string, string, React.ElementType][]).map(([k, lbl, Ic]) => (
-            <button key={k} onClick={() => setFinancialSubTab(k as typeof financialSubTab)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition ${financialSubTab === k ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/30' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              <Ic size={15} />{lbl}{k === 'proofs' && pendingProofsCount > 0 && <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{pendingProofsCount}</span>}{k === 'review' && pendingReviewCount > 0 && <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{pendingReviewCount}</span>}
-            </button>
-          ))}
+          {FIN_GROUPS.map((g) => {
+            const Ic = g.icon;
+            const activeGroup = g.subs.includes(financialSubTab);
+            const groupBadge = (g.subs.includes('proofs') ? pendingProofsCount : 0) + (g.subs.includes('review') ? pendingReviewCount : 0);
+            return (
+              <button key={g.key} onClick={() => { if (!g.subs.includes(financialSubTab)) setFinancialSubTab(g.subs[0] as typeof financialSubTab); }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition ${activeGroup ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/30' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                <Ic size={15} />{g.label}{groupBadge > 0 && <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{groupBadge}</span>}
+              </button>
+            );
+          })}
         </div>
         <div className="flex gap-2">
           {/* FX Rates widget */}
@@ -444,6 +468,18 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
             <Plus size={14} /> إضافة مصروف
           </button>
         </div>
+      </div>
+
+      {/* Tier 2 — sub-tabs of the active financial group */}
+      <div className="flex gap-1.5 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-1.5">
+        {(FIN_GROUPS.find((g) => g.subs.includes(financialSubTab))?.subs ?? []).map((k) => (
+          <button key={k} onClick={() => setFinancialSubTab(k as typeof financialSubTab)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition ${financialSubTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:bg-white/70'}`}>
+            {FIN_LABELS[k] || k}
+            {k === 'proofs' && pendingProofsCount > 0 && <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{pendingProofsCount}</span>}
+            {k === 'review' && pendingReviewCount > 0 && <span className="bg-amber-500 text-white text-[10px] font-extrabold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{pendingReviewCount}</span>}
+          </button>
+        ))}
       </div>
 
       {/* Income modal */}
