@@ -299,9 +299,22 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     if (!rounds.length) return res.json({ months: [], totals: null });
 
     const roundIds = rounds.map(r => r.id);
+    // Revenue = LIVE per-course paid amount from the payments ledger (same logic the
+    // Financial tab + DaqqiScheduleTab use: this subscriber's paid EGP payments for the
+    // round's course, or uncategorised), so the rounds report matches the accounting
+    // instead of a stored amount_paid that can go stale. COALESCE falls back to the
+    // stored value for walk-ins / attendees with no linked subscriber.
     const [attendees] = await pool.query(
-      `SELECT round_id, amount_paid, attended_lectures
-       FROM daqqi_attendees WHERE round_id IN (${roundIds.map(() => '?').join(',')})`,
+      `SELECT da.round_id, da.attended_lectures,
+              COALESCE((
+                SELECT SUM(p.amount) FROM payments p
+                WHERE p.subscriber_id = da.subscriber_id
+                  AND p.status = 'paid' AND p.currency = 'EGP'
+                  AND (p.course_id = dr.course_id OR p.course_id IS NULL)
+              ), da.amount_paid, 0) AS amount_paid
+       FROM daqqi_attendees da
+       JOIN daqqi_rounds dr ON dr.id = da.round_id
+       WHERE da.round_id IN (${roundIds.map(() => '?').join(',')})`,
       roundIds
     );
 
