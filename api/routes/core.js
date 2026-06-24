@@ -393,13 +393,28 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
       is_active TINYINT DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) CHARACTER SET utf8mb4`);
-    // ── Force utf8mb4_unicode_ci on all main tables (unconditional — safe to re-run) ────
-    for (const tbl of ['staff', 'leads', 'subscribers', 'users']) {
-      await pool.query(`ALTER TABLE ${tbl} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(e => {
-        logger.warn(`[startup] collation fix skipped for ${tbl}:`, e.message);
-      });
+    // ── Ensure utf8mb4_unicode_ci on main tables — ONLY when not already correct ──
+    // CRITICAL: `CONVERT TO CHARACTER SET` REBUILDS the whole table (full copy +
+    // table lock). Running it unconditionally on EVERY startup repeatedly locked
+    // staff/users/subscribers — on the constrained host this blocked logins and
+    // fed a restart→rebuild→restart crash-loop. So we check the current collation
+    // first and skip the rebuild entirely once the tables are already correct.
+    try {
+      const [collRows] = await pool.query(
+        `SELECT TABLE_NAME AS t, TABLE_COLLATION AS c FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('staff','leads','subscribers','users')`
+      );
+      const needFix = (collRows || []).filter(r => r.c && r.c !== 'utf8mb4_unicode_ci').map(r => r.t);
+      for (const tbl of needFix) {
+        await pool.query(`ALTER TABLE \`${tbl}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(e => {
+          logger.warn(`[startup] collation fix skipped for ${tbl}:`, e.message);
+        });
+      }
+      if (needFix.length) logger.info(`[startup] Collation fixed for: ${needFix.join(', ')}`);
+      else logger.info('[startup] Collation already correct (staff/leads/subscribers/users) — no rebuild');
+    } catch (e) {
+      logger.warn('[startup] collation check failed (skipping):', e.message);
     }
-    logger.info('[startup] Collation fix applied to staff/leads/subscribers/users tables');
     // ── Ensure payments table has all required columns (schema evolution) ─────────────
     const paymentsExtraCols = [
       "ALTER TABLE payments ADD COLUMN IF NOT EXISTS staff_name VARCHAR(255) DEFAULT NULL",
