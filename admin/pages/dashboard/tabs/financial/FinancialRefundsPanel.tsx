@@ -25,8 +25,8 @@ const STATUS_MAP: Record<string, { label: string; icon: React.ReactNode; bg: str
   REJECTED: { label: 'مرفوض', icon: <XCircle size={12} />, bg: 'bg-red-100', text: 'text-red-800' },
 };
 
-const fmtDate = (s?: string) => s ? new Date(s).toLocaleDateString('ar-EG') : '—';
-const fmtMoney = (n: number, cur = 'EGP') => `${Math.round(n).toLocaleString('ar-EG')} ${cur}`;
+const fmtDate = (s?: string) => s ? new Date(s).toLocaleDateString('ar-EG-u-nu-latn') : '—';
+const fmtMoney = (n: number, cur = 'EGP') => `${Math.round(n).toLocaleString('ar-EG-u-nu-latn')} ${cur}`;
 
 export default function FinancialRefundsPanel({ notify }: { notify: (msg: string, t?: 'success' | 'error') => void }) {
   const [rows, setRows]     = useState<RefundRow[]>([]);

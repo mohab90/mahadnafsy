@@ -677,7 +677,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
           paymentHistory: payEntries, branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined,
           status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
-          createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+          createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
         });
         if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
       }
@@ -714,14 +714,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           updateSubscriber({ ...existingSub, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), ...singleAccessPatch }, paymentHistory: [...(existingSub.paymentHistory || []), { ...payHistEntry, note: singleNote }], leadId: existingSub.leadId || freshLead.id, email: leadPayDraft.email || existingSub.email });
         } else {
           const singleNote = [...noteParts, _buildCourseNote(leadPayDraft.courseId, Number(leadPayDraft.amount))].filter(Boolean).join(' | ') || undefined;
-          const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: singleEnrollIds, courseAccess: singleAccessPatch, paymentHistory: [{ ...payHistEntry, note: singleNote }], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
+          const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: singleEnrollIds, courseAccess: singleAccessPatch, paymentHistory: [{ ...payHistEntry, note: singleNote }], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
           if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
         }
         updatedLead = { ...updatedLead, status: 'converted', email: leadPayDraft.email || updatedLead.email };
       } else if (existingSub) {
         updateSubscriber({ ...existingSub, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
       } else {
-        await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
+        await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
       }
     }
 
@@ -807,7 +807,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       id: leadDraft.id || `l-${Date.now()}`,
       assignedSalesId,
       assignedSalesName,
-      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG', {
+      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG-u-nu-latn', {
         hour12: false,
         year: 'numeric',
         month: '2-digit',
@@ -854,7 +854,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         branch: lead.branch,
         status: 'active',
         paymentHistory: (lead.paymentRecords ?? []).map((p) => ({ id: p.id, amount: p.amount, currency: p.currency, note: [p.note, p.paymentMethod, p.transactionId].filter(Boolean).join(' | ') || undefined, paymentType: p.paymentType, courseId: p.courseId || undefined, isInstallment: false, at: p.date })),
-        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       });
     }
     updateLead({ ...lead, status: 'converted' });
@@ -900,7 +900,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           assignedSalesName: '',
           communications: [],
           notes: '',
-          createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+          createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
         });
         added++;
       }
@@ -966,7 +966,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     if (!csvRows.length) return;
     setCsvImporting(true);
     let added = 0;
-    const now = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const now = new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     for (const row of csvRows) {
       const get = (field: string) => {
         const col = Object.entries(csvMapping).find(([, v]) => v === field)?.[0];
@@ -1088,7 +1088,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
               fbLeadId: entry.id,
               fbFormId: form.formId,
               fbFormName: form.formName,
-              createdAt: new Date(entry.created_time).toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+              createdAt: new Date(entry.created_time).toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
             });
             totalAdded++;
           }

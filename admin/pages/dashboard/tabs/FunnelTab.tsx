@@ -101,7 +101,7 @@ export default function FunnelTab() {
           </div>
         ))}
       </div>
-      <p className="text-[11px] text-gray-400 text-center">آخر تحديث: {new Date(data.generatedAt).toLocaleString('ar-EG')} · يُحدَّث كل 5 دقائق</p>
+      <p className="text-[11px] text-gray-400 text-center">آخر تحديث: {new Date(data.generatedAt).toLocaleString('ar-EG-u-nu-latn')} · يُحدَّث كل 5 دقائق</p>
     </div>
   );
 }

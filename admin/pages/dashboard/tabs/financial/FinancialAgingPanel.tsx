@@ -53,7 +53,7 @@ export function FinancialAgingPanel({ subscribers, sarRate, usdRate }: Props) {
           return (
             <div key={b.label} className={`${b.bg} border ${b.border} rounded-xl p-3 text-center`}>
               <p className={`text-xs font-bold ${b.txt} mb-1`}>{b.label}</p>
-              <p className={`text-lg font-extrabold ${b.txt}`}>{total.toLocaleString('ar-EG')} ج.م</p>
+              <p className={`text-lg font-extrabold ${b.txt}`}>{total.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
               <p className="text-xs text-gray-500">{rows.length} خطة</p>
             </div>
           );
@@ -102,7 +102,7 @@ export function FinancialAgingPanel({ subscribers, sarRate, usdRate }: Props) {
                       <p className="text-xs text-gray-500">{r.sub.phone}</p>
                     </td>
                     <td className="py-2.5 text-gray-700">{r.plan.courseTitle || '—'}</td>
-                    <td className="py-2.5 font-bold text-red-600">{Math.round(toEGP(r.remaining, r.plan.currency)).toLocaleString('ar-EG')} ج.م</td>
+                    <td className="py-2.5 font-bold text-red-600">{Math.round(toEGP(r.remaining, r.plan.currency)).toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
                     <td className="py-2.5 text-gray-500 text-xs">{r.dueDate}</td>
                     <td className="py-2.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${badgeColor}`}>

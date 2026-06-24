@@ -483,7 +483,7 @@ const BundleDetails: React.FC = () => {
               courseNameEn={bundle.titleEn}
               instructorName={content['bundleDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
               certNumber="SAMPLE-2025"
-              issuedAt={new Date().toLocaleDateString('ar-EG')}
+              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn')}
               onClose={() => setCertModalOpen(false)}
             />
           </div>

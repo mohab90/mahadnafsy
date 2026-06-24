@@ -98,7 +98,7 @@ const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
                 </div>
                 <div>
                   <p className="font-semibold text-gray-800 leading-none">{u.displayName || u.email || u.uid.slice(0, 8)}</p>
-                  <p className="text-gray-400 mt-0.5">{new Date(u.lastActiveAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-gray-400 mt-0.5">{new Date(u.lastActiveAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
             ))}

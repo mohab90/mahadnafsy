@@ -160,7 +160,7 @@ const Community: React.FC = () => {
       eventType: newEvent.eventType,
       speaker: newEvent.speaker,
       platform: newEvent.platform,
-      dateLabel: newEvent.eventDate ? new Date(newEvent.eventDate + 'T00:00:00').toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' }) : '',
+      dateLabel: newEvent.eventDate ? new Date(newEvent.eventDate + 'T00:00:00').toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' }) : '',
       eventDate: newEvent.eventDate,
       description: newEvent.description,
     });
@@ -186,7 +186,7 @@ const Community: React.FC = () => {
         <div className="container mx-auto px-4 relative z-10 text-center">
           <div className="inline-flex items-center gap-2 bg-primary-600/30 border border-primary-400/30 rounded-full px-4 py-1.5 text-sm font-medium mb-5">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-            {totalMembers.toLocaleString('ar-EG')} عضو نشط في المجتمع
+            {totalMembers.toLocaleString('ar-EG-u-nu-latn')} عضو نشط في المجتمع
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4">{content['community.heroTitle'] || 'المجتمع النفسي المتخصص'}</h1>
           <p className="text-gray-300 text-lg max-w-2xl mx-auto leading-relaxed">
@@ -527,7 +527,7 @@ const Community: React.FC = () => {
                 })}
                 <div className="w-9 h-9 rounded-full border-2 border-white bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700">+{totalMembers - 5}</div>
               </div>
-              <div className="text-xs text-gray-500">{totalMembers.toLocaleString('ar-EG')} عضو • {Math.floor(totalMembers * 0.07)} متصل الآن</div>
+              <div className="text-xs text-gray-500">{totalMembers.toLocaleString('ar-EG-u-nu-latn')} عضو • {Math.floor(totalMembers * 0.07)} متصل الآن</div>
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
@@ -563,7 +563,7 @@ const Community: React.FC = () => {
             <div className="bg-gradient-to-br from-primary-600 to-primary-800 p-5 rounded-2xl text-white">
               <Award size={28} className="mb-3 text-yellow-300" />
               <h3 className="font-bold text-lg mb-2">المجتمع المتميز</h3>
-              <p className="text-primary-200 text-xs mb-4 leading-relaxed">انضم لأكثر من {totalMembers.toLocaleString('ar-EG')} متخصص واحصل على وصول كامل لجميع المحتوى والورش</p>
+              <p className="text-primary-200 text-xs mb-4 leading-relaxed">انضم لأكثر من {totalMembers.toLocaleString('ar-EG-u-nu-latn')} متخصص واحصل على وصول كامل لجميع المحتوى والورش</p>
               <button className="w-full bg-white text-primary-700 font-bold py-2.5 rounded-xl text-sm hover:bg-primary-50 transition">انضم الآن</button>
             </div>
           </div>

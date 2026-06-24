@@ -85,7 +85,7 @@ export function handleCsvImportFn(deps: HandleCsvImportDeps): void {
   if (!csvRows.length) return;
   setCsvImporting(true);
   let added = 0;
-  const now = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const now = new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   for (const row of csvRows) {
     const get = (field: string) => {
       const col = Object.entries(csvMapping).find(([, v]) => v === field)?.[0];
@@ -225,7 +225,7 @@ export async function handleFbApiSyncFn(deps: HandleFbApiSyncDeps): Promise<void
             fbLeadId: entry.id,
             fbFormId: form.formId,
             fbFormName: form.formName,
-            createdAt: new Date(entry.created_time).toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+            createdAt: new Date(entry.created_time).toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
           } as LeadItem);
           totalAdded++;
         }

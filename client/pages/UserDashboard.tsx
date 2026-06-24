@@ -1045,7 +1045,7 @@ const UserDashboard: React.FC = () => {
                         // If no lectures are configured, always allow certificate access
                         const isCompleted = total === 0 || pct === 100;
                         const certNum = `PSY-${new Date().getFullYear()}-${(subscriber?.id || 'X').slice(-4).toUpperCase()}-${course.id.slice(-4).toUpperCase()}`;
-                        const issuedDate = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+                        const issuedDate = new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
 
                         return (
                           <div key={course.id} className={`rounded-2xl p-5 border shadow-sm ${isCompleted ? 'bg-gradient-to-br from-red-900 to-red-800 border-red-700 text-white' : 'bg-white border-gray-100'}`}>
@@ -2001,7 +2001,7 @@ function SupportTab({ token }: { token: string }) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-gray-800 text-sm">{t.subject}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{new Date(t.created_at).toLocaleDateString('ar-EG')}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{new Date(t.created_at).toLocaleDateString('ar-EG-u-nu-latn')}</p>
                     {t.reply_count > 0 && <p className="text-xs text-purple-600 mt-0.5">💬 {t.reply_count} رد من الإدارة</p>}
                   </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>

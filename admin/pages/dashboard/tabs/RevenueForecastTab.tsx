@@ -63,7 +63,7 @@ const RevenueForecastTab: React.FC<Props> = ({ notify }) => {
   const allData = [...historicalMonths, ...forecastData];
   const maxValue = Math.max(...allData.map(d => d.isForecast ? (d as any).optimistic : d.revenue), 1);
 
-  const format = (n: number) => Math.round(n).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const format = (n: number) => Math.round(n).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 
   const totalForecast = forecastData.reduce((s, d) => s + d.revenue, 0);
   const totalHistorical = historicalMonths.reduce((s, d) => s + d.revenue, 0);

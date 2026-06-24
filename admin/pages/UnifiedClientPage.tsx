@@ -688,7 +688,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
       type: extraCertDraft.type as ExtraCertificateType,
       courseId: extraCertDraft.courseId,
       status: 'pending',
-      requestedAt: new Date().toLocaleString('ar-EG', { hour12: false }),
+      requestedAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false }),
       price: extraCertDraft.certExpected ? Number(extraCertDraft.certExpected) : undefined,
       paidAmount: extraCertDraft.certPaid ? Number(extraCertDraft.certPaid) : undefined,
       currency: 'EGP',
@@ -759,7 +759,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
         lectureProgress: {},
         paymentHistory: leadPayments.map(p => ({ id: p.id, amount: p.amount, currency: p.currency, note: p.note || undefined, at: p.date })),
         status: 'active',
-        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       });
       // Write directly to enrollments table
       mysqlAdmin.addEnrollment(newSubId, convertCourseId, null, convertAccessMode, convertAccessMode === 'limited' ? convertPartialCount : undefined).catch(() => {});
@@ -1300,7 +1300,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                     <div className="flex items-center justify-between"><span className="text-gray-400">زيارات الموقع</span><span className="font-bold text-indigo-700">{sessionData.visitCount} مرة</span></div>
                   )}
                   {sessionData?.lastActiveAt && (
-                    <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG')}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG-u-nu-latn')}</span></div>
                   )}
                   {completionPct !== null && (
                     <div>

@@ -805,11 +805,11 @@ const saveChapter = () => {
                       <div className="w-32 bg-gray-100 rounded-full h-2 flex-shrink-0">
                         <div className="bg-purple-500 h-2 rounded-full transition-all" style={{ width: `${(row.view_count / maxViews) * 100}%` }} />
                       </div>
-                      <span className="text-xs font-bold text-purple-700 w-12 text-left flex-shrink-0">{row.view_count.toLocaleString('ar-EG')}</span>
+                      <span className="text-xs font-bold text-purple-700 w-12 text-left flex-shrink-0">{row.view_count.toLocaleString('ar-EG-u-nu-latn')}</span>
                     </div>
                   ))}
                   <div className="pt-3 border-t border-gray-100 text-xs text-gray-400 text-center">
-                    إجمالي المشاهدات: {analyticsRows.reduce((s, r) => s + r.view_count, 0).toLocaleString('ar-EG')}
+                    إجمالي المشاهدات: {analyticsRows.reduce((s, r) => s + r.view_count, 0).toLocaleString('ar-EG-u-nu-latn')}
                   </div>
                 </div>
               )}

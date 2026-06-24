@@ -26,7 +26,7 @@ export function FinancialInstallmentsPanel({ notify, subscribers }: Props) {
 
   const today = new Date().toISOString().slice(0, 10);
   const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
 
   const DEFAULT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
@@ -61,11 +61,11 @@ export function FinancialInstallmentsPanel({ notify, subscribers }: Props) {
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <p className="text-xs text-amber-700 font-bold mb-1">إجمالي المديونيات</p>
-          <p className="text-xl font-extrabold text-amber-900">{totalOutstanding.toLocaleString('ar-EG')} ج.م</p>
+          <p className="text-xl font-extrabold text-amber-900">{totalOutstanding.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
           <p className="text-xs text-red-700 font-bold mb-1">متأخر السداد</p>
-          <p className="text-xl font-extrabold text-red-900">{totalOverdue.toLocaleString('ar-EG')} ج.م</p>
+          <p className="text-xl font-extrabold text-red-900">{totalOverdue.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
           <p className="text-xs text-red-500 mt-0.5">{overdueEntries.length} دفعة متأخرة</p>
         </div>
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">

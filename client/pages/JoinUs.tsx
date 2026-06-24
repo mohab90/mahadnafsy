@@ -30,7 +30,7 @@ const JoinUs: React.FC = () => {
       linkedin: form.linkedin || undefined,
       message: form.message || undefined,
       status: 'new',
-      createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
     });
     setSubmitted(true);
   };

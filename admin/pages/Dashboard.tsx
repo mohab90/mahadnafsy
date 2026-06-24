@@ -1403,7 +1403,7 @@ const Dashboard: React.FC = () => {
       type: certActionDraft.type as ExtraCertificateType,
       courseId: certActionDraft.courseId,
       status: certActionDraft.certPaid ? 'priced' : 'pending',
-      requestedAt: new Date().toLocaleString('ar-EG', { hour12: false }),
+      requestedAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false }),
       price: certActionDraft.certExpected ? Number(certActionDraft.certExpected) : undefined,
       paidAmount: certActionDraft.certPaid ? Number(certActionDraft.certPaid) : undefined,
       currency: 'EGP',
@@ -1464,7 +1464,7 @@ const Dashboard: React.FC = () => {
       id: leadDraft.id || `l-${Date.now()}`,
       assignedSalesId,
       assignedSalesName,
-      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG', {
+      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG-u-nu-latn', {
         hour12: false,
         year: 'numeric',
         month: '2-digit',
@@ -1513,7 +1513,7 @@ const Dashboard: React.FC = () => {
         branch: lead.branch,
         status: 'active',
         paymentHistory: (lead.paymentRecords ?? []).map((p) => ({ id: p.id, amount: p.amount, currency: p.currency, note: [p.note, p.paymentMethod, p.transactionId].filter(Boolean).join(' | ') || undefined, paymentType: p.paymentType, courseId: p.courseId || undefined, isInstallment: false, at: p.date })),
-        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       });
     }
     updateLead({ ...lead, status: 'converted' });
@@ -1559,7 +1559,7 @@ const Dashboard: React.FC = () => {
           assignedSalesName: '',
           communications: [],
           notes: '',
-          createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+          createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
         });
         added++;
       }
@@ -1868,7 +1868,7 @@ const Dashboard: React.FC = () => {
                           <div key={n.id} className={`px-4 py-3 hover:bg-gray-50 transition ${!n.read_at ? 'bg-blue-50' : ''}`}>
                             <div className="font-semibold text-gray-800 text-sm">{n.title}</div>
                             <div className="text-xs text-gray-500 mt-0.5">{n.message}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('ar-EG')}</div>
+                            <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('ar-EG-u-nu-latn')}</div>
                           </div>
                         ))}
                       </div>

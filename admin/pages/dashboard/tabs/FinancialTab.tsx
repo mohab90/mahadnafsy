@@ -122,7 +122,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
   // Export comprehensive financial report (all data in one CSV)
   const exportFullReport = () => {
     const sarR = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-    const usdR = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+    const usdR = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
     const conv = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarR : amt * usdR;
     const sections: string[] = [];
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}`;
@@ -194,7 +194,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
   // ── Excel export: all payments ────────────────────────────────────────────
   const exportPaymentsExcel = () => {
     const sarR = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-    const usdR = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+    const usdR = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
     const conv = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarR : amt * usdR;
     type PayRow = { date: string; client: string; service: string; amount: string; currency: string; egp: string; channel: string; staff: string; note: string; };
     const rows: PayRow[] = [];
@@ -310,7 +310,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
   const subscribersWithPlans = subscribers.filter(s => (s.installmentPlans?.length ?? 0) > 0);
 
   const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
   const paidOrders = orders.filter(o => o.status === 'paid' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
   // All paymentHistory entries across subscribers — only confirmed/paid entries count toward revenue
@@ -449,7 +449,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
             <span className="font-bold text-gray-800">{parseFloat(content['exchange.sar_to_egp'] || '13') || 13} ج.م</span>
             <span className="text-gray-400">|</span>
             <span className="text-gray-500">$ =</span>
-            <span className="font-bold text-gray-800">{parseFloat(content['exchange.usd_to_egp'] || '50') || 50} ج.م</span>
+            <span className="font-bold text-gray-800">{parseFloat(content['exchange.usd_to_egp'] || '48') || 48} ج.م</span>
             <button onClick={refreshFxRates} disabled={fxRefreshing} title="تحديث أسعار الصرف من الإنترنت"
               className="mr-1 p-1 rounded-lg hover:bg-gray-200 transition disabled:opacity-50">
               {fxRefreshing
@@ -647,9 +647,9 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { lbl: 'إجمالي الإيرادات', val: (isGlobalFiltered ? gRevenue : totalRevenueEGP).toLocaleString('ar-EG') + ' ج.م', icon: ArrowUpRight, bg: 'bg-emerald-50', txt: 'text-emerald-700', br: 'border-emerald-200' },
-              { lbl: 'إجمالي المصروفات', val: (isGlobalFiltered ? gExpenses : totalExpensesEGP).toLocaleString('ar-EG') + ' ج.م', icon: ArrowDownRight, bg: 'bg-red-50', txt: 'text-red-700', br: 'border-red-200' },
-              { lbl: 'صافي الربح', val: (isGlobalFiltered ? gProfit : netProfitEGP).toLocaleString('ar-EG') + ' ج.م', icon: TrendingUp, bg: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'bg-blue-50' : 'bg-orange-50', txt: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'text-blue-700' : 'text-orange-700', br: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'border-blue-200' : 'border-orange-200' },
+              { lbl: 'إجمالي الإيرادات', val: (isGlobalFiltered ? gRevenue : totalRevenueEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: ArrowUpRight, bg: 'bg-emerald-50', txt: 'text-emerald-700', br: 'border-emerald-200' },
+              { lbl: 'إجمالي المصروفات', val: (isGlobalFiltered ? gExpenses : totalExpensesEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: ArrowDownRight, bg: 'bg-red-50', txt: 'text-red-700', br: 'border-red-200' },
+              { lbl: 'صافي الربح', val: (isGlobalFiltered ? gProfit : netProfitEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: TrendingUp, bg: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'bg-blue-50' : 'bg-orange-50', txt: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'text-blue-700' : 'text-orange-700', br: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'border-blue-200' : 'border-orange-200' },
               { lbl: 'هامش الربح', val: (isGlobalFiltered ? gMargin : profitMargin) + '%', icon: Percent, bg: 'bg-violet-50', txt: 'text-violet-700', br: 'border-violet-200' },
             ].map(c => { const Ic = c.icon; return (
               <article key={c.lbl} className={`${c.bg} border ${c.br} rounded-2xl p-4 flex items-center gap-3 shadow-sm`}>
@@ -666,7 +666,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
                 const pct = totalRevenueEGP > 0 ? Math.round((val / totalRevenueEGP) * 100) : 0;
                 return (
                   <div key={lbl}>
-                    <div className="flex justify-between text-sm mb-1"><span className="font-medium text-gray-700">{lbl}</span><span className="text-gray-500">{val.toLocaleString('ar-EG')} ج.م ({pct}%)</span></div>
+                    <div className="flex justify-between text-sm mb-1"><span className="font-medium text-gray-700">{lbl}</span><span className="text-gray-500">{val.toLocaleString('ar-EG-u-nu-latn')} ج.م ({pct}%)</span></div>
                     <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full ${color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} /></div>
                   </div>
                 );
@@ -712,7 +712,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
                   onClick={() => { setFinancialSubTab('orders'); setOrderMethodFilter('__online_paymob__'); }}
                   className="bg-blue-50 border border-blue-200 hover:border-blue-400 hover:bg-blue-100 rounded-2xl p-4 text-right transition group">
                   <p className="text-xs text-blue-600 font-bold mb-1">🌐 أونلاين (Paymob)</p>
-                  <p className="text-xl font-extrabold text-blue-800">{Math.round(onlineRevenueFiltered).toLocaleString('ar-EG')} ج.م</p>
+                  <p className="text-xl font-extrabold text-blue-800">{Math.round(onlineRevenueFiltered).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                   <p className="text-[10px] text-blue-500 mt-1 group-hover:text-blue-700">بطاقة / محفظة ← اضغط للتفاصيل</p>
                 </button>
               )}
@@ -722,7 +722,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
                   onClick={() => { setFinancialSubTab('orders'); setOrderMethodFilter(method); }}
                   className="bg-emerald-50 border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100 rounded-2xl p-4 text-right transition group">
                   <p className="text-xs text-emerald-600 font-bold mb-1">{method}</p>
-                  <p className="text-xl font-extrabold text-emerald-800">{Math.round(total).toLocaleString('ar-EG')} ج.م</p>
+                  <p className="text-xl font-extrabold text-emerald-800">{Math.round(total).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                   <p className="text-[10px] text-emerald-500 mt-1 group-hover:text-emerald-700">اضغط لعرض التفاصيل ←</p>
                 </button>
               ))}
@@ -803,13 +803,13 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
                     <div key={c.id}>
                       <div className="flex justify-between text-sm mb-1">
                         <span className="font-medium text-gray-700 truncate max-w-[55%]">{c.title}</span>
-                        <span className="text-gray-500 whitespace-nowrap">{c.total.toLocaleString('ar-EG')} ج.م</span>
+                        <span className="text-gray-500 whitespace-nowrap">{c.total.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                       </div>
                       <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-primary-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} /></div>
                       {(c.online > 0 || c.manual > 0) && (
                         <div className="flex gap-4 mt-1">
-                          {c.online > 0 && <span className="text-[10px] text-blue-500">أونلاين: {c.online.toLocaleString('ar-EG')} ج.م</span>}
-                          {c.manual > 0 && <span className="text-[10px] text-emerald-500">يدوي: {c.manual.toLocaleString('ar-EG')} ج.م</span>}
+                          {c.online > 0 && <span className="text-[10px] text-blue-500">أونلاين: {c.online.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>}
+                          {c.manual > 0 && <span className="text-[10px] text-emerald-500">يدوي: {c.manual.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>}
                         </div>
                       )}
                     </div>
@@ -877,7 +877,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
             <input type="date" className="border border-gray-300 rounded-xl px-3 py-2 text-sm" value={expenseDateFrom} onChange={e => setExpenseDateFrom(e.target.value)} />
             <input type="date" className="border border-gray-300 rounded-xl px-3 py-2 text-sm" value={expenseDateTo} onChange={e => setExpenseDateTo(e.target.value)} />
             <div className="mr-auto flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-gray-500">المجموع: <span className="font-bold text-red-600">{filteredExpenses.reduce((s,e)=>s+toEGP(e.amount,e.currency),0).toLocaleString('ar-EG')} ج.م</span></span>
+              <span className="text-sm text-gray-500">المجموع: <span className="font-bold text-red-600">{filteredExpenses.reduce((s,e)=>s+toEGP(e.amount,e.currency),0).toLocaleString('ar-EG-u-nu-latn')} ج.م</span></span>
               <button
                 onClick={() => exportCSV(
                   'expenses.csv',
@@ -931,7 +931,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
                   const period = (globalDateFrom || globalDateTo)
                     ? `${globalDateFrom || '—'} إلى ${globalDateTo || '—'}`
                     : 'الكل';
-                  w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>تقرير الأرباح والخسائر</title><style>body{font-family:Arial,sans-serif;padding:48px;direction:rtl;color:#111}.title{font-size:22px;font-weight:900;color:#7c3aed;border-bottom:3px solid #7c3aed;padding-bottom:12px;margin-bottom:24px}.section{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px}.section h3{font-size:15px;font-weight:700;margin-bottom:12px}.row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid #f3f4f6}.row:last-child{border:none;font-weight:700;font-size:15px}.profit{background:#eff6ff;border-color:#bfdbfe;border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center}.profit-label{font-size:18px;font-weight:900;color:#1d4ed8}.profit-value{font-size:24px;font-weight:900;color:#2563eb}.meta{color:#888;font-size:12px;text-align:center;margin-top:32px}@media print{body{padding:24px}}</style></head><body><div class="title">تقرير الأرباح والخسائر</div><p style="color:#888;font-size:13px;margin-bottom:24px">الفترة: ${period} &nbsp;|&nbsp; تاريخ الطباعة: ${today}</p><div class="section" style="background:#f0fdf4;border-color:#bbf7d0"><h3 style="color:#166534">الإيرادات</h3>${Object.entries(revenueByType).map(([k,v])=>v>0?`<div class="row"><span>${{course:'كورسات',bundle:'مسارات',consultation:'استشارات',certificate:'شهادات',book:'كتب',carneh:'كارنيهات',other:'أخرى'}[k]||k}</span><span>${Number(v).toLocaleString('ar-EG')} ج.م</span></div>`:'').join('')}<div class="row" style="margin-top:8px"><span>إجمالي الإيرادات</span><span>${rev.toLocaleString('ar-EG')} ج.م</span></div></div><div class="section" style="background:#fff1f2;border-color:#fecdd3"><h3 style="color:#9f1239">المصروفات</h3>${Object.entries(expenseByCategory).map(([k,v])=>`<div class="row"><span>${k}</span><span>(${Number(v).toLocaleString('ar-EG')} ج.م)</span></div>`).join('')}<div class="row" style="margin-top:8px"><span>إجمالي المصروفات</span><span>(${exp.toLocaleString('ar-EG')} ج.م)</span></div></div><div class="profit"><span class="profit-label">صافي ${profit>=0?'الربح':'الخسارة'}</span><span class="profit-value">${Math.abs(profit).toLocaleString('ar-EG')} ج.م</span></div><p style="text-align:center;color:#7c3aed;font-size:12px;margin-top:8px">هامش الربح: ${margin}%</p><div class="meta">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
+                  w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>تقرير الأرباح والخسائر</title><style>body{font-family:Arial,sans-serif;padding:48px;direction:rtl;color:#111}.title{font-size:22px;font-weight:900;color:#7c3aed;border-bottom:3px solid #7c3aed;padding-bottom:12px;margin-bottom:24px}.section{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px}.section h3{font-size:15px;font-weight:700;margin-bottom:12px}.row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid #f3f4f6}.row:last-child{border:none;font-weight:700;font-size:15px}.profit{background:#eff6ff;border-color:#bfdbfe;border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center}.profit-label{font-size:18px;font-weight:900;color:#1d4ed8}.profit-value{font-size:24px;font-weight:900;color:#2563eb}.meta{color:#888;font-size:12px;text-align:center;margin-top:32px}@media print{body{padding:24px}}</style></head><body><div class="title">تقرير الأرباح والخسائر</div><p style="color:#888;font-size:13px;margin-bottom:24px">الفترة: ${period} &nbsp;|&nbsp; تاريخ الطباعة: ${today}</p><div class="section" style="background:#f0fdf4;border-color:#bbf7d0"><h3 style="color:#166534">الإيرادات</h3>${Object.entries(revenueByType).map(([k,v])=>v>0?`<div class="row"><span>${{course:'كورسات',bundle:'مسارات',consultation:'استشارات',certificate:'شهادات',book:'كتب',carneh:'كارنيهات',other:'أخرى'}[k]||k}</span><span>${Number(v).toLocaleString('ar-EG-u-nu-latn')} ج.م</span></div>`:'').join('')}<div class="row" style="margin-top:8px"><span>إجمالي الإيرادات</span><span>${rev.toLocaleString('ar-EG-u-nu-latn')} ج.م</span></div></div><div class="section" style="background:#fff1f2;border-color:#fecdd3"><h3 style="color:#9f1239">المصروفات</h3>${Object.entries(expenseByCategory).map(([k,v])=>`<div class="row"><span>${k}</span><span>(${Number(v).toLocaleString('ar-EG-u-nu-latn')} ج.م)</span></div>`).join('')}<div class="row" style="margin-top:8px"><span>إجمالي المصروفات</span><span>(${exp.toLocaleString('ar-EG-u-nu-latn')} ج.م)</span></div></div><div class="profit"><span class="profit-label">صافي ${profit>=0?'الربح':'الخسارة'}</span><span class="profit-value">${Math.abs(profit).toLocaleString('ar-EG-u-nu-latn')} ج.م</span></div><p style="text-align:center;color:#7c3aed;font-size:12px;margin-top:8px">هامش الربح: ${margin}%</p><div class="meta">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
                   w.document.close();
                   setTimeout(() => w.print(), 500);
                 }}
@@ -946,11 +946,11 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
               <p className="text-emerald-700 font-bold text-lg mb-3 flex items-center gap-2"><ArrowUpRight size={18}/>الإيرادات</p>
               <div className="space-y-2 text-sm">
                 {([['كورسات', revenueByType.course],['مسارات', revenueByType.bundle],['استشارات', revenueByType.consultation],['شهادات', revenueByType.certificate],['كتب', revenueByType.book],['كارنيهات', revenueByType.carneh],['أخرى', revenueByType.other]] as [string,number][]).filter(([,v])=>v>0).map(([lbl,val])=>(
-                  <div key={lbl} className="flex justify-between"><span className="text-emerald-700">{lbl}</span><span className="font-semibold">{val.toLocaleString('ar-EG')} ج.م</span></div>
+                  <div key={lbl} className="flex justify-between"><span className="text-emerald-700">{lbl}</span><span className="font-semibold">{val.toLocaleString('ar-EG-u-nu-latn')} ج.م</span></div>
                 ))}
               </div>
               <div className="border-t border-emerald-300 mt-3 pt-3 flex justify-between font-extrabold text-emerald-800 text-base">
-                <span>إجمالي الإيرادات</span><span>{(isGlobalFiltered ? gRevenue : totalRevenueEGP).toLocaleString('ar-EG')} ج.م</span>
+                <span>إجمالي الإيرادات</span><span>{(isGlobalFiltered ? gRevenue : totalRevenueEGP).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
               </div>
             </div>
             {/* Expense section */}
@@ -963,7 +963,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
                 {Object.keys(expenseByCategory).length === 0 && <p className="text-red-400 text-xs">لا توجد مصروفات مسجّلة</p>}
               </div>
               <div className="border-t border-red-300 mt-3 pt-3 flex justify-between font-extrabold text-red-800 text-base">
-                <span>إجمالي المصروفات</span><span>({(isGlobalFiltered ? gExpenses : totalExpensesEGP).toLocaleString('ar-EG')} ج.م)</span>
+                <span>إجمالي المصروفات</span><span>({(isGlobalFiltered ? gExpenses : totalExpensesEGP).toLocaleString('ar-EG-u-nu-latn')} ج.م)</span>
               </div>
             </div>
             {/* Net profit */}
@@ -971,7 +971,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
             <div className={`border rounded-b-2xl border-t-0 p-5 ${p >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}`}>
               <div className="flex justify-between items-center">
                 <span className={`font-extrabold text-xl ${p >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>صافي {p >= 0 ? 'الربح' : 'الخسارة'}</span>
-                <span className={`font-extrabold text-2xl ${p >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>{Math.abs(p).toLocaleString('ar-EG')} ج.م</span>
+                <span className={`font-extrabold text-2xl ${p >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>{Math.abs(p).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
               </div>
               <p className={`text-sm mt-1 ${p >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>هامش الربح: {m}%</p>
             </div>

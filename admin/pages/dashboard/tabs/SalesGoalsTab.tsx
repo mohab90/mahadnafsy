@@ -10,7 +10,7 @@ interface Goal {
   monthlyLeadsTarget: number;
 }
 
-const MONTH_LABEL = new Date().toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
 
 export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   const { staffMembers, leads, orders } = useSiteData();

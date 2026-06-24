@@ -102,7 +102,7 @@ export async function exportToPDF<T extends Record<string, unknown>>(
     doc.setPage(i);
     doc.setFontSize(8);
     doc.text(
-      `تاريخ التصدير: ${new Date().toLocaleDateString('ar-EG')} | صفحة ${i} من ${pages}`,
+      `تاريخ التصدير: ${new Date().toLocaleDateString('ar-EG-u-nu-latn')} | صفحة ${i} من ${pages}`,
       doc.internal.pageSize.width / 2,
       doc.internal.pageSize.height - 5,
       { align: 'center' },
@@ -125,10 +125,10 @@ export async function exportData<T extends Record<string, unknown>>(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export const fmtCurrency = (v: unknown, currency = 'EGP') =>
-  `${Number(v || 0).toLocaleString('ar-EG')} ${currency}`;
+  `${Number(v || 0).toLocaleString('ar-EG-u-nu-latn')} ${currency}`;
 
 export const fmtDate = (v: unknown) =>
-  v ? new Date(v as string).toLocaleDateString('ar-EG') : '—';
+  v ? new Date(v as string).toLocaleDateString('ar-EG-u-nu-latn') : '—';
 
 export const fmtNum = (v: unknown) =>
-  Number(v || 0).toLocaleString('ar-EG');
+  Number(v || 0).toLocaleString('ar-EG-u-nu-latn');

@@ -235,7 +235,7 @@ const Consultations: React.FC = () => {
                                     </div>
 
                                     <button onClick={handleBookExpress} className="w-full sm:w-auto bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 px-8 rounded-xl transition shadow-lg shadow-primary-200 text-lg flex items-center justify-center gap-2">
-                                        احجز جلستك الآن ({expressPrice.toLocaleString('ar-EG')} {currencySymbol})
+                                        احجز جلستك الآن ({expressPrice.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol})
                                         <ChevronLeft className="rtl:rotate-180" />
                                     </button>
                                 </div>

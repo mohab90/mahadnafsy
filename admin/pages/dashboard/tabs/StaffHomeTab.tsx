@@ -103,7 +103,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       const dateStr = d.toISOString().slice(0, 10);
       return {
         day: dateStr,
-        label: d.toLocaleDateString('ar-EG', { weekday: 'short' }),
+        label: d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' }),
         calls: myLeads.reduce((n, l) =>
           n + (l.communications || []).filter(c => c.date?.slice(0, 10) === dateStr).length, 0,
         ),
@@ -213,7 +213,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
         <div>
           <h2 className="text-xl font-extrabold text-gray-900">بوابتي الشخصية</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
         <button
@@ -294,14 +294,14 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
             />
             <KpiCard
               title="إيرادات هذا الشهر"
-              value={`${Math.round(stats.revenueThisMonth).toLocaleString('ar-EG')} ج`}
+              value={`${Math.round(stats.revenueThisMonth).toLocaleString('ar-EG-u-nu-latn')} ج`}
               icon={BarChart3} bg="bg-green-50" text="text-green-600" border="border-green-200"
             />
           </>)}
           {stats.commissionRate > 0 && (
             <KpiCard
               title="عمولتي هذا الشهر"
-              value={`${stats.commission.toLocaleString('ar-EG')} ج`}
+              value={`${stats.commission.toLocaleString('ar-EG-u-nu-latn')} ج`}
               icon={Star} bg="bg-orange-50" text="text-orange-600" border="border-orange-200"
             />
           )}

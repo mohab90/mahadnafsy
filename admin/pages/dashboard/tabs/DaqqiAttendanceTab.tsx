@@ -310,7 +310,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                                   )}
                                 </td>
                                 <td className="px-4 py-2 text-center text-xs text-gray-600">
-                                  {att.amountPaid ? att.amountPaid.toLocaleString('ar-EG') + ' ج' : '—'}
+                                  {att.amountPaid ? att.amountPaid.toLocaleString('ar-EG-u-nu-latn') + ' ج' : '—'}
                                 </td>
                               </tr>
                             ))}
@@ -342,7 +342,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                     { label: 'إجمالي المتدربين', value: monthly.totals.attendees, color: 'bg-blue-50 text-blue-700 border-blue-200' },
                     { label: 'إجمالي الجلسات', value: monthly.totals.sessions, color: 'bg-violet-50 text-violet-700 border-violet-200' },
                     { label: 'متوسط الحضور', value: monthly.totals.avgAttendancePct !== null ? `${monthly.totals.avgAttendancePct}%` : '—', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-                    { label: 'إجمالي التحصيل', value: `${monthly.totals.revenue.toLocaleString('ar-EG')} ج`, color: 'bg-amber-50 text-amber-700 border-amber-200' },
+                    { label: 'إجمالي التحصيل', value: `${monthly.totals.revenue.toLocaleString('ar-EG-u-nu-latn')} ج`, color: 'bg-amber-50 text-amber-700 border-amber-200' },
                   ].map((c, i) => (
                     <div key={i} className={`rounded-xl border p-3 ${c.color}`}>
                       <p className="text-[11px] font-semibold opacity-80">{c.label}</p>
@@ -377,7 +377,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                             ? <span className={pctColor(m.avgAttendancePct)}>{m.avgAttendancePct}%</span>
                             : <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-4 py-2.5 text-center font-semibold text-emerald-700">{m.revenue.toLocaleString('ar-EG')} ج</td>
+                        <td className="px-4 py-2.5 text-center font-semibold text-emerald-700">{m.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</td>
                         <td className="px-4 py-2.5 text-gray-600 text-xs">{m.topReception}</td>
                       </tr>
                     ))}

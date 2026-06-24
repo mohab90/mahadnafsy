@@ -370,7 +370,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
         enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
         paymentHistory: payEntries, branch: (freshLead.branch as BranchType) || undefined,
         status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
-        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       } as SubscriberItem);
       if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
     }
@@ -399,14 +399,14 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
           : [...(existingSub.enrolledCourseIds || []), leadPayDraft.courseId];
         updateSubscriber({ ...existingSub, ..._subExtra, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), [leadPayDraft.courseId]: _initAccess }, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry], leadId: existingSub.leadId || freshLead.id });
       } else {
-        const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [leadPayDraft.courseId], courseAccess: { [leadPayDraft.courseId]: _initAccess }, paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
+        const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [leadPayDraft.courseId], courseAccess: { [leadPayDraft.courseId]: _initAccess }, paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
         if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
       }
       updatedLead = { ...updatedLead, status: 'converted' };
     } else if (existingSub) {
       updateSubscriber({ ...existingSub, ..._subExtra, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
     } else {
-      await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
+      await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
     }
   }
 

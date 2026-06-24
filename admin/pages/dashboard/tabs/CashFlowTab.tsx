@@ -50,7 +50,7 @@ const CashFlowTab: React.FC<Props> = ({ notify }) => {
   }, [orders, expenses, monthsCount]);
 
   const maxValue = Math.max(...months.map(m => Math.max(m.inflow, m.outflow)), 1);
-  const format = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const format = (n: number) => n.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 
   // Expense breakdown for the period
   const expenseBreakdown = useMemo(() => {

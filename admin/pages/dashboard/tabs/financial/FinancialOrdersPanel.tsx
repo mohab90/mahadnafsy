@@ -50,7 +50,7 @@ export function FinancialOrdersPanel({ paidOrders, subscribers, onlineRevenueEGP
   const [loadingDbPayments, setLoadingDbPayments] = useState(false);
 
   const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
 
   const DEFAULT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
@@ -183,7 +183,7 @@ export function FinancialOrdersPanel({ paidOrders, subscribers, onlineRevenueEGP
         ].map(c => (
           <div key={c.label} className={`${c.bg} rounded-2xl p-4 text-white shadow-sm`}>
             <p className="text-xs opacity-80 mb-1">{c.label}</p>
-            <p className="text-xl font-extrabold">{c.val.toLocaleString('ar-EG')} <span className="text-sm font-normal">ج.م</span></p>
+            <p className="text-xl font-extrabold">{c.val.toLocaleString('ar-EG-u-nu-latn')} <span className="text-sm font-normal">ج.م</span></p>
             <p className="text-[11px] opacity-70 mt-1">{c.sub}</p>
           </div>
         ))}
@@ -201,7 +201,7 @@ export function FinancialOrdersPanel({ paidOrders, subscribers, onlineRevenueEGP
                 <button key={type} onClick={() => { setOrderTypeFilter(orderTypeFilter === type ? '' : type); setOrdersPage(1); }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition ${orderTypeFilter === type ? `${c.bg} ${c.border} ${c.text} font-extrabold ring-2 ring-offset-1 ring-current` : `bg-white ${c.border} hover:${c.bg}`}`}>
                   <span className={`text-xs font-bold ${c.text}`}>{typeLabels[type] || type}</span>
-                  <span className={`text-xs ${c.badge} rounded-lg px-1.5 py-0.5 font-bold`}>{val.toLocaleString('ar-EG')} ج.م</span>
+                  <span className={`text-xs ${c.badge} rounded-lg px-1.5 py-0.5 font-bold`}>{val.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                   <span className="text-[10px] text-gray-400">{pct}%</span>
                 </button>
               );
@@ -278,7 +278,7 @@ export function FinancialOrdersPanel({ paidOrders, subscribers, onlineRevenueEGP
             سجل المدفوعات
             {hasFilters && <span className="mr-2 text-xs bg-primary-100 text-primary-700 rounded-full px-2 py-0.5 font-bold">{filteredRows.length} نتيجة</span>}
           </h4>
-          <span className="text-xs text-gray-400">{filteredRows.length} دفعة · {Math.round(totalFiltered).toLocaleString('ar-EG')} ج.م</span>
+          <span className="text-xs text-gray-400">{filteredRows.length} دفعة · {Math.round(totalFiltered).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -314,7 +314,7 @@ export function FinancialOrdersPanel({ paidOrders, subscribers, onlineRevenueEGP
                       </span>
                     </td>
                     <td className="px-4 py-3 text-left">
-                      <span className="font-extrabold text-emerald-700 text-sm">{row.amount.toLocaleString('ar-EG')}</span>
+                      <span className="font-extrabold text-emerald-700 text-sm">{row.amount.toLocaleString('ar-EG-u-nu-latn')}</span>
                       <span className="text-[10px] text-gray-400 mr-1">{row.currency}</span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-400 max-w-[160px] truncate">{row.note !== '—' ? row.note : ''}</td>
@@ -349,7 +349,7 @@ export function FinancialOrdersPanel({ paidOrders, subscribers, onlineRevenueEGP
               <tfoot>
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
                   <td colSpan={5} className="px-4 py-3 text-sm text-gray-600">الإجمالي ({filteredRows.length} دفعة)</td>
-                  <td className="px-4 py-3 text-left text-emerald-700 font-extrabold">{Math.round(totalFiltered).toLocaleString('ar-EG')} <span className="text-xs font-normal text-gray-400">ج.م</span></td>
+                  <td className="px-4 py-3 text-left text-emerald-700 font-extrabold">{Math.round(totalFiltered).toLocaleString('ar-EG-u-nu-latn')} <span className="text-xs font-normal text-gray-400">ج.م</span></td>
                   <td colSpan={2} />
                 </tr>
               </tfoot>

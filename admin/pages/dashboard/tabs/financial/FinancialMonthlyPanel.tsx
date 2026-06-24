@@ -56,7 +56,7 @@ export function FinancialMonthlyPanel({ paidOrders, allManualPayments, sarRate, 
                   {total === 0 && <div className="h-6 w-1 bg-gray-100 rounded" />}
                 </div>
                 <span className="text-xs font-bold text-gray-700 w-28 text-left flex-shrink-0">
-                  {total > 0 ? total.toLocaleString('ar-EG') + ' ج.م' : '—'}
+                  {total > 0 ? total.toLocaleString('ar-EG-u-nu-latn') + ' ج.م' : '—'}
                 </span>
               </div>
             );
@@ -75,7 +75,7 @@ export function FinancialMonthlyPanel({ paidOrders, allManualPayments, sarRate, 
         ].map(c => (
           <div key={c.label} className={`${c.color} rounded-xl p-4 border`}>
             <p className="text-xs opacity-70 mb-1">{c.label}</p>
-            <p className="text-lg font-extrabold">{c.val.toLocaleString('ar-EG')} ج.م</p>
+            <p className="text-lg font-extrabold">{c.val.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
           </div>
         ))}
       </div>

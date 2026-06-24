@@ -63,7 +63,7 @@ function getMonthsOfService(joinedAt: string) {
   const y = Math.floor(months / 12); const m = Math.round(months % 12);
   return m > 0 ? `${y} سنة ${m} شهر` : `${y} سنة`;
 }
-const fmt = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+const fmt = (n: number) => n.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 const fmtMoney = (n: number) => `${fmt(n)} ج.م`;
 
 function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {

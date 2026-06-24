@@ -50,7 +50,7 @@ export default function OverviewTab({
   const [kpiModal, setKpiModal] = useState<KpiModal>(null); // lifted out of Dashboard god-hub
   const { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue } = useMemo(() => {
     const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-    const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+    const usdRate = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
     const toEGP = (o: { currency: string; amount: number }) =>
       o.currency === 'EGP' ? o.amount : o.currency === 'SAR' ? o.amount * sarRate : o.amount * usdRate;
     const paidOrders = orders.filter(o => o.status === 'paid');
@@ -124,7 +124,7 @@ export default function OverviewTab({
                 });
                 const callsByDay = last7Days.map(day => ({
                   day,
-                  label: new Date(day).toLocaleDateString('ar-EG', { weekday: 'short' }),
+                  label: new Date(day).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' }),
                   count: myLeads.reduce((n, l) => n + (l.communications || []).filter(c => c.date?.slice(0,10) === day).length, 0),
                 }));
                 const maxCalls = Math.max(...callsByDay.map(d => d.count), 1);
@@ -146,8 +146,8 @@ export default function OverviewTab({
                   { title: 'محوّلون هذا الشهر', value: myLeads.filter(l => l.status === 'converted' && (l.updatedAt || l.createdAt || '').slice(0,7) === thisMonthStr).length, icon: TrendingUp, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
                   { title: 'عملائي', value: mySubs.length, icon: UserCheck, bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-200' },
                   { title: 'مكالمات اليوم', value: todayCalls, icon: Activity, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
-                  { title: 'إيراداتي هذا الشهر', value: `${Math.round(myRevenueSubs.thisMonth).toLocaleString('ar-EG')} ج`, icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
-                  { title: 'عمولتي هذا الشهر', value: myCommRate > 0 ? `${myCommission.toLocaleString('ar-EG')} ج` : '—', icon: Percent, bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
+                  { title: 'إيراداتي هذا الشهر', value: `${Math.round(myRevenueSubs.thisMonth).toLocaleString('ar-EG-u-nu-latn')} ج`, icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
+                  { title: 'عمولتي هذا الشهر', value: myCommRate > 0 ? `${myCommission.toLocaleString('ar-EG-u-nu-latn')} ج` : '—', icon: Percent, bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
                   { title: 'معدل التحويل', value: `${myLeads.length > 0 ? Math.round((myConverted / myLeads.length) * 100) : 0}%`, icon: TrendingUp, bg: 'bg-pink-50', text: 'text-pink-600', border: 'border-pink-200' },
                   { title: 'متابعات متأخرة', value: myLeads.filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted','lost'].includes(l.status || '')).length, icon: Clock, bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' },
                 ];
@@ -342,7 +342,7 @@ export default function OverviewTab({
                                   </p>
                                 </div>
                                 <div className="text-right flex-shrink-0">
-                                  <p className="text-red-600 font-extrabold text-sm">{s._remaining.toLocaleString('ar-EG')} ج.م</p>
+                                  <p className="text-red-600 font-extrabold text-sm">{s._remaining.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                                   <p className="text-[10px] text-gray-400">متبقي من الإجمالي</p>
                                 </div>
                               </div>
@@ -494,7 +494,7 @@ export default function OverviewTab({
                       <div className="flex items-center gap-2 mb-4">
                         <TrendingUp size={18} className="text-teal-600" />
                         <h3 className="font-extrabold text-gray-900">تقدمك نحو هدف التحصيل الشهري</h3>
-                        <span className="mr-auto text-xs text-gray-400">{now2.toLocaleDateString('ar-EG',{month:'long',year:'numeric'})}</span>
+                        <span className="mr-auto text-xs text-gray-400">{now2.toLocaleDateString('ar-EG-u-nu-latn',{month:'long',year:'numeric'})}</span>
                       </div>
                       <div className="flex items-center gap-6">
                         <div className="relative flex-shrink-0 w-28 h-28">
@@ -911,7 +911,7 @@ export default function OverviewTab({
                 },
                 {
                   title: 'الطلبات المكتملة', value: paidOrders.length, icon: CreditCard, bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200',
-                  onDetail: () => setKpiModal({ title: 'الطلبات المكتملة', rows: paidOrders.slice(0, 50).map((o: any) => ({ label: o.subscriberName || o.subscriber_name || o.name || '', sub: `${Number(o.amount || 0).toLocaleString('ar-EG')} ج.م · ${String(o.date || '').slice(0, 10)}` })) }),
+                  onDetail: () => setKpiModal({ title: 'الطلبات المكتملة', rows: paidOrders.slice(0, 50).map((o: any) => ({ label: o.subscriberName || o.subscriber_name || o.name || '', sub: `${Number(o.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م · ${String(o.date || '').slice(0, 10)}` })) }),
                 },
                 {
                   title: 'الكورسات', value: courses.length, icon: BookOpen, bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200',
@@ -926,11 +926,11 @@ export default function OverviewTab({
                   onDetail: () => setKpiModal({ title: 'منشورات المجتمع', rows: (communityPosts as any[]).slice(0, 30).map(p => ({ label: p.authorName || p.author_name || 'مجهول', sub: String(p.content || '').slice(0, 60) })) }),
                 },
                 {
-                  title: 'الإيراد التقريبي (ج.م)', value: totalRevenue.toLocaleString('ar-EG'), icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200',
+                  title: 'الإيراد التقريبي (ج.م)', value: totalRevenue.toLocaleString('ar-EG-u-nu-latn'), icon: BarChart3, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200',
                   onDetail: () => setKpiModal({ title: 'تفاصيل الإيراد', rows: [
-                    { label: 'إجمالي المدفوعات', sub: `${totalRevenue.toLocaleString('ar-EG')} ج.م` },
+                    { label: 'إجمالي المدفوعات', sub: `${totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م` },
                     { label: 'عدد الطلبات المكتملة', sub: String(paidOrders.length) },
-                    { label: 'متوسط قيمة الطلب', sub: paidOrders.length ? `${Math.round(totalRevenue / paidOrders.length).toLocaleString('ar-EG')} ج.م` : '0' },
+                    { label: 'متوسط قيمة الطلب', sub: paidOrders.length ? `${Math.round(totalRevenue / paidOrders.length).toLocaleString('ar-EG-u-nu-latn')} ج.م` : '0' },
                   ] }),
                 },
                 ...(isAdmin ? [{
@@ -944,7 +944,7 @@ export default function OverviewTab({
                   {isAdmin && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[
-                        { label: 'إيراد اليوم', value: `${Math.round(todayRevenue).toLocaleString('ar-EG')} ج`, color: 'from-emerald-500 to-teal-600' },
+                        { label: 'إيراد اليوم', value: `${Math.round(todayRevenue).toLocaleString('ar-EG-u-nu-latn')} ج`, color: 'from-emerald-500 to-teal-600' },
                         { label: 'إيراد الشهر', value: `${Math.round(monthRevenue / 1000)}K ج`, color: 'from-blue-500 to-indigo-600' },
                         { label: 'عملاء أونلاين اليوم', value: String(todayNewSubscribers), color: 'from-violet-500 to-purple-600' },
                         { label: 'عملاء محتملون اليوم', value: String(todayNewLeads), color: 'from-amber-500 to-orange-600' },

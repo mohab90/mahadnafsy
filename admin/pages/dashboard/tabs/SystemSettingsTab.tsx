@@ -146,7 +146,7 @@ function parseContentSections(raw: Record<string, string>): Partial<Record<Secti
   // Exchange rates
   const exchange_rates: ExchangeRates = {
     sar_to_egp: parseFloat(raw['exchange.sar_to_egp'] || '13') || 13,
-    usd_to_egp: parseFloat(raw['exchange.usd_to_egp'] || '50') || 50,
+    usd_to_egp: parseFloat(raw['exchange.usd_to_egp'] || '48') || 48,
   };
 
   return { branches, payment_methods, cert_pricing, exchange_rates };
@@ -946,7 +946,7 @@ const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
                       {b.status === 'success' ? '✅ نجح' : b.status === 'failed' ? '❌ فشل' : b.status || '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{b.created_at ? new Date(b.created_at).toLocaleString('ar-EG') : '—'}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{b.created_at ? new Date(b.created_at).toLocaleString('ar-EG-u-nu-latn') : '—'}</td>
                   <td className="px-4 py-3 text-center">
                     {b.fileExists && b.filename ? (
                       <button onClick={() => download(b.filename)}

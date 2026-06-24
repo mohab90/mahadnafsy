@@ -411,7 +411,7 @@ export default function OrdersTab({
                 const d = new Date(); d.setDate(d.getDate() - (6 - i));
                 const ds = d.toISOString().slice(0, 10);
                 const rev = paidAll.filter(r => (r.createdAt || '').slice(0, 10) === ds).reduce((s, r) => s + toEGP(r), 0);
-                const label = d.toLocaleDateString('ar-EG', { weekday: 'short' });
+                const label = d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' });
                 return { ds, rev, label };
               });
               const maxRev = Math.max(...last7.map(d => d.rev), 1);
@@ -694,7 +694,7 @@ export default function OrdersTab({
                                   const fmtDate = (() => {
                                     if (!row.createdAt) return '—';
                                     const d = new Date(row.createdAt.replace(' ','T'));
-                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
                                   })();
                                   return (
                                     <tr key={row.id} className={`border-b border-gray-100 ${rowBg} transition-colors`}>
@@ -804,7 +804,7 @@ export default function OrdersTab({
                             const fmtDate = (() => {
                               if (!row.createdAt) return '—';
                               const d = new Date(row.createdAt.replace(' ', 'T'));
-                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                             })();
                             const productTitle = (() => {
                               const t = (row.itemTitle || '').toLowerCase().trim();

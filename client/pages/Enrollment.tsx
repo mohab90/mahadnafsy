@@ -140,7 +140,7 @@ const Enrollment: React.FC = () => {
       // Build WhatsApp message with order details
       const firstItem = chosenCourses[0];
       const itemTitles = chosenCourses.map(c => c.title).join('، ');
-      const waMsg = `مرحباً، أريد الاشتراك في:\n${itemTitles}\n\nالإجمالي: ${totalFinal.toLocaleString('ar-EG')} ${currencySymbol} (${payType === 'cash' ? 'كاش - خصم 15%' : 'أول قسط 25%'})\nالاسم: ${fullName.trim()}\nالهاتف: ${phone.trim()}\nالبريد: ${email.trim()}`;
+      const waMsg = `مرحباً، أريد الاشتراك في:\n${itemTitles}\n\nالإجمالي: ${totalFinal.toLocaleString('ar-EG-u-nu-latn')} ${currencySymbol} (${payType === 'cash' ? 'كاش - خصم 15%' : 'أول قسط 25%'})\nالاسم: ${fullName.trim()}\nالهاتف: ${phone.trim()}\nالبريد: ${email.trim()}`;
       setRegisteredWhatsapp(encodeURIComponent(waMsg));
       void uid; void firstItem;
       setSubmitted(true);
@@ -287,8 +287,8 @@ const Enrollment: React.FC = () => {
                             }
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="font-extrabold text-gray-900 text-sm">{getCharged(item).toLocaleString('ar-EG')} <span className="text-xs font-normal text-gray-400">{currencySymbol}</span></p>
-                            <p className="text-[10px] text-gray-400 line-through">{getBasePrice(item).toLocaleString('ar-EG')}</p>
+                            <p className="font-extrabold text-gray-900 text-sm">{getCharged(item).toLocaleString('ar-EG-u-nu-latn')} <span className="text-xs font-normal text-gray-400">{currencySymbol}</span></p>
+                            <p className="text-[10px] text-gray-400 line-through">{getBasePrice(item).toLocaleString('ar-EG-u-nu-latn')}</p>
                           </div>
                         </div>
                       )}
@@ -330,26 +330,26 @@ const Enrollment: React.FC = () => {
                       <p className="text-xs font-bold text-gray-700 line-clamp-1 mb-1.5">{c.title}</p>
                       {payType === 'cash' ? (
                         <div className="flex justify-between text-xs">
-                          <span className="text-gray-400 line-through">{base.toLocaleString('ar-EG')} {currencySymbol}</span>
-                          <span className="font-extrabold text-green-700">{first.toLocaleString('ar-EG')} {currencySymbol}</span>
+                          <span className="text-gray-400 line-through">{base.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
+                          <span className="font-extrabold text-green-700">{first.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                         </div>
                       ) : (
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs text-gray-400">
                             <span className="line-through">السعر الكامل</span>
-                            <span className="line-through font-bold">{base.toLocaleString('ar-EG')} {currencySymbol}</span>
+                            <span className="line-through font-bold">{base.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                           <div className="flex justify-between text-xs text-green-700">
                             <span>بعد خصم 7% <span className="text-[10px] bg-green-100 px-1 rounded">سعر الأقساط</span></span>
-                            <span className="font-bold">{installTotal.toLocaleString('ar-EG')} {currencySymbol}</span>
+                            <span className="font-bold">{installTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                           <div className="flex justify-between text-xs text-amber-700">
                             <span>الدفعة الأولى <span className="text-[10px] bg-amber-100 px-1 rounded">25%</span></span>
-                            <span className="font-extrabold">{first.toLocaleString('ar-EG')} {currencySymbol}</span>
+                            <span className="font-extrabold">{first.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                           <div className="flex justify-between text-xs text-gray-400">
                             <span>الباقي (أقساط لاحقة)</span>
-                            <span className="font-bold">{(installTotal - first).toLocaleString('ar-EG')} {currencySymbol}</span>
+                            <span className="font-bold">{(installTotal - first).toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                           </div>
                         </div>
                       )}
@@ -361,14 +361,14 @@ const Enrollment: React.FC = () => {
                 {totalSaving > 0 && (
                   <div className={`flex justify-between text-xs mt-1 pt-1 border-t ${payType === 'cash' ? 'text-green-700 border-green-200' : 'text-green-700 border-gray-200'}`}>
                     <span>{payType === 'cash' ? 'إجمالي الوفورات' : 'وفورات خصم 7%'}</span>
-                    <span className="font-bold">-{totalSaving.toLocaleString('ar-EG')} {currencySymbol}</span>
+                    <span className="font-bold">-{totalSaving.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</span>
                   </div>
                 )}
 
                 {/* Installment warning */}
                 {payType === 'installment' && (
                   <div className="bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 mt-3 text-xs text-amber-800">
-                    <strong>⚠️ تنبيه:</strong> سعر الأقساط بعد خصم 7% = <strong>{totalInstallTotal.toLocaleString('ar-EG')} {currencySymbol}</strong>.
+                    <strong>⚠️ تنبيه:</strong> سعر الأقساط بعد خصم 7% = <strong>{totalInstallTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</strong>.
                     المبلغ المطلوب الآن هو <strong>القسط الأول (25%)</strong> فقط. تفاصيل الأقساط المتبقية ستُرسل إليك بعد التسجيل.
                   </div>
                 )}
@@ -379,12 +379,12 @@ const Enrollment: React.FC = () => {
                     {payType === 'installment' ? 'الدفعة الأولى المطلوبة الآن' : 'الإجمالي'}
                   </span>
                   <span className="text-xl font-extrabold text-gray-900">
-                    {totalFinal.toLocaleString('ar-EG')} <span className="text-sm font-normal text-gray-500">{currencySymbol}</span>
+                    {totalFinal.toLocaleString('ar-EG-u-nu-latn')} <span className="text-sm font-normal text-gray-500">{currencySymbol}</span>
                   </span>
                 </div>
                 {payType === 'installment' && (
                   <p className="text-[10px] text-gray-400 text-left mt-1">
-                    السعر قبل الخصم: {totalOriginal.toLocaleString('ar-EG')} {currencySymbol} · بعد خصم 7%: {totalInstallTotal.toLocaleString('ar-EG')} {currencySymbol}
+                    السعر قبل الخصم: {totalOriginal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol} · بعد خصم 7%: {totalInstallTotal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}
                   </p>
                 )}
               </div>
@@ -483,7 +483,7 @@ const Enrollment: React.FC = () => {
                 >
                   {loading
                     ? <><Loader2 size={18} className="animate-spin" /> جاري التجهيز...</>
-                    : <><MessageCircle size={18} /> سجّل وتواصل معنا — {totalFinal.toLocaleString('ar-EG')} {currencySymbol}</>
+                    : <><MessageCircle size={18} /> سجّل وتواصل معنا — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>
                   }
                 </button>
               </form>

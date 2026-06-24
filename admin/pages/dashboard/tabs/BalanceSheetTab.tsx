@@ -44,7 +44,7 @@ const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
-  const fmt = (n: number) => Math.abs(n).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const fmt = (n: number) => Math.abs(n).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 
   if (loading) {
     return (

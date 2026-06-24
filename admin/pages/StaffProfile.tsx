@@ -14,7 +14,7 @@ import {
 const toEGP = (amt: number, cur: string) =>
   cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
 
-const fmt = (n: number) => n.toLocaleString('ar-EG');
+const fmt = (n: number) => n.toLocaleString('ar-EG-u-nu-latn');
 
 const formatWaPhone = (p: string) => {
   const d = p.replace(/\D/g, '');

@@ -426,7 +426,7 @@ const seedData = {
 const SiteDataContext = createContext<SiteDataShape | null>(null);
 
 function nowLabel() {
-  return new Date().toLocaleString('ar-EG', {
+  return new Date().toLocaleString('ar-EG-u-nu-latn', {
     hour12: false,
     year: 'numeric',
     month: '2-digit',
