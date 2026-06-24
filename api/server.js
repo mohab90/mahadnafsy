@@ -308,19 +308,29 @@ setInterval(() => {
   } catch (_) {}
 }, 30 * 60 * 1000);
 
+// Background jobs (customer-messaging crons, outbox/worker drain, gsheet sync,
+// daily backup, self-ping) run ONLY in production — or when explicitly forced
+// via ENABLE_LOCAL_JOBS=1. A local/dev instance connects to the SAME production
+// DB over the SSH tunnel, so without this guard it would send real WhatsApp/email
+// to customers, import leads, and run mysqldump. Prod sets NODE_ENV=production,
+// so its behaviour is unchanged.
+const ENABLE_BACKGROUND_JOBS = process.env.NODE_ENV === 'production' || process.env.ENABLE_LOCAL_JOBS === '1';
+
 // ── Google Sheets auto-sync every 30 minutes ──────────────────────────────
 // Runs on startup (after 20s to allow DB pool to stabilise) then every 30 min
-setTimeout(() => {
-  syncAllConfiguredSheets()
-    .then(r => { if (r && r.imported > 0) logger.info(`[GSheet startup-sync] Imported ${r.imported} new leads`); })
-    .catch(e => logger.warn('[GSheet startup-sync] error:', e.message));
-}, 20_000);
+if (ENABLE_BACKGROUND_JOBS) {
+  setTimeout(() => {
+    syncAllConfiguredSheets()
+      .then(r => { if (r && r.imported > 0) logger.info(`[GSheet startup-sync] Imported ${r.imported} new leads`); })
+      .catch(e => logger.warn('[GSheet startup-sync] error:', e.message));
+  }, 20_000);
 
-setInterval(() => {
-  syncAllConfiguredSheets()
-    .then(r => { if (r && r.imported > 0) logger.info(`[GSheet auto-sync] Imported ${r.imported} new leads`); })
-    .catch(e => logger.warn('[GSheet auto-sync] error:', e.message));
-}, 30 * 60 * 1000);
+  setInterval(() => {
+    syncAllConfiguredSheets()
+      .then(r => { if (r && r.imported > 0) logger.info(`[GSheet auto-sync] Imported ${r.imported} new leads`); })
+      .catch(e => logger.warn('[GSheet auto-sync] error:', e.message));
+  }, 30 * 60 * 1000);
+}
 
 if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
   logger.error('[FATAL] DB_USER / DB_PASSWORD / DB_NAME must be set in .env');
@@ -582,6 +592,14 @@ const server = app.listen(PORT, () => {
 
   // Initialize optional error monitoring (Sentry — no-op unless SENTRY_DSN + package present)
   require('./lib/errorMonitor').initErrorMonitor();
+
+  // Skip ALL background scheduling on non-production (local/dev) instances so a
+  // dev box wired to the production DB never messages customers, imports leads,
+  // or runs backups. Everything below this point is cron/worker/self-ping setup.
+  if (!ENABLE_BACKGROUND_JOBS) {
+    logger.info('[jobs] Background jobs DISABLED (non-production). Set ENABLE_LOCAL_JOBS=1 to enable.');
+    return;
+  }
 
   // ── Installment reminder Cron (runs once per hour, checks due in 3 days) ──
   const CRON_INTERVAL_MS = 60 * 60 * 1000; // every hour
