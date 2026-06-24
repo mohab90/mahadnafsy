@@ -90,6 +90,7 @@ import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useRoleDefaultTab } from './dashboard/useRoleDefaultTab';
+import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SafeHtml } from '../components/SafeHtml';
 import {
@@ -364,37 +365,8 @@ const Dashboard: React.FC = () => {
     setStaffScopedLeads,
   } = useSiteData();
 
-  const inboxUnreadCount = useMemo(() =>
-    notifications.filter(n => !n.isRead).length,
-    [notifications]
-  );
-
-  // branch label map from admin settings
-  const instituteBranches = useMemo(() => {
-    try {
-      const parsed = JSON.parse(content['institute.branches'] || '[]');
-      return Array.isArray(parsed) ? parsed as BranchEntry[] : [];
-    } catch { return [] as BranchEntry[]; }
-  }, [content]);
-  const branchLabelMap = useMemo((): Record<string, string> => {
-    const base = Object.fromEntries(instituteBranches.flatMap(b => [
-      [b.id, b.label],
-      [normBranchId(b.id), b.label],
-    ]));
-    // Legacy / un-normalized values that may still appear in DB or old records
-    return {
-      ...base,
-      'online-egypt':        base['ONLINE_EGYPT']  || 'أونلاين مصر',
-      'online-saudi':        base['ONLINE_SAUDI']  || 'أونلاين السعودية',
-      'online-abroad':       base['ONLINE_ABROAD'] || 'أونلاين خارج مصر',
-      'online-26':           base['ONLINE_EGYPT']  || 'أونلاين مصر',
-      'daqqi':               base['DAQQI']         || 'دقي',
-      'tagamoa':             base['TAGAMOA']       || 'التجمع',
-      'other':               'أخرى',
-      'اون_لاين_داخل_مصر':  base['ONLINE_EGYPT']  || 'أونلاين مصر',
-      'اونلاين_داخل_مصر':   base['ONLINE_EGYPT']  || 'أونلاين مصر',
-    };
-  }, [instituteBranches]);
+  // Pure derived values (inbox count + branch list/labels) — extracted to ./dashboard/useDashboardDerived
+  const { inboxUnreadCount, instituteBranches, branchLabelMap } = useDashboardDerived(content, notifications);
   const toast = useToast();
   const notify = (type: 'success' | 'error' | 'info', text: string) => toast.show(text, type);
 
