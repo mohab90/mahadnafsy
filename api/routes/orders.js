@@ -10,6 +10,11 @@ const { logPaymentAudit } = require('../lib/finance');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { safeIsoString } = require('../lib/dates');
 
+// Reconciliation: a customer payment (order) can be linked to a bank transfer so
+// the accountant's match is recorded + auditable. Idempotent, metadata-only add
+// (a nullable column at the end — instant, no table rebuild).
+pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS linked_transfer_id VARCHAR(36) DEFAULT NULL').catch(() => {});
+
 // GET /api/admin/orders
 router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -17,7 +22,7 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT id, type, item_id, item_title, amount, currency, payment_method, customer_name,
        customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
-       course_id, bundle_id, notes, staff_id, staff_name, created_at, paid_at
+       course_id, bundle_id, notes, staff_id, staff_name, created_at, paid_at, linked_transfer_id
        FROM orders ORDER BY created_at DESC LIMIT ?`, [limit]);
 
     const [payRows] = await pool.query(
@@ -57,6 +62,7 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
         staff_name: p.staff_name || null,
         notes: p.note || null,
         created_at: safeIsoString(p.date) || new Date().toISOString(),
+        linked_transfer_id: null,
         source: 'crm',
       }));
 
@@ -99,6 +105,10 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res
     const newStatus = req.body.status || 'pending';
     const [[oldPay]] = await pool.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
     await pool.query('UPDATE orders SET status=? WHERE id=?', [newStatus, req.params.id]);
+    // Record the transfer↔payment reconciliation link when the accountant matches them.
+    if (Object.prototype.hasOwnProperty.call(req.body, 'linked_transfer_id')) {
+      await pool.query('UPDATE orders SET linked_transfer_id=? WHERE id=?', [req.body.linked_transfer_id || null, req.params.id]).catch(() => {});
+    }
     await pool.query('UPDATE payments SET status=? WHERE id=?', [newStatus, req.params.id]).catch(() => {});
     logPaymentAudit(req.params.id, 'update', oldPay?.status || null, newStatus, oldPay?.amount || null, oldPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
     if (newStatus === 'paid' || newStatus === 'failed') {

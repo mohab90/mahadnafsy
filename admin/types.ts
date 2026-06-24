@@ -546,6 +546,7 @@ export interface OrderItem {
   courseName?: string;
   leadId?: string;
   source?: string;
+  linkedTransferId?: string;  // For a customer payment: the bank transfer it was reconciled/matched against
 }
 
 export interface TestimonialItem {

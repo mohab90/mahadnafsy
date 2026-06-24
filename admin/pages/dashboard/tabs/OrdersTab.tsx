@@ -82,6 +82,14 @@ export default function OrdersTab({
   const [showAddTransfer, setShowAddTransfer] = useState(false);
   const [linkTransferModal, setLinkTransferModal] = useState<{ row: OrderItem } | null>(null);
   const [linkOrderModal, setLinkOrderModal] = useState<{ row: OrderItem } | null>(null);
+  const [consumedTransferIds, setConsumedTransferIds] = useState<Set<string>>(new Set());
+  // A transfer is "used up" once an order is linked to it (persisted linkedTransferId,
+  // or linked this session) — so the same transfer can't confirm two different payments.
+  const consumedTransfers = useMemo(() => {
+    const s = new Set<string>(consumedTransferIds);
+    for (const o of effectiveOrders) if (o.linkedTransferId) s.add(o.linkedTransferId);
+    return s;
+  }, [effectiveOrders, consumedTransferIds]);
   const [transferForm, setTransferForm] = useState<TransferForm>({
     amount: '', currency: 'EGP', method: '', senderName: '', senderPhone: '',
     reference: '', note: '', date: new Date().toISOString().slice(0, 10),
@@ -735,10 +743,14 @@ export default function OrdersTab({
                                                 className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold transition">✕</button>
                                             </>
                                           )}
-                                          <button onClick={() => setLinkTransferModal({ row })}
-                                            className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
-                                            🔗 ربط
-                                          </button>
+                                          {consumedTransfers.has(row.id) ? (
+                                            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-bold" title="هذا التحويل مربوط بدفعة عميل ومؤكَّد">✓ مربوطة</span>
+                                          ) : (
+                                            <button onClick={() => setLinkTransferModal({ row })}
+                                              className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
+                                              🔗 ربط
+                                            </button>
+                                          )}
                                           <button onClick={() => deleteOrder(row.id)}
                                             className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
                                             <Trash2 size={11} />
@@ -944,7 +956,9 @@ export default function OrdersTab({
                             ) : pendingOrders.map(order => (
                               <button key={order.id}
                                 onClick={() => {
+                                  void mysqlAdmin.linkOrderTransfer(order.id, transfer.id);
                                   updateOrderStatus(order.id, 'paid');
+                                  setConsumedTransferIds(prev => new Set(prev).add(transfer.id));
                                   notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
                                   setLinkTransferModal(null);
                                   setOrderReviewTab('accepted');
@@ -980,7 +994,7 @@ export default function OrdersTab({
                   ══════════════════════════════════════════ */}
                   {linkOrderModal && (() => {
                     const order = linkOrderModal.row;
-                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid');
+                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid' && !consumedTransfers.has(r.id));
                     return (
                       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLinkOrderModal(null)} />
@@ -1004,7 +1018,9 @@ export default function OrdersTab({
                             ) : availableTransfers.map(transfer => (
                               <button key={transfer.id}
                                 onClick={() => {
+                                  void mysqlAdmin.linkOrderTransfer(order.id, transfer.id);
                                   updateOrderStatus(order.id, 'paid');
+                                  setConsumedTransferIds(prev => new Set(prev).add(transfer.id));
                                   notify('success', `✅ تم ربط دفعة ${order.customerName} بتحويل ${transfer.customerName} وتأكيدها`);
                                   setLinkOrderModal(null);
                                   setOrderReviewTab('accepted');

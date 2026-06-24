@@ -130,7 +130,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
     // ── Section 1: Overview ──
     sections.push('=== ملخص مالي ===');
     sections.push(row('الإيرادات الإجمالية (ج.م)', 'المصروفات الإجمالية (ج.م)', 'صافي الربح (ج.م)', 'هامش الربح %'));
-    const pOrd = orders.filter(o => o.status === 'paid' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
+    const pOrd = orders.filter(o => o.status === 'paid' && o.type !== 'transfer' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
     const mPay = subscribers.flatMap(s => (s.paymentHistory ?? []).filter(p => (!p.status || p.status === 'paid') && (p.paymentMethod || '') !== 'online_paymob' && !(p.paymentMethod || '').includes('Paymob')));
     const onlineRev = pOrd.reduce((s, o) => s + conv(o.amount, o.currency), 0);
     const manualRev = mPay.reduce((s, p) => s + conv(p.amount, p.currency), 0);
@@ -312,7 +312,7 @@ export default function FinancialTab({ notify, branchFilter, onNavigateTab }: { 
   const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
   const usdRate = parseFloat(content['exchange.usd_to_egp'] || '48') || 48;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
-  const paidOrders = orders.filter(o => o.status === 'paid' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
+  const paidOrders = orders.filter(o => o.status === 'paid' && o.type !== 'transfer' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
   // All paymentHistory entries across subscribers — only confirmed/paid entries count toward revenue
   const allPaymentHistory = subscribers.flatMap(s => s.paymentHistory ?? []);
   // Truly manual payments: only paid status, exclude Paymob online entries (already in paidOrders above)

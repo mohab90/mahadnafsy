@@ -619,6 +619,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             transactionId: (r.transactionId ?? r.transaction_id) as string | undefined,
             staffId: (r.staffId ?? r.staff_id ?? undefined) as string | undefined,
             staffName: (r.staffName ?? r.staff_name ?? undefined) as string | undefined,
+            linkedTransferId: (r.linkedTransferId ?? r.linked_transfer_id ?? undefined) as string | undefined,
           }));
           setOrders(normalized as OrderItem[]);
         }
