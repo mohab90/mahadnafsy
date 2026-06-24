@@ -10,14 +10,7 @@ const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو
 const CATEGORIES: ExpenseCategory[] = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'أخرى'];
 
 type BudgetMap = Record<string, number>; // category → budgeted amount
-const LS_BUDGET_KEY = 'mahad_budget_v1';
-
-function loadBudgets(month: string): BudgetMap {
-  try { return JSON.parse(localStorage.getItem(`${LS_BUDGET_KEY}_${month}`) || '{}'); } catch { return {}; }
-}
-function saveBudgets(month: string, data: BudgetMap) {
-  localStorage.setItem(`${LS_BUDGET_KEY}_${month}`, JSON.stringify(data));
-}
+const DEFAULT_BUDGETS: BudgetMap = { 'رواتب': 25000, 'تسويق': 5000, 'إيجار': 8000, 'برمجيات': 2000, 'معدات': 1000, 'أخرى': 2000 };
 
 const CAT_COLORS: Record<string, string> = {
   'رواتب': '#6366f1', 'تسويق': '#a855f7', 'إيجار': '#f59e0b',
@@ -28,20 +21,26 @@ const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
   const { orders, expenses } = useSiteData();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-  const [budgets, setBudgets] = useState<BudgetMap>(() => loadBudgets(selectedMonth));
+  const [budgets, setBudgets] = useState<BudgetMap>({});
   const [editMode, setEditMode] = useState(false);
   const [draftBudgets, setDraftBudgets] = useState<BudgetMap>({});
 
+  // Load budgets for the selected month from the server (shared + persistent).
   useEffect(() => {
-    const loaded = loadBudgets(selectedMonth);
-    // Seed defaults if empty
-    if (Object.keys(loaded).length === 0) {
-      const defaults: BudgetMap = { 'رواتب': 25000, 'تسويق': 5000, 'إيجار': 8000, 'برمجيات': 2000, 'معدات': 1000, 'أخرى': 2000 };
-      setBudgets(defaults);
-      saveBudgets(selectedMonth, defaults);
-    } else {
-      setBudgets(loaded);
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/admin/finance/budgets?month=${selectedMonth}`, { credentials: 'include' });
+        if (!r.ok) throw new Error('load failed');
+        const data = await r.json() as { category: string; limit: number }[];
+        if (cancelled) return;
+        const map: BudgetMap = {};
+        for (const b of (data || [])) map[b.category] = Number(b.limit) || 0;
+        // Show sensible defaults the first time a month has no saved budget yet.
+        setBudgets(Object.keys(map).length === 0 ? { ...DEFAULT_BUDGETS } : map);
+      } catch { if (!cancelled) setBudgets({ ...DEFAULT_BUDGETS }); }
+    })();
+    return () => { cancelled = true; };
   }, [selectedMonth]);
 
   const { actuals, revenue, rows } = useMemo(() => {
@@ -74,11 +73,22 @@ const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
   const overBudgetCount = rows.filter(r => r.status === 'over').length;
   const budgetUtilization = totalBudget > 0 ? Math.round(totalActual / totalBudget * 100) : 0;
 
-  const saveEdits = () => {
-    setBudgets(draftBudgets);
-    saveBudgets(selectedMonth, draftBudgets);
-    setEditMode(false);
-    notify('success', 'تم حفظ الميزانية');
+  const saveEdits = async () => {
+    try {
+      const payload = {
+        month: selectedMonth,
+        budgets: Object.entries(draftBudgets).map(([category, limit]) => ({ category, limit: Number(limit) || 0 })),
+      };
+      const r = await fetch('/api/admin/finance/budgets', {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('save failed');
+      setBudgets(draftBudgets);
+      setEditMode(false);
+      notify('success', 'تم حفظ الميزانية');
+    } catch { notify('error', 'فشل حفظ الميزانية — تأكد من الاتصال وحاول مرة أخرى'); }
   };
 
   const startEdit = () => {
