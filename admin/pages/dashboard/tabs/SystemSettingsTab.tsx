@@ -58,7 +58,9 @@ const SECTIONS = [
   { key: 'templates',          label: 'قوالب الرسائل',       icon: MessageSquareText, color: 'green', source: 'templates', group: 'platform' },
   { key: 'email_settings',     label: 'البريد الإلكتروني',   icon: Mail,            color: 'blue',    source: 'embed',    group: 'platform' },
   { key: 'lifecycle',          label: 'رحلة العميل',         icon: Workflow,        color: 'emerald', source: 'embed',    group: 'platform' },
-  { key: 'webhooks',           label: 'Webhooks',            icon: Zap,             color: 'amber',   source: 'embed',    group: 'platform' },
+  // 'webhooks' hidden: the tab was a client-side mockup (localStorage + Math.random
+  // simulated deliveries) with no real outgoing-webhook backend, so it showed fake
+  // data. Re-add once a real delivery backend exists.
   // ── الذكاء الاصطناعي ──
   { key: 'messaging_agent',    label: 'عميل المراسلة AI',    icon: Bot,             color: 'sky',     source: 'embed',    group: 'ai' },
   { key: 'admin_ai_settings',  label: 'إعدادات الذكاء',      icon: Settings,        color: 'violet',  source: 'embed',    group: 'ai' },
