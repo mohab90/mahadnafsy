@@ -15,7 +15,7 @@ const { logLeadEvent } = require('../lib/crm');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { JWT_SECRET, JWT_EXPIRY, revokeToken } = require('../lib/token');
-const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireAdminOrOnlineManager } = require('../middleware/auth');
+const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter } = require('../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../middleware/validate');
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ router.post('/api/user/signup', registerLimiter,
 
 // POST /api/admin/staff-account — create login account for a staff member (admin only)
 // Creates the user in `users` table + inserts/updates `staff` table
-router.post('/api/admin/staff-account', requireAuth, requireAdmin,
+router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin,
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
     password: v => isString(v, 200) && (v || '').length >= 6 || 'Password must be at least 6 characters',
@@ -855,8 +855,9 @@ router.put('/api/auth/update-password', requireAuth, async (req, res) => {
   } finally { conn.release(); }
 });
 
-// POST /api/admin/force-reset-password (admin-only direct password reset by email)
-router.post('/api/admin/force-reset-password', requireAuth, requireAdmin, async (req, res) => {
+// POST /api/admin/force-reset-password — direct password reset by email (super-admin only:
+// it can reset ANY account incl. admins, so online/daqqi managers must not have it).
+router.post('/api/admin/force-reset-password', requireAuth, requireSuperAdmin, async (req, res) => {
   const { email, newPassword } = req.body || {};
   if (!email || !newPassword) return res.status(400).json({ error: 'Email and new password required' });
   const conn = await pool.getConnection();

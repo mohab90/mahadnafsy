@@ -78,6 +78,29 @@ async function requireAdmin(req, res, next) {
   res.status(403).json({ error: 'Admin only' });
 }
 
+// Stricter than requireAdmin: ONLY true admins (ADMIN_EMAILS/UIDS) + the 'manager'
+// role. Used for privilege-sensitive actions (create/delete staff, set password,
+// toggle active, create staff accounts). Excludes online_manager/daqqi_manager so
+// they cannot escalate privileges — their operational access (which uses
+// requireAdmin) is unchanged.
+const SUPER_ADMIN_ROLES = ['admin', 'manager'];
+async function requireSuperAdmin(req, res, next) {
+  const { email, uid } = req.user || {};
+  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) { req.isSuperAdmin = true; return next(); }
+  try {
+    const [[staff]] = await pool.query(
+      `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
+      [(email || '').toLowerCase().trim()]
+    );
+    if (staff && SUPER_ADMIN_ROLES.includes((staff.role || '').toLowerCase())) {
+      req.staffRecord = staff;
+      req.isSuperAdmin = true;
+      return next();
+    }
+  } catch (e) { logger.error('[requireSuperAdmin]', e.message); }
+  res.status(403).json({ error: 'غير مصرح — إدارة الموظفين للمدير العام فقط' });
+}
+
 async function requireAdminOrOnlineManager(req, res, next) {
   const { email, uid } = req.user || {};
   if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) { req.isSuperAdmin = true; return next(); }
@@ -145,7 +168,7 @@ function requirePermission(permission) {
 
 module.exports = {
   ADMIN_EMAILS, ADMIN_UIDS, ROLE_DEFAULT_PERMISSIONS_BE,
-  optionalAuth, requireAuth, requireAdmin,
+  optionalAuth, requireAuth, requireAdmin, requireSuperAdmin,
   requireAdminOrOnlineManager, requireAdminOrOnlineManagerOrCollection,
   requireAdminOrStaff, requirePermission,
 };

@@ -8,7 +8,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { mailer, sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: SMS Integration (via WhatsApp fallback / Vonage / InfoBip) ───
@@ -1672,7 +1672,7 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res
 });
 
 // POST /api/admin/staff/:id/set-password — admin sets password for staff member
-router.post('/api/admin/staff/:id/set-password', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { password } = req.body;
     if (!password || password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
@@ -1693,7 +1693,7 @@ router.post('/api/admin/staff/:id/set-password', requireAuth, requireAdmin, asyn
 });
 
 // POST /api/admin/staff/:id/toggle-active — enable/disable staff login
-router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const [[staff]] = await pool.query('SELECT id, is_active, email FROM staff WHERE id=? LIMIT 1', [req.params.id]);
     if (!staff) return res.status(404).json({ error: 'Not found' });

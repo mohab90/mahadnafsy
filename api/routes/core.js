@@ -16,7 +16,7 @@ const { assertWritable } = require('../lib/periodLock');
 const { syncLeadDealValue } = require('./public-orders');
 const { logLeadEvent } = require('../lib/crm');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
-const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { paymobLimiter, whatsappSendLimiter, publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 const { safeDateOnly } = require('../lib/dates');
 const { isString, validateBody } = require('../middleware/validate');
@@ -185,7 +185,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
 });
 
 // POST /api/admin/staff
-router.post('/api/admin/staff', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const s = req.body;
     const id = s.id || uuidv4();
@@ -509,7 +509,7 @@ router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, async (req, res
   try { await pool.query('UPDATE leads SET hidden = 1 WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/staff/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/staff/:id', requireAuth, requireSuperAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM staff WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
