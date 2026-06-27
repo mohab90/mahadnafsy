@@ -18,6 +18,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useCourseAccess } from './unifiedClient/useCourseAccess';
 import { useClientProofs } from './unifiedClient/useClientProofs';
+import { useInstallmentPlans } from './unifiedClient/useInstallmentPlans';
 import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../components/PaymentModal';
 import {
   LeadItem, SubscriberItem, CommunicationRecord,
@@ -290,20 +291,8 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const [showLegacyPayForm, setShowLegacyPayForm] = useState(false);
   const [legacyPayDraft, setLegacyPayDraft] = useState({ courseId: '', courseExpected: '', amountPaid: '', note: '' });
 
-  // ── installment plans ──────────────────────────────────────────────────────
-  const [showInstPlanForm, setShowInstPlanForm] = useState(false);
-  const [instPlanDraft, setInstPlanDraft] = useState({
-    courseId: '',                       // courseId or 'bundle:bundleId'
-    currency: 'EGP' as 'EGP' | 'SAR' | 'USD',
-    amountPerInst: '',                  // قيمة القسط (user fills)
-    numInstallments: '3',              // auto or user override
-    inputMode: 'count' as 'count' | 'amount', // which field is primary
-    startDate: new Date().toISOString().slice(0, 10),
-    intervalDays: '30', notes: '',
-  });
-  const [payingEntryKey, setPayingEntryKey] = useState<string | null>(null); // `${planId}::${entryId}`
-  const [payEntryAmount, setPayEntryAmount] = useState('');
-  const [payEntryDate, setPayEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  // ── installment plans → ./unifiedClient/useInstallmentPlans (called below,
+  //    after getInstBookingInfo is defined, since the hook needs it injected) ──
 
   // ── payment proofs → ./unifiedClient/useClientProofs (names unchanged) ──────
   const {
@@ -716,88 +705,14 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     return { expectedEGP, paidEGP, remainingEGP: Math.max(0, expectedEGP - paidEGP), currency: 'EGP' as const, title: c?.title || '' };
   };
 
-  const handleCreateInstallmentPlan = () => {
-    if (!subscriber || !instPlanDraft.courseId || !instPlanDraft.numInstallments) return;
-    const info = getInstBookingInfo(instPlanDraft.courseId);
-    const remaining = info.remainingEGP;
-    const n = Math.max(1, Number(instPlanDraft.numInstallments));
-    const perInstRaw = instPlanDraft.inputMode === 'amount' && instPlanDraft.amountPerInst
-      ? Number(instPlanDraft.amountPerInst)
-      : Math.floor(remaining / n);
-    const perInst = Math.max(1, perInstRaw);
-    const actualN = instPlanDraft.inputMode === 'amount' && instPlanDraft.amountPerInst
-      ? Math.ceil(remaining / perInst)
-      : n;
-    const intervalDays = Number(instPlanDraft.intervalDays || 30);
-    const startDate = new Date(instPlanDraft.startDate);
-
-    const entries: InstallmentEntry[] = Array.from({ length: actualN }, (_, i) => {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i * intervalDays);
-      const isLast = i === actualN - 1;
-      return {
-        id: `ie-${Date.now()}-${i}`,
-        amount: isLast ? remaining - perInst * (actualN - 1) : perInst,
-        currency: instPlanDraft.currency,
-        dueDate: d.toISOString().slice(0, 10),
-      };
-    });
-
-    const isBundleSel = instPlanDraft.courseId.startsWith('bundle:');
-    const resolvedCourseId = isBundleSel ? undefined : instPlanDraft.courseId;
-    const resolvedTitle = isBundleSel
-      ? bundles.find(b => `bundle:${b.id}` === instPlanDraft.courseId)?.title
-      : courses.find(c => c.id === instPlanDraft.courseId)?.title;
-
-    const plan: InstallmentPlan = {
-      id: `ip-${Date.now()}`,
-      courseId: resolvedCourseId,
-      courseTitle: resolvedTitle,
-      totalAmount: remaining,
-      currency: instPlanDraft.currency,
-      downPayment: info.paidEGP > 0 ? info.paidEGP : undefined,
-      entries,
-      notes: instPlanDraft.notes || undefined,
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-
-    updateSubscriber({ ...subscriber, installmentPlans: [...(subscriber.installmentPlans || []), plan] });
-    setShowInstPlanForm(false);
-    setInstPlanDraft({ courseId: '', currency: 'EGP', amountPerInst: '', numInstallments: '3', inputMode: 'count', startDate: new Date().toISOString().slice(0, 10), intervalDays: '30', notes: '' });
-  };
-
-  const handlePayInstallmentEntry = (planId: string, entryId: string) => {
-    if (!subscriber) return;
-    const amt = Number(payEntryAmount);
-    if (!amt || amt <= 0) return;
-    const plans = (subscriber.installmentPlans || []).map(plan => {
-      if (plan.id !== planId) return plan;
-      return {
-        ...plan,
-        entries: plan.entries.map(e =>
-          e.id !== entryId ? e : { ...e, paidAt: payEntryDate, paidAmount: amt }
-        ),
-      };
-    });
-    updateSubscriber({ ...subscriber, installmentPlans: plans });
-    setPayingEntryKey(null);
-    setPayEntryAmount('');
-    setPayEntryDate(new Date().toISOString().slice(0, 10));
-  };
-
-  const handleDeleteInstallmentPlan = (planId: string) => {
-    if (!subscriber || !window.confirm('هل تريد حذف خطة الأقساط؟')) return;
-    updateSubscriber({ ...subscriber, installmentPlans: (subscriber.installmentPlans || []).filter(p => p.id !== planId) });
-  };
-
-  const handleDeleteInstallmentEntry = (planId: string, entryId: string) => {
-    if (!subscriber || !window.confirm('حذف هذا القسط؟')) return;
-    const plans = (subscriber.installmentPlans || []).map(plan => {
-      if (plan.id !== planId) return plan;
-      return { ...plan, entries: plan.entries.filter(e => e.id !== entryId) };
-    });
-    updateSubscriber({ ...subscriber, installmentPlans: plans });
-  };
+  // Installment-plan state + handlers (needs getInstBookingInfo, defined above).
+  const {
+    showInstPlanForm, setShowInstPlanForm, instPlanDraft, setInstPlanDraft,
+    payingEntryKey, setPayingEntryKey, payEntryAmount, setPayEntryAmount,
+    payEntryDate, setPayEntryDate,
+    handleCreateInstallmentPlan, handlePayInstallmentEntry,
+    handleDeleteInstallmentPlan, handleDeleteInstallmentEntry,
+  } = useInstallmentPlans(subscriber, getInstBookingInfo);
 
   const handleGeneratePromo = () => {
     if (!lead) return;
