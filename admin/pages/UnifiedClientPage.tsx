@@ -19,6 +19,7 @@ import { mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useCourseAccess } from './unifiedClient/useCourseAccess';
 import { useClientProofs } from './unifiedClient/useClientProofs';
 import { useInstallmentPlans } from './unifiedClient/useInstallmentPlans';
+import { useSubscriberQuickActions } from './unifiedClient/useSubscriberQuickActions';
 import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../components/PaymentModal';
 import {
   LeadItem, SubscriberItem, CommunicationRecord,
@@ -232,11 +233,12 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const [showSubPayForm, setShowSubPayForm] = useState(false);
   const [payModalDraft, setPayModalDraft] = useState<PaymentDraft>(blankPaymentDraft());
 
-  // ── grant (subscriber) ─────────────────────────────────────────────────────
-  const [showGrantForm, setShowGrantForm] = useState(false);
-  const [grantDraft, setGrantDraft] = useState({
-    courseId: '', note: '',
-  });
+  // ── grant / extra-cert / legacy-payment forms → ./unifiedClient/useSubscriberQuickActions ──
+  const {
+    showGrantForm, setShowGrantForm, grantDraft, setGrantDraft, handleGrant,
+    showExtraCertForm, setShowExtraCertForm, extraCertDraft, setExtraCertDraft, handleAddExtraCertRequest,
+    showLegacyPayForm, setShowLegacyPayForm, legacyPayDraft, setLegacyPayDraft, handleAddLegacyPayment,
+  } = useSubscriberQuickActions(subscriber);
 
   // ── convert to subscriber ──────────────────────────────────────────────────
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -283,13 +285,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   // ── per-course pay detail popup ───────────────────────────────────────────
   const [showPayDetailModal, setShowPayDetailModal] = useState(false);
 
-  // ── extra certificate request form ────────────────────────────────────────
-  const [showExtraCertForm, setShowExtraCertForm] = useState(false);
-  const [extraCertDraft, setExtraCertDraft] = useState<{ courseId: string; type: ExtraCertificateType | ''; certExpected: string; certPaid: string }>({ courseId: '', type: '', certExpected: '', certPaid: '' });
-
-  // ── legacy payment (old clients with custom prices) ───────────────────────
-  const [showLegacyPayForm, setShowLegacyPayForm] = useState(false);
-  const [legacyPayDraft, setLegacyPayDraft] = useState({ courseId: '', courseExpected: '', amountPaid: '', note: '' });
+  // (extra-cert + legacy-payment form state moved into useSubscriberQuickActions above)
 
   // ── installment plans → ./unifiedClient/useInstallmentPlans (called below,
   //    after getInstBookingInfo is defined, since the hook needs it injected) ──
@@ -576,69 +572,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     setPayModalDraft(blankPaymentDraft());
   };
 
-  const handleGrant = () => {
-    if (!grantDraft.courseId || !subscriber) return;
-    const alreadyEnrolled = subscriber.enrolledCourseIds.includes(grantDraft.courseId);
-    const newIds = alreadyEnrolled ? subscriber.enrolledCourseIds : [...subscriber.enrolledCourseIds, grantDraft.courseId];
-    updateSubscriber({
-      ...subscriber,
-      enrolledCourseIds: newIds,
-      courseAccess: { ...(subscriber.courseAccess ?? {}), [grantDraft.courseId]: { mode: 'full' } },
-    });
-    // Write directly to enrollments table so client sees it immediately even if crm_json sync fails
-    if (!alreadyEnrolled) {
-      mysqlAdmin.addEnrollment(subscriber.id, grantDraft.courseId, null, 'full').catch(() => {});
-    }
-    setShowGrantForm(false);
-    setGrantDraft({ courseId: '', note: '' });
-  };
-
-  const handleAddExtraCertRequest = () => {
-    if (!extraCertDraft.courseId || !extraCertDraft.type || !subscriber) return;
-    const newReq: ExtraCertificateRequest = {
-      id: `ecr-${Date.now()}`,
-      type: extraCertDraft.type as ExtraCertificateType,
-      courseId: extraCertDraft.courseId,
-      status: 'pending',
-      requestedAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false }),
-      price: extraCertDraft.certExpected ? Number(extraCertDraft.certExpected) : undefined,
-      paidAmount: extraCertDraft.certPaid ? Number(extraCertDraft.certPaid) : undefined,
-      currency: 'EGP',
-    };
-    updateSubscriber({ ...subscriber, extraCertificateRequests: [...(subscriber.extraCertificateRequests || []), newReq] });
-    setShowExtraCertForm(false);
-    setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' });
-  };
-
-  const handleAddLegacyPayment = () => {
-    const expected = Number(legacyPayDraft.courseExpected);
-    const paid = Number(legacyPayDraft.amountPaid);
-    if (!legacyPayDraft.courseId || !expected || paid < 0 || !subscriber) return;
-    const entry = {
-      id: `pay-${Date.now()}`,
-      amount: paid,
-      currency: 'EGP' as const,
-      paymentType: 'course' as PaymentItemType,
-      isInstallment: false,
-      courseId: legacyPayDraft.courseId,
-      courseExpected: expected,
-      note: ['مدفوع قديماً', legacyPayDraft.note].filter(Boolean).join(' — '),
-      at: new Date().toISOString().slice(0, 10),
-    };
-    // Enroll in course if not yet enrolled
-    let updatedSub = { ...subscriber, paymentHistory: [...subHistory, entry] };
-    const needsEnroll = !updatedSub.enrolledCourseIds.includes(legacyPayDraft.courseId);
-    if (needsEnroll) {
-      updatedSub = { ...updatedSub, enrolledCourseIds: [...updatedSub.enrolledCourseIds, legacyPayDraft.courseId], courseAccess: { ...(updatedSub.courseAccess ?? {}), [legacyPayDraft.courseId]: { mode: 'full' } } };
-    }
-    updateSubscriber(updatedSub);
-    // Write directly to enrollments table (belt+suspenders)
-    if (needsEnroll) {
-      mysqlAdmin.addEnrollment(subscriber.id, legacyPayDraft.courseId, null, 'full').catch(() => {});
-    }
-    setShowLegacyPayForm(false);
-    setLegacyPayDraft({ courseId: '', courseExpected: '', amountPaid: '', note: '' });
-  };
+  // handleGrant / handleAddExtraCertRequest / handleAddLegacyPayment → useSubscriberQuickActions
 
   const handleConvert = () => {
     if (isSaving || !convertCourseId || !lead) return;
