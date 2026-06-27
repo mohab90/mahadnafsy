@@ -20,6 +20,7 @@ import { useCourseAccess } from './unifiedClient/useCourseAccess';
 import { useClientProofs } from './unifiedClient/useClientProofs';
 import { useInstallmentPlans } from './unifiedClient/useInstallmentPlans';
 import { useSubscriberQuickActions } from './unifiedClient/useSubscriberQuickActions';
+import { useCommunicationLog } from './unifiedClient/useCommunicationLog';
 import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../components/PaymentModal';
 import {
   LeadItem, SubscriberItem, CommunicationRecord,
@@ -212,13 +213,12 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     });
   }, [subscriber]);
 
-  // ── communications ─────────────────────────────────────────────────────────
-  const [showAddComm, setShowAddComm] = useState(false);
-  const [newComm, setNewComm] = useState({
-    type: 'call' as CommunicationRecord['type'],
-    date: new Date().toISOString().slice(0, 16),
-    notes: '', outcome: '', nextFollowUp: '',
-  });
+  // ── communications + contact popup → ./unifiedClient/useCommunicationLog ────
+  const {
+    showAddComm, setShowAddComm, newComm, setNewComm,
+    showContactPopup, setShowContactPopup, contactPopupDraft, setContactPopupDraft,
+    handleSaveComm, handleSaveContactPopup, handleDeleteComm,
+  } = useCommunicationLog({ lead, subscriber, isSaving, setIsSaving });
 
   // ── payments (lead) ────────────────────────────────────────────────────────
   const [showLeadPayForm, setShowLeadPayForm] = useState(false);
@@ -246,13 +246,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const [convertAccessMode, setConvertAccessMode] = useState<'full' | 'limited'>('full');
   const [convertPartialCount, setConvertPartialCount] = useState(1);
 
-  // ── contact popup ──────────────────────────────────────────────────────────
-  const [showContactPopup, setShowContactPopup] = useState(false);
-  const [contactPopupDraft, setContactPopupDraft] = useState({
-    type: 'call' as CommunicationRecord['type'],
-    date: new Date().toISOString().slice(0, 16),
-    notes: '', outcome: '', nextFollowUp: '', newStatus: '',
-  });
+  // (contact-popup state moved into useCommunicationLog above)
   const [showAccessModal, setShowAccessModal] = useState(false);
 
   // ── quick notes (internal, stored in localStorage) ────────────────────────
@@ -421,68 +415,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     setIsSaving(false);
   };
 
-  const handleSaveComm = () => {
-    if (isSaving || !newComm.notes.trim()) return;
-    setIsSaving(true);
-    const rec: CommunicationRecord = {
-      id: `comm-${Date.now()}`,
-      type: newComm.type,
-      date: newComm.date.replace('T', ' '),
-      notes: newComm.notes,
-      outcome: newComm.outcome || undefined,
-      nextFollowUp: newComm.nextFollowUp || undefined,
-    };
-    if (subscriber) {
-      updateSubscriber({ ...subscriber, communications: [...(subscriber.communications || []), rec] });
-    } else if (lead) {
-      updateLead({
-        ...lead,
-        communications: [...(lead.communications || []), rec],
-        status: lead.status === 'new' ? 'contacted' : lead.status,
-        lastFollowUp: rec.date,
-        nextFollowUpDate: newComm.nextFollowUp || lead.nextFollowUpDate,
-      });
-    }
-    setShowAddComm(false);
-    setNewComm({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '' });
-    setIsSaving(false);
-  };
-
-  const handleSaveContactPopup = () => {
-    if (isSaving || !contactPopupDraft.notes.trim()) return;
-    setIsSaving(true);
-    const rec: CommunicationRecord = {
-      id: `comm-${Date.now()}`,
-      type: contactPopupDraft.type,
-      date: contactPopupDraft.date.replace('T', ' '),
-      notes: contactPopupDraft.notes,
-      outcome: contactPopupDraft.outcome || undefined,
-      nextFollowUp: contactPopupDraft.nextFollowUp || undefined,
-    };
-    if (subscriber) {
-      updateSubscriber({ ...subscriber, communications: [...(subscriber.communications || []), rec] });
-    } else if (lead) {
-      const newStatus = (contactPopupDraft.newStatus as LeadItem['status']) || (lead.status === 'new' ? 'contacted' : lead.status);
-      updateLead({
-        ...lead,
-        communications: [...(lead.communications || []), rec],
-        status: newStatus,
-        lastFollowUp: rec.date,
-        nextFollowUpDate: contactPopupDraft.nextFollowUp || lead.nextFollowUpDate,
-      });
-    }
-    setShowContactPopup(false);
-    setContactPopupDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
-    setIsSaving(false);
-  };
-
-  const handleDeleteComm = (commId: string, src: 'lead' | 'subscriber') => {
-    if (src === 'subscriber' && subscriber) {
-      updateSubscriber({ ...subscriber, communications: (subscriber.communications || []).filter(c => c.id !== commId) });
-    } else if (src === 'lead' && lead) {
-      updateLead({ ...lead, communications: (lead.communications || []).filter(c => c.id !== commId) });
-    }
-  };
+  // handleSaveComm / handleSaveContactPopup / handleDeleteComm → useCommunicationLog
 
   const handleAddLeadPayment = () => {
     if (!leadPayDraft.amount || !lead) return;
