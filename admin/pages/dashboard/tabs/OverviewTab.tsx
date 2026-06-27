@@ -53,15 +53,20 @@ export default function OverviewTab({
   // it's shared across the team and survives device changes.
   const _collMonth = new Date().toISOString().slice(0, 7);
   const [collMonthlyTarget, setCollMonthlyTarget] = useState<number>(160000);
+  // A sales rep's own monthly (leads) target, from the shared sales_targets table.
+  const [myMonthlyTarget, setMyMonthlyTarget] = useState<number>(10);
   useEffect(() => {
     let alive = true;
     mysqlAdmin.listSalesTargets(_collMonth).then(rows => {
       if (!alive) return;
-      const row = (rows as unknown as { staffId: string; revenueTarget: number }[]).find(r => r.staffId === '__collection__');
-      if (row && Number(row.revenueTarget) > 0) setCollMonthlyTarget(Number(row.revenueTarget));
+      const list = rows as unknown as { staffId: string; revenueTarget: number; leadsTarget: number }[];
+      const collRow = list.find(r => r.staffId === '__collection__');
+      if (collRow && Number(collRow.revenueTarget) > 0) setCollMonthlyTarget(Number(collRow.revenueTarget));
+      const myRow = currentStaff ? list.find(r => r.staffId === currentStaff.id) : null;
+      if (myRow && Number(myRow.leadsTarget) > 0) setMyMonthlyTarget(Number(myRow.leadsTarget));
     }).catch(() => {});
     return () => { alive = false; };
-  }, [_collMonth]);
+  }, [_collMonth, currentStaff]);
   const saveCollMonthlyTarget = (val: number) => {
     if (!val || val <= 0) return;
     setCollMonthlyTarget(val);
@@ -150,7 +155,7 @@ export default function OverviewTab({
                 }));
                 const maxCalls = Math.max(...callsByDay.map(d => d.count), 1);
                 const todayCalls = callsByDay.find(d => d.day === todayStr)?.count ?? 0;
-                const monthlyTarget = Number(localStorage.getItem('sales.monthlyTarget') || 10);
+                const monthlyTarget = myMonthlyTarget;
 
                 // Top sources for my leads
                 const mySourceMap = myLeads.reduce((m, l) => { if (l.source) { m[l.source] = (m[l.source] || 0) + 1; } return m; }, {} as Record<string, number>);

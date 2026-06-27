@@ -265,6 +265,38 @@ router.patch('/api/staff/me', requireAuth, async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET /api/staff/me/preferences — own personal settings (WhatsApp number,
+// message templates, custom tags). Stored server-side per staff so they follow
+// the user across devices instead of living in localStorage.
+router.get('/api/staff/me/preferences', requireAuth, async (req, res) => {
+  try {
+    const email = (req.user?.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: 'No email in token' });
+    const [[row]] = await pool.query(
+      'SELECT preferences_json FROM staff WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ? LIMIT 1', [email]);
+    res.json(row && row.preferences_json ? tryJson(row.preferences_json, {}) : {});
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// PUT /api/staff/me/preferences — replace own preferences blob (whitelisted keys)
+router.put('/api/staff/me/preferences', requireAuth, async (req, res) => {
+  try {
+    const email = (req.user?.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: 'No email in token' });
+    const body = req.body || {};
+    // Whitelist + cap sizes to keep the blob sane.
+    const prefs = {
+      waNumber: typeof body.waNumber === 'string' ? body.waNumber.slice(0, 30) : '',
+      waTemplates: Array.isArray(body.waTemplates) ? body.waTemplates.slice(0, 50) : [],
+      customTags: Array.isArray(body.customTags) ? body.customTags.slice(0, 100).map(t => String(t).slice(0, 40)) : [],
+    };
+    await pool.query(
+      'UPDATE staff SET preferences_json = ? WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ?',
+      [JSON.stringify(prefs), email]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/admin/consultations
 router.get('/api/admin/consultations', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -443,7 +475,9 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
     await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS monthly_target_type VARCHAR(10) DEFAULT NULL`).catch(() => {});
     await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS monthly_leads_target INT DEFAULT NULL`).catch(() => {});
     await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS monthly_bonus DECIMAL(12,2) DEFAULT NULL`).catch(() => {});
-    logger.info('[startup] staff permissions_json + target/bonus columns ensured');
+    // ── Per-staff personal preferences (WhatsApp number/templates/tags) ──────
+    await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS preferences_json TEXT DEFAULT NULL`).catch(() => {});
+    logger.info('[startup] staff permissions_json + target/bonus + preferences columns ensured');
     // ── Daqqi tables ────────────────────────────────────────────────────────
     await pool.query(`CREATE TABLE IF NOT EXISTS daqqi_rounds (
       id VARCHAR(36) NOT NULL,

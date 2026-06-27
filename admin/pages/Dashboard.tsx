@@ -542,15 +542,15 @@ const Dashboard: React.FC = () => {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
-  // Sync sales targets from content (Firebase-persisted) when content loads
+  // Load sales targets from the shared sales_targets table (single source of truth).
   useEffect(() => {
-    if (!content['crm.salesTargets']) return;
-    try {
-      const parsed = JSON.parse(content['crm.salesTargets']) as SalesTarget[];
-      setLeadsSalesTargets(parsed);
-    } catch { /* keep local state */ }
+    if (!isAdmin) return;
+    mysqlAdmin.listSalesTargets().then(rows => {
+      setLeadsSalesTargets((rows as unknown as { staffId: string; period: string; revenueTarget: number }[])
+        .map(r => ({ staffId: r.staffId, month: r.period, targetEGP: Number(r.revenueTarget) || 0 })));
+    }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content['crm.salesTargets']]);
+  }, [isAdmin]);
 
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
@@ -649,14 +649,8 @@ const Dashboard: React.FC = () => {
 
   // Leads view mode: table or kanban
 
-  const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>(() => {
-    try {
-      // Try content first (Firebase-persisted), fallback to localStorage for migration
-      const fromContent = (window as unknown as Record<string, unknown>)['__crm_targets__'];
-      if (fromContent) return fromContent as SalesTarget[];
-      return JSON.parse(localStorage.getItem('crm.salesTargets') || '[]');
-    } catch { return []; }
-  });
+  // Sales targets come from the shared sales_targets table (single source of truth).
+  const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>([]);
   // CSV general import state
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);

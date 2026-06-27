@@ -20,13 +20,12 @@ interface Props {
 }
 
 export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscribers }: Props) {
-  const [staffWaTemplates, setStaffWaTemplates] = useState<{ id: string; title: string; body: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('sales.waTemplates') || '[]'); } catch { return []; }
-  });
+  // Personal settings persist server-side (GET/PUT /api/staff/me/preferences) so
+  // they follow the user across devices — not localStorage.
+  const [staffWaTemplates, setStaffWaTemplates] = useState<{ id: string; title: string; body: string }[]>([]);
   const [staffWaTemplateEdit, setStaffWaTemplateEdit] = useState<{ id: string; title: string; body: string } | null>(null);
-  const [staffContactTags, setStaffContactTags] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('sales.customTags') || '[]'); } catch { return []; }
-  });
+  const [staffContactTags, setStaffContactTags] = useState<string[]>([]);
+  const [loadedPrefs, setLoadedPrefs] = useState<{ waNumber: string; monthlyTarget: string }>({ waNumber: '', monthlyTarget: '10' });
   const [staffNewTagInput, setStaffNewTagInput] = useState('');
   const [staffSettingsDraft, setStaffSettingsDraft] = useState<{ name: string; phone: string; image: string; waNumber: string; monthlyTarget: string } | null>(null);
   const [staffSettingsSaving, setStaffSettingsSaving] = useState(false);
@@ -52,12 +51,40 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStaff.id]);
 
+  const _prefsMonth = new Date().toISOString().slice(0, 7);
+  // Load server-persisted preferences + this rep's own monthly (leads) target.
+  useEffect(() => {
+    let alive = true;
+    mysqlAdmin.getMyPreferences().then(p => {
+      if (!alive) return;
+      setStaffWaTemplates(Array.isArray(p.waTemplates) ? p.waTemplates : []);
+      setStaffContactTags(Array.isArray(p.customTags) ? p.customTags : []);
+      setLoadedPrefs(prev => ({ ...prev, waNumber: p.waNumber || '' }));
+    }).catch(() => {});
+    mysqlAdmin.listSalesTargets(_prefsMonth).then(rows => {
+      if (!alive) return;
+      const mine = (rows as unknown as { staffId: string; leadsTarget: number }[]).find(r => r.staffId === currentStaff.id);
+      if (mine && Number(mine.leadsTarget) > 0) setLoadedPrefs(prev => ({ ...prev, monthlyTarget: String(mine.leadsTarget) }));
+    }).catch(() => {});
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStaff.id]);
+
+  // Fire-and-forget save of the personal preferences blob (templates/tags/waNumber).
+  const persistPrefs = (next: { waNumber?: string; waTemplates?: { id: string; title: string; body: string }[]; customTags?: string[] }) => {
+    void mysqlAdmin.saveMyPreferences({
+      waNumber: next.waNumber ?? loadedPrefs.waNumber,
+      waTemplates: next.waTemplates ?? staffWaTemplates,
+      customTags: next.customTags ?? staffContactTags,
+    }).catch(() => {});
+  };
+
   const draft = staffSettingsDraft ?? {
     name: currentStaff.name || '',
     phone: currentStaff.phone || '',
     image: currentStaff.image || '',
-    waNumber: localStorage.getItem('sales.waNumber') || '',
-    monthlyTarget: localStorage.getItem('sales.monthlyTarget') || '10',
+    waNumber: loadedPrefs.waNumber,
+    monthlyTarget: loadedPrefs.monthlyTarget,
   };
   const setDraft = (patch: Partial<typeof draft>) =>
     setStaffSettingsDraft(prev => ({ ...(prev ?? draft), ...patch }));
@@ -65,9 +92,10 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
     setStaffSettingsSaving(true);
     try {
       await mysqlAdmin.updateMyProfile({ name: draft.name, phone: draft.phone, image: draft.image || null });
-      if (draft.waNumber) localStorage.setItem('sales.waNumber', draft.waNumber);
-      else localStorage.removeItem('sales.waNumber');
-      if (draft.monthlyTarget) localStorage.setItem('sales.monthlyTarget', draft.monthlyTarget);
+      // Personal settings → server preferences; own conversions target → shared sales_targets.
+      await mysqlAdmin.saveMyPreferences({ waNumber: draft.waNumber, waTemplates: staffWaTemplates, customTags: staffContactTags });
+      await mysqlAdmin.saveSalesTarget({ staffId: currentStaff.id, period: _prefsMonth, leadsTarget: Number(draft.monthlyTarget) || 0 });
+      setLoadedPrefs({ waNumber: draft.waNumber, monthlyTarget: draft.monthlyTarget });
       notify('success', 'تم الحفظ بنجاح');
       setStaffSettingsDraft(null);
     } catch { notify('error', 'فشل الحفظ، حاول مجدداً'); }
@@ -594,7 +622,7 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
                                   ? staffWaTemplates.map(t => t.id === staffWaTemplateEdit.id ? staffWaTemplateEdit : t)
                                   : [...staffWaTemplates, staffWaTemplateEdit];
                                 setStaffWaTemplates(updated);
-                                localStorage.setItem('sales.waTemplates', JSON.stringify(updated));
+                                persistPrefs({ waTemplates: updated });
                                 setStaffWaTemplateEdit(null);
                               }}
                               className="flex-1 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 disabled:opacity-50">
@@ -622,7 +650,7 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
                                   <button onClick={() => {
                                     const updated = staffWaTemplates.filter(t => t.id !== tpl.id);
                                     setStaffWaTemplates(updated);
-                                    localStorage.setItem('sales.waTemplates', JSON.stringify(updated));
+                                    persistPrefs({ waTemplates: updated });
                                   }}
                                     className="p-1 rounded text-red-500 hover:bg-red-100 text-xs">🗑️</button>
                                 </div>
@@ -661,7 +689,7 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
                               if (!staffContactTags.includes(tag)) {
                                 const updated = [...staffContactTags, tag];
                                 setStaffContactTags(updated);
-                                localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                                persistPrefs({ customTags: updated });
                               }
                               setStaffNewTagInput('');
                             }
@@ -676,7 +704,7 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
                             if (tag && !staffContactTags.includes(tag)) {
                               const updated = [...staffContactTags, tag];
                               setStaffContactTags(updated);
-                              localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                              persistPrefs({ customTags: updated });
                             }
                             setStaffNewTagInput('');
                           }}
@@ -698,7 +726,7 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
                                 onClick={() => {
                                   const updated = staffContactTags.filter(t => t !== tag);
                                   setStaffContactTags(updated);
-                                  localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                                  persistPrefs({ customTags: updated });
                                 }}
                                 className="text-purple-400 hover:text-red-500 transition font-bold leading-none">×</button>
                             </span>
@@ -714,7 +742,7 @@ export default function StaffSettingsTab({ notify, currentStaff, salesOwnSubscri
                             <button key={suggestion} onClick={() => {
                               const updated = [...staffContactTags, suggestion];
                               setStaffContactTags(updated);
-                              localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                              persistPrefs({ customTags: updated });
                             }}
                               className="text-[11px] bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 rounded-full px-2.5 py-1 border border-gray-200 transition">
                               + {suggestion}
