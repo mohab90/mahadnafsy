@@ -24,6 +24,7 @@ import { CrmSettingsModal, DEFAULT_CRM_SETTINGS } from './CrmSettingsModal';
 import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../../../components/PaymentModal';
 import type { CrmSettings, NotifyFn } from './CrmSettingsModal';
 import { useLeadsImport } from './useLeadsImport';
+import { useLeadCrmContact } from './useLeadCrmContact';
 import { DEFAULT_SOURCES, ONLINE_EXCLUDED_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from './crmConstants';
 import { LeadTable } from './LeadTable';
 import {
@@ -207,11 +208,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     note?: string; bookingType: string; courseExpected: number;
     prevPaid: number; remaining: number; staffName: string; transactionId?: string;
   }>(null);
-  const [crmContactRow, setCrmContactRow] = useState<LeadItem | null>(null);
-  const [crmContactDraft, setCrmContactDraft] = useState<{
-    type: CommunicationRecord['type']; date: string; notes: string;
-    outcome: string; nextFollowUp: string; newStatus: LeadStatus | '';
-  }>({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
+  // "Log CRM contact" feature — extracted to ./useLeadCrmContact (same names, render unchanged).
+  const { crmContactRow, setCrmContactRow, crmContactDraft, setCrmContactDraft, handleSaveCrmContact } = useLeadCrmContact(notify);
   const [leadsSearch, setLeadsSearch] = useState('');
   const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]);
   const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
@@ -766,17 +764,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     }
   };
 
-  const handleSaveCrmContact = () => {
-    if (!crmContactRow || !crmContactDraft.notes.trim()) return;
-    const freshLead = leads.find(l => l.id === crmContactRow.id) || crmContactRow;
-    const rec: CommunicationRecord = { id: `comm-${Date.now()}`, type: crmContactDraft.type, date: crmContactDraft.date.replace('T', ' '), notes: crmContactDraft.notes, outcome: crmContactDraft.outcome || undefined, nextFollowUp: crmContactDraft.nextFollowUp || undefined };
-    const updatedComms = [...(freshLead.communications || []), rec];
-    const newStatus: LeadStatus = (crmContactDraft.newStatus as LeadStatus) || (freshLead.status === 'new' ? 'contacted' : freshLead.status);
-    updateLead({ ...freshLead, communications: updatedComms, status: newStatus, lastFollowUp: rec.date, lastContactNote: crmContactDraft.notes, nextFollowUpDate: crmContactDraft.nextFollowUp || freshLead.nextFollowUpDate });
-    setCrmContactRow(null);
-    setCrmContactDraft({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
-    notify('success', 'تم تسجيل التواصل بنجاح.');
-  };
 
 
   const saveLeadDraft = () => {
