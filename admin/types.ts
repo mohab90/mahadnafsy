@@ -347,7 +347,8 @@ export interface StaffMember {
   // ── HR fields ────────────────────────────────────────────────────────────
   salary?: number;                           // Monthly base salary (EGP)
   monthlyTargetType?: 'egp' | 'clients';    // Target is revenue or client count
-  monthlyTarget?: number;                    // Target value (EGP or count)
+  monthlyTarget?: number;                    // Target value (EGP or count) — monthly revenue target
+  monthlyLeadsTarget?: number;               // Monthly leads target (count)
   monthlyBonus?: number;                     // Fixed monthly bonus on target hit (EGP)
   absences?: StaffAbsence[];                // Absence / leave records
   hrNotes?: string;                          // Private HR notes

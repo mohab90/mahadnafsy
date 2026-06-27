@@ -13,8 +13,7 @@ interface Goal {
 const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
 
 export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, leads, orders } = useSiteData();
-  const [goals, setGoals] = useState<Record<string, Goal>>({});
+  const { staffMembers, leads, orders, updateStaffMember } = useSiteData();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ monthlyTarget: string; monthlyLeadsTarget: string }>({ monthlyTarget: '', monthlyLeadsTarget: '' });
 
@@ -22,6 +21,18 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   const monthStart = `${MONTH}-01`;
 
   const salesStaff = useMemo(() => staffMembers.filter(s => s.status === 'active'), [staffMembers]);
+
+  // Goals are persisted on the staff record (monthly_target / monthly_leads_target),
+  // so they survive refresh and feed HR/commission rather than living in local state.
+  const goals = useMemo<Record<string, Goal>>(() => {
+    const m: Record<string, Goal> = {};
+    for (const s of staffMembers) {
+      if (s.monthlyTarget || s.monthlyLeadsTarget) {
+        m[s.id] = { staffId: s.id, monthlyTarget: Number(s.monthlyTarget) || 0, monthlyLeadsTarget: Number(s.monthlyLeadsTarget) || 0 };
+      }
+    }
+    return m;
+  }, [staffMembers]);
 
   const stats = useMemo(() => salesStaff.map(s => {
     const g = goals[s.id];
@@ -51,14 +62,15 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   }
 
   function saveEdit(staffId: string) {
-    setGoals(prev => ({
-      ...prev,
-      [staffId]: {
-        staffId,
-        monthlyTarget: Number(editValues.monthlyTarget) || 0,
-        monthlyLeadsTarget: Number(editValues.monthlyLeadsTarget) || 0,
-      }
-    }));
+    const staff = staffMembers.find(s => s.id === staffId);
+    if (!staff) return;
+    // Persist onto the staff record via the existing staff round-trip.
+    updateStaffMember({
+      ...staff,
+      monthlyTarget: Number(editValues.monthlyTarget) || 0,
+      monthlyTargetType: 'egp',
+      monthlyLeadsTarget: Number(editValues.monthlyLeadsTarget) || 0,
+    });
     setEditingId(null);
     notify('success', 'تم حفظ الهدف');
   }
@@ -167,8 +179,8 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
         </div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-800 text-sm">
-        <strong>ملاحظة:</strong> الأهداف المحددة هنا مؤقتة ولا تُحفظ في قاعدة البيانات حتى الآن. ستُضاف ميزة الحفظ الدائم قريباً.
+      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 text-sm">
+        <strong>ملاحظة:</strong> يُحفظ الهدف على سجل الموظف ويبقى بعد إعادة التحميل. يتطلب الحفظ صلاحية مدير/أدمن.
       </div>
     </div>
   );

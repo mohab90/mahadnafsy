@@ -1664,7 +1664,9 @@ router.get('/api/admin/sys-config/public', async (_req, res) => {
 router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, created_at
+      `SELECT id, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, created_at,
+              monthly_target AS monthlyTarget, monthly_target_type AS monthlyTargetType,
+              monthly_leads_target AS monthlyLeadsTarget, monthly_bonus AS monthlyBonus
        FROM staff ORDER BY name ASC`
     );
     res.json(rows);
