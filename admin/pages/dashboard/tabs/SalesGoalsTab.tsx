@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Target, Trophy, Edit2, Save, X, Plus, TrendingUp, Users, CheckCircle, AlertCircle } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -13,7 +14,7 @@ interface Goal {
 const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
 
 export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, leads, orders, updateStaffMember } = useSiteData();
+  const { staffMembers, leads, orders } = useSiteData();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ monthlyTarget: string; monthlyLeadsTarget: string }>({ monthlyTarget: '', monthlyLeadsTarget: '' });
 
@@ -22,17 +23,21 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
 
   const salesStaff = useMemo(() => staffMembers.filter(s => s.status === 'active'), [staffMembers]);
 
-  // Goals are persisted on the staff record (monthly_target / monthly_leads_target),
-  // so they survive refresh and feed HR/commission rather than living in local state.
-  const goals = useMemo<Record<string, Goal>>(() => {
-    const m: Record<string, Goal> = {};
-    for (const s of staffMembers) {
-      if (s.monthlyTarget || s.monthlyLeadsTarget) {
-        m[s.id] = { staffId: s.id, monthlyTarget: Number(s.monthlyTarget) || 0, monthlyLeadsTarget: Number(s.monthlyLeadsTarget) || 0 };
+  // Goals come from the shared sales_targets table (per staff, this month) — the
+  // single source of truth also used by the leads performance panel. Survives refresh.
+  const [goals, setGoals] = useState<Record<string, Goal>>({});
+  useEffect(() => {
+    let alive = true;
+    mysqlAdmin.listSalesTargets(MONTH).then(rows => {
+      if (!alive) return;
+      const m: Record<string, Goal> = {};
+      for (const r of (rows as unknown as { staffId: string; revenueTarget: number; leadsTarget: number }[])) {
+        m[r.staffId] = { staffId: r.staffId, monthlyTarget: Number(r.revenueTarget) || 0, monthlyLeadsTarget: Number(r.leadsTarget) || 0 };
       }
-    }
-    return m;
-  }, [staffMembers]);
+      setGoals(m);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [MONTH]);
 
   const stats = useMemo(() => salesStaff.map(s => {
     const g = goals[s.id];
@@ -62,17 +67,14 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   }
 
   function saveEdit(staffId: string) {
-    const staff = staffMembers.find(s => s.id === staffId);
-    if (!staff) return;
-    // Persist onto the staff record via the existing staff round-trip.
-    updateStaffMember({
-      ...staff,
-      monthlyTarget: Number(editValues.monthlyTarget) || 0,
-      monthlyTargetType: 'egp',
-      monthlyLeadsTarget: Number(editValues.monthlyLeadsTarget) || 0,
-    });
+    const revenueTarget = Number(editValues.monthlyTarget) || 0;
+    const leadsTarget = Number(editValues.monthlyLeadsTarget) || 0;
+    // Persist to the shared sales_targets table for this month.
+    setGoals(prev => ({ ...prev, [staffId]: { staffId, monthlyTarget: revenueTarget, monthlyLeadsTarget: leadsTarget } }));
     setEditingId(null);
-    notify('success', 'تم حفظ الهدف');
+    mysqlAdmin.saveSalesTarget({ staffId, period: MONTH, revenueTarget, leadsTarget })
+      .then(() => notify('success', 'تم حفظ الهدف'))
+      .catch(() => notify('error', 'تعذّر حفظ الهدف'));
   }
 
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
@@ -180,7 +182,7 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
       </div>
 
       <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 text-sm">
-        <strong>ملاحظة:</strong> يُحفظ الهدف على سجل الموظف ويبقى بعد إعادة التحميل. يتطلب الحفظ صلاحية مدير/أدمن.
+        <strong>ملاحظة:</strong> تُحفظ الأهداف في قاعدة البيانات (جدول الأهداف المشترك) وتبقى بعد إعادة التحميل ومن أي جهاز.
       </div>
     </div>
   );

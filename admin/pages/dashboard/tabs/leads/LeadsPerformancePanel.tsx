@@ -1,5 +1,6 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import {
   Activity, BarChart2, Phone, RefreshCw, Star, TrendingUp, Users,
 } from 'lucide-react';
@@ -27,15 +28,28 @@ export function LeadsPerformancePanel({ notify }: Props) {
   );
 
   const [targetMonth, setTargetMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [salesTargets, setSalesTargets] = useState<SalesTarget[]>(() => {
-    try { return JSON.parse(localStorage.getItem('crm.salesTargets') || '[]'); } catch { return []; }
-  });
+  // Targets live in the shared sales_targets table (single source of truth) — not
+  // localStorage — so they persist and are shared across users/devices.
+  const [salesTargets, setSalesTargets] = useState<SalesTarget[]>([]);
   const [smartIdleDays, setSmartIdleDays] = useState(7);
   const [distributing, setDistributing] = useState(false);
 
-  const saveSalesTargets = (targets: SalesTarget[]) => {
-    setSalesTargets(targets);
-    localStorage.setItem('crm.salesTargets', JSON.stringify(targets));
+  useEffect(() => {
+    let alive = true;
+    mysqlAdmin.listSalesTargets(targetMonth).then(rows => {
+      if (!alive) return;
+      setSalesTargets((rows as unknown as { staffId: string; period: string; revenueTarget: number }[])
+        .map(r => ({ staffId: r.staffId, month: r.period, targetEGP: Number(r.revenueTarget) || 0 })));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [targetMonth]);
+
+  // Upsert one rep's revenue target for the selected month, optimistically.
+  const saveOneTarget = (staffId: string, targetEGP: number) => {
+    setSalesTargets(prev => [...prev.filter(t => !(t.staffId === staffId && t.month === targetMonth)),
+      ...(targetEGP > 0 ? [{ staffId, month: targetMonth, targetEGP }] : [])]);
+    void mysqlAdmin.saveSalesTarget({ staffId, period: targetMonth, revenueTarget: targetEGP })
+      .catch(() => notify('error', 'تعذّر حفظ الهدف'));
   };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -356,12 +370,7 @@ export function LeadsPerformancePanel({ notify }: Props) {
                           <span className="text-[10px] text-gray-400 flex-shrink-0">🎯 الهدف:</span>
                           <input type="number" min={0} step={1000}
                             value={targetEGP || ''}
-                            onChange={e => {
-                              const val = +e.target.value;
-                              const next = salesTargets.filter(t => !(t.staffId === rep.id && t.month === targetMonth));
-                              if (val > 0) next.push({ staffId: rep.id, month: targetMonth, targetEGP: val });
-                              saveSalesTargets(next);
-                            }}
+                            onChange={e => saveOneTarget(rep.id, +e.target.value)}
                             className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:border-primary-400 focus:outline-none"
                             placeholder="اكتب الهدف..." />
                           <span className="text-[10px] text-gray-400">ج.م</span>

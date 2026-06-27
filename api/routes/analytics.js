@@ -871,6 +871,56 @@ router.put('/api/admin/sales-goals/:period', requireAuth, requireAdmin, async (r
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Per-staff sales targets (single source of truth across SalesGoalsTab,
+//    LeadsPerformancePanel and the collection target — were localStorage before).
+//    staff_id '__collection__' holds the org-wide collection monthly target. ──
+(async () => {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS sales_targets (
+      staff_id VARCHAR(64) NOT NULL,
+      period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
+      revenue_target DECIMAL(12,2) DEFAULT 0,
+      leads_target INT DEFAULT 0,
+      updated_by VARCHAR(64) DEFAULT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (staff_id, period)
+    ) COLLATE utf8mb4_unicode_ci`);
+  } catch (e) { logger.warn('[sales_targets table]', e.message); }
+})();
+
+// GET /api/admin/sales-targets?period=YYYY-MM (omit period → recent across staff)
+router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, async (req, res) => {
+  try {
+    const { period } = req.query;
+    let sql = 'SELECT staff_id AS staffId, period, revenue_target AS revenueTarget, leads_target AS leadsTarget, updated_at AS updatedAt FROM sales_targets';
+    const params = [];
+    if (period) { sql += ' WHERE period = ?'; params.push(period); }
+    else sql += ' ORDER BY period DESC LIMIT 500';
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/sales-targets  (upsert one {staffId, period, revenueTarget, leadsTarget})
+router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, async (req, res) => {
+  try {
+    const { staffId, period } = req.body || {};
+    if (!staffId || !/^\d{4}-\d{2}$/.test(period || '')) return res.status(400).json({ error: 'staffId and period (YYYY-MM) required' });
+    // Merge: only overwrite a field that was actually sent, so two tabs writing the
+    // same (staff, month) row (one sets revenue, the other leads) don't clobber.
+    const [[existing]] = await pool.query('SELECT revenue_target, leads_target FROM sales_targets WHERE staff_id=? AND period=? LIMIT 1', [String(staffId).slice(0, 64), period]);
+    const revenueTarget = req.body.revenueTarget !== undefined ? (Number(req.body.revenueTarget) || 0) : (existing ? Number(existing.revenue_target) : 0);
+    const leadsTarget   = req.body.leadsTarget   !== undefined ? (Number(req.body.leadsTarget)   || 0) : (existing ? Number(existing.leads_target)   : 0);
+    await pool.query(
+      `INSERT INTO sales_targets (staff_id, period, revenue_target, leads_target, updated_by)
+       VALUES (?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE revenue_target=VALUES(revenue_target), leads_target=VALUES(leads_target), updated_by=VALUES(updated_by)`,
+      [String(staffId).slice(0, 64), period, revenueTarget, leadsTarget, (req.user?.id || req.user?.email || null)]
+    );
+    res.json({ ok: true });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/admin/sales-goals/vs-actual?period=YYYY-MM
 router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async (req, res) => {
   try {

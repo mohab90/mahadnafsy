@@ -218,6 +218,10 @@ export const mysqlAdmin = {
   deleteStaff:      (id: string) => del(`/admin/staff/${id}`),
   createStaffAccount: (o: AR) => post('/admin/staff-account', o),
 
+  // ── Sales targets (per-staff, per-month — single source of truth) ──
+  listSalesTargets: (period?: string) => apiFetch<AR[]>(`/admin/sales-targets${period ? `?period=${encodeURIComponent(period)}` : ''}`, {}, A),
+  saveSalesTarget:  (o: AR) => post('/admin/sales-targets', o),
+
   // ── Lectures ──
   saveLecture:   (o: AR) => post('/admin/lectures', o),
   deleteLecture: (id: string) => del(`/admin/lectures/${id}`),

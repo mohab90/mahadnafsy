@@ -810,28 +810,11 @@ router.get('/api/payment-links/:token', async (req, res) => {
 });
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: IP Whitelist Enforcement Middleware ───────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
-let _ipwlCache = null; let _ipwlCachedAt = 0;
-async function enforceIpWhitelist(req, res, next) {
-  try {
-    if (!_ipwlCache || Date.now() - _ipwlCachedAt > 60000) {
-      const [[row]] = await pool.query("SELECT value FROM site_config WHERE `key`='admin_ip_whitelist' LIMIT 1");
-      _ipwlCache = row ? tryJson(row.value, []) : [];
-      _ipwlCachedAt = Date.now();
-    }
-    if (!_ipwlCache || _ipwlCache.length === 0) return next();
-    const rawIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '');
-    const clientIp = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
-    const ok = _ipwlCache.some(e => e === clientIp || (e.endsWith('.*') && clientIp.startsWith(e.slice(0, -2) + '.')));
-    if (ok) return next();
-    logger.warn(`[ip-whitelist] BLOCKED: ${clientIp}`);
-    return res.status(403).json({ error: 'IP not whitelisted' });
-  } catch (_) { return next(); } // fail-open to avoid accidental lockout
-}
-// Apply whitelist middleware to the /ip-whitelist management route itself
-router.use('/api/admin/ip-whitelist', enforceIpWhitelist);
+// IP-whitelist enforcement moved to a global, opt-in guard in server.js
+// (adminIpWhitelistGuard) — it reads the ip_whitelist table the UI writes to,
+// scopes to /api/admin/*, exempts the management route, and is env-gated. The old
+// middleware here read a different store (site_config.admin_ip_whitelist) and only
+// guarded the management route itself — a self-lockout footgun — so it was removed.
 
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -1,4 +1,5 @@
-﻿import React, { Suspense, useMemo, useState } from 'react';
+﻿import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -47,6 +48,26 @@ export default function OverviewTab({
   onlineTeamMembers, onlineUsers,
   notify, setActiveTab, navigate,
 }: Props) {
+  // Org-wide collection monthly target — persisted server-side in the shared
+  // sales_targets table (staff_id '__collection__') instead of localStorage, so
+  // it's shared across the team and survives device changes.
+  const _collMonth = new Date().toISOString().slice(0, 7);
+  const [collMonthlyTarget, setCollMonthlyTarget] = useState<number>(160000);
+  useEffect(() => {
+    let alive = true;
+    mysqlAdmin.listSalesTargets(_collMonth).then(rows => {
+      if (!alive) return;
+      const row = (rows as unknown as { staffId: string; revenueTarget: number }[]).find(r => r.staffId === '__collection__');
+      if (row && Number(row.revenueTarget) > 0) setCollMonthlyTarget(Number(row.revenueTarget));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [_collMonth]);
+  const saveCollMonthlyTarget = (val: number) => {
+    if (!val || val <= 0) return;
+    setCollMonthlyTarget(val);
+    void mysqlAdmin.saveSalesTarget({ staffId: '__collection__', period: _collMonth, revenueTarget: val })
+      .catch(() => notify('error', 'تعذّر حفظ هدف التحصيل'));
+  };
   const [kpiModal, setKpiModal] = useState<KpiModal>(null); // lifted out of Dashboard god-hub
   const { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue } = useMemo(() => {
     const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
@@ -416,9 +437,8 @@ export default function OverviewTab({
                   const paid=hist.reduce((a,p)=>a+toEGP(p),0);
                   return sum+Math.max(0,exp-paid);
                 },0);
-                // Monthly target from localStorage (default 160000)
-                const collMonthlyTarget = Math.max(1, Number(localStorage.getItem('coll.monthlyTarget') || '160000'));
-                const collPct = Math.min(100, Math.round((collMonthRevOv / collMonthlyTarget) * 100));
+                // Monthly target comes from server-persisted component state (collMonthlyTarget).
+                const collPct = Math.min(100, Math.round((collMonthRevOv / Math.max(1, collMonthlyTarget)) * 100));
                 const daysInMonthOv = new Date(now2.getFullYear(), now2.getMonth()+1, 0).getDate();
                 const dayOfMonthOv = now2.getDate();
                 const daysLeftOv = daysInMonthOv - dayOfMonthOv;
@@ -603,10 +623,10 @@ export default function OverviewTab({
                       <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Settings2 size={15} className="text-gray-400" />إعداد هدف التحصيل الشهري</h3>
                       <div className="flex items-center gap-3">
                         <input type="number" defaultValue={collMonthlyTarget}
-                          onBlur={e=>{ localStorage.setItem('coll.monthlyTarget', e.target.value); }}
+                          onBlur={e=>{ saveCollMonthlyTarget(Number(e.target.value)); }}
                           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-teal-300" placeholder="160000" dir="ltr" />
                         <span className="text-xs text-gray-500">ج.م / شهر</span>
-                        <span className="text-xs text-gray-400">(يُحفظ تلقائياً عند المغادرة)</span>
+                        <span className="text-xs text-gray-400">(يُحفظ في قاعدة البيانات عند المغادرة)</span>
                       </div>
                     </div>
                   </div>

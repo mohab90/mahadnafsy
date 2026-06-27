@@ -508,6 +508,41 @@ setInterval(() => {
 }, 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ADMIN IP WHITELIST — opt-in network guard (set IP_WHITELIST_ENFORCE=true)
+// ─────────────────────────────────────────────────────────────────────────────
+// Enforced ONLY on /api/admin/* and ONLY when explicitly enabled via env, so a
+// code deploy can never silently lock anyone out. Anti-lockout safeguards:
+//   • the management route (/api/admin/ip-whitelist) is always exempt, so an admin
+//     whose IP isn't listed can still open the panel and fix the list;
+//   • an empty list means "disabled" (fail-open) — you can't lock yourself out by
+//     enabling it before adding any IP;
+//   • any error fails open;
+//   • login (/api/auth/*) is never under /api/admin, so authentication is unaffected.
+// Reads the ip_whitelist table the admin UI writes to (60s cache). Supports exact
+// IPs and "x.y.z.*" prefix wildcards.
+let _ipwlCache = null, _ipwlCachedAt = 0;
+async function adminIpWhitelistGuard(req, res, next) {
+  try {
+    if (process.env.IP_WHITELIST_ENFORCE !== 'true') return next();
+    if (!req.path.startsWith('/api/admin')) return next();
+    if (req.path.startsWith('/api/admin/ip-whitelist')) return next(); // always manageable
+    if (!_ipwlCache || Date.now() - _ipwlCachedAt > 60000) {
+      const [rows] = await pool.query('SELECT ip FROM ip_whitelist');
+      _ipwlCache = rows.map(r => String(r.ip).trim()).filter(Boolean);
+      _ipwlCachedAt = Date.now();
+    }
+    if (!_ipwlCache.length) return next(); // empty list = feature off (fail-open)
+    const rawIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '');
+    const clientIp = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
+    const ok = _ipwlCache.some(e => e === clientIp || (e.endsWith('.*') && clientIp.startsWith(e.slice(0, -2) + '.')));
+    if (ok) return next();
+    logger.warn(`[ip-whitelist] BLOCKED admin request from ${clientIp} -> ${req.path}`);
+    return res.status(403).json({ error: 'IP not whitelisted for admin access' });
+  } catch (_) { return next(); } // fail-open — never hard-lock on error
+}
+app.use(adminIpWhitelistGuard);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ADMIN ROUTES (admin only)
 // ─────────────────────────────────────────────────────────────────────────────
 app.use('/', authRouter);

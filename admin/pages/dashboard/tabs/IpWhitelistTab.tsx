@@ -101,7 +101,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
         <AlertCircle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
         <div className="text-amber-800 text-sm">
-          <strong>تحذير:</strong> إضافة IP لا يعني تلقائياً تفعيل قيود الوصول. هذه القائمة مرجعية وستُربط بإعدادات الأمان من خلال API لاحقاً.
+          <strong>تنبيه مهم:</strong> الفرض الفعلي للقائمة على مسارات <code>/api/admin</code> يعمل فقط عند تفعيله من السيرفر بضبط متغيّر البيئة <code>IP_WHITELIST_ENFORCE=true</code>. قبل التفعيل القائمة مرجعية فقط. حمايات ضد الإغلاق: القائمة الفارغة = مُعطّلة، وصفحة إدارة الـ IP نفسها لا تُحجب أبداً حتى تستطيع التعديل دائماً. <strong>أضِف الـ IP الحالي الخاص بك أولاً قبل التفعيل.</strong>
         </div>
       </div>
 
