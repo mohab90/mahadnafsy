@@ -85,7 +85,8 @@ const SalesFollowupPanel = React.lazy(() => import('./dashboard/SalesFollowupPan
 const DashboardMonitorPanel = React.lazy(() => import('./dashboard/DashboardMonitorPanel'));
 const OnlineManagerPanels = React.lazy(() => import('./dashboard/OnlineManagerPanels'));
 import { handleSubPaymentFn, handleLeadPaymentFn, handleDashInstCreateFn, normalizeCourseAccess } from './dashboard/dashboardPaymentHandlers';
-import { handleCsvFileChangeFn, handleCsvImportFn, handleFetchFbFormsFn, handleFbApiSyncFn } from './dashboard/dashboardCsvFbHandlers';
+import { handleCsvFileChangeFn, handleCsvImportFn } from './dashboard/dashboardCsvFbHandlers';
+import { useFacebookLeadAds } from './dashboard/useFacebookLeadAds';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
@@ -200,7 +201,7 @@ import { Bundle, ConsultationItem, Course, DaqqiRound, DaqqiRoundAttendee, Disco
 import { formatAvailabilitySlot, meetingProviderLabels } from '../lib/consultations';
 import { mysqlAuth, mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { exportOrdersCsv } from './dashboard/dashboardExports';
-import { defaultFbDraft, normalizeLectureProgress } from './dashboard/dashboardHelpers';
+import { normalizeLectureProgress } from './dashboard/dashboardHelpers';
 import { useSiteData } from '../context/SiteDataContext';
 import {
   ROLE_DEFAULT_PERMISSIONS as MASTER_ROLE_PERMS,
@@ -476,12 +477,13 @@ const Dashboard: React.FC = () => {
   // ── Lead payment modal (unified — same design as subscriber payment modal) ─
   const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
   const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(blankPaymentDraft());
-  const [fbDraft, setFbDraft] = useState<FacebookLeadAdsConfig>(() => fbLeadAdsConfig || defaultFbDraft());
-  const [fbIntegOpen, setFbIntegOpen] = useState(false);
-  const [fbSyncLoading, setFbSyncLoading] = useState(false);
-  const [fbSyncNotice, setFbSyncNotice] = useState('');
-  const [fbFormsLoading, setFbFormsLoading] = useState(false);
-  const [fbAvailableForms, setFbAvailableForms] = useState<{id: string; name: string; status: string}[]>([]);
+  // ── Facebook Lead Ads integration → ./dashboard/useFacebookLeadAds ──────────
+  const {
+    fbDraft, setFbDraft, fbIntegOpen, setFbIntegOpen,
+    fbSyncLoading, setFbSyncLoading, fbSyncNotice, setFbSyncNotice,
+    fbFormsLoading, setFbFormsLoading, fbAvailableForms, setFbAvailableForms,
+    handleFetchFbForms, handleFbApiSync, handleSaveFbConfig,
+  } = useFacebookLeadAds();
 
   const [leadsSearch, setLeadsSearch] = useState('');
   const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]); // empty = hide converted+hidden
@@ -1577,19 +1579,7 @@ const Dashboard: React.FC = () => {
   const handleCsvImport = () => {
     handleCsvImportFn({ csvRows, csvMapping, leads, addLead, notify, setCsvImporting, setCsvImportOpen, setCsvRows, setCsvHeaders, setCsvMapping });
   };
-  // ── Facebook Lead Ads: Fetch available forms from Graph API ───────────────
-  const handleFetchFbForms = async () => {
-    await handleFetchFbFormsFn({ fbDraft, setFbSyncNotice, setFbFormsLoading, setFbAvailableForms });
-  };
-  // ── Facebook Lead Ads: Sync leads from Graph API ──────────────────────────
-  const handleFbApiSync = async () => {
-    await handleFbApiSyncFn({ fbDraft, leads, addLead, staffMembers, fbLeadAdsConfig, setFbLeadAdsConfig, setFbDraft, setFbSyncLoading, setFbSyncNotice });
-  };
-  const handleSaveFbConfig = () => {
-    setFbLeadAdsConfig({ ...fbDraft, updatedAt: new Date().toISOString() });
-    setFbSyncNotice('✅ تم حفظ الإعدادات.');
-    setTimeout(() => setFbSyncNotice(''), 3000);
-  };
+  // handleFetchFbForms / handleFbApiSync / handleSaveFbConfig → useFacebookLeadAds
 
   const startEditLead = (row: LeadItem) => {
     setEditingLeadId(row.id);
