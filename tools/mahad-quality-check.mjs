@@ -235,7 +235,7 @@ else warn('analytics.js still references paid_at or payment_audit_log for revenu
 // client) can hit it. Guard tokens may sit on the route line or the next line
 // (multiline route definitions). Catches the installment-plans class of hole.
 console.log('\n12. Authorization-coverage guard');
-const AUTHZ = /requireAdmin\b|requireAdminOrStaff|requirePermission|requireAdminOrOnlineManager/;
+const AUTHZ = /requireAdmin\b|requireAdminOrStaff|requirePermission|requireAdminOrOnlineManager|requireSuperAdmin/;
 const routeFiles = walk(join(ROOT, 'api/routes'), '.js');
 const adminMutating = [];
 const unguarded = [];
