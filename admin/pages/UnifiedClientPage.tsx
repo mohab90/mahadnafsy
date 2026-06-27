@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
+import { useCourseAccess } from './unifiedClient/useCourseAccess';
 import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../components/PaymentModal';
 import {
   LeadItem, SubscriberItem, CommunicationRecord,
@@ -260,34 +261,12 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     try { localStorage.setItem(noteKey, val); } catch { /* ignore */ }
   };
 
-  // ── course access level editing ────────────────────────────────────────────
-  const [accessSaving, setAccessSaving] = useState<Record<string, boolean>>({});
-  const [accessMsg, setAccessMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
-  // per-course custom lecture limits for preset buttons (preset1=مقدم, preset2=أول قسط)
-  const [accessPresets, setAccessPresets] = useState<Record<string, { p1: number; p2: number }>>({});
-  const getPreset = (courseId: string) => accessPresets[courseId] ?? { p1: Number(content['access.videos_on_deposit'] || 20), p2: Number(content['access.videos_per_payment'] || 15) };
-  // manual direct input for lecture limit per course
-  const [manualLimitDraft, setManualLimitDraft] = useState<Record<string, string>>({});
-
-  const applyAccessLevel = async (courseId: string, mode: 'full' | 'limited', lectureLimit?: number) => {
-    if (!subscriber) return;
-    setAccessSaving(p => ({ ...p, [courseId]: true }));
-    setAccessMsg(p => ({ ...p, [courseId]: { ok: true, text: '' } }));
-    try {
-      await mysqlAdmin.updateEnrollmentAccess(subscriber.id, courseId, mode, lectureLimit);
-      const updatedAccess: CourseAccessSetting = mode === 'full' ? { mode: 'full' } : { mode: 'limited', lectureLimit: lectureLimit ?? 1 };
-      updateSubscriber({
-        ...subscriber,
-        courseAccess: { ...(subscriber.courseAccess ?? {}), [courseId]: updatedAccess },
-      });
-      setAccessMsg(p => ({ ...p, [courseId]: { ok: true, text: '✓ تم التحديث' } }));
-      setTimeout(() => setAccessMsg(p => ({ ...p, [courseId]: { ok: true, text: '' } })), 2500);
-    } catch {
-      setAccessMsg(p => ({ ...p, [courseId]: { ok: false, text: '✗ فشل الحفظ' } }));
-    } finally {
-      setAccessSaving(p => ({ ...p, [courseId]: false }));
-    }
-  };
+  // ── course access level editing → ./unifiedClient/useCourseAccess (names unchanged) ──
+  const {
+    accessSaving, setAccessSaving, accessMsg, setAccessMsg,
+    accessPresets, setAccessPresets, getPreset,
+    manualLimitDraft, setManualLimitDraft, applyAccessLevel,
+  } = useCourseAccess(subscriber);
 
   // ── show grant form from courses tab ────────────────────────────────────────
   const [showGrantFromCourses, setShowGrantFromCourses] = useState(false);
