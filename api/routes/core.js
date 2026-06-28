@@ -887,9 +887,22 @@ router.get('/api/admin/payment-audit', requireAuth, requireAdmin, async (req, re
 });
 
 // ── Server Monitor ────────────────────────────────────────────────────────────
-// GET /api/admin/ai/config — returns server-side Gemini key (admin only, never exposed in client bundle)
-router.get('/api/admin/ai/config', requireAuth, requireAdmin, (req, res) => {
-  res.json({ geminiKey: process.env.GEMINI_API_KEY || null });
+// GET /api/admin/ai/config — returns the Gemini key (admin only, never in client bundle).
+// Prefers the key entered IN THE SYSTEM (admin AI settings → site_config.settings →
+// adminAiConfig.apiKey) so no .env var is required; falls back to GEMINI_API_KEY env.
+router.get('/api/admin/ai/config', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    let geminiKey = null;
+    try {
+      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'settings' LIMIT 1");
+      const settings = rows[0]?.value ? JSON.parse(rows[0].value) : {};
+      const aiCfg = settings.adminAiConfig || {};
+      if (aiCfg.apiKey && (aiCfg.provider === 'gemini' || !aiCfg.provider)) geminiKey = aiCfg.apiKey;
+    } catch { /* fall through to env */ }
+    const source = geminiKey ? 'admin' : (process.env.GEMINI_API_KEY ? 'env' : null);
+    if (!geminiKey) geminiKey = process.env.GEMINI_API_KEY || null;
+    res.json({ geminiKey, source });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/server-status — process info + watchdog log (nohup mode, no PM2)
