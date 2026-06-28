@@ -7,6 +7,7 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
+const { getBrandSettings } = require('../lib/brandSettings');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -26,13 +27,16 @@ async function _loadPaymentForPrint(paymentId) {
     WHERE p.id = ?
   `, [paymentId]);
   if (!p) return null;
-  const [[sc]] = await pool.query("SELECT value FROM site_config WHERE `key`='site_name'").catch(() => [[null]]);
-  const [[sp]] = await pool.query("SELECT value FROM site_config WHERE `key`='site_phone'").catch(() => [[null]]);
-  const [[se]] = await pool.query("SELECT value FROM site_config WHERE `key`='site_email'").catch(() => [[null]]);
+  // Identity comes from the central brand (what the owner set in Settings → الهوية),
+  // so receipts/invoices carry the institute name, logo, colour and contacts.
+  const brand = await getBrandSettings();
   const [[sv]] = await pool.query("SELECT value FROM site_config WHERE `key`='vat_pct'").catch(() => [[null]]);
-  p._instituteName = sc?.value || 'معهد مهاد للدراسات النفسية';
-  p._sitePhone = sp?.value || '';
-  p._siteEmail = se?.value || 'info@mahadnafsy.com';
+  p._instituteName = brand.instituteName;
+  p._sitePhone = brand.supportPhone || brand.supportWhatsapp || '';
+  p._siteEmail = brand.supportEmail;
+  p._logoUrl = brand.logoUrl;
+  p._primaryColor = brand.primaryColor;
+  p._websiteUrl = brand.websiteUrl;
   p._invoiceNum = `INV-${p.id.slice(-8).toUpperCase()}`;
   p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
   p._amount = parseFloat(p.amount) || 0;
@@ -139,10 +143,11 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
 
   <!-- Logo / Header -->
   <div class="center">
-    <div class="xlarge">${p._instituteName}</div>
-    <div class="small" style="margin-top:2px">معهد الدراسات النفسية</div>
+    ${p._logoUrl ? `<img src="${p._logoUrl}" alt="${p._instituteName}" style="height:60px;object-fit:contain;margin-bottom:8px" onerror="this.style.display='none'" />` : ''}
+    <div class="xlarge" style="color:${p._primaryColor || '#111'}">${p._instituteName}</div>
     ${p._sitePhone ? `<div class="small">${p._sitePhone}</div>` : ''}
     ${p._siteEmail ? `<div class="small">${p._siteEmail}</div>` : ''}
+    ${p._websiteUrl ? `<div class="small">${p._websiteUrl.replace(/^https?:\/\//, '')}</div>` : ''}
   </div>
 
   <span class="divider center">${line}</span>
@@ -636,8 +641,7 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
       GROUP BY jel.account_code, jel.account_name ORDER BY jel.account_code
     `, [from, to]);
 
-    const [[sc]] = await pool.query("SELECT value FROM site_config WHERE `key`='site_name'").catch(() => [[null]]);
-    const instituteName = sc?.value || 'معهد مهاد';
+    const instituteName = (await getBrandSettings()).instituteName;
 
     const totalRevenue  = revRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
     const totalExpenses = expRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
