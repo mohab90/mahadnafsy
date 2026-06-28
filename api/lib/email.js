@@ -7,6 +7,7 @@
 const nodemailer = require('nodemailer');
 const { pool, cached, cacheInvalidate } = require('./db');
 const logger = require('./logger');
+const { getBrandSettings } = require('./brandSettings');
 
 const DEFAULTS = {
   smtpHost: process.env.SMTP_HOST || 'smtp.hostinger.com',
@@ -30,7 +31,20 @@ async function getEmailConfig() {
       const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='email_config' LIMIT 1");
       if (rows[0]?.value) saved = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
     } catch (e) { logger.warn('[email] config read failed', { err: e.message }); }
-    const cfg = { ...DEFAULTS, ...saved };
+    // Pull the institute identity the owner set in Settings → الهوية so emails are
+    // branded automatically. Precedence: explicit email_config > brand settings > defaults.
+    let brandDefaults = {};
+    try {
+      const b = await getBrandSettings();
+      brandDefaults = {
+        senderName: b.instituteName,
+        brandColor: b.primaryColor,
+        headerTitle: b.instituteName,
+        logoUrl: b.logoUrl,
+        headerSubtitle: (b.websiteUrl || '').replace(/^https?:\/\//, ''),
+      };
+    } catch (e) { logger.warn('[email] brand read failed', { err: e.message }); }
+    const cfg = { ...DEFAULTS, ...brandDefaults, ...saved };
     cfg.smtpPass = saved.smtpPass || DEFAULTS.smtpPass; // password may live in env only
     if (!cfg.senderAddress) cfg.senderAddress = cfg.smtpUser;
     return cfg;
