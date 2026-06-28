@@ -390,9 +390,11 @@ export const mysqlAdmin = {
     ),
   sendWhatsApp: (phone: string, message: string) =>
     apiFetch<{ ok: boolean }>('/admin/whatsapp-send', { method: 'POST', body: JSON.stringify({ phone, message }) }, A),
-  getWhatsAppConfig: () => apiFetch<{ instanceId: string; hasToken: boolean }>('/admin/whatsapp-config', {}, A),
-  saveWhatsAppConfig: (instanceId: string, apiToken: string) =>
-    put('/admin/whatsapp-config', { instanceId, apiToken }),
+  getWhatsAppConfig: () => apiFetch<{ provider: 'meta' | 'green-api'; instanceId: string; hasToken: boolean; metaPhoneId: string; hasMetaToken: boolean }>('/admin/whatsapp-config', {}, A),
+  // Accepts the full config (provider + the relevant creds). Blank secrets are kept
+  // server-side, so the form needn't re-send tokens it doesn't change.
+  saveWhatsAppConfig: (cfg: { provider?: 'meta' | 'green-api'; instanceId?: string; apiToken?: string; metaPhoneId?: string; metaToken?: string }) =>
+    put('/admin/whatsapp-config', cfg),
 
   getFbLeadConfig: () => apiFetch<Record<string, unknown>>('/admin/facebook-lead-ads-config', {}, A),
   saveFbLeadConfig: (cfg: Record<string, unknown>) =>

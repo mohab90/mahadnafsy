@@ -17,8 +17,14 @@ router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
   try {
     const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'whatsapp_config'");
     const cfg = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    // Never return the token to frontend
-    res.json({ instanceId: cfg.instanceId || '', hasToken: !!(cfg.apiToken) });
+    // Never return secrets to the frontend — only presence flags.
+    res.json({
+      provider: cfg.provider || (cfg.metaToken ? 'meta' : 'green-api'),
+      instanceId: cfg.instanceId || '',
+      hasToken: !!cfg.apiToken,
+      metaPhoneId: cfg.metaPhoneId || '',
+      hasMetaToken: !!cfg.metaToken,
+    });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -52,11 +58,30 @@ router.put('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, asy
 // PUT /api/admin/whatsapp-config
 router.put('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { instanceId, apiToken } = req.body;
-    if (!instanceId || !apiToken) return res.status(400).json({ error: 'instanceId and apiToken required' });
+    const incoming = req.body || {};
+    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'whatsapp_config'");
+    const existing = rows[0]?.value ? JSON.parse(rows[0].value) : {};
+    const provider = (incoming.provider === 'meta' || incoming.provider === 'green-api')
+      ? incoming.provider : (existing.provider || 'green-api');
+    // Keep the stored secret if the incoming value is blank/omitted/masked — lets the
+    // UI save other fields without re-typing tokens.
+    const keep = (next, prev) => (next !== undefined && next !== null && String(next).trim() !== '' && !String(next).startsWith('•'))
+      ? String(next).trim() : (prev || '');
+    const merged = {
+      provider,
+      instanceId:  keep(incoming.instanceId,  existing.instanceId),
+      apiToken:    keep(incoming.apiToken,    existing.apiToken),
+      metaPhoneId: keep(incoming.metaPhoneId, existing.metaPhoneId),
+      metaToken:   keep(incoming.metaToken,   existing.metaToken),
+      updatedAt: new Date().toISOString(),
+    };
+    if (provider === 'meta' && (!merged.metaToken || !merged.metaPhoneId))
+      return res.status(400).json({ error: 'Meta requires an access token and a phone number ID' });
+    if (provider === 'green-api' && (!merged.instanceId || !merged.apiToken))
+      return res.status(400).json({ error: 'Green-API requires instanceId and apiToken' });
     await pool.query(
       "INSERT INTO site_config (`key`, `value`) VALUES ('whatsapp_config', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [JSON.stringify({ instanceId: instanceId.trim(), apiToken: apiToken.trim() })]
+      [JSON.stringify(merged)]
     );
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
