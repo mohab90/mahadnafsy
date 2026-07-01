@@ -19,8 +19,8 @@ router.get('/api/admin/email-campaigns', requireAuth, requireAdmin, async (req, 
     const [rows] = await pool.query(
       `SELECT id, title, subject, body_html, audience, audience_filter, status,
               sent_count, fail_count, scheduled_at, sent_at, created_at, created_by
-       FROM email_campaigns ORDER BY created_at DESC LIMIT 200`
-    );
+       FROM email_campaigns WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 200`
+    , [req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -422,8 +422,8 @@ router.get('/api/admin/nps', requireAuth, requireAdmin, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT id, subscriber_id, subscriber_email, score, comment, payment_id,
               sent_at, responded_at, created_at
-       FROM nps_responses ORDER BY created_at DESC LIMIT 500`
-    );
+       FROM nps_responses WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 500`
+    , [req.tenantId]);
     const [agg] = await pool.query('SELECT AVG(score) AS avg_score, COUNT(*) AS total, SUM(score >= 9) AS promoters, SUM(score <= 6) AS detractors FROM nps_responses WHERE responded_at IS NOT NULL');
     const a = agg[0];
     const npsScore = a.total > 0 ? Math.round(((a.promoters - a.detractors) / a.total) * 100) : null;
@@ -480,8 +480,8 @@ router.get('/api/admin/sms-campaigns', requireAuth, requireAdmin, async (req, re
     const [rows] = await pool.query(
       `SELECT id, title, message, audience, audience_filter, status,
               sent_count, fail_count, sent_at, created_at, created_by
-       FROM sms_campaigns ORDER BY created_at DESC LIMIT 200`
-    );
+       FROM sms_campaigns WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 200`
+    , [req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -580,8 +580,8 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
 router.get('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, trigger_event, audience, status, enrolled_count, completed_count, steps, created_at FROM drip_campaigns ORDER BY created_at DESC LIMIT 200'
-    );
+      'SELECT id, name, trigger_event, audience, status, enrolled_count, completed_count, steps, created_at FROM drip_campaigns WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 200'
+    , [req.tenantId]);
     res.json(rows.map(r => ({ ...r, steps: tryJson(r.steps, []) })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

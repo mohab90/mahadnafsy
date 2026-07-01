@@ -378,8 +378,8 @@ router.patch('/api/admin/leads/:id/utm', requireAuth, requireAdminOrStaff, async
 router.get  ('/api/admin/recurring-expenses', requireAuth, requireAdmin, async (req, res) => {
   try { const [rows] = await pool.query(
     `SELECT id, title, amount_egp, category, notes, frequency, day_of_month, is_active, last_run, created_at, created_by
-     FROM recurring_expenses ORDER BY created_at DESC`
-  ); res.json(rows); }
+     FROM recurring_expenses WHERE tenant_id = ? ORDER BY created_at DESC`
+  , [req.tenantId]); res.json(rows); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.post  ('/api/admin/recurring-expenses', requireAuth, requireAdmin, async (req, res) => {
