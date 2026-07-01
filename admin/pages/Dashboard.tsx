@@ -64,6 +64,7 @@ import {
   WaitlistTab,
   WebhooksTab,
 } from './dashboard/lazyTabs';
+import ChartOfAccountsTab from './dashboard/tabs/ChartOfAccountsTab';
 import OnlineClientsTab from './dashboard/tabs/OnlineClientsTab';
 import OverviewTab from './dashboard/tabs/OverviewTab';
 import CertRequestsTab from './dashboard/tabs/CertRequestsTab';
@@ -2121,6 +2122,9 @@ const Dashboard: React.FC = () => {
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>}>
                 <FinancialTab notify={notify} onNavigateTab={(tab) => setActiveTab(tab as TabKey)} />
               </Suspense>
+            )}
+            {activeTab === 'chart_of_accounts' && (
+              <TabErrorBoundary><ChartOfAccountsTab notify={notify} /></TabErrorBoundary>
             )}
             {activeTab === 'daqqi_accounting' && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>}>

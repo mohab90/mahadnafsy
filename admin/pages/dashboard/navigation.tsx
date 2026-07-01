@@ -67,6 +67,7 @@ export type TabKey =
   | 'orders'
   | 'financial'
   | 'financial_reports'
+  | 'chart_of_accounts'
   | 'branch_workspace'
   | 'hr_hub'
   | 'analytics_hub'
@@ -232,6 +233,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'financial', label: 'النظام المحاسبي', icon: BarChart3 },
       { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
       { key: 'financial_reports', label: 'التقارير المالية', icon: BarChart3 },
+      { key: 'chart_of_accounts', label: 'دليل الحسابات', icon: BarChart3 },
     ],
   },
   {
