@@ -7,6 +7,7 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool, cached } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
+const { getBrandSettings } = require('../lib/brandSettings');
 const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber } = require('../lib/mappers');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
@@ -200,12 +201,15 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
     const issuedAt    = row.completed_at
       ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-    const instituteName = row.institute_name || 'Psychology Institute';
+    // Identity from the central brand (Settings → الهوية): logo, colour, name.
+    const brand = await getBrandSettings();
+    const instituteName = brand.instituteName || row.institute_name || 'Psychology Institute';
     const trainingMgr   = row.training_manager || 'WALID ABDRAHMAN';
     const instructorName = row.instructor_name || 'Trainer';
     const serialNo = row.client_code || certCode.slice(-8).toUpperCase();
 
-    const LOGO_URL = 'https://h.top4top.io/p_3734xfq501.png';
+    const primaryColor = brand.primaryColor;
+    const LOGO_URL = brand.logoUrl;
     const qrData   = encodeURIComponent(`CERT:${certCode}|${studentName}|${courseName}`);
     const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&color=8B0000&bgcolor=fff&data=${qrData}`;
     const verifyUrl = `https://mahadnafsy.com/verify/${certCode}`;
@@ -243,7 +247,7 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
 <div class="toolbar no-print">
   <div style="font-size:13px;color:#555">Certificate of Achievement</div>
   <button onclick="window.print()"
-    style="background:#B91C1C;color:#fff;border:none;padding:9px 24px;border-radius:6px;font-size:14px;cursor:pointer;font-weight:bold;font-family:Arial">
+    style="background:${primaryColor};color:#fff;border:none;padding:9px 24px;border-radius:6px;font-size:14px;cursor:pointer;font-weight:bold;font-family:Arial">
     🖨️ Print / Save PDF
   </button>
 </div>
@@ -253,7 +257,7 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
   <!-- Top swoosh SVG -->
   <svg viewBox="0 0 595 210" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-2px" preserveAspectRatio="none">
     <path d="M 0 0 L 0 205 Q 100 155 297 172 Q 494 189 595 148 L 595 0 Z" fill="#D97706"/>
-    <path d="M 0 0 L 0 188 Q 100 138 297 155 Q 494 172 595 132 L 595 0 Z" fill="#B91C1C"/>
+    <path d="M 0 0 L 0 188 Q 100 138 297 155 Q 494 172 595 132 L 595 0 Z" fill="${primaryColor}"/>
     <path d="M 0 0 L 152 12 Q 68 58 0 120 Z" fill="#F59E0B" opacity="0.55"/>
     <path d="M 595 0 L 443 12 Q 527 58 595 120 Z" fill="#F59E0B" opacity="0.55"/>
   </svg>
@@ -270,20 +274,20 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
 
     <!-- Divider -->
     <div style="display:flex;align-items:center;gap:10px;margin:0 40px 14px">
-      <div style="flex:1;height:2px;background:linear-gradient(to right,transparent,#B91C1C)"></div>
+      <div style="flex:1;height:2px;background:linear-gradient(to right,transparent,${primaryColor})"></div>
       <div style="display:flex;gap:4px">
         <div style="width:6px;height:6px;border-radius:50%;background:#D97706"></div>
-        <div style="width:8px;height:8px;border-radius:50%;background:#B91C1C"></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:${primaryColor}"></div>
         <div style="width:6px;height:6px;border-radius:50%;background:#D97706"></div>
       </div>
-      <div style="flex:1;height:2px;background:linear-gradient(to left,transparent,#B91C1C)"></div>
+      <div style="flex:1;height:2px;background:linear-gradient(to left,transparent,${primaryColor})"></div>
     </div>
 
-    <div style="font-size:22px;font-weight:900;color:#B91C1C;letter-spacing:2px;margin-bottom:5px">${instituteName.toUpperCase()}</div>
+    <div style="font-size:22px;font-weight:900;color:${primaryColor};letter-spacing:2px;margin-bottom:5px">${instituteName.toUpperCase()}</div>
     <div style="font-size:11px;letter-spacing:5px;color:#777;margin-bottom:16px">IS PROUDLY PRESENTED TO</div>
 
     <!-- Student name -->
-    <div style="font-size:${studentName.length > 28 ? '20px' : '27px'};font-weight:900;color:#B91C1C;letter-spacing:2px;padding:10px 16px;border-top:2px solid #B91C1C;border-bottom:2px solid #B91C1C;margin:0 24px 16px;line-height:1.4;min-height:54px;display:flex;align-items:center;justify-content:center">
+    <div style="font-size:${studentName.length > 28 ? '20px' : '27px'};font-weight:900;color:${primaryColor};letter-spacing:2px;padding:10px 16px;border-top:2px solid ${primaryColor};border-bottom:2px solid ${primaryColor};margin:0 24px 16px;line-height:1.4;min-height:54px;display:flex;align-items:center;justify-content:center">
       ${studentName}
     </div>
 
@@ -320,11 +324,11 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
         </defs>
         <circle cx="26" cy="22" r="20" fill="url(#mg)" stroke="#B45309" stroke-width="2"/>
         <text x="26" y="29" text-anchor="middle" font-size="20" fill="#7C2D12" font-weight="bold">★</text>
-        <polygon points="14,40 20,40 17,68 9,60" fill="#B91C1C"/>
-        <polygon points="32,40 38,40 43,60 35,68" fill="#B91C1C"/>
+        <polygon points="14,40 20,40 17,68 9,60" fill="${primaryColor}"/>
+        <polygon points="32,40 38,40 43,60 35,68" fill="${primaryColor}"/>
       </svg>
       <div style="font-size:8px;color:#999;letter-spacing:1px;text-transform:uppercase">Serial No.</div>
-      <div style="font-size:11px;font-weight:700;font-family:monospace;color:#B91C1C;margin-top:2px">${serialNo}</div>
+      <div style="font-size:11px;font-weight:700;font-family:monospace;color:${primaryColor};margin-top:2px">${serialNo}</div>
       <div style="font-size:8px;color:#aaa;margin-top:2px">${issuedAt}</div>
     </div>
 
@@ -350,13 +354,13 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
   <!-- Bottom swoosh -->
   <svg viewBox="0 0 595 62" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-top:-1px" preserveAspectRatio="none">
     <path d="M 0 62 L 0 25 Q 100 65 297 48 Q 494 31 595 55 L 595 62 Z" fill="#D97706"/>
-    <path d="M 0 62 L 0 10 Q 100 50 297 33 Q 494 16 595 42 L 595 62 Z" fill="#B91C1C"/>
+    <path d="M 0 62 L 0 10 Q 100 50 297 33 Q 494 16 595 42 L 595 62 Z" fill="${primaryColor}"/>
   </svg>
 
 </div><!-- /cert -->
 
 <div style="text-align:center;padding:12px;font-size:12px;color:#999">
-  Verify at: <a href="${verifyUrl}" style="color:#B91C1C">${verifyUrl}</a>
+  Verify at: <a href="${verifyUrl}" style="color:${primaryColor}">${verifyUrl}</a>
 </div>
 
 <script>
@@ -600,7 +604,19 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
        FROM certificate_requests cr
        LEFT JOIN courses c ON c.id = cr.course_id
        WHERE cr.subscriber_id = ? ORDER BY cr.requested_at DESC`, [sub.id]);
+    // Lecture progress is tracked in the lecture_completions table (POST /api/me/progress),
+    // but mapSubscriber historically read it from crm_json (never populated) → progress always 0.
+    // Pull the real per-lecture progress here and merge it in so client progress actually computes.
+    let lectureProgressMap = {};
+    try {
+      const [completions] = await pool.query(
+        'SELECT lecture_id, progress_pct FROM lecture_completions WHERE subscriber_id = ?', [sub.id]);
+      for (const c of completions) lectureProgressMap[c.lecture_id] = Number(c.progress_pct) || 0;
+    } catch (_) { /* table may not exist on older schema — fall back to crm_json */ }
+
     let mapped = mapSubscriber({ ...sub, enrollments, payments, certRequests });
+    // Merge DB completions over any crm_json values (DB table is the source of truth).
+    mapped = { ...mapped, lectureProgress: { ...(mapped.lectureProgress || {}), ...lectureProgressMap } };
     // Backward-compat: expand any bundle:xxx keys in enrolledCourseIds to individual course UUIDs
     // (handles subscribers enrolled before the bundle-expansion fix was deployed)
     const bundleKeys = (mapped.enrolledCourseIds || []).filter(id => String(id).startsWith('bundle:'));
