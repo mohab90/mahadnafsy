@@ -497,7 +497,7 @@ export interface ContactMessage {
   phone: string;
   subject?: string;
   message: string;
-  status: 'new' | 'read' | 'replied';
+  status: 'new' | 'read' | 'replied' | 'closed';
   createdAt: string;
   adminNote?: string;
 }

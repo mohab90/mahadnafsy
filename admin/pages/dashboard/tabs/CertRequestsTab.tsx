@@ -50,8 +50,8 @@ export default function CertRequestsTab({
                 paid:        { label: 'مدفوعة',                badge: 'bg-blue-100 text-blue-700' },
                 in_progress: { label: 'في الجهة المسئولة',     badge: 'bg-purple-100 text-purple-700' },
                 not_sent:    { label: 'لسه متتبعتش للجهة',     badge: 'bg-orange-100 text-orange-700' },
-                issued:      { label: 'جاهزة للشحن',           badge: 'bg-green-100 text-green-700' },
-                shipped:     { label: 'اتشحنت',                badge: 'bg-cyan-100 text-cyan-700' },
+                shipped:     { label: 'تم الشحن',              badge: 'bg-indigo-100 text-indigo-700' },
+                issued:      { label: 'صدرت / جاهزة',          badge: 'bg-green-100 text-green-700' },
                 at_branch:   { label: 'في الفرع',              badge: 'bg-teal-100 text-teal-700' },
                 delivered:   { label: 'العميل استلمها',        badge: 'bg-emerald-100 text-emerald-800' },
               };
@@ -63,19 +63,24 @@ export default function CertRequestsTab({
               };
 
               const changeStatus = (req: CertReqRow, newStatus: CertStatus) => {
+                // Optimistic UI, then persist to the certificate_requests TABLE (single source of truth).
                 const sub = subscribers.find(s => s.id === req.subscriberId);
-                if (!sub) return;
-                const updated = (sub.extraCertificateRequests || []).map(r => r.id === req.id ? { ...r, status: newStatus } : r);
-                updateSubscriber({ ...sub, extraCertificateRequests: updated });
+                if (sub) {
+                  const updated = (sub.extraCertificateRequests || []).map(r => r.id === req.id ? { ...r, status: newStatus } : r);
+                  updateSubscriber({ ...sub, extraCertificateRequests: updated });
+                }
+                void mysqlAdmin.updateCertificateRequest(req.id, newStatus).catch(() => {});
                 notify('success', `تم تحديث الحالة: ${STATUS_META[newStatus]?.label || newStatus}`);
               };
 
               const deleteCertReq = (req: CertReqRow) => {
                 if (!window.confirm(`حذف طلب الشهادة لـ "${req.subscriberName}"؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
                 const sub = subscribers.find(s => s.id === req.subscriberId);
-                if (!sub) return;
-                const updated = (sub.extraCertificateRequests || []).filter(r => r.id !== req.id);
-                updateSubscriber({ ...sub, extraCertificateRequests: updated });
+                if (sub) {
+                  const updated = (sub.extraCertificateRequests || []).filter(r => r.id !== req.id);
+                  updateSubscriber({ ...sub, extraCertificateRequests: updated });
+                }
+                void mysqlAdmin.deleteCertificateRequest(req.id).catch(() => {});
                 notify('success', 'تم حذف الطلب.');
               };
 
