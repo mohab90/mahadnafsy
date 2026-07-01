@@ -305,7 +305,8 @@ router.get('/api/admin/consultations', requireAuth, requireAdmin, async (req, re
       `SELECT c.*, t.name AS t_name, t.specialty AS t_specialty
        FROM consultations c
        LEFT JOIN therapists t ON t.id = c.therapist_id
-       ORDER BY c.session_date DESC LIMIT ?`, [limit]);
+       WHERE c.tenant_id = ?
+       ORDER BY c.session_date DESC LIMIT ?`, [req.tenantId, limit]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
