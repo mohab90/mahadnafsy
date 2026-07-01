@@ -3,9 +3,11 @@
 const { pool } = require('./db');
 const logger = require('./logger').child({ module: 'tenant-scope' });
 
-// Unified with 25's existing middleware/tenantContext.js (default tenant 'mahad',
-// env DEFAULT_TENANT_ID). Both resolvers MUST agree or scoped queries return 0 rows.
-const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || 'mahad';
+// The canonical tenant id is 'tenant-default' — that is what the PROD DB already
+// carries (a prior SaaS migration set every row's tenant_id to 'tenant-default';
+// tenants/branches all use it). req.tenantId MUST equal it or scoped queries
+// return 0 rows. Both this and middleware/tenantContext.js default to it.
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 const DEFAULT_FEATURES = Object.freeze({
   finance: true,
   payments: true,

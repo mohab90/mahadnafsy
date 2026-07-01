@@ -1,7 +1,7 @@
 -- 027_saas_tenant_foundation.sql  (ported from the 26 line, migration 013)
 -- SaaS tenant/branch foundation. NON-DESTRUCTIVE + backward-compatible:
 -- creates the SaaS control tables and seeds a single default tenant
--- ('mahad') + its plan/subscription + the existing branches, so the
+-- ('tenant-default') + its plan/subscription + the existing branches, so the
 -- current single-institute data keeps working unchanged. tenant_id columns are
 -- added to business tables in later migrations (nullable, defaulted to this
 -- tenant) — this file only lays the control plane.
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO tenants (id, slug, name, status, plan_key)
-VALUES ('mahad', 'mahad-nafsy', 'مهاد نفسي', 'active', 'enterprise-local')
+VALUES ('tenant-default', 'mahad-nafsy', 'مهاد نفسي', 'active', 'enterprise-local')
 ON DUPLICATE KEY UPDATE name=VALUES(name), status=VALUES(status), plan_key=VALUES(plan_key);
 
 INSERT INTO saas_plans (id, plan_key, name, billing_cycle, base_price, currency, feature_limits_json, is_active)
@@ -104,11 +104,11 @@ VALUES ('plan-enterprise-local', 'enterprise-local', 'Enterprise Local', 'custom
 ON DUPLICATE KEY UPDATE name=VALUES(name), feature_limits_json=VALUES(feature_limits_json), is_active=VALUES(is_active);
 
 INSERT INTO tenant_subscriptions (id, tenant_id, plan_id, status, starts_at, metadata_json)
-VALUES ('sub-mahad', 'mahad', 'plan-enterprise-local', 'active', NOW(), JSON_OBJECT('source', 'migration_027'))
+VALUES ('sub-tenant-default', 'tenant-default', 'plan-enterprise-local', 'active', NOW(), JSON_OBJECT('source', 'migration_027'))
 ON DUPLICATE KEY UPDATE status=VALUES(status), plan_id=VALUES(plan_id);
 
 INSERT INTO branches (id, tenant_id, branch_key, slug, label, branch_type, timezone, currency, modules_json, tabs_json, is_active)
 VALUES
-  ('branch-online-egypt', 'mahad', 'online_egypt', 'online-egypt', 'Online Egypt', 'online', 'Africa/Cairo', 'EGP', JSON_ARRAY('clients','leads','payments'), JSON_ARRAY('online_clients','leads','orders'), 1),
-  ('branch-daqqi', 'mahad', 'daqqi', 'daqqi', 'Daqqi Branch', 'physical', 'Africa/Cairo', 'EGP', JSON_ARRAY('clients','schedule','payments'), JSON_ARRAY('daqqi_schedule','online_clients','orders'), 1)
+  ('branch-online-egypt', 'tenant-default', 'online_egypt', 'online-egypt', 'Online Egypt', 'online', 'Africa/Cairo', 'EGP', JSON_ARRAY('clients','leads','payments'), JSON_ARRAY('online_clients','leads','orders'), 1),
+  ('branch-daqqi', 'tenant-default', 'daqqi', 'daqqi', 'Daqqi Branch', 'physical', 'Africa/Cairo', 'EGP', JSON_ARRAY('clients','schedule','payments'), JSON_ARRAY('daqqi_schedule','online_clients','orders'), 1)
 ON DUPLICATE KEY UPDATE label=VALUES(label), branch_type=VALUES(branch_type), modules_json=VALUES(modules_json), tabs_json=VALUES(tabs_json), is_active=VALUES(is_active);

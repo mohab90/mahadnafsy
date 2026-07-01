@@ -12,7 +12,9 @@
  * NOT yet mounted globally. Mount in server.js once the DB carries tenant_id.
  * See docs/MULTI-TENANCY.md for the full rollout plan.
  */
-const DEFAULT_TENANT = process.env.DEFAULT_TENANT_ID || 'mahad';
+// Canonical tenant id 'tenant-default' — matches the prod DB (every row's
+// tenant_id is already 'tenant-default'). Aligned with lib/tenantScope.js.
+const DEFAULT_TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 
 function resolveTenant(req, _res, next) {
   let tenant = DEFAULT_TENANT;
