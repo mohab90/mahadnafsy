@@ -23,7 +23,7 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
       `SELECT id, type, item_id, item_title, amount, currency, payment_method, customer_name,
        customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
        course_id, bundle_id, notes, staff_id, staff_name, created_at, paid_at, linked_transfer_id
-       FROM orders ORDER BY created_at DESC LIMIT ?`, [limit]);
+       FROM orders WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
 
     const [payRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
@@ -34,9 +34,9 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id
        LEFT JOIN users u ON u.id = p.staff_id
-       WHERE p.amount > 0
+       WHERE p.tenant_id = ? AND p.amount > 0
        ORDER BY p.date DESC LIMIT ?`,
-      [limit]
+      [req.tenantId, limit]
     );
 
     const existingTxnIds = new Set(rows.map(r => r.transaction_id).filter(Boolean));
@@ -147,6 +147,29 @@ router.delete('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, re
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ── Abandoned checkouts (marketing recovery) ─────────────────────────────────
+// Orders that started checkout (status PENDING) older than N hours and were never paid —
+// prime targets for a WhatsApp/email recovery nudge. Excludes carts later paid (same phone+item).
+router.get('/api/admin/abandoned-checkouts', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const hours = Math.min(720, Math.max(1, parseInt(req.query.hours, 10) || 2));
+    const [rows] = await pool.query(
+      `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency,
+              o.customer_name, o.customer_email, o.customer_phone, o.subscriber_id, o.created_at
+       FROM orders o
+       WHERE o.status = 'PENDING'
+         AND o.created_at <= DATE_SUB(NOW(), INTERVAL ? HOUR)
+         AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+         AND NOT EXISTS (
+           SELECT 1 FROM orders p
+           WHERE p.status = 'PAID' AND p.item_id = o.item_id
+             AND (p.customer_phone = o.customer_phone OR p.customer_email = o.customer_email)
+         )
+       ORDER BY o.created_at DESC LIMIT 300`, [hours]);
+    res.json(rows);
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

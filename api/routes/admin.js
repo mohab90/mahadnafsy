@@ -154,11 +154,11 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
        FROM subscribers s
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id
-       WHERE NOT EXISTS (
+       WHERE s.tenant_id = ? AND NOT EXISTS (
          SELECT 1 FROM staff st WHERE LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
        ) ${adminExclusions}
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
-      [...ADMIN_EMAILS.map(e => e.toLowerCase()), limit, offset]
+      [req.tenantId, ...ADMIN_EMAILS.map(e => e.toLowerCase()), limit, offset]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -417,11 +417,12 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, async 
     const [rows] = await pool.query(
       `SELECT DISTINCT s.* FROM subscribers s
        LEFT JOIN leads l ON l.id = s.lead_id
-       WHERE s.assigned_sales_id = ?
+       WHERE s.tenant_id = ? AND (
+             s.assigned_sales_id = ?
           OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?)
-          OR (s.lead_id IS NOT NULL AND l.assigned_sales_id = ?)
+          OR (s.lead_id IS NOT NULL AND l.assigned_sales_id = ?))
        ORDER BY s.created_at DESC LIMIT 2000`,
-      [staffId, staffId, staffId]
+      [req.tenantId, staffId, staffId, staffId]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -494,12 +495,13 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
 
     const [rows] = await pool.query(
       `SELECT DISTINCT s.* FROM subscribers s
-       WHERE s.assigned_cs_id = ?
+       WHERE s.tenant_id = ? AND (
+             s.assigned_cs_id = ?
           OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.assigned_cs_name = (SELECT name FROM staff WHERE id=? LIMIT 1))
           OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?)
-          OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionName')) = (SELECT name FROM staff WHERE id=? LIMIT 1))
+          OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionName')) = (SELECT name FROM staff WHERE id=? LIMIT 1)))
        ORDER BY s.created_at DESC LIMIT 5000`,
-      [staffId, staffId, staffId, staffId]
+      [req.tenantId, staffId, staffId, staffId, staffId]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -1838,8 +1840,8 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
       FROM leads l
       LEFT JOIN staff ss ON ss.id = l.assigned_sales_id
       LEFT JOIN staff cs ON cs.id = l.assigned_cs_id
-      WHERE l.hidden = 0`;
-    const params = [];
+      WHERE l.tenant_id = ? AND l.hidden = 0`;
+    const params = [req.tenantId];
     const role = (req.staffRecord?.role || '').toUpperCase();
     if (req.staffRecord && !req.isSuperAdmin) {
       if (role === 'SALES') {

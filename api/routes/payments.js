@@ -74,8 +74,8 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, async (req, 
     const managerRoles = new Set(['MANAGER','ADMIN','ACCOUNTANT','DAQQI_MANAGER']);
     const isManagerRole = req.staffRecord && managerRoles.has((req.staffRecord.role || '').toUpperCase());
     let sql = `SELECT p.*, s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code AS subscriber_client_code
-               FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id WHERE 1`;
-    const params = [];
+               FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id WHERE p.tenant_id = ?`;
+    const params = [req.tenantId];
     if (startDate)   { sql += ' AND p.date >= ?';           params.push(startDate); }
     if (endDate)     { sql += ' AND p.date <= ?';           params.push(endDate); }
     if (channel)     { sql += ' AND p.payment_method = ?';  params.push(channel); }
