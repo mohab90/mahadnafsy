@@ -105,26 +105,54 @@ router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, r
 // ── Unified support inbox (tickets + contact messages in one feed) ───────────
 router.get('/api/admin/support-inbox', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const kind = req.query.kind; // all | ticket | contact
-    let tickets = [], contacts = [];
-    if (kind !== 'contact') {
+    const kind = req.query.kind || 'all'; // all | ticket | contact | refund | cert
+    const want = (k) => kind === 'all' || kind === k;
+    const isOpen = (s, closedSet) => !closedSet.includes(String(s || '').toLowerCase()); // still needs attention
+    let tickets = [], contacts = [], refunds = [], certs = [];
+    if (want('ticket')) {
       try {
         const [rows] = await pool.query(
           `SELECT id, subscriber_name AS name, subscriber_email AS email, subject,
-                  status, created_at FROM support_tickets ORDER BY created_at DESC LIMIT 100`);
-        tickets = rows.map(r => ({ source: 'ticket', id: r.id, name: r.name, email: r.email, phone: null, subject: r.subject, preview: null, status: (r.status || 'open'), at: r.created_at }));
+                  status, created_at FROM support_tickets WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100`, [req.tenantId]);
+        tickets = rows.map(r => ({ source: 'ticket', id: r.id, name: r.name, email: r.email, phone: null, subject: r.subject, preview: null, status: String(r.status || 'open').toLowerCase(), open: isOpen(r.status, ['closed', 'resolved']), at: r.created_at }));
       } catch { /* table shape */ }
     }
-    if (kind !== 'ticket') {
+    if (want('contact')) {
       try {
         const [rows] = await pool.query(
           `SELECT id, name, email, phone, subject, message, status, created_at
-           FROM contact_messages ORDER BY created_at DESC LIMIT 100`);
-        contacts = rows.map(r => ({ source: 'contact', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: r.subject || 'رسالة تواصل', preview: String(r.message || '').slice(0, 120), status: (r.status || 'new'), at: r.created_at }));
+           FROM contact_messages WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100`, [req.tenantId]);
+        contacts = rows.map(r => ({ source: 'contact', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: r.subject || 'رسالة تواصل', preview: String(r.message || '').slice(0, 120), status: String(r.status || 'new').toLowerCase(), open: isOpen(r.status, ['closed', 'replied']), at: r.created_at }));
       } catch { /* table shape */ }
     }
-    const items = [...tickets, ...contacts].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 150);
-    res.json({ items, counts: { tickets: tickets.length, contacts: contacts.length, total: items.length } });
+    if (want('refund')) {
+      try {
+        const [rows] = await pool.query(
+          `SELECT rr.id, s.name, s.email, s.phone, rr.amount, rr.currency, rr.reason, rr.status, rr.created_at
+           FROM refund_requests rr LEFT JOIN subscribers s ON s.id = rr.subscriber_id
+           ORDER BY rr.created_at DESC LIMIT 100`);
+        refunds = rows.map(r => ({ source: 'refund', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: `طلب استرداد ${Number(r.amount || 0).toLocaleString()} ${r.currency || ''}`, preview: r.reason || null, status: String(r.status || 'pending').toLowerCase(), open: isOpen(r.status, ['refunded', 'rejected', 'closed', 'done']), at: r.created_at }));
+      } catch { /* table shape */ }
+    }
+    if (want('cert')) {
+      try {
+        const [rows] = await pool.query(
+          `SELECT cr.id, s.name, s.email, s.phone, cr.type, cr.status, cr.requested_at
+           FROM certificate_requests cr LEFT JOIN subscribers s ON s.id = cr.subscriber_id
+           ORDER BY cr.requested_at DESC LIMIT 100`);
+        certs = rows.map(r => ({ source: 'cert', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: 'طلب شهادة', preview: r.type || null, status: String(r.status || 'pending').toLowerCase(), open: isOpen(r.status, ['issued', 'delivered', 'rejected']), at: r.requested_at }));
+      } catch { /* table shape */ }
+    }
+    const all = [...tickets, ...contacts, ...refunds, ...certs].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const items = all.slice(0, 300);
+    const openCount = (arr) => arr.filter(x => x.open).length;
+    res.json({
+      items,
+      counts: {
+        tickets: openCount(tickets), contacts: openCount(contacts),
+        refunds: openCount(refunds), certs: openCount(certs), total: openCount(all),
+      },
+    });
   } catch (e) { logger.error('[support-inbox]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

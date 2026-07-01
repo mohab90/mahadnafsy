@@ -1128,7 +1128,7 @@ router.get('/api/admin/join-us', requireAuth, requireAdmin, async (req, res) => 
   try {
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, specialty, experience, type, linkedin, message, status, admin_note, created_at
-       FROM join_us_applications ORDER BY created_at DESC LIMIT 500`);
+       FROM join_us_applications WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 500`, [req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1150,14 +1150,21 @@ router.get('/api/admin/contact-messages', requireAuth, requireAdmin, async (req,
   try {
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, subject, message, status, admin_note, created_at
-       FROM contact_messages ORDER BY created_at DESC LIMIT 500`);
-    res.json(rows);
+       FROM contact_messages WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 500`, [req.tenantId]);
+    // Client compares lowercase status and reads camelCase adminNote.
+    res.json(rows.map(r => ({ ...r, status: String(r.status || 'new').toLowerCase(), adminNote: r.admin_note, createdAt: r.created_at })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('UPDATE contact_messages SET status=? WHERE id=?',
-      [req.body.status||'new', req.params.id]);
+    const sets = [], params = [];
+    if (req.body.status !== undefined) { sets.push('status=?'); params.push(String(req.body.status || 'new').toUpperCase()); }
+    if (req.body.adminNote !== undefined || req.body.admin_note !== undefined) {
+      sets.push('admin_note=?'); params.push(req.body.adminNote ?? req.body.admin_note ?? null);
+    }
+    if (!sets.length) return res.json({ ok: true });
+    params.push(req.params.id);
+    await pool.query(`UPDATE contact_messages SET ${sets.join(', ')} WHERE id=?`, params);
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1516,6 +1523,26 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
          crm_json = VALUES(crm_json)`,
       [leadId, email.split('@')[0], email.toLowerCase().trim(), crmJson]
     );
+
+    // Also create a PENDING order so the booking appears in Accounts (orders) — the team can
+    // confirm it (record payment → enroll) or delete it. Previously bookings were CRM-only.
+    const { customerName, customerEmail, customerPhone, amount, currency } = req.body || {};
+    const otype = String(itemType || 'course').toUpperCase();
+    if (itemId && Number(amount) > 0 && ['COURSE', 'BUNDLE', 'CONSULTATION'].includes(otype)) {
+      const orderId = `intent-${uid}-${itemId}`;
+      await pool.query(
+        `INSERT INTO orders (id, type, item_id, item_title, amount, currency, payment_method,
+           customer_name, customer_email, customer_phone, status, course_id, bundle_id, notes, created_at)
+         VALUES (?,?,?,?,?,?, 'OTHER', ?,?,?, 'PENDING', ?, ?, 'حجز من الموقع — بانتظار التأكيد', NOW())
+         ON DUPLICATE KEY UPDATE amount=VALUES(amount), item_title=VALUES(item_title),
+           customer_name=VALUES(customer_name), customer_phone=VALUES(customer_phone),
+           status=IF(status='PAID', status, 'PENDING')`,
+        [orderId, otype, itemId, itemTitle || '', Number(amount) || 0,
+         (currency && ['EGP', 'SAR', 'USD'].includes(currency)) ? currency : 'EGP',
+         customerName || email.split('@')[0], customerEmail || email.toLowerCase().trim(), customerPhone || '',
+         otype === 'COURSE' ? itemId : null, otype === 'BUNDLE' ? itemId : null]
+      );
+    }
     res.json({ ok: true });
   } catch (e) {
     logger.warn('[checkout-intent]', e.message);
