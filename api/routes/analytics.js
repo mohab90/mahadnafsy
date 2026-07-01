@@ -685,8 +685,8 @@ function toCsv(rows, cols) {
 router.get('/api/admin/export/expenses', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { from, to } = req.query;
-    let sql = `SELECT id, title, amount, category, recurrence, date, notes FROM expenses WHERE deleted_at IS NULL AND 1=1`;
-    const params = [];
+    let sql = `SELECT id, title, amount, category, recurrence, date, notes FROM expenses WHERE tenant_id = ? AND deleted_at IS NULL AND 1=1`;
+    const params = [req.tenantId];
     if (from) { sql += ' AND date >= ?'; params.push(from); }
     if (to)   { sql += ' AND date <= ?'; params.push(to); }
     sql += ' ORDER BY date DESC LIMIT 50000';
