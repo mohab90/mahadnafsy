@@ -391,8 +391,8 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, async (req, res
     params.push(limit, offset);
 
     const [rows] = await pool.query(
-      `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      params
+      `SELECT * FROM leads WHERE tenant_id = ? AND (${whereClause}) ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [req.tenantId, ...params]
     );
     res.json(rows.map(r => ({
       id: r.id, name: r.name, email: r.email, phone: r.phone,
