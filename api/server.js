@@ -286,10 +286,18 @@ setInterval(() => {
     _healInProgress = true;
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const memMB = (memUsed / 1024 / 1024).toFixed(1);
-    logger.info(`[auto-heal] Memory at ${memMB}MB — exiting cleanly (watchdog will restart)`);
+    // WARN (not info) + a webhook alert so a genuine leak SURFACES instead of being
+    // silently masked by restarts. Frequent auto-heals = investigate a leak.
+    logger.warn(`[auto-heal] Memory ${memMB}MB > threshold ${Math.round(MEMORY_HEAL_THRESHOLD/1048576)}MB — clean restart (watch frequency: frequent = leak)`);
+    try {
+      require('./lib/errorMonitor').alert('Memory auto-heal restart', {
+        rssMB: memMB, thresholdMB: Math.round(MEMORY_HEAL_THRESHOLD / 1048576),
+        note: 'Occasional is fine; FREQUENT restarts indicate a real memory leak — investigate.',
+      });
+    } catch (_) {}
     try {
       _fs.appendFileSync(_crashHistoryLog,
-        `${ts} [AUTO-HEAL] Clean exit at ${memMB}MB (threshold 170MB)\n`
+        `${ts} [AUTO-HEAL] Clean exit at ${memMB}MB (threshold ${Math.round(MEMORY_HEAL_THRESHOLD/1048576)}MB)\n`
       );
     } catch (_) {}
     // Give in-flight requests 3s to drain, then exit cleanly
