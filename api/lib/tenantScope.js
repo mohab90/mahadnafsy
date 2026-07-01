@@ -3,7 +3,9 @@
 const { pool } = require('./db');
 const logger = require('./logger').child({ module: 'tenant-scope' });
 
-const DEFAULT_TENANT_ID = process.env.MAHAD_DEFAULT_TENANT_ID || 'tenant-default';
+// Unified with 25's existing middleware/tenantContext.js (default tenant 'mahad',
+// env DEFAULT_TENANT_ID). Both resolvers MUST agree or scoped queries return 0 rows.
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || 'mahad';
 const DEFAULT_FEATURES = Object.freeze({
   finance: true,
   payments: true,
