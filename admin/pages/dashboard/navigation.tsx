@@ -281,6 +281,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // All settings (general, finance, platform, AI, security, system) are now
       // consolidated inside this single page — see SystemSettingsTab sections.
       { key: 'system_settings', label: 'الإعدادات', icon: Settings2 },
+      { key: 'branch_workspace', label: 'مساحات الفروع', icon: Building2 },
     ],
   },
 ];
