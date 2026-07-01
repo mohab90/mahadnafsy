@@ -990,33 +990,9 @@ router.get('/api/community/posts/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/community/posts â€” create post or reply
-router.post('/api/community/posts', requireAuth, async (req, res) => {
-  try {
-    const { title, body, course_id, parent_id } = req.body;
-    if (!body || !body.trim()) return res.status(400).json({ error: 'body required' });
-
-    // Resolve subscriber from auth user
-    const [[sub]] = await pool.query('SELECT id, name FROM subscribers WHERE firebase_uid = ? OR email = ?',
-      [req.user.uid || '', req.user.email || '']);
-    if (!sub) return res.status(403).json({ error: 'Subscriber account required' });
-
-    // If reply, validate parent exists
-    if (parent_id) {
-      const [[parent]] = await pool.query('SELECT id FROM forum_posts WHERE id = ? AND is_hidden = 0', [parent_id]);
-      if (!parent) return res.status(404).json({ error: 'Parent post not found' });
-    }
-
-    const id = uuidv4();
-    await pool.query(
-      `INSERT INTO forum_posts (id, author_id, author_name, course_id, parent_id, title, body)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, sub.id, sub.name || 'Ø·Ø§Ù„Ø¨', course_id || null, parent_id || null,
-       parent_id ? null : (title || 'Ù…ÙˆØ¶ÙˆØ¹ Ø¬Ø¯ÙŠØ¯'), body.trim()]
-    );
-    res.status(201).json({ id, message: 'Post created' });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// NOTE: POST /api/community/posts (forum_posts) was here too but collided with
+// community.js (which mounts first) and no frontend calls forum_posts — removed
+// to end the route collision. The distinct /:id/upvote route stays below.
 
 // POST /api/community/posts/:id/upvote â€” toggle upvote
 router.post('/api/community/posts/:id/upvote', requireAuth, async (req, res) => {

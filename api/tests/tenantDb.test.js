@@ -42,8 +42,8 @@ test('assertOwned blocks cross-tenant rows but allows same tenant', () => {
   assert.doesNotThrow(() => db.assertOwned(null));
 });
 
-test('defaults to the mahad tenant when none supplied', () => {
-  assert.equal(tenantDb(fakePool()).tenantId, 'mahad');
+test('defaults to the default tenant when none supplied', () => {
+  assert.equal(tenantDb(fakePool()).tenantId, 'tenant-default');
 });
 
 test('table/column identifiers are sanitised', async () => {
