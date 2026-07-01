@@ -3,7 +3,7 @@ const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 
-const { pool } = require('../lib/db');
+const { pool, cached } = require('../lib/db');
 const { tryJson, sanitize } = require('../lib/helpers');
 const { sendEmail } = require('../lib/email');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -141,7 +141,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, async (
       [openLeaves],
       [forumPosts],
       [waitlistTotal],
-    ] = await Promise.all([
+    ] = await cached('dashboard_kpi_' + curM, 30000, () => Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(CASE WHEN DATE_FORMAT(date,'%Y-%m')=? THEN amount END),0) AS this_month,
@@ -173,7 +173,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, async (
       pool.query("SELECT COUNT(*) AS n FROM leave_requests WHERE status='pending'").catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE is_hidden=0").catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM course_waitlist WHERE status='waiting'").catch(() => [[{n:0}]]),
-    ]);
+    ]));
 
     const rev = revenue[0];
     const pct = (a, b) => b > 0 ? parseFloat(((a-b)/b*100).toFixed(1)) : (a > 0 ? 100 : 0);
