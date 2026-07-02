@@ -639,6 +639,9 @@ const server = app.listen(PORT, () => {
   // Load editable WhatsApp message templates from settings + keep them refreshed
   require('./lib/messageTemplates').startTemplatesRefresh();
 
+  // Automated daily DB backup (gzipped mysqldump, rotated) — production only.
+  require('./lib/dbBackup').scheduleDbBackup();
+
   // Initialize optional error monitoring (Sentry — no-op unless SENTRY_DSN + package present)
   require('./lib/errorMonitor').initErrorMonitor();
 

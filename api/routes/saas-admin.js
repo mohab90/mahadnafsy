@@ -75,6 +75,30 @@ router.patch('/api/admin/saas/tenants/:id', requireAuth, requireSuperAdmin, asyn
   } catch (e) { logger.error('[saas patch]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── DB backups (ops) ─────────────────────────────────────────────────────────
+// POST /api/admin/db-backup/run — trigger a backup now (idempotent per day).
+router.post('/api/admin/db-backup/run', requireAuth, requireSuperAdmin, async (_req, res) => {
+  try {
+    const wrote = await require('../lib/dbBackup').runBackup();
+    res.json({ ok: true, wrote, note: wrote ? 'تم إنشاء نسخة جديدة' : 'نسخة اليوم موجودة بالفعل' });
+  } catch (e) { logger.error('[db-backup run]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/admin/db-backup/list — list stored backups (name, size, date).
+router.get('/api/admin/db-backup/list', requireAuth, requireSuperAdmin, async (_req, res) => {
+  try {
+    const fs = require('fs'); const path = require('path'); const { DIR } = require('../lib/dbBackup');
+    let files = [];
+    try {
+      files = fs.readdirSync(DIR).filter(f => f.endsWith('.sql.gz')).map(f => {
+        const st = fs.statSync(path.join(DIR, f));
+        return { name: f, sizeMB: +(st.size / 1048576).toFixed(2), at: st.mtime };
+      }).sort((a, b) => (a.name < b.name ? 1 : -1));
+    } catch { /* dir not created yet */ }
+    res.json({ dir: DIR, count: files.length, files });
+  } catch (e) { logger.error('[db-backup list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/admin/saas/plans
 router.get('/api/admin/saas/plans', requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
