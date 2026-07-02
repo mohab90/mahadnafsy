@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Target, Eye, History, Users, Award, Globe, Mail, GraduationCap } from 'lucide-react';
+import { Target, Eye, History, Users, Award, Globe, Mail, GraduationCap, Briefcase } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 
 const AboutUs: React.FC = () => {
@@ -147,7 +147,7 @@ const AboutUs: React.FC = () => {
                              {teamMembers.map((member, i) => (
                    <div key={i} className="text-center group bg-white p-6 rounded-2xl border border-gray-100 hover:shadow-xl transition duration-300">
                        <div className="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 border-gray-100 shadow-md mb-6 group-hover:border-primary-500 transition duration-300">
-                           <img src={member.img} className="w-full h-full object-cover transform group-hover:scale-110 transition duration-500" alt={member.name} />
+                           <img loading="lazy" decoding="async" src={member.img} className="w-full h-full object-cover transform group-hover:scale-110 transition duration-500" alt={member.name} />
                        </div>
                        <h3 className="font-bold text-xl text-gray-900 mb-1">{member.name}</h3>
                        <p className="text-primary-600 font-medium text-sm mb-3">{member.role}</p>
@@ -178,11 +178,18 @@ const AboutUs: React.FC = () => {
               تواصل معنا
             </Link>
             <Link
-              to="/join"
+              to="/join?type=instructor"
               className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2"
             >
               <GraduationCap size={18} />
               انضم إلينا كمحاضر
+            </Link>
+            <Link
+              to="/join?type=employee"
+              className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2"
+            >
+              <Briefcase size={18} />
+              انضم إلينا كموظف
             </Link>
           </div>
         </div>

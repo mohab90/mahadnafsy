@@ -81,13 +81,13 @@ const Bundles: React.FC = () => {
                     <div className="lg:w-1/3 bg-gray-900 relative">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary-600 to-primary-900 opacity-90"></div>
                         {(bundle.courses[0]?.thumbnail || bundle.thumbnail) && (
-                          <img src={bundle.courses[0]?.thumbnail || bundle.thumbnail} className="w-full h-full object-cover absolute mix-blend-overlay opacity-50" alt="" />
+                          <img loading="lazy" decoding="async" src={bundle.courses[0]?.thumbnail || bundle.thumbnail} className="w-full h-full object-cover absolute mix-blend-overlay opacity-50" alt="" />
                         )}
                         <div className="relative z-10 p-8 h-full flex flex-col justify-between text-white">
                             <div>
                                 <span className="bg-secondary-500 text-white text-xs font-bold px-3 py-1 rounded-full mb-4 inline-block shadow-lg">{content['bundles.card.badge'] || 'مسار كامل'}</span>
                                 <h3 className="text-2xl font-bold mb-4">{bundle.title}</h3>
-                                <p className="text-gray-200 text-sm leading-relaxed">{bundle.description}</p>
+                                <p className="text-gray-200 text-sm leading-relaxed line-clamp-3">{bundle.description}</p>
                             </div>
                             <div className="mt-8">
                                 <div className="text-3xl font-bold mb-1">{bundle.price?.[currency] ?? 0} {currencySymbol}</div>
@@ -112,7 +112,7 @@ const Bundles: React.FC = () => {
                                         <div className="absolute right-6 top-0 w-4 h-4 rounded-full bg-primary-500 ring-4 ring-white z-10"></div>
                                         <Link to={`/c/${course.slug || course.id}`} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex gap-4 items-center hover:bg-white hover:shadow-md hover:border-primary-200 transition group">
                                             <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
-                                                {course?.thumbnail && <img src={course.thumbnail} className="w-full h-full object-cover" alt={course.title} />}
+                                                {course?.thumbnail && <img loading="lazy" decoding="async" src={course.thumbnail} className="w-full h-full object-cover" alt={course.title} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h5 className="font-bold text-gray-800 group-hover:text-primary-700 transition">{course.title}</h5>

@@ -5,15 +5,10 @@ import { useSiteData } from '../context/SiteDataContext';
 const JoinUs: React.FC = () => {
   useEffect(() => { document.title = 'انضم إلينا | معهد الدراسات النفسية'; }, []);
   const { addJoinUsApplication, content } = useSiteData();
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    specialty: '',
-    experience: '',
-    type: 'instructor',
-    linkedin: '',
-    message: '',
+  const [form, setForm] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('type');
+    const initialType = ['instructor', 'consultant', 'employee'].includes(t || '') ? (t as string) : 'instructor';
+    return { name: '', email: '', phone: '', specialty: '', experience: '', type: initialType, linkedin: '', message: '' };
   });
   const [submitted, setSubmitted] = useState(false);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, CheckCircle, Clock, Video, Users, Star, Play, Award, ChevronRight, Quote, Send, BookOpen, GraduationCap, Phone } from 'lucide-react';
+import { ArrowRight, Check, CheckCircle, Clock, Video, Users, Star, Play, Award, ChevronRight, Quote, Send, BookOpen, GraduationCap, Phone, Briefcase } from 'lucide-react';
 import { Currency, LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
@@ -104,110 +104,110 @@ const Home: React.FC = () => {
 
     return (
     <div className="animate-fade-in bg-white">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-gray-900 via-primary-900 to-red-900 text-white overflow-hidden min-h-[600px] flex items-center">
-        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-        {/* Abstract Shapes */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-600 rounded-full blur-[120px] opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-secondary-500 rounded-full blur-[100px] opacity-20"></div>
+      {/* ── NEW PREMIUM HERO SECTION ── */}
+      <section className="relative bg-slate-50 text-gray-900 overflow-hidden min-h-[700px] flex items-center border-b border-gray-200 animate-gradient-bg bg-gradient-to-tr from-slate-50 via-primary-50/10 to-secondary-50/10">
+        <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+        
+        {/* Dynamic Abstract Background Blobs */}
+        <div className="absolute top-10 right-20 w-[500px] h-[500px] bg-primary-500/10 rounded-full blur-[100px] animate-pulse"></div>
+        <div className="absolute bottom-10 left-20 w-[400px] h-[400px] bg-secondary-400/10 rounded-full blur-[100px]"></div>
 
-        <div className="container mx-auto px-4 relative z-10 grid md:grid-cols-2 gap-12 items-center">
-          <div className="text-center md:text-right space-y-8">
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 px-4 py-2 rounded-full text-sm font-medium animate-slide-up">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-              {content['home.hero.badge'] || 'مستقبلك المهني يبدأ من هنا'}
+        <div className="container mx-auto px-4 relative z-10 grid lg:grid-cols-2 gap-16 items-center pt-20">
+          
+          {/* Right Content Area (Arabic is RTL) */}
+          <div className="text-center lg:text-right space-y-8 relative z-20">
+            <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-md shadow-sm border border-gray-100 px-6 py-2 rounded-full text-sm font-bold text-primary-600 animate-slide-up">
+              <span className="w-2.5 h-2.5 rounded-full bg-primary-500 animate-pulse"></span>
+              {content?.['home.hero.badge'] || 'المنصة الرائدة في العالم العربي'}
             </div>
             
-            <h1 className="text-4xl md:text-6xl font-extrabold leading-tight animate-slide-up" style={{animationDelay: '0.1s'}}>
-                            {content['home.heroTitle'] || 'رحلة علم ووعي تغير حياتك للأفضل'}
+            <h1 className="text-5xl lg:text-7xl font-extrabold leading-[1.2] text-gray-900 animate-slide-up" style={{animationDelay: '0.1s'}}>
+                رحلة علم ووعي <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-l from-primary-600 to-secondary-500">تغير حياتك للأفضل</span>
             </h1>
             
-            <p className="text-lg text-gray-200 leading-relaxed max-w-lg mx-auto md:mx-0 animate-slide-up" style={{animationDelay: '0.2s'}}>
-                            {content['home.heroSubtitle'] || 'المنصة الأكاديمية الأولى عربياً لتعليم الصحة النفسية والعلاج النفسي. دبلومات معتمدة، تدريب عملي، ونخبة من الخبراء.'}
+            <p className="text-xl text-gray-600 leading-relaxed max-w-xl mx-auto lg:mx-0 animate-slide-up" style={{animationDelay: '0.2s'}}>
+                {content?.['home.heroSubtitle'] || 'انضم إلى آلاف المتدربين في المنصة الأكاديمية الأولى لتعليم الصحة النفسية. دبلومات معتمدة، وتدريب عملي مع نخبة الخبراء.'}
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start animate-slide-up" style={{animationDelay: '0.3s'}}>
-              <Link to="/courses" className="bg-secondary-500 hover:bg-secondary-600 text-white px-8 py-4 rounded-xl font-bold transition shadow-lg shadow-secondary-500/30 flex items-center justify-center gap-2 text-lg">
-                {content['home.hero.primaryCta'] || 'تصفح الدبلومات'}
-                <ArrowRight size={20} className="rtl:rotate-180" />
+            <div className="flex flex-col sm:flex-row gap-5 justify-center lg:justify-start animate-slide-up" style={{animationDelay: '0.3s'}}>
+              <Link to="/courses" className="btn-glow bg-primary-600 hover:bg-primary-700 text-white px-10 py-4 rounded-2xl font-bold transition shadow-xl shadow-primary-600/30 flex items-center justify-center gap-3 text-lg">
+                <span>{content?.['home.hero.primaryCta'] || 'ابدأ رحلتك الآن'}</span>
+                <ArrowRight size={22} className="rtl:rotate-180" />
               </Link>
-              <Link to="/consultations" className="bg-white/5 hover:bg-white/10 text-white border border-white/20 px-8 py-4 rounded-xl font-bold transition flex items-center justify-center gap-2 backdrop-blur-sm">
-                <Video size={20} />
-                {content['home.hero.secondaryCta'] || 'استشارة أونلاين'}
+              <Link to="/consultations" className="glass-card-premium bg-white hover:bg-gray-50 text-gray-900 px-10 py-4 rounded-2xl font-bold transition flex items-center justify-center gap-3 shadow-md">
+                <Video size={22} className="text-primary-600" />
+                <span>{content?.['home.hero.secondaryCta'] || 'احجز استشارة'}</span>
               </Link>
             </div>
 
-            <div className="flex items-center justify-center md:justify-start gap-8 pt-4 text-sm text-gray-300 animate-slide-up" style={{animationDelay: '0.4s'}}>
-                <div className="flex items-center gap-2">
-                    <CheckCircle size={16} className="text-secondary-400" />
-                    <span>{content['home.hero.feature1'] || 'اعتماد دولي ومحلي'}</span>
+            <div className="flex items-center justify-center lg:justify-start gap-8 pt-6 text-sm font-medium text-gray-500 animate-slide-up" style={{animationDelay: '0.4s'}}>
+                <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-lg backdrop-blur-sm border border-white">
+                    <CheckCircle size={18} className="text-green-500" />
+                    <span>اعتماد دولي ومحلي</span>
                 </div>
-                <div className="flex items-center gap-2">
-                    <CheckCircle size={16} className="text-secondary-400" />
-                    <span>{content['home.hero.feature2'] || 'مدربون خبراء'}</span>
+                <div className="flex items-center gap-2 bg-white/60 px-4 py-2 rounded-lg backdrop-blur-sm border border-white">
+                    <Users size={18} className="text-primary-500" />
+                    <span>أكثر من 10,000 طالب</span>
                 </div>
             </div>
           </div>
 
-          {/* Hero right column: gallery image */}
-          {heroGalleryImg ? (
-            <div className="hidden md:flex items-center justify-center py-8">
-              <div className="relative w-full max-w-md animate-float">
-                {/* Outer glow ring */}
-                <div className="absolute -inset-4 bg-gradient-to-br from-secondary-400/30 via-primary-500/20 to-transparent rounded-[2.5rem] blur-lg"></div>
-                {/* Tilted background card */}
-                <div className="absolute inset-0 bg-secondary-500/20 rounded-3xl rotate-2"></div>
-                <img
-                  src={heroGalleryImg}
-                  alt="معهد الدراسات النفسية"
-                  className="relative z-10 w-full h-[420px] object-cover rounded-3xl shadow-2xl border-4 border-white/20"
-                />
-                {/* Badge top-right */}
-                <div className="absolute -top-4 -right-3 z-30 bg-secondary-500 text-white rounded-2xl px-3 py-2 text-xs font-bold shadow-lg flex items-center gap-1.5">
-                  <Award size={13} />
-                  {content['home.stats.programs'] || '50+'} برنامج
+          {/* Left Visual Area */}
+          <div className="hidden lg:flex items-center justify-center relative">
+            <div className="relative w-full max-w-lg animate-float-slow">
+                {/* Decorative floating elements */}
+                <div className="absolute -top-10 -right-10 bg-white p-4 rounded-2xl shadow-xl border border-gray-100 z-30 flex items-center gap-4 animate-bounce-slow">
+                   <div className="bg-green-100 p-3 rounded-full text-green-600"><Star size={24} fill="currentColor" /></div>
+                   <div>
+                       <p className="font-bold text-gray-900 text-lg">4.9/5</p>
+                       <p className="text-xs text-gray-500">تقييم المتدربين</p>
+                   </div>
                 </div>
-                {/* Students badge bottom */}
-                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 z-30 bg-gray-900/90 backdrop-blur text-white rounded-2xl px-4 py-2 text-xs font-bold shadow-lg flex items-center gap-2 border border-white/10">
-                  <Users size={13} className="text-secondary-400" />
-                  {content['home.stats.graduates'] || '12K+'} خريج
+                
+                {/* Main Hero Image in a glass frame */}
+                <div className="glass-card-premium p-4 rounded-[2.5rem] relative z-20 bg-white/40 border-white/80">
+                  <div className="overflow-hidden rounded-3xl relative">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent z-10"></div>
+                    <img
+                      src={heroGalleryImg || "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&q=80&w=1000"}
+                      alt="معهد الدراسات النفسية"
+                      loading="eager"
+                      className="w-full h-[500px] object-cover transform hover:scale-105 transition-transform duration-700"
+                    />
+                  </div>
                 </div>
-                {galleryImages.length > 1 && (
-                  <img
-                    src={getGalleryImg(1)}
-                    alt=""
-                    className="absolute -bottom-6 -left-6 w-32 h-32 object-cover rounded-2xl shadow-xl border-4 border-white/20 z-20"
-                  />
-                )}
-              </div>
-            </div>
-          ) : null}
 
+                {/* Back decorative blobs */}
+                <div className="absolute -inset-4 bg-gradient-to-br from-primary-400/30 via-secondary-300/20 to-transparent rounded-[3rem] blur-2xl -z-10"></div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Floating Stats */}
-      <div className="container mx-auto px-4 relative z-20 -mt-12 mb-24">
-          <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-              {[
-                { value: content['home.stats.programs'] || '50+', label: content['home.stats.programsLabel'] || 'برنامج تدريبي', icon: <BookOpen size={28} className="text-primary-500" />, color: 'from-red-50 to-red-100' },
-                { value: content['home.stats.experts'] || '30+', label: content['home.stats.expertsLabel'] || 'خبير ومدرب', icon: <Users size={28} className="text-blue-500" />, color: 'from-blue-50 to-blue-100' },
-                { value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج', icon: <GraduationCap size={28} className="text-green-500" />, color: 'from-green-50 to-green-100' },
-                { value: content['home.stats.rating'] || '4.9', label: 'تقييم الطلاب', icon: <Star size={28} className="text-yellow-500" fill="currentColor" />, color: 'from-yellow-50 to-yellow-100' },
-              ].map((stat, i) => (
-                <div key={i} className="group cursor-default">
-                  <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${stat.color} flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition duration-300 shadow-sm`}>
-                    {stat.icon}
-                  </div>
-                  <h3 className="text-4xl font-extrabold text-gray-900 mb-1 tracking-tight">{stat.value}</h3>
-                  <p className="text-gray-500 text-sm font-medium">{stat.label}</p>
-                </div>
-              ))}
+      {/* Stats — same style as the About page (icon + number + label + subtle motion),
+          on a light band. No floating card-over-card. */}
+      <section className="py-14 bg-white border-y border-gray-100 scroll-reveal">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x-0 md:divide-x divide-gray-100 rtl:md:divide-x-reverse">
+            {[
+              { icon: BookOpen,      value: content['home.stats.programs']  || '50+', label: content['home.stats.programsLabel']  || 'برنامج تدريبي' },
+              { icon: Users,         value: content['home.stats.experts']   || '30+', label: content['home.stats.expertsLabel']   || 'خبير ومدرب' },
+              { icon: GraduationCap, value: content['home.stats.graduates'] || '12K', label: content['home.stats.graduatesLabel'] || 'خريج' },
+              { icon: Star,          value: content['home.stats.rating']    || '4.9', label: 'تقييم الطلاب' },
+            ].map(({ icon: Icon, value, label }, i) => (
+              <div key={i} className="px-2">
+                <Icon size={40} className="mx-auto text-primary-500 mb-4 animate-bounce-slow" style={{ animationDelay: `${i * 0.4}s` }} />
+                <h4 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-1 animate-fade-in" style={{ animationDelay: `${i * 0.1}s` }}>{value}</h4>
+                <p className="text-gray-500">{label}</p>
+              </div>
+            ))}
           </div>
-      </div>
+        </div>
+      </section>
 
       {/* SECTION: Learning Paths & Bundles (Moved Up) */}
-      <section className="py-16 bg-gray-50">
+      <section className="py-16 bg-gray-50 scroll-reveal">
         <div className="container mx-auto px-4">
            <div className="text-center mb-12">
                <span className="text-secondary-600 font-bold tracking-wider text-sm uppercase">{content['home.paths.badge'] || 'الطريق المختصر للاحتراف'}</span>
@@ -218,11 +218,11 @@ const Home: React.FC = () => {
            </div>
            
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {bundles.map(bundle => (
-                  <div key={bundle.id} className="bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition duration-300 flex flex-col h-full group">
+              {bundles.slice(0, 6).map(bundle => (
+                  <div key={bundle.id} className="bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100 glow-card hover-float flex flex-col h-full group">
                       <div className="relative h-48 bg-gray-900">
                           {(bundle.courses[0]?.thumbnail || bundle.thumbnail) && (
-                            <img src={bundle.courses[0]?.thumbnail || bundle.thumbnail} className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition" alt={bundle.title} />
+                            <img src={bundle.courses[0]?.thumbnail || bundle.thumbnail} loading="lazy" className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition" alt={bundle.title} />
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent"></div>
                           <div className="absolute bottom-4 right-4 text-white">
@@ -262,7 +262,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* SECTION: Best Selling Courses */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-white scroll-reveal">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <span className="text-primary-600 font-bold tracking-wider text-sm">{content['home.bestSellers.badge'] || 'الأكثر طلباً'}</span>
@@ -271,7 +271,9 @@ const Home: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {bestSellingCourses.map(course => (
-              <CourseCard key={course.id} course={course} currency={currency} />
+              <div key={course.id} className="glow-card hover-float rounded-2xl overflow-hidden">
+                <CourseCard course={course} currency={currency} />
+              </div>
             ))}
           </div>
 
@@ -548,7 +550,7 @@ const Home: React.FC = () => {
 
       {/* SECTION: Featured Instructors */}
       {featuredInstructors.length > 0 && (
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-gray-50 scroll-reveal">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <span className="text-secondary-600 font-bold tracking-wider text-sm uppercase">نخبة الخبراء</span>
@@ -557,11 +559,12 @@ const Home: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {featuredInstructors.map(t => (
-              <Link key={t.id} to={`/instructor/${t.id}`} className="group block bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl hover:-translate-y-1 transition duration-300">
+              <Link key={t.id} to={`/instructor/${t.id}`} className="group block bg-white rounded-2xl overflow-hidden shadow-md glow-card hover-float transition duration-300">
                 <div className="relative h-64 overflow-hidden">
                   <img
                     src={t.image || `https://randomuser.me/api/portraits/men/${t.id}.jpg`}
                     alt={t.name}
+                    loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
@@ -739,6 +742,30 @@ const Home: React.FC = () => {
                   ))}
               </div>
           </div>
+      </section>
+
+      {/* Contact CTA — mirrors the AboutUs section; sits right before the footer */}
+      <section className="bg-primary-700 text-white py-20">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl font-bold mb-4">هل لديك استفسار؟ تواصل معنا</h2>
+          <p className="text-primary-200 mb-8 max-w-xl mx-auto">
+            فريقنا مستعد للإجابة على جميع أسئلتك عن البرامج والاشتراكات والاستشارات النفسية.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link to="/contact" className="bg-white text-primary-700 font-bold px-8 py-3 rounded-xl hover:bg-primary-50 transition flex items-center gap-2 shadow">
+              <Phone size={18} />
+              تواصل معنا
+            </Link>
+            <Link to="/join?type=instructor" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
+              <GraduationCap size={18} />
+              انضم إلينا كمحاضر
+            </Link>
+            <Link to="/join?type=employee" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
+              <Briefcase size={18} />
+              انضم إلينا كموظف
+            </Link>
+          </div>
+        </div>
       </section>
     </div>
   );

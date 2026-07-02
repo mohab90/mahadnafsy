@@ -390,6 +390,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   const [talent, setTalent] = useState<any[]>([]);
   const [loadingTalent, setLoadingTalent] = useState(false);
   const [talentBusy, setTalentBusy] = useState<string | null>(null);
+  const [recruitTab, setRecruitTab] = useState<'instructors' | 'employees'>('instructors');
 
   // ── Fetch functions ─────────────────────────────────────────
   const fetchTalent = useCallback(() => {
@@ -629,7 +630,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           ['attendance', 'الحضور والغياب'],
           ['leaves', 'الإجازات'],
           ['payroll', 'كشف الرواتب'],
-          ['recruiting', 'التوظيف'],
+          ['recruiting', 'طلبات الانضمام'],
         ] as const).map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${subTab === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-gray-600 border-gray-200 hover:border-slate-400'}`}>{l}</button>
         ))}
@@ -1172,17 +1173,29 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         </div>
       )}
 
-      {subTab === 'recruiting' && (
+      {subTab === 'recruiting' && (() => {
+        const isEmp = (x: any) => String(x.applicant_type || '').toUpperCase() === 'EMPLOYEE';
+        const shown = talent.filter(t => recruitTab === 'employees' ? isEmp(t) : !isEmp(t));
+        const empCount = talent.filter(isEmp).length;
+        const instCount = talent.length - empCount;
+        return (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-700">🧑‍💼 المتقدمون من الموقع — مسار التوظيف</h3>
+            <h3 className="text-sm font-bold text-slate-700">📨 طلبات الانضمام</h3>
             {loadingTalent && <span className="text-xs text-gray-400">جارٍ التحميل…</span>}
           </div>
-          {talent.length === 0 && !loadingTalent ? (
-            <div className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-100">لا يوجد متقدمون بعد</div>
+          {/* Inner tabs: instructor/consultant vs employee applications */}
+          <div className="flex gap-2">
+            {([['instructors', `طلبات المحاضرين (${instCount})`], ['employees', `طلبات الموظفين (${empCount})`]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setRecruitTab(k)}
+                className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${recruitTab === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-gray-600 border-gray-200 hover:border-slate-400'}`}>{l}</button>
+            ))}
+          </div>
+          {shown.length === 0 && !loadingTalent ? (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-100">لا توجد طلبات في هذا القسم بعد</div>
           ) : (
             <div className="bg-white border border-gray-100 rounded-2xl divide-y divide-gray-50">
-              {talent.map((t: any) => {
+              {shown.map((t: any) => {
                 const stage = t.applicant_stage || (t.converted_applicant_id ? 'applied' : 'new');
                 const stageLabel: Record<string, string> = { new: 'جديد', applied: 'في المسار', screening: 'فرز', interview: 'مقابلة', offer: 'عرض', hired: 'تم التعيين', rejected: 'مرفوض' };
                 return (
@@ -1213,7 +1226,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           )}
           <p className="text-[11px] text-gray-400 text-center">طلبات الانضمام من الموقع تدخل هذا المسار تلقائياً — انقلها إلى مسار المتقدمين ثم عيّنها كموظف.</p>
         </div>
-      )}
+        );
+      })()}
 
       {selectedMember && (
         <EmployeeProfileModal
