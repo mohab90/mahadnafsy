@@ -12,7 +12,10 @@ const logger = require('./logger');
 const HOME = process.env.HOME || '/home/u176948796';
 const DIR = process.env.DB_BACKUP_DIR || path.join(HOME, 'db-backups');
 const KEEP = Math.max(1, Number(process.env.DB_BACKUP_KEEP || 14));
-const ENABLED = process.env.DB_BACKUP_ENABLED !== '0' && process.env.NODE_ENV === 'production';
+// Enable when explicitly flagged (DB_BACKUP_ENABLED=1) OR in production (unless
+// turned off with =0). Explicit flag avoids flipping global NODE_ENV just for this.
+const ENABLED = process.env.DB_BACKUP_ENABLED === '1'
+  || (process.env.DB_BACKUP_ENABLED !== '0' && process.env.NODE_ENV === 'production');
 const today = () => new Date().toISOString().slice(0, 10);
 
 // Run one backup. No-ops if today's file already exists (so the hourly tick is
