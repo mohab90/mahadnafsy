@@ -20,11 +20,11 @@ const JoinUsAdminTab: React.FC = () => {
 
   const filteredApps = joinUsApplications.filter(app => {
     const q = juSearch.toLowerCase();
-    const matchQ = !q || app.name.toLowerCase().includes(q) || app.email.toLowerCase().includes(q) || app.specialty.toLowerCase().includes(q);
+    const matchQ = !q || (app.name || '').toLowerCase().includes(q) || (app.email || '').toLowerCase().includes(q) || (app.specialty || '').toLowerCase().includes(q);
     const matchStatus = juStatusFilter === 'all' || app.status === juStatusFilter;
     const matchType = juTypeFilter === 'all' || (app.type || '').toLowerCase() === juTypeFilter;
     return matchQ && matchStatus && matchType;
-  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   return (
     <div className="space-y-5 animate-fade-in" dir="rtl">

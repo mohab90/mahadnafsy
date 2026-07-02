@@ -131,6 +131,12 @@ const Checkout: React.FC = () => {
           customerEmail: customerEmail.trim(),
           customerPhone: customerPhone.trim(),
           amount: itemEGPPrice, currency: 'EGP',
+          ...(type === 'consultation' ? {
+            therapistId: searchParams.get('therapistId') || '',
+            sessionDate: searchParams.get('date') || '',
+            sessionType: searchParams.get('sessionType') || 'individual',
+            subtype: subtype || 'regular',
+          } : {}),
         }),
       }).catch(() => {/* best-effort */});
       setOrderSent(true);
@@ -268,7 +274,7 @@ const Checkout: React.FC = () => {
                       <label className="block text-xs font-semibold text-gray-600 mb-1">صورة الإيصال</label>
                       <input type="file" accept="image/*" onChange={e => onProofFile(e.target.files?.[0])}
                         className="w-full text-xs mb-2 file:ml-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700" />
-                      {proofImage && <img src={proofImage} alt="receipt" className="max-h-36 rounded-lg border border-gray-100 mb-3 mx-auto object-contain" />}
+                      {proofImage && <img loading="lazy" decoding="async" src={proofImage} alt="receipt" className="max-h-36 rounded-lg border border-gray-100 mb-3 mx-auto object-contain" />}
 
                       {proofError && <p className="text-red-600 text-xs mb-2">{proofError}</p>}
                       <button onClick={submitProof} disabled={proofSubmitting || !proofImage}
@@ -383,7 +389,7 @@ const Checkout: React.FC = () => {
                     <h2 className="text-lg font-bold mb-4">ملخص الطلب</h2>
                     <div className="flex gap-4 mb-4 pb-4 border-b">
                         {itemImage
-                          ? <img src={itemImage} className="w-16 h-16 rounded-lg object-cover bg-gray-100 flex-shrink-0" alt="" />
+                          ? <img loading="lazy" decoding="async" src={itemImage} className="w-16 h-16 rounded-lg object-cover bg-gray-100 flex-shrink-0" alt="" />
                           : <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0" />
                         }
                         <div>

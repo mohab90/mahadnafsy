@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, RefreshCw, Inbox, Mail, LifeBuoy, Clock, AlertTriangle, ArrowUpCircle, Send, CheckCircle2, X, User, Link2, ArrowRightLeft, BarChart3 } from 'lucide-react';
+import { Loader2, RefreshCw, Inbox, Mail, LifeBuoy, Clock, AlertTriangle, ArrowUpCircle, Send, CheckCircle2, X, User, Link2, ArrowRightLeft, BarChart3, Trash2 } from 'lucide-react';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -189,6 +189,15 @@ export default function SupportInboxTab({ onOpen, notify }: { onOpen?: (tab: str
   };
   const convertContact = (id: string, category: string) =>
     postJson(`/api/admin/cs/contact/${id}/convert`, { category }, 'تم تحويل الرسالة إلى تذكرة');
+  const deleteContact = async (id: string) => {
+    if (!window.confirm('حذف هذه الرسالة نهائياً؟')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/contact-messages/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) throw new Error();
+      notify?.('success', 'تم حذف الرسالة'); load();
+    } catch { notify?.('error', 'فشل الحذف'); } finally { setBusy(false); }
+  };
 
   const Sel = ({ v, onChange, children, cls = '' }: { v: string; onChange: (v: string) => void; children: React.ReactNode; cls?: string }) => (
     <select value={v} onChange={e => onChange(e.target.value)} className={`text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white ${cls}`}>{children}</select>
@@ -218,18 +227,32 @@ export default function SupportInboxTab({ onOpen, notify }: { onOpen?: (tab: str
       {contacts.length > 0 && (
         <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-3">
           <div className="flex items-center gap-2 mb-2 text-xs font-bold text-blue-700"><Mail size={14} /> رسائل تواصل غير مُصنّفة ({contacts.length}) — حوّلها لتذكرة موجّهة</div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {contacts.map(c => (
-              <div key={c.id} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border border-blue-50">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap"><span className="font-bold text-gray-800 text-sm">{c.subscriber_name || c.subscriber_email || c.phone || '—'}</span><span className="text-[10px] text-gray-400">{fmt(c.created_at)}</span></div>
-                  <p className="text-xs text-gray-600 truncate">{c.subject} — {c.preview}</p>
+              <div key={c.id} className="bg-white rounded-xl p-3 border border-blue-100 shadow-sm">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-gray-800 text-sm">{c.subscriber_name || '—'}</span>
+                      <span className="text-[10px] text-gray-400">{fmt(c.created_at)}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500 flex-wrap">
+                      {c.subscriber_email && <a href={`mailto:${c.subscriber_email}`} className="hover:text-indigo-600">{c.subscriber_email}</a>}
+                      {c.phone && <a href={`https://wa.me/${String(c.phone).replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">📱 {c.phone}</a>}
+                    </div>
+                  </div>
+                  <button onClick={() => deleteContact(c.id)} disabled={busy} title="حذف الرسالة"
+                    className="text-gray-300 hover:text-red-500 shrink-0 p-1"><Trash2 size={15} /></button>
                 </div>
-                <select defaultValue="" onChange={e => e.target.value && convertContact(c.id, e.target.value)} disabled={busy}
-                  className="text-[11px] border border-blue-200 rounded-lg px-2 py-1 bg-white text-blue-700 shrink-0">
-                  <option value="">↳ حوّل إلى…</option>
-                  {Object.entries(cats).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-                </select>
+                {c.subject && <p className="text-xs font-semibold text-gray-700 mt-1.5">{c.subject}</p>}
+                <p className="text-xs text-gray-600 mt-0.5 whitespace-pre-wrap">{c.preview}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <select defaultValue="" onChange={e => e.target.value && convertContact(c.id, e.target.value)} disabled={busy}
+                    className="text-[11px] border border-blue-200 rounded-lg px-2 py-1 bg-white text-blue-700">
+                    <option value="">↳ حوّل إلى تذكرة…</option>
+                    {Object.entries(cats).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                  </select>
+                </div>
               </div>
             ))}
           </div>
