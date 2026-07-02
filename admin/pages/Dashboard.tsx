@@ -95,6 +95,7 @@ import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useRoleDefaultTab } from './dashboard/useRoleDefaultTab';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
+import { useLeadFilters } from './dashboard/useLeadFilters';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SafeHtml } from '../components/SafeHtml';
 import {
@@ -491,12 +492,15 @@ const Dashboard: React.FC = () => {
     handleFetchFbForms, handleFbApiSync, handleSaveFbConfig,
   } = useFacebookLeadAds();
 
-  const [leadsSearch, setLeadsSearch] = useState('');
-  const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]); // empty = hide converted+hidden
-  const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue'>('all');
-  const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
-  const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
-  const [leadsCourseFilter, setLeadsCourseFilter] = useState<string>('all');
+  // Lead-list filters lifted into ./dashboard/useLeadFilters.
+  const {
+    leadsSearch, setLeadsSearch,
+    leadsStatusFilter, setLeadsStatusFilter,
+    leadsFollowupFilter, setLeadsFollowupFilter,
+    leadsBranchFilter, setLeadsBranchFilter,
+    leadsSalesFilter, setLeadsSalesFilter,
+    leadsCourseFilter, setLeadsCourseFilter,
+  } = useLeadFilters();
   const [staffSearch, setStaffSearch] = useState('');
   const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'instructor' | 'trainer' | 'expert' | 'sales' | 'manager' | 'admin' | 'support' | 'reception_daqqi' | 'daqqi_manager' | 'collection' | 'accountant' | 'consultant' | 'other'>('all');
 
