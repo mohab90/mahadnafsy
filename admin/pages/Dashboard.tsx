@@ -94,6 +94,7 @@ import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useRoleDefaultTab } from './dashboard/useRoleDefaultTab';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
+import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SafeHtml } from '../components/SafeHtml';
 import {
@@ -390,19 +391,22 @@ const Dashboard: React.FC = () => {
   const [lectureCourseId, setLectureCourseId] = useState('');
 
   const [editingSubscriberId, setEditingSubscriberId] = useState('');
-  const [subscriberSubTab, setSubscriberSubTab] = useState<'local' | 'abroad' | 'all' | 'online25'>('all');
   // Reception Daqqi role — daqqi clients tab state
   const daqqiCreateRoundRef = React.useRef<(() => void) | null>(null);
   // CS / Daqqi-old distribution UI state now lives inside OnlineClientsTab.
-  const [subscriberCourseFilter, setSubscriberCourseFilter] = useState('');
-  const [subscriberSearch, setSubscriberSearch] = useState('');
-  const [subscriberSalesFilter, setSubscriberSalesFilter] = useState('all');
-  const [subscriberCsFilter, setSubscriberCsFilter] = useState('all');
-  const [subscriberInstFilter, setSubscriberInstFilter] = useState(''); // '' | 'overdue' | 'soon'
-  const [subscriberRemainingFilter, setSubscriberRemainingFilter] = useState(''); // '' | '1000' | '2000' | '3000' | '5000' | '8000'
-  const [subscriberCertFilter, setSubscriberCertFilter] = useState(''); // '' | 'has' | 'pending' | 'issued'
-  const [subscriberPayFilter, setSubscriberPayFilter] = useState(''); // '' | 'pending'
-  const [subscriberPage, setSubscriberPage] = useState(1);
+  // Subscriber-list filters/pagination lifted into ./dashboard/useSubscriberFilters.
+  const {
+    subscriberSubTab, setSubscriberSubTab,
+    subscriberCourseFilter, setSubscriberCourseFilter,
+    subscriberSearch, setSubscriberSearch,
+    subscriberSalesFilter, setSubscriberSalesFilter,
+    subscriberCsFilter, setSubscriberCsFilter,
+    subscriberInstFilter, setSubscriberInstFilter,
+    subscriberRemainingFilter, setSubscriberRemainingFilter,
+    subscriberCertFilter, setSubscriberCertFilter,
+    subscriberPayFilter, setSubscriberPayFilter,
+    subscriberPage, setSubscriberPage,
+  } = useSubscriberFilters();
   const [isSubscriberFormOpen, setIsSubscriberFormOpen] = useState(false);
   const [grantSubscriberId, setGrantSubscriberId] = useState('');
   const [grantEnrolledCourseIds, setGrantEnrolledCourseIds] = useState<string[]>([]);
