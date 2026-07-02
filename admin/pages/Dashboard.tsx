@@ -66,6 +66,7 @@ import {
 } from './dashboard/lazyTabs';
 import ChartOfAccountsTab from './dashboard/tabs/ChartOfAccountsTab';
 import BranchWorkspacesTab from './dashboard/tabs/BranchWorkspacesTab';
+import TenantsAdminTab from './dashboard/tabs/TenantsAdminTab';
 import OnlineClientsTab from './dashboard/tabs/OnlineClientsTab';
 import OverviewTab from './dashboard/tabs/OverviewTab';
 import CertRequestsTab from './dashboard/tabs/CertRequestsTab';
@@ -2402,6 +2403,7 @@ const Dashboard: React.FC = () => {
             {activeTab === 'staff_applications' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><JoinUsAdminTab /></TabErrorBoundary></Suspense>)}
             {activeTab === 'lecturer_applications' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><JoinUsAdminTab /></TabErrorBoundary></Suspense>)}
             {/* saas_settings + rbac_settings consolidated into the unified Settings page (legacy URLs still resolve here) */}
+            {activeTab === 'saas_settings' && isAdmin && (<div className="mb-5"><TabErrorBoundary><TenantsAdminTab notify={notify} /></TabErrorBoundary></div>)}
             {['system_settings','saas_settings','rbac_settings'].includes(activeTab) && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><SystemSettingsTab notify={notify} isAdmin={isAdmin} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'staff_performance' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><StaffPerformanceTab notify={notify} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'retention' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><RetentionTab notify={notify} /></TabErrorBoundary></Suspense>)}

@@ -6,12 +6,13 @@
 // super-admin. Becomes fully live once migrations 027/028 are applied.
 const express = require('express');
 const { uuidv4 } = require('../lib/id');
-const { pool } = require('../lib/db');
+const { pool, cacheInvalidate } = require('../lib/db');
 const logger = require('../lib/logger');
 const { loadTenantContext } = require('../lib/tenantScope');
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+const slugify = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
 
 // GET /api/admin/saas/tenants — tenants with their active plan.
 router.get('/api/admin/saas/tenants', requireAuth, requireSuperAdmin, async (_req, res) => {
@@ -27,6 +28,51 @@ router.get('/api/admin/saas/tenants', requireAuth, requireSuperAdmin, async (_re
       ORDER BY t.created_at ASC`);
     res.json(rows);
   } catch (e) { logger.error('[saas]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/saas/tenants — provision a new tenant (+ trial subscription).
+router.post('/api/admin/saas/tenants', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const slug = slugify(req.body.slug || req.body.name);
+    if (!name) return res.status(400).json({ error: 'الاسم مطلوب' });
+    if (!slug) return res.status(400).json({ error: 'المعرّف (slug) غير صالح' });
+    const [[dupe]] = await pool.query('SELECT id FROM tenants WHERE slug=? LIMIT 1', [slug]);
+    if (dupe) return res.status(409).json({ error: 'هذا المعرّف مستخدم بالفعل' });
+    const planKey = req.body.plan_key || null;
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO tenants (id, slug, name, status, plan_key, default_locale, default_timezone)
+       VALUES (?,?,?, 'active', ?, ?, ?)`,
+      [id, slug, name, planKey, req.body.default_locale || 'ar-EG', req.body.default_timezone || 'Africa/Cairo']);
+    // Attach a trial subscription if a plan was chosen.
+    let planId = null;
+    if (planKey) { const [[p]] = await pool.query('SELECT id FROM saas_plans WHERE plan_key=? LIMIT 1', [planKey]); planId = p?.id || null; }
+    await pool.query(
+      `INSERT INTO tenant_subscriptions (id, tenant_id, plan_id, status, starts_at, trial_ends_at)
+       VALUES (?,?,?, 'trialing', NOW(), DATE_ADD(NOW(), INTERVAL 14 DAY))`,
+      [uuidv4(), id, planId]);
+    cacheInvalidate('tenant_index'); // so subdomain routing resolves the new tenant immediately
+    logger.info(`[saas] provisioned tenant ${slug} (${id})`);
+    res.json({ ok: true, id, slug, name, status: 'active' });
+  } catch (e) { logger.error('[saas provision]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// PATCH /api/admin/saas/tenants/:id — status (active/suspended/archived), name, plan.
+router.patch('/api/admin/saas/tenants/:id', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const [[t]] = await pool.query('SELECT id FROM tenants WHERE id=? LIMIT 1', [req.params.id]);
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    const sets = [], vals = [];
+    if (req.body.status && ['active', 'suspended', 'archived'].includes(req.body.status)) { sets.push('status=?'); vals.push(req.body.status); }
+    if (req.body.name) { sets.push('name=?'); vals.push(String(req.body.name).trim()); }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'plan_key')) { sets.push('plan_key=?'); vals.push(req.body.plan_key || null); }
+    if (!sets.length) return res.status(400).json({ error: 'لا يوجد تغيير' });
+    vals.push(req.params.id);
+    await pool.query(`UPDATE tenants SET ${sets.join(', ')} WHERE id=?`, vals);
+    cacheInvalidate('tenant_index');
+    res.json({ ok: true });
+  } catch (e) { logger.error('[saas patch]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/saas/plans
