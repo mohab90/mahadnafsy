@@ -132,35 +132,65 @@ router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrS
 router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) => {
   try {
     const email = req.user.email?.toLowerCase().trim();
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
+    // crm_json.courseAccess is the SOURCE OF TRUTH the client (CourseDetails +
+    // UserDashboardVideoPlayer) uses to unlock the "first N" lectures. The server
+    // MUST read the same source, else it strands lectures the UI shows unlocked
+    // ("جاري تحميل الفيديو..." forever). See memory: partial-access-video-truth.
+    const [[sub]] = await pool.query('SELECT id, crm_json FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
     if (!sub) return res.status(403).json({ accessible: false, reason: 'not_subscribed' });
+    // Lecture + its chapter's sort order (for chapter-grouped positioning).
     const [[lecture]] = await pool.query(
-      'SELECT id, course_id, sort_order, drip_unlock_days, video_url FROM course_lectures WHERE id=? LIMIT 1',
+      `SELECT cl.id, cl.course_id, cl.sort_order, cl.drip_unlock_days, cl.video_url,
+              COALESCE(cc.sort_order, 999999) AS chapter_sort
+       FROM course_lectures cl LEFT JOIN course_chapters cc ON cc.id = cl.chapter_id
+       WHERE cl.id=? LIMIT 1`,
       [req.params.lectureId]
     );
     if (!lecture) return res.status(404).json({ accessible: false, reason: 'not_found' });
-    // Check enrollment â€” must match this specific course
     const [[enrolled]] = await pool.query(
       'SELECT enrolled_at, access_type, lecture_limit FROM enrollments WHERE subscriber_id=? AND course_id=? LIMIT 1',
       [sub.id, lecture.course_id]
     );
-    if (!enrolled) return res.json({ accessible: false, reason: 'not_enrolled' });
-    // Access limit check: if enrollment is 'limited', verify lecture position is within allowed count
-    if (enrolled.access_type === 'limited' && enrolled.lecture_limit) {
-      const limit = Number(enrolled.lecture_limit);
-      // Get lecture's 0-based position in the course by sort_order
-      const [[posRow]] = await pool.query(
+    // Resolve access mode + limit the SAME way the client does: crm_json.courseAccess
+    // wins; enrollments is the fallback for older records.
+    let mode = null, limit = null;
+    try {
+      const crm = typeof sub.crm_json === 'string' ? JSON.parse(sub.crm_json) : (sub.crm_json || {});
+      const ca = crm && crm.courseAccess ? crm.courseAccess[lecture.course_id] : undefined;
+      if (ca && typeof ca === 'object') { mode = ca.mode || (ca.lectureLimit ? 'limited' : null); if (ca.lectureLimit != null) limit = Number(ca.lectureLimit); }
+      else if (ca === 'full' || ca === 'limited' || ca === 'preview') mode = ca;
+    } catch { /* malformed crm_json → fall through to enrollment */ }
+    if (!mode) {
+      if (!enrolled) return res.json({ accessible: false, reason: 'not_enrolled' });
+      if (enrolled.access_type === 'limited') { mode = 'limited'; if (limit == null) limit = Number(enrolled.lecture_limit) || null; }
+      else mode = 'full'; // enrolled, no explicit limit = full
+    }
+    // Limited access: grant if the lecture is within the first N by EITHER the flat
+    // sort_order order (CourseDetails) OR the chapter-grouped order (dashboard player).
+    // Using the more permissive of the two guarantees we never lock a lecture the UI
+    // presents as unlocked — killing the "stuck loading" bug regardless of ordering.
+    if (mode === 'limited') {
+      const lim = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 1;
+      const [[flatRow]] = await pool.query(
         'SELECT COUNT(*) AS pos FROM course_lectures WHERE course_id=? AND sort_order < ?',
         [lecture.course_id, lecture.sort_order]
       );
-      const lectureIndex = Number(posRow?.pos ?? 0); // 0-based index
-      if (lectureIndex >= limit) {
-        return res.json({ accessible: false, reason: 'access_limited', allowed: limit, position: lectureIndex + 1 });
+      const [[chapRow]] = await pool.query(
+        `SELECT COUNT(*) AS pos FROM course_lectures cl LEFT JOIN course_chapters cc ON cc.id = cl.chapter_id
+         WHERE cl.course_id=? AND ( COALESCE(cc.sort_order,999999) < ?
+           OR (COALESCE(cc.sort_order,999999) = ? AND cl.sort_order < ?) )`,
+        [lecture.course_id, lecture.chapter_sort, lecture.chapter_sort, lecture.sort_order]
+      );
+      const position = Math.min(Number(flatRow?.pos ?? 0), Number(chapRow?.pos ?? 0)); // 0-based, most permissive
+      if (position >= lim) {
+        return res.json({ accessible: false, reason: 'access_limited', allowed: lim, position: position + 1 });
       }
+    } else if (mode === 'preview') {
+      return res.json({ accessible: false, reason: 'preview_only' });
     }
-    // Drip check
+    // Drip check (only when we have an enrollment date to anchor from)
     const dripDays = Number(lecture.drip_unlock_days) || 0;
-    if (dripDays > 0) {
+    if (dripDays > 0 && enrolled?.enrolled_at) {
       const enrolledAt = new Date(enrolled.enrolled_at);
       const unlockAt = new Date(enrolledAt.getTime() + dripDays * 86400000);
       if (Date.now() < unlockAt.getTime()) {
