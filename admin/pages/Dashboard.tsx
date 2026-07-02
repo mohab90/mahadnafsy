@@ -96,6 +96,7 @@ import { useRoleDefaultTab } from './dashboard/useRoleDefaultTab';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { useLeadFilters } from './dashboard/useLeadFilters';
+import { useSubscriberGrant } from './dashboard/useSubscriberGrant';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SafeHtml } from '../components/SafeHtml';
 import {
@@ -409,12 +410,15 @@ const Dashboard: React.FC = () => {
     subscriberPage, setSubscriberPage,
   } = useSubscriberFilters();
   const [isSubscriberFormOpen, setIsSubscriberFormOpen] = useState(false);
-  const [grantSubscriberId, setGrantSubscriberId] = useState('');
-  const [grantEnrolledCourseIds, setGrantEnrolledCourseIds] = useState<string[]>([]);
-  const [grantCourseAccess, setGrantCourseAccess] = useState<Record<string, CourseAccessSetting>>({});
-  const [grantPaymentAmount, setGrantPaymentAmount] = useState('');
-  const [grantPaymentCurrency, setGrantPaymentCurrency] = useState<'EGP' | 'SAR' | 'USD'>('EGP');
-  const [grantPaymentNote, setGrantPaymentNote] = useState('منح صلاحية مشاهدة');
+  // Grant-access panel state lifted into ./dashboard/useSubscriberGrant.
+  const {
+    grantSubscriberId, setGrantSubscriberId,
+    grantEnrolledCourseIds, setGrantEnrolledCourseIds,
+    grantCourseAccess, setGrantCourseAccess,
+    grantPaymentAmount, setGrantPaymentAmount,
+    grantPaymentCurrency, setGrantPaymentCurrency,
+    grantPaymentNote, setGrantPaymentNote,
+  } = useSubscriberGrant();
 
   // Subscriber payment modal (separate from grant)
   const [subPayRow, setSubPayRow] = useState<SubscriberItem | null>(null);
