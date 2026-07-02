@@ -16,6 +16,7 @@ import { StudentCoursesTab } from '../components/student-dashboard/StudentCourse
 import { StudentPaymentsTab } from '../components/student-dashboard/StudentPaymentsTab';
 import { StudentMaterialsTab } from '../components/student-dashboard/StudentMaterialsTab';
 import { StudentQuizTab } from '../components/student-dashboard/StudentQuizTab';
+import PaymentsTab from './PaymentsTab';
 
 const VideoPlayer = React.lazy(() =>
   import('../components/UserDashboardVideoPlayer').then((module) => ({ default: module.VideoPlayer }))
@@ -30,7 +31,7 @@ const AVATAR_COLORS = [
 const pickColor = (email: string) =>
   AVATAR_COLORS[email.charCodeAt(0) % AVATAR_COLORS.length];
 
-type Tab = 'overview' | 'learning' | 'consultations' | 'community' | 'account';
+type Tab = 'overview' | 'learning' | 'consultations' | 'community' | 'payments' | 'account';
 type LearningSection = 'courses' | 'certificates' | 'materials' | 'quiz' | 'live';
 type AccountSection = 'payments' | 'notifications' | 'referral' | 'support' | 'settings';
 
@@ -72,7 +73,7 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     const t = dashSearchParams.get('tab');
     const s = dashSearchParams.get('section');
-    if (t && ['overview', 'learning', 'consultations', 'community', 'account'].includes(t)) setActiveTab(t as Tab);
+    if (t && ['overview', 'learning', 'consultations', 'community', 'payments', 'account'].includes(t)) setActiveTab(t as Tab);
     if (s && ['payments', 'notifications', 'referral', 'support', 'settings'].includes(s)) {
       setActiveTab('account');
       setAccountSection(s as AccountSection);
@@ -495,6 +496,7 @@ const UserDashboard: React.FC = () => {
     { id: 'learning',      label: 'كورساتي',    icon: <BookOpen size={15} />,      count: enrolledCourses.length || undefined },
     { id: 'consultations', label: 'استشاراتي',  icon: <MessageSquare size={15} />, count: userConsultations.length || undefined },
     { id: 'community',     label: 'المجتمع',    icon: <Users size={15} />,          count: approvedPosts.length || undefined },
+    { id: 'payments',      label: 'مدفوعاتي',   icon: <CreditCard size={15} />,     count: installmentAlerts.length || undefined },
     { id: 'account',       label: 'حسابي',      icon: <User size={15} />,           count: (unreadNotifications.length + installmentAlerts.length) || undefined },
   ];
 
@@ -558,7 +560,7 @@ const UserDashboard: React.FC = () => {
                 <div className="relative group mt-1">
                   <div className={`w-20 h-20 rounded-full border-4 border-gray-100 overflow-hidden flex items-center justify-center text-2xl font-extrabold text-white ${!avatarDataUrl ? avatarBg : ''}`}>
                     {avatarDataUrl
-                      ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
+                      ? <img loading="lazy" decoding="async" src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
                       : displayName.charAt(0).toUpperCase()}
                   </div>
                   <button
@@ -751,7 +753,7 @@ const UserDashboard: React.FC = () => {
                             className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex gap-3 p-3 items-center hover:shadow-md hover:border-primary-200 transition text-right w-full group"
                           >
                             <div className="relative flex-shrink-0">
-                              <img src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
+                              <img loading="lazy" decoding="async" src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
                               <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                 <Play size={18} className="text-white" />
                               </div>
@@ -979,10 +981,15 @@ const UserDashboard: React.FC = () => {
                 requestedAt: new Date().toISOString().slice(0, 10),
                 note: extraCertNote || undefined,
               };
-              updateSubscriber({
-                ...subscriber,
-                extraCertificateRequests: [...extraRequests, req],
-              });
+              // Persist to the certificate_requests table (single source of truth) — the admin
+              // reads that table, so writing to crm_json here would make the request vanish.
+              void mysqlClient.createCertificateRequest({
+                type: req.type, courseId: req.courseId, customName: req.customName,
+                nameAr: req.nameAr, nameEn: req.nameEn, nationality: req.nationality,
+                idNumber: req.idNumber, price: req.price, currency: req.currency, note: req.note,
+              } as unknown as Record<string, unknown>)
+                .then(() => { if (authUser) refreshMySubscriber(); })
+                .catch(() => {});
               setExtraCertType('');
               setExtraCertCourseId('');
               setExtraCertNote('');
@@ -1328,6 +1335,15 @@ const UserDashboard: React.FC = () => {
           )}
 
           {/* ════ ACCOUNT SUB-NAV ════ */}
+          {activeTab === 'payments' && (
+            <PaymentsTab
+              subscriber={subscriber}
+              currency={currency}
+              onGoToCertificates={() => { setActiveTab('learning'); setLearningSection('certificates'); }}
+              onPaid={() => { if (authUser) refreshMySubscriber(); }}
+            />
+          )}
+
           {activeTab === 'account' && (
             <div className="flex gap-2 mb-5 flex-wrap">
               {([
@@ -1601,7 +1617,7 @@ const UserDashboard: React.FC = () => {
                       )}
                       <div className="flex items-center gap-3 mb-3">
                         {post.authorImage ? (
-                          <img src={post.authorImage} alt={post.authorName} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                          <img loading="lazy" decoding="async" src={post.authorImage} alt={post.authorName} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
                             {post.authorName.charAt(0)}
@@ -1744,7 +1760,7 @@ const UserDashboard: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div className={`w-20 h-20 rounded-full overflow-hidden flex items-center justify-center text-2xl font-extrabold text-white flex-shrink-0 ${!avatarDataUrl ? avatarBg : ''}`}>
                     {avatarDataUrl
-                      ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
+                      ? <img loading="lazy" decoding="async" src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
                       : displayName.charAt(0).toUpperCase()}
                   </div>
                   <div>
@@ -1927,92 +1943,142 @@ const UserDashboard: React.FC = () => {
 // ─── Support Tickets component (inline) ────────────────────────────────────
 const API_SUPPORT = import.meta.env.VITE_API_URL || 'https://mahadnafsy.com/api';
 
+const TICKET_CATEGORIES: [string, string][] = [
+  ['general', 'استفسار عام'], ['technical', 'مشكلة تقنية'], ['course_access', 'الوصول للدورة'],
+  ['billing', 'مدفوعات وفواتير'], ['certificate', 'شهادات'], ['consultation', 'استشارة'], ['complaint', 'شكوى'],
+];
+const STATUS_LABELS: Record<string, string> = { open: 'مفتوحة', in_progress: 'قيد المعالجة', resolved: 'محلولة', closed: 'مغلقة' };
+const STATUS_COLORS: Record<string, string> = { open: 'bg-blue-100 text-blue-700', in_progress: 'bg-yellow-100 text-yellow-700', resolved: 'bg-green-100 text-green-700', closed: 'bg-gray-100 text-gray-600' };
+const fmtDate = (s: string) => { try { return new Date(String(s).replace(' ', 'T')).toLocaleDateString('ar-EG-u-nu-latn'); } catch { return ''; } };
+
 function SupportTab({ token }: { token: string }) {
   const [tickets, setTickets] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [form, setForm] = React.useState({ subject: '', body: '' });
+  const [form, setForm] = React.useState({ subject: '', body: '', category: 'general' });
   const [submitting, setSubmitting] = React.useState(false);
   const [toast, setToast] = React.useState('');
+  const [detail, setDetail] = React.useState<any | null>(null);   // opened ticket + replies
+  const [replyText, setReplyText] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
 
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
   const load = async () => {
     setLoading(true);
-    try {
-      const r = await fetch(`${API_SUPPORT}/me/tickets`, { headers });
-      if (r.ok) setTickets(await r.json());
-    } finally { setLoading(false); }
+    try { const r = await fetch(`${API_SUPPORT}/me/tickets`, { headers }); if (r.ok) setTickets(await r.json()); }
+    finally { setLoading(false); }
   };
-
   React.useEffect(() => { load(); }, []);
+
+  const openTicket = async (id: string) => {
+    try { const r = await fetch(`${API_SUPPORT}/me/tickets/${id}`, { headers }); if (r.ok) setDetail(await r.json()); } catch { /* ignore */ }
+  };
 
   const submit = async () => {
     if (!form.subject.trim() || !form.body.trim()) { showToast('يرجى ملء العنوان والرسالة'); return; }
     setSubmitting(true);
     const r = await fetch(`${API_SUPPORT}/me/tickets`, { method: 'POST', headers, body: JSON.stringify(form) });
     setSubmitting(false);
-    if (r.ok) { showToast('تم إرسال تذكرتك بنجاح ✅'); setForm({ subject: '', body: '' }); load(); }
+    if (r.ok) { showToast('تم إرسال تذكرتك بنجاح ✅'); setForm({ subject: '', body: '', category: 'general' }); load(); }
     else showToast('حدث خطأ، يرجى المحاولة مرة أخرى');
   };
 
-  const STATUS_LABELS: Record<string, string> = { open: 'مفتوحة', in_progress: 'قيد المعالجة', resolved: 'محلولة', closed: 'مغلقة' };
-  const STATUS_COLORS: Record<string, string> = { open: 'bg-blue-100 text-blue-700', in_progress: 'bg-yellow-100 text-yellow-700', resolved: 'bg-green-100 text-green-700', closed: 'bg-gray-100 text-gray-600' };
+  const sendReply = async () => {
+    if (!detail || !replyText.trim()) return;
+    setBusy(true);
+    const r = await fetch(`${API_SUPPORT}/me/tickets/${detail.id}/reply`, { method: 'POST', headers, body: JSON.stringify({ body: replyText }) });
+    setBusy(false);
+    if (r.ok) { setReplyText(''); openTicket(detail.id); load(); showToast('تم إرسال ردك ✅'); }
+    else showToast('حدث خطأ، حاول مرة أخرى');
+  };
 
   return (
     <div className="max-w-2xl space-y-5">
       {toast && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-white border border-gray-200 shadow-lg rounded-xl px-6 py-3 text-sm font-medium">{toast}</div>}
 
+      {/* New ticket */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
-        <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-          <MessageSquare size={18} className="text-purple-600" />
-          فتح تذكرة دعم جديدة
-        </h3>
+        <h3 className="font-bold text-gray-900 text-base flex items-center gap-2"><MessageSquare size={18} className="text-purple-600" /> فتح تذكرة دعم جديدة</h3>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">نوع المشكلة</label>
+          <select className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-300 outline-none bg-white"
+            value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+            {TICKET_CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">موضوع المشكلة</label>
           <input className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-300 outline-none"
-            value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-            placeholder="مثال: مشكلة في تشغيل الفيديو" />
+            value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="مثال: مشكلة في تشغيل الفيديو" />
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">تفاصيل المشكلة</label>
           <textarea className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-300 outline-none" rows={4}
-            value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
-            placeholder="اشرح المشكلة بالتفصيل..." />
+            value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} placeholder="اشرح المشكلة بالتفصيل..." />
         </div>
-        <button onClick={submit} disabled={submitting}
-          className="w-full bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:bg-purple-700 disabled:opacity-50 transition">
+        <button onClick={submit} disabled={submitting} className="w-full bg-purple-600 text-white rounded-xl py-2.5 text-sm font-bold hover:bg-purple-700 disabled:opacity-50 transition">
           {submitting ? 'جاري الإرسال...' : 'إرسال التذكرة'}
         </button>
       </div>
 
+      {/* Ticket list */}
       <div>
         <h3 className="font-bold text-gray-700 text-sm mb-3">تذاكرك السابقة</h3>
         {loading ? (
           <div className="text-center py-8 text-gray-400 text-sm">جاري التحميل...</div>
         ) : tickets.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-sm bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-            لا توجد تذاكر سابقة
-          </div>
+          <div className="text-center py-8 text-gray-400 text-sm bg-gray-50 rounded-2xl border border-dashed border-gray-200">لا توجد تذاكر سابقة</div>
         ) : (
           <div className="space-y-3">
             {tickets.map((t: any) => (
-              <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <button key={t.id} onClick={() => openTicket(t.id)}
+                className="w-full text-right bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:border-purple-300 hover:bg-purple-50/30 transition">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-gray-800 text-sm">{t.subject}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{new Date(t.created_at).toLocaleDateString('ar-EG-u-nu-latn')}</p>
-                    {t.reply_count > 0 && <p className="text-xs text-purple-600 mt-0.5">💬 {t.reply_count} رد من الإدارة</p>}
+                    <p className="text-xs text-gray-400 mt-0.5">{fmtDate(t.created_at)}</p>
+                    {t.reply_count > 0 && <p className="text-xs text-purple-600 mt-0.5">💬 {t.reply_count} رد</p>}
                   </div>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>
-                    {STATUS_LABELS[t.status] || t.status}
-                  </span>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${STATUS_COLORS[t.status] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[t.status] || t.status}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
+
+      {/* Ticket conversation drawer */}
+      {detail && (
+        <div className="fixed inset-0 z-50 flex justify-center items-end sm:items-center" dir="rtl">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDetail(null)} />
+          <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-y-auto shadow-2xl p-5 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h4 className="font-bold text-gray-900">{detail.subject}</h4>
+                <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLORS[detail.status] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[detail.status] || detail.status}</span>
+              </div>
+              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            </div>
+            {/* Original message */}
+            <div className="bg-gray-50 rounded-xl p-3 text-sm text-gray-700 whitespace-pre-wrap">{detail.body}</div>
+            {/* Conversation */}
+            {(detail.replies || []).map((rp: any, i: number) => (
+              <div key={i} className={`rounded-xl p-3 text-sm ${rp.author_type === 'subscriber' ? 'bg-purple-50 mr-6' : 'bg-indigo-50 ml-6'}`}>
+                <div className="text-[10px] text-gray-400 mb-0.5">{rp.author_type === 'subscriber' ? 'أنت' : rp.author_name || 'الدعم'} · {fmtDate(rp.created_at)}</div>
+                <div className="text-gray-700 whitespace-pre-wrap">{rp.body}</div>
+              </div>
+            ))}
+            {/* Reply box */}
+            {detail.status !== 'closed' && (
+              <div className="flex items-end gap-2 pt-1 sticky bottom-0 bg-white">
+                <textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={2} placeholder="اكتب رداً..." className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-purple-300 outline-none" />
+                <button disabled={busy || !replyText.trim()} onClick={sendReply} className="bg-purple-600 text-white rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-40">إرسال</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

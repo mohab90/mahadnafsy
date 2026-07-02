@@ -339,6 +339,37 @@ router.get('/api/me/tickets', requireAuth, async (req, res) => {
   } catch (e) { logger.error('[me/tickets list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Client: view own ticket + its conversation (ownership-checked by email).
+router.get('/api/me/tickets/:id', requireAuth, async (req, res) => {
+  try {
+    const email = req.user.email?.toLowerCase().trim() || '';
+    const [[t]] = await pool.query(
+      'SELECT id, subject, body, status, category, priority, created_at, subscriber_email FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    if (!t || String(t.subscriber_email || '').toLowerCase().trim() !== email) return res.status(404).json({ error: 'Not found' });
+    const [replies] = await pool.query(
+      'SELECT author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? ORDER BY created_at ASC', [req.params.id]);
+    res.json({ id: t.id, subject: t.subject, body: t.body, status: t.status, category: t.category, priority: t.priority, created_at: t.created_at, replies });
+  } catch (e) { logger.error('[me/ticket detail]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Client: reply to own ticket (re-opens it + notifies the assigned agent).
+router.post('/api/me/tickets/:id/reply', requireAuth, async (req, res) => {
+  try {
+    const { body } = req.body;
+    if (!body || !String(body).trim()) return res.status(400).json({ error: 'body required' });
+    const email = req.user.email?.toLowerCase().trim() || '';
+    const [[t]] = await pool.query(
+      'SELECT id, subscriber_email, subscriber_name, subject FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    if (!t || String(t.subscriber_email || '').toLowerCase().trim() !== email) return res.status(404).json({ error: 'Not found' });
+    await pool.query('INSERT INTO ticket_replies (id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?)',
+      [uuidv4(), req.params.id, 'subscriber', t.subscriber_name || req.user.name || 'العميل', String(body)]);
+    await pool.query("UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=?", [req.params.id]);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorName: t.subscriber_name || 'العميل', detail: String(body).slice(0, 200) });
+    createNotification('ticket', 'رد جديد من العميل', `${t.subscriber_name || email}: ${t.subject}`, { ticketId: req.params.id }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { logger.error('[me/ticket reply]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── SLA + ESCALATION WORKER ──────────────────────────────────────────────────
 // Periodic sweep: any open ticket past its SLA with no first response gets a
 // one-time breach alert (guarded by a ticket_events note); if it stays unanswered
@@ -367,6 +398,14 @@ async function slaSweep() {
           "UPDATE support_tickets SET department='management', priority='high', escalated_at=NOW(), assigned_to=?, updated_at=NOW() WHERE id=?",
           [assignee?.id || null, t.id]);
         await logTicketEvent(pool, { tenantId: t.tenant_id, ticketId: t.id, type: 'escalated', actorName: 'النظام', to: assignee?.name || 'الإدارة', detail: 'تصعيد تلقائي (تجاوز SLA)' });
+        // Alert the manager it was escalated to (in-app + WhatsApp if we have a phone).
+        createNotification('ticket', '⚠️ تصعيد تلقائي (SLA)', `تذكرة تجاوزت المهلة وصُعّدت للإدارة: ${t.subject || ''}`, { ticketId: t.id, department: 'management' }).catch(() => {});
+        if (assignee?.id) {
+          try {
+            const [[mgr]] = await pool.query('SELECT phone FROM staff WHERE id=? LIMIT 1', [assignee.id]);
+            if (mgr?.phone) require('../lib/whatsapp').sendWhatsApp(mgr.phone, `⚠️ تذكرة دعم تجاوزت زمن الاستجابة وتم تصعيدها إليك: ${t.subject || ''}`).catch(() => {});
+          } catch { /* whatsapp best-effort */ }
+        }
       }
     }
   } catch (e) { logger.warn('[cs/slaSweep]', e.message); }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, RefreshCw, Inbox, Mail, LifeBuoy, Clock, AlertTriangle, ArrowUpCircle, Send, CheckCircle2, X, User, Link2, ArrowRightLeft } from 'lucide-react';
+import { Loader2, RefreshCw, Inbox, Mail, LifeBuoy, Clock, AlertTriangle, ArrowUpCircle, Send, CheckCircle2, X, User, Link2, ArrowRightLeft, BarChart3 } from 'lucide-react';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -15,7 +15,11 @@ interface InboxContact {
   phone: string | null; preview: string; status: string; priority: string; created_at: string; kind: 'contact';
 }
 type CatMeta = Record<string, { label: string; department: string; priority: string }>;
-interface Stats { counts: { open: number; in_progress: number; closed: number; overdue: number; avg_first_response_min: number | null }; }
+interface Stats {
+  counts: { open: number; in_progress: number; closed: number; overdue: number; avg_first_response_min: number | null };
+  byDept?: { department: string; total: number; open: number }[];
+  workload?: { id: string; name: string; role: string; open_tickets: number; closed_tickets: number }[];
+}
 
 interface TicketDetail extends InboxTicket {
   body: string; closed_reason: string | null;
@@ -54,6 +58,53 @@ function StatCards({ s }: { s: Stats | null }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function AnalyticsPanel({ s, depts }: { s: Stats | null; depts: Record<string, string> }) {
+  const byDept = (s?.byDept || []).filter(d => d.department && d.department !== '—').sort((a, b) => b.open - a.open);
+  const workload = (s?.workload || []).slice(0, 6);
+  const maxDept = Math.max(1, ...byDept.map(d => Number(d.total)));
+  const c = s?.counts;
+  const resolutionRate = c && (Number(c.open) + Number(c.in_progress) + Number(c.closed)) > 0
+    ? Math.round(Number(c.closed) / (Number(c.open) + Number(c.in_progress) + Number(c.closed)) * 100) : null;
+  if (!byDept.length && !workload.length) return null;
+  return (
+    <details className="bg-white border border-gray-100 rounded-2xl p-3 group">
+      <summary className="cursor-pointer text-xs font-bold text-gray-600 flex items-center gap-2 select-none list-none">
+        <BarChart3 size={14} className="text-indigo-500" /> تحليلات خدمة العملاء
+        {resolutionRate != null && <span className="mr-auto text-[11px] text-emerald-600">معدل الحل {resolutionRate}%</span>}
+      </summary>
+      <div className="grid md:grid-cols-2 gap-4 mt-3">
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 mb-1.5">الحِمل حسب القسم (مفتوح / إجمالي)</div>
+          <div className="space-y-1.5">
+            {byDept.map(d => (
+              <div key={d.department} className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-600 w-16 shrink-0">{depts[d.department] || d.department}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(Number(d.total) / maxDept) * 100}%` }} />
+                </div>
+                <span className="text-[11px] text-gray-500 w-12 text-left shrink-0">{d.open}/{d.total}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] font-bold text-gray-500 mb-1.5">حِمل الوكلاء (تذاكر مفتوحة)</div>
+          <div className="space-y-1.5">
+            {workload.map(w => (
+              <div key={w.id} className="flex items-center gap-2 text-[11px]">
+                <span className="text-gray-700 flex-1 truncate">{w.name}</span>
+                <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 font-bold">{w.open_tickets} مفتوح</span>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">{w.closed_tickets} محلول</span>
+              </div>
+            ))}
+            {!workload.length && <p className="text-[11px] text-gray-400">لا يوجد وكلاء مُسندة إليهم تذاكر</p>}
+          </div>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -151,6 +202,7 @@ export default function SupportInboxTab({ onOpen, notify }: { onOpen?: (tab: str
       </div>
 
       <StatCards s={stats} />
+      <AnalyticsPanel s={stats} depts={depts} />
 
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap bg-white border border-gray-100 rounded-xl p-2">
