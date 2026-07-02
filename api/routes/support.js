@@ -267,7 +267,7 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (re
               updated_at = NOW()
         WHERE id=?`, [actor.id, req.params.id]);
     await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorId: actor.id, actorName: actor.name, detail: String(body).slice(0, 200) });
-    const [[t]] = await pool.query('SELECT subject, subscriber_email, subscriber_name FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    const [[t]] = await pool.query('SELECT subject, subscriber_id, subscriber_email, subscriber_name FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
     if (t?.subscriber_email) {
       sendEmail(t.subscriber_email, `💬 رد جديد على تذكرتك — ${t.subject || 'دعم'}`,
         `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
@@ -277,6 +277,17 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (re
            <p><a href="https://mahadnafsy.com/dashboard" style="color:#7c3aed">افتح لوحة التحكم</a></p>
          </div>`).catch(e => logger.warn('[cs/reply email]', e.message));
     }
+    // Also push the reply over WhatsApp (Meta or Green-API per site config; no-op if
+    // unconfigured). Resolve the subscriber's phone from their record.
+    try {
+      let phone = null;
+      if (t?.subscriber_id) { const [[s]] = await pool.query('SELECT phone FROM subscribers WHERE id=? LIMIT 1', [t.subscriber_id]); phone = s?.phone || null; }
+      if (!phone && t?.subscriber_email) { const [[s]] = await pool.query('SELECT phone FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [String(t.subscriber_email).toLowerCase().trim()]); phone = s?.phone || null; }
+      if (phone) {
+        require('../lib/whatsapp').sendWhatsApp(phone,
+          `💬 رد جديد على تذكرتك "${t.subject || ''}":\n\n${String(body)}\n\nتابع محادثتك من لوحتك: https://mahadnafsy.com/dashboard`).catch(e => logger.warn('[cs/reply wa]', e.message));
+      }
+    } catch (e) { logger.warn('[cs/reply wa]', e.message); }
     res.json({ ok: true });
   } catch (e) { logger.error('[cs/reply]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

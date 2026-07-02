@@ -69,6 +69,49 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
   } catch (e) { logger.error('[funnel]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Conversion ATTRIBUTION — which lead source (or salesperson) turns into
+// subscriptions + revenue. Answers "where does our money actually come from?".
+// GET /api/admin/funnel/attribution?by=source|sales&from&to
+router.get('/api/admin/funnel/attribution', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const by = req.query.by === 'sales' ? 'sales' : 'source';
+    const { from, to } = req.query;
+    const c = ['l.hidden=0']; const p = [];
+    if (from) { c.push('l.created_at >= ?'); p.push(from); }
+    if (to) { c.push('l.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); p.push(to); }
+    const where = c.join(' AND ');
+    const groupCol = by === 'sales' ? 'st.name' : "COALESCE(NULLIF(TRIM(l.source),''),'(غير محدد)')";
+    const salesJoin = by === 'sales' ? 'LEFT JOIN staff st ON st.id = l.assigned_sales_id' : '';
+    const data = await cached(`attribution:${by}:${from || ''}:${to || ''}`, 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        `SELECT ${groupCol} AS label,
+                COUNT(DISTINCT l.id) AS leads,
+                COUNT(DISTINCT CASE WHEN LOWER(l.status)='converted' THEN l.id END) AS converted,
+                COUNT(DISTINCT s.id) AS subscribers,
+                COALESCE(SUM(CASE WHEN p.status='paid' AND (p.currency IS NULL OR p.currency='EGP') THEN p.amount END),0) AS revenue
+           FROM leads l
+           ${salesJoin}
+           LEFT JOIN subscribers s ON s.lead_id = l.id
+           LEFT JOIN payments p ON p.subscriber_id = s.id
+          WHERE ${where}
+          GROUP BY label
+          ORDER BY revenue DESC, leads DESC
+          LIMIT 40`, p);
+      const totalRev = rows.reduce((a, r) => a + Number(r.revenue || 0), 0) || 1;
+      return rows.map(r => ({
+        label: r.label || '(غير محدد)',
+        leads: Number(r.leads || 0),
+        converted: Number(r.converted || 0),
+        subscribers: Number(r.subscribers || 0),
+        revenue: Number(r.revenue || 0),
+        convRate: Number(r.leads) ? Math.round((Number(r.converted) / Number(r.leads)) * 100) : 0,
+        revShare: Math.round((Number(r.revenue || 0) / totalRev) * 100),
+      }));
+    });
+    res.json({ by, rows: data, filters: { from: from || null, to: to || null } });
+  } catch (e) { logger.error('[attribution]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ── Action Center (mission control) — what the team must act on NOW ──────────
 router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, res) => {
   try {
