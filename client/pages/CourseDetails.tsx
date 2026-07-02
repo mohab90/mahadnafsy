@@ -158,18 +158,11 @@ const CourseDetails: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [authUser?.uid]);
 
-  if (!course) {
-    // Still resolving (context list not loaded yet, or direct API fallback in-flight) → loader, not an error.
-    if (!fallbackTried) {
-      return (
-        <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-400">
-          <div className="w-10 h-10 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin"></div>
-          <p className="text-sm">{globalContent['common.loading'] || 'جارٍ التحميل...'}</p>
-        </div>
-      );
-    }
-    return <div className="text-center py-20">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
-  }
+    // NOTE: the `if (!course)` loader/not-found guard was moved to just before the main
+    // render below. It MUST come after every hook call — otherwise the hooks declared
+    // later in this component (ratings, upsell, SEO, completion…) are skipped while the
+    // course is still resolving, then run once it loads → "Rendered more hooks than during
+    // the previous render" (React #310) crash. Keep all hooks above the guard.
 
     // --- deobfuscate stored video URL ---
     const _vk2 = '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
@@ -206,11 +199,13 @@ const CourseDetails: React.FC = () => {
     };
 
   const handleBuyNow = () => {
+    if (!course) return;
     navigate(`/checkout?type=course&id=${course.id}`);
   };
 
     const handleLeadSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        if (!course) return;
         if (!leadName.trim() || !leadPhone.trim() || !leadBranch.trim()) {
             setLeadNotice('يرجى استكمال الاسم ورقم الهاتف والفرع.');
             return;
@@ -327,12 +322,26 @@ const CourseDetails: React.FC = () => {
     }
   }, [subscriber?.lectureProgress, isEnrolled, lectures, course?.id]);
 
+  // Loader / not-found guard — placed AFTER all hooks (see note above) to satisfy Rules of Hooks.
+  if (!course) {
+    // Still resolving (context list not loaded yet, or direct API fallback in-flight) → loader, not an error.
+    if (!fallbackTried) {
+      return (
+        <div className="flex flex-col items-center justify-center py-32 gap-3 text-gray-400">
+          <div className="w-10 h-10 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin"></div>
+          <p className="text-sm">{globalContent['common.loading'] || 'جارٍ التحميل...'}</p>
+        </div>
+      );
+    }
+    return <div className="text-center py-20">{globalContent['courseDetails.notFound'] || 'الكورس غير موجود'}</div>;
+  }
+
   return (
     <div className="bg-white animate-fade-in pb-20 lg:pb-0">
       {/* Header Banner */}
       <div className="bg-gray-900 text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-primary-900 via-primary-800 to-gray-900 opacity-95 z-10"></div>
-        <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay" />
+        <img loading="lazy" decoding="async" src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay" />
         
         <div className="container mx-auto px-4 py-12 md:py-16 relative z-20">
           <div className="flex flex-col lg:flex-row gap-12 items-start">
@@ -364,7 +373,7 @@ const CourseDetails: React.FC = () => {
               </div>
               
               <div className="flex items-center gap-4 bg-gray-800/50 p-4 rounded-xl border border-gray-700 w-fit">
-                 <img src={`https://ui-avatars.com/api/?name=${course.instructor}&background=random`} className="w-12 h-12 rounded-full border-2 border-secondary-500" alt={course.instructor} />
+                 <img loading="lazy" decoding="async" src={`https://ui-avatars.com/api/?name=${course.instructor}&background=random`} className="w-12 h-12 rounded-full border-2 border-secondary-500" alt={course.instructor} />
                  <div>
                           <p className="text-xs text-gray-400">{content['courseDetails.instructorLabel'] || 'مدرب الدبلومة'}</p>
                     <p className="font-bold text-white text-lg">{course.instructor}</p>
@@ -452,7 +461,7 @@ const CourseDetails: React.FC = () => {
                     className="rounded-2xl overflow-hidden shadow-lg border border-gray-100 relative bg-black group cursor-pointer aspect-video flex items-center justify-center"
                     onClick={() => promoVideoUrl && setShowPromoModal(true)}
                 >
-                    {course.thumbnail && <img src={course.thumbnail} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500" alt="Video cover" />}
+                    {course.thumbnail && <img loading="lazy" decoding="async" src={course.thumbnail} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500" alt="Video cover" />}
                     <div className="relative z-10 w-20 h-20 bg-primary-600/90 rounded-full flex items-center justify-center text-white shadow-xl group-hover:scale-110 transition duration-300">
                         <Play size={32} fill="currentColor" className="ml-1" />
                     </div>
@@ -617,7 +626,7 @@ const CourseDetails: React.FC = () => {
                                 ) : (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 relative">
                                         {selectedLecture?.thumbnail ? (
-                                            <img src={selectedLecture.thumbnail} className="absolute inset-0 w-full h-full object-cover opacity-30" alt="" />
+                                            <img loading="lazy" decoding="async" src={selectedLecture.thumbnail} className="absolute inset-0 w-full h-full object-cover opacity-30" alt="" />
                                         ) : null}
                                         <div className="relative z-10">
                                             <Lock className="mx-auto mb-2 text-white/90" size={28} />
@@ -745,7 +754,7 @@ const CourseDetails: React.FC = () => {
                                 className="rounded-lg overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer group"
                                 onClick={() => setGalleryLightboxIdx(index)}
                             >
-                                <img src={img} className="w-full h-24 object-cover group-hover:scale-110 transition duration-500" alt="Graduate" />
+                                <img loading="lazy" decoding="async" src={img} className="w-full h-24 object-cover group-hover:scale-110 transition duration-500" alt="Graduate" />
                             </div>
                         ))}
                      </div>
@@ -819,7 +828,7 @@ const CourseDetails: React.FC = () => {
                           {certificateTemplateUrl ? (
                             certificateTemplateUrl.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(certificateTemplateUrl) ? (
                               <a href={certificateTemplateUrl} target="_blank" rel="noreferrer" className="block">
-                                <img src={certificateTemplateUrl} alt="نموذج الشهادة" className="w-24 h-16 object-cover rounded-xl border-2 border-red-300 shadow-md hover:shadow-lg transition" />
+                                <img loading="lazy" decoding="async" src={certificateTemplateUrl} alt="نموذج الشهادة" className="w-24 h-16 object-cover rounded-xl border-2 border-red-300 shadow-md hover:shadow-lg transition" />
                               </a>
                             ) : (
                               <a href={certificateTemplateUrl} target="_blank" rel="noreferrer"
@@ -847,7 +856,7 @@ const CourseDetails: React.FC = () => {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         {galleryImgs.slice(0, 8).map((img, i) => (
                           <div key={i} className="rounded-xl overflow-hidden aspect-square">
-                            <img src={img} alt="خريج" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                            <img loading="lazy" decoding="async" src={img} alt="خريج" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
                           </div>
                         ))}
                       </div>
@@ -865,7 +874,7 @@ const CourseDetails: React.FC = () => {
                           <Quote size={28} className="text-red-200 absolute top-4 left-4" />
                           <div className="flex items-center gap-3 mb-3">
                             {t.image ? (
-                              <img src={t.image} alt={t.name} className="w-11 h-11 rounded-full object-cover border-2 border-red-200 flex-shrink-0" />
+                              <img loading="lazy" decoding="async" src={t.image} alt={t.name} className="w-11 h-11 rounded-full object-cover border-2 border-red-200 flex-shrink-0" />
                             ) : (
                               <div className="w-11 h-11 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-lg flex-shrink-0">{t.name.charAt(0)}</div>
                             )}
@@ -1010,7 +1019,7 @@ const CourseDetails: React.FC = () => {
                    <div className="space-y-4">
                       {courses.filter(c => c.id !== course.id).slice(0, 2).map(c => (
                           <Link key={c.id} to={`/c/${c.slug || c.id}`} className="flex gap-3 group bg-white p-3 rounded-xl shadow-sm hover:shadow-md transition">
-                              <img src={c.thumbnail} className="w-20 h-16 object-cover rounded-lg" alt="" />
+                              <img loading="lazy" decoding="async" src={c.thumbnail} className="w-20 h-16 object-cover rounded-lg" alt="" />
                               <div>
                                   <h4 className="text-sm font-bold text-gray-800 group-hover:text-primary-600 line-clamp-2 transition">{c.title}</h4>
                                   <p className="text-xs text-primary-600 font-bold mt-1">{c.price[currency]} {currencySymbol}</p>
@@ -1047,7 +1056,7 @@ const CourseDetails: React.FC = () => {
                   <div className="space-y-3">
                     {relatedBundles.slice(0, 2).map(b => (
                       <div key={b.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3 hover:border-primary-300 transition">
-                        <img src={b.thumbnail} alt="" className="w-14 h-12 object-cover rounded-lg flex-shrink-0" />
+                        <img loading="lazy" decoding="async" src={b.thumbnail} alt="" className="w-14 h-12 object-cover rounded-lg flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-gray-800 text-sm line-clamp-1">{b.title}</p>
                           <p className="text-primary-600 font-extrabold text-sm">{b.price?.[currency]} {currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$'}</p>

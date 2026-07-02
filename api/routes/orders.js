@@ -77,6 +77,15 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
 router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
   try {
     const o = req.body;
+    // Validate the NOT-NULL columns so bad input returns a clear 400 instead of a
+    // DB 500 (orders.item_id is NOT NULL). Status/type keep the app's existing
+    // lowercase convention (the PATCH flow compares status === 'paid').
+    const itemId = o.item_id || o.itemId || null;
+    const itemTitle = o.item_title || o.itemTitle || '';
+    const amount = Number(o.amount);
+    if (!itemId) return res.status(400).json({ error: 'item_id مطلوب' });
+    if (!itemTitle) return res.status(400).json({ error: 'item_title مطلوب' });
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'amount غير صالح' });
     const id = o.id || uuidv4();
     let staffName = o.staff_name || null;
     if (!staffName && o.staff_id) {
@@ -88,8 +97,8 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
          currency, payment_method, notes, staff_id, staff_name, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), staff_id=VALUES(staff_id), staff_name=VALUES(staff_name), updated_at=CURRENT_TIMESTAMP`,
-      [id, o.subscriber_id || null, o.item_id || null, o.item_title || '', o.type || 'course',
-       o.status || 'pending', o.amount || 0, o.currency || 'EGP', o.payment_method || 'CARD',
+      [id, o.subscriber_id || null, itemId, itemTitle, o.type || 'course',
+       o.status || 'pending', amount, o.currency || 'EGP', o.payment_method || 'CARD',
        o.notes || null, o.staff_id || null, staffName, o.created_at || new Date().toISOString()]
     );
     res.json({ ok: true, id });
