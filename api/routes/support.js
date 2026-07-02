@@ -1,0 +1,381 @@
+'use strict';
+// ═══════════════════════════════════════════════════════════════════════════
+// Customer-Service Hub — cohesive ticketing module.
+// Unifies the previously-scattered ticket routes (were in campaigns.js) and adds
+// cross-department ROUTING, SLA tracking, a full TIMELINE, and contact→ticket
+// CONVERSION. This is the single home for how a customer problem enters the
+// system (website / dashboard / phone / whatsapp) and moves between departments.
+// ═══════════════════════════════════════════════════════════════════════════
+const logger = require('../lib/logger');
+const { Router } = require('express');
+const router = Router();
+const { pool, getStaffIdByEmail } = require('../lib/db');
+const { uuidv4 } = require('../lib/id');
+const { sendEmail } = require('../lib/email');
+const { createNotification } = require('../lib/notification');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+const {
+  CATEGORY_META, DEPARTMENT_LABEL, resolveDepartment, defaultPriority,
+  computeSlaDue, pickAssignee, logTicketEvent,
+} = require('../lib/ticketRouting');
+
+const CLOSED_STATUSES = ['resolved', 'closed'];
+const OPEN_STATUSES = ['open', 'in_progress'];
+
+async function actorOf(req) {
+  const name = req.user?.name || req.user?.email || 'إدارة';
+  let id = req.staffRecord?.id || null;
+  if (!id && req.user?.email) { try { id = await getStaffIdByEmail(req.user.email); } catch { /* ignore */ } }
+  return { id, name };
+}
+
+function slaFlag(t) {
+  if (CLOSED_STATUSES.includes(String(t.status || '').toLowerCase())) return 'closed';
+  if (t.first_response_at) return 'answered';
+  if (!t.sla_due_at) return 'ontime';
+  const due = new Date(t.sla_due_at).getTime();
+  const now = Date.now();
+  if (now > due) return 'overdue';
+  if (due - now < 2 * 3600 * 1000) return 'due_soon';
+  return 'ontime';
+}
+
+// Create a ticket with full routing + SLA. Returns the inserted row id.
+async function createRoutedTicket(conn, {
+  tenantId, subscriberId, email, name, subject, body, category, priority, channel,
+  sourceType, sourceId, actor,
+}) {
+  const cat = CATEGORY_META[category] ? category : 'general';
+  const dept = resolveDepartment(cat);
+  const prio = priority || defaultPriority(cat);
+  const slaDue = computeSlaDue(prio);
+  const assignee = await pickAssignee(conn, tenantId, dept);
+  const id = uuidv4();
+  await conn.query(
+    `INSERT INTO support_tickets
+       (id, tenant_id, subscriber_id, subscriber_email, subscriber_name, subject, body,
+        status, priority, category, department, channel, source_type, source_id,
+        assigned_to, sla_due_at)
+     VALUES (?,?,?,?,?,?,?, 'open', ?,?,?,?,?,?,?,?)`,
+    [id, tenantId, subscriberId || null, email || null, name || null, subject, body,
+     prio, cat, dept, channel || 'system', sourceType || null, sourceId || null,
+     assignee?.id || null, slaDue]
+  );
+  await logTicketEvent(conn, { tenantId, ticketId: id, type: 'created', actorId: actor?.id, actorName: actor?.name, to: cat, detail: subject });
+  await logTicketEvent(conn, { tenantId, ticketId: id, type: 'routed', actorId: actor?.id, actorName: actor?.name, to: `${DEPARTMENT_LABEL[dept] || dept}${assignee ? ' → ' + assignee.name : ''}` });
+  if (assignee?.id) {
+    createNotification('ticket', 'تذكرة جديدة موجّهة إليك', `${name || email || 'عميل'}: ${subject}`, { ticketId: id, department: dept }).catch(() => {});
+  }
+  return { id, department: dept, priority: prio, assignee, slaDue };
+}
+
+// ── UNIFIED INBOX ────────────────────────────────────────────────────────────
+// Tickets + not-yet-converted contact messages, with routing + SLA, filterable.
+router.get('/api/admin/cs/inbox', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { department, category, status, sla, assignee, q } = req.query;
+    const where = ['t.tenant_id = ?'];
+    const params = [req.tenantId];
+    if (department) { where.push('t.department = ?'); params.push(department); }
+    if (category) { where.push('t.category = ?'); params.push(category); }
+    if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
+    else if (status) { where.push('t.status = ?'); params.push(status); }
+    if (assignee) { where.push('t.assigned_to = ?'); params.push(assignee); }
+    if (q) { where.push('(t.subject LIKE ? OR t.subscriber_name LIKE ? OR t.subscriber_email LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    const [rows] = await pool.query(
+      `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
+              t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
+              t.first_response_at, t.escalated_at, t.created_at,
+              s.name AS assignee_name,
+              (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id = t.id) AS reply_count
+         FROM support_tickets t
+         LEFT JOIN staff s ON s.id = t.assigned_to
+        WHERE ${where.join(' AND ')}
+        ORDER BY FIELD(t.status,'open','in_progress','resolved','closed'), t.created_at DESC
+        LIMIT 300`, params);
+    let tickets = rows.map(r => ({ ...r, kind: 'ticket', sla: slaFlag(r) }));
+    if (sla) tickets = tickets.filter(t => t.sla === sla);
+
+    // Un-triaged website contact messages (not converted to a ticket yet).
+    let contacts = [];
+    if (!department && !category && !assignee && (!status || status === 'open')) {
+      const [crows] = await pool.query(
+        `SELECT id, name, email, phone, subject, message, status, priority, created_at
+           FROM contact_messages
+          WHERE tenant_id = ? AND converted_ticket_id IS NULL
+            AND LOWER(COALESCE(status,'new')) IN ('new','read','pending','unread')
+          ORDER BY created_at DESC LIMIT 100`, [req.tenantId]).catch(() => [[]]);
+      contacts = crows.map(r => ({
+        id: r.id, kind: 'contact', subject: r.subject || 'رسالة تواصل',
+        subscriber_name: r.name, subscriber_email: r.email, phone: r.phone,
+        preview: String(r.message || '').slice(0, 140), status: String(r.status || 'new').toLowerCase(),
+        priority: r.priority || 'medium', created_at: r.created_at, sla: 'untriaged',
+      }));
+    }
+    res.json({ tickets, contacts, categories: CATEGORY_META, departments: DEPARTMENT_LABEL });
+  } catch (e) { logger.error('[cs/inbox]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── STATS + AGENT WORKLOAD ───────────────────────────────────────────────────
+router.get('/api/admin/cs/stats', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[counts]] = await pool.query(
+      `SELECT
+         SUM(status='open') AS open,
+         SUM(status='in_progress') AS in_progress,
+         SUM(status IN ('resolved','closed')) AS closed,
+         SUM(status IN ('open','in_progress') AND sla_due_at IS NOT NULL AND sla_due_at < NOW() AND first_response_at IS NULL) AS overdue,
+         AVG(CASE WHEN first_response_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, first_response_at) END) AS avg_first_response_min
+       FROM support_tickets WHERE tenant_id = ?`, [req.tenantId]);
+    const [byDept] = await pool.query(
+      `SELECT COALESCE(department,'—') AS department, COUNT(*) AS total,
+              SUM(status IN ('open','in_progress')) AS open
+         FROM support_tickets WHERE tenant_id = ? GROUP BY department`, [req.tenantId]);
+    const [workload] = await pool.query(
+      `SELECT s.id, s.name, s.role,
+              SUM(t.status IN ('open','in_progress')) AS open_tickets,
+              SUM(t.status IN ('resolved','closed')) AS closed_tickets
+         FROM staff s JOIN support_tickets t ON t.assigned_to = s.id AND t.tenant_id = ?
+        GROUP BY s.id ORDER BY open_tickets DESC LIMIT 30`, [req.tenantId]);
+    res.json({ counts, byDept, workload });
+  } catch (e) { logger.error('[cs/stats]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── LIST + DETAIL ────────────────────────────────────────────────────────────
+router.get('/api/admin/tickets', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const where = ['t.tenant_id = ?']; const params = [req.tenantId];
+    if (req.query.status) { where.push('t.status = ?'); params.push(req.query.status); }
+    const [rows] = await pool.query(
+      `SELECT t.*, s.name AS assignee_name,
+              (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id=t.id) AS reply_count
+         FROM support_tickets t LEFT JOIN staff s ON s.id=t.assigned_to
+        WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC LIMIT 500`, params);
+    res.json(rows.map(r => ({ ...r, sla: slaFlag(r) })));
+  } catch (e) { logger.error('[cs/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.get('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[t]] = await pool.query('SELECT * FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    const [replies] = await pool.query('SELECT id, ticket_id, author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? ORDER BY created_at ASC', [req.params.id]);
+    const [timeline] = await pool.query('SELECT event_type, actor_name, from_value, to_value, detail, created_at FROM ticket_events WHERE ticket_id=? ORDER BY created_at ASC', [req.params.id]).catch(() => [[]]);
+    // Linked origin entity (what the ticket is actually about).
+    let linked = null;
+    try {
+      if (t.subscriber_id) {
+        const [[sub]] = await pool.query('SELECT id, name, email, phone, client_code, branch FROM subscribers WHERE id=? LIMIT 1', [t.subscriber_id]);
+        if (sub) linked = { type: 'subscriber', ...sub };
+      }
+      if (t.source_type === 'payment' && t.source_id) {
+        const [[p]] = await pool.query('SELECT id, amount, currency, payment_type, status, `date` FROM payments WHERE id=? LIMIT 1', [t.source_id]);
+        if (p) linked = { type: 'payment', ...p, subscriber: linked };
+      }
+    } catch { /* linked entity is best-effort */ }
+    res.json({ ...t, sla: slaFlag(t), replies, timeline, linked });
+  } catch (e) { logger.error('[cs/detail]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── CREATE (staff, e.g. phone/whatsapp intake) ───────────────────────────────
+router.post('/api/admin/cs/tickets', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { subject, body, category, priority, channel, subscriber_id, email, name } = req.body;
+    if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
+    const actor = await actorOf(req);
+    const r = await createRoutedTicket(pool, {
+      tenantId: req.tenantId, subscriberId: subscriber_id, email, name, subject, body,
+      category, priority, channel: channel || 'phone', actor,
+    });
+    res.json({ ok: true, ...r });
+  } catch (e) { logger.error('[cs/create]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── CONVERT a website contact message → routed ticket ────────────────────────
+router.post('/api/admin/cs/contact/:id/convert', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[c]] = await pool.query('SELECT * FROM contact_messages WHERE id=? LIMIT 1', [req.params.id]);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    if (c.converted_ticket_id) return res.status(409).json({ error: 'Already converted', ticketId: c.converted_ticket_id });
+    // Link to an existing subscriber by email/phone if we can.
+    let subId = null;
+    try {
+      const [[sub]] = await pool.query(
+        'SELECT id FROM subscribers WHERE (email IS NOT NULL AND LOWER(TRIM(email))=?) OR (phone IS NOT NULL AND phone=?) LIMIT 1',
+        [String(c.email || '').toLowerCase().trim(), c.phone || '']);
+      subId = sub?.id || null;
+    } catch { /* ignore */ }
+    const actor = await actorOf(req);
+    const r = await createRoutedTicket(pool, {
+      tenantId: req.tenantId, subscriberId: subId, email: c.email, name: c.name,
+      subject: c.subject || 'رسالة من نموذج التواصل', body: c.message,
+      category: req.body.category, priority: req.body.priority, channel: 'web_contact',
+      sourceType: 'contact_message', sourceId: c.id, actor,
+    });
+    await pool.query("UPDATE contact_messages SET status='REPLIED', converted_ticket_id=? WHERE id=?", [r.id, c.id]);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: r.id, type: 'converted', actorId: actor.id, actorName: actor.name, from: 'contact_message', detail: c.subject || null });
+    res.json({ ok: true, ...r });
+  } catch (e) { logger.error('[cs/convert]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── RE-ROUTE (change category → recompute dept + reassign) ───────────────────
+router.put('/api/admin/tickets/:id/route', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { category, priority } = req.body;
+    const [[t]] = await pool.query('SELECT category, department, priority FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    const cat = CATEGORY_META[category] ? category : t.category;
+    const dept = resolveDepartment(cat);
+    const prio = priority || t.priority;
+    const assignee = await pickAssignee(pool, req.tenantId, dept);
+    await pool.query('UPDATE support_tickets SET category=?, department=?, priority=?, assigned_to=?, updated_at=NOW() WHERE id=?',
+      [cat, dept, prio, assignee?.id || null, req.params.id]);
+    const actor = await actorOf(req);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'routed', actorId: actor.id, actorName: actor.name, from: `${DEPARTMENT_LABEL[t.department] || t.department || '—'}`, to: `${DEPARTMENT_LABEL[dept] || dept}${assignee ? ' → ' + assignee.name : ''}` });
+    if (assignee?.id) createNotification('ticket', 'تذكرة موجّهة إليك', `تم تحويل تذكرة إلى قسمك`, { ticketId: req.params.id }).catch(() => {});
+    res.json({ ok: true, department: dept, assignee });
+  } catch (e) { logger.error('[cs/route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── ASSIGN (manual) ──────────────────────────────────────────────────────────
+router.put('/api/admin/tickets/:id/assign', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { staff_id } = req.body;
+    const [[st]] = staff_id ? await pool.query('SELECT id, name FROM staff WHERE id=? LIMIT 1', [staff_id]) : [[null]];
+    await pool.query('UPDATE support_tickets SET assigned_to=?, updated_at=NOW() WHERE id=?', [st?.id || null, req.params.id]);
+    const actor = await actorOf(req);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'assigned', actorId: actor.id, actorName: actor.name, to: st?.name || 'إلغاء الإسناد' });
+    if (st?.id) createNotification('ticket', 'تذكرة أُسندت إليك', `تم إسناد تذكرة إليك`, { ticketId: req.params.id }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/assign]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── REPLY (records first response for SLA) ───────────────────────────────────
+router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { body } = req.body;
+    if (!body) return res.status(400).json({ error: 'body required' });
+    const actor = await actorOf(req);
+    await pool.query('INSERT INTO ticket_replies (id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?)',
+      [uuidv4(), req.params.id, 'staff', actor.name, body]);
+    // First response closes the SLA clock; move open→in_progress.
+    await pool.query(
+      `UPDATE support_tickets
+          SET status = IF(status='open','in_progress',status),
+              first_response_at = COALESCE(first_response_at, NOW()),
+              first_response_by = COALESCE(first_response_by, ?),
+              updated_at = NOW()
+        WHERE id=?`, [actor.id, req.params.id]);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorId: actor.id, actorName: actor.name, detail: String(body).slice(0, 200) });
+    const [[t]] = await pool.query('SELECT subject, subscriber_email, subscriber_name FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    if (t?.subscriber_email) {
+      sendEmail(t.subscriber_email, `💬 رد جديد على تذكرتك — ${t.subject || 'دعم'}`,
+        `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
+           <h2 style="color:#7c3aed">مرحباً ${t.subscriber_name || 'عزيزنا'}</h2>
+           <p>تم الرد على تذكرتك: <strong>${t.subject || ''}</strong></p>
+           <div style="background:#f5f3ff;border-right:4px solid #7c3aed;padding:16px;margin:16px 0;border-radius:8px">${String(body).replace(/\n/g, '<br>')}</div>
+           <p><a href="https://mahadnafsy.com/dashboard" style="color:#7c3aed">افتح لوحة التحكم</a></p>
+         </div>`).catch(e => logger.warn('[cs/reply email]', e.message));
+    }
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/reply]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── STATUS change (+ closed reason) ──────────────────────────────────────────
+router.put('/api/admin/tickets/:id/status', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { status, closed_reason } = req.body;
+    const valid = ['open', 'in_progress', 'resolved', 'closed'];
+    if (!valid.includes(status)) return res.status(400).json({ error: 'invalid status' });
+    const [[prev]] = await pool.query('SELECT status FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    await pool.query(
+      `UPDATE support_tickets SET status=?, closed_reason=?,
+              resolved_at = IF(? IN ('resolved','closed'), COALESCE(resolved_at, NOW()), resolved_at),
+              updated_at = NOW() WHERE id=?`,
+      [status, closed_reason || null, status, req.params.id]);
+    const actor = await actorOf(req);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'status_changed', actorId: actor.id, actorName: actor.name, from: prev?.status, to: status, detail: closed_reason || null });
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/status]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── ESCALATE to management ───────────────────────────────────────────────────
+router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const assignee = await pickAssignee(pool, req.tenantId, 'management');
+    await pool.query(
+      `UPDATE support_tickets SET department='management', priority='high',
+              escalated_at=COALESCE(escalated_at, NOW()), assigned_to=?, updated_at=NOW() WHERE id=?`,
+      [assignee?.id || null, req.params.id]);
+    const actor = await actorOf(req);
+    await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'escalated', actorId: actor.id, actorName: actor.name, to: assignee?.name || 'الإدارة', detail: req.body.reason || null });
+    createNotification('ticket', '⚠️ تذكرة مُصعّدة', `تم تصعيد تذكرة للإدارة${req.body.reason ? ': ' + req.body.reason : ''}`, { ticketId: req.params.id }).catch(() => {});
+    res.json({ ok: true, assignee });
+  } catch (e) { logger.error('[cs/escalate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── CLIENT: submit + list own tickets (auto-routed) ──────────────────────────
+router.post('/api/me/tickets', requireAuth, async (req, res) => {
+  try {
+    const { subject, body, category } = req.body;
+    if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
+    const [[sub]] = await pool.query('SELECT id, name, email FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [req.user.email?.toLowerCase().trim() || '']);
+    const r = await createRoutedTicket(pool, {
+      tenantId: req.tenantId, subscriberId: sub?.id, email: req.user.email, name: sub?.name || req.user.name,
+      subject, body, category, channel: 'user_dashboard', actor: { id: null, name: sub?.name || req.user.email },
+    });
+    res.json({ ok: true, id: r.id });
+  } catch (e) { logger.error('[me/tickets create]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.get('/api/me/tickets', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.id, t.subject, t.status, t.category, t.priority, t.created_at,
+              (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id=t.id) AS reply_count
+         FROM support_tickets t WHERE LOWER(TRIM(t.subscriber_email))=?
+        ORDER BY t.created_at DESC LIMIT 50`, [req.user.email?.toLowerCase().trim() || '']);
+    res.json(rows);
+  } catch (e) { logger.error('[me/tickets list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── SLA + ESCALATION WORKER ──────────────────────────────────────────────────
+// Periodic sweep: any open ticket past its SLA with no first response gets a
+// one-time breach alert (guarded by a ticket_events note); if it stays unanswered
+// well past due it auto-escalates to management. Self-scheduled (unref'd), so it
+// never keeps the process alive and is a no-op until the DB is reachable.
+async function slaSweep() {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, tenant_id, assigned_to, sla_due_at, subject
+         FROM support_tickets
+        WHERE status IN ('open','in_progress') AND first_response_at IS NULL
+          AND sla_due_at IS NOT NULL AND sla_due_at < NOW() AND escalated_at IS NULL
+        ORDER BY sla_due_at ASC LIMIT 200`);
+    for (const t of rows) {
+      const breachMs = Date.now() - new Date(t.sla_due_at).getTime();
+      const [[flag]] = await pool.query(
+        "SELECT COUNT(*) AS n FROM ticket_events WHERE ticket_id=? AND event_type='note' AND to_value='sla_breach'",
+        [t.id]).catch(() => [[{ n: 1 }]]);
+      if (!flag || !flag.n) {
+        await logTicketEvent(pool, { tenantId: t.tenant_id, ticketId: t.id, type: 'note', to: 'sla_breach', detail: 'تجاوز زمن الاستجابة (SLA)' });
+        createNotification('ticket', '⏰ تجاوز زمن الاستجابة', `تذكرة لم يُرد عليها ضمن المهلة: ${t.subject || ''}`, { ticketId: t.id }).catch(() => {});
+      }
+      if (breachMs > 6 * 3600 * 1000) { // >6h past due → auto-escalate to management
+        const assignee = await pickAssignee(pool, t.tenant_id, 'management');
+        await pool.query(
+          "UPDATE support_tickets SET department='management', priority='high', escalated_at=NOW(), assigned_to=?, updated_at=NOW() WHERE id=?",
+          [assignee?.id || null, t.id]);
+        await logTicketEvent(pool, { tenantId: t.tenant_id, ticketId: t.id, type: 'escalated', actorName: 'النظام', to: assignee?.name || 'الإدارة', detail: 'تصعيد تلقائي (تجاوز SLA)' });
+      }
+    }
+  } catch (e) { logger.warn('[cs/slaSweep]', e.message); }
+}
+function scheduleSlaSweep() {
+  const iv = setInterval(() => { slaSweep().catch(() => {}); }, 10 * 60 * 1000); // every 10 min
+  if (iv.unref) iv.unref();
+  return iv;
+}
+scheduleSlaSweep();
+
+module.exports = router;

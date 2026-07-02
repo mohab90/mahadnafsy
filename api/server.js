@@ -39,6 +39,7 @@ const adminMaintenanceRouter = require('./routes/admin-maintenance');
 const funnelRouter = require('./routes/funnel');
 const automationRouter = require('./routes/automation');
 const campaignsRouter  = require('./routes/campaigns');
+const supportRouter    = require('./routes/support'); // Customer-Service Hub
 const adminUtilsRouter = require('./routes/admin-utils');
 const financeRouter   = require('./routes/finance');
 const analyticsRouter = require('./routes/analytics');
@@ -559,6 +560,7 @@ app.use('/', authRouter);
 app.use('/', publicRouter);
 app.use('/', automationRouter);
 app.use('/', campaignsRouter);
+app.use('/', supportRouter);
 app.use('/', adminUtilsRouter);
 app.use('/', financeRouter);
 app.use('/', analyticsRouter);
