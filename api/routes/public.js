@@ -567,6 +567,14 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     // Lifecycle: instant acknowledgment to the applicant.
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
     require('../lib/lifecycle').trigger('join_us_received', { name, email, phone, roleLabel });
+    // Flow the applicant straight into the HR recruiting funnel (best-effort) +
+    // alert HR, so a website candidate is never a dead-end. See routes/hr/talent.js.
+    (async () => {
+      try {
+        await require('./hr/talent').convertJoinUs({ id, name, email, phone, specialty, experience, type: safeType, linkedin, message });
+        await require('../lib/notification').createNotification('hr', 'متقدم جديد من الموقع', `${name} — ${roleLabel || safeType}`, { joinUsId: id });
+      } catch (err) { logger.warn('[join-us→pipeline]', err.message); }
+    })();
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

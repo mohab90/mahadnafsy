@@ -260,7 +260,27 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, async
       GROUP BY YEAR(date), MONTH(date) ORDER BY YEAR(date) DESC, MONTH(date) DESC
     `, [staffId]);
 
-    res.json({ actuals, targets, history });
+    // Customer-service performance for this agent (interconnects CS ↔ HR): how
+    // many tickets they handled, resolution rate, first-response speed + SLA.
+    let cs = { tickets_assigned: 0, tickets_resolved: 0, avg_first_response_min: null, sla_compliance: null };
+    try {
+      const [[row]] = await pool.query(`
+        SELECT COUNT(*) AS tickets_assigned,
+               SUM(status IN ('resolved','closed')) AS tickets_resolved,
+               AVG(CASE WHEN first_response_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, first_response_at) END) AS avg_first_response_min,
+               SUM(first_response_at IS NOT NULL) AS responded,
+               SUM(first_response_at IS NOT NULL AND (sla_due_at IS NULL OR first_response_at <= sla_due_at)) AS sla_met
+          FROM support_tickets
+         WHERE assigned_to=? AND MONTH(created_at)=? AND YEAR(created_at)=?`, [staffId, m, y]);
+      cs = {
+        tickets_assigned: Number(row.tickets_assigned || 0),
+        tickets_resolved: Number(row.tickets_resolved || 0),
+        avg_first_response_min: row.avg_first_response_min != null ? Math.round(row.avg_first_response_min) : null,
+        sla_compliance: row.responded ? Math.round((row.sla_met / row.responded) * 100) : null,
+      };
+    } catch { /* support_tickets SLA cols may predate migration 030 */ }
+
+    res.json({ actuals, targets, history, cs });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
