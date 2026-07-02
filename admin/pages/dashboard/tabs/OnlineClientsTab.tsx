@@ -14,6 +14,7 @@ import { SUB_STATUS_CFG, normBranchId, type SubStatus } from '../dashboardShared
 import { type PaymentDraft, blankPaymentDraft } from '../../../components/PaymentModal';
 import AddSubscriberModal from '../../../components/AddSubscriberModal';
 import OnlineSubscriberModal from '../../../components/OnlineSubscriberModal';
+import OldDataImportPanel from "./online/OldDataImportPanel";
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -132,17 +133,6 @@ export default function OnlineClientsTab({
   const [daqqiSettingsOpen, setDaqqiSettingsOpen] = useState(false);
   const [daqqiHousingModal, setDaqqiHousingModal] = useState<SubscriberItem|null>(null);
   const [daqqiHousingRoundId, setDaqqiHousingRoundId] = useState('');
-  const [daqqiOldDataParsed, setDaqqiOldDataParsed] = useState<{_id:string;_name:string;_phone:string;_email:string;_notes:string;_course:string;_paid:string;_expected:string;_cert:string;_attendance:string}[]>([]);
-  const [daqqiOldDataSelected, setDaqqiOldDataSelected] = useState<Set<string>>(new Set());
-  const [daqqiOldDataImporting, setDaqqiOldDataImporting] = useState(false);
-  const [daqqiOldDataResult, setDaqqiOldDataResult] = useState<{created:number;dupes:number;errors:number}|null>(null);
-  const [daqqiOldDataSource, setDaqqiOldDataSource] = useState('داتا قديمة دقي');
-  // Online old data import state
-  const [onlineOldDataSource, setOnlineOldDataSource] = useState('داتا قديمة أونلاين');
-  const [onlineOldDataParsed, setOnlineOldDataParsed] = useState<{_id:string;_name:string;_phone:string;_email:string;_notes:string;_course:string;_paid:string;_expected:string;_cert:string;_attendance:string}[]>([]);
-  const [onlineOldDataSelected, setOnlineOldDataSelected] = useState<Set<string>>(new Set());
-  const [onlineOldDataImporting, setOnlineOldDataImporting] = useState(false);
-  const [onlineOldDataResult, setOnlineOldDataResult] = useState<{created:number;dupes:number;errors:number}|null>(null);
   // Bulk selection
   const [collOnlineSelected, setCollOnlineSelected] = useState<Set<string>>(new Set());
   const [collOnlineBulkConfirm, setCollOnlineBulkConfirm] = useState<null|'pause'|'finish'|'delete'|'refund'|'assign'>(null);
@@ -781,290 +771,59 @@ export default function OnlineClientsTab({
                         <span className="text-base">📂</span>
                         <h3 className="font-extrabold text-gray-800 text-base">داتا قديمة — استيراد عملاء دقي</h3>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-                        <h4 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
-                          ⬆️ استيراد ملف CSV / Excel
-                        </h4>
-                        <div className="flex flex-wrap gap-3 items-end">
-                          <div>
-                            <label className="text-xs font-bold text-gray-600 mb-1 block">مصدر البيانات</label>
-                            <input value={daqqiOldDataSource} onChange={e => setDaqqiOldDataSource(e.target.value)}
-                              placeholder="مثال: داتا دقي 2024"
-                              className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-48" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-gray-600 mb-1 block">ملف CSV أو TSV</label>
-                            <input type="file" accept=".csv,.tsv,.txt"
-                              onChange={e => {
-                                const f = e.target.files?.[0];
-                                if (!f) return;
-                                const reader = new FileReader();
-                                reader.onload = ev => {
-                                  const text = ev.target?.result as string;
-                                  const lines = text.split(/\r?\n/).filter(Boolean);
-                                  const sep = lines[0]?.includes('\t') ? '\t' : ',';
-                                  const hdrs = lines[0]?.split(sep).map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
-                                  const nameCol = hdrs.findIndex(h => h.includes('name') || h.includes('اسم'));
-                                  const phoneCol = hdrs.findIndex(h => h.includes('phone') || h.includes('هاتف'));
-                                  const emailCol = hdrs.findIndex(h => h.includes('email') || h.includes('إيميل'));
-                                  const notesCol = hdrs.findIndex(h => h.includes('note') || h.includes('ملاحظ'));
-                                  const courseCol = hdrs.findIndex(h => h.includes('course') || h.includes('كورس'));
-                                  const paidCol = hdrs.findIndex(h => h.includes('paid') || h.includes('مدفوع'));
-                                  const expectedCol = hdrs.findIndex(h => h.includes('expected') || h.includes('متوقع'));
-                                  const certCol = hdrs.findIndex(h => h.includes('cert') || h.includes('شهاد'));
-                                  const attendanceCol = hdrs.findIndex(h => h.includes('attend') || h.includes('حضور'));
-                                  const parsed = lines.slice(1).map((line, i) => {
-                                    const cols = line.split(sep).map(c => c.replace(/^"|"$/g,'').trim());
-                                    return { _id: `r${i}`, _name: cols[nameCol]||'', _phone: cols[phoneCol]||'', _email: cols[emailCol]||'', _notes: cols[notesCol]||'', _course: cols[courseCol]||'', _paid: cols[paidCol]||'', _expected: cols[expectedCol]||'', _cert: cols[certCol]||'', _attendance: cols[attendanceCol]||'' };
-                                  }).filter(r => r._name || r._phone);
-                                  setDaqqiOldDataParsed(parsed);
-                                  setDaqqiOldDataSelected(new Set(parsed.filter(r=>r._name&&r._phone).map(r=>r._id)));
-                                  setDaqqiOldDataResult(null);
-                                };
-                                reader.readAsText(f, 'UTF-8');
-                              }}
-                              className="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
-                          </div>
-                        </div>
-                        <p className="text-[11px] text-gray-400">
-                          الأعمدة المدعومة: <code className="bg-gray-100 px-1 rounded">name / الاسم</code> &nbsp; <code className="bg-gray-100 px-1 rounded">phone / هاتف</code> &nbsp; <code className="bg-gray-100 px-1 rounded">email</code> &nbsp; <code className="bg-gray-100 px-1 rounded">course / كورس</code> &nbsp; <code className="bg-gray-100 px-1 rounded">paid / مدفوع</code> &nbsp; <code className="bg-gray-100 px-1 rounded">expected / متوقع</code> &nbsp; <code className="bg-gray-100 px-1 rounded">cert / شهادة</code> &nbsp; <code className="bg-gray-100 px-1 rounded">attendance / حضور</code> &nbsp; <code className="bg-gray-100 px-1 rounded">notes / ملاحظات</code>
-                        </p>
-                        {daqqiOldDataParsed.length > 0 && (
-                          <>
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                              <span className="text-sm font-bold text-gray-700">{daqqiOldDataParsed.length} صف — محدد: {daqqiOldDataSelected.size}</span>
-                              <div className="flex gap-2">
-                                <button onClick={() => setDaqqiOldDataSelected(new Set(daqqiOldDataParsed.map(r => r._id)))} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">تحديد الكل</button>
-                                <button onClick={() => setDaqqiOldDataSelected(new Set())} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">إلغاء الكل</button>
-                              </div>
-                            </div>
-                            <div className="max-h-64 overflow-auto border border-gray-200 rounded-xl">
-                              <table className="w-full text-xs">
-                                <thead className="bg-gray-50 sticky top-0">
-                                  <tr>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600 w-8"><input type="checkbox" checked={daqqiOldDataSelected.size === daqqiOldDataParsed.length} onChange={e => setDaqqiOldDataSelected(e.target.checked ? new Set(daqqiOldDataParsed.map(r => r._id)) : new Set())} className="w-3.5 h-3.5" /></th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">الاسم</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">الهاتف</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">الكورس</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">مدفوع</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">متوقع</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">شهادة</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">حضور</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">ملاحظة</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {daqqiOldDataParsed.slice(0,200).map(r => {
-                                    const ok = !!(r._name && r._phone);
-                                    return (
-                                      <tr key={r._id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${!ok?'opacity-50':''}`}>
-                                        <td className="py-1.5 px-3"><input type="checkbox" checked={daqqiOldDataSelected.has(r._id)} disabled={!ok} onChange={e => { const next = new Set(daqqiOldDataSelected); e.target.checked ? next.add(r._id) : next.delete(r._id); setDaqqiOldDataSelected(next); }} className="w-3.5 h-3.5" /></td>
-                                        <td className="py-1.5 px-3 font-bold text-gray-900">{r._name || <span className="text-red-400">مطلوب</span>}</td>
-                                        <td className="py-1.5 px-3 font-mono text-gray-600">{r._phone || <span className="text-red-400">مطلوب</span>}</td>
-                                        <td className="py-1.5 px-3 text-gray-500 max-w-[120px] truncate">{r._course || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-emerald-700 font-semibold">{r._paid || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-gray-500">{r._expected || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-amber-700">{r._cert || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-blue-600">{r._attendance || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-gray-500 max-w-[100px] truncate">{r._notes || <span className="text-gray-300">—</span>}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                              {daqqiOldDataParsed.length > 200 && <p className="text-center py-2 text-xs text-gray-400">عرض أول 200 صف من {daqqiOldDataParsed.length}</p>}
-                            </div>
-                            <button disabled={daqqiOldDataImporting || daqqiOldDataSelected.size === 0}
-                              onClick={async () => {
-                                setDaqqiOldDataImporting(true);
-                                let created = 0, dupes = 0, errors = 0;
-                                const rows = daqqiOldDataParsed.filter(r => daqqiOldDataSelected.has(r._id) && r._name && r._phone);
-                                for (const row of rows) {
-                                  try {
-                                    // Try to match course by title
-                                    const matchedCourse = row._course ? courses.find(c => (c.titleAr||c.title||'').includes(row._course) || row._course.includes(c.titleAr||c.title||'')) : null;
-                                    const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
-                                    const paid = Number(row._paid) || 0;
-                                    const expected = Number(row._expected) || 0;
-                                    const extraNotes = [row._notes, row._cert ? `شهادة: ${row._cert}` : '', row._attendance ? `حضور: ${row._attendance}` : ''].filter(Boolean).join(' | ');
-                                    const payHistory: PaymentHistoryEntry[] = [];
-                                    if (paid > 0 && matchedCourse) {
-                                      payHistory.push({ id:`csv-pay-${Date.now()}-${Math.random()}`, amount:paid, currency:'EGP', paymentType:'course', isInstallment:false, courseId:matchedCourse.id, courseExpected:expected||undefined, at:new Date().toISOString().slice(0,10) });
-                                    }
-                                    await mysqlAdmin.saveSubscriber({ name: row._name, phone: row._phone, email: row._email || '', branch: 'DAQQI', status: 'active', notes: extraNotes, enrolledCourseIds, source: daqqiOldDataSource || 'داتا قديمة دقي' } as any);
-                                    created++;
-                                  } catch (e: any) {
-                                    if (e.message?.includes('duplicate') || e.message?.includes('مكرر')) dupes++;
-                                    else errors++;
-                                  }
-                                }
-                                setDaqqiOldDataImporting(false);
-                                setDaqqiOldDataResult({ created, dupes, errors });
-                                if (created > 0) {
-                                  notify('success', `✅ تم استيراد ${created} عميل`);
-                                  try { const fresh = (await mysqlAdmin.listMyDaqqiClients()) as unknown as SubscriberItem[]; setSalesOwnSubscribers(prev => { const ids = new Set(prev.map(s=>s.id)); return [...prev, ...fresh.filter(s=>!ids.has(s.id))]; }); } catch {}
-                                }
-                              }}
-                              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 disabled:opacity-60 transition">
-                              {daqqiOldDataImporting ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> جارٍ الاستيراد...</> : <>⬆️ استيراد {daqqiOldDataSelected.size} عميل</>}
-                            </button>
-                          </>
-                        )}
-                        {daqqiOldDataResult && (
-                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm space-y-1">
-                            <p className="font-bold text-emerald-800">✅ انتهى الاستيراد</p>
-                            <p className="text-emerald-700">تم إنشاء: <strong>{daqqiOldDataResult.created}</strong> عميل جديد</p>
-                            {daqqiOldDataResult.dupes > 0 && <p className="text-amber-700">مكرر (تم تجاهله): <strong>{daqqiOldDataResult.dupes}</strong></p>}
-                            {daqqiOldDataResult.errors > 0 && <p className="text-red-700">أخطاء: <strong>{daqqiOldDataResult.errors}</strong></p>}
-                          </div>
-                        )}
-                      </div>
+                        <OldDataImportPanel
+                          defaultSource="داتا قديمة دقي"
+                          accent="indigo"
+                          showAttendanceCol
+                          importRow={async (row, source) => {
+                            const matchedCourse = row._course ? courses.find(c => (c.titleAr||c.title||'').includes(row._course) || row._course.includes(c.titleAr||c.title||'')) : null;
+                            const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
+                            const extraNotes = [row._notes, row._cert ? `شهادة: ${row._cert}` : '', row._attendance ? `حضور: ${row._attendance}` : ''].filter(Boolean).join(' | ');
+                            await mysqlAdmin.saveSubscriber({ name: row._name, phone: row._phone, email: row._email || '', branch: 'DAQQI', status: 'active', notes: extraNotes, enrolledCourseIds, source } as any);
+                          }}
+                          onImported={async (created) => {
+                            if (created > 0) {
+                              notify('success', `✅ تم استيراد ${created} عميل`);
+                              try { const fresh = (await mysqlAdmin.listMyDaqqiClients()) as unknown as SubscriberItem[]; setSalesOwnSubscribers(prev => { const ids = new Set(prev.map(s=>s.id)); return [...prev, ...fresh.filter(s=>!ids.has(s.id))]; }); } catch {}
+                            }
+                          }}
+                        />
                     </div>
                   ) : (
                   <>
                   {/* ── استيراد بيانات قديمة للأونلاين (old_local / old_intl) ── */}
                   {(collOnlineViewTab === 'old_local' || collOnlineViewTab === 'old_intl') && !isDaqqiClientsTab && (
-                    <details className="mb-4 group" open={onlineOldDataParsed.length > 0}>
+                    <details className="mb-4 group">
                       <summary className="cursor-pointer flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-100 transition select-none list-none">
                         <span>⬆️</span>
                         <span>استيراد بيانات {collOnlineViewTab === 'old_local' ? 'محلي قديم' : 'دولي قديم'}</span>
                         <span className="text-xs font-normal text-violet-500 mr-auto group-open:hidden">انقر للفتح</span>
                         <span className="text-xs font-normal text-violet-500 mr-auto hidden group-open:inline">▲ إخفاء</span>
                       </summary>
-                      <div className="mt-2 bg-white border border-violet-200 rounded-2xl p-5 shadow-sm space-y-4">
-                        <div className="flex flex-wrap gap-3 items-end">
-                          <div>
-                            <label className="text-xs font-bold text-gray-600 mb-1 block">مصدر البيانات</label>
-                            <input value={onlineOldDataSource} onChange={e => setOnlineOldDataSource(e.target.value)}
-                              placeholder="مثال: داتا أونلاين 2024"
-                              className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-48" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-gray-600 mb-1 block">ملف CSV أو TSV</label>
-                            <input type="file" accept=".csv,.tsv,.txt"
-                              onChange={e => {
-                                const f = e.target.files?.[0];
-                                if (!f) return;
-                                const reader = new FileReader();
-                                reader.onload = ev => {
-                                  const text = ev.target?.result as string;
-                                  const lines = text.split(/\r?\n/).filter(Boolean);
-                                  const sep = lines[0]?.includes('\t') ? '\t' : ',';
-                                  const hdrs = lines[0]?.split(sep).map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
-                                  const nameCol = hdrs.findIndex(h => h.includes('name') || h.includes('اسم'));
-                                  const phoneCol = hdrs.findIndex(h => h.includes('phone') || h.includes('هاتف'));
-                                  const emailCol = hdrs.findIndex(h => h.includes('email') || h.includes('إيميل'));
-                                  const notesCol = hdrs.findIndex(h => h.includes('note') || h.includes('ملاحظ'));
-                                  const courseCol = hdrs.findIndex(h => h.includes('course') || h.includes('كورس'));
-                                  const paidCol = hdrs.findIndex(h => h.includes('paid') || h.includes('مدفوع'));
-                                  const expectedCol = hdrs.findIndex(h => h.includes('expected') || h.includes('متوقع'));
-                                  const certCol = hdrs.findIndex(h => h.includes('cert') || h.includes('شهاد'));
-                                  const attendanceCol = hdrs.findIndex(h => h.includes('attend') || h.includes('حضور'));
-                                  const parsed = lines.slice(1).map((line, i) => {
-                                    const cols = line.split(sep).map(c => c.replace(/^"|"$/g,'').trim());
-                                    return { _id: `r${i}`, _name: cols[nameCol]||'', _phone: cols[phoneCol]||'', _email: cols[emailCol]||'', _notes: cols[notesCol]||'', _course: cols[courseCol]||'', _paid: cols[paidCol]||'', _expected: cols[expectedCol]||'', _cert: cols[certCol]||'', _attendance: cols[attendanceCol]||'' };
-                                  }).filter(r => r._name || r._phone);
-                                  setOnlineOldDataParsed(parsed);
-                                  setOnlineOldDataSelected(new Set(parsed.filter(r=>r._name&&r._phone).map(r=>r._id)));
-                                  setOnlineOldDataResult(null);
-                                };
-                                reader.readAsText(f, 'UTF-8');
-                              }}
-                              className="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100 cursor-pointer" />
-                          </div>
-                        </div>
-                        <p className="text-[11px] text-gray-400">
-                          الأعمدة المدعومة: <code className="bg-gray-100 px-1 rounded">name / الاسم</code> &nbsp; <code className="bg-gray-100 px-1 rounded">phone / هاتف</code> &nbsp; <code className="bg-gray-100 px-1 rounded">email</code> &nbsp; <code className="bg-gray-100 px-1 rounded">course / كورس</code> &nbsp; <code className="bg-gray-100 px-1 rounded">paid / مدفوع</code> &nbsp; <code className="bg-gray-100 px-1 rounded">expected / متوقع</code> &nbsp; <code className="bg-gray-100 px-1 rounded">cert / شهادة</code> &nbsp; <code className="bg-gray-100 px-1 rounded">notes / ملاحظات</code>
-                        </p>
-                        {onlineOldDataParsed.length > 0 && (
-                          <>
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                              <span className="text-sm font-bold text-gray-700">{onlineOldDataParsed.length} صف — محدد: {onlineOldDataSelected.size}</span>
-                              <div className="flex gap-2">
-                                <button onClick={() => setOnlineOldDataSelected(new Set(onlineOldDataParsed.map(r => r._id)))} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">تحديد الكل</button>
-                                <button onClick={() => setOnlineOldDataSelected(new Set())} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">إلغاء الكل</button>
-                              </div>
-                            </div>
-                            <div className="max-h-64 overflow-auto border border-gray-200 rounded-xl">
-                              <table className="w-full text-xs">
-                                <thead className="bg-gray-50 sticky top-0">
-                                  <tr>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600 w-8"><input type="checkbox" checked={onlineOldDataSelected.size === onlineOldDataParsed.length} onChange={e => setOnlineOldDataSelected(e.target.checked ? new Set(onlineOldDataParsed.map(r => r._id)) : new Set())} className="w-3.5 h-3.5" /></th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">الاسم</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">الهاتف</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">الكورس</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">مدفوع</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">متوقع</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">شهادة</th>
-                                    <th className="py-2 px-3 text-right font-bold text-gray-600">ملاحظة</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {onlineOldDataParsed.slice(0,200).map(r => {
-                                    const ok = !!(r._name && r._phone);
-                                    return (
-                                      <tr key={r._id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${!ok?'opacity-50':''}`}>
-                                        <td className="py-1.5 px-3"><input type="checkbox" checked={onlineOldDataSelected.has(r._id)} disabled={!ok} onChange={e => { const next = new Set(onlineOldDataSelected); e.target.checked ? next.add(r._id) : next.delete(r._id); setOnlineOldDataSelected(next); }} className="w-3.5 h-3.5" /></td>
-                                        <td className="py-1.5 px-3 font-bold text-gray-900">{r._name || <span className="text-red-400">مطلوب</span>}</td>
-                                        <td className="py-1.5 px-3 font-mono text-gray-600">{r._phone || <span className="text-red-400">مطلوب</span>}</td>
-                                        <td className="py-1.5 px-3 text-gray-500 max-w-[120px] truncate">{r._course || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-emerald-700 font-semibold">{r._paid || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-gray-500">{r._expected || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-amber-700">{r._cert || <span className="text-gray-300">—</span>}</td>
-                                        <td className="py-1.5 px-3 text-gray-500 max-w-[100px] truncate">{r._notes || <span className="text-gray-300">—</span>}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                              {onlineOldDataParsed.length > 200 && <p className="text-center py-2 text-xs text-gray-400">عرض أول 200 صف من {onlineOldDataParsed.length}</p>}
-                            </div>
-                            <button disabled={onlineOldDataImporting || onlineOldDataSelected.size === 0}
-                              onClick={async () => {
-                                setOnlineOldDataImporting(true);
-                                let created = 0, dupes = 0, errors = 0;
-                                const rows = onlineOldDataParsed.filter(r => onlineOldDataSelected.has(r._id) && r._name && r._phone);
-                                const subBranch = collOnlineViewTab === 'old_local' ? 'ONLINE_EGYPT' : 'ONLINE_ABROAD';
-                                const subCurrency = collOnlineViewTab === 'old_local' ? 'EGP' : 'USD';
-                                for (const row of rows) {
-                                  try {
-                                    const matchedCourse = row._course ? courses.find(c => (c.titleAr||c.title||'').includes(row._course) || row._course.includes(c.titleAr||c.title||'')) : null;
-                                    const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
-                                    const paid = Number(row._paid) || 0;
-                                    const expected = Number(row._expected) || 0;
-                                    const extraNotes = [row._notes, row._cert ? `شهادة: ${row._cert}` : '', row._attendance ? `حضور: ${row._attendance}` : ''].filter(Boolean).join(' | ');
-                                    const payHistory: PaymentHistoryEntry[] = [];
-                                    if (paid > 0 && matchedCourse) {
-                                      payHistory.push({ id:`csv-pay-${Date.now()}-${Math.random()}`, amount:paid, currency:subCurrency as 'EGP'|'USD', paymentType:'course', isInstallment:false, courseId:matchedCourse.id, courseExpected:expected||undefined, at:new Date().toISOString().slice(0,10) });
-                                    }
-                                    await mysqlAdmin.saveSubscriber({ name: row._name, phone: row._phone, email: row._email || '', branch: subBranch, status: 'active', clientStatus: collOnlineViewTab, notes: extraNotes, enrolledCourseIds, source: onlineOldDataSource || 'داتا قديمة أونلاين', paymentHistory: payHistory } as any);
-                                    created++;
-                                  } catch (e: any) {
-                                    if (e.message?.includes('duplicate') || e.message?.includes('مكرر')) dupes++;
-                                    else errors++;
-                                  }
-                                }
-                                setOnlineOldDataImporting(false);
-                                setOnlineOldDataResult({ created, dupes, errors });
-                                if (created > 0) {
-                                  notify('success', `✅ تم استيراد ${created} عميل`);
-                                  try { const fresh = await mysqlAdmin.listStaffSubscribers() as unknown as SubscriberItem[]; setSalesOwnSubscribers(prev => { const ids = new Set(prev.map(s=>s.id)); return [...prev, ...fresh.filter(s=>!ids.has(s.id))]; }); } catch {}
-                                }
-                              }}
-                              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-xl font-bold text-sm hover:bg-violet-700 disabled:opacity-60 transition">
-                              {onlineOldDataImporting ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> جارٍ الاستيراد...</> : <>⬆️ استيراد {onlineOldDataSelected.size} عميل</>}
-                            </button>
-                          </>
-                        )}
-                        {onlineOldDataResult && (
-                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm space-y-1">
-                            <p className="font-bold text-emerald-800">✅ انتهى الاستيراد</p>
-                            <p className="text-emerald-700">تم إنشاء: <strong>{onlineOldDataResult.created}</strong> عميل جديد</p>
-                            {onlineOldDataResult.dupes > 0 && <p className="text-amber-700">مكرر (تم تجاهله): <strong>{onlineOldDataResult.dupes}</strong></p>}
-                            {onlineOldDataResult.errors > 0 && <p className="text-red-700">أخطاء: <strong>{onlineOldDataResult.errors}</strong></p>}
-                          </div>
-                        )}
-                      </div>
+                        <OldDataImportPanel
+                          defaultSource="داتا قديمة أونلاين"
+                          accent="violet"
+                          importRow={async (row, source) => {
+                            const subBranch = collOnlineViewTab === 'old_local' ? 'ONLINE_EGYPT' : 'ONLINE_ABROAD';
+                            const subCurrency = collOnlineViewTab === 'old_local' ? 'EGP' : 'USD';
+                            const matchedCourse = row._course ? courses.find(c => (c.titleAr||c.title||'').includes(row._course) || row._course.includes(c.titleAr||c.title||'')) : null;
+                            const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
+                            const paid = Number(row._paid) || 0;
+                            const expected = Number(row._expected) || 0;
+                            const extraNotes = [row._notes, row._cert ? `شهادة: ${row._cert}` : '', row._attendance ? `حضور: ${row._attendance}` : ''].filter(Boolean).join(' | ');
+                            const payHistory: PaymentHistoryEntry[] = [];
+                            if (paid > 0 && matchedCourse) {
+                              payHistory.push({ id:`csv-pay-${Date.now()}-${Math.random()}`, amount:paid, currency:subCurrency as 'EGP'|'USD', paymentType:'course', isInstallment:false, courseId:matchedCourse.id, courseExpected:expected||undefined, at:new Date().toISOString().slice(0,10) });
+                            }
+                            await mysqlAdmin.saveSubscriber({ name: row._name, phone: row._phone, email: row._email || '', branch: subBranch, status: 'active', clientStatus: collOnlineViewTab, notes: extraNotes, enrolledCourseIds, source, paymentHistory: payHistory } as any);
+                          }}
+                          onImported={async (created) => {
+                            if (created > 0) {
+                              notify('success', `✅ تم استيراد ${created} عميل`);
+                              try { const fresh = await mysqlAdmin.listStaffSubscribers() as unknown as SubscriberItem[]; setSalesOwnSubscribers(prev => { const ids = new Set(prev.map(s=>s.id)); return [...prev, ...fresh.filter(s=>!ids.has(s.id))]; }); } catch {}
+                            }
+                          }}
+                        />
                     </details>
                   )}
                   <div className="overflow-x-auto">
