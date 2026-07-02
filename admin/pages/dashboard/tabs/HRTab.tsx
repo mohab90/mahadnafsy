@@ -74,6 +74,14 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
   const [editing, setEditing] = useState(false);
   const [newAbs, setNewAbs] = useState<{ open: boolean; type: StaffAbsence['type']; date: string; notes: string }>({ open: false, type: 'absence', date: new Date().toISOString().slice(0, 10), notes: '' });
   const [perfMonth, setPerfMonth] = useState(new Date().toISOString().slice(0, 7));
+  // Customer-service performance for this employee (from the HR KPI endpoint).
+  const [csKpi, setCsKpi] = useState<{ tickets_assigned: number; tickets_resolved: number; avg_first_response_min: number | null; sla_compliance: number | null } | null>(null);
+  useEffect(() => {
+    if (subTab !== 'performance' || !member.id) return;
+    const [y, mo] = perfMonth.split('-');
+    fetch(`/api/admin/hr/kpi/${member.id}?month=${parseInt(mo)}&year=${y}`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setCsKpi(d?.cs || null)).catch(() => setCsKpi(null));
+  }, [subTab, perfMonth, member.id]);
 
   const monthOrders = useMemo(() => {
     const start = perfMonth + '-01';
@@ -229,6 +237,25 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
                   </div>
                 ))}
               </div>
+              {/* Customer-service performance (CS ↔ HR interconnection) */}
+              {csKpi && (csKpi.tickets_assigned > 0 || csKpi.tickets_resolved > 0) && (
+                <div>
+                  <h4 className="text-xs font-bold text-gray-500 mb-2">🎧 أداء خدمة العملاء</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { l: 'تذاكر مُسندة', v: String(csKpi.tickets_assigned), c: 'text-rose-600' },
+                      { l: 'تم حلّها', v: String(csKpi.tickets_resolved), c: 'text-emerald-600' },
+                      { l: 'متوسط أول رد', v: csKpi.avg_first_response_min != null ? `${csKpi.avg_first_response_min}د` : '—', c: 'text-violet-600' },
+                      { l: 'التزام SLA', v: csKpi.sla_compliance != null ? `${csKpi.sla_compliance}%` : '—', c: 'text-sky-600' },
+                    ].map(s => (
+                      <div key={s.l} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                        <div className={`text-xl font-black ${s.c}`}>{s.v}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{s.l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {/* Salary */}
@@ -326,7 +353,7 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
 
 const HrTab: React.FC<Props> = ({ notify }) => {
   const { staffMembers, orders, leads, updateStaffMember } = useSiteData() as any;
-  const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll'>('directory');
+  const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruiting'>('directory');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -359,8 +386,26 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().slice(0, 7));
+  // Recruiting — website applicants flowing into the HR funnel (routes/hr/talent.js)
+  const [talent, setTalent] = useState<any[]>([]);
+  const [loadingTalent, setLoadingTalent] = useState(false);
+  const [talentBusy, setTalentBusy] = useState<string | null>(null);
 
   // ── Fetch functions ─────────────────────────────────────────
+  const fetchTalent = useCallback(() => {
+    setLoadingTalent(true);
+    fetch('/api/admin/hr/talent-pool', { credentials: 'include' })
+      .then(r => r.json()).then(d => setTalent(Array.isArray(d) ? d : []))
+      .catch(() => {}).finally(() => setLoadingTalent(false));
+  }, []);
+  const talentAction = useCallback(async (url: string, id: string, ok: string) => {
+    setTalentBusy(id);
+    try {
+      const r = await fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!r.ok) throw new Error();
+      notify('success', ok); fetchTalent();
+    } catch { notify('error', 'فشل تنفيذ العملية'); } finally { setTalentBusy(null); }
+  }, [notify, fetchTalent]);
   const fetchAttendanceSummary = useCallback(async (month?: string) => {
     const m = month || attMonth;
     const [y, mo] = m.split('-');
@@ -408,6 +453,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   useEffect(() => { if (subTab === 'attendance') { fetchAttendanceSummary(); fetchAttendanceReport(); } }, [subTab, fetchAttendanceSummary, fetchAttendanceReport]);
   useEffect(() => { if (subTab === 'leaves') fetchLeaves(); }, [subTab, leavesFilter, fetchLeaves]);
   useEffect(() => { if (subTab === 'payroll') fetchPayrollRuns(); }, [subTab, fetchPayrollRuns]);
+  useEffect(() => { if (subTab === 'recruiting') fetchTalent(); }, [subTab, fetchTalent]);
 
   // ── Actions ──────────────────────────────────────────────────
   const submitManualAttendance = useCallback(async () => {
@@ -583,6 +629,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           ['attendance', 'الحضور والغياب'],
           ['leaves', 'الإجازات'],
           ['payroll', 'كشف الرواتب'],
+          ['recruiting', 'التوظيف'],
         ] as const).map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${subTab === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-gray-600 border-gray-200 hover:border-slate-400'}`}>{l}</button>
         ))}
@@ -1122,6 +1169,49 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               </table>
             </div>
           </details>
+        </div>
+      )}
+
+      {subTab === 'recruiting' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-700">🧑‍💼 المتقدمون من الموقع — مسار التوظيف</h3>
+            {loadingTalent && <span className="text-xs text-gray-400">جارٍ التحميل…</span>}
+          </div>
+          {talent.length === 0 && !loadingTalent ? (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-2xl border border-gray-100">لا يوجد متقدمون بعد</div>
+          ) : (
+            <div className="bg-white border border-gray-100 rounded-2xl divide-y divide-gray-50">
+              {talent.map((t: any) => {
+                const stage = t.applicant_stage || (t.converted_applicant_id ? 'applied' : 'new');
+                const stageLabel: Record<string, string> = { new: 'جديد', applied: 'في المسار', screening: 'فرز', interview: 'مقابلة', offer: 'عرض', hired: 'تم التعيين', rejected: 'مرفوض' };
+                return (
+                  <div key={t.id} className="flex items-start gap-3 p-3.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-800 text-sm">{t.name}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">{t.applicant_type || '—'}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${stage === 'hired' ? 'bg-emerald-100 text-emerald-700' : stage === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{stageLabel[stage] || stage}</span>
+                        <span className="text-[10px] text-gray-400">{String(t.created_at).slice(0, 10)}</span>
+                      </div>
+                      <p className="text-xs text-gray-600 truncate">{t.specialty}{t.email ? ` · ${t.email}` : ''}{t.phone ? ` · ${t.phone}` : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!t.converted_applicant_id && (
+                        <button disabled={talentBusy === t.id} onClick={() => talentAction(`/api/admin/hr/join-us/${t.id}/to-applicant`, t.id, 'أُضيف إلى مسار التوظيف')}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold disabled:opacity-40">↦ إلى المسار</button>
+                      )}
+                      {t.converted_applicant_id && stage !== 'hired' && (
+                        <button disabled={talentBusy === t.id} onClick={() => talentAction(`/api/admin/hr/applicants/${t.converted_applicant_id}/hire`, t.id, 'تم التعيين — يحتاج تفعيل الحساب')}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-700 font-bold disabled:opacity-40">✓ تعيين</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-[11px] text-gray-400 text-center">طلبات الانضمام من الموقع تدخل هذا المسار تلقائياً — انقلها إلى مسار المتقدمين ثم عيّنها كموظف.</p>
         </div>
       )}
 
