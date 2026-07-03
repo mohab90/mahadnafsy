@@ -250,20 +250,32 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     // the Consultations tab immediately (was previously created only on the paymob
     // webhook → bookings never appeared). Idempotent per user+therapist+date.
     if (String(itemType || '').toLowerCase() === 'consultation') {
-      const { therapistId, sessionDate, sessionType } = req.body || {};
-      const consultId = `consult-${uid}-${therapistId || 'express'}-${(sessionDate || '').slice(0, 10)}`;
-      await pool.query(
-        `INSERT INTO consultations
-           (id, tenant_id, client_name, client_email, client_phone, therapist_id,
-            session_type, session_date, status, amount, currency, created_at)
-         VALUES (?,?,?,?,?,?,?,?, 'pending', ?,?, NOW())
-         ON DUPLICATE KEY UPDATE client_name=VALUES(client_name), client_phone=VALUES(client_phone),
-           amount=VALUES(amount), session_type=VALUES(session_type), session_date=VALUES(session_date)`,
-        [consultId, req.tenantId || 'tenant-default', customerName || email.split('@')[0],
-         customerEmail || email.toLowerCase().trim(), customerPhone || '', therapistId || '',
-         sessionType || 'individual', sessionDate || '', Number(amount) || 0,
-         (currency && ['EGP', 'SAR', 'USD'].includes(currency)) ? currency : 'EGP']
-      ).catch(e => logger.warn('[checkout-intent consult]', e.message));
+      const { sessionDate, sessionType } = req.body || {};
+      // therapist_id has a FK to therapists + is NOT NULL; resolve a valid therapist
+      // (the chosen one, or the configured express therapist). Skip if none exists.
+      let therapistId = req.body?.therapistId || '';
+      if (!therapistId) {
+        const [[cfg]] = await pool.query("SELECT `value` FROM site_config WHERE `key`='content' LIMIT 1").catch(() => [[null]]);
+        try { const cc = cfg?.value ? JSON.parse(cfg.value) : {}; therapistId = cc['express.therapistId'] || ''; } catch { /* ignore */ }
+      }
+      const [[th]] = therapistId ? await pool.query('SELECT id FROM therapists WHERE id=? LIMIT 1', [therapistId]).catch(() => [[null]]) : [[null]];
+      if (th) {
+        const consultId = `consult-${uid}-${therapistId}-${(sessionDate || '').slice(0, 10)}`;
+        await pool.query(
+          `INSERT INTO consultations
+             (id, tenant_id, client_name, client_email, client_phone, therapist_id,
+              session_type, session_date, status, amount, currency, created_at)
+           VALUES (?,?,?,?,?,?,?,?, 'pending', ?,?, NOW())
+           ON DUPLICATE KEY UPDATE client_name=VALUES(client_name), client_phone=VALUES(client_phone),
+             amount=VALUES(amount), session_type=VALUES(session_type), session_date=VALUES(session_date)`,
+          [consultId, req.tenantId || 'tenant-default', customerName || email.split('@')[0],
+           customerEmail || email.toLowerCase().trim(), customerPhone || '', therapistId,
+           sessionType || 'individual', sessionDate || '', Number(amount) || 0,
+           (currency && ['EGP', 'SAR', 'USD'].includes(currency)) ? currency : 'EGP']
+        ).catch(e => logger.warn('[checkout-intent consult]', e.message));
+      } else {
+        logger.warn('[checkout-intent consult] skipped — no valid therapist for booking');
+      }
     }
     res.json({ ok: true });
   } catch (e) {
