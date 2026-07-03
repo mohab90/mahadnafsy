@@ -2,6 +2,7 @@
 import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, Trash2, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, AlertCircle } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { StaffMember, StaffRole, StaffAbsence } from '../../../types';
+import JobPostingsPanel from './JobPostingsPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -1180,6 +1181,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         const instCount = talent.length - empCount;
         return (
         <div className="space-y-3">
+          {/* Job postings management — feeds the public careers/employee-join page */}
+          <JobPostingsPanel notify={notify} />
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-700">📨 طلبات الانضمام</h3>
             {loadingTalent && <span className="text-xs text-gray-400">جارٍ التحميل…</span>}

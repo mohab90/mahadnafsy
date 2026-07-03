@@ -579,6 +579,19 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET /api/jobs — public list of open job postings (careers / employee join page).
+router.get('/api/jobs', async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT j.id, j.title, j.employment_type, j.description, j.requirements,
+              j.salary_min, j.salary_max, j.created_at, d.name AS department
+         FROM job_postings j LEFT JOIN hr_departments d ON d.id = j.department_id
+        WHERE j.status='open' AND j.id <> 'job-talent-pool'
+        ORDER BY j.created_at DESC LIMIT 50`).catch(() => [[]]);
+    res.json(rows);
+  } catch (e) { logger.error('[jobs]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH-REQUIRED ROUTES (logged-in users)
 // ─────────────────────────────────────────────────────────────────────────────

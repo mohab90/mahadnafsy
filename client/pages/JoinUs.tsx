@@ -11,6 +11,13 @@ const JoinUs: React.FC = () => {
     return { name: '', email: '', phone: '', specialty: '', experience: '', type: initialType, linkedin: '', message: '' };
   });
   const [submitted, setSubmitted] = useState(false);
+  const isEmployee = form.type === 'employee';
+  const [jobs, setJobs] = useState<any[]>([]);
+  useEffect(() => {
+    if (!isEmployee) return;
+    fetch('/api/jobs').then(r => r.json()).then(d => setJobs(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [isEmployee]);
+  const EMP_LABEL: Record<string, string> = { full_time: 'دوام كامل', part_time: 'دوام جزئي', contract: 'عقد', remote: 'عن بُعد', internship: 'تدريب' };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +37,12 @@ const JoinUs: React.FC = () => {
     setSubmitted(true);
   };
 
-  const benefits = [
+  const benefits = isEmployee ? [
+    { icon: Users, title: 'فريق محترف', desc: 'انضم لفريق عمل متعاون في بيئة احترافية داعمة للنمو والتطور المهني.', color: 'text-blue-500 bg-blue-50' },
+    { icon: Award, title: 'مسار وظيفي واضح', desc: 'فرص ترقٍّ حقيقية وتقييم أداء عادل يكافئ الإنجاز والتميّز.', color: 'text-amber-500 bg-amber-50' },
+    { icon: Star, title: 'حوافز ومكافآت', desc: 'رواتب تنافسية + عمولات ومكافآت مرتبطة بتحقيق الأهداف.', color: 'text-rose-500 bg-rose-50' },
+    { icon: Heart, title: 'بيئة عمل داعمة', desc: 'ثقافة عمل إيجابية تهتم بتوازن الحياة وتطوير المهارات باستمرار.', color: 'text-pink-500 bg-pink-50' },
+  ] : [
     { icon: Users, title: 'جمهور واسع', desc: 'وصل لأكثر من 12,000 متخصص نفسي مسجل في المنصة من جميع أنحاء الوطن العربي.', color: 'text-blue-500 bg-blue-50' },
     { icon: Award, title: 'هوية مهنية معتمدة', desc: 'احصل على شارة "خبير معتمد" وملف احترافي يُبرز خبرتك ويزيد من مصداقيتك.', color: 'text-amber-500 bg-amber-50' },
     { icon: BookOpen, title: 'أثر تعليمي حقيقي', desc: 'ساهم في بناء جيل جديد من المعالجين النفسيين المحترفين بمحتوى علمي وعملي راقٍ.', color: 'text-emerald-500 bg-emerald-50' },
@@ -39,7 +51,13 @@ const JoinUs: React.FC = () => {
     { icon: Heart, title: 'مجتمع راقٍ', desc: 'انضم لشبكة من أفضل الأطباء والمعالجين النفسيين وتبادل الخبرات والمعرفة.', color: 'text-pink-500 bg-pink-50' },
   ];
 
-  const requirements = [
+  const requirements = isEmployee ? [
+    'مؤهل دراسي مناسب للوظيفة المتقدَّم لها.',
+    'مهارات تواصل جيدة والقدرة على العمل ضمن فريق.',
+    'الالتزام والانضباط وروح المبادرة.',
+    'إجادة استخدام الحاسب والأدوات الرقمية الأساسية.',
+    'الرغبة في التعلّم والتطور المهني المستمر.',
+  ] : [
     'شهادة أكاديمية معتمدة في علم النفس، الطب النفسي، أو مجال ذي صلة.',
     'خبرة عملية لا تقل عن 3 سنوات في التخصص المطلوب تدريسه.',
     'مهارات تواصل وتقديم ممتازة باللغة العربية.',
@@ -142,6 +160,30 @@ const JoinUs: React.FC = () => {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 space-y-5">
+                {/* Open positions (employee applications only) */}
+                {isEmployee && (
+                  <div className="bg-primary-50/60 border border-primary-100 rounded-2xl p-4">
+                    <p className="text-sm font-bold text-primary-800 mb-2 flex items-center gap-1"><Briefcase size={15} /> الوظائف المتاحة حالياً</p>
+                    {jobs.length === 0 ? (
+                      <p className="text-xs text-gray-500">لا توجد وظائف مُعلنة حالياً — يمكنك إرسال طلبك وسنتواصل معك عند توفر شاغر مناسب.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {jobs.map((j) => (
+                          <button type="button" key={j.id} onClick={() => setForm({ ...form, specialty: j.title, message: form.message || `أتقدم لوظيفة: ${j.title}` })}
+                            className={`w-full text-right border rounded-xl p-3 transition ${form.specialty === j.title ? 'border-primary-500 bg-white ring-1 ring-primary-300' : 'border-gray-200 bg-white/70 hover:border-primary-300'}`}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-800 text-sm">{j.title}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{EMP_LABEL[j.employment_type] || j.employment_type}</span>
+                              {j.department && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-100 text-primary-700">{j.department}</span>}
+                              {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
+                            </div>
+                            {j.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{j.description}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* Type Selection */}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">أريد الانضمام كـ *</label>
@@ -181,8 +223,8 @@ const JoinUs: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">التخصص الرئيسي *</label>
-                    <input required type="text" value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder="العلاج المعرفي السلوكي" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                    <label className="block text-sm font-bold text-gray-700 mb-1">{isEmployee ? 'الوظيفة المتقدَّم لها *' : 'التخصص الرئيسي *'}</label>
+                    <input required type="text" value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} placeholder={isEmployee ? 'مثال: أخصائي مبيعات' : 'العلاج المعرفي السلوكي'} className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">سنوات الخبرة *</label>
