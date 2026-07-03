@@ -251,18 +251,16 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     // webhook → bookings never appeared). Idempotent per user+therapist+date.
     if (String(itemType || '').toLowerCase() === 'consultation') {
       const { therapistId, sessionDate, sessionType } = req.body || {};
-      let therapistName = '';
-      if (therapistId) { const [[th]] = await pool.query('SELECT name FROM therapists WHERE id=? LIMIT 1', [therapistId]).catch(() => [[null]]); therapistName = th?.name || ''; }
       const consultId = `consult-${uid}-${therapistId || 'express'}-${(sessionDate || '').slice(0, 10)}`;
       await pool.query(
         `INSERT INTO consultations
-           (id, tenant_id, client_name, client_email, client_phone, therapist_id, therapist_name,
+           (id, tenant_id, client_name, client_email, client_phone, therapist_id,
             session_type, session_date, status, amount, currency, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?, 'pending', ?,?, NOW())
+         VALUES (?,?,?,?,?,?,?,?, 'pending', ?,?, NOW())
          ON DUPLICATE KEY UPDATE client_name=VALUES(client_name), client_phone=VALUES(client_phone),
            amount=VALUES(amount), session_type=VALUES(session_type), session_date=VALUES(session_date)`,
         [consultId, req.tenantId || 'tenant-default', customerName || email.split('@')[0],
-         customerEmail || email.toLowerCase().trim(), customerPhone || '', therapistId || '', therapistName || '',
+         customerEmail || email.toLowerCase().trim(), customerPhone || '', therapistId || '',
          sessionType || 'individual', sessionDate || '', Number(amount) || 0,
          (currency && ['EGP', 'SAR', 'USD'].includes(currency)) ? currency : 'EGP']
       ).catch(e => logger.warn('[checkout-intent consult]', e.message));

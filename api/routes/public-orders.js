@@ -130,11 +130,11 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       const cd = extra.consultationData;
       await conn.query(
         `INSERT IGNORE INTO consultations
-           (id, client_name, client_email, client_phone, therapist_id, therapist_name,
+           (id, client_name, client_email, client_phone, therapist_id,
             session_type, session_date, status, amount, currency, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,NOW())`,
         [cd.id||uuidv4(), cd.clientName||'', cd.clientEmail||'', cd.clientPhone||'',
-         cd.therapistId||'', cd.therapistName||'', cd.sessionType||'individual',
+         cd.therapistId||'', cd.sessionType||'individual',
          cd.sessionDate||'', 'pending', order.amount, order.currency]
       );
     }
