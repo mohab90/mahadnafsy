@@ -262,8 +262,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
          ON DUPLICATE KEY UPDATE client_name=VALUES(client_name), client_phone=VALUES(client_phone),
            amount=VALUES(amount), session_type=VALUES(session_type), session_date=VALUES(session_date)`,
         [consultId, req.tenantId || 'tenant-default', customerName || email.split('@')[0],
-         customerEmail || email.toLowerCase().trim(), customerPhone || '', therapistId || null, therapistName,
-         sessionType || 'individual', sessionDate || null, Number(amount) || 0,
+         customerEmail || email.toLowerCase().trim(), customerPhone || '', therapistId || '', therapistName || '',
+         sessionType || 'individual', sessionDate || '', Number(amount) || 0,
          (currency && ['EGP', 'SAR', 'USD'].includes(currency)) ? currency : 'EGP']
       ).catch(e => logger.warn('[checkout-intent consult]', e.message));
     }
