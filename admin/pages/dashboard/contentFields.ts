@@ -141,6 +141,11 @@ export const pageConsultationsFields: ContentField[] = [
   { key: 'express.price.EGP', label: 'سعر الجلسة السريعة (جنيه)', multiline: false },
   { key: 'express.price.SAR', label: 'سعر الجلسة السريعة (ريال)', multiline: false },
   { key: 'express.price.USD', label: 'سعر الجلسة السريعة (دولار)', multiline: false },
+  { key: 'consult.express.badge', label: 'الجلسة السريعة: الشارة (مثال: متاح الآن 24/7)', multiline: false },
+  { key: 'consult.express.desc', label: 'الجلسة السريعة: الوصف', multiline: true },
+  { key: 'consult.express.timeLabel', label: 'الجلسة السريعة: عنوان زمن الرد', multiline: false },
+  { key: 'consult.express.timeValue', label: 'الجلسة السريعة: زمن الرد (مثال: خلال ساعة واحدة)', multiline: false },
+  { key: 'consult.cancelPolicy', label: 'سياسة الإلغاء (سؤال شائع)', multiline: true },
 ];
 
 export const pageInstructorsFields: ContentField[] = [

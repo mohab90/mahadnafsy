@@ -506,7 +506,9 @@ router.get('/api/content', async (req, res) => {
       const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
       return rows[0]?.value ? JSON.parse(rows[0].value) : {};
     });
-    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    // Short browser cache so admin content edits reflect on the site within ~30s
+    // (the server-side 'site_content' cache is invalidated on save, so this is cheap).
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
     res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

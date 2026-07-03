@@ -119,7 +119,7 @@ const Consultations: React.FC = () => {
                             <div className="p-4 sm:p-8 space-y-6 overflow-y-auto max-h-[75vh]">
                                 <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
                                     <div className="flex gap-4">
-                                        <img src={selectedTherapist.image} className="w-16 h-16 rounded-full object-cover border border-gray-200" alt={selectedTherapist.name} />
+                                        <img loading="lazy" decoding="async" src={selectedTherapist.image} className="w-16 h-16 rounded-full object-cover border border-gray-200" alt={selectedTherapist.name} />
                                         <div>
                                             <p className="text-primary-600 font-bold">{selectedTherapist.specialty}</p>
                                             <p className="text-gray-500 text-sm">سعر الجلسة: <span className="text-black font-bold">{getTherapistSessionPrice(selectedTherapist, currency)} {currencySymbol}</span></p>
@@ -209,18 +209,18 @@ const Consultations: React.FC = () => {
                                 <div className="flex-1">
                                     <div className="inline-flex items-center gap-2 bg-red-100 text-red-700 text-xs font-bold px-3 py-1 rounded-full mb-4">
                                         <Zap size={14} fill="currentColor" />
-                                        متاح الآن 24/7
+                                        {content['consult.express.badge'] || 'متاح الآن 24/7'}
                                     </div>
                                     <h2 className="text-3xl font-bold text-gray-900 mb-4">جلسة استشارة سريعة (Express)</h2>
                                     <p className="text-gray-600 mb-8 leading-relaxed text-lg">
-                                        خدمة مخصصة للحالات الطارئة أو لمن يحتاج للفضفضة الفورية. تحدث مع أخصائي نفسي مرخص خلال أقل من 60 دقيقة.
+                                        {content['consult.express.desc'] || 'خدمة مخصصة للحالات الطارئة أو لمن يحتاج للفضفضة الفورية. تحدث مع أخصائي نفسي مرخص خلال أقل من 60 دقيقة.'}
                                     </p>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                                         <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 hover:border-red-200 transition duration-300">
                                             <Clock className="text-red-600 mb-3" size={24} />
-                                            <h4 className="text-gray-900 font-bold text-sm mb-1">فوري</h4>
-                                            <p className="text-gray-500 text-xs">خلال ساعة واحدة</p>
+                                            <h4 className="text-gray-900 font-bold text-sm mb-1">{content['consult.express.timeLabel'] || 'فوري'}</h4>
+                                            <p className="text-gray-500 text-xs">{content['consult.express.timeValue'] || 'خلال ساعة واحدة'}</p>
                                         </div>
                                         <div className="bg-gray-50 p-5 rounded-xl border border-gray-100 hover:border-red-200 transition duration-300">
                                             <UserCheck className="text-red-600 mb-3" size={24} />
@@ -244,7 +244,7 @@ const Consultations: React.FC = () => {
                                         <div className="absolute inset-0 bg-red-200 rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition duration-500"></div>
                                         <div className="w-64 h-64 md:w-80 md:h-80 rounded-full border-8 border-white shadow-2xl relative z-10 bg-gradient-to-br from-primary-50 to-red-50 flex items-center justify-center overflow-hidden">
                                             {expressTherapist?.image ? (
-                                                <img src={expressTherapist.image} alt={expressTherapist.name} className="w-full h-full object-cover" />
+                                                <img loading="lazy" decoding="async" src={expressTherapist.image} alt={expressTherapist.name} className="w-full h-full object-cover" />
                                             ) : (
                                                 <div className="text-primary-300 opacity-60">
                                                     <svg width="80" height="80" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v2h20v-2c0-3.3-6.7-5-10-5z"/></svg>
@@ -303,7 +303,7 @@ const Consultations: React.FC = () => {
                             <div key={therapist.id} className="bg-white rounded-2xl p-6 hover:shadow-xl transition duration-300 group border border-gray-100 hover:border-primary-100 relative overflow-hidden flex flex-col">
                                 <div className="flex items-start gap-4 mb-4">
                                     <div className="relative">
-                                        <img src={therapist.image} className="w-20 h-20 rounded-full object-cover border-2 border-gray-100 group-hover:border-primary-600 transition" alt={therapist.name} />
+                                        <img loading="lazy" decoding="async" src={therapist.image} className="w-20 h-20 rounded-full object-cover border-2 border-gray-100 group-hover:border-primary-600 transition" alt={therapist.name} />
                                         <div className="absolute bottom-0 right-0 w-5 h-5 bg-green-500 border-2 border-white rounded-full"></div>
                                     </div>
                                     <div>
@@ -368,7 +368,7 @@ const Consultations: React.FC = () => {
                             { q: 'هل الجلسات سرية تماماً؟', a: 'نعم، جميع جلساتنا محمية بالكامل. لا يُشارك أي معلومة شخصية مع طرف ثالث، وتجري الجلسات عبر منصات مشفرة ومرخصة.' },
                             { q: 'كيف أختار المعالج المناسب لي؟', a: 'يمكنك مراجعة تخصص كل معالج، ومجالات خبرته، وتقييماته، وسعر الجلسة. نوصي باختيار من يتخصص في مشكلتك تحديداً.' },
                             { q: 'ما الفرق بين الجلسة السريعة والعادية؟', a: 'الجلسة السريعة (Express) متاحة فوراً خلال ساعة للحالات الطارئة بسعر موحد. الجلسة المجدولة تُحجز مسبقاً مع معالج محدد تختاره بنفسك.' },
-                            { q: 'هل يمكنني إلغاء الجلسة بعد الحجز؟', a: 'يمكن إلغاء الجلسة قبل 24 ساعة من موعدها واسترداد المبلغ كاملاً. الإلغاء المتأخر يخضع لسياسة الاسترداد الجزئي.' },
+                            { q: 'هل يمكنني إلغاء الجلسة بعد الحجز؟', a: content['consult.cancelPolicy'] || 'يمكن إلغاء الجلسة قبل 24 ساعة من موعدها واسترداد المبلغ كاملاً. الإلغاء المتأخر يخضع لسياسة الاسترداد الجزئي.' },
                             { q: 'ما المنصات المستخدمة في الجلسات عن بعد؟', a: 'تتفاوت المنصة حسب المعالج المختار (Zoom, Google Meet, Microsoft Teams). ستجد المنصة موضحة في صفحة كل معالج.' },
                         ].map((item, i) => (
                             <div key={i} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">

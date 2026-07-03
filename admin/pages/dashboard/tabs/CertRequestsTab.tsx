@@ -264,16 +264,22 @@ export default function CertRequestsTab({
                                 </td>
                                 {/* Date */}
                                 <td className="px-3 py-2 border border-gray-100 text-xs text-gray-400">{req.requestedAt || '—'}</td>
-                                {/* Actions */}
+                                {/* Actions — one-click status transitions + delete */}
                                 <td className="px-3 py-2 border border-gray-100">
                                   <div className="flex flex-wrap gap-1 items-center">
-                                    <button
-                                      onClick={() => deleteCertReq(req)}
-                                      title="حذف الطلب"
-                                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
+                                    {req.status !== 'in_progress' && req.status !== 'issued' && req.status !== 'delivered' && (
+                                      <button onClick={() => changeStatus(req, 'in_progress' as CertStatus)} title="بدء المعالجة" className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 text-purple-700 font-bold hover:bg-purple-200">بدء</button>
+                                    )}
+                                    {req.status !== 'shipped' && req.status !== 'delivered' && (
+                                      <button onClick={() => changeStatus(req, 'shipped' as CertStatus)} title="تم الشحن" className="text-[10px] px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200">📦 شحن</button>
+                                    )}
+                                    {req.status !== 'issued' && req.status !== 'delivered' && (
+                                      <button onClick={() => changeStatus(req, 'issued' as CertStatus)} title="صدرت / جاهزة" className="text-[10px] px-2 py-1 rounded-lg bg-green-100 text-green-700 font-bold hover:bg-green-200">✅ صدرت</button>
+                                    )}
+                                    {req.status !== 'delivered' && (
+                                      <button onClick={() => changeStatus(req, 'delivered' as CertStatus)} title="العميل استلمها" className="text-[10px] px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 font-bold hover:bg-emerald-200">🎓 تسليم</button>
+                                    )}
+                                    <button onClick={() => deleteCertReq(req)} title="حذف الطلب" className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
                                   </div>
                                 </td>
                               </tr>
