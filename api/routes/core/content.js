@@ -71,8 +71,8 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, r
     const e2 = req.body;
     const [[oldExp]] = await pool.query('SELECT id, date, description, amount, currency, category FROM expenses WHERE id=? LIMIT 1', [req.params.id]);
     await pool.query(
-      'UPDATE expenses SET description=?, amount=?, category=?, notes=? WHERE id=?',
-      [e2.description||'', e2.amount||0, e2.category||'other', e2.notes||null, req.params.id]
+      'UPDATE expenses SET description=?, amount=?, category=?, note=? WHERE id=?',
+      [e2.description||'', e2.amount||0, e2.category||'other', e2.note ?? e2.notes ?? null, req.params.id]
     );
     // Journal: reverse the old amount then post the new one (keeps ledger = expenses table)
     if (oldExp) {

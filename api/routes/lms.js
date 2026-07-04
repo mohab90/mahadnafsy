@@ -39,7 +39,7 @@ router.post('/api/me/progress', requireAuth, async (req, res) => {
       try {
         // Video progress %
         const [[{ total_lectures }]] = await pool.query(
-          'SELECT COUNT(*) AS total_lectures FROM lectures WHERE course_id=?', [course_id]);
+          'SELECT COUNT(*) AS total_lectures FROM course_lectures WHERE course_id=?', [course_id]);
         const [[{ completed_count }]] = await pool.query(
           'SELECT COUNT(*) AS completed_count FROM lecture_completions WHERE subscriber_id=? AND course_id=? AND progress_pct>=100',
           [sub.id, course_id]);
@@ -115,7 +115,7 @@ router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrS
              ROUND(AVG(lc.progress_pct),1) AS avg_pct,
              ROUND(AVG(lc.watch_seconds),0) AS avg_watch_sec
       FROM lecture_completions lc
-      LEFT JOIN lectures l ON l.id=lc.lecture_id
+      LEFT JOIN course_lectures l ON l.id=lc.lecture_id
       WHERE lc.course_id=?
       GROUP BY lc.lecture_id
       ORDER BY completions DESC
@@ -206,7 +206,7 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
 router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, async (req, res) => {
   try {
     const days = Math.max(0, Number(req.body.drip_unlock_days) || 0);
-    await pool.query('UPDATE lectures SET drip_unlock_days=? WHERE id=?', [days, req.params.lectureId]);
+    await pool.query('UPDATE course_lectures SET drip_unlock_days=? WHERE id=?', [days, req.params.lectureId]);
     res.json({ ok: true, drip_unlock_days: days });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

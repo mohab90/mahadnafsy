@@ -474,7 +474,7 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdmin, async 
     }
 
     await pool.query(`
-      UPDATE attendance_import_batches SET status='DONE', rows_imported=?, rows_skipped=?
+      UPDATE attendance_import_batches SET rows_ok=?, rows_error=?
       WHERE id=?
     `, [imported, skipped, batchId]).catch(() => {});
 
