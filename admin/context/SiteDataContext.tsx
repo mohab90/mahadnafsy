@@ -1057,7 +1057,10 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const persistJoinUsToCollection = (_item: JoinUsApplication) => { /* PG-only */ };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistContactMessageToCollection = (_item: ContactMessage) => { /* PG-only */ };
+  const persistContactMessageToCollection = (item: ContactMessage) => {
+    // Was a no-op → status/note changes never persisted. Save to the contact_messages table.
+    void mysqlAdmin.updateContactMessage(item.id, item.status, (item as unknown as { adminNote?: string }).adminNote).catch(() => {});
+  };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistQuizAttemptToCollection = (_item: QuizAttempt) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1906,6 +1909,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
   const deleteContactMessage = (id: string) => {
     setContactMessages((prev) => prev.filter((x) => x.id !== id));
+    void mysqlAdmin.deleteContactMessage(id).catch(() => {}); // was local-only → messages came back on refresh
     track('delete', 'contactMessage', id);
   };
 

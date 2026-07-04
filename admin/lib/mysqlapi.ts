@@ -47,7 +47,8 @@ export const mysqlCatalog = {
   listTestimonials: () => apiFetch<AR[]>('/testimonials'),
   listQuizzes: (limit = 200) => apiFetch<AR[]>(`/quizzes?limit=${limit}`),
   listLiveStreams: (limit = 200) => apiFetch<AR[]>(`/live-streams?limit=${limit}`),
-  listCommunityPosts: () => apiFetch<AR[]>('/community/posts'),
+  // Admin loads ALL posts (incl. pending/rejected) from the moderation endpoint so they can be reviewed.
+  listCommunityPosts: () => apiFetch<AR[]>('/admin/community/posts', {}, true),
   listCommunityLibrary: () => apiFetch<AR[]>('/community/library'),
   listCommunityVideos: () => apiFetch<AR[]>('/community/videos'),
   listCommunityEvents: () => apiFetch<AR[]>('/community/events'),
@@ -169,6 +170,7 @@ export const mysqlAdmin = {
   listAllExpenses:         ()             => apiFetch<AR[]>('/admin/expenses', {}, A),
   listActivityLogs:        (limit = 200)  => apiFetch<AR[]>(`/admin/activity-logs?limit=${limit}`, {}, A),
   listAllOrders:           (limit = 500)  => apiFetch<AR[]>(`/admin/orders?limit=${limit}`, {}, A),
+  listAbandonedCheckouts:  (hours = 2)     => apiFetch<AR[]>(`/admin/abandoned-checkouts?hours=${hours}`, {}, A),
   listAllDaqqiRounds:      ()             => apiFetch<AR[]>('/admin/daqqi-rounds', {}, A),
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
@@ -275,7 +277,7 @@ export const mysqlAdmin = {
   deleteJoinUs: (id: string) => del(`/admin/join-us/${id}`),
 
   // ── Contact Messages ──
-  updateContactMessage: (id: string, status: string) => patch(`/admin/contact-messages/${id}`, { status }),
+  updateContactMessage: (id: string, status: string, adminNote?: string) => patch(`/admin/contact-messages/${id}`, { status, adminNote }),
   deleteContactMessage: (id: string) => del(`/admin/contact-messages/${id}`),
 
   // ── Community ──

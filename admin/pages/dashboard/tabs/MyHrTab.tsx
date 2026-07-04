@@ -52,6 +52,22 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     [staffMembers, authUser]
   );
 
+  // ── Self-service attendance (check-in / check-out) ───────────
+  const [todayAtt, setTodayAtt] = useState<{ check_in?: string; check_out?: string; status?: string } | null>(null);
+  const [attBusy, setAttBusy] = useState(false);
+  const loadToday = useCallback(async () => {
+    try { const r = await fetch('/api/me/hr/attendance/today', { credentials: 'include' }); const d = await r.json(); setTodayAtt(d?.today || null); } catch { /* */ }
+  }, []);
+  useEffect(() => { loadToday(); }, [loadToday]);
+  const doCheck = async (kind: 'check-in' | 'check-out') => {
+    setAttBusy(true);
+    try {
+      const r = await fetch(`/api/me/hr/attendance/${kind}`, { method: 'POST', credentials: 'include' });
+      if (r.ok) { notify('success', kind === 'check-in' ? 'تم تسجيل الحضور ✅' : 'تم تسجيل الانصراف ✅'); loadToday(); }
+      else notify('error', 'تعذّر التسجيل');
+    } catch { notify('error', 'تعذّر التسجيل'); } finally { setAttBusy(false); }
+  };
+
   const MONTH = new Date().toISOString().slice(0, 7);
   const monthStart = `${MONTH}-01`;
 
@@ -161,6 +177,23 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
       {/* Overview */}
       {activeSection === 'overview' && (
         <div className="space-y-4">
+          {/* Self-service attendance — clock in/out feeds attendance_logs → payroll */}
+          <div className="bg-gradient-to-l from-slate-800 to-slate-700 text-white rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow">
+            <div>
+              <div className="text-sm text-slate-300 mb-1">حضور اليوم</div>
+              <div className="flex items-center gap-4 text-sm">
+                <span>الحضور: <span className="font-bold">{todayAtt?.check_in || '—'}</span></span>
+                <span>الانصراف: <span className="font-bold">{todayAtt?.check_out || '—'}</span></span>
+                {todayAtt?.status && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${todayAtt.status === 'LATE' ? 'bg-amber-500/30' : 'bg-emerald-500/30'}`}>{todayAtt.status === 'LATE' ? 'متأخر' : 'حاضر'}</span>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => doCheck('check-in')} disabled={attBusy || !!todayAtt?.check_in}
+                className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-bold">تسجيل حضور</button>
+              <button onClick={() => doCheck('check-out')} disabled={attBusy || !todayAtt?.check_in || !!todayAtt?.check_out}
+                className="bg-white/15 hover:bg-white/25 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-bold">تسجيل انصراف</button>
+            </div>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'ليداتي (الكل)', val: myLeads.length, color: 'blue' },

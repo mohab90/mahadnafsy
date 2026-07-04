@@ -473,6 +473,30 @@ const ContentHubTab: React.FC<Props> = ({
         </div>
       </section>
 
+      {/* Save contact + social (footer) — these fields write to policyDrafts and were never
+          committed before (no save button), so footer edits appeared to "not save". */}
+      {['footer.phone','footer.email','footer.whatsapp','footer.address','footer.description','footer.facebook','footer.instagram','footer.youtube'].some(k => policyDrafts[k] !== undefined) && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              const FK = ['footer.phone','footer.email','footer.whatsapp','footer.address','footer.description','footer.facebook','footer.instagram','footer.youtube'];
+              FK.forEach(k => { if (policyDrafts[k] !== undefined) setContentValue(k, policyDrafts[k]); });
+              setPolicyDrafts(prev => { const n = { ...prev }; FK.forEach(k => delete n[k]); return n; });
+              notify('success', 'تم حفظ بيانات التواصل والفوتر بنجاح.');
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center gap-2"
+          >
+            <Save size={14} /> حفظ بيانات التواصل والفوتر
+          </button>
+          <button
+            onClick={() => setPolicyDrafts(prev => { const n = { ...prev }; ['footer.phone','footer.email','footer.whatsapp','footer.address','footer.description','footer.facebook','footer.instagram','footer.youtube'].forEach(k => delete n[k]); return n; })}
+            className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm"
+          >
+            إلغاء
+          </button>
+        </div>
+      )}
+
       {/* Preview */}
       <section className="border border-dashed border-gray-300 rounded-xl p-4 bg-gray-50">
         <h4 className="text-sm font-bold text-gray-600 mb-3">معاينة سريعة للبيانات الحالية</h4>
