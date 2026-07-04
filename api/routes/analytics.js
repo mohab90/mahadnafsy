@@ -986,7 +986,7 @@ router.get('/api/admin/leads/scoring', requireAuth, requireAdminOrStaff, async (
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source, l.branch,
              l.follow_up_date, l.created_at, l.lead_type,
              st.name AS assigned_staff,
-             (SELECT COUNT(*) FROM lead_communications lc WHERE lc.lead_id = l.id) AS comm_count
+             (SELECT COUNT(*) FROM communications lc WHERE lc.lead_id = l.id) AS comm_count
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_to
       WHERE l.status NOT IN ('converted','lost','junk')
@@ -1054,7 +1054,7 @@ router.post('/api/admin/leads/scoring/recalculate', requireAuth, requireAdmin, a
     const [leads] = await pool.query(`
       SELECT l.id, l.phone, l.email, l.status, l.interest_level,
              l.follow_up_date, l.created_at, l.enrolled_course_id,
-             (SELECT COUNT(*) FROM lead_communications lc WHERE lc.lead_id = l.id) AS comm_count
+             (SELECT COUNT(*) FROM communications lc WHERE lc.lead_id = l.id) AS comm_count
       FROM leads l
       WHERE l.hidden = 0 AND l.status NOT IN ('lost','junk')
     `);

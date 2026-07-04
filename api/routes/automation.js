@@ -59,6 +59,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
     const todayStr = new Date().toISOString().slice(0, 10);
 
     for (const wf of workflows) {
+     // Per-workflow guard: a single broken trigger (e.g. a stale table/column ref)
+     // must NOT abort the whole automation run and silently kill every other workflow.
+     try {
       const actionCfg = tryJson(wf.action_config, {});
       let matchedLeads = [];
       // leads/subscribers share the same shape; subscribers get a flag for WA routing
@@ -290,8 +293,8 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
       else if (wf.trigger === 'new_join_request') {
         const sinceDays = parseInt(actionCfg.days || '1');
         const [rows] = await pool.query(`
-          SELECT id, name, phone, email, position AS course_title
-          FROM join_us
+          SELECT id, name, phone, email, specialty AS course_title
+          FROM join_us_applications
           WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
         `, [sinceDays]);
         matchedLeads = rows;
@@ -444,6 +447,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         matchedLeads: matchedLeads.length,
         actionsRun,
       });
+     } catch (wfErr) {
+        logger.warn('[automation-run] workflow skipped', { id: wf.id, name: wf.name, err: wfErr.message });
+        results.push({ workflowId: wf.id, name: wf.name, trigger: wf.trigger, action: wf.action, error: wfErr.message });
+     }
     }
 
     res.json({ ok: true, ran: results.length, results });

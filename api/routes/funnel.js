@@ -35,7 +35,7 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
         n(`SELECT COUNT(*) FROM subscribers WHERE ${sw}`, sp),
         n(`SELECT COUNT(DISTINCT subscriber_id) FROM payments WHERE ${pw}`, pp),
         n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM lecture_progress t ${brJoin}`, brP),
-        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM issued_certificates t ${brJoin}`, brP),
+        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM certificate_requests t ${brJoin} AND t.status IN ('ISSUED','AT_BRANCH','DELIVERED')`, brP),
         n(`SELECT COALESCE(SUM(amount),0) FROM payments WHERE ${pw} AND (currency IS NULL OR currency='EGP')`, pp),
       ]);
       const stages = [

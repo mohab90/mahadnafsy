@@ -157,7 +157,7 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const [[{ drip_active }]] = await pool.query(
       `SELECT COUNT(*) AS drip_active FROM drip_campaigns WHERE is_active=1`).catch(() => [[{ drip_active: 0 }]]);
     const [[{ workflows_active }]] = await pool.query(
-      `SELECT COUNT(*) AS workflows_active FROM workflows WHERE is_active=1`).catch(() => [[{ workflows_active: 0 }]]);
+      `SELECT COUNT(*) AS workflows_active FROM automation_workflows WHERE enabled=1`).catch(() => [[{ workflows_active: 0 }]]);
 
     res.json({
       followup_due: parseInt(followup_due),
