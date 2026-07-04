@@ -217,7 +217,7 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, async (re
 router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, email, phone, status, source, assigned_to_name, deal_value, follow_up_date, created_at
+      `SELECT id, name, email, phone, status, source, assigned_sales_name AS assigned_to_name, deal_value, next_follow_up_date AS follow_up_date, created_at
        FROM leads WHERE hidden=0 ORDER BY created_at DESC LIMIT 10000`
     );
     const cols = [

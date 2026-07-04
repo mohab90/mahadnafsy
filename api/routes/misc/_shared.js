@@ -127,7 +127,7 @@ async function runFollowUpReminders() {
              l.next_follow_up_date, l.status, l.source,
              st.name AS staff_name, st.phone AS staff_phone, st.email AS staff_email
       FROM leads l
-      LEFT JOIN staff st ON st.id = l.assigned_to
+      LEFT JOIN staff st ON st.id = l.assigned_sales_id
       WHERE DATE(l.next_follow_up_date) = ?
         AND l.status NOT IN ('converted','disqualified','archived')
       LIMIT 100`, [today]);

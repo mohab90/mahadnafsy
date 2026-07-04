@@ -15,10 +15,10 @@ router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, async
     const today = new Date().toISOString().slice(0, 10);
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source,
-             l.next_follow_up_date, l.assigned_to,
+             l.next_follow_up_date, l.assigned_sales_id AS assigned_to,
              st.name AS staff_name
       FROM leads l
-      LEFT JOIN staff st ON st.id = l.assigned_to
+      LEFT JOIN staff st ON st.id = l.assigned_sales_id
       WHERE DATE(l.next_follow_up_date) = ?
         AND l.status NOT IN ('converted','disqualified','archived')
       ORDER BY l.name`, [today]);

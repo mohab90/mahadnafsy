@@ -43,9 +43,9 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
              SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) AS conversions,
              ROUND(SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) / COUNT(l.id) * 100, 1) AS conv_rate
       FROM leads l
-      JOIN staff st ON st.id = l.assigned_to
+      JOIN staff st ON st.id = l.assigned_sales_id
       WHERE DATE(l.created_at) BETWEEN ? AND ?
-      GROUP BY l.assigned_to ORDER BY conversions DESC`, [from, to]);
+      GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [from, to]);
 
     res.json({
       period: { from, to },
@@ -322,14 +322,14 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdmin, 
         COALESCE((
           SELECT SUM(p.amount) FROM payments p
           JOIN subscribers sub ON sub.id = p.subscriber_id
-          WHERE sub.assigned_to = st.id AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+          WHERE sub.assigned_sales_id = st.id AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
         ), 0) AS revenue_generated,
         -- Tasks completed
         COUNT(DISTINCT CASE WHEN t.status='done' THEN t.id END) AS tasks_done,
         COUNT(DISTINCT t.id) AS tasks_total
       FROM staff st
-      LEFT JOIN leads l ON l.assigned_to = st.id AND DATE(l.created_at) BETWEEN ? AND ?
-      LEFT JOIN subscribers s ON s.assigned_to = st.id AND DATE(s.created_at) BETWEEN ? AND ?
+      LEFT JOIN leads l ON l.assigned_sales_id = st.id AND DATE(l.created_at) BETWEEN ? AND ?
+      LEFT JOIN subscribers s ON s.assigned_sales_id = st.id AND DATE(s.created_at) BETWEEN ? AND ?
       LEFT JOIN tasks t ON t.assigned_to = st.id AND DATE(t.created_at) BETWEEN ? AND ?
       WHERE st.is_active = 1
       GROUP BY st.id

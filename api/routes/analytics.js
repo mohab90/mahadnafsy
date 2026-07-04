@@ -984,11 +984,11 @@ router.get('/api/admin/leads/scoring', requireAuth, requireAdminOrStaff, async (
   try {
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source, l.branch,
-             l.follow_up_date, l.created_at, l.lead_type,
+             l.next_follow_up_date AS follow_up_date, l.created_at, l.lead_type,
              st.name AS assigned_staff,
              (SELECT COUNT(*) FROM communications lc WHERE lc.lead_id = l.id) AS comm_count
       FROM leads l
-      LEFT JOIN staff st ON st.id = l.assigned_to
+      LEFT JOIN staff st ON st.id = l.assigned_sales_id
       WHERE l.status NOT IN ('converted','lost','junk')
       ORDER BY l.created_at DESC LIMIT 1000`);
 
@@ -997,8 +997,9 @@ router.get('/api/admin/leads/scoring', requireAuth, requireAdminOrStaff, async (
       let score = 0;
       if (l.phone)  score += 30;
       if (l.email)  score += 10;
-      if (l.status === 'interested')  score += 20;
-      else if (l.status === 'follow_up') score += 10;
+      const st = (l.status || '').toLowerCase(); // DB stores ENUM uppercase (INTERESTED/CONTACTED)
+      if (st === 'interested')  score += 20;
+      else if (st === 'follow_up' || st === 'contacted') score += 10;
       if (l.follow_up_date && new Date(l.follow_up_date) > new Date()) score += 15;
       if (l.comm_count > 0) score += 10;
       if (now - new Date(l.created_at).getTime() < 14 * 24 * 60 * 60 * 1000) score += 5;
@@ -1053,7 +1054,7 @@ router.post('/api/admin/leads/scoring/recalculate', requireAuth, requireAdmin, a
 
     const [leads] = await pool.query(`
       SELECT l.id, l.phone, l.email, l.status, l.interest_level,
-             l.follow_up_date, l.created_at, l.enrolled_course_id,
+             l.next_follow_up_date AS follow_up_date, l.created_at, l.enrolled_course_id,
              (SELECT COUNT(*) FROM communications lc WHERE lc.lead_id = l.id) AS comm_count
       FROM leads l
       WHERE l.hidden = 0 AND l.status NOT IN ('lost','junk')
@@ -1102,7 +1103,7 @@ router.get('/api/admin/leads/scoring/leaderboard', requireAuth, requireAdminOrSt
     const limit = Math.min(200, parseInt(req.query.limit) || 50);
     const [rows] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source, l.branch,
-             l.score, l.interest_level, l.follow_up_date, l.created_at,
+             l.score, l.interest_level, l.next_follow_up_date AS follow_up_date, l.created_at,
              l.enrolled_course_id,
              c.title AS course_title,
              l.assigned_sales_name
