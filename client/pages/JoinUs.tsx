@@ -74,14 +74,16 @@ const JoinUs: React.FC = () => {
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-secondary-500 rounded-full blur-[120px] opacity-25"></div>
         <div className="container mx-auto px-4 relative z-10 text-center">
           <div className="inline-flex items-center gap-2 bg-primary-600/30 border border-primary-500/40 text-primary-300 px-4 py-2 rounded-full text-sm font-bold mb-6">
-            <GraduationCap size={18} />
-            فرصة انضمام للنخبة
+            {isEmployee ? <Briefcase size={18} /> : <GraduationCap size={18} />}
+            {isEmployee ? 'انضم لفريق العمل' : 'فرصة انضمام للنخبة'}
           </div>
           <h1 className="text-4xl md:text-6xl font-bold mb-6">
-            انضم إلينا كمحاضر<br />أو مستشار نفسي
+            {isEmployee ? <>ابنِ مستقبلك المهني<br />مع فريقنا</> : <>انضم إلينا كمحاضر<br />أو مستشار نفسي</>}
           </h1>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed">
-            هل أنت خبير في مجال الصحة النفسية؟ شارك علمك مع الآلاف وكن جزءاً من مسيرة التغيير الحقيقي في مجال الصحة النفسية العربية.
+            {isEmployee
+              ? 'نبحث دائماً عن مواهب طموحة تشاركنا الشغف. تصفّح الوظائف المتاحة وقدّم للفرصة التي تناسب خبراتك وتطلعاتك.'
+              : 'هل أنت خبير في مجال الصحة النفسية؟ شارك علمك مع الآلاف وكن جزءاً من مسيرة التغيير الحقيقي في مجال الصحة النفسية العربية.'}
           </p>
           <div className="flex flex-wrap justify-center gap-6 mt-10">
             {[
