@@ -277,7 +277,7 @@ const Community: React.FC = () => {
                     )}
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
-                        <img src={post.authorImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7c3aed&color=fff&size=80`} className="w-11 h-11 rounded-full object-cover border-2 border-gray-100" alt={post.authorName} onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=6d28d9&color=fff&size=80`; }} />
+                        <img loading="lazy" decoding="async" src={post.authorImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=7c3aed&color=fff&size=80`} className="w-11 h-11 rounded-full object-cover border-2 border-gray-100" alt={post.authorName} onError={e => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName)}&background=6d28d9&color=fff&size=80`; }} />
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="font-bold text-gray-900 text-sm">{post.authorRole === 'Admin' ? 'الإدارة' : post.authorName}</h4>
@@ -400,7 +400,7 @@ const Community: React.FC = () => {
                   {communityVideos.map(video => (
                     <div key={video.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm group hover:shadow-md hover:border-primary-100 transition">
                       <div className="relative aspect-video bg-gray-100 cursor-pointer" onClick={() => video.videoUrl ? setShowVideoModal(video.videoUrl) : undefined}>
-                        {video.thumbnail && <img src={video.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt={video.title} />}
+                        {video.thumbnail && <img loading="lazy" decoding="async" src={video.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt={video.title} />}
                         <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition flex items-center justify-center">
                           <div className="w-12 h-12 bg-white/30 backdrop-blur rounded-full flex items-center justify-center group-hover:scale-110 transition">
                             <Play fill="white" className="text-white ml-1" size={20} />

@@ -273,7 +273,7 @@ const Enrollment: React.FC = () => {
                               <Award size={20} className="text-purple-600" />
                             </div>
                           ) : item.thumbnail ? (
-                            <img src={item.thumbnail} alt={item.title} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                            <img loading="lazy" decoding="async" src={item.thumbnail} alt={item.title} className="w-12 h-12 rounded-lg object-cover shrink-0" />
                           ) : (
                             <div className="w-12 h-12 rounded-lg bg-primary-100 flex items-center justify-center shrink-0">
                               <BookOpen size={20} className="text-primary-600" />

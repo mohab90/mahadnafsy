@@ -1091,7 +1091,14 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // ── Community & Workflow collection persist helpers ──────────────────────────────────────────
   const persistCommunityPostToCollection = (post: CommunityPostItem) => {
-    void mysqlAdmin.saveCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
+    // Admins write via the admin endpoint (full control + status). Customers post via the
+    // auth-gated customer endpoint, which forces status='pending' for moderation. Routing a
+    // customer to the admin endpoint would 403 and the post would silently vanish.
+    if (isAdmin) {
+      void mysqlAdmin.saveCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
+    } else {
+      void mysqlClient.createCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
+    }
   };
 
   const persistCommunityLibraryItemToCollection = (item: CommunityLibraryItem) => {
@@ -1125,7 +1132,14 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const persistJoinUsToCollection = (_item: JoinUsApplication) => { /* PG-only */ };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistContactMessageToCollection = (_item: ContactMessage) => { /* PG-only */ };
+  const persistContactMessageToCollection = (item: ContactMessage) => {
+    // Was a no-op → contact-form submissions never reached the server (invisible to admin).
+    // Persist to the contact_messages table via the public /api/contact endpoint.
+    void mysqlForms.submitContact({
+      name: item.name, email: item.email, phone: (item as unknown as { phone?: string }).phone || '',
+      subject: item.subject, message: item.message,
+    } as unknown as Record<string, unknown>).catch(() => {});
+  };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistQuizAttemptToCollection = (_item: QuizAttempt) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

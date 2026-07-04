@@ -46,7 +46,7 @@ const Instructors: React.FC = () => {
           {[...therapists].sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99)).map((instructor) => (
             <Link to={`/instructor/${instructor.id}`} key={instructor.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition duration-300 group flex flex-col">
               <div className="relative h-64 bg-gray-100 overflow-hidden">
-                <img 
+                <img loading="lazy" decoding="async" 
                   src={instructor.image} 
                   alt={instructor.name} 
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 

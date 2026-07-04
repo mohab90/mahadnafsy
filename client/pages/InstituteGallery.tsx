@@ -33,7 +33,7 @@ const InstituteGallery: React.FC = () => {
           <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {images.map((src, idx) => (
               <article key={`${src}-${idx}`} className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-white">
-                <img src={src} alt={`Institute gallery ${idx + 1}`} className="w-full h-64 object-cover" />
+                <img loading="lazy" decoding="async" src={src} alt={`Institute gallery ${idx + 1}`} className="w-full h-64 object-cover" />
               </article>
             ))}
           </section>

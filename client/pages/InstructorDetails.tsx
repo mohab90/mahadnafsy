@@ -48,7 +48,7 @@ const InstructorDetails: React.FC = () => {
 
             <div className="p-6">
               <div className="flex items-center gap-4 mb-6 bg-primary-50 p-4 rounded-xl border border-primary-100">
-                {instructor.image ? <img src={instructor.image} className="w-12 h-12 rounded-full object-cover" alt={instructor.name} /> : <div className="w-12 h-12 rounded-full bg-primary-200 flex items-center justify-center text-primary-700 font-bold text-lg">{instructor.name?.[0] ?? '?'}</div>}
+                {instructor.image ? <img loading="lazy" decoding="async" src={instructor.image} className="w-12 h-12 rounded-full object-cover" alt={instructor.name} /> : <div className="w-12 h-12 rounded-full bg-primary-200 flex items-center justify-center text-primary-700 font-bold text-lg">{instructor.name?.[0] ?? '?'}</div>}
                 <div>
                   <p className="font-bold text-primary-900 text-sm">سعر الجلسة</p>
                   <p className="font-bold text-xl text-primary-600">{getTherapistSessionPrice(instructor, currency)} {currencySymbol}</p>
@@ -107,7 +107,7 @@ const InstructorDetails: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
           <div className="flex flex-col md:flex-row gap-8 items-start">
             <div className="w-40 h-40 rounded-2xl overflow-hidden border-4 border-white shadow-lg flex-shrink-0 bg-gray-200">
-              <img src={instructor.image} className="w-full h-full object-cover" alt={instructor.name} />
+              <img loading="lazy" decoding="async" src={instructor.image} className="w-full h-full object-cover" alt={instructor.name} />
             </div>
 
             <div className="flex-1 pt-2">

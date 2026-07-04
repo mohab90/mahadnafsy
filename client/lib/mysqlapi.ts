@@ -82,6 +82,12 @@ export const mysqlClient = {
   getCourseRatings: (courseId: string) => apiFetch<{ avg: number; count: number; myRating: { rating: number; comment: string } | null }>(`/courses/${encodeURIComponent(courseId)}/ratings`, {}, true),
   rateCourse: (courseId: string, rating: number, comment?: string) =>
     apiFetch<{ ok: boolean; avg: number; count: number }>(`/courses/${encodeURIComponent(courseId)}/rate`, { method: 'POST', body: JSON.stringify({ rating, comment }) }, true),
+  // Community — customer-created post (saved as pending for admin review)
+  createCommunityPost: (o: AR) =>
+    apiFetch<{ ok: boolean; id: string; status: string }>('/community/posts', { method: 'POST', body: JSON.stringify(o) }, true),
+  // Certificate request — writes to the certificate_requests table (single source of truth)
+  createCertificateRequest: (o: AR) =>
+    apiFetch<{ ok: boolean; status: string }>('/me/certificate-request', { method: 'POST', body: JSON.stringify(o) }, true),
   // Lecture view tracking
   trackLectureView: (lectureId: string) =>
     apiFetch<{ ok: boolean }>(`/lectures/${encodeURIComponent(lectureId)}/view`, { method: 'POST' }, true),

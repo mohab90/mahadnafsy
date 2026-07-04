@@ -23,10 +23,10 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, currency }) => {
   const plainDescription = (course.shortDescription || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300 border border-gray-100 flex flex-col h-full">
-      <div className="relative">
-        {course?.thumbnail && <img src={course.thumbnail} alt={course.title} className="w-full h-48 object-cover" />}
-        <span className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-gray-800 px-2 py-1 text-xs font-bold rounded-md">
+    <div className="glass-card hover:-translate-y-2 hover:shadow-2xl transition-all duration-300 border border-gray-100/60 flex flex-col h-full group">
+      <div className="relative overflow-hidden rounded-t-2xl">
+        {course?.thumbnail && <img loading="lazy" decoding="async" src={course.thumbnail} alt={course.title} className="w-full h-48 object-cover transform group-hover:scale-105 transition-transform duration-500" />}
+        <span className="absolute top-3 right-3 bg-white/90 backdrop-blur-md text-gray-800 px-3 py-1 text-xs font-bold rounded-lg shadow-sm">
           {course.type === 'Mix' ? 'مختلط (مسجل+لايف)' : course.type === 'Live' ? 'بث مباشر' : 'مسجل'}
         </span>
       </div>

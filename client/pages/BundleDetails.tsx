@@ -333,7 +333,7 @@ const BundleDetails: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {galleryImgs.slice(0, 8).map((img, i) => (
                     <div key={i} className="rounded-xl overflow-hidden aspect-square">
-                      <img src={img} alt="خريج" className="w-full h-full object-cover hover:scale-105 transition duration-500"/>
+                      <img loading="lazy" decoding="async" src={img} alt="خريج" className="w-full h-full object-cover hover:scale-105 transition duration-500"/>
                     </div>
                   ))}
                 </div>
@@ -355,7 +355,7 @@ const BundleDetails: React.FC = () => {
                       <p className="text-gray-700 text-sm leading-relaxed mb-4">"{t.text}"</p>
                       <div className="flex items-center gap-3">
                         {t.image ? (
-                          <img src={t.image} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-gray-200"/>
+                          <img loading="lazy" decoding="async" src={t.image} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-gray-200"/>
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 font-bold text-sm flex items-center justify-center">{t.name.charAt(0)}</div>
                         )}
