@@ -91,7 +91,7 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
     }
 
     // Log to activity
-    await pool.query('INSERT INTO activity_logs (action, details, created_at) VALUES (?,?,NOW())',
+    await pool.query('INSERT INTO activity_logs (id, action, label, at) VALUES (UUID(),?,?,NOW())',
       ['sms_sent', JSON.stringify({ to, provider: cfg.provider })]).catch(() => {});
 
     res.json({ ok: true, result });

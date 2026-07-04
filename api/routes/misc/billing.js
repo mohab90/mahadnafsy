@@ -90,12 +90,12 @@ setInterval(async () => {
 
     if (due.length > 0) {
       // Batch INSERT payment stubs — atomic: only advance billing dates if INSERT succeeds
-      const billingPayRows = due.map(() => `(?, ?, 'subscription', 'pending', ?, NOW())`);
+      const billingPayRows = due.map(() => `(UUID(), ?, ?, 'subscription', 'pending', ?, NOW())`);
       const billingPayParams = due.flatMap(sub => [sub.subscriber_id, sub.price, `Auto-billing plan: ${sub.plan_id}`]);
       let billingInsertOk = false;
       try {
         await pool.query(
-          `INSERT INTO payments (subscriber_id, amount, method, status, notes, created_at) VALUES ${billingPayRows.join(',')}`,
+          `INSERT INTO payments (id, subscriber_id, amount, payment_method, status, note, created_at) VALUES ${billingPayRows.join(',')}`,
           billingPayParams
         );
         billingInsertOk = true;

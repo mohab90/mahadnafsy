@@ -48,12 +48,12 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
     const expDate = e2.date || new Date().toISOString().slice(0, 10);
     await assertWritable(expDate); // reject writes into a closed accounting period
     const [result] = await pool.query(
-      `INSERT INTO expenses (id, date, description, amount, currency, category, notes, created_at)
+      `INSERT INTO expenses (id, date, description, amount, currency, category, note, created_at)
        VALUES (?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE description=VALUES(description), amount=VALUES(amount),
-         category=VALUES(category), notes=VALUES(notes)`,
+         category=VALUES(category), note=VALUES(note)`,
       [id, e2.date||new Date().toISOString().slice(0,10), e2.description||'',
-       e2.amount||0, e2.currency||'EGP', e2.category||'other', e2.notes||null,
+       e2.amount||0, e2.currency||'EGP', e2.category||'other', e2.note ?? e2.notes ?? null,
        e2.created_at||new Date().toISOString()]
     );
     // affectedRows: 1 = fresh insert, 2 = duplicate-key update (already journaled via PATCH path)
@@ -100,8 +100,8 @@ router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, r
     const a = req.body;
     const id = a.id || uuidv4();
     await pool.query(
-      'INSERT IGNORE INTO activity_logs (id, action, entity, entity_name, user_id, at) VALUES (?,?,?,?,?,?)',
-      [id, a.action||'', a.entity||'', a.entity_name||'', a.user_id||req.user.uid,
+      'INSERT IGNORE INTO activity_logs (id, action, entity, label, actor, at) VALUES (?,?,?,?,?,?)',
+      [id, a.action||'', a.entity||'', a.entity_name||a.label||'', a.user_id||a.actor||req.user.uid,
        a.at||new Date().toISOString()]
     );
     res.json({ ok: true, id });

@@ -174,12 +174,12 @@ router.post('/api/staff/me/leaves', requireAuth, async (req, res) => {
     const totalDays = Math.ceil((end - start) / 86400000) + 1;
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO leave_requests (id, staff_id, type, start_date, end_date, total_days, reason, status)
+      `INSERT INTO leave_requests (id, staff_id, leave_type, start_date, end_date, days_count, reason, status)
        VALUES (?,?,?,?,?,?,?,'PENDING')`,
       [id, staffId, type, start_date, end_date, totalDays, reason || null]
     );
     const [[row]] = await pool.query(
-      'SELECT id, staff_id, type, start_date, end_date, total_days, reason, status FROM leave_requests WHERE id=?',
+      'SELECT id, staff_id, leave_type AS type, start_date, end_date, days_count AS total_days, reason, status FROM leave_requests WHERE id=?',
       [id]
     );
     res.json(row);

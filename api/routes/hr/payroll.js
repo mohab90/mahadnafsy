@@ -389,9 +389,9 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdmin, async 
     // Create import batch
     const batchId = require('crypto').randomUUID();
     await pool.query(`
-      INSERT INTO attendance_import_batches (id, filename, month, year, imported_by, status)
-      VALUES (?, ?, ?, ?, ?, 'PROCESSING')
-    `, [batchId, filename || 'import.csv', m, y, req.user.id]).catch(() => {});
+      INSERT INTO attendance_import_batches (id, filename, month, year, imported_by)
+      VALUES (?, ?, ?, ?, ?)
+    `, [batchId, filename || 'import.csv', m, y, req.user?.uid || null]).catch(() => {});
 
     // Parse CSV
     const lines = csvText.split('\n').map(l => l.trim()).filter(l => l);

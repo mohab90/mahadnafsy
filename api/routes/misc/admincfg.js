@@ -87,8 +87,8 @@ router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin,
 
     // Upsert into users table (staff use email as username)
     await pool.query(
-      `INSERT INTO users (id, email, password, role, name) VALUES (UUID(),?,?,'staff',?)
-       ON DUPLICATE KEY UPDATE password=VALUES(password)`,
+      `INSERT INTO users (id, email, password_hash, role, name) VALUES (UUID(),?,?,'staff',?)
+       ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash)`,
       [staff.email, hash, staff.name || staff.email]
     );
     res.json({ ok: true, message: 'تم تعيين كلمة المرور بنجاح' });
