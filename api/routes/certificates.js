@@ -72,4 +72,29 @@ router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdmin, 
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Customer certificate request → single source of truth = certificate_requests table ──
+// (Previously the client wrote cert requests into crm_json.extraCertificateRequests, which the
+//  admin never read → requests vanished. Now customers write to the same table the admin manages.)
+const CERT_TYPES = ['SOCIAL_SOLIDARITY','AIN_SHAMS','EXPERIENCE_EXTERNAL','PRACTICE_EXTERNAL','NATIONAL_COUNCIL','AMERICAN_BOARD','INSTITUTE','OTHER'];
+const CERT_NATS  = ['EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL'];
+router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
+  try {
+    const email = req.user.email?.toLowerCase().trim();
+    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
+    if (!sub) return res.status(403).json({ error: 'not_subscribed' });
+    const b = req.body || {};
+    const type = CERT_TYPES.includes(String(b.type || '').toUpperCase()) ? String(b.type).toUpperCase() : 'OTHER';
+    const nationality = CERT_NATS.includes(String(b.nationality || '').toUpperCase()) ? String(b.nationality).toUpperCase() : null;
+    await pool.query(
+      `INSERT INTO certificate_requests
+         (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality, id_number, status, price, currency, note, requested_at)
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, NOW())`,
+      [sub.id, b.courseId || null, type, b.customName || null, b.nameAr || null, b.nameEn || null,
+       nationality, b.idNumber || null, b.price != null ? Number(b.price) : null,
+       (b.currency && ['EGP','SAR','USD'].includes(b.currency)) ? b.currency : null, b.note || null]
+    );
+    res.json({ ok: true, status: 'pending' });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 module.exports = router;

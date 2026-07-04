@@ -9,46 +9,86 @@ const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // Community Posts
+// Map a DB row to the client-facing shape (camelCase author* + status), keeping snake-case too.
+const mapPost = (r) => ({
+  ...r,
+  tags: tryJson(r.tags, []),
+  authorName: r.author || '',
+  authorRole: r.author_role || '',
+  authorImage: r.image_url || '',
+  status: r.status || 'approved',
+});
+
+// Admin moderation list — returns ALL posts incl. pending/rejected so they can be reviewed.
 router.get('/api/admin/community/posts', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, title, category, body, author, image_url, tags, featured, pinned, likes, created_at
-       FROM community_posts ORDER BY created_at DESC LIMIT 500`
+      `SELECT id, title, category, body, author, author_role, subscriber_id, image_url, tags,
+              featured, pinned, likes, status, created_at
+       FROM community_posts ORDER BY (status='pending') DESC, created_at DESC LIMIT 500`
     );
-    res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
+    res.json(rows.map(mapPost));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// Public feed — only APPROVED posts are visible to everyone.
 router.get('/api/community/posts', async (_req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, title, category, body, author, image_url, tags, featured, pinned, likes, created_at
-       FROM community_posts ORDER BY created_at DESC LIMIT 200`
+      `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at
+       FROM community_posts WHERE status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`
     );
-    res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
+    res.json(rows.map(mapPost));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// Customer-created post → saved as PENDING for admin review. Any authenticated subscriber may post.
+router.post('/api/community/posts', requireAuth, async (req, res) => {
+  try {
+    const p = req.body || {};
+    if (!p.title?.trim() || !p.body?.trim()) return res.status(400).json({ error: 'title and body are required' });
+    const id = p.id || uuidv4();
+    const subId = (req.user && (req.user.uid || req.user.email)) || null;
+    await pool.query(
+      `INSERT INTO community_posts (id, title, category, body, author, author_role, subscriber_id, image_url, tags, featured, pinned, likes, status, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)`,
+      [
+        id, p.title.trim().slice(0, 200), p.tag || p.category || 'general', p.body.trim().slice(0, 5000),
+        (p.authorName || p.author || 'عضو').slice(0, 120), (p.authorRole || 'عضو').slice(0, 80),
+        subId, p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
+        0, 0, 0, p.createdAt || new Date().toISOString(),
+      ]
+    );
+    res.json({ ok: true, id, status: 'pending' });
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin create/update — persists moderation status (admin posts default to approved).
 router.post('/api/admin/community/posts', requireAuth, requireAdmin, async (req, res) => {
   try {
     const p = req.body;
     const id = p.id || uuidv4();
+    const status = p.status || 'approved';
     await pool.query(
-      `INSERT INTO community_posts (id, title, category, body, author, image_url, tags, featured, pinned, likes, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO community_posts (id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE title=VALUES(title), body=VALUES(body), category=VALUES(category),
-         author=VALUES(author), image_url=VALUES(image_url), tags=VALUES(tags),
-         featured=VALUES(featured), pinned=VALUES(pinned)`,
+         author=VALUES(author), author_role=VALUES(author_role), image_url=VALUES(image_url), tags=VALUES(tags),
+         featured=VALUES(featured), pinned=VALUES(pinned), status=VALUES(status)`,
       [
-        id, p.title || '', p.category || 'general', p.body || '', p.author || '', p.imageUrl || null,
+        id, p.title || '', p.tag || p.category || 'general', p.body || '',
+        p.authorName || p.author || '', p.authorRole || '', p.authorImage || p.imageUrl || null,
         JSON.stringify(p.tags || []), p.featured ? 1 : 0, p.pinned ? 1 : 0, p.likes || 0,
-        p.createdAt || new Date().toISOString(),
+        status, p.createdAt || new Date().toISOString(),
       ]
     );
     res.json({ ok: true, id });

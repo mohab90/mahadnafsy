@@ -11,7 +11,7 @@ const { VALID_BRANCHES } = require('../constants/permissions');
 
 function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, sendWhatsApp, uuidv4 }) {
   // ── Schema migrations (run once per version, not on every boot) ──────────────
-  const SCHEMA_V = 41;
+  const SCHEMA_V = 42;
   // Migration catch helper — silences expected errors (duplicate column/index/table)
   // but logs anything unexpected so bugs don't hide silently.
   const migCatch = (e) => {
@@ -63,6 +63,11 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
         await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS staff_id VARCHAR(36) DEFAULT NULL').catch(migCatch);
         await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS staff_name VARCHAR(255) DEFAULT NULL').catch(migCatch);
         await pool.query("ALTER TABLE payments ADD COLUMN IF NOT EXISTS status ENUM('pending','paid','failed') NOT NULL DEFAULT 'paid'").catch(migCatch);
+        // Community customer-posting + moderation: posts default to 'approved' so existing/admin
+        // rows stay visible; customer-submitted posts are inserted as 'pending' for review.
+        await pool.query("ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'approved'").catch(migCatch);
+        await pool.query('ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS author_role VARCHAR(80) DEFAULT NULL').catch(migCatch);
+        await pool.query('ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS subscriber_id VARCHAR(64) DEFAULT NULL').catch(migCatch);
         await pool.query('ALTER TABLE payment_proofs CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci').catch(migCatch);
         await pool.query('ALTER TABLE payments ADD INDEX idx_payments_course_id (course_id)').catch(migCatch);
         await pool.query('ALTER TABLE payments ADD UNIQUE INDEX idx_payments_txn (transaction_id)').catch(migCatch);

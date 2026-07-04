@@ -233,6 +233,23 @@ function mapSubscriber(r) {
       note: cr.note || null,
       adminNote: cr.admin_note || cr.adminNote || null,
     })),
+    // Client reads `extraCertificateRequests` (lowercase status/type). Back it with the SAME
+    // certificate_requests table (single source of truth) so client + admin see the same data.
+    extraCertificateRequests: (r.certRequests || []).map(cr => ({
+      id: cr.id,
+      type: String(cr.type || '').toLowerCase(),
+      courseId: cr.course_id || cr.courseId || null,
+      customName: cr.custom_name || null,
+      nameAr: cr.name_ar || null,
+      nameEn: cr.name_en || null,
+      nationality: String(cr.nationality || '').toLowerCase() || undefined,
+      idNumber: cr.id_number || undefined,
+      status: String(cr.status || 'pending').toLowerCase(),
+      price: cr.price != null ? Number(cr.price) : undefined,
+      currency: cr.currency || undefined,
+      requestedAt: cr.requested_at || cr.requestedAt || null,
+      note: cr.note || null,
+    })),
   };
 }
 
