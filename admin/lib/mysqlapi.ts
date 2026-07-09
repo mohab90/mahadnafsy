@@ -10,25 +10,37 @@ function getToken(): string | null {
   return localStorage.getItem('mahad-token');
 }
 
+// Was unbounded (no timeout at all — a stuck connection hung forever) with up to
+// 2 retries and 3-5s backoff between each. Admin loads the heaviest pages (full
+// leads/subscribers tables), so this compounded worst — added a bound + shortened
+// the retry storm the same way as the client (see client/lib/mysqlapi.ts).
+const REQUEST_TIMEOUT_MS = 15_000; // admin payloads are larger than client's, allow more
+const MAX_RETRIES = 1;
+const RETRY_BACKOFF_MS = 1_000;
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
   if (auth) { const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`; }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include', cache: 'no-store' });
-    // Auto-retry on 502/503/504 (server restarting) up to 2 extra attempts
-    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < 2) {
-      await new Promise(r => setTimeout(r, 3000 + _retry * 2000));
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include', cache: 'no-store', signal: controller.signal });
+    clearTimeout(timeoutId);
+    // Auto-retry on 502/503/504 (server restarting) — 1 extra attempt only.
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES) {
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
     return res.json() as Promise<T>;
   } catch (err: unknown) {
-    // Retry on network failure (TypeError: Failed to fetch) up to 2 times
-    if (err instanceof TypeError && _retry < 2) {
-      await new Promise(r => setTimeout(r, 3000 + _retry * 2000));
+    clearTimeout(timeoutId);
+    // Retry on network failure (TypeError: Failed to fetch) — 1 extra attempt only.
+    if (err instanceof TypeError && _retry < MAX_RETRIES) {
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
     throw err;

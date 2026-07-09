@@ -545,6 +545,14 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const settingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Round-robin counter for auto-assigning new leads to sales staff
   const roundRobinIndexRef = useRef(0);
+  // Guards the public catalog/community load (below) so it fires its ~12 API
+  // calls exactly ONCE per page load. authUser resolves asynchronously and
+  // its identity can change (undefined -> null, or null -> a real uid) several
+  // times before settling — without this guard, every one of those transitions
+  // re-ran the entire courses/bundles/therapists/testimonials/community/
+  // lectures/chapters fetch sequence from scratch (measured: 3x duplicate
+  // network waterfall on every page load).
+  const catalogLoadedRef = useRef(false);
   // High-water mark for client codes (local fallback when MySQL unavailable)
   const isValidClientCodeFormat = (c: string | undefined): boolean =>
     !!c && /^C\d+$/.test(c) && parseInt(c.slice(1), 10) >= 10000;
@@ -776,6 +784,14 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     isHydratingRef.current = false;
     setRemoteReady(true);
+
+    // authUser resolves asynchronously (undefined -> null/uid), which can re-fire this
+    // effect 2-3x before settling. Without this guard each firing re-ran the ENTIRE
+    // catalog+community fetch sequence (~12 requests, incl. all 5000 lectures) from
+    // scratch — tripling page-load network traffic. Only the first firing loads data;
+    // later firings (e.g. auth churn, isAdmin resolving) are no-ops here.
+    if (catalogLoadedRef.current) return;
+    catalogLoadedRef.current = true;
 
     // Load community content for all users (deferred 300ms to let critical auth/catalog load first)
     setTimeout(() => {

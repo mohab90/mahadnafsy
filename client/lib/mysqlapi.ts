@@ -10,7 +10,14 @@ function getToken(): string | null {
   return localStorage.getItem('mahad-token');
 }
 
-const REQUEST_TIMEOUT_MS = 30_000;
+// Was 30s with up to 2 retries (3 total attempts) and 3-5s backoff between each —
+// worst case ~98s of pure waiting on a single failed endpoint, and since the home
+// page fires ~12 of these in parallel, any transient hiccup turned into a 3x
+// request-storm exactly when the server was already struggling. A real deploy
+// restart recovers in ~1s (measured), so this window only needs to be short.
+const REQUEST_TIMEOUT_MS = 8_000;
+const MAX_RETRIES = 1;
+const RETRY_BACKOFF_MS = 1_000;
 
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
@@ -23,18 +30,18 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
   try {
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include', signal: controller.signal });
     clearTimeout(timeoutId);
-    // Auto-retry on 502/503/504 (server restarting) up to 2 extra attempts
-    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < 2) {
-      await new Promise(r => setTimeout(r, 3000 + _retry * 2000));
+    // Auto-retry on 502/503/504 (server restarting) — 1 extra attempt only.
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && _retry < MAX_RETRIES) {
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
-    // Retry on network failure (TypeError: Failed to fetch) up to 2 times
-    if (err instanceof TypeError && _retry < 2) {
-      await new Promise(r => setTimeout(r, 3000 + _retry * 2000));
+    // Retry on network failure (TypeError: Failed to fetch) — 1 extra attempt only.
+    if (err instanceof TypeError && _retry < MAX_RETRIES) {
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
     throw err;
