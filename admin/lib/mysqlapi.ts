@@ -118,7 +118,13 @@ export const mysqlAdmin = {
   listAllCourses:          (limit = 500)  => apiFetch<AR[]>(`/admin/courses?limit=${limit}`, {}, A),
   getOnlineUsers:          ()             => apiFetch<AR[]>('/admin/online-users', {}, A),
   listAllTherapists:       ()             => apiFetch<AR[]>('/admin/therapists', {}, A),
-  listAllSubscribers:      async (pageSize = 2000): Promise<AR[]> => {
+  // pageSize=5000 matches the server's parseLimit(...,500,5000) hard cap on both
+  // endpoints — the largest page the server will ever actually return. At the
+  // real prod scale (1164 subscribers, 13173 leads) this cuts the sequential
+  // round-trips needed to load everything from 1/7 down to 1/3, since each
+  // request already gets the maximum the server allows instead of an arbitrary
+  // smaller 2000 that forced extra round trips for no benefit.
+  listAllSubscribers:      async (pageSize = 5000): Promise<AR[]> => {
     const all: AR[] = [];
     let offset = 0;
     while (true) {
@@ -129,7 +135,7 @@ export const mysqlAdmin = {
     }
     return all;
   },
-  listAllLeads:            async (pageSize = 2000): Promise<AR[]> => {
+  listAllLeads:            async (pageSize = 5000): Promise<AR[]> => {
     const all: AR[] = [];
     let offset = 0;
     while (true) {
