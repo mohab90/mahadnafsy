@@ -85,7 +85,7 @@ export function StudentCoursesTab({
         return (
           <div key={course.id} className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md">
             <div className="relative h-44 overflow-hidden">
-              <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+              <img src={course.thumbnail} alt={course.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <span className={`absolute right-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold ${isFull ? 'bg-green-500 text-white' : 'bg-yellow-400 text-gray-900'}`}>
                 {isFull ? 'وصول كامل' : 'جزئي'}

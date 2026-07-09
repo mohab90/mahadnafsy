@@ -91,7 +91,7 @@ export function StudentQuizTab({
             return (
               <div key={course.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                 <div className="mb-3 flex items-start gap-3">
-                  {course.thumbnail && <img src={course.thumbnail} alt="" className="h-12 w-12 flex-shrink-0 rounded-xl object-cover" />}
+                  {course.thumbnail && <img src={course.thumbnail} alt="" loading="lazy" decoding="async" className="h-12 w-12 flex-shrink-0 rounded-xl object-cover" />}
                   <div>
                     <p className="text-sm font-bold leading-snug text-gray-800">{course.title}</p>
                     {quiz && <p className="mt-0.5 text-xs text-gray-400">{quiz.questions.length} سؤال - النجاح {quiz.passingScore}%</p>}
