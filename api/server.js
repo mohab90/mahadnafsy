@@ -130,8 +130,15 @@ setInterval(() => {
   logger.info(`[memory] rss=${Math.round(mem.rss/1048576)}MB heap=${Math.round(mem.heapUsed/1048576)}MB/${Math.round(mem.heapTotal/1048576)}MB ext=${Math.round(mem.external/1048576)}MB`);
 }, 10 * 60 * 1000);
 
-// Startup schema/data tasks live in lib/startupTasks.js until fully converted to numbered SQL migrations.
+// Startup schema/data tasks live in lib/startupTasks.js (frozen — no NEW DDL
+// here; every new schema change is a numbered file in api/migrations/ applied by
+// the runner below). Kept for backward-compat on installs that predate the runner.
 registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, sendWhatsApp, uuidv4 });
+
+// Numbered-migration runner: baselines 001..033 on existing DBs, applies only
+// new (034+) migrations, tracked in schema_migrations. Non-blocking + fail-safe.
+require('./lib/migrationRunner').runMigrations(pool)
+  .catch(e => logger.error('[migrate] runner error:', e.message));
 
 const { execFile, exec } = require('child_process');
 const _fs       = require('fs');
