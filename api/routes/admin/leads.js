@@ -274,9 +274,9 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
           isNew        = true;
           if (!dryRun) {
             await conn.query(
-              `INSERT INTO subscribers (id,client_code,name,email,phone,national_id,whatsapp,nationality,branch,discount,is_active,notes,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)`,
-              [subscriberId,clientCode,name,email,phone,nationalId,whatsapp,nationality,'DAQQI',discount,notes,createdAt]
+              `INSERT INTO subscribers (id,client_code,name,email,phone,national_id,whatsapp,nationality,branch,discount,is_active,notes,created_at,tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              [subscriberId,clientCode,name,email,phone,nationalId,whatsapp,nationality,'DAQQI',discount,notes,createdAt,req.tenantId]
             );
           }
           stats.newSubscribers++;
@@ -291,9 +291,9 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
           } else {
             if (!dryRun) {
               await conn.query(
-                `INSERT INTO enrollments (id,subscriber_id,course_id,enrolled_at,access_type) VALUES (?,?,?,?,?)
+                `INSERT INTO enrollments (id,subscriber_id,course_id,enrolled_at,access_type,tenant_id) VALUES (?,?,?,?,?,?)
                  ON DUPLICATE KEY UPDATE access_type=VALUES(access_type)`,
-                [uuidv4(),subscriberId,courseId,createdAt,'FULL']
+                [uuidv4(),subscriberId,courseId,createdAt,'FULL',req.tenantId]
               );
             }
             stats.newEnrollments++;
@@ -306,9 +306,9 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
         if (payAmount > 0) {
           if (!dryRun) {
             await conn.query(
-              `INSERT INTO payments (id,subscriber_id,course_id,amount,currency,payment_type,payment_method,transaction_id,is_installment,course_expected,date,note,status)
-               VALUES (?,?,?,?,?,'COURSE',?,?,?,?,?,?,'paid')`,
-              [uuidv4(),subscriberId,courseId||null,payAmount,payCurrency,payMethod,transactionId,isInstallment,courseExpected,payDate,payNote]
+              `INSERT INTO payments (id,subscriber_id,course_id,amount,currency,payment_type,payment_method,transaction_id,is_installment,course_expected,date,note,status,tenant_id)
+               VALUES (?,?,?,?,?,'COURSE',?,?,?,?,?,?,'paid',?)`,
+              [uuidv4(),subscriberId,courseId||null,payAmount,payCurrency,payMethod,transactionId,isInstallment,courseExpected,payDate,payNote,req.tenantId]
             );
           }
           stats.newPayments++;
