@@ -12,6 +12,15 @@ const COURSE_COLS = `id, course_code, slug, title, title_en, title_ar, descripti
   certificate_template_url, certificate_template_name, is_published, sort_order,
   modules_json, gallery_images_json, details_content_json, course_modules_json, created_at`;
 
+// Lighter column set for list/grid views (Home, Courses grid, Bundle course lists) —
+// excludes the full description + curriculum/gallery JSON blobs, which only
+// CourseDetails.tsx renders and which it fetches itself via GET /api/courses/:id.
+// Cuts the catalog payload roughly in half on every fresh session load.
+const COURSE_LIST_COLS = `id, course_code, slug, title, title_en, title_ar,
+  short_description, instructor, thumbnail, category, type,
+  price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
+  rating, students, duration, level, hours, is_published, sort_order, created_at`;
+
 function mapCourse(r) {
   return {
     id: r.id,
@@ -260,4 +269,4 @@ async function getNextClientCode(conn) {
   return `C${row.next_value - 1}`;
 }
 
-module.exports = { COURSE_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode };
+module.exports = { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode };

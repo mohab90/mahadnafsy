@@ -8,7 +8,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
-const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber } = require('../lib/mappers');
+const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber } = require('../lib/mappers');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { ADMIN_EMAILS, ADMIN_UIDS, optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
@@ -25,7 +25,7 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
     const offset = parseOffset(req.query.offset);
     const data = await cached(`courses:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT ${COURSE_COLS} FROM courses WHERE is_published = 1
+        `SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1
          ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
         [limit, offset]
       );
@@ -423,7 +423,7 @@ router.get('/api/bundles', async (req, res) => {
          GROUP BY b.id
          ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [limit]
       );
-      const [courses] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE is_published = 1`);
+      const [courses] = await pool.query(`SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1`);
       return rows.map(r => mapBundle(r, courses.map(mapCourse)));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
