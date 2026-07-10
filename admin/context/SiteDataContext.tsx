@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
 import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, LeadType, BranchType, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, CourseAccessSetting, AutomationWorkflow, AutomationTrigger, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, MessagingChannel, InboxConversation, FacebookLeadAdsConfig, PaymentHistoryEntry, CourseQuiz, QuizAttempt, LiveStream } from '../types';
 import { mysqlCatalog, mysqlAdmin, mysqlClient, mysqlForms } from '../lib/mysqlapi';
-import { applyBrandTheme, BRAND_KEYS } from '../lib/brandTheme';
+import { applyBrandTheme } from '../lib/brandTheme';
 import { useAuth } from './AuthContext';
 import {
   defaultCommunityEvents,
@@ -18,6 +18,23 @@ import {
   seedData,
 } from './siteDataSeed';
 import { computeInitialSiteData, STORAGE_KEY, DATA_VERSION } from './siteDataInitial';
+import { useCurrencyState } from './site-data-hooks/useCurrencyState';
+import { useActivityLogState, nowLabel } from './site-data-hooks/useActivityLogState';
+import { useClientCodeIssuance } from './site-data-hooks/useClientCodeIssuance';
+import { useDiscountsState } from './site-data-hooks/useDiscountsState';
+import { useNotificationsState } from './site-data-hooks/useNotificationsState';
+import { useExpensesState } from './site-data-hooks/useExpensesState';
+import { useLiveStreamsState } from './site-data-hooks/useLiveStreamsState';
+import { useCourseQuizzesState } from './site-data-hooks/useCourseQuizzesState';
+import { useDaqqiRoundsState } from './site-data-hooks/useDaqqiRoundsState';
+import { useContactMessagesState } from './site-data-hooks/useContactMessagesState';
+import { useCommunityState } from './site-data-hooks/useCommunityState';
+import { useStaffState } from './site-data-hooks/useStaffState';
+import { useAiMessagingConfigState } from './site-data-hooks/useAiMessagingConfigState';
+import { useContentState } from './site-data-hooks/useContentState';
+import { useCatalogState } from './site-data-hooks/useCatalogState';
+import { useLecturesChaptersState } from './site-data-hooks/useLecturesChaptersState';
+import { useAutomationState } from './site-data-hooks/useAutomationState';
 
 interface SiteDataShape {
   courses: Course[];
@@ -181,64 +198,23 @@ const CONTENT_FORCED_UPDATES: Record<string, string> = {
 
 const SiteDataContext = createContext<SiteDataShape | null>(null);
 
-function nowLabel() {
-  return new Date().toLocaleString('ar-EG-u-nu-latn', {
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const initial = computeInitialSiteData();
 
-  const [courses, setCourses] = useState<Course[]>(initial.courses);
-  const [bundles, setBundles] = useState<Bundle[]>(initial.bundles);
-  const [therapists, setTherapists] = useState<Therapist[]>(initial.therapists);
-  const [testimonials, setTestimonials] = useState<TestimonialItem[]>(initial.testimonials);
   const [subscribers, setSubscribers] = useState<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
   const subscribersRef = useRef<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
   subscribersRef.current = subscribers;
   const [leads, setLeads] = useState<LeadItem[]>(initial.leads || defaultLeads);
   const leadsRef = useRef<LeadItem[]>(initial.leads || defaultLeads);
   leadsRef.current = leads;
-  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(initial.staffMembers || defaultStaffMembers);
-  const staffMembersRef = useRef<StaffMember[]>(initial.staffMembers || defaultStaffMembers);
-  staffMembersRef.current = staffMembers;
   // Scoped data for non-admin staff — set by Dashboard after fetchSalesData
   const [staffScopedSubscribers, setStaffScopedSubscribers] = useState<SubscriberItem[]>([]);
   const [staffScopedLeads, setStaffScopedLeads] = useState<LeadItem[]>([]);
   const [consultations, setConsultations] = useState<ConsultationItem[]>(initial.consultations || defaultConsultations);
-  const [lectures, setLectures] = useState<CourseLectureItem[]>(initial.lectures || defaultLectures);
-  const [chapters, setChapters] = useState<CourseChapterItem[]>(initial.chapters || []);
   const [orders, setOrders] = useState<OrderItem[]>(initial.orders || []);
-  const [communityPosts, setCommunityPosts] = useState<CommunityPostItem[]>(initial.communityPosts || defaultCommunityPosts);
-  const [communityLibraryItems, setCommunityLibraryItems] = useState<CommunityLibraryItem[]>(initial.communityLibraryItems || defaultCommunityLibraryItems);
-  const [communityVideos, setCommunityVideos] = useState<CommunityVideoItem[]>(initial.communityVideos || defaultCommunityVideos);
-  const [communityEvents, setCommunityEvents] = useState<CommunityEventItem[]>(initial.communityEvents || defaultCommunityEvents);
-  const [content, setContent] = useState<Record<string, string>>(initial.content);
-  const contentRef = useRef<Record<string, string>>(initial.content);
-  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>(initial.activityLogs);
-  const [discounts, setDiscounts] = useState<DiscountRule[]>((initial as typeof seedData & { discounts?: DiscountRule[] }).discounts || []);
-  const [notifications, setNotifications] = useState<NotificationBroadcast[]>((initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || []);
-  const [courseQuizzes, setCourseQuizzes] = useState<CourseQuiz[]>((initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || []);
-  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>((initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || []);
-  const [liveStreams, setLiveStreams] = useState<LiveStream[]>((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || []);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>((initial as typeof seedData & { expenses?: ExpenseItem[] }).expenses || []);
-  const [daqqiRounds, setDaqqiRounds] = useState<DaqqiRound[]>((initial as typeof seedData & { daqqiRounds?: DaqqiRound[] }).daqqiRounds || []);
-  const [joinUsApplications, setJoinUsApplications] = useState<JoinUsApplication[]>((initial as typeof seedData & { joinUsApplications?: JoinUsApplication[] }).joinUsApplications || []);
-  const [contactMessages, setContactMessages] = useState<ContactMessage[]>((initial as typeof seedData & { contactMessages?: ContactMessage[] }).contactMessages || []);
-  const [automationWorkflows, setAutomationWorkflows] = useState<AutomationWorkflow[]>((initial as typeof seedData & { automationWorkflows?: AutomationWorkflow[] }).automationWorkflows || []);
-  const [adminAiConfig, setAdminAiConfigLocal] = useState<AdminAiConfig | null>((initial as typeof seedData & { adminAiConfig?: AdminAiConfig }).adminAiConfig || null);
-  const [aiAgentConfig, setAiAgentConfigState] = useState<AiAgentConfig | null>((initial as typeof seedData & { aiAgentConfig?: AiAgentConfig }).aiAgentConfig || null);
-  const [messagingChannels, setMessagingChannelsState] = useState<MessagingChannelsConfig | null>((initial as typeof seedData & { messagingChannels?: MessagingChannelsConfig }).messagingChannels || null);
-  const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>((initial as typeof seedData & { inboxConversations?: InboxConversation[] }).inboxConversations || []);
-  const [fbLeadAdsConfig, setFbLeadAdsConfigState] = useState<FacebookLeadAdsConfig | null>((initial as typeof seedData & { fbLeadAdsConfig?: FacebookLeadAdsConfig }).fbLeadAdsConfig || null);
-  const [currency, setCurrencyState] = useState<Currency>('USD');
+  const { currency, setCurrency } = useCurrencyState();
   const { authUser, setAuthUser, logout, refreshAuth } = useAuth();
+  const { activityLogs, setActivityLogs, track } = useActivityLogState(authUser, initial.activityLogs);
   const [remoteReady, setRemoteReady] = useState(false);
   const isHydratingRef = useRef(true);
   // Timestamp of last local CRM/config mutation
@@ -252,118 +228,75 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const dbContentLoadedRef = useRef(false);
   // Round-robin counter for auto-assigning new leads to sales staff
   const roundRobinIndexRef = useRef(0);
-  // High-water mark for client codes (local fallback when MySQL unavailable)
-  const isValidClientCodeFormat = (c: string | undefined): boolean =>
-    !!c && /^C\d+$/.test(c) && parseInt(c.slice(1), 10) >= 10000;
-  const highWaterCodeRef = useRef<number>((() => {
-    const allInitial = [
-      ...initial.leads.map((l: LeadItem) => l.clientCode),
-      ...initial.subscribers.map((s: SubscriberItem) => s.clientCode),
-    ].filter(isValidClientCodeFormat).map((c) => parseInt(c!.slice(1), 10));
-    return allInitial.length > 0 ? Math.max(...allInitial) : 10000;
-  })());
-
-  // ── Client-code issuance (atomic via MySQL counter) ───────────────────────────
-  const issueClientCodeAsync = async (): Promise<string> => {
-    const liveNums = [
-      ...subscribersRef.current.map(s => s.clientCode),
-      ...leadsRef.current.map(l => l.clientCode),
-    ].filter(isValidClientCodeFormat).map(c => parseInt(c!.slice(1), 10));
-    const liveMax = liveNums.length > 0 ? Math.max(...liveNums) : 10000;
-    const localFloor = Math.max(highWaterCodeRef.current, liveMax);
-    highWaterCodeRef.current = localFloor + 1;
-    try {
-      const { code } = await mysqlAdmin.issueClientCode();
-      const num = parseInt(code.slice(1), 10);
-      if (num > highWaterCodeRef.current) highWaterCodeRef.current = num;
-      return code;
-    } catch {
-      return `C${localFloor + 1}`;
-    }
-  };
-
-  const issueClientCode = (): string => {
-    const liveNums = [
-      ...subscribersRef.current.map(s => s.clientCode),
-      ...leadsRef.current.map(l => l.clientCode),
-    ].filter(isValidClientCodeFormat).map(c => parseInt(c!.slice(1), 10));
-    const liveMax = liveNums.length > 0 ? Math.max(...liveNums) : 10000;
-    const next = Math.max(highWaterCodeRef.current, liveMax) + 1;
-    highWaterCodeRef.current = next;
-    return `C${next}`;
-  };
-  const track = (action: string, entity: string, label: string) => {
-    const actor = authUser?.email || authUser?.uid || 'unknown';
-    const actorName = authUser?.email?.split('@')[0] || actor;
-    // Auto-derive section from entity
-    const sectionMap: Record<string, string> = {
-      course: 'إدارة الأكاديمية', lecture: 'إدارة الأكاديمية', chapter: 'إدارة الأكاديمية',
-      bundle: 'إدارة الأكاديمية', quiz: 'إدارة الأكاديمية', live_stream: 'إدارة الأكاديمية',
-      institute_gallery: 'إدارة الأكاديمية', testimonial: 'إدارة الأكاديمية',
-      subscriber: 'إدارة العملاء', lead: 'إدارة العملاء', clientCode: 'إدارة العملاء',
-      consultation: 'الاستشارات', therapist: 'المحاضرون',
-      order: 'المالية', financial: 'المالية', discount: 'المالية',
-      staff: 'إدارة الفريق', content: 'إعدادات الموقع',
-      community_post: 'المجتمع', community_library: 'المجتمع',
-      community_video: 'المجتمع', community_event: 'المجتمع',
-    };
-    const section = sectionMap[entity] || 'عام';
-    const newLog = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      action,
-      entity,
-      label,
-      at: nowLabel(),
-      actor,
-      actorName,
-      section,
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-    persistActivityLogToCollection(newLog);
-  };
-
-  // Currency: respect localStorage override, otherwise auto-detect by country
-  useEffect(() => {
-    const stored = localStorage.getItem('mahad-currency') as Currency | null;
-    if (stored && ['EGP', 'SAR', 'USD'].includes(stored)) {
-      setCurrencyState(stored);
-      return;
-    }
-    const countryToCurrency = (country?: string): Currency => {
-      if (country === 'EG') return 'EGP';
-      if (country === 'SA') return 'SAR';
-      return 'USD';
-    };
-    const withTimeout = (url: string, ms = 4000) =>
-      Promise.race([fetch(url), new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), ms))]) as Promise<Response>;
-
-    // Primary: api.country.is
-    withTimeout('https://api.country.is/')
-      .then(r => r.json())
-      .then((d: { country?: string }) => { setCurrencyState(countryToCurrency(d.country)); })
-      .catch(() =>
-        // Fallback 1: ipapi.co
-        withTimeout('https://ipapi.co/json/')
-          .then(r => r.json())
-          .then((d: { country_code?: string }) => { setCurrencyState(countryToCurrency(d.country_code)); })
-          .catch(() =>
-            // Fallback 2: ipinfo.io
-            withTimeout('https://ipinfo.io/json?token=')
-              .then(r => r.json())
-              .then((d: { country?: string }) => { setCurrencyState(countryToCurrency(d.country)); })
-              .catch(() => { setCurrencyState('USD'); })
-          )
-      );
-  }, []);
-
+  const { issueClientCode, issueClientCodeAsync, isValidClientCodeFormat } =
+    useClientCodeIssuance(initial.leads, initial.subscribers, subscribersRef, leadsRef);
+  const {
+    courses, setCourses, addCourse, updateCourse, deleteCourse,
+    bundles, setBundles, addBundle, updateBundle, deleteBundle,
+    therapists, setTherapists, addTherapist, updateTherapist, deleteTherapist,
+    testimonials, setTestimonials, addTestimonial, updateTestimonial, deleteTestimonial,
+  } = useCatalogState(initial.courses, initial.bundles, initial.therapists, initial.testimonials, lastLocalConfigWriteRef, track);
+  const {
+    lectures, setLectures, addLecture, updateLecture, deleteLecture, reloadLectures, getCourseLectures,
+    chapters, setChapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
+  } = useLecturesChaptersState(initial.lectures || defaultLectures, initial.chapters || [], lastLocalConfigWriteRef, track);
+  const { staffMembers, setStaffMembers, staffMembersRef, addStaffMember, updateStaffMember, deleteStaffMember } =
+    useStaffState(initial.staffMembers || defaultStaffMembers, lastCRMWriteRef, track);
+  const { content, setContent, contentRef, setContentValue, mergeContent, addContentKey, removeContentKey } =
+    useContentState(initial.content, lastLocalConfigWriteRef, track);
+  const { discounts, setDiscounts, addDiscount, updateDiscount, deleteDiscount } =
+    useDiscountsState((initial as typeof seedData & { discounts?: DiscountRule[] }).discounts || [], lastLocalConfigWriteRef, track);
+  const { notifications, setNotifications, addNotification, updateNotification, deleteNotification } =
+    useNotificationsState((initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || [], lastLocalConfigWriteRef, track);
+  const { automationWorkflows, setAutomationWorkflows, addAutomationWorkflow, updateAutomationWorkflow, deleteAutomationWorkflow, triggerAutomation } =
+    useAutomationState(
+      (initial as typeof seedData & { automationWorkflows?: AutomationWorkflow[] }).automationWorkflows || [],
+      staffMembers, setLeads, setNotifications, track,
+    );
+  const {
+    courseQuizzes, setCourseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
+    quizAttempts, setQuizAttempts, addQuizAttempt, deleteQuizAttempt,
+  } = useCourseQuizzesState(
+    (initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || [],
+    (initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || [],
+    track,
+  );
+  const { liveStreams, setLiveStreams, addLiveStream, updateLiveStream, deleteLiveStream } =
+    useLiveStreamsState((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [], track);
+  const { expenses, setExpenses, addExpense, updateExpense, deleteExpense } =
+    useExpensesState((initial as typeof seedData & { expenses?: ExpenseItem[] }).expenses || [], lastCRMWriteRef, track);
+  const { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, bulkSetDaqqiRounds } =
+    useDaqqiRoundsState((initial as typeof seedData & { daqqiRounds?: DaqqiRound[] }).daqqiRounds || [], lastCRMWriteRef, track);
+  const [joinUsApplications, setJoinUsApplications] = useState<JoinUsApplication[]>((initial as typeof seedData & { joinUsApplications?: JoinUsApplication[] }).joinUsApplications || []);
+  const { contactMessages, setContactMessages, addContactMessage, updateContactMessage, deleteContactMessage } =
+    useContactMessagesState((initial as typeof seedData & { contactMessages?: ContactMessage[] }).contactMessages || [], track);
+  const {
+    adminAiConfig, setAdminAiConfigLocal, setAdminAiConfig,
+    aiAgentConfig, setAiAgentConfigState, setAiAgentConfig,
+    messagingChannels, setMessagingChannelsState, setMessagingChannels,
+    fbLeadAdsConfig, setFbLeadAdsConfigState, setFbLeadAdsConfig,
+    inboxConversations, setInboxConversations, addInboxConversation, updateInboxConversation, deleteInboxConversation,
+  } = useAiMessagingConfigState(
+    (initial as typeof seedData & { adminAiConfig?: AdminAiConfig }).adminAiConfig || null,
+    (initial as typeof seedData & { aiAgentConfig?: AiAgentConfig }).aiAgentConfig || null,
+    (initial as typeof seedData & { messagingChannels?: MessagingChannelsConfig }).messagingChannels || null,
+    (initial as typeof seedData & { fbLeadAdsConfig?: FacebookLeadAdsConfig }).fbLeadAdsConfig || null,
+    (initial as typeof seedData & { inboxConversations?: InboxConversation[] }).inboxConversations || [],
+    track,
+  );
+  const {
+    communityPosts, setCommunityPosts, addCommunityPost, updateCommunityPost, deleteCommunityPost,
+    communityLibraryItems, setCommunityLibraryItems, addCommunityLibraryItem, updateCommunityLibraryItem, deleteCommunityLibraryItem,
+    communityVideos, setCommunityVideos, addCommunityVideo, updateCommunityVideo, deleteCommunityVideo,
+    communityEvents, setCommunityEvents, addCommunityEvent, updateCommunityEvent, deleteCommunityEvent,
+  } = useCommunityState(
+    initial.communityPosts || defaultCommunityPosts,
+    initial.communityLibraryItems || defaultCommunityLibraryItems,
+    initial.communityVideos || defaultCommunityVideos,
+    initial.communityEvents || defaultCommunityEvents,
+    track,
+  );
   // Auth: restore session via httpOnly cookie — managed by AuthContext (AuthProvider above SiteDataProvider)
-
-
-
-  const setCurrency = (c: Currency) => {
-    localStorage.setItem('mahad-currency', c);
-    setCurrencyState(c);
-  };
 
   const isAdmin = Boolean(authUser?.isAdmin);
 
@@ -410,20 +343,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }).catch(() => {/* silent */});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_applySubscriberData]);
-
-  // Reload lectures + chapters from API (called when VideoPlayer opens without lectures loaded)
-  const reloadLectures = React.useCallback(async () => {
-    try {
-      const [lRes, chRes] = await Promise.allSettled([
-        mysqlCatalog.listLectures(2000),
-        mysqlCatalog.listChapters(1000),
-      ]);
-      if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
-        setLectures(lRes.value as unknown as CourseLectureItem[]);
-      if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
-        setChapters(chRes.value as unknown as CourseChapterItem[]);
-    } catch { /* silent */ }
-  }, []);
 
   const reloadLeads = React.useCallback(async () => {
     try {
@@ -793,194 +712,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 
 
-  const addCourse = (course: Course) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    let resolvedCourse = course;
-    setCourses((prev) => {
-      if (course.courseCode) {
-        resolvedCourse = course;
-        return [course, ...prev];
-      }
-      const maxCode = prev
-        .map((c) => parseInt(c.courseCode || '0', 10))
-        .filter((n) => !isNaN(n) && n >= 3000);
-      const nextCode = maxCode.length > 0 ? Math.max(...maxCode) + 1 : 3000;
-      resolvedCourse = { ...course, courseCode: String(nextCode) };
-      return [resolvedCourse, ...prev];
-    });
-    // Write after state update so resolvedCourse is fully set
-    setTimeout(() => persistCourseToCollection(resolvedCourse), 0);
-    void mysqlAdmin.saveCourse(resolvedCourse as unknown as Record<string,unknown>);
-    track('create', 'course', resolvedCourse.title);
-  };
-
-  const updateCourse = (course: Course) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setCourses((prev) => prev.map((item) => (item.id === course.id ? course : item)));
-    // Update all bundles that embed this course
-    setBundles((prev) => {
-      const updated = prev.map((bundle) => {
-        const hasCourse = bundle.courses.some(c => c.id === course.id);
-        if (!hasCourse) return bundle;
-        const newBundle = { ...bundle, courses: bundle.courses.map((c) => (c.id === course.id ? course : c)) };
-        persistBundleToCollection(newBundle);
-        return newBundle;
-      });
-      return updated;
-    });
-    persistCourseToCollection(course);
-    void mysqlAdmin.saveCourse(course as unknown as Record<string,unknown>);
-    track('update', 'course', course.title);
-  };
-
-  const deleteCourse = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setCourses((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteCourse(id);
-    // Remove course from bundles that embed it
-    setBundles((prev) => {
-      return prev.map((bundle) => {
-        if (!bundle.courses.some(c => c.id === id)) return bundle;
-        const newBundle = { ...bundle, courses: bundle.courses.filter((c) => c.id !== id) };
-        persistBundleToCollection(newBundle);
-        return newBundle;
-      });
-    });
-    track('delete', 'course', id);
-  };
-
-  const addTherapist = (therapist: Therapist) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const nextTherapists = [therapist, ...therapists];
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>);
-    track('create', 'therapist', therapist.name);
-  };
-
-  const updateTherapist = (therapist: Therapist) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const old = therapists.find((item) => item.id === therapist.id);
-    const nextTherapists = therapists.map((item) => (item.id === therapist.id ? therapist : item));
-    if (old && old.name !== therapist.name) {
-      setCourses((coursesPrev) => {
-        const updated = coursesPrev.map((c) => (c.instructor === old.name ? { ...c, instructor: therapist.name } : c));
-        // Persist any courses that changed instructor name to their collection documents
-        updated.filter(c => c.instructor === therapist.name && coursesPrev.find(oc => oc.id === c.id)?.instructor === old.name)
-          .forEach(c => persistCourseToCollection(c));
-        return updated;
-      });
-    }
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>);
-    track('update', 'therapist', therapist.name);
-  };
-
-  const deleteTherapist = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const target = therapists.find((item) => item.id === id);
-    const nextTherapists = therapists.filter((item) => item.id !== id);
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.deleteTherapist(id);
-    if (target) {
-      track('delete', 'therapist', target.name);
-    }
-  };
-
-  const bundleToServerPayload = (bundle: Bundle): Record<string, unknown> => ({
-    id: bundle.id,
-    title: bundle.title,
-    title_en: bundle.titleEn || null,
-    slug: bundle.slug || null,
-    short_description: bundle.shortDescription || '',
-    description: bundle.description,
-    thumbnail: bundle.thumbnail || '',
-    video_url: bundle.videoUrl || null,
-    price_egp: bundle.price?.EGP || 0,
-    price_sar: bundle.price?.SAR || 0,
-    price_usd: bundle.price?.USD || 0,
-    orig_price_egp: bundle.originalPrice?.EGP || 0,
-    orig_price_sar: bundle.originalPrice?.SAR || 0,
-    orig_price_usd: bundle.originalPrice?.USD || 0,
-    details_content_json: bundle.detailsContent ? JSON.stringify(bundle.detailsContent) : null,
-    is_published: 1,
-    sort_order: 0,
-    course_ids: bundle.courses.map((c) => c.id),
-  });
-
-  const addBundle = (bundle: Bundle) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => [bundle, ...prev]);
-    persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
-    track('create', 'bundle', bundle.title);
-  };
-
-  const updateBundle = (bundle: Bundle) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => prev.map((item) => (item.id === bundle.id ? bundle : item)));
-    persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
-    track('update', 'bundle', bundle.title);
-  };
-
-  const deleteBundle = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteBundle(id);
-    track('delete', 'bundle', id);
-  };
-
-  const addTestimonial = (item: TestimonialItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...testimonials];
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>);
-    track('create', 'testimonial', item.name);
-  };
-
-  const updateTestimonial = (item: TestimonialItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = testimonials.map((row) => (row.id === item.id ? item : row));
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>);
-    track('update', 'testimonial', item.name);
-  };
-
-  const deleteTestimonial = (id: number) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = testimonials.filter((row) => row.id !== id);
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.deleteTestimonial(String(id));
-    track('delete', 'testimonial', String(id));
-  };
-
-  // Write the full therapists array directly to siteData/config immediately.
-  // Called from every therapist mutation so changes appear on the website without waiting
-  // for the debounced config persist (which can be skipped by the echo-loop guard).
-  // ── Direct-write helpers for siteData/config fields ──────────────────────────────────────────
-  // Each of these writes a SINGLE field immediately on mutation, bypassing the debounce.
-  // This ensures the website sees changes instantly even if the echo-loop guard skips the debounce.
-  const _persistConfigField = (field: string, value: unknown) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    void mysqlAdmin.saveSettings({ [field]: JSON.parse(JSON.stringify(value)) } as Record<string,unknown>).catch(() => {});
-  };
-  const persistTherapistsToConfig = (updatedTherapists: Therapist[]) => _persistConfigField('therapists', updatedTherapists);
-  const persistTestimonialsToConfig = (items: TestimonialItem[]) => _persistConfigField('testimonials', items);
-  const persistContentToConfig = (c: Record<string, string>) => void mysqlAdmin.saveContent(c as Record<string,unknown>).catch(() => {});
-  const persistDiscountsToConfig = (items: DiscountRule[]) => void mysqlAdmin.saveDiscounts(items as unknown[]).catch(() => {});
-  const persistNotificationsToConfig = (items: NotificationBroadcast[]) => void mysqlAdmin.saveNotifications(items as unknown[]).catch(() => {});
-
-  // Direct-write for settings fields
-  const _persistSettingsField = (field: string, value: unknown) => {
-    void mysqlAdmin.saveSettings({ [field]: JSON.parse(JSON.stringify(value)) } as Record<string,unknown>).catch(() => {});
-  };
-
   // MySQL-only: subscriber data lives in MySQL.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistSubscriberToCollection = (_sub: SubscriberItem) => { /* MySQL */ };
@@ -989,80 +720,13 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistLeadToCollection = (_lead: LeadItem) => { /* MySQL */ };
 
-  // MySQL-only: staff data lives in MySQL.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistStaffMemberToCollection = (_member: StaffMember) => { /* MySQL */ };
-
-  // Write a single course document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistCourseToCollection = (_course: Course) => { /* PG-only — no Firestore write */ };
-
-  // Write a single bundle document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistBundleToCollection = (_bundle: Bundle) => { /* PG-only — no Firestore write */ };
-
-  // Write a single lecture document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistLectureToCollection = (_lecture: CourseLectureItem) => { /* PG-only — no Firestore write */ };
-
-  // Write a single chapter document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistChapterToCollection = (_chapter: CourseChapterItem) => { /* PG-only — no Firestore write */ };
-
-  // ── Community & Workflow collection persist helpers ──────────────────────────────────────────
-  const persistCommunityPostToCollection = (post: CommunityPostItem) => {
-    void mysqlAdmin.saveCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistCommunityLibraryItemToCollection = (item: CommunityLibraryItem) => {
-    void mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistCommunityVideoToCollection = (video: CommunityVideoItem) => {
-    void mysqlAdmin.saveCommunityVideo(video as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistCommunityEventToCollection = (event: CommunityEventItem) => {
-    void mysqlAdmin.saveCommunityEvent(event as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistAutomationWorkflowToCollection = (workflow: AutomationWorkflow) => {
-    void mysqlAdmin.saveAutomationWorkflow(workflow as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistCourseQuizToCollection = (quiz: CourseQuiz) => {
-    void mysqlAdmin.saveQuiz(quiz as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistLiveStreamToCollection = (stream: LiveStream) => {
-    void mysqlAdmin.saveLiveStream(stream as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistInboxConversationToCollection = (conv: InboxConversation) => {
-    void mysqlAdmin.saveInboxConversation(conv as unknown as Record<string,unknown>).catch(() => {});
-  };
-
   // ── CRM transactional persist helpers — PG-only, no Firestore writes ──────────────────────
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistConsultationToCollection = (_item: ConsultationItem) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistOrderToCollection = (_item: OrderItem) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistActivityLogToCollection = (_item: ActivityLogItem) => { /* PG-only */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistExpenseToCollection = (_item: ExpenseItem) => { /* PG-only */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistDaqqiRoundToCollection = (_item: DaqqiRound) => { /* PG-only */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistJoinUsToCollection = (_item: JoinUsApplication) => { /* PG-only */ };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistContactMessageToCollection = (item: ContactMessage) => {
-    // Was a no-op → status/note changes never persisted. Save to the contact_messages table.
-    void mysqlAdmin.updateContactMessage(item.id, item.status, (item as unknown as { adminNote?: string }).adminNote).catch(() => {});
-  };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistQuizAttemptToCollection = (_item: QuizAttempt) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistPaymentHistoryToCollection = (_subscriberId: string, _entries: PaymentHistoryEntry[]) => { /* PG-only */ };
 
@@ -1379,42 +1043,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return assigned;
   };
 
-  const addStaffMember = (item: StaffMember) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextStaff = [item, ...staffMembersRef.current];
-    staffMembersRef.current = nextStaff;
-    setStaffMembers(nextStaff);
-    void mysqlAdmin.saveStaff(item as unknown as Record<string,unknown>).then(() => {
-      persistStaffMemberToCollection(item);
-    }).catch((err) => {
-      console.error('[Staff] Failed to save staff to MySQL — rolling back:', err);
-      const reverted = staffMembersRef.current.filter(s => s.id !== item.id);
-      staffMembersRef.current = reverted;
-      setStaffMembers(reverted);
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'staff', name: item.name } }));
-    });
-    track('create', 'staff', item.name);
-  };
-
-  const updateStaffMember = (item: StaffMember) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextStaff = staffMembersRef.current.map((row) => (row.id === item.id ? item : row));
-    staffMembersRef.current = nextStaff;
-    setStaffMembers(nextStaff);
-    persistStaffMemberToCollection(item);
-    void mysqlAdmin.saveStaff(item as unknown as Record<string,unknown>);
-    track('update', 'staff', item.name);
-  };
-
-  const deleteStaffMember = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextStaff = staffMembersRef.current.filter((row) => row.id !== id);
-    staffMembersRef.current = nextStaff;
-    setStaffMembers(nextStaff);
-    void mysqlAdmin.deleteStaff(id);
-    track('delete', 'staff', id);
-  };
-
   const addConsultation = (item: ConsultationItem) => {
     lastCRMWriteRef.current = Date.now();
     // Auto-create a lead if this consultation client is not already in the system
@@ -1483,62 +1111,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     track('delete', 'consultation', id);
   };
 
-  const addLecture = (item: CourseLectureItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => [item, ...prev]);
-    persistLectureToCollection(item);
-    void mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>);
-    track('create', 'lecture', item.title);
-  };
-
-  const updateLecture = (item: CourseLectureItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistLectureToCollection(item);
-    void mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>);
-    track('update', 'lecture', item.title);
-  };
-
-  const deleteLecture = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteLecture(id);
-    track('delete', 'lecture', id);
-  };
-
-  const addChapter = (item: CourseChapterItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setChapters((prev) => [...prev, item]);
-    persistChapterToCollection(item);
-    void mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>);
-    track('create', 'chapter', item.title);
-  };
-
-  const updateChapter = (item: CourseChapterItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setChapters((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistChapterToCollection(item);
-    void mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>);
-    track('update', 'chapter', item.title);
-  };
-
-  const deleteChapter = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setChapters((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteChapter(id);
-    // Unlink lectures belonging to deleted chapter and persist updated lectures
-    setLectures((prev) => {
-      const updated = prev.map((row) => (row.chapterId === id ? { ...row, chapterId: undefined } : row));
-      updated.filter(r => r.chapterId === undefined && prev.find(p => p.id === r.id)?.chapterId === id)
-        .forEach(r => persistLectureToCollection(r));
-      return updated;
-    });
-    track('delete', 'chapter', id);
-  };
-
-  const getCourseChapters = (courseId: string) =>
-    chapters.filter((row) => row.courseId === courseId).sort((a, b) => a.order - b.order);
-
   const addOrder = (item: OrderItem) => {
     lastCRMWriteRef.current = Date.now();
     setOrders((prev) => [item, ...prev]);
@@ -1572,275 +1144,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
     void mysqlAdmin.deleteOrder(id);
     track('delete', 'order', id);
-  };
-
-  const addCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => [item, ...prev]);
-    persistCommunityPostToCollection(item);
-    track('create', 'community_post', item.title);
-  };
-
-  const updateCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityPostToCollection(item);
-    track('update', 'community_post', item.title);
-  };
-
-  const deleteCommunityPost = (id: string) => {
-    setCommunityPosts((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityPost(id).catch(() => {});
-    track('delete', 'community_post', id);
-  };
-
-  const addCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => [item, ...prev]);
-    persistCommunityLibraryItemToCollection(item);
-    track('create', 'community_library', item.title);
-  };
-
-  const updateCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityLibraryItemToCollection(item);
-    track('update', 'community_library', item.title);
-  };
-
-  const deleteCommunityLibraryItem = (id: string) => {
-    setCommunityLibraryItems((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityLibraryItem(id).catch(() => {});
-    track('delete', 'community_library', id);
-  };
-
-  const addCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => [item, ...prev]);
-    persistCommunityVideoToCollection(item);
-    track('create', 'community_video', item.title);
-  };
-
-  const updateCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityVideoToCollection(item);
-    track('update', 'community_video', item.title);
-  };
-
-  const deleteCommunityVideo = (id: string) => {
-    setCommunityVideos((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityVideo(id).catch(() => {});
-    track('delete', 'community_video', id);
-  };
-
-  const addCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => [item, ...prev]);
-    persistCommunityEventToCollection(item);
-    track('create', 'community_event', item.title);
-  };
-
-  const updateCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityEventToCollection(item);
-    track('update', 'community_event', item.title);
-  };
-
-  const deleteCommunityEvent = (id: string) => {
-    setCommunityEvents((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityEvent(id).catch(() => {});
-    track('delete', 'community_event', id);
-  };
-
-  const getCourseLectures = (courseId: string) => {
-    const courseChapters = chapters.filter((c) => c.courseId === courseId);
-    return lectures
-      .filter((row) => row.courseId === courseId)
-      .sort((a, b) => {
-        // Sort by chapter order first, then by lecture order within the chapter.
-        // This ensures limited-access slicing (first N videos) is always from the
-        // beginning of the course, not interleaved across chapters.
-        const chA = courseChapters.find((c) => c.id === a.chapterId)?.order ?? Infinity;
-        const chB = courseChapters.find((c) => c.id === b.chapterId)?.order ?? Infinity;
-        if (chA !== chB) return chA - chB;
-        return a.order - b.order;
-      });
-  };
-
-  const mergeContent = (incoming: Record<string, string>) => {
-    contentRef.current = { ...contentRef.current, ...incoming };
-    setContent(contentRef.current);
-  };
-
-  const setContentValue = (key: string, value: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    // Use contentRef (not the stale `content` state) so that calling setContentValue
-    // multiple times in the same event handler accumulates all keys correctly instead
-    // of each call overwriting the previous one with the same stale base.
-    contentRef.current = { ...contentRef.current, [key]: value };
-    const next = contentRef.current;
-    setContent(next);
-    persistContentToConfig(next);
-    if (BRAND_KEYS.includes(key)) applyBrandTheme(next); // live brand preview on save
-    track('update', 'content', key);
-  };
-
-  const addContentKey = (key: string, value: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    contentRef.current = { ...contentRef.current, [key]: value };
-    const next = contentRef.current;
-    setContent(next);
-    persistContentToConfig(next);
-    track('create', 'content', key);
-  };
-
-  const removeContentKey = (key: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = { ...contentRef.current };
-    delete next[key];
-    contentRef.current = next;
-    setContent(next);
-    persistContentToConfig(next);
-    track('delete', 'content', key);
-  };
-
-  const addDiscount = (item: DiscountRule) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...discounts];
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('create', 'discount', item.label || `${item.discountPercent}%`);
-  };
-
-  const updateDiscount = (item: DiscountRule) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = discounts.map((d) => (d.id === item.id ? item : d));
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('update', 'discount', item.label || `${item.discountPercent}%`);
-  };
-
-  const deleteDiscount = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = discounts.filter((d) => d.id !== id);
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('delete', 'discount', id);
-  };
-
-  const addNotification = (item: NotificationBroadcast) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...notifications];
-    setNotifications(next);
-    persistNotificationsToConfig(next);
-    track('create', 'notification', item.title);
-  };
-
-  const updateNotification = (item: NotificationBroadcast) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = notifications.map((n) => (n.id === item.id ? item : n));
-    setNotifications(next);
-    persistNotificationsToConfig(next);
-    track('update', 'notification', item.title);
-  };
-
-  const deleteNotification = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = notifications.filter((n) => n.id !== id);
-    setNotifications(next);
-    persistNotificationsToConfig(next);
-    track('delete', 'notification', id);
-  };
-
-  const addCourseQuiz = (item: CourseQuiz) => {
-    setCourseQuizzes((prev) => [item, ...prev.filter((q) => q.courseId !== item.courseId)]);
-    persistCourseQuizToCollection(item);
-    track('create', 'courseQuiz', item.title);
-  };
-
-  const updateCourseQuiz = (item: CourseQuiz) => {
-    setCourseQuizzes((prev) => prev.map((q) => (q.id === item.id ? item : q)));
-    persistCourseQuizToCollection(item);
-    track('update', 'courseQuiz', item.title);
-  };
-
-  const deleteCourseQuiz = (id: string) => {
-    setCourseQuizzes((prev) => prev.filter((q) => q.id !== id));
-    void mysqlAdmin.deleteQuiz(id).catch(() => {});
-    track('delete', 'courseQuiz', id);
-  };
-
-  const addQuizAttempt = (item: QuizAttempt) => {
-    setQuizAttempts((prev) => [item, ...prev]);
-    persistQuizAttemptToCollection(item);
-    track('create', 'quizAttempt', `${item.subscriberId} score ${item.score}%`);
-  };
-
-  const deleteQuizAttempt = (id: string) => {
-    setQuizAttempts((prev) => prev.filter((a) => a.id !== id));
-    track('delete', 'quizAttempt', id);
-  };
-
-  const addLiveStream = (item: LiveStream) => {
-    setLiveStreams((prev) => [item, ...prev]);
-    persistLiveStreamToCollection(item);
-    track('create', 'liveStream', item.title);
-  };
-
-  const updateLiveStream = (item: LiveStream) => {
-    setLiveStreams((prev) => prev.map((s) => (s.id === item.id ? item : s)));
-    persistLiveStreamToCollection(item);
-    track('update', 'liveStream', item.title);
-  };
-
-  const deleteLiveStream = (id: string) => {
-    setLiveStreams((prev) => prev.filter((s) => s.id !== id));
-    void mysqlAdmin.deleteLiveStream(id).catch(() => {});
-    track('delete', 'liveStream', id);
-  };
-
-  const addExpense = (item: ExpenseItem) => {
-    lastCRMWriteRef.current = Date.now();
-    setExpenses((prev) => [item, ...prev]);
-    persistExpenseToCollection(item);
-    void mysqlAdmin.saveExpense(item as unknown as Record<string,unknown>);
-    track('create', 'expense', item.description);
-  };
-
-  const addDaqqiRound = async (item: DaqqiRound): Promise<void> => {
-    lastCRMWriteRef.current = Date.now();
-    setDaqqiRounds((prev) => [item, ...prev]);
-    persistDaqqiRoundToCollection(item);
-    try {
-      await mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>);
-    } catch (err) {
-      // Roll back optimistic add if save fails
-      setDaqqiRounds((prev) => prev.filter((r) => r.id !== item.id));
-      throw err;
-    }
-    track('create', 'daqqiRound', item.courseId);
-  };
-
-  const updateDaqqiRound = (item: DaqqiRound) => {
-    lastCRMWriteRef.current = Date.now();
-    setDaqqiRounds((prev) => prev.map((r) => (r.id === item.id ? item : r)));
-    persistDaqqiRoundToCollection(item);
-    void mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>);
-    track('update', 'daqqiRound', item.courseId);
-  };
-
-  const deleteDaqqiRound = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    setDaqqiRounds((prev) => prev.filter((r) => r.id !== id));
-    void mysqlAdmin.deleteDaqqiRound(id);
-    track('delete', 'daqqiRound', id);
-  };
-
-  // Bulk-load daqqi rounds without triggering DB saves (for non-admin staff initial load)
-  const bulkSetDaqqiRounds = (rounds: DaqqiRound[]) => {
-    setDaqqiRounds(prev => {
-      if (prev.length > 0) {
-        // Merge: DB rounds take priority; preserve any locally-added rounds not yet in DB
-        const dbIds = new Set(rounds.map(r => r.id));
-        const localOnly = prev.filter(r => !dbIds.has(r.id));
-        return [...rounds, ...localOnly];
-      }
-      return rounds;
-    });
   };
 
   const addJoinUsApplication = (item: JoinUsApplication) => {
@@ -1895,168 +1198,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteJoinUsApplication = (id: string) => {
     setJoinUsApplications((prev) => prev.filter((x) => x.id !== id));
     track('delete', 'joinUs', id);
-  };
-
-  const addContactMessage = (item: ContactMessage) => {
-    setContactMessages((prev) => [item, ...prev]);
-    persistContactMessageToCollection(item);
-    track('create', 'contactMessage', item.name);
-  };
-  const updateContactMessage = (item: ContactMessage) => {
-    setContactMessages((prev) => prev.map((x) => (x.id === item.id ? item : x)));
-    persistContactMessageToCollection(item);
-    track('update', 'contactMessage', item.name);
-  };
-  const deleteContactMessage = (id: string) => {
-    setContactMessages((prev) => prev.filter((x) => x.id !== id));
-    void mysqlAdmin.deleteContactMessage(id).catch(() => {}); // was local-only → messages came back on refresh
-    track('delete', 'contactMessage', id);
-  };
-
-  const addAutomationWorkflow = (item: AutomationWorkflow) => {
-    setAutomationWorkflows((prev) => [item, ...prev]);
-    persistAutomationWorkflowToCollection(item);
-    track('create', 'automation', item.name);
-  };
-  const updateAutomationWorkflow = (item: AutomationWorkflow) => {
-    setAutomationWorkflows((prev) => prev.map((x) => (x.id === item.id ? item : x)));
-    persistAutomationWorkflowToCollection(item);
-    track('update', 'automation', item.name);
-  };
-  const deleteAutomationWorkflow = (id: string) => {
-    setAutomationWorkflows((prev) => prev.filter((x) => x.id !== id));
-    void mysqlAdmin.deleteAutomationWorkflow(id).catch(() => {});
-    track('delete', 'automation', id);
-  };
-
-  const setAdminAiConfig = (config: AdminAiConfig) => {
-    setAdminAiConfigLocal(config);
-    _persistSettingsField('adminAiConfig', config);
-    track('update', 'admin_ai', config.model);
-  };
-
-  const setAiAgentConfig = (config: AiAgentConfig) => {
-    setAiAgentConfigState(config);
-    _persistSettingsField('aiAgentConfig', config);
-    track('update', 'ai_agent', config.name);
-  };
-
-  const setMessagingChannels = (config: MessagingChannelsConfig) => {
-    setMessagingChannelsState(config);
-    _persistSettingsField('messagingChannels', config);
-    track('update', 'messaging_channels', 'channels config');
-  };
-
-  const setFbLeadAdsConfig = (config: FacebookLeadAdsConfig) => {
-    setFbLeadAdsConfigState(config);
-    _persistSettingsField('fbLeadAdsConfig', config);
-    track('update', 'fb_lead_ads', 'Facebook Lead Ads config');
-  };
-  const addInboxConversation = (conv: InboxConversation) => {
-    setInboxConversations((prev) => [conv, ...prev]);
-    persistInboxConversationToCollection(conv);
-    track('create', 'inbox_conversation', conv.contactName);
-  };
-  const updateInboxConversation = (conv: InboxConversation) => {
-    setInboxConversations((prev) => prev.map((c) => (c.id === conv.id ? conv : c)));
-    persistInboxConversationToCollection(conv);
-    track('update', 'inbox_conversation', conv.contactName);
-  };
-  const deleteInboxConversation = (id: string) => {
-    setInboxConversations((prev) => prev.filter((c) => c.id !== id));
-    void mysqlAdmin.deleteInboxConversation(id).catch(() => {});
-    track('delete', 'inbox_conversation', id);
-  };
-
-  const updateExpense = (item: ExpenseItem) => {
-    lastCRMWriteRef.current = Date.now();
-    setExpenses((prev) => prev.map((e) => (e.id === item.id ? item : e)));
-    persistExpenseToCollection(item);
-    void mysqlAdmin.updateExpense(item as unknown as Record<string,unknown>);
-    track('update', 'expense', item.description);
-  };
-
-  const deleteExpense = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-    void mysqlAdmin.deleteExpense(id);
-    track('delete', 'expense', id);
-  };
-
-  const triggerAutomation = (trigger: AutomationTrigger, data: Record<string, unknown> = {}) => {
-    const enabledWorkflows = automationWorkflows.filter((w) => w.enabled && w.trigger === trigger);
-    for (const workflow of enabledWorkflows) {
-      if (workflow.conditions && workflow.conditions.length > 0) {
-        const allMatch = workflow.conditions.every((cond) => {
-          const fieldValue = String(data[cond.field] ?? '');
-          switch (cond.operator) {
-            case 'equals': return fieldValue === cond.value;
-            case 'contains': return fieldValue.includes(cond.value);
-            case 'greater_than': return Number(fieldValue) > Number(cond.value);
-            case 'less_than': return Number(fieldValue) < Number(cond.value);
-            case 'is_empty': return !fieldValue;
-            case 'is_not_empty': return !!fieldValue;
-            default: return true;
-          }
-        });
-        if (!allMatch) continue;
-      }
-      const cfg = workflow.actionConfig || {};
-      switch (workflow.action) {
-        case 'notify_admin':
-          setNotifications((prev) => [{
-            id: `notif-auto-${Date.now()}`,
-            title: cfg.title || workflow.name,
-            body: cfg.message || `تم تفعيل الأتمتة: ${workflow.name}`,
-            type: 'info',
-            createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-            active: true,
-          }, ...prev]);
-          break;
-        case 'update_lead_status': {
-          const leadId = String(data.leadId ?? '');
-          if (leadId && cfg.status) {
-            setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: cfg.status as LeadStatus } : l));
-          }
-          break;
-        }
-        case 'add_note': {
-          const leadId = String(data.leadId ?? '');
-          if (leadId && cfg.message) {
-            setLeads((prev) => prev.map((l) => l.id === leadId
-              ? { ...l, notes: l.notes ? `${l.notes}\n[أتمتة] ${cfg.message}` : `[أتمتة] ${cfg.message}` }
-              : l));
-          }
-          break;
-        }
-        case 'add_followup_reminder': {
-          const leadId = String(data.leadId ?? '');
-          if (leadId && cfg.days) {
-            const d = new Date();
-            d.setDate(d.getDate() + Number(cfg.days));
-            const dateStr = d.toISOString().slice(0, 10);
-            setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, nextFollowUpDate: dateStr } : l));
-          }
-          break;
-        }
-        case 'assign_staff': {
-          const leadId = String(data.leadId ?? '');
-          if (leadId && cfg.staffId) {
-            const staff = staffMembers.find((s) => s.id === cfg.staffId);
-            setLeads((prev) => prev.map((l) => l.id === leadId
-              ? { ...l, assignedSalesId: cfg.staffId, assignedSalesName: staff?.name || cfg.staffId }
-              : l));
-          }
-          break;
-        }
-        default:
-          // External API actions (WhatsApp, Email, etc.) — require backend, log only
-          track('automation', 'workflow', `${workflow.name} → ${workflow.action}`);
-      }
-      setAutomationWorkflows((prev) => prev.map((w) => w.id === workflow.id
-        ? { ...w, lastTriggeredAt: new Date().toISOString().slice(0, 16).replace('T', ' '), triggerCount: (w.triggerCount || 0) + 1 }
-        : w));
-    }
   };
 
   const clearAllData = () => {
