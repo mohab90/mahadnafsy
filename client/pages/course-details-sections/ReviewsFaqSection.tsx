@@ -1,6 +1,7 @@
 import React from 'react';
 import { Award, PlayCircle, Quote, Star, ChevronDown, ChevronUp, HelpCircle } from 'lucide-react';
 import type { TestimonialItem } from '../../types';
+import { cdnImg } from '../../lib/img';
 
 // Default FAQ — editable from لوحة التحكم → صفحات الموقع → صفحة الكورسات (key: courseDetails.faqList).
 // Format: one "السؤال :: الجواب" per line.
@@ -54,7 +55,7 @@ export const ReviewsFaqSection: React.FC<ReviewsFaqSectionProps> = ({ content, t
                 <Quote size={28} className="text-red-200 absolute top-4 left-4" />
                 <div className="flex items-center gap-3 mb-3">
                   {t.image ? (
-                    <img loading="lazy" decoding="async" src={t.image} alt={t.name} className="w-11 h-11 rounded-full object-cover border-2 border-red-200 flex-shrink-0" />
+                    <img loading="lazy" decoding="async" src={cdnImg(t.image, 120)} alt={t.name} className="w-11 h-11 rounded-full object-cover border-2 border-red-200 flex-shrink-0" />
                   ) : (
                     <div className="w-11 h-11 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-lg flex-shrink-0">{t.name.charAt(0)}</div>
                   )}

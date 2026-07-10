@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, PlayCircle, Award, Users, Send, Share2, MessageCircle, ShieldCheck, Clock } from 'lucide-react';
 import type { Course } from '../../types';
 import { SafeHtml } from '../../components/SafeHtml';
+import { cdnImg } from '../../lib/img';
 
 interface CourseHeroSectionProps {
   course: Course;
@@ -29,7 +30,7 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
   return (
     <div className="bg-gray-900 text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-r from-primary-900 via-primary-800 to-gray-900 opacity-95 z-10"></div>
-      <img loading="lazy" decoding="async" src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay" />
+      <img loading="lazy" decoding="async" src={cdnImg(course.thumbnail, 800)} alt={course.title} className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay" />
 
       <div className="container mx-auto px-4 py-12 md:py-16 relative z-20">
         <div className="flex flex-col lg:flex-row gap-12 items-start">

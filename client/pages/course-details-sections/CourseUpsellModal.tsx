@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { X, Gift } from 'lucide-react';
 import type { Bundle, Currency } from '../../types';
+import { cdnImg } from '../../lib/img';
 
 interface CourseUpsellModalProps {
   courseTitle: string;
@@ -36,7 +37,7 @@ export const CourseUpsellModal: React.FC<CourseUpsellModalProps> = ({ courseTitl
               <div className="space-y-3">
                 {relatedBundles.slice(0, 2).map(b => (
                   <div key={b.id} className="border border-gray-200 rounded-xl p-3 flex items-center gap-3 hover:border-primary-300 transition">
-                    <img loading="lazy" decoding="async" src={b.thumbnail} alt="" className="w-14 h-12 object-cover rounded-lg flex-shrink-0" />
+                    <img loading="lazy" decoding="async" src={cdnImg(b.thumbnail, 160)} alt="" className="w-14 h-12 object-cover rounded-lg flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-800 text-sm line-clamp-1">{b.title}</p>
                       <p className="text-primary-600 font-extrabold text-sm">{b.price?.[currency]} {currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$'}</p>

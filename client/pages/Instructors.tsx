@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Star, Shield, ArrowRight, CalendarCheck2, Users, Award, Globe, GraduationCap } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
+import { cdnImg } from '../lib/img';
 
 const Instructors: React.FC = () => {
   const { therapists, content } = useSiteData();
@@ -47,9 +48,9 @@ const Instructors: React.FC = () => {
             <Link to={`/instructor/${instructor.id}`} key={instructor.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition duration-300 group flex flex-col">
               <div className="relative h-64 bg-gray-100 overflow-hidden">
                 <img loading="lazy" decoding="async" 
-                  src={instructor.image} 
-                  alt={instructor.name} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
+                  src={cdnImg(instructor.image, 400)}
+                  alt={instructor.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                 <div className="absolute bottom-4 right-4 text-white">

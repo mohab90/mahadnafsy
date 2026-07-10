@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lock } from 'lucide-react';
 import type { CourseChapterItem, CourseLectureItem } from '../../types';
+import { cdnImg } from '../../lib/img';
 
 type LockedLecture = CourseLectureItem & { locked: boolean };
 
@@ -115,7 +116,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                     ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 relative">
                             {selectedLecture?.thumbnail ? (
-                                <img loading="lazy" decoding="async" src={selectedLecture.thumbnail} className="absolute inset-0 w-full h-full object-cover opacity-30" alt="" />
+                                <img loading="lazy" decoding="async" src={cdnImg(selectedLecture.thumbnail, 500)} className="absolute inset-0 w-full h-full object-cover opacity-30" alt="" />
                             ) : null}
                             <div className="relative z-10">
                                 <Lock className="mx-auto mb-2 text-white/90" size={28} />

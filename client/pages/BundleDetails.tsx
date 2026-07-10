@@ -7,6 +7,7 @@ import {
 import { Currency, BranchType } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCertificate from '../components/CourseCertificate';
+import { cdnImg } from '../lib/img';
 
 // Strip HTML tags + Word-style markup and return clean Arabic text
 function stripHtml(raw: string): string {
@@ -355,7 +356,7 @@ const BundleDetails: React.FC = () => {
                       <p className="text-gray-700 text-sm leading-relaxed mb-4">"{t.text}"</p>
                       <div className="flex items-center gap-3">
                         {t.image ? (
-                          <img loading="lazy" decoding="async" src={t.image} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-gray-200"/>
+                          <img loading="lazy" decoding="async" src={cdnImg(t.image, 120)} alt={t.name} className="w-10 h-10 rounded-full object-cover border border-gray-200"/>
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 font-bold text-sm flex items-center justify-center">{t.name.charAt(0)}</div>
                         )}

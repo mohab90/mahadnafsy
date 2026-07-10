@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import type { Course, Currency } from '../../types';
+import { cdnImg } from '../../lib/img';
 
 interface RelatedCoursesSidebarProps {
   content: Record<string, string>;
@@ -19,7 +20,7 @@ export const RelatedCoursesSidebar: React.FC<RelatedCoursesSidebarProps> = ({ co
            <div className="space-y-4">
               {courses.filter(c => c.id !== currentCourseId).slice(0, 2).map(c => (
                   <Link key={c.id} to={`/c/${c.slug || c.id}`} className="flex gap-3 group bg-white p-3 rounded-xl shadow-sm hover:shadow-md transition">
-                      <img loading="lazy" decoding="async" src={c.thumbnail} className="w-20 h-16 object-cover rounded-lg" alt="" />
+                      <img loading="lazy" decoding="async" src={cdnImg(c.thumbnail, 160)} className="w-20 h-16 object-cover rounded-lg" alt="" />
                       <div>
                           <h4 className="text-sm font-bold text-gray-800 group-hover:text-primary-600 line-clamp-2 transition">{c.title}</h4>
                           <p className="text-xs text-primary-600 font-bold mt-1">{c.price[currency]} {currencySymbol}</p>

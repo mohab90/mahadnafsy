@@ -3,6 +3,7 @@ import { BookOpen, MessageSquare, Award, CreditCard, Share2, Play } from 'lucide
 import { useNavigate } from 'react-router-dom';
 import StudentEngagementHero from '../../components/student-dashboard/StudentEngagementHero';
 import type { CourseLectureItem } from '../../types';
+import { cdnImg } from '../../lib/img';
 
 interface OverviewTabProps {
   displayName: string;
@@ -120,7 +121,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex gap-3 p-3 items-center hover:shadow-md hover:border-primary-200 transition text-right w-full group"
                 >
                   <div className="relative flex-shrink-0">
-                    <img loading="lazy" decoding="async" src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
+                    <img loading="lazy" decoding="async" src={cdnImg(course.thumbnail, 120)} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
                     <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                       <Play size={18} className="text-white" />
                     </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Play } from 'lucide-react';
+import { cdnImg } from '../../lib/img';
 
 interface PromoVideoSectionProps {
   thumbnail: string;
@@ -24,7 +25,7 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
           className="rounded-2xl overflow-hidden shadow-lg border border-gray-100 relative bg-black group cursor-pointer aspect-video flex items-center justify-center"
           onClick={() => promoVideoUrl && setShowPromoModal(true)}
       >
-          {thumbnail && <img loading="lazy" decoding="async" src={thumbnail} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500" alt="Video cover" />}
+          {thumbnail && <img loading="lazy" decoding="async" src={cdnImg(thumbnail, 640)} className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500" alt="Video cover" />}
           <div className="relative z-10 w-20 h-20 bg-primary-600/90 rounded-full flex items-center justify-center text-white shadow-xl group-hover:scale-110 transition duration-300">
               <Play size={32} fill="currentColor" className="ml-1" />
           </div>

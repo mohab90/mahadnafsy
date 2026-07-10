@@ -3,6 +3,7 @@ import { Layers, Map, ArrowRight, Check, Send, Award, Clock } from 'lucide-react
 import { Link, useNavigate } from 'react-router-dom';
 import { Currency } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
+import { cdnImg } from '../lib/img';
 
 const Bundles: React.FC = () => {
     const { bundles, content, currency } = useSiteData();
@@ -81,7 +82,7 @@ const Bundles: React.FC = () => {
                     <div className="lg:w-1/3 bg-gray-900 relative">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary-600 to-primary-900 opacity-90"></div>
                         {(bundle.courses[0]?.thumbnail || bundle.thumbnail) && (
-                          <img loading="lazy" decoding="async" src={bundle.courses[0]?.thumbnail || bundle.thumbnail} className="w-full h-full object-cover absolute mix-blend-overlay opacity-50" alt="" />
+                          <img loading="lazy" decoding="async" src={cdnImg(bundle.courses[0]?.thumbnail || bundle.thumbnail, 600)} className="w-full h-full object-cover absolute mix-blend-overlay opacity-50" alt="" />
                         )}
                         <div className="relative z-10 p-8 h-full flex flex-col justify-between text-white">
                             <div>
@@ -112,7 +113,7 @@ const Bundles: React.FC = () => {
                                         <div className="absolute right-6 top-0 w-4 h-4 rounded-full bg-primary-500 ring-4 ring-white z-10"></div>
                                         <Link to={`/c/${course.slug || course.id}`} className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex gap-4 items-center hover:bg-white hover:shadow-md hover:border-primary-200 transition group">
                                             <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
-                                                {course?.thumbnail && <img loading="lazy" decoding="async" src={course.thumbnail} className="w-full h-full object-cover" alt={course.title} />}
+                                                {course?.thumbnail && <img loading="lazy" decoding="async" src={cdnImg(course.thumbnail, 400)} className="w-full h-full object-cover" alt={course.title} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h5 className="font-bold text-gray-800 group-hover:text-primary-700 transition">{course.title}</h5>

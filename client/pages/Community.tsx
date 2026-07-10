@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { CommunityComment } from '../types';
+import { cdnImg } from '../lib/img';
 
 const TAG_COLORS: Record<string, string> = {
   'نقاش حالة': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -400,7 +401,7 @@ const Community: React.FC = () => {
                   {communityVideos.map(video => (
                     <div key={video.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm group hover:shadow-md hover:border-primary-100 transition">
                       <div className="relative aspect-video bg-gray-100 cursor-pointer" onClick={() => video.videoUrl ? setShowVideoModal(video.videoUrl) : undefined}>
-                        {video.thumbnail && <img loading="lazy" decoding="async" src={video.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt={video.title} />}
+                        {video.thumbnail && <img loading="lazy" decoding="async" src={cdnImg(video.thumbnail, 500)} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" alt={video.title} />}
                         <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition flex items-center justify-center">
                           <div className="w-12 h-12 bg-white/30 backdrop-blur rounded-full flex items-center justify-center group-hover:scale-110 transition">
                             <Play fill="white" className="text-white ml-1" size={20} />

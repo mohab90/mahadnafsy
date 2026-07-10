@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { getTherapistSessionPrice } from '../lib/consultations';
+import { cdnImg } from '../lib/img';
 
 const Checkout: React.FC = () => {
   useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
@@ -389,7 +390,7 @@ const Checkout: React.FC = () => {
                     <h2 className="text-lg font-bold mb-4">ملخص الطلب</h2>
                     <div className="flex gap-4 mb-4 pb-4 border-b">
                         {itemImage
-                          ? <img loading="lazy" decoding="async" src={itemImage} className="w-16 h-16 rounded-lg object-cover bg-gray-100 flex-shrink-0" alt="" />
+                          ? <img loading="lazy" decoding="async" src={cdnImg(itemImage, 120)} className="w-16 h-16 rounded-lg object-cover bg-gray-100 flex-shrink-0" alt="" />
                           : <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0" />
                         }
                         <div>

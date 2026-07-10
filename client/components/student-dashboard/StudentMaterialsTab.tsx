@@ -1,6 +1,7 @@
 import { Download, FileText } from 'lucide-react';
 
 import type { Course, CourseMaterial, SubscriberItem } from '../../types';
+import { cdnImg } from '../../lib/img';
 
 type MaterialWithCourse = CourseMaterial & {
   courseName: string;
@@ -57,7 +58,7 @@ export function StudentMaterialsTab({ subscriber, enrolledCourses }: { subscribe
       {grouped.map(({ course, materials }) => (
         <div key={course.id} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-5 py-3">
-            {course.thumbnail && <img src={course.thumbnail} alt="" loading="lazy" decoding="async" className="h-8 w-8 rounded-lg object-cover" />}
+            {course.thumbnail && <img src={cdnImg(course.thumbnail, 120)} alt="" loading="lazy" decoding="async" className="h-8 w-8 rounded-lg object-cover" />}
             <p className="text-sm font-bold text-gray-800">{course.title}</p>
           </div>
           <div className="divide-y divide-gray-50">

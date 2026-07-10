@@ -4,6 +4,7 @@ import { ArrowRight, Check, CheckCircle, Clock, Video, Users, Star, Play, Award,
 import { Currency, LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
+import { cdnImg } from '../lib/img';
 
 // Countdown timer — synced to Firestore timestamp (offer.timerStartedAt) set by admin
 // Falls back to localStorage if no server timestamp is set
@@ -222,7 +223,7 @@ const Home: React.FC = () => {
                   <div key={bundle.id} className="bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100 glow-card hover-float flex flex-col h-full group">
                       <div className="relative h-48 bg-gray-900">
                           {(bundle.courses[0]?.thumbnail || bundle.thumbnail) && (
-                            <img src={bundle.courses[0]?.thumbnail || bundle.thumbnail} loading="lazy" className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition" alt={bundle.title} />
+                            <img src={cdnImg(bundle.courses[0]?.thumbnail || bundle.thumbnail, 600)} loading="lazy" className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition" alt={bundle.title} />
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent"></div>
                           <div className="absolute bottom-4 right-4 text-white">
@@ -307,7 +308,7 @@ const Home: React.FC = () => {
                 {/* Thumbnail */}
                 {featuredCourse.thumbnail && (
                   <div className="w-full lg:w-80 flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl">
-                    <img src={featuredCourse.thumbnail} alt={featuredCourse.title} className="w-full h-52 object-cover" />
+                    <img src={cdnImg(featuredCourse.thumbnail, 700)} alt={featuredCourse.title} className="w-full h-52 object-cover" />
                   </div>
                 )}
                 {/* Info */}
@@ -732,7 +733,7 @@ const Home: React.FC = () => {
                               "{testimonial.text}"
                           </p>
                           <div className="flex items-center gap-4">
-                              {testimonial.image ? <img src={testimonial.image} className="w-12 h-12 rounded-full object-cover" alt={testimonial.name} /> : <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-sm">{(testimonial.name||'?')[0]}</div>}
+                              {testimonial.image ? <img src={cdnImg(testimonial.image, 120)} className="w-12 h-12 rounded-full object-cover" alt={testimonial.name} /> : <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-sm">{(testimonial.name||'?')[0]}</div>}
                               <div>
                                   <h4 className="font-bold text-gray-900 text-sm">{testimonial.name}</h4>
                                   <p className="text-xs text-primary-600 font-medium">{testimonial.role}</p>

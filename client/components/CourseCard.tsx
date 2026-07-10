@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Star, Users } from 'lucide-react';
 import { Course, Currency } from '../types';
+import { cdnImg } from '../lib/img';
 
 interface CourseCardProps {
   course: Course;
@@ -25,7 +26,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, currency }) => {
   return (
     <div className="glass-card hover:-translate-y-2 hover:shadow-2xl transition-all duration-300 border border-gray-100/60 flex flex-col h-full group">
       <div className="relative overflow-hidden rounded-t-2xl">
-        {course?.thumbnail && <img loading="lazy" decoding="async" src={course.thumbnail} alt={course.title} className="w-full h-48 object-cover transform group-hover:scale-105 transition-transform duration-500" />}
+        {course?.thumbnail && <img loading="lazy" decoding="async" src={cdnImg(course.thumbnail, 500)} alt={course.title} className="w-full h-48 object-cover transform group-hover:scale-105 transition-transform duration-500" />}
         <span className="absolute top-3 right-3 bg-white/90 backdrop-blur-md text-gray-800 px-3 py-1 text-xs font-bold rounded-lg shadow-sm">
           {course.type === 'Mix' ? 'مختلط (مسجل+لايف)' : course.type === 'Live' ? 'بث مباشر' : 'مسجل'}
         </span>
