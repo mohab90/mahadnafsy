@@ -1,11 +1,11 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Activity, AlertCircle, Archive, Award, BarChart2, Bell, BookOpen, CalendarPlus, CheckCheck, CheckCircle,
-  ChevronDown, Clock, Columns, CreditCard, Download, ExternalLink, EyeOff, Eye,
-  FolderKanban, Globe, Inbox, Link2, MapPin, MessageCircle, MessageSquare, MessageSquareText,
-  Phone, Plus, RefreshCw, Search, Settings, Share2, Star, Tag, Trash2, TrendingUp,
-  Upload, UserPlus, Users, Wallet, X,
+  Activity, AlertCircle, Award, BarChart2, Bell, BookOpen, CalendarPlus, CheckCheck,
+  Clock, CreditCard, ExternalLink, EyeOff, Eye,
+  Globe, Inbox, Link2, MessageSquare, MessageSquareText,
+  Plus, Search, Settings, Share2, Star, Tag, Trash2,
+  Upload, Wallet, X,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -64,10 +64,18 @@ const blankLead = (): LeadItem => ({
 });
 
 
-import { AddLeadModal, BulkWhatsAppModal, CsvImportButton, WhatsAppRepModal, TagInput, getScoreBreakdown, ScoreBadge, LeadJourneyTimeline, QuickEditPanel, LeadCard, MultiSelectDropdown, ArchiveTab, LEAD_STATUS_CFG, crmSourceLabels, formatWaPhone, normBranchId, mkPromoCode, crmStatusLabels, paymentTypeLabels, EVENT_CFG } from './leads/LeadSubcomponents';
+import { AddLeadModal, BulkWhatsAppModal, WhatsAppRepModal, TagInput, getScoreBreakdown, ScoreBadge, LeadJourneyTimeline, QuickEditPanel, MultiSelectDropdown, ArchiveTab, crmSourceLabels, formatWaPhone, normBranchId, mkPromoCode, crmStatusLabels, paymentTypeLabels, EVENT_CFG } from './leads/LeadSubcomponents';
 import { LeadsCommunicationsPanel } from './leads/LeadsCommunicationsPanel';
 import { LeadsPerformancePanel } from './leads/LeadsPerformancePanel';
 import type { ArchiveTabProps, CertPricingMap } from './leads/LeadSubcomponents';
+import { LeadsHeaderBar } from './leads/LeadsHeaderBar';
+import type { LeadsSubTabKey } from './leads/LeadsHeaderBar';
+import { LeadsSalesKpiStrip } from './leads/LeadsSalesKpiStrip';
+import { LeadsFilterBar } from './leads/LeadsFilterBar';
+import type { FollowupFilter } from './leads/LeadsFilterBar';
+import { LeadsPipelineBoard } from './leads/LeadsPipelineBoard';
+import { ConvertLeadModal } from './leads/ConvertLeadModal';
+import { SalesFollowupPanel } from './leads/SalesFollowupPanel';
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab }: LeadsTabProps) {
@@ -89,7 +97,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const draggedLeadRef = useRef<LeadItem | null>(null);
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
-  type SubTabKey = 'pipeline' | 'table' | 'communications' | 'performance' | 'dawliNew' | 'dawliOld' | 'archive' | 'reminders';
+  type SubTabKey = LeadsSubTabKey;
   const [searchParams, setSearchParams] = useSearchParams();
   const subTab = (searchParams.get('tab') as SubTabKey) || 'table';
   const setSubTab = (t: SubTabKey) => setSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
@@ -213,7 +221,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
   const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
   const [leadsCourseFilter, setLeadsCourseFilter] = useState<string>('all');
-  const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue' | 'past3d' | 'past7d' | 'past30d' | 'next3d' | 'next7d' | 'no_followup'>('all');
+  const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<FollowupFilter>('all');
   const [salesSourceFilter, setSalesSourceFilter] = useState<string>('');
 
 
@@ -630,393 +638,91 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   return (
     <div className="space-y-4" dir="rtl">
       {/* Row 1: Title + tabs + primary actions — all on one line */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <FolderKanban size={22} className="text-primary-600" />
-            {isSalesOnly ? 'عملائي المحتملون' : 'CRM — إدارة المبيعات'}
-          </h2>
-          {!isSalesOnly && (
-            <p className="text-sm text-gray-500 mt-0.5">
-              {leads.filter(l => !l.hidden && !isOnlineSource(l.source)).length} عميل محتمل ·{' '}
-              <span className={overdueLeads.length > 0 ? 'text-red-600 font-bold' : ''}>{overdueLeads.length} يحتاج متابعة عاجلة</span>
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Sub-tab buttons — inline with actions */}
-          {(() => {
-            const rottenCount = effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length;
-            return ([
-              ['pipeline', 'البايبلاين', Columns],
-              ['table', 'الجدول', Users],
-              ['communications', 'الاتصالات', Phone],
-              ...(!isSalesOnly ? [['performance', 'أداء الفريق', TrendingUp]] : []),
-              ['dawliNew', 'دولي جديد', Globe],
-              ['dawliOld', 'دولي قديم', Globe],
-              ...(!isSalesOnly ? [['archive', 'محلي قديم', Archive]] : []),
-            ] as [SubTabKey, string, React.ElementType][]).map(([t, lbl, Ic]) => (
-              <button key={t} onClick={() => setSubTab(t)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition relative ${
-                  subTab === t ? 'bg-primary-600 text-white shadow-sm shadow-primary-500/30' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}>
-                <Ic size={13} />
-                {lbl}
-                {t === 'communications' && (rottenCount + overdueLeads.length) > 0 && (
-                  <span className="w-3.5 h-3.5 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center">
-                    {rottenCount + overdueLeads.length}
-                  </span>
-                )}
-              </button>
-            ));
-          })()}
-          <div className="w-px h-6 bg-gray-200 mx-1" />
-          <button onClick={() => setShowAddLead(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm shadow-emerald-500/30">
-            <UserPlus size={15} />
-            إضافة ليد
-          </button>
-          {!isSalesOnly && (
-            <div className="relative" ref={actionsMenuRef}>
-              <button
-                onClick={() => setShowActionsMenu(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition border border-gray-200">
-                <Settings size={15} />
-                إجراءات
-                <ChevronDown size={14} className={`transition-transform ${showActionsMenu ? 'rotate-180' : ''}`} />
-              </button>
-              {showActionsMenu && (
-                <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 w-52 py-1 overflow-hidden">
-                  <button onClick={() => { setShowSettings(true); setShowActionsMenu(false); }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right">
-                    <Settings size={14} className="text-indigo-500 flex-shrink-0" /> إعدادات CRM
-                  </button>
-                  <div className="border-t border-gray-100 my-0.5" />
-                  <div className="px-3 py-1.5">
-                    <CsvImportButton notify={notify} onImported={() => {}} />
-                  </div>
-                  <button onClick={() => { handleSyncSheet(); setShowActionsMenu(false); }}
-                    disabled={syncingSheet}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-blue-700 hover:bg-blue-50 transition disabled:opacity-60 text-right">
-                    <RefreshCw size={14} className={`flex-shrink-0 ${syncingSheet ? 'animate-spin' : ''}`} />
-                    {syncingSheet ? 'جاري...' : 'مزامنة الشيت'}
-                  </button>
-                  <button onClick={() => { handleMigrateBranches(); setShowActionsMenu(false); }}
-                    disabled={migratingBranches}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-amber-700 hover:bg-amber-50 transition disabled:opacity-60 text-right">
-                    {migratingBranches
-                      ? <span className="inline-block w-4 h-4 border-2 border-amber-400/40 border-t-amber-600 rounded-full animate-spin flex-shrink-0" />
-                      : <MapPin size={14} className="flex-shrink-0" />}
-                    {migratingBranches ? 'جاري...' : 'استيراد الفروع'}
-                  </button>
-                  <button onClick={() => {
-                    const headers = ['الاسم', 'الهاتف', 'البريد', 'المصدر', 'الحالة', 'مستوى الاهتمام', 'المندوب', 'تاريخ الإنشاء'];
-                    const rows = visibleLeads.map(l => [
-                      l.name, l.phone, l.email || '', l.source || '',
-                      l.status, l.interestLevel || '', l.assignedSalesName || '',
-                      (l.createdAt || '').slice(0, 10),
-                    ]);
-                    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-                    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url; a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-                    URL.revokeObjectURL(url);
-                    setShowActionsMenu(false);
-                  }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right">
-                    <Download size={14} className="text-gray-500 flex-shrink-0" /> تصدير CSV
-                  </button>
-                  <div className="border-t border-gray-100 my-0.5" />
-                  <button onClick={() => { setBulkMode(b => !b); setSelectedLeadIds(new Set()); setShowActionsMenu(false); }}
-                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition text-right ${
-                      bulkMode ? 'text-emerald-700 bg-emerald-50' : 'text-gray-700 hover:bg-gray-50'
-                    }`}>
-                    <MessageCircle size={14} className="flex-shrink-0" />
-                    {bulkMode ? `إرسال جماعي (${selectedLeadIds.size})` : 'إرسال جماعي'}
-                  </button>
-                  {bulkMode && selectedLeadIds.size > 0 && (
-                    <button onClick={() => { setShowBulkWA(true); setShowActionsMenu(false); }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition text-right font-bold">
-                      <MessageCircle size={14} className="flex-shrink-0" />
-                      إرسال واتساب ({selectedLeadIds.size})
-                    </button>
-                  )}
-                  <div className="border-t border-gray-100 my-0.5" />
-                  <button onClick={async () => {
-                    if (!window.confirm('سيتم إخفاء العملاء المحتملين بدون اسم ولا هاتف. تأكيد؟')) return;
-                    setShowActionsMenu(false);
-                    try {
-                      const r = await mysqlAdmin.adminPost('/api/admin/cleanup-junk-leads', {}) as Record<string, unknown>;
-                      notify('success', `تم إخفاء ${r.hidden as number} سجل جنك`);
-                      reloadLeads();
-                    } catch { notify('error', 'فشل التنظيف'); }
-                  }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition text-right">
-                    <span className="flex-shrink-0">🗑</span> تنظيف جنك
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      <LeadsHeaderBar
+        notify={notify}
+        isSalesOnly={isSalesOnly}
+        leads={leads}
+        overdueLeadsCount={overdueLeads.length}
+        rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length}
+        subTab={subTab}
+        setSubTab={setSubTab}
+        showActionsMenu={showActionsMenu}
+        setShowActionsMenu={setShowActionsMenu}
+        actionsMenuRef={actionsMenuRef}
+        setShowAddLead={setShowAddLead}
+        setShowSettings={setShowSettings}
+        syncingSheet={syncingSheet}
+        handleSyncSheet={handleSyncSheet}
+        migratingBranches={migratingBranches}
+        handleMigrateBranches={handleMigrateBranches}
+        visibleLeads={visibleLeads}
+        bulkMode={bulkMode}
+        setBulkMode={setBulkMode}
+        selectedLeadIds={selectedLeadIds}
+        setSelectedLeadIds={setSelectedLeadIds}
+        setShowBulkWA={setShowBulkWA}
+        reloadLeads={reloadLeads}
+      />
 
       {/* ── Sales KPI strip — 7 احصائيات ─────────────────────────────── */}
-      {isSalesOnly && (() => {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const thisMonthStr = new Date().toISOString().slice(0, 7);
-        const weekAgoStr = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-        const todayCalls = effectiveLeads.reduce((n, l) =>
-          n + (l.communications || []).filter(c => c.date?.slice(0,10) === todayStr).length, 0);
-        const weekCalls = effectiveLeads.reduce((n, l) =>
-          n + (l.communications || []).filter(c => c.date?.slice(0,10) >= weekAgoStr).length, 0);
-        const monthConverted = effectiveLeads.filter(l =>
-          l.status === 'converted' && (l.updatedAt || l.createdAt || '').slice(0,7) === thisMonthStr).length;
-        const totalActive = effectiveLeads.filter(l => !['converted','lost','not_interested_hidden'].includes(l.status || '')).length;
-        const overdueCount = effectiveLeads.filter(l =>
-          l.nextFollowUpDate && l.nextFollowUpDate < todayStr && !['converted','lost'].includes(l.status || '')).length;
-        const totalCollected = (effectiveSubs || []).reduce((s, sub) =>
-          s + (sub.paymentHistory || []).reduce((a: number, p) =>
-            a + (p.currency === 'EGP' ? (p.amount || 0) : 0), 0)
-        , 0);
-        const totalLeads = effectiveLeads.length;
-        const totalConverted = effectiveLeads.filter(l => l.status === 'converted').length;
-        const convRate = totalLeads > 0 ? Math.round((totalConverted / totalLeads) * 100) : 0;
-        return (
-          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-            {[
-              { label: 'مكالمات اليوم', value: todayCalls, icon: '📞', cls: 'bg-blue-50 border-blue-200 text-blue-800', tip: 'عدد تسجيلات التواصل اليوم' },
-              { label: 'مكالمات الأسبوع', value: weekCalls, icon: '📅', cls: 'bg-indigo-50 border-indigo-200 text-indigo-800', tip: 'عدد التواصلات في آخر 7 أيام' },
-              { label: 'محوّلون / الشهر', value: monthConverted, icon: '🎯', cls: 'bg-emerald-50 border-emerald-200 text-emerald-800', tip: 'عدد العملاء المحولين للتسجيل هذا الشهر' },
-              { label: 'نشط الآن', value: totalActive, icon: '⚡', cls: 'bg-amber-50 border-amber-200 text-amber-800', tip: 'ليدز نشطة لم تُحوَّل أو تُفقد' },
-              { label: 'متابعة متأخرة', value: overdueCount, icon: '⚠️', cls: overdueCount > 0 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-gray-50 border-gray-200 text-gray-500', tip: 'ليدز تجاوزت تاريخ المتابعة' },
-              { label: 'نسبة التحويل', value: `${convRate}%`, icon: '📈', cls: convRate >= 30 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : convRate >= 15 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-600', tip: `${totalConverted} من ${totalLeads} ليد` },
-              { label: 'إجمالي التحصيلات', value: totalCollected > 0 ? `${totalCollected.toLocaleString()} ج.م` : '—', icon: '💰', cls: 'bg-teal-50 border-teal-200 text-teal-800', tip: 'إجمالي المبالغ المحصّلة من ليدزك بالجنيه' },
-            ].map(c => (
-              <div key={c.label} className={`border rounded-xl px-2.5 py-2 flex flex-col gap-0.5 ${c.cls}`} title={c.tip}>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-lg leading-none">{c.icon}</span>
-                  <span className="text-lg font-extrabold leading-tight truncate">{c.value}</span>
-                </div>
-                <div className="text-[10px] font-medium opacity-75 leading-tight">{c.label}</div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
+      {isSalesOnly && <LeadsSalesKpiStrip effectiveLeads={effectiveLeads} effectiveSubs={effectiveSubs} />}
 
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
 
       {/* ═══════════════ SHARED FILTER BAR (pipeline + table) ═══════════════ */}
       {(subTab === 'pipeline' || subTab === 'table') && (
-        <>
-        {/* rotting filter: shown only if user opts in via call_queue tab */}
-        <div className="flex items-center gap-1.5 bg-gray-50 rounded-xl border border-gray-100 px-2.5 py-1.5 overflow-x-auto flex-nowrap">
-          <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            placeholder="بحث بالاسم أو الهاتف..."
-            className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs flex-shrink-0 w-48 bg-white" />
-          {!isSalesOnly && assignedReps.length > 0 && (
-            <select
-              value={assignFilter.size === 1 ? [...assignFilter][0] : ''}
-              onChange={e => setAssignFilter(e.target.value ? new Set([e.target.value]) : new Set())}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none flex-shrink-0">
-              <option value="">👤 كل المندوبين</option>
-              <option value="__none__">⬜ بدون مندوب</option>
-              {assignedReps.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          )}
-          <select
-            value={singleStatus}
-            onChange={e => setSingleStatus(e.target.value as LeadStatus | '')}
-            className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none flex-shrink-0">
-            <option value="">كل الحالات</option>
-            {(Object.keys(STATUS_CFG) as LeadStatus[]).filter(s =>
-              !['not_interested_hidden'].includes(s) &&
-              (isSalesOnly || !['converted','lost'].includes(s))
-            ).map(s => (
-              <option key={s} value={s}>{STATUS_CFG[s].label}</option>
-            ))}
-          </select>
-          {(courses.length > 0 || bundles.length > 0) && (
-            <select
-              value={courseFilter ?? ''}
-              onChange={e => setCourseFilter(e.target.value || null)}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none max-w-[130px] flex-shrink-0">
-              <option value="">🎓 كل الكورسات</option>
-              <option value="__none__">⬜ بدون كورس</option>
-              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-              {bundles.map(b => <option key={b.id} value={b.id}>📚 {b.title}</option>)}
-            </select>
-          )}
-          {(() => {
-            // Merge instituteBranches with ENUM fallbacks (no duplicates)
-            const enumEntries = Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => ({ id, label }));
-            const masterOpts = instituteBranches.length > 0
-              ? [
-                  ...instituteBranches,
-                  ...enumEntries.filter(e => !instituteBranches.some(b => normBranchId(b.id) === normBranchId(e.id))),
-                ]
-              : enumEntries;
-            if (masterOpts.length === 0) return null;
-            return (
-              <select
-                value={branchFilter ?? ''}
-                onChange={e => setBranchFilter(e.target.value || null)}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none font-sans flex-shrink-0">
-                <option value="">🏢 كل الفروع</option>
-                <option value="__none__">⬜ بدون فرع</option>
-                {masterOpts.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-              </select>
-            );
-          })()}
-          {(() => {
-            const srcOpts = [...new Map(
-              effectiveLeads.map(l => l.source?.trim() || '').filter(Boolean)
-                .map(s => [s.toLowerCase(), s] as [string, string])
-            ).values()].sort((a, b) => a.localeCompare(b, 'ar'));
-            if (srcOpts.length === 0) return null;
-            return (
-              <select
-                value={salesSourceFilter}
-                onChange={e => setSalesSourceFilter(e.target.value)}
-                className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white focus:outline-none flex-shrink-0 max-w-[110px]">
-                <option value="">📡 مصادر</option>
-                <option value="__none__">⬜ بدون مصدر</option>
-                {srcOpts.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            );
-          })()}
-          <select
-            value={leadsFollowupFilter}
-            onChange={e => setLeadsFollowupFilter(e.target.value as typeof leadsFollowupFilter)}
-            className={`border rounded-lg px-2 py-1 text-xs bg-white focus:outline-none flex-shrink-0 ${
-              leadsFollowupFilter !== 'all' ? 'border-blue-400 bg-blue-50 text-blue-800 font-bold' : 'border-gray-200'
-            }`}>
-            <option value="all">📅 كل المتابعات</option>
-            <option value="today">🔴 متابعة اليوم</option>
-            <option value="overdue">⚠️ متأخرة</option>
-            <option value="past3d">🕐 فاتت 3 أيام</option>
-            <option value="past7d">🕐 فاتت أسبوع</option>
-            <option value="past30d">🕐 فاتت شهر</option>
-            <option value="next3d">🟢 خلال 3 أيام</option>
-            <option value="next7d">🟢 خلال أسبوع</option>
-            <option value="no_followup">❓ بدون متابعة</option>
-          </select>
-          <button
-            onClick={() => setShowHiddenLeads(v => !v)}
-            title={showHiddenLeads ? 'عرض الكل' : 'عرض المخفيين فقط'}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold border transition flex-shrink-0 ${showHiddenLeads ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`}>
-            {showHiddenLeads ? '👁 الكل' : '🙈 مخفيون'}
-          </button>
-          {(assignFilter.size > 0 || singleStatus || courseFilter || branchFilter || searchTerm || showHiddenLeads || salesSourceFilter || leadsFollowupFilter !== 'all') && (
-            <button
-              onClick={() => { setAssignFilter(new Set()); setSingleStatus(''); setCourseFilter(null); setBranchFilter(null); setSearchTerm(''); setShowHiddenLeads(false); setSalesSourceFilter(''); setLeadsFollowupFilter('all'); }}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition font-bold flex-shrink-0">
-              ✕ مسح
-            </button>
-          )}
-          {!isSalesOnly && (
-            <div className="mr-auto flex gap-2 text-[11px] text-gray-500 items-center flex-shrink-0">
-              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> {totalConverted}</span>
-              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-red-400 rounded-full" /> {totalLost}</span>
-              <span className="text-gray-400">{visibleLeads.length}</span>
-            </div>
-          )}
-        </div>
-        </>
+        <LeadsFilterBar
+          isSalesOnly={isSalesOnly}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          assignedReps={assignedReps}
+          assignFilter={assignFilter}
+          setAssignFilter={setAssignFilter}
+          singleStatus={singleStatus}
+          setSingleStatus={setSingleStatus}
+          courses={courses}
+          bundles={bundles}
+          courseFilter={courseFilter}
+          setCourseFilter={setCourseFilter}
+          instituteBranches={instituteBranches}
+          branchFilter={branchFilter}
+          setBranchFilter={setBranchFilter}
+          effectiveLeads={effectiveLeads}
+          salesSourceFilter={salesSourceFilter}
+          setSalesSourceFilter={setSalesSourceFilter}
+          leadsFollowupFilter={leadsFollowupFilter}
+          setLeadsFollowupFilter={setLeadsFollowupFilter}
+          showHiddenLeads={showHiddenLeads}
+          setShowHiddenLeads={setShowHiddenLeads}
+          totalConverted={totalConverted}
+          totalLost={totalLost}
+          visibleLeadsCount={visibleLeads.length}
+        />
       )}
 
       {/* ═══════════════ PIPELINE ═══════════════ */}
       {subTab === 'pipeline' && (
-        <div className="space-y-4">
-          {/* Kanban board */}
-          <div className="overflow-x-auto pb-4 -mx-1 px-1" dir="rtl">
-            <div className="flex gap-3 min-w-max">
-              {activeStatusCols.length === 0 && (
-                <div className="flex items-center justify-center w-full py-16 text-gray-400 text-sm">
-                  لا توجد ليدز تطابق الفلاتر المختارة
-                </div>
-              )}
-              {activeStatusCols.map(status => {
-                const colLeads = scoredLeads.filter(l => l.status === status);
-                const limit = colLimit[status];
-                const visible = colLeads.slice(0, limit);
-                const remaining = colLeads.length - visible.length;
-                const cfg = STATUS_CFG[status];
-                const isDropTarget = dragOverCol === status;
-                return (
-                  <div key={status}
-                    className={`w-60 flex-shrink-0 rounded-xl border-t-4 transition ${cfg.colColor} ${isDropTarget ? 'bg-primary-50 ring-2 ring-primary-300' : 'bg-gray-50'}`}
-                    dir="rtl"
-                    onDragOver={e => { e.preventDefault(); setDragOverCol(status); }}
-                    onDragLeave={() => setDragOverCol(null)}
-                    onDrop={e => {
-                      e.preventDefault();
-                      setDragOverCol(null);
-                      if (draggedLeadRef.current && draggedLeadRef.current.status !== status) {
-                        handleStatusChange(draggedLeadRef.current, status);
-                      }
-                      draggedLeadRef.current = null;
-                    }}
-                  >
-                    <div className="px-3 py-2.5 flex items-center justify-between border-b border-gray-100">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
-                      <span className="text-xs text-gray-400 font-bold bg-white border border-gray-200 rounded-full w-5 h-5 flex items-center justify-center">
-                        {colLeads.length}
-                      </span>
-                    </div>
-                    <div className="p-2 space-y-2 overflow-y-visible">
-                      {visible.length === 0 && (
-                        <p className="text-xs text-gray-400 text-center py-8">لا يوجد</p>
-                      )}
-                      {visible.map(lead => (
-                        <div key={lead.id} className="relative"
-                          draggable
-                          onDragStart={() => { draggedLeadRef.current = lead; }}
-                          onDragEnd={() => { draggedLeadRef.current = null; setDragOverCol(null); }}
-                        >
-                          {bulkMode && (
-                            <input type="checkbox"
-                              checked={selectedLeadIds.has(lead.id)}
-                              onChange={e => {
-                                e.stopPropagation();
-                                setSelectedLeadIds(prev => {
-                                  const next = new Set(prev);
-                                  e.target.checked ? next.add(lead.id) : next.delete(lead.id);
-                                  return next;
-                                });
-                              }}
-                              className="absolute top-2 left-2 z-10 w-4 h-4 accent-emerald-600"
-                              onClick={e => e.stopPropagation()}
-                            />
-                          )}
-                          <LeadCard lead={lead} score={lead._score}
-                            onSelect={() => !bulkMode && setSelectedId(lead.id)}
-                            onStatusChange={s => handleStatusChange(lead, s)}
-                            onBook={openLeadBook}
-                            onContact={l => { setCrmContactRow(l); setCrmContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' }); }}
-                            instituteBranches={instituteBranches}
-                            courses={courses}
-                            bundles={bundles}
-                          />
-                        </div>
-                      ))}
-                      {remaining > 0 && (
-                        <button
-                          onClick={() => setColLimit(prev => ({ ...prev, [status]: (prev[status] || 15) + 15 }))}
-                          className="w-full text-xs text-primary-600 font-bold py-2 bg-primary-50 hover:bg-primary-100 rounded-lg transition">
-                          عرض {Math.min(remaining, 15)} أكثر ({remaining} متبقي)
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <LeadsPipelineBoard
+          activeStatusCols={activeStatusCols}
+          scoredLeads={scoredLeads}
+          colLimit={colLimit}
+          setColLimit={setColLimit}
+          dragOverCol={dragOverCol}
+          setDragOverCol={setDragOverCol}
+          draggedLeadRef={draggedLeadRef}
+          handleStatusChange={handleStatusChange}
+          bulkMode={bulkMode}
+          selectedLeadIds={selectedLeadIds}
+          setSelectedLeadIds={setSelectedLeadIds}
+          setSelectedId={setSelectedId}
+          openLeadBook={openLeadBook}
+          setCrmContactRow={setCrmContactRow}
+          setCrmContactDraft={setCrmContactDraft}
+          instituteBranches={instituteBranches}
+          courses={courses}
+          bundles={bundles}
+        />
       )}
 
       {/* ═══════════════ REMINDERS ═══════════════ */}
@@ -1144,39 +850,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* CRM Settings Modal */}
 
       {/* ── CONVERT LEAD MODAL ──────────────────────────────────────── */}
-                {convertLeadModal.lead && (
-                  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' })}>
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                      <h3 className="font-bold text-gray-900 text-lg mb-1">????? ???? ??????</h3>
-                      <p className="text-sm text-gray-500 mb-4">???? ????? <span className="font-bold text-gray-800">{convertLeadModal.lead.name}</span> ?????? ???? ?? ?????? ???? ??????.</p>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">?????? ????????</label>
-                          <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value={convertLeadModal.courseId} onChange={(e) => setConvertLeadModal({ ...convertLeadModal, courseId: e.target.value })}>
-                            <option value="">???? ??????...</option>
-                            {courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">??? ??????</label>
-                          <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value={convertLeadModal.accessMode} onChange={(e) => setConvertLeadModal({ ...convertLeadModal, accessMode: e.target.value as AccessMode })}>
-                            <option value="full">???? ????</option>
-                            <option value="trial">??????</option>
-                            <option value="limited">?????</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-5">
-                        <button onClick={convertLeadToSubscriber} disabled={!convertLeadModal.courseId} className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1.5">
-                          <CheckCircle size={16} /> ????? ??????
-                        </button>
-                        <button onClick={() => setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' })} className="flex-1 border border-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-sm hover:bg-gray-50">
-                          ?????
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+      <ConvertLeadModal
+        convertLeadModal={convertLeadModal}
+        setConvertLeadModal={setConvertLeadModal}
+        courses={courses}
+        convertLeadToSubscriber={convertLeadToSubscriber}
+      />
 
       {/* ── PAYMENT MODAL ─────────────────────────────────────────────── */}
       {leadPayRow && (
@@ -1199,177 +878,16 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       )}
 
       {/* ── SALES NOTIF PANEL ───────────────────────────────────────── */}
-            {salesNotifOpen && (() => {
-              const todayStr = new Date().toISOString().slice(0, 10);
-              const myLeads = isSalesOnly && currentStaff
-                ? leads.filter(l => l.assignedSalesId === currentStaff.id && !['converted', 'lost'].includes(l.status))
-                : leads.filter(l => !['converted', 'lost'].includes(l.status));
-
-              const overdue = myLeads
-                .filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr)
-                .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || ''));
-              const todayLeads = myLeads
-                .filter(l => l.nextFollowUpDate === todayStr)
-                .sort((a, b) => a.name.localeCompare(b.name));
-              const noFollowup = myLeads
-                .filter(l => !l.nextFollowUpDate && ['new', 'contacted', 'interested'].includes(l.status))
-                .sort((a, b) => b.createdAt?.localeCompare(a.createdAt || '') || 0);
-
-              const waPhone = (p: string) => { const d = p.replace(/\D/g, ''); return d.startsWith('0') ? '2' + d : d; };
-
-              const LeadRow = ({ l, badge }: { l: LeadItem; badge: React.ReactNode }) => {
-                const daysSince = l.nextFollowUpDate
-                  ? Math.floor((Date.now() - new Date(l.nextFollowUpDate).getTime()) / 86_400_000)
-                  : null;
-                return (
-                  <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition">
-                    <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
-                      {l.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="font-bold text-gray-800 text-sm">{l.name}</span>
-                        {badge}
-                        {l.assignedSalesName && !isSalesOnly && (
-                          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">👤 {l.assignedSalesName}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                        {l.phone && <a href={`tel:${l.phone}`} className="text-blue-600 hover:underline">{l.phone}</a>}
-                        {l.nextFollowUpDate && daysSince !== null && daysSince > 0 && (
-                          <span className="text-red-500 font-bold">متأخر {daysSince} يوم</span>
-                        )}
-                        {l.lastContactNote && <span className="truncate max-w-[160px] text-gray-400 italic">{l.lastContactNote}</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {l.phone && (
-                        <a href={`https://wa.me/${waPhone(l.phone)}`} target="_blank" rel="noopener noreferrer"
-                          className="w-7 h-7 rounded-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center">W</a>
-                      )}
-                    </div>
-                  </div>
-                );
-              };
-
-              return (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end" onClick={() => setSalesNotifOpen(false)}>
-                  <div className="bg-white h-full w-full max-w-md shadow-2xl flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gradient-to-l from-primary-50 to-white">
-                      <div>
-                        <h2 className="font-bold text-gray-900 text-lg">🔔 متابعات السيلز</h2>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {isSalesOnly ? `قائمتك — ${myLeads.length} عميل` : `جميع السيلز — ${myLeads.length} عميل`}
-                        </p>
-                      </div>
-                      <button onClick={() => setSalesNotifOpen(false)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
-                    </div>
-
-                    {/* KPI strip */}
-                    <div className="grid grid-cols-3 gap-0 border-b border-gray-100">
-                      {[
-                        { label: 'متأخرة', val: overdue.length, color: overdue.length > 0 ? 'text-red-600 bg-red-50' : 'text-gray-400 bg-gray-50' },
-                        { label: 'اليوم', val: todayLeads.length, color: todayLeads.length > 0 ? 'text-amber-600 bg-amber-50' : 'text-gray-400 bg-gray-50' },
-                        { label: 'بدون موعد', val: noFollowup.length, color: noFollowup.length > 0 ? 'text-violet-600 bg-violet-50' : 'text-gray-400 bg-gray-50' },
-                      ].map(c => (
-                        <div key={c.label} className={`${c.color} py-3 text-center`}>
-                          <div className="text-2xl font-extrabold">{c.val}</div>
-                          <div className="text-[11px] font-medium opacity-80">{c.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Scrollable list */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-5">
-
-                      {/* Overdue */}
-                      {overdue.length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">⚠️ متأخرة ({overdue.length})</span>
-                          </div>
-                          <div className="space-y-2">
-                            {overdue.map(l => (
-                              <LeadRow key={l.id} l={l} badge={
-                                <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">
-                                  📅 {l.nextFollowUpDate}
-                                </span>
-                              } />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Today */}
-                      {todayLeads.length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">📅 متابعات اليوم ({todayLeads.length})</span>
-                          </div>
-                          <div className="space-y-2">
-                            {todayLeads.map(l => (
-                              <LeadRow key={l.id} l={l} badge={
-                                <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">اليوم</span>
-                              } />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* No followup date */}
-                      {noFollowup.length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">🕐 بدون موعد متابعة ({noFollowup.length})</span>
-                          </div>
-                          <div className="space-y-2">
-                            {noFollowup.slice(0, 20).map(l => (
-                              <LeadRow key={l.id} l={l} badge={
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                                  l.status === 'interested' ? 'bg-emerald-100 text-emerald-700'
-                                    : l.status === 'contacted' ? 'bg-amber-100 text-amber-700'
-                                    : 'bg-blue-100 text-blue-700'
-                                }`}>
-                                  {LEAD_STATUS_CFG[l.status as LeadStatus]?.label || l.status}
-                                </span>
-                              } />
-                            ))}
-                            {noFollowup.length > 20 && (
-                              <p className="text-xs text-gray-400 text-center pt-1">+{noFollowup.length - 20} عميل آخر</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {overdue.length === 0 && todayLeads.length === 0 && noFollowup.length === 0 && (
-                        <div className="text-center py-20">
-                          <div className="text-5xl mb-3">✅</div>
-                          <p className="text-gray-500 font-bold">كل شيء على ما يرام!</p>
-                          <p className="text-gray-400 text-sm mt-1">لا توجد متابعات معلّقة</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer actions */}
-                    <div className="border-t border-gray-200 px-5 py-4 bg-gray-50 space-y-2">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => { setLeadsFollowupFilter('overdue'); setSalesNotifOpen(false); setActiveDashboardTab?.('leads'); }}
-                          disabled={overdue.length === 0}
-                          className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl disabled:opacity-40 transition"
-                        >عرض المتأخرة في الجدول</button>
-                        <button
-                          onClick={() => { setLeadsFollowupFilter('today'); setSalesNotifOpen(false); setActiveDashboardTab?.('leads'); }}
-                          disabled={todayLeads.length === 0}
-                          className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl disabled:opacity-40 transition"
-                        >عرض اليوم</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+      {salesNotifOpen && (
+        <SalesFollowupPanel
+          isSalesOnly={isSalesOnly}
+          currentStaff={currentStaff}
+          leads={leads}
+          setSalesNotifOpen={setSalesNotifOpen}
+          setLeadsFollowupFilter={setLeadsFollowupFilter}
+          setActiveDashboardTab={setActiveDashboardTab}
+        />
+      )}
 
       {showSettings && (
         <CrmSettingsModal
