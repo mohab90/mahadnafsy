@@ -7,7 +7,7 @@ const router  = express.Router();
 const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets, DEFAULT_GSHEETS } = require('../lib/sheets');
+const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
 
 // POST /api/admin/leads/gsheet-test — test if a sheet is accessible and return column headers
 router.post('/api/admin/leads/gsheet-test', requireAuth, requireAdmin, async (req, res) => {
@@ -173,8 +173,14 @@ router.post('/api/admin/leads/gsheet-sync-all', requireAuth, requireAdmin, async
   } catch(e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// Auto-sync cron: every 15 minutes, sync all sheets flagged with autoSync:true
-// Running guard prevents concurrent syncs if a run takes longer than 15 min
+// Auto-sync cron: every 15 minutes, sync sheets the ADMIN has explicitly enabled.
+// Auto-import is OPT-IN: it runs ONLY when crm_settings.sheets (saved from the admin
+// CRM settings UI) contains a sheet with autoSync:true. It intentionally does NOT
+// look at the hardcoded DEFAULT_GSHEETS — those are a manual-sync convenience seed,
+// never an automatic importer. A fresh/empty install therefore never auto-imports
+// anything until the admin deliberately configures and enables a sheet.
+// (Guarded root cause of the 2026-07-10 incident where an empty test box silently
+//  pulled 10k+ real customer leads from the hardcoded sheets on a timer.)
 let _gsheetAutoRunning = false;
 setInterval(async () => {
   if (_gsheetAutoRunning) return;
@@ -183,10 +189,9 @@ setInterval(async () => {
     const [cfgRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_settings'");
     const settings = cfgRows[0]?.value ? JSON.parse(cfgRows[0].value) : {};
     const sheets = Array.isArray(settings.sheets) ? settings.sheets : [];
-    // Also run if any DEFAULT_GSHEETS have autoSync
-    if (sheets.some(s => s.autoSync) || DEFAULT_GSHEETS.some(s => s.autoSync)) {
+    if (sheets.some(s => s.autoSync)) {
       const r = await syncAllConfiguredSheets();
-      if (r.imported > 0) logger.info(`[gsheet-auto] imported ${r.imported} leads from sheets`);
+      if (r.imported > 0) logger.info(`[gsheet-auto] imported ${r.imported} leads from admin-configured sheets`);
     }
   } catch(e) { logger.error('[gsheet-auto]', e.message); }
   finally { _gsheetAutoRunning = false; }

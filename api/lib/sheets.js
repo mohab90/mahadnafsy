@@ -5,10 +5,15 @@ const { uuidv4 } = require('./id');
 const { pool } = require('./db');
 const { getNextClientCode } = require('./mappers');
 
-// Default sheets — used when crm_settings has never been saved to DB yet
+// Convenience seed sheets — offered as a starting point in the admin CRM settings
+// UI ONLY. They are NEVER auto-synced on their own: autoSync is false here and the
+// 15-min cron only runs sheets the admin has EXPLICITLY saved to crm_settings with
+// autoSync enabled. (Historically these had autoSync:true and were force-merged into
+// every sync, so ANY fresh/empty install silently began importing real customer
+// leads from these hardcoded sheets on a timer with zero configuration — 2026-07-10.)
 const DEFAULT_GSHEETS = [
-  { sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1545487801', name: 'الشيت الرئيسي', autoSync: true },
-  { sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1083686129', name: 'الصحة النفسية', autoSync: true, defaultCourse: 'الصحة النفسية' }
+  { sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1545487801', name: 'الشيت الرئيسي', autoSync: false },
+  { sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1083686129', name: 'الصحة النفسية', autoSync: false, defaultCourse: 'الصحة النفسية' }
 ];
 
 // Helper: check if response body looks like HTML (private sheet → redirected to login page)
@@ -39,16 +44,16 @@ async function syncAllConfiguredSheets() {
   try {
     const [cfgRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_settings'");
     const settings = cfgRows[0]?.value ? JSON.parse(cfgRows[0].value) : {};
+    // Use ONLY the admin-configured sheets. Fall back to the seed defaults just so a
+    // MANUAL "sync now" on a never-configured install has something to pull — but do
+    // NOT force-merge the defaults on top of a real configuration (that used to pull
+    // the hardcoded sheets even after the admin had set up their own).
     const sheets = (Array.isArray(settings.sheets) && settings.sheets.length > 0)
       ? settings.sheets
       : DEFAULT_GSHEETS;
-    // Always ensure DEFAULT_GSHEETS entries are included (merge any missing by sheetId+gid)
-    const sheetKey = s => `${s.sheetId}:${(s.gids||[s.gid||'']).join(',')}`;
-    const existingKeys = new Set(sheets.map(sheetKey));
-    const merged = [...sheets, ...DEFAULT_GSHEETS.filter(d => !existingKeys.has(sheetKey(d)))];
     const autoAssign = settings.autoAssign || 'rr';
     let totalImported = 0, totalSkipped = 0;
-    for (const sheet of merged) {
+    for (const sheet of sheets) {
       if (!sheet.sheetId) continue;
       try {
         // Support multiple GIDs per sheet (comma-separated string or array)

@@ -47,7 +47,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
         \`key\` VARCHAR(100) PRIMARY KEY,
         \`value\` LONGTEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      ) CHARACTER SET utf8mb4`).catch(migCatch);
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
       let currentV = 0;
       try {
         const [[cfgRow]] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'schema_version' LIMIT 1");
@@ -200,7 +200,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             INDEX idx_audit_payment (payment_id),
             INDEX idx_audit_subscriber (subscriber_id),
             INDEX idx_audit_created (created_at)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '5') ON DUPLICATE KEY UPDATE `value`='5'"
         ).catch(migCatch);
@@ -222,7 +222,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             INDEX idx_otp_user (user_id),
             INDEX idx_otp_email (email),
             INDEX idx_otp_expires (expires_at)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // Promo/discount codes
         await pool.query(`
@@ -241,7 +241,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_promo_code (code),
             INDEX idx_promo_active (active)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // Admin notifications
         await pool.query(`
@@ -255,7 +255,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_notif_created (created_at),
             INDEX idx_notif_read (read_at)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '6') ON DUPLICATE KEY UPDATE `value`='6'"
@@ -275,7 +275,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             UNIQUE KEY uq_rating (course_id, subscriber_id),
             INDEX idx_cr_course (course_id),
             INDEX idx_cr_subscriber (subscriber_id)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '7') ON DUPLICATE KEY UPDATE `value`='7'"
         ).catch(migCatch);
@@ -295,7 +295,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             UNIQUE KEY uq_completion (subscriber_id, course_id),
             INDEX idx_comp_course (course_id),
             INDEX idx_comp_subscriber (subscriber_id)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         // Referral codes
         await pool.query(`
           CREATE TABLE IF NOT EXISTS referral_codes (
@@ -306,7 +306,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             earnings DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_ref_code (code)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         // Fix type mismatch if tables were already created with INT subscriber_id
         await pool.query('ALTER TABLE course_completions MODIFY COLUMN subscriber_id VARCHAR(36) NOT NULL').catch(migCatch);
         await pool.query('ALTER TABLE referral_codes MODIFY COLUMN subscriber_id VARCHAR(36) NOT NULL').catch(migCatch);
@@ -346,7 +346,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             expires_at DATETIME NOT NULL,
             revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_tbl_expires (expires_at)
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '11') ON DUPLICATE KEY UPDATE `value`='11'"
         ).catch(migCatch);
@@ -367,7 +367,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           UNIQUE KEY uq_lp (subscriber_id, lecture_id),
           KEY idx_lp_sub (subscriber_id),
           KEY idx_lp_course (course_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // email_campaigns
         await pool.query(`CREATE TABLE IF NOT EXISTS email_campaigns (
@@ -385,7 +385,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           created_by VARCHAR(36) DEFAULT NULL,
           PRIMARY KEY (id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // tasks
         await pool.query(`CREATE TABLE IF NOT EXISTS tasks (
@@ -406,7 +406,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           KEY idx_tasks_assigned (assigned_to),
           KEY idx_tasks_status (status)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // support_tickets
         await pool.query(`CREATE TABLE IF NOT EXISTS support_tickets (
@@ -425,7 +425,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           KEY idx_tickets_sub (subscriber_id),
           KEY idx_tickets_status (status)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS ticket_replies (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -436,7 +436,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           KEY idx_tr_ticket (ticket_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // webhooks
         await pool.query(`CREATE TABLE IF NOT EXISTS webhooks (
@@ -450,7 +450,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           last_status INT DEFAULT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // budgets
         await pool.query(`CREATE TABLE IF NOT EXISTS budgets (
@@ -463,7 +463,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           UNIQUE KEY uq_budget (month, category)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // nps_responses
         await pool.query(`CREATE TABLE IF NOT EXISTS nps_responses (
@@ -478,7 +478,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           KEY idx_nps_sub (subscriber_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // sms_campaigns
         await pool.query(`CREATE TABLE IF NOT EXISTS sms_campaigns (
@@ -494,7 +494,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           created_by VARCHAR(36) DEFAULT NULL,
           PRIMARY KEY (id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '12') ON DUPLICATE KEY UPDATE `value`='12'"
@@ -514,7 +514,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           KEY idx_dept_branch (branch)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // Extend staff table with HR fields
         await pool.query('ALTER TABLE staff ADD COLUMN IF NOT EXISTS department_id VARCHAR(36) DEFAULT NULL').catch(migCatch);
@@ -540,7 +540,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           KEY idx_salary_staff (staff_id),
           KEY idx_salary_effective (staff_id, effective_from)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS commission_rules (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -566,7 +566,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           KEY idx_crules_staff (staff_id),
           KEY idx_crules_active (is_active)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS crm_commissions (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -590,7 +590,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           KEY idx_comm_payment (payment_id),
           KEY idx_comm_status (status),
           UNIQUE KEY uniq_comm_payment_staff (payment_id, staff_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS kpi_targets (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -606,7 +606,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           KEY idx_kpit_staff (staff_id),
           KEY idx_kpit_period (staff_id, metric, from_date)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS kpi_actuals (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -623,7 +623,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           UNIQUE KEY uniq_kpi_actual (staff_id, metric, period, period_start),
           KEY idx_kpia_staff (staff_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS payroll_runs (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -644,7 +644,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           UNIQUE KEY uniq_payroll_run (month, year),
           KEY idx_pr_status (status)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS payroll_items (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -673,7 +673,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           UNIQUE KEY uniq_payroll_item (payroll_run_id, staff_id),
           KEY idx_pi_staff (staff_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS work_schedules (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -685,7 +685,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           is_off_day TINYINT(1) NOT NULL DEFAULT 0,
           PRIMARY KEY (id),
           UNIQUE KEY uniq_schedule (staff_id, day_of_week)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS attendance_logs (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -706,7 +706,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           UNIQUE KEY uniq_attendance (staff_id, date),
           KEY idx_att_staff (staff_id),
           KEY idx_att_date (date)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS attendance_import_batches (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -721,7 +721,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           imported_by VARCHAR(36) DEFAULT NULL,
           imported_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS leaves (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -740,7 +740,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           KEY idx_leaves_staff (staff_id),
           KEY idx_leaves_dates (start_date, end_date),
           KEY idx_leaves_status (status)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS salary_advances (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -756,7 +756,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           KEY idx_advances_staff (staff_id)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS hr_audit_logs (
           id VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -772,7 +772,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           PRIMARY KEY (id),
           KEY idx_hral_entity (entity_type, entity_id),
           KEY idx_hral_date (performed_at)
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
 
         // Seed initial departments
         await pool.query(`INSERT IGNORE INTO hr_departments (id, name, branch, description) VALUES
@@ -1485,7 +1485,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
           body TEXT NOT NULL,
           category VARCHAR(100),
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ) CHARACTER SET utf8mb4`).catch(migCatch);
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '32') ON DUPLICATE KEY UPDATE `value`='32'"
         ).catch(migCatch);
@@ -1507,7 +1507,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             branch ENUM('DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER') DEFAULT 'DAQQI',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         // Accounting periods for period-closing
         await pool.query(`
           CREATE TABLE IF NOT EXISTS accounting_periods (
@@ -1518,7 +1518,7 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
             closed_by VARCHAR(100) NULL,
             summary_json TEXT NULL,
             status ENUM('open','closed') DEFAULT 'open'
-          ) CHARACTER SET utf8mb4`).catch(migCatch);
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(migCatch);
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '33') ON DUPLICATE KEY UPDATE `value`='33'"
         ).catch(migCatch);
