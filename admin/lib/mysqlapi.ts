@@ -4,7 +4,10 @@
 
 import { AuthUser } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://admin.mahadnafsy.com/api';
+// Relative by default — always targets whatever origin actually served the page
+// (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
+// would silently point a misconfigured dev/staging build at real prod data.
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 function getToken(): string | null {
   return localStorage.getItem('mahad-token');

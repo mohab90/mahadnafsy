@@ -109,7 +109,10 @@ function cacheInvalidate(...prefixes) {
 }
 
 // ── Concurrency guard ─────────────────────────────────────────────────────────
-const DB_MAX_CONCURRENT = 5;
+// Tunable per environment — should track connectionLimit above, not sit fixed
+// below it (a lower hardcoded value throttles requests even when the pool has
+// spare connections).
+const DB_MAX_CONCURRENT = parseInt(process.env.DB_MAX_CONCURRENT || process.env.DB_POOL_LIMIT || '10');
 let _dbActive = 0;
 const _dbQueue = [];
 function acquireDb() {
@@ -177,8 +180,14 @@ async function autoAssignStaff(role) {
   }
 }
 
-// Ensures the users auth table exists (idempotent DDL, called at first login/register).
+// Ensures the users auth table exists. Called from the register/login/OTP
+// request handlers (self-healing if the table is ever missing), but the actual
+// DDL only runs once per process — every request after the first successful
+// check is a single in-memory boolean read, not a CREATE TABLE round-trip on
+// the hottest, most latency-sensitive path in the app.
+let _usersTableEnsured = false;
 async function ensureUsersTable(conn) {
+  if (_usersTableEnsured) return;
   await conn.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(100) PRIMARY KEY,
@@ -190,6 +199,7 @@ async function ensureUsersTable(conn) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
   `);
+  _usersTableEnsured = true;
 }
 
 module.exports = { pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, autoAssignStaff, ensureUsersTable, requireDb, isDbDown };

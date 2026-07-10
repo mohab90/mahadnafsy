@@ -128,8 +128,8 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
 }
 
 async function requireAdminOrStaff(req, res, next) {
-  const { email } = req.user || {};
-  if (ADMIN_EMAILS.includes(email)) {
+  const { email, uid } = req.user || {};
+  if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) {
     req.isSuperAdmin = true;
     return next();
   }

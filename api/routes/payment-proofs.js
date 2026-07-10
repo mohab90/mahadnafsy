@@ -10,7 +10,7 @@ const { postPaymentJournal } = require('../lib/finance');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { syncLeadDealValue } = require('./public-orders');
 const { createNotification } = require('../lib/notification');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 // ── Payment Proofs — client submits & admin reviews ───────────────────────────
 
@@ -133,7 +133,7 @@ router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
 });
 
 // Admin: list payment proofs (default: pending only)
-router.get('/api/admin/payment-proofs', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const statusFilter = req.query.status; // 'PENDING' | 'APPROVED' | 'REJECTED' | undefined (all)
     let sql = `SELECT pp.*, s.name AS subscriber_name, s.phone AS subscriber_phone, s.email AS subscriber_email,
@@ -151,7 +151,7 @@ router.get('/api/admin/payment-proofs', requireAuth, requireAdmin, async (req, r
 });
 
 // Admin: approve or reject a payment proof
-router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const { id } = req.params;
@@ -231,7 +231,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdmin, async (
 });
 
 // Admin: get single payment proof image (with auth check)
-router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [[row]] = await pool.query('SELECT proof_image FROM payment_proofs WHERE id = ?', [req.params.id]);
     if (!row || !row.proof_image) return res.status(404).json({ error: 'No image' });

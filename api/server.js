@@ -407,7 +407,7 @@ app.use((req, res, next) => {
 });
 
 // Multi-tenancy seam (Phase 2): resolves req.tenantId from sub-domain/header/JWT.
-// Single-tenant today → always 'mahad'; no behavior change. See docs/MULTI-TENANCY.md.
+// Single-tenant today → always 'tenant-default'; no behavior change. See docs/MULTI-TENANCY.md.
 app.use(require('./middleware/tenantContext').resolveTenant);
 
 // Structured HTTP access log — one JSON line per request (method/path/status/ms).

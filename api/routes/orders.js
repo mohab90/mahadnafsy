@@ -110,15 +110,19 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
 
 // PATCH /api/admin/orders/:id
 router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const newStatus = req.body.status || 'pending';
-    const [[oldPay]] = await pool.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
-    await pool.query('UPDATE orders SET status=? WHERE id=?', [newStatus, req.params.id]);
+    const [[oldPay]] = await conn.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
+    // order.status and payments.status must never diverge — one transaction, all or nothing.
+    await conn.beginTransaction();
+    await conn.query('UPDATE orders SET status=? WHERE id=?', [newStatus, req.params.id]);
     // Record the transfer↔payment reconciliation link when the accountant matches them.
     if (Object.prototype.hasOwnProperty.call(req.body, 'linked_transfer_id')) {
-      await pool.query('UPDATE orders SET linked_transfer_id=? WHERE id=?', [req.body.linked_transfer_id || null, req.params.id]).catch(() => {});
+      await conn.query('UPDATE orders SET linked_transfer_id=? WHERE id=?', [req.body.linked_transfer_id || null, req.params.id]);
     }
-    await pool.query('UPDATE payments SET status=? WHERE id=?', [newStatus, req.params.id]).catch(() => {});
+    await conn.query('UPDATE payments SET status=? WHERE id=?', [newStatus, req.params.id]);
+    await conn.commit();
     logPaymentAudit(req.params.id, 'update', oldPay?.status || null, newStatus, oldPay?.amount || null, oldPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
     if (newStatus === 'paid' || newStatus === 'failed') {
       setImmediate(async () => {
@@ -139,22 +143,32 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res
     }
     res.json({ ok: true });
   } catch (e) {
+    await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
   }
 });
 
 // DELETE /api/admin/orders/:id
 router.delete('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
   try {
-    const [[delPay]] = await pool.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
-    await pool.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
-    await pool.query('DELETE FROM payments WHERE id = ?', [req.params.id]).catch(() => {});
+    const [[delPay]] = await conn.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
+    // Hard-deletes a financial record — must stay in lockstep with the order delete.
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
+    await conn.query('DELETE FROM payments WHERE id = ?', [req.params.id]);
+    await conn.commit();
     logPaymentAudit(req.params.id, 'delete', delPay?.status || null, null, delPay?.amount || null, delPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
+    await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
   }
 });
 
