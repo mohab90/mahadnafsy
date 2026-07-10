@@ -34,6 +34,15 @@ export default defineConfig(({ mode }) => {
       minify: 'terser',
       terserOptions: { output: { ascii_only: true } },
       chunkSizeWarningLimit: 600,
+      // Vite's default modulePreload conservatively preloads any chunk reachable
+      // via a *statically discoverable* import() call, even one nested inside a
+      // React.lazy() that only actually runs on user action (e.g. FinancialTab's
+      // PDF export button) — so the 650KB+ pdf-vendor chunk was being fetched on
+      // every admin page load regardless of whether anyone ever exports a PDF.
+      // Explicitly drop it (and excel-vendor, same shape) from the preload list.
+      modulePreload: {
+        resolveDependencies: (_filename, deps) => deps.filter(dep => !dep.includes('pdf-vendor') && !dep.includes('excel-vendor')),
+      },
       rollupOptions: {
         output: {
           manualChunks: (id) => {
@@ -44,8 +53,13 @@ export default defineConfig(({ mode }) => {
             if (id.includes('recharts') || id.includes('/d3-') || id.includes('victory-vendor')) return 'charts';
             // Icon set
             if (id.includes('lucide-react')) return 'icons';
+            // dompurify is used by the always-loaded SafeHtml component (via
+            // Dashboard.tsx) — keep it OUT of pdf-vendor, otherwise Vite's
+            // modulePreload sees dompurify as eagerly-reachable and preloads
+            // the whole merged chunk, dragging jspdf/html2canvas along with it.
+            if (id.includes('dompurify')) return 'vendor';
             // PDF export stack — heavy, loaded only when exporting PDFs
-            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg') || id.includes('dompurify')) return 'pdf-vendor';
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg')) return 'pdf-vendor';
             // Excel export — loaded only when exporting spreadsheets
             if (id.includes('write-excel-file') || id.includes('xlsx')) return 'excel-vendor';
             // Everything else
