@@ -15,3 +15,6 @@ node_modules/
 # ── Uploads / user files ──────────────────────────────────────────────────────
 uploads/
 dist/
+
+# ── Image-proxy on-disk cache (warmed at runtime, never committed) ────────────
+.img-cache/
