@@ -3,6 +3,16 @@ import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
 import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DiscountRule, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, LeadType, BranchType, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, CourseAccessSetting, AutomationWorkflow, AutomationTrigger, PaymentHistoryEntry, CourseQuiz, QuizAttempt, LiveStream } from '../types';
 import { mysqlCatalog, mysqlClient, mysqlForms, mysqlAdmin } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
+import { useActivityLog } from './site-data-hooks/useActivityLog';
+import { useCurrency } from './site-data-hooks/useCurrency';
+import { useSiteContent } from './site-data-hooks/useSiteContent';
+import { useDiscounts } from './site-data-hooks/useDiscounts';
+import { useNotifications } from './site-data-hooks/useNotifications';
+import { useLiveStreams } from './site-data-hooks/useLiveStreams';
+import { useCourseCurriculum } from './site-data-hooks/useCourseCurriculum';
+import { useCommunityData } from './site-data-hooks/useCommunityData';
+import { useQuizzes } from './site-data-hooks/useQuizzes';
+import { useCatalogData } from './site-data-hooks/useCatalogData';
 
 interface SiteDataShape {
   courses: Course[];
@@ -500,10 +510,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   })();
 
-  const [courses, setCourses] = useState<Course[]>(initial.courses);
-  const [bundles, setBundles] = useState<Bundle[]>(initial.bundles);
-  const [therapists, setTherapists] = useState<Therapist[]>(initial.therapists);
-  const [testimonials, setTestimonials] = useState<TestimonialItem[]>(initial.testimonials);
   const [subscribers, setSubscribers] = useState<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
   const subscribersRef = useRef<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
   subscribersRef.current = subscribers;
@@ -514,28 +520,61 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const staffMembersRef = useRef<StaffMember[]>(initial.staffMembers || defaultStaffMembers);
   staffMembersRef.current = staffMembers;
   const [consultations, setConsultations] = useState<ConsultationItem[]>(initial.consultations || defaultConsultations);
-  const [lectures, setLectures] = useState<CourseLectureItem[]>(initial.lectures || defaultLectures);
-  const [chapters, setChapters] = useState<CourseChapterItem[]>(initial.chapters || []);
-  const [communityPosts, setCommunityPosts] = useState<CommunityPostItem[]>(initial.communityPosts || defaultCommunityPosts);
-  const [communityLibraryItems, setCommunityLibraryItems] = useState<CommunityLibraryItem[]>(initial.communityLibraryItems || defaultCommunityLibraryItems);
-  const [communityVideos, setCommunityVideos] = useState<CommunityVideoItem[]>(initial.communityVideos || defaultCommunityVideos);
-  const [communityEvents, setCommunityEvents] = useState<CommunityEventItem[]>(initial.communityEvents || defaultCommunityEvents);
-  const [content, setContent] = useState<Record<string, string>>(initial.content);
-  const contentRef = useRef<Record<string, string>>(initial.content);
-  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>(initial.activityLogs);
-  const [discounts, setDiscounts] = useState<DiscountRule[]>((initial as typeof seedData & { discounts?: DiscountRule[] }).discounts || []);
-  const [notifications, setNotifications] = useState<NotificationBroadcast[]>((initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || []);
-  const [courseQuizzes, setCourseQuizzes] = useState<CourseQuiz[]>((initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || []);
-  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>((initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || []);
-  const [liveStreams, setLiveStreams] = useState<LiveStream[]>((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || []);
   const [joinUsApplications, setJoinUsApplications] = useState<JoinUsApplication[]>((initial as typeof seedData & { joinUsApplications?: JoinUsApplication[] }).joinUsApplications || []);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>((initial as typeof seedData & { contactMessages?: ContactMessage[] }).contactMessages || []);
   const [automationWorkflows, setAutomationWorkflows] = useState<AutomationWorkflow[]>((initial as typeof seedData & { automationWorkflows?: AutomationWorkflow[] }).automationWorkflows || []);
-  const [currency, setCurrencyState] = useState<Currency>('USD');
   const { authUser, setAuthUser, logout, refreshAuth } = useAuth();
-  const [remoteReady, setRemoteReady] = useState(false);
+  const isAdmin = Boolean(authUser?.isAdmin);
+  const { activityLogs, track, resetActivityLogs } = useActivityLog(authUser, initial.activityLogs);
+  const { currency, setCurrency } = useCurrency();
+  const { content, mergeContent, setContentValue, addContentKey, removeContentKey, resetContent } = useSiteContent(initial.content, defaultContent, track);
+  const { discounts, addDiscount, updateDiscount, deleteDiscount, resetDiscounts } = useDiscounts((initial as typeof seedData & { discounts?: DiscountRule[] }).discounts || [], track);
+  const { notifications, setNotifications, addNotification, updateNotification, deleteNotification, resetNotifications } = useNotifications((initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || [], track);
+  const { liveStreams, addLiveStream, updateLiveStream, deleteLiveStream, resetLiveStreams } = useLiveStreams((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [], track);
+  const {
+    lectures, setLectures, chapters, setChapters,
+    addLecture, updateLecture, deleteLecture,
+    addChapter, updateChapter, deleteChapter,
+    getCourseChapters, getCourseLectures, reloadLectures, resetCurriculum,
+  } = useCourseCurriculum(initial.lectures || defaultLectures, initial.chapters || [], track);
+  const {
+    communityPosts, setCommunityPosts, communityLibraryItems, setCommunityLibraryItems,
+    communityVideos, setCommunityVideos, communityEvents, setCommunityEvents,
+    addCommunityPost, updateCommunityPost, deleteCommunityPost,
+    addCommunityLibraryItem, updateCommunityLibraryItem, deleteCommunityLibraryItem,
+    addCommunityVideo, updateCommunityVideo, deleteCommunityVideo,
+    addCommunityEvent, updateCommunityEvent, deleteCommunityEvent,
+    resetCommunity,
+  } = useCommunityData(
+    initial.communityPosts || defaultCommunityPosts,
+    initial.communityLibraryItems || defaultCommunityLibraryItems,
+    initial.communityVideos || defaultCommunityVideos,
+    initial.communityEvents || defaultCommunityEvents,
+    isAdmin, track,
+  );
+  const {
+    courseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
+    quizAttempts, addQuizAttempt, deleteQuizAttempt, resetQuizzes,
+  } = useQuizzes(
+    (initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || [],
+    (initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || [],
+    authUser, isAdmin, subscribers, track,
+  );
+  const {
+    courses, setCourses, bundles, therapists, testimonials,
+    addCourse, updateCourse, deleteCourse,
+    addTherapist, updateTherapist, deleteTherapist,
+    addBundle, updateBundle, deleteBundle,
+    addTestimonial, updateTestimonial, deleteTestimonial,
+    remoteReady, isHydratingRef, resetCatalog,
+  } = useCatalogData({
+    initialCourses: initial.courses, initialBundles: initial.bundles,
+    initialTherapists: initial.therapists, initialTestimonials: initial.testimonials,
+    isAdmin, authUserUid: authUser?.uid, track, mergeContent,
+    setLectures, setChapters,
+    setCommunityPosts, setCommunityLibraryItems, setCommunityVideos, setCommunityEvents,
+  });
   const [isStaff, setIsStaff] = useState(false);
-  const isHydratingRef = useRef(true);
   // Timestamp of last local CRM/config mutation
   const lastCRMWriteRef = useRef(0);
   const lastLocalConfigWriteRef = useRef(0);
@@ -545,14 +584,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const settingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Round-robin counter for auto-assigning new leads to sales staff
   const roundRobinIndexRef = useRef(0);
-  // Guards the public catalog/community load (below) so it fires its ~12 API
-  // calls exactly ONCE per page load. authUser resolves asynchronously and
-  // its identity can change (undefined -> null, or null -> a real uid) several
-  // times before settling — without this guard, every one of those transitions
-  // re-ran the entire courses/bundles/therapists/testimonials/community/
-  // lectures/chapters fetch sequence from scratch (measured: 3x duplicate
-  // network waterfall on every page load).
-  const catalogLoadedRef = useRef(false);
   // High-water mark for client codes (local fallback when MySQL unavailable)
   const isValidClientCodeFormat = (c: string | undefined): boolean =>
     !!c && /^C\d+$/.test(c) && parseInt(c.slice(1), 10) >= 10000;
@@ -581,80 +612,8 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     highWaterCodeRef.current = next;
     return `C${next}`;
   };
-  const track = (action: string, entity: string, label: string) => {
-    const actor = authUser?.email || authUser?.uid || 'unknown';
-    const actorName = authUser?.email?.split('@')[0] || actor;
-    // Auto-derive section from entity
-    const sectionMap: Record<string, string> = {
-      course: 'إدارة الأكاديمية', lecture: 'إدارة الأكاديمية', chapter: 'إدارة الأكاديمية',
-      bundle: 'إدارة الأكاديمية', quiz: 'إدارة الأكاديمية', live_stream: 'إدارة الأكاديمية',
-      institute_gallery: 'إدارة الأكاديمية', testimonial: 'إدارة الأكاديمية',
-      subscriber: 'إدارة العملاء', lead: 'إدارة العملاء', clientCode: 'إدارة العملاء',
-      consultation: 'الاستشارات', therapist: 'المحاضرون',
-      order: 'المالية', financial: 'المالية', discount: 'المالية',
-      staff: 'إدارة الفريق', content: 'إعدادات الموقع',
-      community_post: 'المجتمع', community_library: 'المجتمع',
-      community_video: 'المجتمع', community_event: 'المجتمع',
-    };
-    const section = sectionMap[entity] || 'عام';
-    const newLog = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      action,
-      entity,
-      label,
-      at: nowLabel(),
-      actor,
-      actorName,
-      section,
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-    persistActivityLogToCollection(newLog);
-  };
-
-  // Currency: respect localStorage override, otherwise auto-detect by country
-  useEffect(() => {
-    const stored = localStorage.getItem('mahad-currency') as Currency | null;
-    if (stored && ['EGP', 'SAR', 'USD'].includes(stored)) {
-      setCurrencyState(stored);
-      return;
-    }
-    const countryToCurrency = (country?: string): Currency => {
-      if (country === 'EG') return 'EGP';
-      if (country === 'SA') return 'SAR';
-      return 'USD';
-    };
-    const withTimeout = (url: string, ms = 4000) =>
-      Promise.race([fetch(url), new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), ms))]) as Promise<Response>;
-
-    // Primary: api.country.is
-    withTimeout('https://api.country.is/')
-      .then(r => r.json())
-      .then((d: { country?: string }) => { setCurrencyState(countryToCurrency(d.country)); })
-      .catch(() =>
-        // Fallback 1: ipapi.co
-        withTimeout('https://ipapi.co/json/')
-          .then(r => r.json())
-          .then((d: { country_code?: string }) => { setCurrencyState(countryToCurrency(d.country_code)); })
-          .catch(() =>
-            // Fallback 2: ipinfo.io
-            withTimeout('https://ipinfo.io/json?token=')
-              .then(r => r.json())
-              .then((d: { country?: string }) => { setCurrencyState(countryToCurrency(d.country)); })
-              .catch(() => { setCurrencyState('USD'); })
-          )
-      );
-  }, []);
 
   // Auth: restore session via httpOnly cookie — managed by AuthContext (AuthProvider above SiteDataProvider)
-
-
-
-  const setCurrency = (c: Currency) => {
-    localStorage.setItem('mahad-currency', c);
-    setCurrencyState(c);
-  };
-
-  const isAdmin = Boolean(authUser?.isAdmin);
 
 
 
@@ -699,20 +658,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }).catch(() => {/* silent */});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_applySubscriberData]);
-
-  // Reload lectures + chapters from API (called when VideoPlayer opens without lectures loaded)
-  const reloadLectures = React.useCallback(async () => {
-    try {
-      const [lRes, chRes] = await Promise.allSettled([
-        mysqlCatalog.listLectures(2000),
-        mysqlCatalog.listChapters(1000),
-      ]);
-      if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
-        setLectures(lRes.value as unknown as CourseLectureItem[]);
-      if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
-        setChapters(chRes.value as unknown as CourseChapterItem[]);
-    } catch { /* silent */ }
-  }, []);
 
   const reloadLeads = React.useCallback(async () => { /* admin-only — no-op in client */ }, []);
 
@@ -765,318 +710,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  // ── Per-user quizAttempts loader ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!authUser?.uid || isAdmin) return;
-    let cancelled = false;
-    const sub = subscribers.find(s => s.email?.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim());
-    const sid = sub?.id ?? authUser.uid;
-    mysqlClient.getMyQuizAttempts(sid).then((list) => {
-      if (cancelled) return;
-      setQuizAttempts((list as unknown as QuizAttempt[]).sort((a, b) => (b.takenAt || '').localeCompare(a.takenAt || '')));
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid, isAdmin, subscribers]);
-
-  // ── Community + catalog loader (public, non-admin) ──────────────────────────
-  // Admin catalog is loaded by the bootstrap above. Non-admin guests load via MySQL.
-  useEffect(() => {
-    isHydratingRef.current = false;
-    setRemoteReady(true);
-
-    // authUser resolves asynchronously (undefined -> null/uid), which can re-fire this
-    // effect 2-3x before settling. Without this guard each firing re-ran the ENTIRE
-    // catalog+community fetch sequence (~12 requests, incl. all 5000 lectures) from
-    // scratch — tripling page-load network traffic. Only the first firing loads data;
-    // later firings (e.g. auth churn, isAdmin resolving) are no-ops here.
-    if (catalogLoadedRef.current) return;
-    catalogLoadedRef.current = true;
-
-    // Load community content for all users (deferred 300ms to let critical auth/catalog load first)
-    setTimeout(() => {
-      Promise.allSettled([
-        mysqlCatalog.listCommunityPosts(),
-        mysqlCatalog.listCommunityLibrary(),
-        mysqlCatalog.listCommunityVideos(),
-        mysqlCatalog.listCommunityEvents(),
-      ]).then(([pRes, lRes, vRes, eRes]) => {
-        if (pRes.status === 'fulfilled' && pRes.value.length > 0)
-          setCommunityPosts((pRes.value as unknown as CommunityPostItem[]).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
-        if (lRes.status === 'fulfilled' && lRes.value.length > 0)
-          setCommunityLibraryItems(lRes.value as unknown as CommunityLibraryItem[]);
-        if (vRes.status === 'fulfilled' && vRes.value.length > 0)
-          setCommunityVideos(vRes.value as unknown as CommunityVideoItem[]);
-        if (eRes.status === 'fulfilled' && eRes.value.length > 0)
-          setCommunityEvents((eRes.value as unknown as CommunityEventItem[]).sort((a, b) => (b.eventDate || b.dateLabel || '').localeCompare(a.eventDate || a.dateLabel || '')));
-      }).catch(() => {});
-    }, 300);
-
-    // Load catalog for non-admin users in 2 sequential batches to avoid overwhelming DB connection pool.
-    // Batch A (immediate): catalog data needed for home/courses pages.
-    // Batch B (500ms later): lectures & chapters needed for course detail pages (lighter limit).
-    if (!isAdmin) {
-      // Load dynamic site content from API (hero text, page texts, etc.) — merge over defaults
-      mysqlCatalog.getSiteContent().then((remote) => {
-        if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
-          contentRef.current = { ...contentRef.current, ...remote };
-          setContent(contentRef.current);
-        }
-      }).catch(() => { /* graceful — defaults remain */ });
-
-      (async () => {
-        try {
-          // ── Batch A: courses/bundles/testimonials/therapists ──────────────────
-          const [cRes, bRes, thRes, testRes] = await Promise.allSettled([
-            mysqlCatalog.listCourses(200),
-            mysqlCatalog.listBundles(100),
-            mysqlCatalog.listTherapists(100),
-            mysqlCatalog.listTestimonials(),
-          ]);
-          if (cRes.status === 'fulfilled' && cRes.value.length > 0)
-            setCourses((cRes.value as unknown as Course[]).sort((a, b) => {
-              const so = ((a as any).sortOrder ?? 9999) - ((b as any).sortOrder ?? 9999);
-              if (so !== 0) return so;
-              return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
-            }));
-          if (bRes.status === 'fulfilled' && bRes.value.length > 0)
-            setBundles(bRes.value as unknown as Bundle[]);
-          if (thRes.status === 'fulfilled' && thRes.value.length > 0)
-            setTherapists(thRes.value as unknown as Therapist[]);
-          if (testRes.status === 'fulfilled' && testRes.value.length > 0)
-            setTestimonials(testRes.value as unknown as TestimonialItem[]);
-
-          // ── Batch B: lectures/chapters (deferred 500ms) ───────────────────────
-          await new Promise(r => setTimeout(r, 500));
-          const [lRes, chRes] = await Promise.allSettled([
-            mysqlCatalog.listLectures(5000),
-            mysqlCatalog.listChapters(),
-          ]);
-          if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
-            setLectures(lRes.value as unknown as CourseLectureItem[]);
-          if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
-            setChapters(chRes.value as unknown as CourseChapterItem[]);
-        } catch { /* ignore — graceful degradation */ }
-      })();
-    }
-
-    // (Admin inbox loading removed — admin features live in the admin app only)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid, isAdmin]);
-
-  // Auto-refresh the catalog when the visitor returns to the tab, so courses/bundles
-  // added or edited in the admin show up without a manual page reload. Throttled to ~15s.
-  useEffect(() => {
-    if (isAdmin) return;
-    let last = Date.now();
-    const refresh = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (Date.now() - last < 15000) return;
-      last = Date.now();
-      Promise.allSettled([mysqlCatalog.listCourses(200), mysqlCatalog.listBundles(100)]).then(([cRes, bRes]) => {
-        if (cRes.status === 'fulfilled' && (cRes.value as unknown[]).length > 0)
-          setCourses((cRes.value as unknown as Course[]).sort((a, b) => {
-            const so = ((a as any).sortOrder ?? 9999) - ((b as any).sortOrder ?? 9999);
-            if (so !== 0) return so;
-            return (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '');
-          }));
-        if (bRes.status === 'fulfilled' && (bRes.value as unknown[]).length > 0)
-          setBundles(bRes.value as unknown as Bundle[]);
-      }).catch(() => {});
-    };
-    document.addEventListener('visibilitychange', refresh);
-    window.addEventListener('focus', refresh);
-    return () => {
-      document.removeEventListener('visibilitychange', refresh);
-      window.removeEventListener('focus', refresh);
-    };
-  }, [isAdmin]);
-
-
-
-  const addCourse = (course: Course) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    let resolvedCourse = course;
-    setCourses((prev) => {
-      if (course.courseCode) {
-        resolvedCourse = course;
-        return [course, ...prev];
-      }
-      const maxCode = prev
-        .map((c) => parseInt(c.courseCode || '0', 10))
-        .filter((n) => !isNaN(n) && n >= 3000);
-      const nextCode = maxCode.length > 0 ? Math.max(...maxCode) + 1 : 3000;
-      resolvedCourse = { ...course, courseCode: String(nextCode) };
-      return [resolvedCourse, ...prev];
-    });
-    // Write after state update so resolvedCourse is fully set
-    setTimeout(() => persistCourseToCollection(resolvedCourse), 0);
-    void mysqlAdmin.saveCourse(resolvedCourse as unknown as Record<string,unknown>);
-    track('create', 'course', resolvedCourse.title);
-  };
-
-  const updateCourse = (course: Course) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setCourses((prev) => prev.map((item) => (item.id === course.id ? course : item)));
-    // Update all bundles that embed this course
-    setBundles((prev) => {
-      const updated = prev.map((bundle) => {
-        const hasCourse = bundle.courses.some(c => c.id === course.id);
-        if (!hasCourse) return bundle;
-        const newBundle = { ...bundle, courses: bundle.courses.map((c) => (c.id === course.id ? course : c)) };
-        persistBundleToCollection(newBundle);
-        return newBundle;
-      });
-      return updated;
-    });
-    persistCourseToCollection(course);
-    void mysqlAdmin.saveCourse(course as unknown as Record<string,unknown>);
-    track('update', 'course', course.title);
-  };
-
-  const deleteCourse = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setCourses((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteCourse(id);
-    // Remove course from bundles that embed it
-    setBundles((prev) => {
-      return prev.map((bundle) => {
-        if (!bundle.courses.some(c => c.id === id)) return bundle;
-        const newBundle = { ...bundle, courses: bundle.courses.filter((c) => c.id !== id) };
-        persistBundleToCollection(newBundle);
-        return newBundle;
-      });
-    });
-    track('delete', 'course', id);
-  };
-
-  const addTherapist = (therapist: Therapist) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const nextTherapists = [therapist, ...therapists];
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>);
-    track('create', 'therapist', therapist.name);
-  };
-
-  const updateTherapist = (therapist: Therapist) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const old = therapists.find((item) => item.id === therapist.id);
-    const nextTherapists = therapists.map((item) => (item.id === therapist.id ? therapist : item));
-    if (old && old.name !== therapist.name) {
-      setCourses((coursesPrev) => {
-        const updated = coursesPrev.map((c) => (c.instructor === old.name ? { ...c, instructor: therapist.name } : c));
-        // Persist any courses that changed instructor name to their collection documents
-        updated.filter(c => c.instructor === therapist.name && coursesPrev.find(oc => oc.id === c.id)?.instructor === old.name)
-          .forEach(c => persistCourseToCollection(c));
-        return updated;
-      });
-    }
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>);
-    track('update', 'therapist', therapist.name);
-  };
-
-  const deleteTherapist = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const target = therapists.find((item) => item.id === id);
-    const nextTherapists = therapists.filter((item) => item.id !== id);
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.deleteTherapist(id);
-    if (target) {
-      track('delete', 'therapist', target.name);
-    }
-  };
-
-  const bundleToServerPayload = (bundle: Bundle): Record<string, unknown> => ({
-    id: bundle.id,
-    title: bundle.title,
-    title_en: bundle.titleEn || null,
-    slug: bundle.slug || null,
-    short_description: bundle.shortDescription || '',
-    description: bundle.description,
-    thumbnail: bundle.thumbnail || '',
-    video_url: bundle.videoUrl || null,
-    price_egp: bundle.price?.EGP || 0,
-    price_sar: bundle.price?.SAR || 0,
-    price_usd: bundle.price?.USD || 0,
-    orig_price_egp: bundle.originalPrice?.EGP || 0,
-    orig_price_sar: bundle.originalPrice?.SAR || 0,
-    orig_price_usd: bundle.originalPrice?.USD || 0,
-    details_content_json: bundle.detailsContent ? JSON.stringify(bundle.detailsContent) : null,
-    is_published: bundle.isPublished !== false ? 1 : 0,
-    sort_order: bundle.sortOrder ?? 0,
-    course_ids: bundle.courses.map((c) => c.id),
-  });
-
-  const addBundle = (bundle: Bundle) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => [bundle, ...prev]);
-    persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
-    track('create', 'bundle', bundle.title);
-  };
-
-  const updateBundle = (bundle: Bundle) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => prev.map((item) => (item.id === bundle.id ? bundle : item)));
-    persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
-    track('update', 'bundle', bundle.title);
-  };
-
-  const deleteBundle = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteBundle(id);
-    track('delete', 'bundle', id);
-  };
-
-  const addTestimonial = (item: TestimonialItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...testimonials];
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>);
-    track('create', 'testimonial', item.name);
-  };
-
-  const updateTestimonial = (item: TestimonialItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = testimonials.map((row) => (row.id === item.id ? item : row));
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>);
-    track('update', 'testimonial', item.name);
-  };
-
-  const deleteTestimonial = (id: number) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = testimonials.filter((row) => row.id !== id);
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.deleteTestimonial(String(id));
-    track('delete', 'testimonial', String(id));
-  };
-
-  // Write the full therapists array directly to siteData/config immediately.
-  // Called from every therapist mutation so changes appear on the website without waiting
-  // for the debounced config persist (which can be skipped by the echo-loop guard).
-  // ── Direct-write helpers for siteData/config fields ──────────────────────────────────────────
-  // Each of these writes a SINGLE field immediately on mutation, bypassing the debounce.
-  // This ensures the website sees changes instantly even if the echo-loop guard skips the debounce.
-  const _persistConfigField = (field: string, value: unknown) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    void mysqlAdmin.saveSettings({ [field]: JSON.parse(JSON.stringify(value)) } as Record<string,unknown>).catch(() => {});
-  };
-  const persistTherapistsToConfig = (updatedTherapists: Therapist[]) => _persistConfigField('therapists', updatedTherapists);
-  const persistTestimonialsToConfig = (items: TestimonialItem[]) => _persistConfigField('testimonials', items);
-  const persistContentToConfig = (c: Record<string, string>) => void mysqlAdmin.saveContent(c as Record<string,unknown>).catch(() => {});
-  const persistDiscountsToConfig = (items: DiscountRule[]) => void mysqlAdmin.saveDiscounts(items as unknown[]).catch(() => {});
-  const persistNotificationsToConfig = (items: NotificationBroadcast[]) => void mysqlAdmin.saveNotifications(items as unknown[]).catch(() => {});
-
   // MySQL-only: subscriber data lives in MySQL.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistSubscriberToCollection = (_sub: SubscriberItem) => { /* MySQL */ };
@@ -1089,61 +722,13 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistStaffMemberToCollection = (_member: StaffMember) => { /* MySQL */ };
 
-  // Write a single course document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistCourseToCollection = (_course: Course) => { /* PG-only — no Firestore write */ };
-
-  // Write a single bundle document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistBundleToCollection = (_bundle: Bundle) => { /* PG-only — no Firestore write */ };
-
-  // Write a single lecture document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistLectureToCollection = (_lecture: CourseLectureItem) => { /* PG-only — no Firestore write */ };
-
-  // Write a single chapter document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistChapterToCollection = (_chapter: CourseChapterItem) => { /* PG-only — no Firestore write */ };
-
-  // ── Community & Workflow collection persist helpers ──────────────────────────────────────────
-  const persistCommunityPostToCollection = (post: CommunityPostItem) => {
-    // Admins write via the admin endpoint (full control + status). Customers post via the
-    // auth-gated customer endpoint, which forces status='pending' for moderation. Routing a
-    // customer to the admin endpoint would 403 and the post would silently vanish.
-    if (isAdmin) {
-      void mysqlAdmin.saveCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
-    } else {
-      void mysqlClient.createCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
-    }
-  };
-
-  const persistCommunityLibraryItemToCollection = (item: CommunityLibraryItem) => {
-    void mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistCommunityVideoToCollection = (video: CommunityVideoItem) => {
-    void mysqlAdmin.saveCommunityVideo(video as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const persistCommunityEventToCollection = (event: CommunityEventItem) => {
-    void mysqlAdmin.saveCommunityEvent(event as unknown as Record<string,unknown>).catch(() => {});
-  };
-
   const persistAutomationWorkflowToCollection = (workflow: AutomationWorkflow) => {
     void mysqlAdmin.saveAutomationWorkflow(workflow as unknown as Record<string,unknown>).catch(() => {});
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistCourseQuizToCollection = (_quiz: CourseQuiz) => { /* PG-only — no Firestore write */ };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistLiveStreamToCollection = (_stream: LiveStream) => { /* PG-only — no Firestore write */ };
-
   // ── CRM transactional persist helpers — PG-only, no Firestore writes ──────────────────────
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistConsultationToCollection = (_item: ConsultationItem) => { /* PG-only */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistActivityLogToCollection = (_item: ActivityLogItem) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistJoinUsToCollection = (_item: JoinUsApplication) => { /* PG-only */ };
 
@@ -1156,8 +741,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       subject: item.subject, message: item.message,
     } as unknown as Record<string, unknown>).catch(() => {});
   };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistQuizAttemptToCollection = (_item: QuizAttempt) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistPaymentHistoryToCollection = (_subscriberId: string, _entries: PaymentHistoryEntry[]) => { /* PG-only */ };
 
@@ -1524,279 +1107,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     track('delete', 'consultation', id);
   };
 
-  const addLecture = (item: CourseLectureItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => [item, ...prev]);
-    persistLectureToCollection(item);
-    void mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>);
-    track('create', 'lecture', item.title);
-  };
-
-  const updateLecture = (item: CourseLectureItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistLectureToCollection(item);
-    void mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>);
-    track('update', 'lecture', item.title);
-  };
-
-  const deleteLecture = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteLecture(id);
-    track('delete', 'lecture', id);
-  };
-
-  const addChapter = (item: CourseChapterItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setChapters((prev) => [...prev, item]);
-    persistChapterToCollection(item);
-    void mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>);
-    track('create', 'chapter', item.title);
-  };
-
-  const updateChapter = (item: CourseChapterItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setChapters((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistChapterToCollection(item);
-    void mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>);
-    track('update', 'chapter', item.title);
-  };
-
-  const deleteChapter = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setChapters((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteChapter(id);
-    // Unlink lectures belonging to deleted chapter and persist updated lectures
-    setLectures((prev) => {
-      const updated = prev.map((row) => (row.chapterId === id ? { ...row, chapterId: undefined } : row));
-      updated.filter(r => r.chapterId === undefined && prev.find(p => p.id === r.id)?.chapterId === id)
-        .forEach(r => persistLectureToCollection(r));
-      return updated;
-    });
-    track('delete', 'chapter', id);
-  };
-
-  const getCourseChapters = (courseId: string) =>
-    chapters.filter((row) => row.courseId === courseId).sort((a, b) => a.order - b.order);
-
   // (Orders CRUD removed — orders are managed in the admin app; client checkout talks to the API directly)
-
-  const addCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => [item, ...prev]);
-    persistCommunityPostToCollection(item);
-    track('create', 'community_post', item.title);
-  };
-
-  const updateCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityPostToCollection(item);
-    track('update', 'community_post', item.title);
-  };
-
-  const deleteCommunityPost = (id: string) => {
-    setCommunityPosts((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityPost(id).catch(() => {});
-    track('delete', 'community_post', id);
-  };
-
-  const addCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => [item, ...prev]);
-    persistCommunityLibraryItemToCollection(item);
-    track('create', 'community_library', item.title);
-  };
-
-  const updateCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityLibraryItemToCollection(item);
-    track('update', 'community_library', item.title);
-  };
-
-  const deleteCommunityLibraryItem = (id: string) => {
-    setCommunityLibraryItems((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityLibraryItem(id).catch(() => {});
-    track('delete', 'community_library', id);
-  };
-
-  const addCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => [item, ...prev]);
-    persistCommunityVideoToCollection(item);
-    track('create', 'community_video', item.title);
-  };
-
-  const updateCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityVideoToCollection(item);
-    track('update', 'community_video', item.title);
-  };
-
-  const deleteCommunityVideo = (id: string) => {
-    setCommunityVideos((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityVideo(id).catch(() => {});
-    track('delete', 'community_video', id);
-  };
-
-  const addCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => [item, ...prev]);
-    persistCommunityEventToCollection(item);
-    track('create', 'community_event', item.title);
-  };
-
-  const updateCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityEventToCollection(item);
-    track('update', 'community_event', item.title);
-  };
-
-  const deleteCommunityEvent = (id: string) => {
-    setCommunityEvents((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityEvent(id).catch(() => {});
-    track('delete', 'community_event', id);
-  };
-
-  const getCourseLectures = (courseId: string) => {
-    const courseChapters = chapters.filter((c) => c.courseId === courseId);
-    return lectures
-      .filter((row) => row.courseId === courseId)
-      .sort((a, b) => {
-        // Sort by chapter order first, then by lecture order within the chapter.
-        // This ensures limited-access slicing (first N videos) is always from the
-        // beginning of the course, not interleaved across chapters.
-        const chA = courseChapters.find((c) => c.id === a.chapterId)?.order ?? Infinity;
-        const chB = courseChapters.find((c) => c.id === b.chapterId)?.order ?? Infinity;
-        if (chA !== chB) return chA - chB;
-        return a.order - b.order;
-      });
-  };
-
-  const mergeContent = (incoming: Record<string, string>) => {
-    contentRef.current = { ...contentRef.current, ...incoming };
-    setContent(contentRef.current);
-  };
-
-  const setContentValue = (key: string, value: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    // Use contentRef (not the stale `content` state) so that calling setContentValue
-    // multiple times in the same event handler accumulates all keys correctly instead
-    // of each call overwriting the previous one with the same stale base.
-    contentRef.current = { ...contentRef.current, [key]: value };
-    const next = contentRef.current;
-    setContent(next);
-    persistContentToConfig(next);
-    track('update', 'content', key);
-  };
-
-  const addContentKey = (key: string, value: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    contentRef.current = { ...contentRef.current, [key]: value };
-    const next = contentRef.current;
-    setContent(next);
-    persistContentToConfig(next);
-    track('create', 'content', key);
-  };
-
-  const removeContentKey = (key: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = { ...contentRef.current };
-    delete next[key];
-    contentRef.current = next;
-    setContent(next);
-    persistContentToConfig(next);
-    track('delete', 'content', key);
-  };
-
-  const addDiscount = (item: DiscountRule) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...discounts];
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('create', 'discount', item.label || `${item.discountPercent}%`);
-  };
-
-  const updateDiscount = (item: DiscountRule) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = discounts.map((d) => (d.id === item.id ? item : d));
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('update', 'discount', item.label || `${item.discountPercent}%`);
-  };
-
-  const deleteDiscount = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = discounts.filter((d) => d.id !== id);
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('delete', 'discount', id);
-  };
-
-  const addNotification = (item: NotificationBroadcast) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...notifications];
-    setNotifications(next);
-    persistNotificationsToConfig(next);
-    track('create', 'notification', item.title);
-  };
-
-  const updateNotification = (item: NotificationBroadcast) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = notifications.map((n) => (n.id === item.id ? item : n));
-    setNotifications(next);
-    persistNotificationsToConfig(next);
-    track('update', 'notification', item.title);
-  };
-
-  const deleteNotification = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = notifications.filter((n) => n.id !== id);
-    setNotifications(next);
-    persistNotificationsToConfig(next);
-    track('delete', 'notification', id);
-  };
-
-  const addCourseQuiz = (item: CourseQuiz) => {
-    setCourseQuizzes((prev) => [item, ...prev.filter((q) => q.courseId !== item.courseId)]);
-    persistCourseQuizToCollection(item);
-    track('create', 'courseQuiz', item.title);
-  };
-
-  const updateCourseQuiz = (item: CourseQuiz) => {
-    setCourseQuizzes((prev) => prev.map((q) => (q.id === item.id ? item : q)));
-    persistCourseQuizToCollection(item);
-    track('update', 'courseQuiz', item.title);
-  };
-
-  const deleteCourseQuiz = (id: string) => {
-    setCourseQuizzes((prev) => prev.filter((q) => q.id !== id));
-    track('delete', 'courseQuiz', id);
-  };
-
-  const addQuizAttempt = (item: QuizAttempt) => {
-    setQuizAttempts((prev) => [item, ...prev]);
-    persistQuizAttemptToCollection(item);
-    track('create', 'quizAttempt', `${item.subscriberId} score ${item.score}%`);
-  };
-
-  const deleteQuizAttempt = (id: string) => {
-    setQuizAttempts((prev) => prev.filter((a) => a.id !== id));
-    track('delete', 'quizAttempt', id);
-  };
-
-  const addLiveStream = (item: LiveStream) => {
-    setLiveStreams((prev) => [item, ...prev]);
-    persistLiveStreamToCollection(item);
-    track('create', 'liveStream', item.title);
-  };
-
-  const updateLiveStream = (item: LiveStream) => {
-    setLiveStreams((prev) => prev.map((s) => (s.id === item.id ? item : s)));
-    persistLiveStreamToCollection(item);
-    track('update', 'liveStream', item.title);
-  };
-
-  const deleteLiveStream = (id: string) => {
-    setLiveStreams((prev) => prev.filter((s) => s.id !== id));
-    track('delete', 'liveStream', id);
-  };
 
   // (Expenses & Daqqi-rounds CRUD removed — admin-app-only features)
 
@@ -1963,31 +1274,22 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const clearAllData = () => {
-    setCourses(COURSES);
-    setBundles(BUNDLES);
-    setTherapists(THERAPISTS);
-    setTestimonials(TESTIMONIALS);
+    resetCatalog({ courses: COURSES, bundles: BUNDLES, therapists: THERAPISTS, testimonials: TESTIMONIALS });
     setSubscribers(defaultSubscribers);
     setLeads(defaultLeads);
     setStaffMembers(defaultStaffMembers);
     setConsultations(defaultConsultations);
-    setLectures(defaultLectures);
-    setChapters([]);
-    setCommunityPosts(defaultCommunityPosts);
-    setCommunityLibraryItems(defaultCommunityLibraryItems);
-    setCommunityVideos(defaultCommunityVideos);
-    setCommunityEvents(defaultCommunityEvents);
-    setContent(defaultContent);
-    contentRef.current = defaultContent;
-    setActivityLogs([]);
-    setDiscounts([]);
-    setNotifications([]);
+    resetCurriculum(defaultLectures);
+    resetCommunity({ posts: defaultCommunityPosts, library: defaultCommunityLibraryItems, videos: defaultCommunityVideos, events: defaultCommunityEvents });
+    resetContent();
+    resetActivityLogs();
+    resetDiscounts();
+    resetNotifications();
     setJoinUsApplications([]);
     setContactMessages([]);
     setAutomationWorkflows([]);
-    setCourseQuizzes([]);
-    setQuizAttempts([]);
-    setLiveStreams([]);
+    resetQuizzes();
+    resetLiveStreams();
     // Clear all persisted state
     track('reset', 'system', 'restore defaults');
   };
