@@ -123,17 +123,8 @@ export function useCatalogData({
             setTherapists(thRes.value as unknown as Therapist[]);
           if (testRes.status === 'fulfilled' && testRes.value.length > 0)
             setTestimonials(testRes.value as unknown as TestimonialItem[]);
-
-          // ── Batch B: lectures/chapters (deferred 500ms) ───────────────────────
-          await new Promise(r => setTimeout(r, 500));
-          const [lRes, chRes] = await Promise.allSettled([
-            mysqlCatalog.listLectures(5000),
-            mysqlCatalog.listChapters(),
-          ]);
-          if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
-            setLectures(lRes.value as unknown as CourseLectureItem[]);
-          if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
-            setChapters(chRes.value as unknown as CourseChapterItem[]);
+          // Lectures/chapters are NOT loaded here — see the login-gated effect
+          // below. Anonymous visitors never need the full ~530 KB lecture list.
         } catch { /* ignore — graceful degradation */ }
       })();
     }
@@ -141,6 +132,29 @@ export function useCatalogData({
     // (Admin inbox loading removed — admin features live in the admin app only)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUserUid, isAdmin]);
+
+  // Bulk lectures/chapters (~530 KB) are only consumed by the logged-in student
+  // dashboard, which needs per-lecture progress across every enrolled course.
+  // Anonymous visitors browsing the homepage/catalog never touch it, and the
+  // public course page (CourseDetails) fetches its own course's lectures on
+  // demand — so this loads once, only after a real user id appears, instead of
+  // on every public page view. Own guard (not catalogLoadedRef) because auth
+  // resolves after that guarded effect has already fired.
+  const lecturesLoadedRef = useRef(false);
+  useEffect(() => {
+    if (isAdmin || !authUserUid || lecturesLoadedRef.current) return;
+    lecturesLoadedRef.current = true;
+    (async () => {
+      const [lRes, chRes] = await Promise.allSettled([
+        mysqlCatalog.listLectures(5000),
+        mysqlCatalog.listChapters(),
+      ]);
+      if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
+        setLectures(lRes.value as unknown as CourseLectureItem[]);
+      if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
+        setChapters(chRes.value as unknown as CourseChapterItem[]);
+    })();
+  }, [isAdmin, authUserUid, setLectures, setChapters]);
 
   // Auto-refresh the catalog when the visitor returns to the tab, so courses/bundles
   // added or edited in the admin show up without a manual page reload. Throttled to ~15s.

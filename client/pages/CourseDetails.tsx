@@ -32,12 +32,18 @@ const CourseDetails: React.FC = () => {
   const [fallbackTried, setFallbackTried] = useState(false);
   useEffect(() => {
     setFallbackTried(false);
-    if (courseFromCtx) { setApiFallbackCourse(null); return; }
     const lookup = id ?? slug;
     if (!lookup) { setFallbackTried(true); return; }
+    // Fetch the full course (incl. lectures/chapters) directly when it's not in
+    // the cached catalog, OR when it is but its lectures aren't loaded globally.
+    // The latter is the common anonymous-visitor case: the bulk lectures list is
+    // now login-gated, so the curriculum for a public course page comes from
+    // this on-demand fetch instead.
+    const ctxLecs = courseFromCtx ? getCourseLectures(courseFromCtx.id) : [];
+    if (courseFromCtx && ctxLecs.length > 0) { setApiFallbackCourse(null); setFallbackTried(true); return; }
     mysqlCatalog.getCourse(lookup).then(data => {
       if (!data?.id) return;
-      setApiFallbackCourse(data as unknown as typeof courses[0]);
+      if (!courseFromCtx) setApiFallbackCourse(data as unknown as typeof courses[0]);
       setApiFallbackLectures(((data.lectures || []) as unknown as ReturnType<typeof getCourseLectures>));
       setApiFallbackChapters(((data.chapters || []) as unknown as ReturnType<typeof getCourseChapters>));
     }).catch(() => {}).finally(() => setFallbackTried(true));
@@ -77,8 +83,12 @@ const CourseDetails: React.FC = () => {
   const cashDiscountPct = Number(globalContent['checkout.cashDiscountPercent'] || 0);
   const basePrice = discountedPrice !== null ? discountedPrice : currentPrice;
   const cashPrice = cashDiscountPct > 0 ? Math.round(basePrice * (1 - cashDiscountPct / 100)) : null;
-        const chapters = course ? (courseFromCtx ? getCourseChapters(course.id) : apiFallbackChapters) : [];
-        const lectures = course ? (courseFromCtx ? getCourseLectures(course.id) : apiFallbackLectures) : [];
+        // Prefer the globally-loaded lists (logged-in students), else the
+        // on-demand fetch (anonymous visitors, whose bulk list is login-gated).
+        const ctxChapters = course && courseFromCtx ? getCourseChapters(course.id) : [];
+        const chapters = ctxChapters.length > 0 ? ctxChapters : (course ? apiFallbackChapters : []);
+        const ctxLectures = course && courseFromCtx ? getCourseLectures(course.id) : [];
+        const lectures = ctxLectures.length > 0 ? ctxLectures : (course ? apiFallbackLectures : []);
         const subscriber = authUser?.email
             ? subscribers.find((row) =>
                 row.email.toLowerCase() === authUser.email!.toLowerCase()
