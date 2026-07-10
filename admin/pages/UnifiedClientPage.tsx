@@ -8,12 +8,6 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import {
-  ArrowRight, Phone, MessageSquare, Plus, Edit2, Trash2, Mail,
-  CheckCircle, Clock, CreditCard, Info, Copy,
-  Award, BookOpen, Activity, User, Key, Tag,
-  Printer, Eye, DollarSign, CalendarCheck2, RefreshCw, CalendarDays, AlertCircle, X, Shield,
-} from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useCourseAccess } from './unifiedClient/useCourseAccess';
@@ -24,39 +18,18 @@ import { useCommunicationLog } from './unifiedClient/useCommunicationLog';
 import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../components/PaymentModal';
 import {
   LeadItem, SubscriberItem, CommunicationRecord,
-  PaymentRecord, BranchType, StaffMember, PaymentItemType,
-  CourseAccessSetting, SubscriberCertificate,
+  PaymentRecord, BranchType, StaffMember,
   ExtraCertificateRequest, ExtraCertificateType,
-  UserSessionData, PaymentProof, InstallmentPlan, InstallmentEntry,
-  PaymentHistoryEntry,
+  UserSessionData, PaymentHistoryEntry,
 } from '../types';
 
 // ─── Constants + pure helpers live in a colocated module ───────────────────────
-import {
-  branchLabels, normBranchKey, commTypeMeta, ptLabels,
-  statusColors, statusLabels, EXTRA_TYPE_LABELS,
-  normalizeAccess, generatePromoCode, SideRow,
-} from './unifiedClient.constants';
-import CommunicationsTab from './unifiedClient/CommunicationsTab';
-import CertificatesTab from './unifiedClient/CertificatesTab';
-import CoursesAccessTab from './unifiedClient/CoursesAccessTab';
-import ConsultationsTab from './unifiedClient/ConsultationsTab';
-import DaqqiRoundsTab from './unifiedClient/DaqqiRoundsTab';
-import InstallmentsTab from './unifiedClient/InstallmentsTab';
-import AccessControlModal from './unifiedClient/AccessControlModal';
-import ContactPopupModal from './unifiedClient/ContactPopupModal';
-import InstallmentPlanModal from './unifiedClient/InstallmentPlanModal';
-import ConvertModal from './unifiedClient/ConvertModal';
-import GrantCourseModal from './unifiedClient/GrantCourseModal';
-import AddCommModal from './unifiedClient/AddCommModal';
-import LeadPaymentModal from './unifiedClient/LeadPaymentModal';
-import ExtraCertRequestModal from './unifiedClient/ExtraCertRequestModal';
-import LegacyPaymentModal from './unifiedClient/LegacyPaymentModal';
-import CertificateViewModal from './unifiedClient/CertificateViewModal';
-import PaymentDetailModal from './unifiedClient/PaymentDetailModal';
-import PaymentsTab from './unifiedClient/PaymentsTab';
-import EditClientTab from './unifiedClient/EditClientTab';
-import OverviewClientTab from './unifiedClient/OverviewClientTab';
+import { generatePromoCode } from './unifiedClient.constants';
+import { ClientHeroHeader } from './unified-client-sections/ClientHeroHeader';
+import { ClientSidebar } from './unified-client-sections/ClientSidebar';
+import { ClientTabsNav } from './unified-client-sections/ClientTabsNav';
+import { ClientTabContent } from './unified-client-sections/ClientTabContent';
+import { ClientModalsGroup } from './unified-client-sections/ClientModalsGroup';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -611,910 +584,231 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
 
-      {/* ══════════════════ HERO HEADER ══════════════════ */}
-      <div className="bg-gradient-to-br from-slate-800 via-slate-750 to-slate-900 text-white shadow-xl">
-        <div className="max-w-7xl mx-auto px-4 pt-4 pb-5">
-
-          {/* Breadcrumb nav */}
-          <div className="flex items-center gap-2 text-slate-400 text-xs mb-4 flex-wrap">
-            <button onClick={() => navigate('/dashboard')} className="hover:text-white flex items-center gap-1 transition-colors">
-              <ArrowRight size={13} /> لوحة التحكم
-            </button>
-            <span className="text-slate-600">/</span>
-            <button onClick={() => navigate(isSub ? '/dashboard/subscribers' : '/dashboard')} className="hover:text-white transition-colors">
-              {isSub ? 'المشتركون' : 'العملاء المحتملون'}
-            </button>
-            <span className="text-slate-600">/</span>
-            <span className="text-slate-200 font-semibold">{clientName}</span>
-            {/* code badge */}
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname.replace(/\/[^/]+$/, '')}#/client/${clientCode}`).catch(() => {});
-                setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000);
-              }}
-              className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-300 border border-slate-600 rounded-full text-[10px] font-mono hover:bg-slate-600 transition-colors"
-            >
-              <Copy size={8} /> {clientCode.slice(0, 12)}
-              {codeCopied && <span className="text-green-400 font-bold mr-1">✓</span>}
-            </button>
-          </div>
-
-          {/* Avatar + name + status + contact */}
-          <div className="flex items-start gap-4 mb-5">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-3xl shadow-lg flex-shrink-0 ${isSub ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-blue-400 to-blue-600'}`}>
-              {clientName.charAt(0)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-extrabold text-white leading-tight">{clientName}</h1>
-                {isSub ? (
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${subscriber!.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'}`}>
-                    {subscriber!.status === 'active' ? '● مشترك نشط' : '● متوقف'}
-                  </span>
-                ) : lead && (
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-slate-600/50 text-slate-300 border-slate-500/30`}>
-                    {statusLabels[lead.status] || lead.status}
-                  </span>
-                )}
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${isSub ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/30' : 'bg-blue-900/40 text-blue-300 border-blue-700/30'}`}>
-                  {isSub ? 'مشترك' : 'عميل محتمل'}
-                </span>
-              </div>
-              <div className="flex items-center gap-3 mt-1.5 flex-wrap text-slate-400 text-xs">
-                {clientPhone && <span className="flex items-center gap-1"><Phone size={11} /> {clientPhone}</span>}
-                {clientEmail && <span className="flex items-center gap-1 truncate max-w-[200px]"><Mail size={11} /> {clientEmail}</span>}
-                {clientBranch && <span className="flex items-center gap-1">📍 {branchLabels[normBranchKey(clientBranch)] || clientBranch}</span>}
-              </div>
-            </div>
-          </div>
-
-          {/* KPI strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
-              <p className="text-2xl font-extrabold text-white">{allComms.length}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">رسالة / تواصل</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
-              <p className="text-2xl font-extrabold text-emerald-300">{heroPaidEGP > 0 ? heroPaidEGP.toLocaleString() : '—'}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">ج.م مدفوع</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
-              <p className="text-2xl font-extrabold text-blue-300">{heroCourseCount}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">كورس مسجّل</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
-              <p className="text-sm font-extrabold text-slate-200 truncate">{lastCommDate ?? 'لا يوجد'}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">آخر تواصل</p>
-            </div>
-          </div>
-
-          {/* Action buttons row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Primary: call + WA + contact + booking/installment */}
-            {clientPhone && (
-              <>
-                <a href={`https://wa.me/${clientPhone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer"
-                  className="px-4 py-2 bg-green-500 hover:bg-green-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                  <MessageSquare size={14} /> واتس أب
-                </a>
-                <a href={`tel:${clientPhone}`}
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                  <Phone size={14} /> اتصال
-                </a>
-              </>
-            )}
-            {/* Lead-only: حجز / ملف المشترك */}
-            {lead && lead.status !== 'converted' ? (
-              <button onClick={() => setShowConvertModal(true)}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                <CalendarCheck2 size={14} /> حجز
-              </button>
-            ) : lead && lead.status === 'converted' && linkedSub ? (
-              <button onClick={() => navigate(`/client/${linkedSub.clientCode || linkedSub.id}`)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors">
-                <CheckCircle size={14} /> ملف المشترك
-              </button>
-            ) : null}
-            {/* ── Action buttons strip ── */}
-            {/* تسجيل تواصل */}
-            <button onClick={() => setShowAddComm(true)}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-              <Phone size={14} /> تواصل
-            </button>
-            {/* خطة أقساط (مشترك فقط) */}
-            {isSub && (
-              <button onClick={() => setShowInstPlanForm(true)}
-                className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                <CalendarDays size={14} /> أقساط
-              </button>
-            )}
-            {/* طلب شهادة (مشترك فقط) */}
-            {isSub && (
-              <button onClick={() => { setShowExtraCertForm(true); setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' }); }}
-                className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                <Award size={14} /> شهادة
-              </button>
-            )}
-            {/* صلاحية الفيديوهات */}
-            {canManageCourseAccess && isSub && (
-              <button onClick={() => setShowAccessModal(true)}
-                className="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors border border-violet-500/30 shadow-sm">
-                <Shield size={14} /> صلاحية
-              </button>
-            )}
-            {/* تعديل البيانات */}
-            <button onClick={() => { setEditing(true); setActiveTab('edit'); }}
-              className="px-3 py-2 bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-xl text-sm font-medium flex items-center gap-1.5 transition-colors">
-              <Edit2 size={14} /> تعديل
-            </button>
-            {/* إيقاف / تفعيل (admin) */}
-            {isSub && isAdmin && (
-              <button
-                onClick={() => updateSubscriber({ ...subscriber!, status: subscriber!.status === 'active' ? 'paused' : 'active' })}
-                className="px-3 py-2 bg-amber-600/80 hover:bg-amber-500 text-white rounded-xl text-sm font-medium transition-colors border border-amber-500/30">
-                {subscriber!.status === 'active' ? 'إيقاف' : 'تفعيل'}
-              </button>
-            )}
-            {/* حذف (admin) */}
-            {isAdmin && (
-              <button
-                onClick={() => {
-                  if (!window.confirm(`هل تريد حذف ${clientName}؟`)) return;
-                  if (subscriber) { deleteSubscriber(subscriber.id); navigate('/dashboard/subscribers'); }
-                  else if (lead) { deleteLead(lead.id); navigate('/dashboard'); }
-                }}
-                className="px-3 py-2 bg-red-600/80 hover:bg-red-500 text-white rounded-xl text-sm font-medium flex items-center gap-1.5 transition-colors border border-red-500/30">
-                <Trash2 size={14} /> حذف
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-
-      {/* ══ Overdue installments warning banner ══ */}
-      {isSub && instOverdueCount > 0 && (
-        <div className="bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 text-sm font-bold">
-            <span className="text-lg">🔴</span>
-            لدى هذا العميل {instOverdueCount} {instOverdueCount === 1 ? 'قسط متأخر' : 'أقساط متأخرة'} —
-            يجب المتابعة
-          </div>
-          <button onClick={() => setActiveTab('installments')}
-            className="text-xs bg-white text-red-700 font-bold px-3 py-1.5 rounded-lg hover:bg-red-50 transition flex-shrink-0">
-            عرض الأقساط ←
-          </button>
-        </div>
-      )}
+      <ClientHeroHeader
+        navigate={navigate}
+        isSub={isSub}
+        subscriber={subscriber}
+        lead={lead}
+        clientName={clientName}
+        clientPhone={clientPhone}
+        clientEmail={clientEmail}
+        clientCode={clientCode}
+        clientBranch={clientBranch}
+        codeCopied={codeCopied}
+        setCodeCopied={setCodeCopied}
+        allCommsCount={allComms.length}
+        heroPaidEGP={heroPaidEGP}
+        heroCourseCount={heroCourseCount}
+        lastCommDate={lastCommDate}
+        linkedSub={linkedSub}
+        isAdmin={isAdmin}
+        canManageCourseAccess={canManageCourseAccess}
+        instOverdueCount={instOverdueCount}
+        setShowConvertModal={setShowConvertModal}
+        setShowAddComm={setShowAddComm}
+        setShowInstPlanForm={setShowInstPlanForm}
+        setShowExtraCertForm={setShowExtraCertForm}
+        setExtraCertDraft={setExtraCertDraft}
+        setShowAccessModal={setShowAccessModal}
+        setEditing={setEditing}
+        setActiveTab={setActiveTab}
+        updateSubscriber={updateSubscriber}
+        deleteSubscriber={deleteSubscriber}
+        deleteLead={deleteLead}
+      />
 
       {/* ══ Body: sidebar + main ══ */}
       <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
 
-        {/* ════════ LEFT SIDEBAR ════════ */}
-        <div className="w-full lg:w-72 flex-shrink-0 space-y-3">
-
-          {/* ── 1. Profile Card ── */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className={`h-1.5 ${isSub ? (subscriber!.status === 'active' ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gradient-to-r from-amber-400 to-orange-500') : 'bg-gradient-to-r from-blue-400 to-indigo-500'}`} />
-            <div className="p-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-xl shadow flex-shrink-0 ${isSub ? (subscriber!.status === 'active' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white' : 'bg-gradient-to-br from-amber-400 to-orange-500 text-white') : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'}`}>
-                  {clientName.charAt(0)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-extrabold text-gray-900 leading-tight truncate">{clientName}</p>
-                  <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${isSub ? (subscriber!.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') : 'bg-blue-100 text-blue-700'}`}>
-                    {isSub ? (subscriber!.status === 'active' ? '● مشترك نشط' : '● متوقف') : (lead ? (statusLabels[lead.status] || lead.status) : 'عميل محتمل')}
-                  </span>
-                </div>
-              </div>
-
-              {/* Quick contact buttons */}
-              {clientPhone && (
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <a href={`tel:${clientPhone}`} className="flex items-center justify-center gap-1.5 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition border border-blue-100">
-                    <Phone size={13} /> اتصال
-                  </a>
-                  <a href={`https://wa.me/${clientPhone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 py-2 bg-green-50 text-green-700 rounded-xl text-xs font-bold hover:bg-green-100 transition border border-green-100">
-                    <MessageSquare size={13} /> واتساب
-                  </a>
-                </div>
-              )}
-
-              {/* Info rows */}
-              <div className="divide-y divide-gray-50 text-xs">
-                {clientPhone && (
-                  <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">📞 الهاتف</span><span className="font-semibold text-gray-700">{clientPhone}</span></div>
-                )}
-                {clientEmail && (
-                  <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">✉️ البريد</span><a href={`mailto:${clientEmail}`} className="text-blue-600 hover:underline truncate max-w-[130px]">{clientEmail}</a></div>
-                )}
-                <div className="flex items-center justify-between py-1.5">
-                  <span className="text-gray-400">📍 الفرع</span>
-                  <span className="font-semibold text-gray-700">{clientBranch ? (branchLabels[normBranchKey(clientBranch)] || clientBranch) : '—'}</span>
-                </div>
-                <div className="flex items-center justify-between py-1.5">
-                  <span className="text-gray-400">🗓️ التسجيل</span>
-                  <span className="text-gray-600">{(isSub ? subscriber!.createdAt : lead?.createdAt)?.slice(0, 10) || '—'}</span>
-                </div>
-                {(isSub ? subscriber!.assignedSalesName : lead?.assignedSalesName) && (
-                  <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">🧑‍💼 السيلز</span><span className="font-semibold text-indigo-700">{isSub ? subscriber!.assignedSalesName : lead?.assignedSalesName}</span></div>
-                )}
-                {(isSub ? subscriber!.assignedCsName : lead?.assignedCsName) && (
-                  <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">🎧 خدمة العملاء</span><span className="font-semibold text-purple-700">{isSub ? subscriber!.assignedCsName : lead?.assignedCsName}</span></div>
-                )}
-                {(isSub ? linkedLead?.source : lead?.source) && (
-                  <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">📢 المصدر</span><span className="font-semibold text-gray-700">{isSub ? linkedLead?.source : lead?.source}</span></div>
-                )}
-                {!isSub && lead?.interestLevel && (
-                  <div className="flex items-center justify-between py-1.5">
-                    <span className="text-gray-400">⭐ الاهتمام</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.interestLevel === 'high' ? 'bg-green-100 text-green-700' : lead.interestLevel === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {lead.interestLevel === 'high' ? 'مرتفع' : lead.interestLevel === 'medium' ? 'متوسط' : 'منخفض'}
-                    </span>
-                  </div>
-                )}
-                {!isSub && lead?.nextFollowUpDate && (
-                  <div className="flex items-center justify-between py-1.5"><span className="text-gray-400">⏰ متابعة</span><span className="text-orange-600 font-bold">{lead.nextFollowUpDate}</span></div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ── 2. Financial summary (subscriber) ── */}
-          {isSub && subscriber!.enrolledCourseIds.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-extrabold text-gray-700 flex items-center gap-1.5"><CreditCard size={13} className="text-emerald-500" /> الملخص المالي</p>
-                <button onClick={() => setShowPayDetailModal(true)} className="text-[10px] text-blue-500 hover:underline font-semibold">تفاصيل ←</button>
-              </div>
-              {/* Totals row */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {subPaidTotals.EGP > 0 && (
-                  <div className="bg-emerald-50 rounded-xl p-2.5 text-center border border-emerald-100">
-                    <p className="font-extrabold text-emerald-700 text-sm">{subPaidTotals.EGP.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ج.م</p>
-                  </div>
-                )}
-                {subRemainingEGP > 0 && (
-                  <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
-                    <p className="font-extrabold text-red-600 text-sm">{subRemainingEGP.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">متبقي ج.م</p>
-                  </div>
-                )}
-                {subPaidTotals.SAR > 0 && (
-                  <div className="bg-blue-50 rounded-xl p-2.5 text-center border border-blue-100">
-                    <p className="font-extrabold text-blue-700 text-sm">{subPaidTotals.SAR.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">مدفوع ر.س</p>
-                  </div>
-                )}
-              </div>
-              {/* Per-course list */}
-              <div className="space-y-1.5">
-                {subscriber!.enrolledCourseIds.map(cId => {
-                  const c = courses.find(x => x.id === cId);
-                  const bm = bookingMap[cId];
-                  const remaining = bm?.expectedEGP != null ? Math.max(0, bm.expectedEGP - bm.paidEGP) : null;
-                  return (
-                    <div key={cId} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
-                      <p className="font-semibold text-gray-800 text-xs truncate flex-1">{c?.title || cId}</p>
-                      {bm ? (
-                        <div className="flex-shrink-0 text-left">
-                          <p className="text-[11px] font-bold text-emerald-700">{bm.paidEGP.toLocaleString()} ج.م</p>
-                          {remaining !== null && remaining > 0 && <p className="text-[10px] text-red-600">باقي {remaining.toLocaleString()}</p>}
-                          {remaining === 0 && <p className="text-[10px] text-emerald-600 font-bold">✅ مكتمل</p>}
-                        </div>
-                      ) : <span className="text-[10px] text-gray-400 italic flex-shrink-0">لا مدفوعات</span>}
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Discount badge */}
-              {subscriber!.discount != null && subscriber!.discount > 0 && (
-                <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-100 rounded-xl px-3 py-1.5">
-                  <span className="text-xs text-orange-600">🏷️ خصم</span>
-                  <span className="font-extrabold text-orange-700 text-xs">{subscriber!.discount.toLocaleString()} ج.م</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── 2b. Lead course (lead only) ── */}
-          {!isSub && enrolledCourse && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <p className="text-xs font-extrabold text-gray-700 flex items-center gap-1.5 mb-3"><BookOpen size={13} className="text-blue-500" /> الكورس المهتم به</p>
-              <div className="bg-blue-50 rounded-xl px-3 py-2.5 border border-blue-100">
-                <p className="font-bold text-blue-800 text-xs">{enrolledCourse.title}</p>
-                {leadPaidEGP > 0 && (
-                  <div className="flex items-center justify-between mt-1.5 flex-wrap gap-1">
-                    <span className="text-[10px] text-emerald-700 font-bold">{leadPaidEGP.toLocaleString()} ج.م مدفوع</span>
-                    {leadRemaining > 0 && <span className="text-[10px] text-red-600 font-bold">متبقي {leadRemaining.toLocaleString()}</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── 3. Installment alerts ── */}
-          {isSub && subInstallmentPlans.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <button onClick={() => setActiveTab('installments')} className="flex items-center gap-2 w-full text-xs font-extrabold text-gray-700 mb-3 hover:text-purple-600 transition">
-                <CalendarDays size={13} className="text-purple-500" /> خطط الأقساط
-                {instOverdueCount > 0 && <span className="mr-auto bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{instOverdueCount} متأخر</span>}
-                {instOverdueCount === 0 && instSoonCount > 0 && <span className="mr-auto bg-amber-400 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{instSoonCount} قريب</span>}
-              </button>
-              <div className="space-y-1.5">
-                {subInstallmentPlans.map(plan => {
-                  const unpaid = plan.entries.filter(e => !e.paidAt);
-                  const paid = plan.entries.filter(e => e.paidAt);
-                  const nextDue = unpaid.sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
-                  const isOverdue = nextDue && nextDue.dueDate < _todayStr;
-                  return (
-                    <div key={plan.id} className={`rounded-xl px-3 py-2.5 border ${isOverdue ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'}`}>
-                      <p className="font-semibold text-xs text-gray-800 truncate mb-1">{plan.courseTitle || courses.find(c => c.id === plan.courseId)?.title || plan.courseId}</p>
-                      <div className="flex items-center justify-between flex-wrap gap-1">
-                        <span className="text-[10px] text-emerald-700 font-bold">{paid.length}/{plan.entries.length} ✓</span>
-                        {nextDue && <span className={`text-[10px] font-bold ${isOverdue ? 'text-red-600' : 'text-amber-600'}`}>{isOverdue ? '⚠️' : '⏰'} {nextDue.dueDate} — {nextDue.amount.toLocaleString()} ج.م</span>}
-                        {!nextDue && <span className="text-[10px] text-emerald-600 font-bold">✅ مكتمل</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ── 4. Certificates ── */}
-          {isSub && (subCerts.length > 0 || extraReqs.length > 0) && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <p className="text-xs font-extrabold text-gray-700 flex items-center gap-1.5 mb-3">
-                <Award size={13} className="text-amber-500" /> الشهادات
-                <span className="mr-auto text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{subCerts.length + extraReqs.filter(r => r.status === 'issued').length}</span>
-              </p>
-              <div className="space-y-1.5">
-                {subCerts.map(cert => {
-                  const certCourse = courses.find(c => c.id === cert.courseId);
-                  return (
-                    <div key={cert.id} className="flex items-center gap-2 bg-amber-50 rounded-xl px-2.5 py-2 border border-amber-100">
-                      <span>🏆</span><span className="text-xs font-semibold text-amber-800 truncate">{certCourse?.title || cert.courseId}</span>
-                    </div>
-                  );
-                })}
-                {extraReqs.map(req => (
-                  <div key={req.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-xl px-2.5 py-2 border border-gray-100">
-                    <span className="text-xs text-gray-700 truncate">{req.customName || EXTRA_TYPE_LABELS[req.type] || req.type}</span>
-                    <span className={`text-[10px] font-bold flex-shrink-0 ${req.status === 'issued' ? 'text-emerald-600' : req.status === 'paid' ? 'text-blue-600' : 'text-amber-600'}`}>
-                      {req.status === 'issued' ? '✅' : req.status === 'paid' ? '💳' : '⏳'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── 5. Activity stats ── */}
-          {isSub && (sessionData || subscriber!.lectureProgress) && (() => {
-            const totalLectures = subscriber!.enrolledCourseIds.reduce((acc, cId) => acc + getCourseLectures(cId).length, 0);
-            const completedLectures = Object.values(subscriber!.lectureProgress || {}).filter((p) => (p as number) > 0).length;
-            const completionPct = totalLectures > 0 ? Math.round((completedLectures / totalLectures) * 100) : null;
-            return (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                <p className="text-xs font-extrabold text-gray-700 flex items-center gap-1.5 mb-3"><Activity size={13} className="text-teal-500" /> نشاط العميل</p>
-                <div className="space-y-2 text-xs">
-                  {sessionData?.visitCount != null && (
-                    <div className="flex items-center justify-between"><span className="text-gray-400">زيارات الموقع</span><span className="font-bold text-indigo-700">{sessionData.visitCount} مرة</span></div>
-                  )}
-                  {sessionData?.lastActiveAt && (
-                    <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG-u-nu-latn')}</span></div>
-                  )}
-                  {completionPct !== null && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1"><span className="text-gray-400">إتمام المحاضرات</span><span className={`font-bold ${completionPct === 100 ? 'text-emerald-600' : completionPct >= 50 ? 'text-amber-600' : 'text-gray-600'}`}>{completionPct}%</span></div>
-                      <div className="w-full bg-gray-200 rounded-full h-1.5"><div className={`h-1.5 rounded-full transition-all ${completionPct === 100 ? 'bg-emerald-500' : completionPct >= 50 ? 'bg-amber-400' : 'bg-blue-400'}`} style={{ width: `${completionPct}%` }} /></div>
-                    </div>
-                  )}
-                </div>
-                {allComms.length > 0 ? (
-                  <div className="mt-2 flex items-center justify-between text-xs pt-2 border-t border-gray-50">
-                    <span className="text-gray-400">📅 آخر تواصل</span><span className="font-semibold text-gray-700">{allComms[0].date?.slice(0, 10)}</span>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-xl px-2.5 py-1.5 flex items-center gap-1 border border-amber-100">⚠️ لم يتم التواصل بعد</div>
-                )}
-                {(() => {
-                  const overdueAmt = subInstallmentPlans.flatMap(p => p.entries.filter(e => !e.paidAt && e.dueDate < _todayStr)).reduce((s, e) => s + e.amount, 0);
-                  return overdueAmt > 0 ? (
-                    <div className="mt-2 flex items-center justify-between text-xs bg-red-50 rounded-xl px-2.5 py-1.5 border border-red-100">
-                      <span className="text-red-600 font-bold">🔴 أقساط متأخرة</span><span className="text-red-700 font-extrabold">{overdueAmt.toLocaleString()} ج.م</span>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-            );
-          })()}
-
-          {/* ── 6. Quick Actions Grid ── */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-3">إجراءات سريعة</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => { setActiveTab('communications'); setShowAddComm(true); }}
-                className="flex flex-col items-center gap-1.5 py-3 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 transition border border-blue-100">
-                <Phone size={18} /><span className="text-[11px] font-bold">تسجيل تواصل</span>
-              </button>
-              {isSub ? (
-                <button onClick={() => { setActiveTab('payments'); setShowSubPayForm(true); }}
-                  className="flex flex-col items-center gap-1.5 py-3 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 transition border border-emerald-100">
-                  <CreditCard size={18} /><span className="text-[11px] font-bold">تسجيل دفعة</span>
-                </button>
-              ) : (
-                <button onClick={() => setShowLeadPayForm(true)}
-                  className="flex flex-col items-center gap-1.5 py-3 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 transition border border-emerald-100">
-                  <DollarSign size={18} /><span className="text-[11px] font-bold">تسجيل دفعة</span>
-                </button>
-              )}
-              {isSub && (
-                <>
-                  <button onClick={() => { setShowGrantForm(true); setGrantDraft({ courseId: '', note: '' }); }}
-                    className="flex flex-col items-center gap-1.5 py-3 bg-violet-50 text-violet-700 rounded-2xl hover:bg-violet-100 transition border border-violet-100">
-                    <Key size={18} /><span className="text-[11px] font-bold">منح كورس</span>
-                  </button>
-                  <button onClick={() => setShowLegacyPayForm(true)}
-                    className="flex flex-col items-center gap-1.5 py-3 bg-amber-50 text-amber-700 rounded-2xl hover:bg-amber-100 transition border border-amber-100">
-                    <Clock size={18} /><span className="text-[11px] font-bold">مدفوع قديم</span>
-                  </button>
-                  <button onClick={() => { setActiveTab('certificates'); setShowExtraCertForm(true); setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' }); }}
-                    className="flex flex-col items-center gap-1.5 py-3 bg-orange-50 text-orange-700 rounded-2xl hover:bg-orange-100 transition border border-orange-100">
-                    <Award size={18} /><span className="text-[11px] font-bold">إصدار شهادة</span>
-                  </button>
-                  <button onClick={() => setShowInstPlanForm(true)}
-                    className="flex flex-col items-center gap-1.5 py-3 bg-purple-50 text-purple-700 rounded-2xl hover:bg-purple-100 transition border border-purple-100">
-                    <CalendarDays size={18} /><span className="text-[11px] font-bold">خطة أقساط</span>
-                  </button>
-                </>
-              )}
-              <button onClick={() => { setEditing(!editing); setActiveTab('edit'); }}
-                className="flex flex-col items-center gap-1.5 py-3 bg-gray-50 text-gray-600 rounded-2xl hover:bg-gray-100 transition border border-gray-100">
-                <Edit2 size={18} /><span className="text-[11px] font-bold">تعديل البيانات</span>
-              </button>
-            </div>
-          </div>
-
-          {/* ── 7. Internal notes ── */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">📌 ملاحظة داخلية</p>
-            <textarea
-              value={quickNote}
-              onChange={e => saveQuickNote(e.target.value)}
-              placeholder="ملاحظة خاصة بالفريق (لا تظهر للعميل)..."
-              rows={3}
-              className="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-100 bg-gray-50"
-            />
-          </div>
-
-          {/* ── 8. Promo code (lead only) ── */}
-          {!isSub && lead && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <p className="text-xs font-extrabold text-gray-700 flex items-center gap-1.5 mb-3"><Tag size={13} className="text-purple-500" /> كود الخصم</p>
-              {lead.promoCode ? (
-                <div className="flex items-center gap-2 bg-purple-50 rounded-xl px-3 py-2.5 border border-purple-100">
-                  <span className="font-mono font-bold text-purple-700 flex-1">{lead.promoCode}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(lead.promoCode!).then(() => { setPromoCopied(true); setTimeout(() => setPromoCopied(false), 2000); }); }}>
-                    {promoCopied ? <CheckCircle size={14} className="text-emerald-600" /> : <Copy size={14} className="text-purple-500" />}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleGeneratePromo} className="w-full py-2.5 bg-purple-50 text-purple-700 rounded-xl text-xs hover:bg-purple-100 flex items-center justify-center gap-2 border border-purple-100 font-bold transition">
-                  <Tag size={13} /> توليد كود خصم
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ── 9. Discount quick-setter (subscriber only) ── */}
-          {isSub && discountBase > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <p className="text-xs font-extrabold text-gray-700 flex items-center gap-1.5 mb-3"><Tag size={13} className="text-orange-500" /> خصم سريع</p>
-              <div className="grid grid-cols-3 gap-1.5 mb-2">
-                {[5, 10, 15, 20, 25, 30].map(pct => {
-                  const val = Math.round(discountBase * pct / 100);
-                  const isActive = subscriber!.discount === val;
-                  return (
-                    <button key={pct} onClick={() => updateSubscriber({ ...subscriber!, discount: val })}
-                      className={`py-1.5 rounded-xl text-xs font-bold border-2 transition ${isActive ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300'}`}>
-                      {pct}%<span className="block text-[9px] font-normal text-gray-400">{val.toLocaleString()}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {subscriber!.discount && subscriber!.discount > 0 && (
-                <button onClick={() => updateSubscriber({ ...subscriber!, discount: 0 })} className="w-full py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-xl transition">
-                  ✕ إلغاء الخصم ({subscriber!.discount.toLocaleString()} ج.م)
-                </button>
-              )}
-              <p className="text-[10px] text-gray-400 mt-1.5 text-center">محسوبة من {discountBase.toLocaleString()} ج.م</p>
-            </div>
-          )}
-
-          {/* ── 10. Linked subscriber cross-link (lead view only) ── */}
-          {!isSub && linkedSub && (
-            <div className="bg-emerald-50 rounded-2xl border border-emerald-200 p-4">
-              <p className="text-xs font-extrabold text-emerald-700 flex items-center gap-1.5 mb-2"><CheckCircle size={13} /> ملف المشترك</p>
-              <p className="font-bold text-emerald-800 text-sm">{linkedSub.name}</p>
-              <p className="text-xs text-emerald-600 mb-2">{linkedSub.enrolledCourseIds.length} كورس مسجل</p>
-              <button onClick={() => navigate(`/client/${linkedSub.clientCode || linkedSub.id}`)} className="w-full py-2 bg-emerald-600 text-white rounded-xl text-xs hover:bg-emerald-700 flex items-center justify-center gap-1.5 font-bold transition">
-                <BookOpen size={12} /> عرض الملف الكامل
-              </button>
-            </div>
-          )}
-
-        </div>
+        <ClientSidebar
+          navigate={navigate}
+          isSub={isSub}
+          subscriber={subscriber}
+          lead={lead}
+          linkedLead={linkedLead}
+          linkedSub={linkedSub}
+          clientName={clientName}
+          clientPhone={clientPhone}
+          clientEmail={clientEmail}
+          clientBranch={clientBranch}
+          courses={courses}
+          getCourseLectures={getCourseLectures}
+          sessionData={sessionData}
+          allComms={allComms}
+          subPaidTotals={subPaidTotals}
+          subRemainingEGP={subRemainingEGP}
+          bookingMap={bookingMap}
+          subInstallmentPlans={subInstallmentPlans}
+          instOverdueCount={instOverdueCount}
+          instSoonCount={instSoonCount}
+          todayStr={_todayStr}
+          subCerts={subCerts}
+          extraReqs={extraReqs}
+          enrolledCourse={enrolledCourse}
+          leadPaidEGP={leadPaidEGP}
+          leadRemaining={leadRemaining}
+          discountBase={discountBase}
+          quickNote={quickNote}
+          saveQuickNote={saveQuickNote}
+          promoCopied={promoCopied}
+          setPromoCopied={setPromoCopied}
+          handleGeneratePromo={handleGeneratePromo}
+          isAdmin={isAdmin}
+          editing={editing}
+          setEditing={setEditing}
+          setActiveTab={setActiveTab}
+          setShowAddComm={setShowAddComm}
+          setShowSubPayForm={setShowSubPayForm}
+          setShowLeadPayForm={setShowLeadPayForm}
+          setShowGrantForm={setShowGrantForm}
+          setGrantDraft={setGrantDraft}
+          setShowLegacyPayForm={setShowLegacyPayForm}
+          setShowExtraCertForm={setShowExtraCertForm}
+          setExtraCertDraft={setExtraCertDraft}
+          setShowInstPlanForm={setShowInstPlanForm}
+          setShowPayDetailModal={setShowPayDetailModal}
+          updateSubscriber={updateSubscriber}
+        />
 
         {/* ════════ MAIN CONTENT ════════ */}
         <div className="flex-1 min-w-0">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
 
-            {/* ── Tab Navigation ── */}
-            <div className="flex items-center gap-0 overflow-x-auto border-b border-gray-100 bg-white rounded-t-2xl px-3">
-              {tabs.map(([tab, label]) => (
-                <button key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-3 text-xs font-bold whitespace-nowrap border-b-2 transition-colors ${
-                    activeTab === tab
-                      ? 'text-indigo-700 border-indigo-500'
-                      : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <ClientTabsNav tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} />
 
-            <div className="p-5 space-y-6">
-
-              {/* ══ OVERVIEW ══ */}
-              {activeTab === 'overview' && (
-                <OverviewClientTab
-                  isSub={isSub}
-                  subscriber={subscriber}
-                  lead={lead}
-                  allComms={allComms as (CommunicationRecord & { _src?: string })[]}
-                  getCourseLectures={getCourseLectures}
-                  subInstallmentPlans={subInstallmentPlans}
-                  todayStr={_todayStr}
-                  leadPayments={leadPayments}
-                  courses={courses}
-                  bundles={bundles}
-                  leadPaidEGP={leadPaidEGP}
-                  leadRemaining={leadRemaining}
-                  bookingMap={bookingMap}
-                  subCerts={subCerts}
-                  enrolledCourse={enrolledCourse}
-                  subConsults={subConsults}
-                  subHistory={subHistory}
-                  commTypeMeta={commTypeMeta}
-                  setActiveTab={setActiveTab}
-                />
-              )}
-
-              {/* ══ 💬 التواصل ══ */}
-              {activeTab === 'communications' && (
-                <CommunicationsTab
-                  allComms={allComms as (CommunicationRecord & { _src?: string })[]}
-                  clientName={clientName}
-                  clientPhone={clientPhone}
-                  isSub={isSub}
-                  onAdd={() => setShowAddComm(true)}
-                  onDelete={handleDeleteComm}
-                />
-              )}
-
-              {/* ══ 💳 الدفعات ══ */}
-              {activeTab === 'payments' && (
-                <PaymentsTab
-                  isSub={isSub}
-                  subscriber={subscriber}
-                  lead={lead}
-                  subHistory={subHistory}
-                  confirmedHistory={confirmedHistory}
-                  leadPayments={leadPayments}
-                  courses={courses}
-                  clientName={clientName}
-                  isAdmin={isAdmin}
-                  subPaidTotals={subPaidTotals}
-                  subRemainingEGP={subRemainingEGP}
-                  bookedCourseIds={bookedCourseIds}
-                  bookingMap={bookingMap}
-                  ptLabels={ptLabels}
-                  clientProofs={clientProofs}
-                  clientProofsLoaded={clientProofsLoaded}
-                  proofImageUrl={proofImageUrl}
-                  reviewingProofId={reviewingProofId}
-                  setReviewingProofId={setReviewingProofId}
-                  reviewerNote={reviewerNote}
-                  setReviewerNote={setReviewerNote}
-                  reviewLoading={reviewLoading}
-                  showSubPayForm={showSubPayForm}
-                  setShowSubPayForm={setShowSubPayForm}
-                  payModalDraft={payModalDraft}
-                  setPayModalDraft={setPayModalDraft}
-                  showLeadPayForm={showLeadPayForm}
-                  setShowLeadPayForm={setShowLeadPayForm}
-                  onPayModalSubmit={handlePayModalSubmit}
-                  updateSubscriber={updateSubscriber}
-                  updateLead={updateLead}
-                  loadClientProofs={loadClientProofs}
-                  loadProofImage={loadProofImage}
-                  onReviewProof={handleReviewProof}
-                />
-              )}
-
-              {/* ══ 🎓 الكورسات ══ */}
-              {isSub && activeTab === 'courses' && (
-                <CoursesAccessTab
-                  subscriber={subscriber!}
-                  courses={courses}
-                  updateSubscriber={updateSubscriber}
-                  showGrantFromCourses={showGrantFromCourses}
-                  setShowGrantFromCourses={setShowGrantFromCourses}
-                  grantFromCourseId={grantFromCourseId}
-                  setGrantFromCourseId={setGrantFromCourseId}
-                  getCourseLectures={getCourseLectures}
-                  getPreset={getPreset}
-                  accessSaving={accessSaving}
-                  accessMsg={accessMsg}
-                  manualLimitDraft={manualLimitDraft}
-                  setManualLimitDraft={setManualLimitDraft}
-                  setAccessPresets={setAccessPresets}
-                  canManageCourseAccess={canManageCourseAccess}
-                  applyAccessLevel={applyAccessLevel}
-                  isAdmin={isAdmin}
-                />
-              )}
-
-              {/* ══ 🏆 الشهادات ══ */}
-              {isSub && activeTab === 'certificates' && (
-                <CertificatesTab
-                  subscriber={subscriber!}
-                  subCerts={subCerts}
-                  extraReqs={extraReqs}
-                  courses={courses}
-                  onRequestExtra={() => { setShowExtraCertForm(true); setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' }); }}
-                  onView={(certId) => setViewCertId(certId)}
-                  onDeleteCert={(certId) => updateSubscriber({ ...subscriber!, certificates: subCerts.filter(c => c.id !== certId) })}
-                />
-              )}
-
-              {/* ══ 📅 الأقساط ══ */}
-              {isSub && activeTab === 'installments' && subscriber && (
-                <InstallmentsTab
-                  subscriber={subscriber}
-                  subInstallmentPlans={subInstallmentPlans}
-                  courses={courses}
-                  todayStr={_todayStr}
-                  soon3Str={_soon3Str}
-                  instOverdueCount={instOverdueCount}
-                  instSoonCount={instSoonCount}
-                  setShowInstPlanForm={setShowInstPlanForm}
-                  payingEntryKey={payingEntryKey}
-                  setPayingEntryKey={setPayingEntryKey}
-                  payEntryAmount={payEntryAmount}
-                  setPayEntryAmount={setPayEntryAmount}
-                  payEntryDate={payEntryDate}
-                  setPayEntryDate={setPayEntryDate}
-                  updateSubscriber={updateSubscriber}
-                  onDeletePlan={handleDeleteInstallmentPlan}
-                  onDeleteEntry={handleDeleteInstallmentEntry}
-                  onPayEntry={handlePayInstallmentEntry}
-                />
-              )}
-
-              {/* ══ 🧠 الاستشارات ══ */}
-              {activeTab === 'consultations' && subConsults.length > 0 && (
-                <ConsultationsTab subConsults={subConsults} />
-              )}
-
-              {/* ══ 🗓️ جدول الدقي ══ */}
-              {isSub && activeTab === 'daqqi' && subDaqqiRounds.length > 0 && subscriber && (
-                <DaqqiRoundsTab subDaqqiRounds={subDaqqiRounds} courses={courses} subscriber={subscriber} />
-              )}
-
-              {/* ══ ✏️ تعديل البيانات ══ */}
-              {activeTab === 'edit' && (
-                <EditClientTab
-                  isSub={isSub}
-                  subscriber={subscriber}
-                  lead={lead}
-                  subDraft={subDraft}
-                  setSubDraft={setSubDraft}
-                  leadDraft={leadDraft}
-                  setLeadDraft={setLeadDraft}
-                  branchLabels={branchLabels}
-                  statusLabels={statusLabels}
-                  salesStaffList={salesStaffList}
-                  csStaffList={csStaffList}
-                  courses={courses}
-                  bundles={bundles}
-                  isAdmin={isAdmin}
-                  isOnlineManager={isOnlineManager}
-                  currentPassword={currentPassword}
-                  currentPasswordLoading={currentPasswordLoading}
-                  showCurrentPassword={showCurrentPassword}
-                  setShowCurrentPassword={setShowCurrentPassword}
-                  credNewPassword={credNewPassword}
-                  setCredNewPassword={setCredNewPassword}
-                  showNewPassword={showNewPassword}
-                  setShowNewPassword={setShowNewPassword}
-                  credMsg={credMsg}
-                  setCredMsg={setCredMsg}
-                  clientEmail={clientEmail}
-                  accountDiag={accountDiag}
-                  setAccountDiag={setAccountDiag}
-                  accountDiagLoading={accountDiagLoading}
-                  setAccountDiagLoading={setAccountDiagLoading}
-                  createAccMsg={createAccMsg}
-                  setCreateAccMsg={setCreateAccMsg}
-                  createAccLoading={createAccLoading}
-                  setCreateAccLoading={setCreateAccLoading}
-                  isSaving={isSaving}
-                  onSaveSub={handleSaveSubEdit}
-                  onSaveLead={handleSaveLeadEdit}
-                />
-              )}
-
-            </div>
+            <ClientTabContent
+              activeTab={activeTab}
+              isSub={isSub}
+              subConsultsCount={subConsults.length}
+              subDaqqiRoundsCount={subDaqqiRounds.length}
+              overview={{
+                isSub, subscriber, lead,
+                allComms: allComms as (CommunicationRecord & { _src?: string })[],
+                getCourseLectures, subInstallmentPlans, todayStr: _todayStr,
+                leadPayments, courses, bundles, leadPaidEGP, leadRemaining,
+                bookingMap, subCerts, enrolledCourse, subConsults, subHistory,
+                setActiveTab,
+              }}
+              communications={{
+                allComms: allComms as (CommunicationRecord & { _src?: string })[],
+                clientName, clientPhone, isSub,
+                onAdd: () => setShowAddComm(true),
+                onDelete: handleDeleteComm,
+              }}
+              payments={{
+                isSub, subscriber, lead, subHistory, confirmedHistory, leadPayments,
+                courses, clientName, isAdmin, subPaidTotals, subRemainingEGP,
+                bookedCourseIds, bookingMap, clientProofs, clientProofsLoaded,
+                proofImageUrl, reviewingProofId, setReviewingProofId, reviewerNote,
+                setReviewerNote, reviewLoading, showSubPayForm, setShowSubPayForm,
+                payModalDraft, setPayModalDraft, showLeadPayForm, setShowLeadPayForm,
+                onPayModalSubmit: handlePayModalSubmit, updateSubscriber, updateLead,
+                loadClientProofs, loadProofImage, onReviewProof: handleReviewProof,
+              }}
+              courses={{
+                subscriber: subscriber!, courses, updateSubscriber,
+                showGrantFromCourses, setShowGrantFromCourses, grantFromCourseId,
+                setGrantFromCourseId, getCourseLectures, getPreset, accessSaving,
+                accessMsg, manualLimitDraft, setManualLimitDraft, setAccessPresets,
+                canManageCourseAccess, applyAccessLevel, isAdmin,
+              }}
+              certificates={{
+                subscriber: subscriber!, subCerts, extraReqs, courses,
+                onRequestExtra: () => { setShowExtraCertForm(true); setExtraCertDraft({ courseId: '', type: '', certExpected: '', certPaid: '' }); },
+                onView: (certId) => setViewCertId(certId),
+                onDeleteCert: (certId) => updateSubscriber({ ...subscriber!, certificates: subCerts.filter(c => c.id !== certId) }),
+              }}
+              installments={{
+                subscriber: subscriber!, subInstallmentPlans, courses, todayStr: _todayStr,
+                soon3Str: _soon3Str, instOverdueCount, instSoonCount, setShowInstPlanForm,
+                payingEntryKey, setPayingEntryKey, payEntryAmount, setPayEntryAmount,
+                payEntryDate, setPayEntryDate, updateSubscriber,
+                onDeletePlan: handleDeleteInstallmentPlan,
+                onDeleteEntry: handleDeleteInstallmentEntry,
+                onPayEntry: handlePayInstallmentEntry,
+              }}
+              consultations={{ subConsults }}
+              daqqi={{ subDaqqiRounds, courses, subscriber: subscriber! }}
+              edit={{
+                isSub, subscriber, lead, subDraft, setSubDraft, leadDraft, setLeadDraft,
+                salesStaffList, csStaffList, courses, bundles, isAdmin, isOnlineManager,
+                currentPassword, currentPasswordLoading, showCurrentPassword,
+                setShowCurrentPassword, credNewPassword, setCredNewPassword,
+                showNewPassword, setShowNewPassword, credMsg, setCredMsg, clientEmail,
+                accountDiag, setAccountDiag, accountDiagLoading, setAccountDiagLoading,
+                createAccMsg, setCreateAccMsg, createAccLoading, setCreateAccLoading,
+                isSaving, onSaveSub: handleSaveSubEdit, onSaveLead: handleSaveLeadEdit,
+              }}
+            />
           </div>
         </div>
       </div>
 
-      {/* ══ Access Control Modal (صلاحية الفيديوهات) ══ */}
-      {showAccessModal && isSub && canManageCourseAccess && subscriber && (
-        <AccessControlModal
-          subscriber={subscriber}
-          courses={courses}
-          getCourseLectures={getCourseLectures}
-          accessSaving={accessSaving}
-          accessMsg={accessMsg}
-          manualLimitDraft={manualLimitDraft}
-          setManualLimitDraft={setManualLimitDraft}
-          getPreset={getPreset}
-          setAccessPresets={setAccessPresets}
-          applyAccessLevel={applyAccessLevel}
-          onClose={() => setShowAccessModal(false)}
-        />
-      )}
-
-      {/* ══ Contact Popup Modal ══ */}
-      {showContactPopup && (
-        <ContactPopupModal
-          draft={contactPopupDraft}
-          setDraft={setContactPopupDraft}
-          isLead={!isSub && !!lead}
-          isSaving={isSaving}
-          onSave={handleSaveContactPopup}
-          onClose={() => setShowContactPopup(false)}
-        />
-      )}
-
-      {/* ══ Convert Modal ══ */}
-      {showConvertModal && lead && (
-        <ConvertModal
-          courses={courses}
-          bundles={bundles}
-          convertCourseId={convertCourseId}
-          setConvertCourseId={setConvertCourseId}
-          convertAccessMode={convertAccessMode}
-          setConvertAccessMode={setConvertAccessMode}
-          convertPartialCount={convertPartialCount}
-          setConvertPartialCount={setConvertPartialCount}
-          isSaving={isSaving}
-          onConvert={handleConvert}
-          onClose={() => setShowConvertModal(false)}
-        />
-      )}
-
-      {/* ══ Grant Course Modal ══ */}
-      {showGrantForm && isSub && subscriber && (
-        <GrantCourseModal
-          subscriber={subscriber}
-          courses={courses}
-          bundles={bundles}
-          grantDraft={grantDraft}
-          setGrantDraft={setGrantDraft}
-          onGrant={handleGrant}
-          onClose={() => setShowGrantForm(false)}
-        />
-      )}
-
-      {/* ══ Installment Plan Modal ══ */}
-      {showInstPlanForm && isSub && subscriber && (
-        <InstallmentPlanModal
-          subscriber={subscriber}
-          clientName={clientName}
-          bundles={bundles}
-          courses={courses}
-          instPlanDraft={instPlanDraft}
-          setInstPlanDraft={setInstPlanDraft}
-          getInstBookingInfo={getInstBookingInfo}
-          onCreate={handleCreateInstallmentPlan}
-          onClose={() => setShowInstPlanForm(false)}
-        />
-      )}
-
-      {/* ══ Add Communication Modal ══ */}
-      {showAddComm && (
-        <AddCommModal
-          clientName={clientName}
-          newComm={newComm}
-          setNewComm={setNewComm}
-          isSaving={isSaving}
-          onSave={handleSaveComm}
-          onClose={() => setShowAddComm(false)}
-        />
-      )}
-
-      {/* ══ Lead Payment Modal ══ */}
-      {showLeadPayForm && !isSub && (
-        <LeadPaymentModal
-          clientName={clientName}
-          leadPayDraft={leadPayDraft}
-          setLeadPayDraft={setLeadPayDraft}
-          courses={courses}
-          bundles={bundles}
-          onSave={handleAddLeadPayment}
-          onClose={() => setShowLeadPayForm(false)}
-        />
-      )}
-
-      {/* ══ Extra Certificate Request Modal ══ */}
-      {showExtraCertForm && isSub && subscriber && (
-        <ExtraCertRequestModal
-          clientName={clientName}
-          subscriber={subscriber}
-          courses={courses}
-          extraCertDraft={extraCertDraft}
-          setExtraCertDraft={setExtraCertDraft}
-          onSave={handleAddExtraCertRequest}
-          onClose={() => setShowExtraCertForm(false)}
-        />
-      )}
-
-      {/* ══ Legacy Payment Modal (مدفوع قديم) ══ */}
-      {showLegacyPayForm && isSub && (
-        <LegacyPaymentModal
-          clientName={clientName}
-          legacyPayDraft={legacyPayDraft}
-          setLegacyPayDraft={setLegacyPayDraft}
-          courses={courses}
-          bundles={bundles}
-          onSave={handleAddLegacyPayment}
-          onClose={() => setShowLegacyPayForm(false)}
-        />
-      )}
-
-      {/* ══ Certificate View Modal ══ */}
-      {viewCertId && isSub && subscriber && (
-        <CertificateViewModal
-          viewCertId={viewCertId}
-          subCerts={subCerts}
-          courses={courses}
-          subscriberName={subscriber.name}
-          clientName={clientName}
-          onClose={() => setViewCertId(null)}
-        />
-      )}
-
-      {/* ══ Payment Detail Modal ══ */}
-      {showPayDetailModal && isSub && subscriber && (
-        <PaymentDetailModal
-          clientName={clientName}
-          subscriber={subscriber}
-          courses={courses}
-          subPaidTotals={subPaidTotals}
-          subRemainingEGP={subRemainingEGP}
-          bookingMap={bookingMap}
-          confirmedHistory={confirmedHistory}
-          onClose={() => setShowPayDetailModal(false)}
-        />
-      )}
+      <ClientModalsGroup
+        isSub={isSub}
+        showAccessModal={showAccessModal}
+        canManageCourseAccess={canManageCourseAccess}
+        accessControlProps={subscriber ? {
+          subscriber, courses, getCourseLectures, accessSaving, accessMsg,
+          manualLimitDraft, setManualLimitDraft, getPreset, setAccessPresets,
+          applyAccessLevel, onClose: () => setShowAccessModal(false),
+        } : null}
+        showContactPopup={showContactPopup}
+        contactPopupProps={{
+          draft: contactPopupDraft, setDraft: setContactPopupDraft,
+          isLead: !isSub && !!lead, isSaving, onSave: handleSaveContactPopup,
+          onClose: () => setShowContactPopup(false),
+        }}
+        showConvertModal={showConvertModal}
+        hasLead={!!lead}
+        convertProps={{
+          courses, bundles, convertCourseId, setConvertCourseId,
+          convertAccessMode, setConvertAccessMode, convertPartialCount,
+          setConvertPartialCount, isSaving, onConvert: handleConvert,
+          onClose: () => setShowConvertModal(false),
+        }}
+        showGrantForm={showGrantForm}
+        grantProps={subscriber ? {
+          subscriber, courses, bundles, grantDraft, setGrantDraft,
+          onGrant: handleGrant, onClose: () => setShowGrantForm(false),
+        } : null}
+        showInstPlanForm={showInstPlanForm}
+        instPlanProps={subscriber ? {
+          subscriber, clientName, bundles, courses, instPlanDraft, setInstPlanDraft,
+          getInstBookingInfo, onCreate: handleCreateInstallmentPlan,
+          onClose: () => setShowInstPlanForm(false),
+        } : null}
+        showAddComm={showAddComm}
+        addCommProps={{
+          clientName, newComm, setNewComm, isSaving, onSave: handleSaveComm,
+          onClose: () => setShowAddComm(false),
+        }}
+        showLeadPayForm={showLeadPayForm}
+        leadPaymentProps={{
+          clientName, leadPayDraft, setLeadPayDraft, courses, bundles,
+          onSave: handleAddLeadPayment, onClose: () => setShowLeadPayForm(false),
+        }}
+        showExtraCertForm={showExtraCertForm}
+        extraCertProps={subscriber ? {
+          clientName, subscriber, courses, extraCertDraft, setExtraCertDraft,
+          onSave: handleAddExtraCertRequest, onClose: () => setShowExtraCertForm(false),
+        } : null}
+        showLegacyPayForm={showLegacyPayForm}
+        legacyPaymentProps={{
+          clientName, legacyPayDraft, setLegacyPayDraft, courses, bundles,
+          onSave: handleAddLegacyPayment, onClose: () => setShowLegacyPayForm(false),
+        }}
+        viewCertId={viewCertId}
+        certificateViewProps={subscriber ? {
+          viewCertId: viewCertId!, subCerts, courses, subscriberName: subscriber.name,
+          clientName, onClose: () => setViewCertId(null),
+        } : null}
+        showPayDetailModal={showPayDetailModal}
+        paymentDetailProps={subscriber ? {
+          clientName, subscriber, courses, subPaidTotals, subRemainingEGP,
+          bookingMap, confirmedHistory, onClose: () => setShowPayDetailModal(false),
+        } : null}
+      />
 
     </div>
   );
