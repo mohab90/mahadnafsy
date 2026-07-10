@@ -64,16 +64,16 @@ import {
   WaitlistTab,
   WebhooksTab,
 } from './dashboard/lazyTabs';
-import ChartOfAccountsTab from './dashboard/tabs/ChartOfAccountsTab';
-import BranchWorkspacesTab from './dashboard/tabs/BranchWorkspacesTab';
-import TenantsAdminTab from './dashboard/tabs/TenantsAdminTab';
-import OnlineClientsTab from './dashboard/tabs/OnlineClientsTab';
-import OverviewTab from './dashboard/tabs/OverviewTab';
-import CertRequestsTab from './dashboard/tabs/CertRequestsTab';
-import CommunityAdminTab from './dashboard/tabs/CommunityAdminTab';
-import StaffSettingsTab from './dashboard/tabs/StaffSettingsTab';
+const ChartOfAccountsTab = React.lazy(() => import('./dashboard/tabs/ChartOfAccountsTab'));
+const BranchWorkspacesTab = React.lazy(() => import('./dashboard/tabs/BranchWorkspacesTab'));
+const TenantsAdminTab = React.lazy(() => import('./dashboard/tabs/TenantsAdminTab'));
+const OnlineClientsTab = React.lazy(() => import('./dashboard/tabs/OnlineClientsTab'));
+const OverviewTab = React.lazy(() => import('./dashboard/tabs/OverviewTab'));
+const CertRequestsTab = React.lazy(() => import('./dashboard/tabs/CertRequestsTab'));
+const CommunityAdminTab = React.lazy(() => import('./dashboard/tabs/CommunityAdminTab'));
+const StaffSettingsTab = React.lazy(() => import('./dashboard/tabs/StaffSettingsTab'));
 const ContentHubTab = React.lazy(() => import('./dashboard/tabs/ContentHubTab'));
-import RefundRequestsTab from './dashboard/tabs/RefundRequestsTab';
+const RefundRequestsTab = React.lazy(() => import('./dashboard/tabs/RefundRequestsTab'));
 const OrdersTab = React.lazy(() => import('./dashboard/tabs/OrdersTab'));
 import { DASHBOARD_MENU_GROUPS, type TabKey } from './dashboard/navigation';
 import { filterMenuByFeatures, parseFeatures } from './dashboard/featureFlags';
@@ -1982,6 +1982,7 @@ const Dashboard: React.FC = () => {
               <TabErrorBoundary key={activeTab} tabName={activeTab}><>
 
             {activeTab === 'overview' && (
+              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}>
               <OverviewTab
                 orders={orders}
                 currentStaff={currentStaff ?? null}
@@ -2007,6 +2008,7 @@ const Dashboard: React.FC = () => {
                 setActiveTab={(tab: string) => setActiveTab(tab as TabKey)}
                 navigate={navigate}
               />
+              </Suspense>
             )}
 
 
@@ -2033,12 +2035,14 @@ const Dashboard: React.FC = () => {
             )}
 
             {activeTab === 'cert_requests' && (
+              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}>
               <CertRequestsTab
                 notify={notify}
                 courses={courses}
                 subscribers={subscribers}
                 updateSubscriber={updateSubscriber}
               />
+              </Suspense>
             )}
 
             {(['courses','lectures','instructors','bundles','testimonials','discounts'].includes(activeTab)) && (
@@ -2059,6 +2063,7 @@ const Dashboard: React.FC = () => {
             )}
 
             {(activeTab === 'online_clients' || (activeTab === 'daqqi_clients' && (isDaqqiManager || isReceptionDaqqi || isAdmin))) && (
+              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}>
               <OnlineClientsTab
                 activeTab={activeTab}
                 subscribers={subscribers}
@@ -2092,6 +2097,7 @@ const Dashboard: React.FC = () => {
                 setSubInstDraft={setSubInstDraft}
                 setSubWaRow={setSubWaRow}
               />
+              </Suspense>
             )}
 
             {activeTab === 'refund_requests' && (isCollectionRole || isOnlineManager || isAdmin) && (
@@ -2138,10 +2144,14 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
             {activeTab === 'chart_of_accounts' && (
-              <TabErrorBoundary><ChartOfAccountsTab notify={notify} /></TabErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>}>
+                <TabErrorBoundary><ChartOfAccountsTab notify={notify} /></TabErrorBoundary>
+              </Suspense>
             )}
             {activeTab === 'branch_workspace' && (
-              <TabErrorBoundary><BranchWorkspacesTab notify={notify} /></TabErrorBoundary>
+              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>}>
+                <TabErrorBoundary><BranchWorkspacesTab notify={notify} /></TabErrorBoundary>
+              </Suspense>
             )}
             {activeTab === 'daqqi_accounting' && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>}>
@@ -2403,7 +2413,7 @@ const Dashboard: React.FC = () => {
             {activeTab === 'staff_applications' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><JoinUsAdminTab /></TabErrorBoundary></Suspense>)}
             {activeTab === 'lecturer_applications' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><JoinUsAdminTab /></TabErrorBoundary></Suspense>)}
             {/* saas_settings + rbac_settings consolidated into the unified Settings page (legacy URLs still resolve here) */}
-            {activeTab === 'saas_settings' && isAdmin && (<div className="mb-5"><TabErrorBoundary><TenantsAdminTab notify={notify} /></TabErrorBoundary></div>)}
+            {activeTab === 'saas_settings' && isAdmin && (<div className="mb-5"><Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><TenantsAdminTab notify={notify} /></TabErrorBoundary></Suspense></div>)}
             {['system_settings','saas_settings','rbac_settings'].includes(activeTab) && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><SystemSettingsTab notify={notify} isAdmin={isAdmin} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'staff_performance' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><StaffPerformanceTab notify={notify} /></TabErrorBoundary></Suspense>)}
             {activeTab === 'retention' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"/></div>}><TabErrorBoundary><RetentionTab notify={notify} /></TabErrorBoundary></Suspense>)}
