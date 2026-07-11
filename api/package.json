@@ -10,7 +10,8 @@
     "dev:clean": "node kill-port.js",
     "test:unit": "node --test tests/*.test.js",
     "test:integration": "node --test tests/integration/*.test.js",
-    "migrate": "node tools/migrate.cjs"
+    "migrate": "node tools/migrate.cjs",
+    "reconcile": "node tools/reconcile.cjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
