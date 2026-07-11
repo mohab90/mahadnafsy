@@ -28,7 +28,9 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res)
     // Accept both camelCase (frontend) and snake_case (direct DB) field names
     const role           = ((s.role || 'other').toUpperCase());  // DB ENUM is uppercase
     const firebaseUid    = s.firebaseUid    || s.firebase_uid    || null;
-    const joinedAt       = s.joinedAt       || s.joined_at       || new Date().toISOString();
+    // Normalise to a MySQL DATETIME literal — a raw ISO string ('...T...Z') is
+    // rejected by DATETIME columns, which 500'd staff creation when no date was supplied.
+    const joinedAt       = String(s.joinedAt || s.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const commissionRate = s.commissionRate || s.commission_rate || null;
     const isActive       = s.is_active !== undefined ? s.is_active
                          : (s.status === 'inactive' ? 0 : 1);

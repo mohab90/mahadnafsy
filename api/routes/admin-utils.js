@@ -508,7 +508,13 @@ pool.query(`
 router.post('/api/me/refund-request', requireAuth, async (req, res) => {
   try {
     const uid = req.user?.uid;
-    const [[sub]] = await pool.query('SELECT id, name, email FROM subscribers WHERE firebase_uid=? OR id=? LIMIT 1', [uid, uid]);
+    // Match by email too — a normal email/password customer's JWT uid is their
+    // users-table id, not the subscriber's firebase_uid/id, so uid-only lookup
+    // failed for real customers (refund request returned "Subscriber not found").
+    const email = (req.user?.email || '').toLowerCase().trim();
+    const [[sub]] = await pool.query(
+      'SELECT id, name, email FROM subscribers WHERE firebase_uid=? OR id=? OR LOWER(TRIM(email))=? LIMIT 1',
+      [uid, uid, email]);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const { payment_id, amount, currency = 'EGP', reason } = req.body;
     if (!reason || !amount) return res.status(400).json({ error: 'reason and amount are required' });

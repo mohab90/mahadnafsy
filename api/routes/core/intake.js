@@ -122,16 +122,21 @@ router.post('/api/leads-public', publicLimiter,
   }),
   async (req, res) => {
   try {
-    const { name, phone, notes, source } = req.body;
+    const { name, phone, email, notes, source } = req.body;
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     // Assign sequential client code
     let code = null;
     const conn = await pool.getConnection();
     try { code = await getNextClientCode(conn); } catch (_) {} finally { conn.release(); }
+    // email is now included (and the column made nullable in migration 035): the
+    // INSERT previously omitted email entirely, which 500'd against the NOT NULL
+    // column — silently dropping every on-site/chatbot lead.
     await pool.execute(
-      `INSERT INTO leads (id, client_code, name, phone, notes, status, interest_level, source, lead_type, created_at, hidden)
-       VALUES (?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', NOW(), 0)`,
-      [id, code, name.trim().slice(0, 120), phone.trim().slice(0, 30), (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50)]
+      `INSERT INTO leads (id, client_code, name, phone, email, notes, status, interest_level, source, lead_type, created_at, hidden)
+       VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', NOW(), 0)`,
+      [id, code, name.trim().slice(0, 120), phone.trim().slice(0, 30),
+       (email || '').toString().trim().slice(0, 255) || null,
+       (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50)]
     );
     // Lifecycle: instant welcome to the new lead (whatsapp; email skipped if absent).
     require('../../lib/lifecycle').trigger('lead_created', { name: name.trim(), phone: phone.trim() });

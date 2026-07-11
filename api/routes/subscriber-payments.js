@@ -15,7 +15,7 @@ const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
 
-router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_orders'), async (req, res) => {
   let conn;
   try {
     const { subscriber_id, payment } = req.body;
