@@ -99,7 +99,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
       // payments table is authoritative; fall back to crm_json if no DB records found
       const paymentHistory = payBySubId[r.id] && payBySubId[r.id].length > 0
         ? payBySubId[r.id]
-        : (crm.paymentHistory || []);
+        : [];
       // enrollments table is authoritative; merge with crm_json for backwards compat
       const enrolledCourseIds = [...new Set([
         ...(enrollBySub[r.id] || []),
@@ -212,7 +212,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
 
     res.json(rows.map(r => {
       const crm = parseCrm(r.crm_json);
-      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : (crm.paymentHistory || []);
+      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       const enrolledCourseIds = [...new Set([
         ...(staffEnrollBySub[r.id] || []),
         ...(Array.isArray(crm.enrolledCourseIds) ? crm.enrolledCourseIds.map(String) : []),
@@ -351,7 +351,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, async 
     res.json(rows.map(r => {
       const crm = parseCrm(r.crm_json);
       const clientCode = r.client_code || crm.clientCode || null;
-      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : (crm.paymentHistory || []);
+      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
         id: r.id, name: r.name, email: r.email, phone: r.phone,
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
@@ -415,7 +415,7 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
     res.json(rows.map(r => {
       const crm = parseCrm(r.crm_json);
       const clientCode = r.client_code || crm.clientCode || null;
-      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : (crm.paymentHistory || []);
+      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
         id: r.id, name: r.name, email: r.email, phone: r.phone,
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,
@@ -478,7 +478,7 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, asyn
     res.json(rows.map(r => {
       const crm = parseCrm(r.crm_json);
       const clientCode = r.client_code || crm.clientCode || null;
-      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : (crm.paymentHistory || []);
+      const paymentHistory = payBySubId[r.id]?.length > 0 ? payBySubId[r.id] : [];
       return {
         id: r.id, name: r.name, email: r.email, phone: r.phone,
         firebaseUid: r.firebase_uid, isActive: !!r.is_active,

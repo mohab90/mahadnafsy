@@ -89,7 +89,10 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
         id: r.id, name: r.name, email: r.email, phone: r.phone,
         firebaseUid: r.firebase_uid, isActive: !!r.is_active, notes: r.notes, createdAt: r.created_at,
         ...crm, enrolledCourseIds: Array.isArray(crm.enrolledCourseIds) ? crm.enrolledCourseIds : [],
-        clientCode, paymentHistory: paymentHistory.length > 0 ? paymentHistory : (crm.paymentHistory || []),
+        // P1: payments table is the sole source of truth for money; the stale
+        // crm_json.paymentHistory fallback was proven dead (0 subscribers rely on
+        // it — every one has its payments in the table) and is removed.
+        clientCode, paymentHistory,
         branch, clientType: r.client_type || null,
         assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
         assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
