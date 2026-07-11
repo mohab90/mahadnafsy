@@ -140,6 +140,10 @@ registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, sendWhatsA
 require('./lib/migrationRunner').runMigrations(pool)
   .catch(e => logger.error('[migrate] runner error:', e.message));
 
+// Periodic money-model integrity monitor (read-only; daily). Logs any drift and
+// notifies admins on a critical (cross-tenant money) violation.
+require('./lib/reconcileJob').startReconcileMonitor(pool);
+
 const { execFile, exec } = require('child_process');
 const _fs       = require('fs');
 const _os       = require('os');
