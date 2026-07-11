@@ -23,14 +23,17 @@ const CHECKS = [
     hint: 'A cross-tenant enrollment hides a paid course from the student.',
   },
   {
-    key: 'crmjson_payment_drift',
-    name: 'crm_json.paymentHistory count == payments table count',
+    key: 'crmjson_payment_ahead_of_table',
+    name: 'no subscriber whose crm_json has MORE payments than the payments table',
     severity: 'warn',
+    // The payments table is the sole source of truth now, so table >= crm_json is
+    // expected (crm_json is a lagging backup). Only the REVERSE — crm_json ahead of
+    // the table — is a real problem: it means a payment never reached the canonical
+    // table. Backfill (POST /api/admin/backfill-payments) resolves it.
     sql: `SELECT COUNT(*) AS n FROM subscribers s
-          WHERE JSON_LENGTH(JSON_EXTRACT(s.crm_json, '$.paymentHistory')) IS NOT NULL
-            AND JSON_LENGTH(JSON_EXTRACT(s.crm_json, '$.paymentHistory'))
-                <> (SELECT COUNT(*) FROM payments p WHERE p.subscriber_id = s.id AND p.amount > 0)`,
-    hint: 'The crm_json blob and the payments table disagree — the dual-write drift. Payments table is the source of truth.',
+          WHERE JSON_LENGTH(JSON_EXTRACT(s.crm_json, '$.paymentHistory'))
+                > (SELECT COUNT(*) FROM payments p WHERE p.subscriber_id = s.id AND p.amount > 0)`,
+    hint: 'crm_json holds a payment the canonical payments table is missing — run backfill-payments.',
   },
   {
     key: 'nonpositive_paid',
