@@ -12,7 +12,7 @@ const { DEFAULT_TENANT } = require('../../middleware/tenantContext');
 // ── FEATURE: P&L (Profit & Loss) Report ───────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/admin/financial/pnl?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get('/api/admin/financial/pnl', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/financial/pnl', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-01-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
@@ -76,14 +76,14 @@ router.get('/api/admin/financial/pnl', requireAuth, requireAdmin, async (req, re
     logger.info('[schema] recurring_expenses ready');
   } catch (e) { logger.warn('[schema recurring_expenses]', e.message); }
 })();
-router.get  ('/api/admin/recurring-expenses', requireAuth, requireAdmin, async (req, res) => {
+router.get  ('/api/admin/recurring-expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try { const [rows] = await pool.query(
     `SELECT id, title, amount_egp, category, notes, frequency, day_of_month, is_active, last_run, created_at, created_by
      FROM recurring_expenses WHERE tenant_id = ? ORDER BY created_at DESC`
   , [req.tenantId]); res.json(rows); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.post  ('/api/admin/recurring-expenses', requireAuth, requireAdmin, async (req, res) => {
+router.post  ('/api/admin/recurring-expenses', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { title, amount_egp, category, notes, frequency='monthly', day_of_month=1 } = req.body;
     if (!title || !amount_egp) return res.status(400).json({ error: 'title and amount_egp required' });
@@ -93,7 +93,7 @@ router.post  ('/api/admin/recurring-expenses', requireAuth, requireAdmin, async 
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.put  ('/api/admin/recurring-expenses/:id', requireAuth, requireAdmin, async (req, res) => {
+router.put  ('/api/admin/recurring-expenses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { title, amount_egp, category, notes, frequency, day_of_month, is_active } = req.body;
     await pool.query('UPDATE recurring_expenses SET title=COALESCE(?,title),amount_egp=COALESCE(?,amount_egp),category=COALESCE(?,category),notes=COALESCE(?,notes),frequency=COALESCE(?,frequency),day_of_month=COALESCE(?,day_of_month),is_active=COALESCE(?,is_active) WHERE id=?',
@@ -101,7 +101,7 @@ router.put  ('/api/admin/recurring-expenses/:id', requireAuth, requireAdmin, asy
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/recurring-expenses/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/recurring-expenses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try { await pool.query('DELETE FROM recurring_expenses WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -215,7 +215,7 @@ router.patch('/api/admin/installment-plans/:id/pay', requireAuth, requireAdminOr
     res.json({ ok: true, paid_count: paidCount, status: st });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/installment-plans/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/installment-plans/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try { await pool.query('DELETE FROM installment_plans WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -232,7 +232,7 @@ router.delete('/api/admin/installment-plans/:id', requireAuth, requireAdmin, asy
   } catch (e) { logger.warn('[schema vat]', e.message); }
 })();
 // GET /api/admin/financial/vat-summary?from=&to=
-router.get('/api/admin/financial/vat-summary', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/financial/vat-summary', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-01-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
@@ -267,7 +267,7 @@ function toCsv(rows, cols) {
 // (removed dead duplicate GET /api/admin/export/leads — live in an earlier-mounted router)
 
 // GET /api/admin/export/expenses
-router.get('/api/admin/export/expenses', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/export/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const { from, to } = req.query;
     let sql = `SELECT id, title, amount, category, recurrence, date, notes FROM expenses WHERE tenant_id = ? AND deleted_at IS NULL AND 1=1`;
@@ -297,7 +297,7 @@ router.get('/api/admin/export/expenses', requireAuth, requireAdmin, async (req, 
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/financial/balance-sheet?asOf=YYYY-MM-DD
-router.get('/api/admin/financial/balance-sheet', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/financial/balance-sheet', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const asOf = req.query.asOf || new Date().toISOString().slice(0, 10);
 
@@ -350,7 +350,7 @@ router.get('/api/admin/financial/balance-sheet', requireAuth, requireAdmin, asyn
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/financial/cash-flow?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get('/api/admin/financial/cash-flow', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/financial/cash-flow', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const now = new Date();
     const from = req.query.from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);

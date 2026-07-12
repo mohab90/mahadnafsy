@@ -4,7 +4,7 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { safeDateOnly, monthRange } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
@@ -80,7 +80,7 @@ router.get('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, as
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/accounting-periods', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     // Ensure no other open period exists
     const [[existing]] = await pool.query("SELECT id FROM accounting_periods WHERE status='open' LIMIT 1");
@@ -96,7 +96,7 @@ router.post('/api/admin/accounting-periods', requireAuth, requireAdmin, async (r
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { id } = req.params;
     const actor = req.user?.email || req.user?.name || 'admin';
@@ -134,7 +134,7 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { id } = req.params;
     const actor = req.user?.email || req.user?.name || 'admin';

@@ -8,7 +8,7 @@
 const express = require('express');
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const logger = require('../lib/logger').child({ route: 'accounting-erp' });
 
 const router = express.Router();
@@ -40,7 +40,7 @@ const router = express.Router();
 
 const VALID_TYPES = new Set(['asset', 'liability', 'equity', 'revenue', 'expense']);
 
-router.get('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (_req, res) => {
   try {
     const [accounts] = await pool.query(`
       SELECT code, name, type, is_active, created_at, updated_at
@@ -72,7 +72,7 @@ router.get('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdmin,
   }
 });
 
-router.post('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const code = String(req.body.code || '').trim();
     const name = String(req.body.name || '').trim();
@@ -91,7 +91,7 @@ router.post('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdmin
   }
 });
 
-router.put('/api/admin/accounting/chart-of-accounts/:code', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/accounting/chart-of-accounts/:code', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const updates = [];
     const params = [];
@@ -114,7 +114,7 @@ router.put('/api/admin/accounting/chart-of-accounts/:code', requireAuth, require
   }
 });
 
-router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const date = String(req.body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);

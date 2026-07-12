@@ -8,7 +8,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: HTML Invoice ─────────────────────────────────────────────────
@@ -226,7 +226,7 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
 });
 
 // GET /api/admin/invoice/:paymentId — returns printable HTML invoice (A4)
-router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const p = await _loadPaymentForPrint(req.params.paymentId);
     if (!p) return res.status(404).json({ error: 'Payment not found' });
@@ -364,7 +364,7 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/financial/monthly-comparison — current vs previous month
-router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [[cur]] = await pool.query(`
       SELECT
@@ -442,7 +442,7 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdmin,
 
 // GET /api/admin/reports/pl?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Returns Profit & Loss: Revenue (4xxx) - Expenses (5xxx) grouped by account, monthly breakdown
-router.get('/api/admin/reports/pl', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const from = req.query.from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
@@ -516,7 +516,7 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdmin, async (req, res) 
 
 // GET /api/admin/reports/trial-balance?from=&to=
 // Returns all accounts with running debit/credit totals
-router.get('/api/admin/reports/trial-balance', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/reports/trial-balance', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const from = req.query.from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
@@ -562,7 +562,7 @@ router.get('/api/admin/reports/trial-balance', requireAuth, requireAdmin, async 
 
 // GET /api/admin/reports/journal?from=&to=&account_code=&ref_type=&page=&limit=
 // Paginated journal entry ledger
-router.get('/api/admin/reports/journal', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/reports/journal', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const from    = req.query.from    || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
     const to      = req.query.to      || new Date().toISOString().slice(0, 10);
@@ -622,7 +622,7 @@ router.get('/api/admin/reports/journal', requireAuth, requireAdmin, async (req, 
 });
 
 // GET /api/admin/reports/pl/html?from=&to= — printable P&L HTML report
-router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const from = req.query.from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
@@ -756,7 +756,7 @@ pool.query(`
 `).catch(e => logger.warn('[Startup] payment_links table check:', e.message));
 
 // POST /api/admin/payment-links — generate a payment link
-router.post('/api/admin/payment-links', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { item_type, item_id, amount, currency = 'EGP', subscriber_id, description, expires_days = 7 } = req.body;
     if (!item_type || !item_id || !amount) return res.status(400).json({ error: 'item_type, item_id, and amount are required' });
@@ -775,7 +775,7 @@ router.post('/api/admin/payment-links', requireAuth, requireAdmin, async (req, r
 });
 
 // GET /api/admin/payment-links — list all payment links
-router.get('/api/admin/payment-links', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT pl.*, s.name AS subscriber_name
@@ -824,7 +824,7 @@ router.get('/api/payment-links/:token', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FINANCIAL COCKPIT — live dashboard data from DB (not SiteDataContext) ──
 // ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/finance/cockpit', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const now = new Date();
     const today      = now.toISOString().slice(0, 10);
@@ -990,7 +990,7 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdmin, async (req, 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── BUDGET MANAGEMENT ───────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
     const [rows] = await pool.query(
@@ -1023,7 +1023,7 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, 
   }
 });
 
-router.put('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { month, budgets } = req.body;
     if (!month || !Array.isArray(budgets)) return res.status(400).json({ error: 'month and budgets[] required' });
@@ -1045,7 +1045,7 @@ router.put('/api/admin/finance/budgets', requireAuth, requireAdmin, async (req, 
 });
 
 // ── Refund requests list & status update ──────────────────────────────────
-router.get('/api/admin/finance/refunds', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT rr.*, rr.admin_note AS admin_notes, rr.resolved_by AS handled_by,
@@ -1063,7 +1063,7 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdmin, async (req, 
   }
 });
 
-router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { status, notes } = req.body;
     const normalizedStatus = String(status || '').toUpperCase();
