@@ -1,9 +1,9 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
-router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const m = Number(req.query.month) || new Date().getMonth() + 1;
     const y = Number(req.query.year)  || new Date().getFullYear();
@@ -54,7 +54,7 @@ router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, as
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/api/admin/hr/reports/payroll-trend', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/reports/payroll-trend', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT year, month, SUM(net_salary) AS total_net, SUM(total_allowances) AS total_allowances,
@@ -68,7 +68,7 @@ router.get('/api/admin/hr/reports/payroll-trend', requireAuth, requireAdminOrSta
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/api/admin/hr/reports/department-stats', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/reports/department-stats', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT d.id, d.name, COUNT(s.id) AS headcount,

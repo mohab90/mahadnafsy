@@ -1,9 +1,9 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
-router.get('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [[row]] = await pool.query(
       `SELECT id, staff_id, consultation_rate_type, consultation_rate_value, lecture_rate_per_hour,
@@ -14,7 +14,7 @@ router.get('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { consultation_rate_type, consultation_rate_value, lecture_rate_per_hour, training_rate_per_hour, currency, notes } = req.body;
     await pool.query(
@@ -42,7 +42,7 @@ router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
 // HR v16 — Employee Bonuses & Deductions
 // ══════════════════════════════════════════════════════════════
 
-router.get('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT b.*, c.name AS created_by_name
@@ -54,7 +54,7 @@ router.get('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmin
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { type, amount, currency, reason, for_month, for_year } = req.body;
     if (!amount) return res.status(400).json({ error: 'amount required' });
@@ -71,7 +71,7 @@ router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmi
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/hr/bonuses/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/bonuses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM employee_bonuses WHERE id=?', [req.params.id]);
     res.json({ ok: true });
@@ -83,7 +83,7 @@ router.delete('/api/admin/hr/bonuses/:id', requireAuth, requireAdmin, async (req
 // ══════════════════════════════════════════════════════════════
 
 // GET /api/admin/hr/instructor-fees?staffId=&month=&year=&status=
-router.get('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staffId, month, year, status } = req.query;
     let sql = `SELECT f.*, s.name AS staff_name, c.title AS course_title
@@ -108,7 +108,7 @@ router.get('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, as
 });
 
 // POST /api/admin/hr/instructor-fees — create a fee record
-router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, course_id, daqqi_round_id, fee_type, hours, rate_per_hour, fixed_amount, currency, period_month, period_year, note } = req.body;
     if (!staff_id) return res.status(400).json({ error: 'staff_id required' });
@@ -133,7 +133,7 @@ router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdmin, async (r
 });
 
 // PATCH /api/admin/hr/instructor-fees/:id — update status (approve/mark paid)
-router.patch('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { status, note } = req.body;
     const allowed = ['pending','approved','paid'];
@@ -155,7 +155,7 @@ router.patch('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdmin, asy
 });
 
 // DELETE /api/admin/hr/instructor-fees/:id
-router.delete('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM instructor_fees WHERE id=?', [req.params.id]);
     res.json({ ok: true });
@@ -259,7 +259,7 @@ router.get('/api/staff/me/appraisals', requireAuth, async (req, res) => {
 // Returns per-staff attendance summary for the given month:
 // present days, absence days, late days, leave days, leave balance usage.
 // ══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/hr/attendance-report', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/hr/attendance-report', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const month = (req.query.month || new Date().toISOString().slice(0, 7));
     const [y, m] = month.split('-').map(Number);

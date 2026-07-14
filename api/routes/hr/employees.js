@@ -1,11 +1,11 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
 
 // GET /api/admin/hr/employees — list all employees with HR info
-router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [employees] = await pool.query(`
       SELECT s.id, s.name, s.email, s.phone, s.role, s.image, s.is_active,
@@ -23,7 +23,7 @@ router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, async (r
 });
 
 // GET /api/admin/hr/employees/:id — full employee profile
-router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { id } = req.params;
     // Basic staff info
@@ -176,7 +176,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, asyn
 });
 
 // PUT /api/admin/hr/employees/:id — update employee HR info
-router.put('/api/admin/hr/employees/:id', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { id } = req.params;
     const allowed = ['department_id','manager_id','employment_type','hire_date','birth_date','bank_name','is_active'];
@@ -191,7 +191,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdmin, async (req,
 });
 
 // GET /api/admin/hr/departments
-router.get('/api/admin/hr/departments', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/departments', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       'SELECT id, name, branch, manager_id, description, is_active, created_at FROM hr_departments WHERE is_active = 1 ORDER BY name'

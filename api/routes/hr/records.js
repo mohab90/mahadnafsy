@@ -1,9 +1,9 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
-router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, status } = req.query;
     let sql = `SELECT a.*, s.name AS staff_name, s.role, s.image,
@@ -22,7 +22,7 @@ router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, async (re
 });
 
 // Request an advance (any staff for themselves, admin for anyone)
-router.post('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, amount, currency, reason, deduct_month, deduct_year } = req.body;
     if (!staff_id || !amount) return res.status(400).json({ error: 'staff_id and amount required' });
@@ -40,7 +40,7 @@ router.post('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, async (r
 });
 
 // Approve / reject advance
-router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { status, deduct_month, deduct_year } = req.body;
     if (!['APPROVED','REJECTED','DEDUCTED'].includes(status)) return res.status(400).json({ error: 'invalid status' });
@@ -60,7 +60,7 @@ router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdmin, as
 });
 
 // Delete advance (admin, pending only)
-router.delete('/api/admin/hr/advances/:advId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/advances/:advId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query(`DELETE FROM salary_advances WHERE id=? AND status='PENDING'`, [req.params.advId]);
     res.json({ ok: true });
@@ -71,7 +71,7 @@ router.delete('/api/admin/hr/advances/:advId', requireAuth, requireAdmin, async 
 // HR v15 — Disciplinary Records
 // ══════════════════════════════════════════════════════════════
 
-router.get('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id } = req.query;
     let sql = `SELECT d.*, s.name AS staff_name, s.role, s.image,
@@ -88,7 +88,7 @@ router.get('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, async
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/hr/disciplinary', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, type, severity, title, description, incident_date, action_taken } = req.body;
     if (!staff_id || !title) return res.status(400).json({ error: 'staff_id and title required' });
@@ -106,7 +106,7 @@ router.post('/api/admin/hr/disciplinary', requireAuth, requireAdmin, async (req,
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const fields = ['type','severity','title','description','incident_date','action_taken','status'];
     const sets = []; const vals = [];
@@ -124,7 +124,7 @@ router.put('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdmin, async
 });
 
 // Acknowledge (by the employee themselves)
-router.put('/api/admin/hr/disciplinary/:recId/acknowledge', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/hr/disciplinary/:recId/acknowledge', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     await pool.query(
       `UPDATE disciplinary_records SET acknowledged_at=NOW(), acknowledged_by=?, status='acknowledged' WHERE id=?`,
@@ -139,7 +139,7 @@ router.put('/api/admin/hr/disciplinary/:recId/acknowledge', requireAuth, require
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM disciplinary_records WHERE id=?', [req.params.recId]);
     res.json({ ok: true });
@@ -150,7 +150,7 @@ router.delete('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdmin, as
 // HR v15 — Employee Documents Vault
 // ══════════════════════════════════════════════════════════════
 
-router.get('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id } = req.query;
     let sql = `SELECT d.*, u.name AS uploaded_by_name
@@ -164,7 +164,7 @@ router.get('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, async (r
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, title, category, file_url, file_name, expiry_date } = req.body;
     if (!staff_id || !title) return res.status(400).json({ error: 'staff_id and title required' });
@@ -181,7 +181,7 @@ router.post('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, async (
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/hr/documents/:docId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/documents/:docId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM employee_documents WHERE id=?', [req.params.docId]);
     res.json({ ok: true });

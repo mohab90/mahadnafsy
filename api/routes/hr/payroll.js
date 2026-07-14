@@ -1,9 +1,9 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
-router.get('/api/admin/hr/payroll', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/payroll', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [runs] = await pool.query(`
       SELECT pr.*,
@@ -16,15 +16,20 @@ router.get('/api/admin/hr/payroll', requireAuth, requireAdminOrStaff, async (req
       LIMIT 24
     `);
     res.json(runs);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/hr/payroll/calculate — calculate payroll for a month
-router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { month, year, notes } = req.body;
     const m = parseInt(month) || new Date().getMonth() + 1;
     const y = parseInt(year)  || new Date().getFullYear();
+    // Guard against malformed input (e.g. a combined "YYYY-MM" string) overflowing
+    // the small month/year columns and surfacing as an opaque 500.
+    if (m < 1 || m > 12 || y < 2000 || y > 2100) {
+      return res.status(400).json({ error: 'شهر أو سنة غير صالحة' });
+    }
     const adminId = await getStaffIdByEmail(req.user?.email);
 
     // Upsert run
@@ -244,11 +249,11 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdmin, async 
     `, [runId]);
 
     res.json({ run: updatedRun, items });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/hr/payroll/:runId — get payroll run with items
-router.get('/api/admin/hr/payroll/:runId', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/payroll/:runId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { runId } = req.params;
     const [[run]] = await pool.query(
@@ -273,11 +278,11 @@ router.get('/api/admin/hr/payroll/:runId', requireAuth, requireAdminOrStaff, asy
       ORDER BY s.name
     `, [runId]);
     res.json({ run, items });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PUT /api/admin/hr/payroll/:runId/status — approve/pay/cancel run
-router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { runId } = req.params;
     const { status } = req.body;
@@ -331,11 +336,11 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdmin, asy
       actor: req.user?.email || req.user?.name || 'admin',
     });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // PUT /api/admin/hr/payroll/items/:itemId — override payroll item
-router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { itemId } = req.params;
     const { bonus, bonus_note, other_deductions, deductions_note } = req.body;
@@ -368,7 +373,7 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdmin, asy
     const [[{ total }]] = await pool.query(`SELECT SUM(net_salary) AS total FROM payroll_items WHERE payroll_run_id=?`, [item.payroll_run_id]);
     await pool.query(`UPDATE payroll_runs SET total_amount=? WHERE id=?`, [total, item.payroll_run_id]);
     res.json({ ok: true, net_salary: net });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -378,7 +383,7 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdmin, asy
 // POST /api/admin/hr/attendance/import — import attendance from CSV text
 // Expects body: { csv: "...", month, year, filename }
 // CSV format: employee_id OR name, date, check_in, check_out
-router.post('/api/admin/hr/attendance/import', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/attendance/import', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { csv: csvText, month, year, filename } = req.body;
     if (!csvText) return res.status(400).json({ error: 'No CSV data' });
@@ -479,11 +484,11 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdmin, async 
     `, [imported, skipped, batchId]).catch(() => {});
 
     res.json({ ok: true, imported, skipped, errors: errors.slice(0, 20) });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/hr/attendance/summary — monthly attendance summary for all staff
-router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { month, year } = req.query;
     const m = parseInt(month) || new Date().getMonth() + 1;
@@ -503,7 +508,7 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
       GROUP BY s.id ORDER BY s.name
     `, [m, y]);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ══════════════════════════════════════════════════════════════

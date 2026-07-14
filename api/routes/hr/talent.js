@@ -7,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { Router } = require('express');
 const router = Router();
-const { pool, uuidv4, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, logger } = require('./_shared');
+const { requirePermission, pool, uuidv4, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, logger } = require('./_shared');
 
 const TALENT_POOL_JOB = 'job-talent-pool';
 const ROLE_FOR_TYPE = { INSTRUCTOR: 'instructor', CONSULTANT: 'consultant', EMPLOYEE: 'support' };
@@ -40,7 +40,7 @@ async function convertJoinUs(j, { jobId, actorId } = {}) {
 }
 
 // ── The website recruiting funnel: join-us applications + their pipeline state ─
-router.get('/api/admin/hr/talent-pool', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/talent-pool', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT j.id, j.name, j.email, j.phone, j.specialty, j.type AS applicant_type, j.linkedin,
@@ -54,7 +54,7 @@ router.get('/api/admin/hr/talent-pool', requireAuth, requireAdminOrStaff, async 
 });
 
 // ── Move a website application into the recruiting pipeline ───────────────────
-router.post('/api/admin/hr/join-us/:id/to-applicant', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/hr/join-us/:id/to-applicant', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [[j]] = await pool.query('SELECT * FROM join_us_applications WHERE id=? LIMIT 1', [req.params.id]);
     if (!j) return res.status(404).json({ error: 'Not found' });
@@ -66,7 +66,7 @@ router.post('/api/admin/hr/join-us/:id/to-applicant', requireAuth, requireAdminO
 });
 
 // ── Hire an applicant → create a (pending) staff record ──────────────────────
-router.post('/api/admin/hr/applicants/:appId/hire', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/applicants/:appId/hire', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const [[a]] = await pool.query('SELECT * FROM job_applicants WHERE id=? LIMIT 1', [req.params.appId]);
     if (!a) return res.status(404).json({ error: 'Not found' });

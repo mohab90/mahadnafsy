@@ -1,9 +1,9 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
-router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { status, staff_id, month, year } = req.query;
     let sql = `
@@ -26,7 +26,7 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, async (req,
 });
 
 // POST /api/admin/hr/leaves — submit leave or permission request
-router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, type, start_date, end_date, reason } = req.body;
     if (!staff_id || !type || !start_date || !end_date) {
@@ -59,7 +59,7 @@ router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, async (req
 });
 
 // PUT /api/admin/hr/leaves/:id/status — approve or reject leave
-router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, admin_note } = req.body;
@@ -99,7 +99,7 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdmin, async (
 });
 
 // POST /api/admin/hr/salary — save/update salary structure
-router.post('/api/admin/hr/salary', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/salary', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed,
             deduction_social_insurance, deduction_tax, other_allowances_json, currency, effective_from } = req.body;
@@ -124,7 +124,7 @@ router.post('/api/admin/hr/salary', requireAuth, requireAdmin, async (req, res) 
 });
 
 // GET /api/admin/hr/attendance/:staffId — attendance logs for a staff member
-router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staffId } = req.params;
     const { month, year } = req.query;
@@ -141,7 +141,7 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
 });
 
 // POST /api/admin/hr/attendance — manual attendance entry
-router.post('/api/admin/hr/attendance', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, date, check_in, check_out, status, notes } = req.body;
     if (!staff_id || !date) return res.status(400).json({ error: 'staff_id and date required' });
@@ -226,7 +226,7 @@ router.post('/api/me/hr/attendance/check-out', requireAuth, async (req, res) => 
 });
 
 // GET /api/admin/hr/kpi/:staffId — KPI summary for a staff member
-router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staffId } = req.params;
     const { month, year } = req.query;

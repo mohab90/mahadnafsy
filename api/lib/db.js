@@ -50,7 +50,17 @@ pool.on('error', (err) => {
 
 // Middleware: respond 503 immediately instead of hanging when DB is known down
 function requireDb(req, res, next) {
-  if (isDbDown()) return res.status(503).json({ error: 'DB unavailable — tunnel is down', db: 'disconnected' });
+  if (isDbDown()) {
+    try {
+      require('./errorMonitor').recordError({
+        statusCode: 503,
+        kind: 'db_unavailable',
+        method: req.method,
+        path: req.path,
+      });
+    } catch (_) {}
+    return res.status(503).json({ error: 'DB unavailable — tunnel is down', db: 'disconnected' });
+  }
   next();
 }
 
@@ -59,7 +69,38 @@ function requireDb(req, res, next) {
 const RETRYABLE = new Set(['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'ETIMEDOUT', 'ER_SERVER_LOST', 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR']);
 const _origQuery   = pool.query.bind(pool);
 const _origExecute = pool.execute.bind(pool);
+
+function _firstSqlArg(args) {
+  const first = args && args[0];
+  if (typeof first === 'string') return first;
+  if (first && typeof first.sql === 'string') return first.sql;
+  return '';
+}
+
+function _isSchemaDdl(sql) {
+  return /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)\s+/i.test(String(sql || ''));
+}
+
+function _schemaDdlAllowed() {
+  return process.env.ALLOW_RUNTIME_SCHEMA_DDL === '1' || process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE === '1';
+}
+
+function _skipSchemaDdl(sql) {
+  logger.warn('[schema] runtime DDL blocked; use numbered migrations', {
+    statement: String(sql || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+  });
+  try {
+    require('./errorMonitor').recordError({
+      statusCode: 0,
+      kind: 'runtime_schema_ddl_blocked',
+    });
+  } catch (_) {}
+  return [{ affectedRows: 0, changedRows: 0, warningStatus: 0, schemaDdlSkipped: true }, undefined];
+}
+
 pool.query = async (...args) => {
+  const sql = _firstSqlArg(args);
+  if (_isSchemaDdl(sql) && !_schemaDdlAllowed()) return _skipSchemaDdl(sql);
   try {
     const result = await _origQuery(...args);
     _markDbUp();
@@ -71,6 +112,8 @@ pool.query = async (...args) => {
   }
 };
 pool.execute = async (...args) => {
+  const sql = _firstSqlArg(args);
+  if (_isSchemaDdl(sql) && !_schemaDdlAllowed()) return _skipSchemaDdl(sql);
   try {
     const result = await _origExecute(...args);
     _markDbUp();
@@ -89,22 +132,30 @@ async function dbExecute(sql, params) { return pool.execute(sql, params); }
 // Max 500 entries; when full, the oldest-inserted key is evicted before adding new ones.
 const CACHE_MAX = 500;
 const _cache = new Map();
+const _pendingCache = new Map();
 function cached(key, ttlMs, fn) {
   // In development, keep the catalog cache very short so admin edits (new courses,
   // price changes, etc.) appear almost immediately instead of after the full TTL.
   if (process.env.NODE_ENV !== 'production') ttlMs = Math.min(ttlMs, 3000);
   const hit = _cache.get(key);
   if (hit && Date.now() - hit.ts < ttlMs) return Promise.resolve(hit.data);
-  return fn().then(data => {
+  const pending = _pendingCache.get(key);
+  if (pending) return pending;
+  const promise = Promise.resolve().then(fn).then(data => {
     if (_cache.size >= CACHE_MAX) _cache.delete(_cache.keys().next().value);
     _cache.set(key, { data, ts: Date.now() });
     return data;
-  });
+  }).finally(() => _pendingCache.delete(key));
+  _pendingCache.set(key, promise);
+  return promise;
 }
 function cacheInvalidate(...prefixes) {
-  if (prefixes.length === 0) { _cache.clear(); return; }
+  if (prefixes.length === 0) { _cache.clear(); _pendingCache.clear(); return; }
   for (const k of _cache.keys()) {
     if (prefixes.some(p => k.startsWith(p))) _cache.delete(k);
+  }
+  for (const k of _pendingCache.keys()) {
+    if (prefixes.some(p => k.startsWith(p))) _pendingCache.delete(k);
   }
 }
 
@@ -137,6 +188,18 @@ pool.getConnection = async () => {
     ]);
     _markDbUp();
     const _origRelease = conn.release.bind(conn);
+    const _connQuery = conn.query.bind(conn);
+    const _connExecute = conn.execute.bind(conn);
+    conn.query = async (...args) => {
+      const sql = _firstSqlArg(args);
+      if (_isSchemaDdl(sql) && !_schemaDdlAllowed()) return _skipSchemaDdl(sql);
+      return _connQuery(...args);
+    };
+    conn.execute = async (...args) => {
+      const sql = _firstSqlArg(args);
+      if (_isSchemaDdl(sql) && !_schemaDdlAllowed()) return _skipSchemaDdl(sql);
+      return _connExecute(...args);
+    };
     conn.release = (...args) => { releaseDb(); return _origRelease(...args); };
     return conn;
   } catch (err) {
@@ -188,6 +251,11 @@ async function autoAssignStaff(role) {
 let _usersTableEnsured = false;
 async function ensureUsersTable(conn) {
   if (_usersTableEnsured) return;
+  if (process.env.ALLOW_RUNTIME_SCHEMA_DDL !== '1') {
+    _usersTableEnsured = true;
+    logger.warn('[schema] ensureUsersTable skipped; run api/migrations/054_v25_auth_refund_monitoring_hardening.sql before production');
+    return;
+  }
   await conn.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(100) PRIMARY KEY,
@@ -196,6 +264,8 @@ async function ensureUsersTable(conn) {
       name VARCHAR(255),
       role VARCHAR(50) DEFAULT 'user',
       is_active TINYINT DEFAULT 1,
+      login_count INT DEFAULT 0,
+      last_login DATETIME DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
   `);

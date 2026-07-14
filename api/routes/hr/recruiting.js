@@ -1,9 +1,9 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
-router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT j.*, d.name AS department_name,
@@ -19,7 +19,7 @@ router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, async (req, r
 });
 
 // Create job posting
-router.post('/api/admin/hr/jobs', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { title, department_id, employment_type, description, requirements, salary_min, salary_max, status } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
@@ -40,7 +40,7 @@ router.post('/api/admin/hr/jobs', requireAuth, requireAdmin, async (req, res) =>
 });
 
 // Update job posting
-router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { jobId } = req.params;
     const fields = ['title','department_id','employment_type','description','requirements','salary_min','salary_max','status'];
@@ -59,7 +59,7 @@ router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdmin, async (req, r
 });
 
 // Delete job posting
-router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM job_postings WHERE id=?', [req.params.jobId]);
     res.json({ ok: true });
@@ -67,7 +67,7 @@ router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdmin, async (req
 });
 
 // List applicants for a job
-router.get('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT a.*, s.name AS updated_by_name
@@ -80,7 +80,7 @@ router.get('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrSt
 });
 
 // Add applicant
-router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { name, email, phone, cv_url, notes } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
@@ -98,7 +98,7 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
 });
 
 // Update applicant (stage, notes, etc.)
-router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { appId } = req.params;
     const fields = ['name','email','phone','cv_url','notes','stage','stage_notes'];
@@ -117,7 +117,7 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
 });
 
 // Delete applicant
-router.delete('/api/admin/hr/applicants/:appId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM job_applicants WHERE id=?', [req.params.appId]);
     res.json({ ok: true });
@@ -129,7 +129,7 @@ router.delete('/api/admin/hr/applicants/:appId', requireAuth, requireAdmin, asyn
 // ══════════════════════════════════════════════════════════════
 
 // List templates
-router.get('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT t.*, COUNT(tk.id) AS task_count
@@ -141,7 +141,7 @@ router.get('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrStaf
 });
 
 // Create template
-router.post('/api/admin/hr/onboarding/templates', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { name, role, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
@@ -156,7 +156,7 @@ router.post('/api/admin/hr/onboarding/templates', requireAuth, requireAdmin, asy
 });
 
 // Update template
-router.put('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { name, role, description } = req.body;
     await pool.query(`UPDATE onboarding_templates SET name=?, role=?, description=? WHERE id=?`,
@@ -170,7 +170,7 @@ router.put('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdmi
 });
 
 // Delete template
-router.delete('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM onboarding_tasks WHERE template_id=?', [req.params.tplId]);
     await pool.query('DELETE FROM onboarding_templates WHERE id=?', [req.params.tplId]);
@@ -179,7 +179,7 @@ router.delete('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireA
 });
 
 // Get tasks for template
-router.get('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, template_id, title, description, due_days, category, sort_order
@@ -191,7 +191,7 @@ router.get('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requi
 });
 
 // Add task to template
-router.post('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { title, description, due_days, category, sort_order } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
@@ -209,7 +209,7 @@ router.post('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requ
 });
 
 // Update / delete task
-router.put('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { title, description, due_days, category, sort_order } = req.body;
     await pool.query(
@@ -224,7 +224,7 @@ router.put('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdmin, 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     await pool.query('DELETE FROM onboarding_tasks WHERE id=?', [req.params.taskId]);
     res.json({ ok: true });
@@ -232,7 +232,7 @@ router.delete('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdmi
 });
 
 // List employees with onboarding status
-router.get('/api/admin/hr/onboarding/employees', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/onboarding/employees', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT s.id, s.name, s.role, s.image, s.joined_at AS hire_date,
@@ -252,7 +252,7 @@ router.get('/api/admin/hr/onboarding/employees', requireAuth, requireAdminOrStaf
 });
 
 // Get onboarding items for an employee onboarding
-router.get('/api/admin/hr/onboarding/:onboardingId/items', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/hr/onboarding/:onboardingId/items', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT i.*, s.name AS completed_by_name
@@ -265,7 +265,7 @@ router.get('/api/admin/hr/onboarding/:onboardingId/items', requireAuth, requireA
 });
 
 // Start onboarding for employee (from template or custom)
-router.post('/api/admin/hr/onboarding/start', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/hr/onboarding/start', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, template_id, tasks } = req.body; // tasks: [{title,category,due_days}]
     if (!staff_id) return res.status(400).json({ error: 'staff_id required' });
@@ -310,7 +310,7 @@ router.post('/api/admin/hr/onboarding/start', requireAuth, requireAdmin, async (
 });
 
 // Toggle onboarding item complete/incomplete
-router.put('/api/admin/hr/onboarding/items/:itemId', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/hr/onboarding/items/:itemId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { done, notes } = req.body;
     const now = done ? new Date().toISOString().slice(0,19).replace('T',' ') : null;

@@ -2,7 +2,7 @@
 const logger = require('../../lib/logger');
 const { pool, getStaffIdByEmail } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { createNotification } = require('../../lib/notification');
 const { uuidv4 } = require('../../lib/id');
 const { postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('../../lib/finance');
@@ -14,4 +14,4 @@ async function _resolveStaffByUser(req) {
   return st || null;
 }
 
-module.exports = { logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser };
+module.exports = { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser };

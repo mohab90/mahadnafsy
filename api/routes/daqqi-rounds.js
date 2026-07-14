@@ -6,6 +6,21 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+function sendRouteError(res, err) {
+  if (res.headersSent) return;
+  const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
+  const status = err && dbCodes.has(err.code) ? 503 : 500;
+  res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
+}
+
+
+// MariaDB DATETIME columns reject ISO-8601 strings ("2026-07-12T03:25:31.525Z")
+// under STRICT_TRANS_TABLES. Normalise any date-ish value to "YYYY-MM-DD HH:MM:SS"
+// (a bare "YYYY-MM-DD" is left as-is, which the column accepts as midnight).
+function toMysqlDt(v) {
+  if (v == null || v === '') return null;
+  return String(v).slice(0, 19).replace('T', ' ');
+}
 
 router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (req, res) => {
   const role = (req.staffRecord?.role || '').toUpperCase();
@@ -61,7 +76,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (r
     res.json(result);
   } catch (e) {
     logger.error('[route]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   }
 });
 
@@ -81,7 +96,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
     const stMap = { new: 'NEW', active: 'ACTIVE', finished: 'FINISHED' };
     const timeSlot = tsMap[d.timeSlot] || tsMap[d.time_slot] || 'EVENING';
     const status = stMap[(d.status || '').toLowerCase()] || 'NEW';
-    const startDate = d.startDate || d.start_date || null;
+    const startDate = toMysqlDt(d.startDate || d.start_date || null);
     const postponedJson = d.postponedWeeks ? JSON.stringify(d.postponedWeeks) : (d.postponed_weeks_json || null);
 
     const [[existing]] = await conn.query('SELECT id FROM daqqi_rounds WHERE id = ? LIMIT 1', [id]);
@@ -112,7 +127,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
           d.receptionId || d.reception_id || null, d.receptionName || d.reception_name || '',
           d.dayOfWeek || d.day_of_week || '', startDate, timeSlot, status,
           Number(d.currentLecture || d.current_lecture || 0), postponedJson,
-          d.createdAt || new Date().toISOString(),
+          toMysqlDt(d.createdAt || new Date().toISOString()),
         ]
       );
     }
@@ -127,7 +142,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
            VALUES (?,?,?,?,?,?,?)`,
           [
             id, subId, a.name || '', a.phone || '',
-            a.bookedAt || a.booked_at || new Date().toISOString(),
+            toMysqlDt(a.bookedAt || a.booked_at || new Date().toISOString()),
             Number(a.amountPaid || a.amount_paid || 0), Number(a.attendedLectures || a.attended_lectures || 0),
           ]
         );
@@ -138,7 +153,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
   } catch (e) {
     await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   } finally {
     conn.release();
   }
@@ -150,7 +165,7 @@ router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdmin, async (r
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   }
 });
 
@@ -217,7 +232,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
     res.json(result);
   } catch (e) {
     logger.error('[daqqi/attendance-report]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   }
 });
 
@@ -279,7 +294,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
     res.send(csv);
   } catch (e) {
     logger.error('[daqqi/attendance-export]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   }
 });
 
@@ -374,7 +389,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     res.json({ months: monthsOut, totals });
   } catch (e) {
     logger.error('[daqqi/attendance-monthly]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   }
 });
 
