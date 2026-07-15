@@ -9,8 +9,10 @@ import type {
 } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { SUB_STATUS_CFG, normBranchId, type SubStatus } from '../../dashboardShared';
-import { type PaymentDraft, blankPaymentDraft } from '../../../../components/PaymentModal';
+import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
+import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
 
+type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type SubInstDraft = {
   courseId: string; currency: 'EGP'|'SAR'|'USD';
   amountPerInst: string; numInstallments: string;
@@ -38,11 +40,13 @@ interface Props {
   onlineTeamMembers: StaffMember[];
   isAdmin: boolean;
   isOnlineManager: boolean;
+  isDaqqiManager: boolean;
+  shouldUseScopedSubscribers: boolean;
   updateSubscriber: (s: SubscriberItem) => void;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   deleteSubscriber: (id: string) => void;
   setSubPayRow: (row: SubscriberItem | null) => void;
-  setSubPayDraft: React.Dispatch<React.SetStateAction<PaymentDraft>>;
+  setSubPayDraft: React.Dispatch<React.SetStateAction<import('../../../../components/PaymentModal').PaymentDraft>>;
   setSubContactRow: (row: SubscriberItem | null) => void;
   setSubContactDraft: React.Dispatch<React.SetStateAction<SubContactDraft>>;
   setSubInstRow: (row: SubscriberItem | null) => void;
@@ -61,16 +65,18 @@ interface Props {
   setConvertRefundAmount: (v: string) => void;
   setConvertRefundMethod: (v: string) => void;
   filteredLength: number;
+  notify: NotifyFn;
 }
 
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
+  isDaqqiManager, shouldUseScopedSubscribers,
   updateSubscriber, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setSubContactRow, setSubContactDraft, setSubInstRow, setSubInstDraft, setSubWaRow,
   setDaqqiHousingModal, setDaqqiHousingRoundId, setCollDetailsDraft, setCollDetailsRow,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
-  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength,
+  setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength, notify,
 }: Props) {
   const navigate = useNavigate();
   const todayOnlineStr = new Date().toISOString().slice(0, 10);
@@ -128,7 +134,7 @@ export function ClientsTable({
               institute:'معهد', other:'أخرى',
             };
             const certLabel = (t?: string) => (t && certTypeAr[t]) ? certTypeAr[t] : (t || 'شهادة');
-            const customPrices: Record<string,number> = (row as any).customPrices || {};
+            const customPrices: Record<string,number> = (row as SubscriberWithCustomPrices).customPrices || {};
             const multiCourseKey = completeBundles.length === 0 && partialCids.length > 1
               ? `multi:${[...partialCids].sort().join(',')}`
               : null;
@@ -162,7 +168,7 @@ export function ClientsTable({
                 // Fallback: attribute payments with no courseId to first course when no bundles
                 // Exclude bundleId-tagged payments (they belong to a bundle, not first course)
                 const unattributed = (pidx === 0 && completeBundles.length === 0)
-                  ? payments.filter(p => !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))
+                  ? payments.filter(p => !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType) && p.paymentType !== 'certificate' && p.paymentType !== 'book')
                   : [];
                 const cPay = [...cPayBase, ...unattributed];
                 const nb = cPay.find(p => !p.isInstallment);
@@ -197,7 +203,29 @@ export function ClientsTable({
               ) : <span className="text-gray-300 text-[10px]">—</span>
             );
             const statusCell = (
-              <select value={row.status||'active'} onChange={e => updateSubscriber({...row, status: e.target.value as SubscriberItem['status']})}
+              <select value={row.status||'active'} onChange={e => {
+                const nextStatus = e.target.value as SubscriberItem['status'];
+                // `status` (this dropdown) and `clientStatus` (which tab the client shows
+                // in — المنتهين/المتوقفين/المستردين) were two separate, unsynced fields:
+                // picking "استرداد معلق" here changed the row's color but never moved the
+                // client to the الاسترداد tab and never created a real refund request. Keep
+                // them in sync for the statuses that have a matching tab.
+                const clientStatusMap: Partial<Record<string, SubscriberItem['clientStatus']>> = {
+                  finished: 'finished', paused: 'paused',
+                  refunded: 'refunded', refund_pending: 'refund_pending',
+                };
+                const nextClientStatus = clientStatusMap[nextStatus as string];
+                const nextRow = nextClientStatus ? { ...row, status: nextStatus, clientStatus: nextClientStatus } : { ...row, status: nextStatus };
+                updateSubscriber(nextRow);
+                if (nextStatus === 'refunded' || nextStatus === 'refund_pending') {
+                  mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
+                    subscriber_id: row.id,
+                    amount: row.totalPaid || 0,
+                    currency: 'EGP',
+                    reason: 'تغيير حالة العميل من صفحة العملاء',
+                  }).catch((err: unknown) => notify('error', 'تم تغيير حالة العميل لكن فشل إنشاء طلب الاسترداد: ' + (err instanceof Error ? err.message : String(err))));
+                }
+              }}
                 className={`text-[11px] font-bold border-0 rounded-full px-2 py-0.5 focus:outline-none cursor-pointer w-full ${(SUB_STATUS_CFG[(row.status||'active') as SubStatus]||SUB_STATUS_CFG.active).cls}`}>
                 {(Object.entries(SUB_STATUS_CFG) as [SubStatus,{label:string;cls:string}][]).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
               </select>
@@ -242,7 +270,7 @@ export function ClientsTable({
                       const csStaffMember=(isOnlineManager?onlineTeamMembers:staffMembers).find(st=>st.id===csId);
                       const updated={...row,assignedCsId:csId||undefined,assignedCsName:csStaffMember?.name||undefined};
                       updateSubscriber(updated);
-                      if(!isAdmin) setSalesOwnSubscribers(prev=>prev.map(s=>s.id===row.id?updated:s));
+                      if(shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>s.id===row.id?updated:s));
                       await mysqlAdmin.assignSubscriberCollection(row.id,csId||null,csStaffMember?.name||null);
                     }}
                     className="w-full border border-gray-200 rounded text-[10px] px-1 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-300"
@@ -281,7 +309,7 @@ export function ClientsTable({
                   <button title="ملف العميل" onClick={()=>navigate(`/client/${clientCode}`)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-primary-50 hover:text-primary-600 flex items-center justify-center transition"><ExternalLink size={12}/></button>
                   <button title="تسجيل دفعة" onClick={()=>{
                     setSubPayRow(row);
-                    setSubPayDraft(blankPaymentDraft({
+                    setSubPayDraft(createClientPaymentDraft({
                       currency: (branchId==='ONLINE_ABROAD'||branchId==='ONLINE_SAUDI')?'SAR':'EGP',
                       courseId: completeBundles.length > 0 ? `bundle:${completeBundles[0].id}` : (row.enrolledCourseIds?.[0] || ''),
                     }));
@@ -290,7 +318,7 @@ export function ClientsTable({
                   <button title="تواصل" onClick={()=>{setSubContactRow(row);setSubContactDraft({type:'call',date:new Date().toISOString().slice(0,16),notes:'',outcome:'',nextFollowUp:''}); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                   <button title="خطة أقساط" onClick={()=>{setSubInstRow(row);setSubInstDraft({courseId:'',currency:'EGP',amountPerInst:'',numInstallments:'3',inputMode:'count',startDate:new Date().toISOString().slice(0,10),intervalDays:'30',notes:'',overrideExpected:''}); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-600 flex items-center justify-center transition"><Calendar size={12}/></button>
                 </div>
-                <div className={`grid gap-0.5 ${(isAdmin||isOnlineManager||isDaqqiClientsTab)?'grid-cols-4':'grid-cols-3'}`}>
+                <div className={`grid gap-0.5 ${(isDaqqiClientsTab||isAdmin||isOnlineManager||isDaqqiManager)?'grid-cols-4':'grid-cols-3'}`}>
                   <button title="واتساب" onClick={()=>setSubWaRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition"><MessageSquareText size={12}/></button>
                   {isDaqqiClientsTab ? (
                     <button title={rowHousing ? `مسكن في روند ${rowHousing.roundCode}` : 'تسكين في روند'} onClick={()=>{ setDaqqiHousingModal(row); setDaqqiHousingRoundId(rowHousing?.roundId||''); }}
@@ -310,7 +338,10 @@ export function ClientsTable({
                     }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
                   )}
                   <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
-                  {(isAdmin||isOnlineManager||isDaqqiClientsTab) && <button title="حذف العميل" onClick={()=>{if(confirm(`حذف "${row.name}"؟ لا يمكن التراجع.`)){deleteSubscriber(row.id);if(!isAdmin) setSalesOwnSubscribers(prev=>prev.filter(s=>s.id!==row.id));
+                  {/* Was gated on "is the Daqqi tab open" instead of "can this role actually delete" —
+                      reception_daqqi could see and click this, but the backend (requireAdmin, i.e.
+                      admin/manager/online_manager/daqqi_manager only) silently rejected it. */}
+                  {(isAdmin||isOnlineManager||isDaqqiManager) && <button title="حذف العميل" onClick={()=>{if(confirm(`حذف "${row.name}"؟ لا يمكن التراجع.`)){deleteSubscriber(row.id);if(shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.filter(s=>s.id!==row.id));
                   }}} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition"><Trash2 size={12}/></button>}
                 </div>
               </div>
