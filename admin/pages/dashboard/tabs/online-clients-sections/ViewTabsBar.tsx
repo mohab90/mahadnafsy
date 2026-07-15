@@ -2,6 +2,7 @@ import React from 'react';
 import { Download, Plus, Users } from 'lucide-react';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { errorMessage, paymentAmountInEGP } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl';
@@ -27,8 +28,7 @@ interface Props {
   housingMap: Map<string, HousingInfo>;
   subCsDistributing: boolean;
   setSubCsDistributing: (v: boolean) => void;
-  subscribers: SubscriberItem[];
-  salesOwnSubscribers: SubscriberItem[];
+  actionSubscribers: SubscriberItem[];
   updateSubscriber: (s: SubscriberItem) => void;
   notify: NotifyFn;
 }
@@ -37,7 +37,7 @@ export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, collOnlineViewTab, setCollOnlineViewTab,
   setCollOnlinePage, filtered, isOnlineManager, isDaqqiManager, isAdmin, setOmNewSubOpen,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, housingMap,
-  subCsDistributing, setSubCsDistributing, subscribers, salesOwnSubscribers, updateSubscriber, notify,
+  subCsDistributing, setSubCsDistributing, actionSubscribers, updateSubscriber, notify,
 }: Props) {
   return (
     <div className="mb-3 border border-gray-200 rounded-2xl bg-gray-50 p-2">
@@ -103,10 +103,9 @@ export function ViewTabsBar({
               <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 min-w-[160px] py-1">
                 <button onClick={() => {
                   const toExport = collOnlineSelected.size > 0 ? filtered.filter(s => collOnlineSelected.has(s.id)) : filtered;
-                  const toEGP = (p: {amount?:number|string;currency?:string}) => { const n=Number(p.amount)||0; return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n; };
                   const header = 'الاسم,الهاتف,الإيميل,الفرع,الكورسات,الحالة,المدفوع (ج.م),المتبقي (ج.م),الروند,الرسيبشن,تاريخ الاشتراك,الكود\n';
                   const rows = toExport.map(s => {
-                    const paid = (s.paymentHistory||[]).reduce((a,p)=>a+toEGP(p),0);
+                    const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
                     const total = Number(s.totalValue)||0;
                     const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||bundles.find(b=>`bundle:${b.id}`===id)?.title||id).join(' | ');
                     const hInfo = housingMap.get(s.id);
@@ -130,7 +129,7 @@ export function ViewTabsBar({
           <button
             disabled={subCsDistributing}
             onClick={async () => {
-              const unassigned = (isAdmin ? subscribers : salesOwnSubscribers).filter(s => !s.assignedCsId);
+              const unassigned = actionSubscribers.filter(s => !s.assignedCsId);
               if (!confirm(`توزيع ${unassigned.length} مشترك غير مُسند على موظفي التحصيل؟`)) return;
               setSubCsDistributing(true);
               try {
@@ -138,8 +137,8 @@ export function ViewTabsBar({
                 notify('success', `✅ تم توزيع ${result.assigned} مشترك على ${result.staffCount} موظف`);
                 const fresh = (await mysqlAdmin.listAllSubscribers()) as unknown as SubscriberItem[];
                 fresh.forEach(s => updateSubscriber(s));
-              } catch (e: any) {
-                notify('error', `❌ فشل التوزيع: ${e.message}`);
+              } catch (e: unknown) {
+                notify('error', `❌ فشل التوزيع: ${errorMessage(e)}`);
               } finally { setSubCsDistributing(false); }
             }}
             className="relative flex items-center justify-center w-7 h-7 border border-teal-300 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-lg transition disabled:opacity-60"
