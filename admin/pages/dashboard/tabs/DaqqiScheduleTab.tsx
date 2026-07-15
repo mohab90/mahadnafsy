@@ -398,11 +398,26 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   };
 
   const handleDaqqiToskeen = () => {
-    if (!daqqiToskeenSubId || !daqqiToskeenTargetRoundId) return;
+    if (!daqqiToskeenSubId || !daqqiToskeenTargetRoundId) { notify('error', 'اختر العميل والروند أولاً.'); return; }
     const sub = subscribers.find(s => s.id === daqqiToskeenSubId);
     const round = daqqiRounds.find(r => r.id === daqqiToskeenTargetRoundId);
-    if (!sub || !round) return;
-    if (round.attendees.find(a => a.subscriberId === daqqiToskeenSubId)) return;
+    if (!sub || !round) { notify('error', 'تعذر العثور على العميل أو الروند.'); return; }
+    // Previously a silent no-op — clicking "تسكين" on someone already in the round did
+    // nothing with zero feedback, which read as the button being broken.
+    if (round.attendees.find(a => a.subscriberId === daqqiToskeenSubId)) {
+      notify('info', `${sub.name} مُسكَّن بالفعل في روند ${round.code}.`);
+      return;
+    }
+    // A subscriber already housed in a DIFFERENT active/new round for this same course
+    // getting silently double-booked into a second one was the other half of "تسكين
+    // بيعمل مشاكل" — warn instead of allowing a silent double-placement.
+    const otherRound = daqqiRounds.find(r =>
+      r.id !== round.id && r.courseId === round.courseId && r.status !== 'finished' &&
+      r.attendees.some(a => a.subscriberId === daqqiToskeenSubId)
+    );
+    if (otherRound && !window.confirm(`${sub.name} مُسكَّن بالفعل في روند ${otherRound.code} لنفس الكورس. تسكينه في روند إضافي (${round.code})؟`)) {
+      return;
+    }
     const paid = (sub.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
     const newAttendee = { subscriberId: sub.id, name: sub.name, phone: sub.phone, bookedAt: new Date().toISOString().slice(0, 10), amountPaid: paid };
     doUpdateRound({ ...round, attendees: [...round.attendees, newAttendee] });

@@ -827,7 +827,29 @@ export default function OnlineClientsTab({
                             ) : <span className="text-gray-300 text-[10px]">—</span>
                           );
                           const statusCell = (
-                            <select value={row.status||'active'} onChange={e => updateSubscriber({...row, status: e.target.value as SubscriberItem['status']})}
+                            <select value={row.status||'active'} onChange={e => {
+                              const nextStatus = e.target.value as SubscriberItem['status'];
+                              // `status` (this dropdown) and `clientStatus` (which tab the client shows
+                              // in — المنتهين/المتوقفين/المستردين) were two separate, unsynced fields:
+                              // picking "استرداد معلق" here changed the row's color but never moved the
+                              // client to the الاسترداد tab and never created a real refund request. Keep
+                              // them in sync for the statuses that have a matching tab.
+                              const clientStatusMap: Partial<Record<string, SubscriberItem['clientStatus']>> = {
+                                finished: 'finished', paused: 'paused',
+                                refunded: 'refunded', refund_pending: 'refund_pending',
+                              };
+                              const nextClientStatus = clientStatusMap[nextStatus as string];
+                              const nextRow = nextClientStatus ? { ...row, status: nextStatus, clientStatus: nextClientStatus } : { ...row, status: nextStatus };
+                              updateSubscriber(nextRow);
+                              if (nextStatus === 'refunded' || nextStatus === 'refund_pending') {
+                                mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
+                                  subscriber_id: row.id,
+                                  amount: row.totalPaid || 0,
+                                  currency: 'EGP',
+                                  reason: 'تغيير حالة العميل من صفحة العملاء',
+                                }).catch(() => {});
+                              }
+                            }}
                               className={`text-[11px] font-bold border-0 rounded-full px-2 py-0.5 focus:outline-none cursor-pointer w-full ${(SUB_STATUS_CFG[(row.status||'active') as SubStatus]||SUB_STATUS_CFG.active).cls}`}>
                               {(Object.entries(SUB_STATUS_CFG) as [SubStatus,{label:string;cls:string}][]).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
                             </select>
@@ -1551,6 +1573,19 @@ export default function OnlineClientsTab({
                                       setSalesOwnSubscribers(prev => prev.map(s => s.id === updated.id ? updated : s));
                                       // Await explicit server save so errors are caught and shown
                                       await mysqlAdmin.saveSubscriber(updated as unknown as Record<string,unknown>);
+                                      // Moving a client to "استرداد" only ever updated their subscriber
+                                      // status locally — it never created an actual row in refund_requests,
+                                      // so it could never reach the Customer Service "طلبات الاسترداد" page.
+                                      // Create the real request here so that page picks it up.
+                                      if (convertType === 'refunded') {
+                                        await mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
+                                          subscriber_id: convertRow.id,
+                                          amount: convertRefundAmount || 0,
+                                          currency: 'EGP',
+                                          reason: convertRefundReason || 'تحويل من صفحة العملاء',
+                                          refund_method: convertRefundMethod || null,
+                                        }).catch((err: unknown) => notify('error', 'تم تحويل حالة العميل لكن فشل إنشاء طلب الاسترداد في خدمة العملاء: ' + (err instanceof Error ? err.message : String(err))));
+                                      }
                                       setConvertRow(null);
                                       const typeLabel = convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : convertType === 'refunded' ? 'قائمة طلبات الاسترداد (ينتظر موافقة)' : 'فرع الدقي';
                                       notify('success', `✅ تم تحويل العميل إلى ${typeLabel}`);

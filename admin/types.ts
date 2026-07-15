@@ -412,7 +412,7 @@ export interface SubscriberItem {
   assignedCsId?: string;
   assignedCsName?: string;
   discount?: number;  // Discount amount in EGP
-  status: 'active' | 'active_new' | 'active_paid' | 'active_late' | 'paused' | 'blocked' | 'finished' | 'refunded';
+  status: 'active' | 'active_new' | 'active_paid' | 'active_late' | 'paused' | 'blocked' | 'finished' | 'refunded' | 'refund_pending';
   createdAt: string;
   communications?: CommunicationRecord[];
   certificates?: SubscriberCertificate[];
