@@ -41,7 +41,12 @@ export default defineConfig(({ mode }) => {
       // every admin page load regardless of whether anyone ever exports a PDF.
       // Explicitly drop it (and excel-vendor, same shape) from the preload list.
       modulePreload: {
-        resolveDependencies: (_filename, deps) => deps.filter(dep => !dep.includes('pdf-vendor') && !dep.includes('excel-vendor')),
+        resolveDependencies: (_filename, deps) => deps.filter(dep =>
+          !dep.includes('pdf-') &&
+          !dep.includes('excel-vendor') &&
+          !dep.includes('recharts-vendor') &&
+          !dep.includes('d3-vendor')
+        ),
       },
       rollupOptions: {
         output: {
@@ -50,7 +55,8 @@ export default defineConfig(({ mode }) => {
             // React core — rarely changes, cached long-term
             if (id.includes('react-dom') || id.includes('react-router') || id.includes('react-is')) return 'react-vendor';
             // Charts (recharts + its d3 internals) — only on stats/financial pages
-            if (id.includes('recharts') || id.includes('/d3-') || id.includes('victory-vendor')) return 'charts';
+            if (id.includes('/d3-') || id.includes('victory-vendor')) return 'd3-vendor';
+            if (id.includes('recharts')) return 'recharts-vendor';
             // Icon set
             if (id.includes('lucide-react')) return 'icons';
             // dompurify is used by the always-loaded SafeHtml component (via
@@ -58,8 +64,12 @@ export default defineConfig(({ mode }) => {
             // modulePreload sees dompurify as eagerly-reachable and preloads
             // the whole merged chunk, dragging jspdf/html2canvas along with it.
             if (id.includes('dompurify')) return 'vendor';
-            // PDF export stack — heavy, loaded only when exporting PDFs
-            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg')) return 'pdf-vendor';
+            // PDF export stack — heavy, loaded only when exporting PDFs.
+            // Keep renderer-only dependencies in their own chunk so the core
+            // PDF action does not produce one oversized vendor file.
+            if (id.includes('html2canvas') || id.includes('canvg')) return 'pdf-renderer-vendor';
+            if (id.includes('jspdf-autotable')) return 'pdf-table-vendor';
+            if (id.includes('jspdf')) return 'pdf-core-vendor';
             // Excel export — loaded only when exporting spreadsheets
             if (id.includes('write-excel-file') || id.includes('xlsx')) return 'excel-vendor';
             // Everything else
@@ -83,6 +93,11 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        react: path.resolve(__dirname, 'node_modules/react'),
+        'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+        'react-router-dom': path.resolve(__dirname, 'node_modules/react-router-dom'),
+        'lucide-react': path.resolve(__dirname, 'node_modules/lucide-react'),
+        dompurify: path.resolve(__dirname, 'node_modules/dompurify'),
       },
     },
   };

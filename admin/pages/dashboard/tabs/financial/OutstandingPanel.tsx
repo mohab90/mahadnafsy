@@ -49,7 +49,7 @@ export function OutstandingPanel({ notify }: { notify: NotifyFn }) {
           </h3>
           {outstandingTotal > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              إجمالي المستحق: <span className="font-extrabold text-red-600">{Math.round(outstandingTotal).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+              إجمالي المستحق: <span className="font-extrabold text-red-600">{Math.round(outstandingTotal).toLocaleString('ar-EG')} ج.م</span>
             </p>
           )}
         </div>
@@ -166,10 +166,10 @@ export function OutstandingPanel({ notify }: { notify: NotifyFn }) {
                       <p className="font-bold text-gray-900">{sub.name}</p>
                       <p className="text-xs text-gray-500">{sub.phone}</p>
                     </td>
-                    <td className="py-3 px-3 text-gray-700">{Math.round(sub.total_expected).toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
-                    <td className="py-3 px-3 text-emerald-600 font-bold">{Math.round(sub.total_paid).toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                    <td className="py-3 px-3 text-gray-700">{Math.round(sub.total_expected).toLocaleString('ar-EG')} ج.م</td>
+                    <td className="py-3 px-3 text-emerald-600 font-bold">{Math.round(sub.total_paid).toLocaleString('ar-EG')} ج.م</td>
                     <td className="py-3 px-3">
-                      <span className="font-extrabold text-red-600">{Math.round(sub.outstanding).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
+                      <span className="font-extrabold text-red-600">{Math.round(sub.outstanding).toLocaleString('ar-EG')} ج.م</span>
                     </td>
                     <td className="py-3 px-3 text-xs text-gray-500">{sub.assigned_sales_name || '—'}</td>
                     <td className="py-3 px-3">

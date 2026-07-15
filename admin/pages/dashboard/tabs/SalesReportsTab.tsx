@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { FileText, TrendingUp, Users, DollarSign, Download, Filter, Calendar, Tag, BarChart3, PieChart as PieIcon, RefreshCw } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { FileText, TrendingUp, Users, DollarSign, Download, Filter, Calendar, Tag, BarChart3, PieChart as PieIcon } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
 
@@ -21,29 +21,9 @@ function getRangeStart(range: Range): string {
   return '2000-01-01';
 }
 
-type CommissionMonth = { month: string; dealsCount: number; totalCommission: number; totalPayment: number };
-type CommissionStaff = { staffId: string; staffName: string; months: CommissionMonth[]; grandTotal: number };
-type CommissionData = { from: string; months: string[]; staff: CommissionStaff[] };
-
 export default function SalesReportsTab({ notify }: { notify: NotifyFn }) {
   const { leads, orders, staffMembers, courses } = useSiteData();
   const [range, setRange] = useState<Range>('month');
-  const [commMonths, setCommMonths] = useState(6);
-  const [commData, setCommData] = useState<CommissionData | null>(null);
-  const [commLoading, setCommLoading] = useState(false);
-
-  const loadCommissions = useCallback(async () => {
-    setCommLoading(true);
-    try {
-      const res = await fetch(`/api/admin/commissions/monthly?months=${commMonths}`, { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setCommData(await res.json());
-    } catch (e: any) {
-      notify('error', `خطأ في تحميل بيانات العمولات: ${e.message}`);
-    } finally { setCommLoading(false); }
-  }, [commMonths, notify]);
-
-  useEffect(() => { loadCommissions(); }, [loadCommissions]);
 
   const rangeStart = getRangeStart(range);
 
@@ -114,60 +94,6 @@ export default function SalesReportsTab({ notify }: { notify: NotifyFn }) {
           </div>
         </div>
       </div>
-
-      {/* Sales Funnel */}
-      {filteredLeads.length > 0 && (() => {
-        const stages = [
-          { key: 'new',               label: 'ليدات جديدة',    color: '#6366f1' },
-          { key: 'contacted',         label: 'تم التواصل',      color: '#3b82f6' },
-          { key: 'interested',        label: 'مهتمون',          color: '#f59e0b' },
-          { key: 'interested_booking',label: 'حجز مبدئي',       color: '#f97316' },
-          { key: 'converted',         label: 'تحول فعلي',       color: '#10b981' },
-        ] as const;
-        const counts = stages.map(s => ({
-          ...s,
-          count: filteredLeads.filter(l => l.status === s.key).length +
-                 (s.key === 'new' ? filteredLeads.filter(l => !['contacted','interested','interested_booking','converted','not_interested','no_answer','follow_up'].includes(l.status || '')).length : 0),
-        }));
-        const maxCount = Math.max(...counts.map(c => c.count), 1);
-        return (
-          <div className="bg-white border border-gray-200 rounded-2xl p-5">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <TrendingUp size={16} className="text-violet-500" /> قمع المبيعات (Funnel)
-            </h3>
-            <div className="space-y-2">
-              {counts.map((s, i) => {
-                const pct = Math.round((s.count / maxCount) * 100);
-                const convPct = i > 0 ? (counts[i - 1].count > 0 ? Math.round((s.count / counts[i - 1].count) * 100) : 0) : 100;
-                return (
-                  <div key={s.key} className="flex items-center gap-3">
-                    <div className="text-xs text-gray-500 w-28 text-right flex-shrink-0">{s.label}</div>
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-8 relative overflow-hidden">
-                        <div
-                          className="h-8 rounded-full flex items-center justify-end pr-3 transition-all"
-                          style={{ width: `${Math.max(pct, 8)}%`, background: s.color, opacity: 0.85 + i * 0.03 }}
-                        >
-                          <span className="text-white text-xs font-bold">{s.count}</span>
-                        </div>
-                      </div>
-                      {i > 0 && (
-                        <span className="text-[10px] text-gray-400 w-12 flex-shrink-0">↓ {convPct}%</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-              <span>من {filteredLeads.length} ليد إجمالي</span>
-              <span className="font-semibold text-emerald-600">
-                {counts[4].count} تحول ({Math.round((counts[4].count / filteredLeads.length) * 100)}%)
-              </span>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -245,7 +171,7 @@ export default function SalesReportsTab({ notify }: { notify: NotifyFn }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtMoney(v)} />
-            <Tooltip formatter={((v: number) => [`${v.toLocaleString()} ج`, 'الإيراد']) as any} />
+            <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ج`, 'الإيراد']} />
             <Bar dataKey="revenue" fill="#10b981" radius={[4,4,0,0]} name="الإيراد" />
           </BarChart>
         </ResponsiveContainer>
@@ -286,92 +212,6 @@ export default function SalesReportsTab({ notify }: { notify: NotifyFn }) {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Commission Monthly Comparison */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-3">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <BarChart3 size={16} className="text-violet-500" />
-            مقارنة عمولات الموظفين شهرياً
-          </h3>
-          <div className="flex items-center gap-2">
-            <select
-              value={commMonths}
-              onChange={e => setCommMonths(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-            >
-              {[3, 4, 6, 9, 12].map(m => <option key={m} value={m}>{m} أشهر</option>)}
-            </select>
-            <button
-              onClick={loadCommissions}
-              disabled={commLoading}
-              className="flex items-center gap-1 px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-bold hover:bg-violet-700 disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={commLoading ? 'animate-spin' : ''} />
-              تحديث
-            </button>
-          </div>
-        </div>
-        {commLoading ? (
-          <div className="flex items-center justify-center py-10 text-gray-400">
-            <RefreshCw size={22} className="animate-spin ml-2" />
-            جاري التحميل...
-          </div>
-        ) : commData && commData.staff.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" dir="rtl">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-gray-500 whitespace-nowrap sticky right-0 bg-gray-50">الموظف</th>
-                  {commData.months.map(m => (
-                    <th key={m} className="px-3 py-3 text-center text-xs font-bold text-gray-500 whitespace-nowrap">
-                      {m.slice(5)}/{m.slice(0, 4)}
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 whitespace-nowrap">الإجمالي</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {commData.staff.map(s => {
-                  const maxComm = Math.max(...s.months.map(m => m.totalCommission), 1);
-                  return (
-                    <tr key={s.staffId} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap sticky right-0 bg-white">{s.staffName}</td>
-                      {s.months.map(m => {
-                        const pct = Math.round((m.totalCommission / maxComm) * 100);
-                        return (
-                          <td key={m.month} className="px-3 py-3 text-center">
-                            {m.totalCommission > 0 ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-xs font-bold text-violet-700">
-                                  {m.totalCommission >= 1000 ? `${(m.totalCommission / 1000).toFixed(1)}ك` : m.totalCommission.toLocaleString()}
-                                </span>
-                                <div className="w-10 bg-gray-100 rounded-full h-1 mx-auto">
-                                  <div className="h-1 rounded-full bg-violet-400" style={{ width: `${pct}%` }} />
-                                </div>
-                                <span className="text-[10px] text-gray-400">{m.dealsCount} صفقة</span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-300 text-xs">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="px-4 py-3 text-center">
-                        <span className="inline-block bg-violet-50 text-violet-800 font-extrabold text-xs px-2.5 py-1 rounded-full">
-                          {s.grandTotal >= 1000 ? `${(s.grandTotal / 1000).toFixed(1)}ك` : s.grandTotal.toLocaleString()} ج
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="py-10 text-center text-gray-400 text-sm">لا توجد بيانات عمولات في هذه الفترة</div>
-        )}
       </div>
     </div>
   );

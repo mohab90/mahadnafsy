@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Plus, Trash2 } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { TabKey } from '../navigation';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle } from './saasConnectorUi';
 
@@ -24,7 +25,7 @@ export default function BranchWorkspacesTab({ notify }: { notify: NotifyFn }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/admin/sys-config?section=branch_workspaces', { credentials: 'include' })
+    fetch('/api/admin/sys-config?section=branch_workspaces', { credentials: 'include', headers: adminAuthHeaders() })
       .then(res => res.ok ? res.json() : [])
       .then(data => setItems(Array.isArray(data) ? data : []))
       .catch(() => notify('error', 'فشل تحميل مساحات الفروع'));
@@ -43,7 +44,7 @@ export default function BranchWorkspacesTab({ notify }: { notify: NotifyFn }) {
       const res = await fetch('/api/admin/sys-config/branch_workspaces', {
         method: 'PUT',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify(items),
       });
       if (!res.ok) throw new Error(await res.text());

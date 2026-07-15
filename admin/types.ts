@@ -1,8 +1,5 @@
 export type Currency = 'EGP' | 'SAR' | 'USD';
 
-/** Shared toast/notification callback signature used across dashboard tabs */
-export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-
 /** Custom auth user — replaces Firebase User type */
 export interface AuthUser {
   uid: string;
@@ -87,21 +84,17 @@ export interface Course {
   materials?: CourseMaterial[];
   titleAr?: string;
   hours?: number;
+  createdAt?: string;
+  aliases?: string[];  // alternative names for Facebook lead matching
   seo_title?: string;
   seo_description?: string;
   seo_keywords?: string;
-  createdAt?: string;
-  aliases?: string[];  // alternative names for Facebook lead matching
-  status?: string;     // legacy publication status ('active' | ...); missing = active
-  isPublished?: boolean;
-  sortOrder?: number;
 }
 
 export interface Bundle {
   id: string;
   title: string;
   titleEn?: string;
-  titleAr?: string;     // Explicit Arabic title (defaults to title)
   slug?: string;
   videoUrl?: string;
   thumbnail?: string;
@@ -111,8 +104,6 @@ export interface Bundle {
   originalPrice: Price;
   description: string;
   detailsContent?: Record<string, string>;
-  isPublished?: boolean;
-  sortOrder?: number;
 }
 
 export interface Therapist {
@@ -147,7 +138,7 @@ export interface ConsultationItem {
   slotId?: string;
   slotLabel?: string;
   timezone?: string;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'scheduled';
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
   notes: string;
   amount?: number;
   currency?: Currency;
@@ -155,13 +146,6 @@ export interface ConsultationItem {
   meetingProvider?: MeetingProvider;
   meetingLink?: string;
   createdAt?: string;
-  // Legacy / extra server fields (older records or alternate mappers)
-  scheduledAt?: string;   // legacy alias of sessionDate
-  date?: string;          // legacy alias of sessionDate
-  consultantId?: string;  // legacy alias of therapistId
-  staffId?: string;       // staff assigned to the consultation (payroll earnings)
-  name?: string;          // legacy alias of clientName
-  phone?: string;         // legacy alias of clientPhone
 }
 
 export type BranchType = string;
@@ -303,9 +287,13 @@ export type StaffPermission =
   // Staff management
   | 'view_staff'
   | 'manage_staff'
+  | 'view_hr'
+  | 'manage_hr'
   // Orders & payments
   | 'view_orders'
   | 'manage_orders'
+  | 'manage_payments'
+  | 'approve_refunds'
   | 'view_financial'
   | 'manage_financial'
   // Reports & analytics
@@ -314,6 +302,7 @@ export type StaffPermission =
   | 'manage_inbox'
   | 'manage_notifications'
   | 'manage_channel_settings'
+  | 'bulk_whatsapp'
   // Communication records
   | 'view_join_us'
   | 'manage_join_us'
@@ -323,6 +312,10 @@ export type StaffPermission =
   | 'view_activity'
   | 'manage_daqqi'
   | 'manage_automation'
+  | 'view_security'
+  | 'manage_security'
+  | 'view_settings'
+  | 'manage_settings'
   // Client database (unified view — admin/manager only)
   | 'view_client_db'
   // AI
@@ -347,8 +340,7 @@ export interface StaffMember {
   // ── HR fields ────────────────────────────────────────────────────────────
   salary?: number;                           // Monthly base salary (EGP)
   monthlyTargetType?: 'egp' | 'clients';    // Target is revenue or client count
-  monthlyTarget?: number;                    // Target value (EGP or count) — monthly revenue target
-  monthlyLeadsTarget?: number;               // Monthly leads target (count)
+  monthlyTarget?: number;                    // Target value (EGP or count)
   monthlyBonus?: number;                     // Fixed monthly bonus on target hit (EGP)
   absences?: StaffAbsence[];                // Absence / leave records
   hrNotes?: string;                          // Private HR notes
@@ -385,7 +377,7 @@ export interface PaymentHistoryEntry {
   transactionId?: string;       // Payment transaction / operation reference number
   isInstallment?: boolean;      // false/undefined = new booking, true = installment
   courseId?: string;            // Which course this payment applies to
-  bundleId?: string;            // Which bundle this payment applies to (if bundle purchase)
+  bundleId?: string;            // Which bundle/path this payment applies to
   courseExpected?: number;      // Total expected for this course (set on new_booking)
   discount?: number;            // Discount applied on this new_booking
   certId?: string;              // Certificate request ID (if paymentType=certificate)
@@ -395,7 +387,7 @@ export interface PaymentHistoryEntry {
   at: string;
   staffId?: string;             // Staff who recorded this payment
   staffName?: string;           // Display name of staff who recorded it
-  status?: 'pending' | 'paid' | 'failed' | 'refunded'; // undefined/missing = paid (backward compat)
+  status?: 'pending' | 'paid' | 'failed'; // undefined/missing = paid (backward compat)
 }
 
 export interface SubscriberItem {
@@ -422,13 +414,6 @@ export interface SubscriberItem {
   discount?: number;  // Discount amount in EGP
   status: 'active' | 'active_new' | 'active_paid' | 'active_late' | 'paused' | 'blocked' | 'finished' | 'refunded';
   createdAt: string;
-  // Legacy / extra server fields (older records or alternate mappers)
-  totalValue?: number;        // computed lifetime value (server-included on some endpoints)
-  collectionStaffId?: string; // collection staff assigned to follow up payments
-  subscribedAt?: string;      // legacy alias of createdAt
-  assignedStaffId?: string;   // legacy generic staff assignment
-  consultantId?: string;      // legacy consultant assignment
-  enrolledCourseId?: string;  // legacy single-course field (superseded by enrolledCourseIds)
   communications?: CommunicationRecord[];
   certificates?: SubscriberCertificate[];
   extraCertificateRequests?: ExtraCertificateRequest[];
@@ -482,10 +467,10 @@ export interface JoinUsApplication {
   phone: string;
   specialty: string;
   experience: string;
-  type: 'instructor' | 'consultant' | 'employee';
+  type: 'instructor' | 'consultant' | 'staff' | 'INSTRUCTOR' | 'CONSULTANT' | 'STAFF' | string;
   linkedin?: string;
   message?: string;
-  status: 'new' | 'reviewed' | 'accepted' | 'rejected' | 'pending';
+  status: 'new' | 'reviewed' | 'accepted' | 'rejected';
   createdAt: string;
   adminNote?: string;
 }
@@ -497,7 +482,7 @@ export interface ContactMessage {
   phone: string;
   subject?: string;
   message: string;
-  status: 'new' | 'read' | 'replied' | 'closed';
+  status: 'new' | 'read' | 'replied';
   createdAt: string;
   adminNote?: string;
 }
@@ -547,7 +532,6 @@ export interface OrderItem {
   courseName?: string;
   leadId?: string;
   source?: string;
-  linkedTransferId?: string;  // For a customer payment: the bank transfer it was reconciled/matched against
 }
 
 export interface TestimonialItem {
@@ -634,8 +618,7 @@ export interface UserSessionData {
 
 export interface DiscountRule {
   id: string;
-  type: 'course' | 'bundle' | 'all_courses' | 'therapist_consultation' | 'all_consultations'
-    | 'percent' | 'fixed'; // promo-code shapes returned by /api/admin/promo-codes
+  type: 'course' | 'bundle' | 'all_courses' | 'therapist_consultation' | 'all_consultations';
   targetId?: string;
   discountPercent: number;
   label?: string;
@@ -643,12 +626,6 @@ export interface DiscountRule {
   active: boolean;
   expiresAt?: string;
   createdAt: string;
-  // Promo-code fields (records sourced from promo_codes table share this type)
-  code?: string;        // alias of promoCode
-  value?: number;       // discount value (percent or fixed amount per `type`)
-  usageCount?: number;  // how many times the code was used
-  usageLimit?: number;  // max allowed uses
-  isActive?: boolean;   // alias of active
 }
 
 export interface NotificationBroadcast {
@@ -658,10 +635,6 @@ export interface NotificationBroadcast {
   type: 'info' | 'offer' | 'update';
   createdAt: string;
   active: boolean;
-  // Legacy / extra server fields
-  isRead?: boolean;   // per-admin read flag (admin_notifications endpoint)
-  message?: string;   // legacy alias of body
-  sentAt?: string;    // legacy alias of createdAt
 }
 
 export type ExpenseCategory = 'رواتب' | 'تسويق' | 'إيجار' | 'برمجيات' | 'معدات' | 'أخرى';
@@ -670,7 +643,6 @@ export interface ExpenseItem {
   id: string;
   category: ExpenseCategory;
   description: string;
-  title?: string;            // legacy alias of description (older records)
   amount: number;
   currency: Currency;
   date: string;
@@ -702,10 +674,6 @@ export interface InstallmentPlan {
   entries: InstallmentEntry[];
   notes?: string;
   createdAt: string;
-  // Legacy / extra server fields (older plan records)
-  payments?: { amount: number; date?: string; paidAt?: string }[]; // legacy alias of entries
-  nextDueDate?: string;    // precomputed next due date
-  startDate?: string;      // plan start date
 }
 
 // ── Sales Targets ────────────────────────────────────────────────────────────

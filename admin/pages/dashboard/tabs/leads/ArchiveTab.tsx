@@ -1,49 +1,32 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Activity, AlertCircle, Archive, Award, BarChart2, Bell, BookOpen, CalendarPlus, CheckCheck, CheckCircle,
-  ChevronDown, Clock, Columns, CreditCard, Download, ExternalLink, EyeOff, Eye,
-  FolderKanban, Globe, Inbox, Link2, MapPin, MessageCircle, MessageSquare, MessageSquareText,
-  Phone, Plus, RefreshCw, Search, Settings, Share2, Star, Tag, Trash2, TrendingUp,
-  Upload, UserPlus, Users, Wallet, X,
-} from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, PieChart, Pie, Cell,
-} from 'recharts';
-import { useSiteData } from '../../../../context/SiteDataContext';
-import { useBranches } from '../../../../hooks/useBranches';
-import { mysqlAdmin, mysqlClient } from '../../../../lib/mysqlapi';
-import { useResizableCols } from '../../../../components/useResizableCols';
-import type {
-  LeadItem, LeadStatus, CommunicationRecord, SalesTarget, Course, Bundle,
-  BranchType, FacebookLeadAdsConfig, PaymentHistoryEntry, PaymentItemType,
-  SubscriberItem, StaffMember, AccessMode, CourseAccessSetting,
-} from '../../../../types';
-import { CrmSettingsModal, DEFAULT_CRM_SETTINGS } from '../CrmSettingsModal';
-import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../../../../components/PaymentModal';
-import type { CrmSettings, NotifyFn } from '../CrmSettingsModal';
-import { DEFAULT_SOURCES, ONLINE_EXCLUDED_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from '../crmConstants';
+import React, { useState } from 'react';
+import type { NavigateFunction } from 'react-router-dom';
+import { AlertCircle, Archive, Upload, Users } from 'lucide-react';
+import type { Bundle, Course, LeadItem, LeadStatus, StaffMember, SubscriberItem } from '../../../../types';
+import type { NotifyFn } from '../CrmSettingsModal';
 import { LeadTable } from '../LeadTable';
-import {
-  BRANCH_ENUM_LABELS,
-  COMM_ICON,
-  COMM_LABEL,
-  IL_LABEL,
-  PIE_COLORS,
-  PIPELINE_COLS,
-  PRESET_TAGS,
-  ROTTEN_CFG,
-  STATUS_CFG,
-  calcLeadScore,
-  getLeadBranchRaw,
-  getRottenLevel,
-  // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
-} from '../leadUtils';
+import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 
-
-import { ArchiveTabProps, LEAD_STATUS_CFG, crmStatusLabels } from './leadShared';
-
+export interface ArchiveTabProps {
+  leads: LeadItem[];
+  staffMembers: StaffMember[];
+  addLead: (l: Partial<LeadItem>) => Promise<unknown>;
+  updateLead: (l: LeadItem) => void;
+  notify: NotifyFn;
+  courses: Course[];
+  bundles: Bundle[];
+  navigate: NavigateFunction;
+  deleteLead: (id: string) => void | Promise<void>;
+  addSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  updateSubscriber: (s: SubscriberItem) => void | Promise<void>;
+  subscribers: SubscriberItem[];
+  salesReps: StaffMember[];
+  isSalesOnly: boolean;
+  onBook: (lead: LeadItem) => void;
+  branchOptions: { id: string; label: string }[];
+  sources: string[];
+  title?: string;
+  defaultSource?: string;
+}
 export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم' }: ArchiveTabProps) {
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);

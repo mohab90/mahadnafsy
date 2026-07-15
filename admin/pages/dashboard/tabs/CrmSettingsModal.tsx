@@ -1,6 +1,6 @@
 /**
- * CrmSettingsModal — extracted to its own file so CRMTab can be fully lazy-loaded.
- * Imported directly (non-lazy) from Dashboard.tsx because it is shown from outside CRMTab.
+ * CrmSettingsModal is imported directly from Dashboard.tsx because CRM settings
+ * can be opened from outside the Leads tab.
  */
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
@@ -27,6 +27,14 @@ export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   ],
 };
 
+function mergeDefaultSheets(savedSheets: GSheet[]): GSheet[] {
+  const byTab = new Set(savedSheets.map(sheet => `${sheet.sheetId}:${sheet.gid || ''}`));
+  const missingDefaults = DEFAULT_CRM_SETTINGS.sheets
+    .filter(sheet => !byTab.has(`${sheet.sheetId}:${sheet.gid || ''}`))
+    .map(sheet => ({ ...sheet, autoSync: false }));
+  return [...savedSheets, ...missingDefaults];
+}
+
 export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
   onClose: () => void;
   notify: NotifyFn;
@@ -48,11 +56,12 @@ export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
     mysqlAdmin.getCrmSettings().then(data => {
       if (data && Object.keys(data).length > 0) {
         const d = data as Partial<CrmSettings & { gsheetId?: string; gsheetGid?: string }>;
-        const sheets: GSheet[] = Array.isArray(d.sheets) && d.sheets.length > 0
+        const savedSheets: GSheet[] = Array.isArray(d.sheets) && d.sheets.length > 0
           ? d.sheets
           : d.gsheetId
             ? [{ id: 'gs-default', name: 'الشيت الرئيسي', sheetId: d.gsheetId, gid: d.gsheetGid || '', autoSync: true }]
             : DEFAULT_CRM_SETTINGS.sheets;
+        const sheets = mergeDefaultSheets(savedSheets);
         setSettings({
           leadSources: d.leadSources?.length ? d.leadSources : DEFAULT_SOURCES,
           autoAssign: d.autoAssign || 'rr',

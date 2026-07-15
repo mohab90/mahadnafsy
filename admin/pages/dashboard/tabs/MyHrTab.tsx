@@ -1,8 +1,43 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { User, Clock, FileText, Activity, Calendar, Star, Shield, Edit2, Plus, X, CheckCircle, XCircle } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
+import type { ActivityLogItem, AuthUser, LeadItem, OrderItem, PaymentHistoryEntry, StaffMember, SubscriberItem } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves';
+
+type StaffOrderSummary = Pick<OrderItem, 'id' | 'staffId' | 'amount' | 'currency' | 'status' | 'createdAt'>;
+type ScopedSubscriber = SubscriberItem & { createdAt?: string };
+type ActivityLogRecord = ActivityLogItem & {
+  staffId?: string;
+  userId?: string;
+  createdAt?: string;
+  description?: string;
+};
+type MyLeave = {
+  id: string;
+  status: string;
+  leave_type: string;
+  start_date?: string;
+  end_date?: string;
+  total_days: number;
+  reason?: string;
+  approved_by_name?: string;
+};
+type Profile = {
+  id?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+};
+
+const authProfile = (authUser?: AuthUser | null): Profile => ({
+  id: authUser?.uid,
+  name: authUser?.displayName || authUser?.email || '',
+  email: authUser?.email,
+  role: authUser?.isAdmin ? 'admin' : undefined,
+});
 
 const ACTION_LABEL: Record<string, string> = {
   login: 'تسجيل دخول', logout: 'تسجيل خروج',
@@ -12,24 +47,35 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default function MyHrTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, activityLogs, leads, orders, authUser, staffScopedLeads, staffScopedSubscribers } = useSiteData() as any;
-  const [activeSection, setActiveSection] = useState<'overview' | 'activity' | 'performance' | 'leaves'>('overview');
+  const { staffMembers, activityLogs, leads, orders, authUser, staffScopedLeads, staffScopedSubscribers } = useSiteData();
+  const [activeSection, setActiveSection] = useState<MyHrSection>('overview');
 
   // Use scoped data for non-admin staff; fall back to full context for admins
-  const effectiveLeads = (staffScopedLeads?.length > 0 ? staffScopedLeads : leads) || [];
+  const effectiveLeads = (staffScopedLeads.length > 0 ? staffScopedLeads : leads) || [];
   const effectiveOrders = useMemo(() => {
-    if (orders?.length > 0) return orders;
+    if (orders.length > 0) return orders.map((order): StaffOrderSummary => ({
+      id: order.id,
+      staffId: order.staffId,
+      amount: order.amount,
+      currency: order.currency,
+      status: order.status,
+      createdAt: order.createdAt,
+    }));
     // Build synthetic orders from scoped subscribers payment history
-    return (staffScopedSubscribers || []).flatMap((s: any) =>
-      (s.paymentHistory || []).map((p: any) => ({
-        id: p.id, staffId: p.staffId, amount: Number(p.amount) || 0,
-        currency: p.currency || 'EGP', status: 'paid', createdAt: p.at || s.createdAt || '',
+    return (staffScopedSubscribers as ScopedSubscriber[]).flatMap((subscriber) =>
+      (subscriber.paymentHistory || []).map((payment: PaymentHistoryEntry): StaffOrderSummary => ({
+        id: payment.id,
+        staffId: payment.staffId,
+        amount: Number(payment.amount) || 0,
+        currency: payment.currency || 'EGP',
+        status: 'paid',
+        createdAt: payment.at || subscriber.createdAt || '',
       }))
     );
   }, [orders, staffScopedSubscribers]);
 
   // ── Leaves state ─────────────────────────────────────────────
-  const [myLeavesList, setMyLeavesList] = useState<any[]>([]);
+  const [myLeavesList, setMyLeavesList] = useState<MyLeave[]>([]);
   const [loadingMyLeaves, setLoadingMyLeaves] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ type: 'ANNUAL', start_date: '', end_date: '', reason: '' });
@@ -47,47 +93,31 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     REJECTED: 'bg-red-100 text-red-700', CANCELLED: 'bg-gray-100 text-gray-500',
   };
 
-  const me = useMemo(() =>
-    staffMembers.find((s: any) => s.id === (authUser as any)?.id || s.email === (authUser as any)?.email),
+  const me = useMemo<StaffMember | undefined>(() =>
+    staffMembers.find((staff) => staff.id === authUser?.uid || staff.email === authUser?.email),
     [staffMembers, authUser]
   );
-
-  // ── Self-service attendance (check-in / check-out) ───────────
-  const [todayAtt, setTodayAtt] = useState<{ check_in?: string; check_out?: string; status?: string } | null>(null);
-  const [attBusy, setAttBusy] = useState(false);
-  const loadToday = useCallback(async () => {
-    try { const r = await fetch('/api/me/hr/attendance/today', { credentials: 'include' }); const d = await r.json(); setTodayAtt(d?.today || null); } catch { /* */ }
-  }, []);
-  useEffect(() => { loadToday(); }, [loadToday]);
-  const doCheck = async (kind: 'check-in' | 'check-out') => {
-    setAttBusy(true);
-    try {
-      const r = await fetch(`/api/me/hr/attendance/${kind}`, { method: 'POST', credentials: 'include' });
-      if (r.ok) { notify('success', kind === 'check-in' ? 'تم تسجيل الحضور ✅' : 'تم تسجيل الانصراف ✅'); loadToday(); }
-      else notify('error', 'تعذّر التسجيل');
-    } catch { notify('error', 'تعذّر التسجيل'); } finally { setAttBusy(false); }
-  };
 
   const MONTH = new Date().toISOString().slice(0, 7);
   const monthStart = `${MONTH}-01`;
 
   const myLogs = useMemo(() =>
-    (activityLogs || []).filter((l: any) => l.staffId === me?.id || l.userId === me?.id)
-                 .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    (activityLogs as ActivityLogRecord[]).filter((log) => log.staffId === me?.id || log.userId === me?.id)
+                 .sort((a, b) => ((b.createdAt || b.at || '').localeCompare(a.createdAt || a.at || '')))
                  .slice(0, 50),
     [activityLogs, me]
   );
 
   const myLeads = useMemo(() =>
-    effectiveLeads.filter((l: any) => l.assignedSalesId === me?.id || effectiveLeads.length === (staffScopedLeads?.length || 0)),
+    effectiveLeads.filter((lead: LeadItem) => lead.assignedSalesId === me?.id || effectiveLeads.length === staffScopedLeads.length),
     [effectiveLeads, me, staffScopedLeads]
   );
 
-  const myMonthLeads = myLeads.filter((l: any) => (l.createdAt || '') >= monthStart);
-  const myMonthConverted = myMonthLeads.filter((l: any) => l.status === 'converted');
+  const myMonthLeads = myLeads.filter((lead) => (lead.createdAt || '') >= monthStart);
+  const myMonthConverted = myMonthLeads.filter((lead) => lead.status === 'converted');
   const myMonthRevenue = useMemo(() =>
-    effectiveOrders.filter((o: any) => o.staffId === me?.id && (o.createdAt || '') >= monthStart && o.status === 'paid')
-          .reduce((acc: number, o: any) => acc + (Number(o.amount) || 0), 0),
+    effectiveOrders.filter((order) => order.staffId === me?.id && (order.createdAt || '') >= monthStart && order.status === 'paid')
+          .reduce((acc, order) => acc + (Number(order.amount) || 0), 0),
     [effectiveOrders, me, monthStart]
   );
 
@@ -101,7 +131,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     if (!me?.id) return;
     setLoadingMyLeaves(true);
     try {
-      const res = await fetch(`/api/admin/hr/leaves?staff_id=${me.id}`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/hr/leaves?staff_id=${me.id}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setMyLeavesList(await res.json());
     } catch { /* silently fail */ } finally { setLoadingMyLeaves(false); }
   }, [me?.id]);
@@ -113,7 +143,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     try {
       const res = await fetch('/api/admin/hr/leaves', {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify({ staff_id: me.id, leave_type: leaveForm.type, start_date: leaveForm.start_date, end_date: leaveForm.end_date, reason: leaveForm.reason }),
       });
       if (res.ok) {
@@ -141,7 +171,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     );
   }
 
-  const profile = me || authUser;
+  const profile: Profile = me || authProfile(authUser);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -177,23 +207,6 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
       {/* Overview */}
       {activeSection === 'overview' && (
         <div className="space-y-4">
-          {/* Self-service attendance — clock in/out feeds attendance_logs → payroll */}
-          <div className="bg-gradient-to-l from-slate-800 to-slate-700 text-white rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow">
-            <div>
-              <div className="text-sm text-slate-300 mb-1">حضور اليوم</div>
-              <div className="flex items-center gap-4 text-sm">
-                <span>الحضور: <span className="font-bold">{todayAtt?.check_in || '—'}</span></span>
-                <span>الانصراف: <span className="font-bold">{todayAtt?.check_out || '—'}</span></span>
-                {todayAtt?.status && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${todayAtt.status === 'LATE' ? 'bg-amber-500/30' : 'bg-emerald-500/30'}`}>{todayAtt.status === 'LATE' ? 'متأخر' : 'حاضر'}</span>}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => doCheck('check-in')} disabled={attBusy || !!todayAtt?.check_in}
-                className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-bold">تسجيل حضور</button>
-              <button onClick={() => doCheck('check-out')} disabled={attBusy || !todayAtt?.check_in || !!todayAtt?.check_out}
-                className="bg-white/15 hover:bg-white/25 disabled:opacity-40 text-white rounded-xl px-4 py-2.5 text-sm font-bold">تسجيل انصراف</button>
-            </div>
-          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'ليداتي (الكل)', val: myLeads.length, color: 'blue' },

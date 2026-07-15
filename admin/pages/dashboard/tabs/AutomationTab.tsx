@@ -80,13 +80,9 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
   const [workflowDraft, setWorkflowDraft] = useState<WorkflowDraft>(blankWf());
 
   // WhatsApp Config state
-  const [waProvider, setWaProvider] = useState<'meta' | 'green-api'>('meta');
   const [waInstanceId, setWaInstanceId] = useState('');
   const [waApiToken, setWaApiToken] = useState('');
   const [waHasToken, setWaHasToken] = useState(false);
-  const [waMetaPhoneId, setWaMetaPhoneId] = useState('');
-  const [waMetaToken, setWaMetaToken] = useState('');
-  const [waHasMetaToken, setWaHasMetaToken] = useState(false);
   const [waSaving, setWaSaving] = useState(false);
   const [waLoaded, setWaLoaded] = useState(false);
 
@@ -129,38 +125,22 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
 
   useEffect(() => {
     mysqlAdmin.getWhatsAppConfig().then(cfg => {
-      setWaProvider(cfg.provider || 'meta');
       setWaInstanceId(cfg.instanceId || '');
       setWaHasToken(cfg.hasToken);
-      setWaMetaPhoneId(cfg.metaPhoneId || '');
-      setWaHasMetaToken(cfg.hasMetaToken);
       setWaLoaded(true);
     }).catch(() => setWaLoaded(true));
   }, []);
 
   const handleSaveWaConfig = async () => {
-    if (waProvider === 'green-api') {
-      if (!waInstanceId.trim() || (!waApiToken.trim() && !waHasToken)) {
-        notify('error', 'Instance ID والـ API Token مطلوبان');
-        return;
-      }
-    } else { // meta
-      if (!waMetaPhoneId.trim() || (!waMetaToken.trim() && !waHasMetaToken)) {
-        notify('error', 'Phone Number ID والـ Access Token مطلوبان');
-        return;
-      }
+    if (!waInstanceId.trim() || !waApiToken.trim()) {
+      notify('error', 'Instance ID والـ API Token مطلوبان');
+      return;
     }
     setWaSaving(true);
     try {
-      await mysqlAdmin.saveWhatsAppConfig({
-        provider: waProvider,
-        instanceId: waInstanceId.trim(),
-        apiToken: waApiToken.trim(),       // blank → server keeps existing
-        metaPhoneId: waMetaPhoneId.trim(),
-        metaToken: waMetaToken.trim(),     // blank → server keeps existing
-      });
-      if (waProvider === 'green-api' && waApiToken.trim()) { setWaHasToken(true); setWaApiToken(''); }
-      if (waProvider === 'meta' && waMetaToken.trim()) { setWaHasMetaToken(true); setWaMetaToken(''); }
+      await mysqlAdmin.saveWhatsAppConfig(waInstanceId.trim(), waApiToken.trim());
+      setWaHasToken(true);
+      setWaApiToken('');
       notify('success', 'تم حفظ إعدادات WhatsApp ✅');
     } catch (e) {
       notify('error', e instanceof Error ? e.message : 'فشل الحفظ');
@@ -497,92 +477,51 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
             <Settings size={18} className="text-white" />
           </div>
           <div>
-            <h3 className="font-bold text-gray-900">إعدادات WhatsApp</h3>
+            <h3 className="font-bold text-gray-900">إعدادات WhatsApp (Green-API)</h3>
             <p className="text-xs text-gray-500">للإشعارات التلقائية: إيصالات الدفع، تذكير الأقساط، رسائل الترحيب</p>
           </div>
           {waLoaded && (
-            <span className={`mr-auto text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${(waProvider === 'meta' ? waHasMetaToken : waHasToken) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-              {(waProvider === 'meta' ? waHasMetaToken : waHasToken) ? <><CheckCircle size={12} /> متصل</> : '⚙ غير مضبوط'}
+            <span className={`mr-auto text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${waHasToken ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+              {waHasToken ? <><CheckCircle size={12} /> متصل</> : '⚙ غير مضبوط'}
             </span>
           )}
         </div>
         <div className="p-5 space-y-4" dir="rtl">
-          {/* Provider selector */}
-          <div>
-            <label className="text-xs font-bold text-gray-700 mb-1 block">مزوّد الإرسال</label>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setWaProvider('meta')}
-                className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border transition ${waProvider === 'meta' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'}`}>
-                واتساب الرسمي (Meta)
-              </button>
-              <button type="button" onClick={() => setWaProvider('green-api')}
-                className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold border transition ${waProvider === 'green-api' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'}`}>
-                Green-API
-              </button>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
+            <p className="font-bold mb-1">كيفية الحصول على البيانات:</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>سجّل في <span className="font-mono font-bold">green-api.com</span> (الحساب المجاني كافٍ)</li>
+              <li>أنشئ Instance واربطه بهاتفك عبر QR Code</li>
+              <li>انسخ Instance ID و API Token من لوحة التحكم</li>
+            </ol>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-gray-700 mb-1 block">Instance ID *</label>
+              <input
+                value={waInstanceId}
+                onChange={e => setWaInstanceId(e.target.value)}
+                placeholder="مثال: 7103xxxxxxxx"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700 mb-1 block">
+                API Token * {waHasToken && <span className="font-normal text-emerald-600">(محفوظ — اتركه فارغاً للإبقاء على القديم)</span>}
+              </label>
+              <input
+                type="password"
+                value={waApiToken}
+                onChange={e => setWaApiToken(e.target.value)}
+                placeholder={waHasToken ? '••••••••••••••••' : 'الصق الـ API Token هنا'}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono"
+              />
             </div>
           </div>
-
-          {waProvider === 'meta' ? (
-            <>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
-                <p className="font-bold mb-1">واتساب الرسمي (WhatsApp Cloud API):</p>
-                <ol className="list-decimal list-inside space-y-0.5">
-                  <li>من <span className="font-mono font-bold">developers.facebook.com</span> → تطبيقك → WhatsApp</li>
-                  <li>انسخ <b>Phone Number ID</b> و<b>Access Token</b> (دائم)</li>
-                  <li>ملاحظة: خارج نافذة 24 ساعة، يسمح Meta بالقوالب المعتمدة فقط</li>
-                </ol>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-1 block">Phone Number ID *</label>
-                  <input value={waMetaPhoneId} onChange={e => setWaMetaPhoneId(e.target.value)}
-                    placeholder="مثال: 1029xxxxxxxxxx"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-1 block">
-                    Access Token * {waHasMetaToken && <span className="font-normal text-emerald-600">(محفوظ — اتركه فارغاً للإبقاء على القديم)</span>}
-                  </label>
-                  <input type="password" value={waMetaToken} onChange={e => setWaMetaToken(e.target.value)}
-                    placeholder={waHasMetaToken ? '••••••••••••••••' : 'الصق الـ Access Token هنا'}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono" />
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
-                <p className="font-bold mb-1">كيفية الحصول على البيانات:</p>
-                <ol className="list-decimal list-inside space-y-0.5">
-                  <li>سجّل في <span className="font-mono font-bold">green-api.com</span> (الحساب المجاني كافٍ)</li>
-                  <li>أنشئ Instance واربطه بهاتفك عبر QR Code</li>
-                  <li>انسخ Instance ID و API Token من لوحة التحكم</li>
-                </ol>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-1 block">Instance ID *</label>
-                  <input value={waInstanceId} onChange={e => setWaInstanceId(e.target.value)}
-                    placeholder="مثال: 7103xxxxxxxx"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-1 block">
-                    API Token * {waHasToken && <span className="font-normal text-emerald-600">(محفوظ — اتركه فارغاً للإبقاء على القديم)</span>}
-                  </label>
-                  <input type="password" value={waApiToken} onChange={e => setWaApiToken(e.target.value)}
-                    placeholder={waHasToken ? '••••••••••••••••' : 'الصق الـ API Token هنا'}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono" />
-                </div>
-              </div>
-            </>
-          )}
           <div className="flex items-center gap-3">
             <button
               onClick={handleSaveWaConfig}
-              disabled={waSaving || (waProvider === 'meta'
-                ? (!waMetaPhoneId.trim() || (!waMetaToken.trim() && !waHasMetaToken))
-                : (!waInstanceId.trim() || (!waApiToken.trim() && !waHasToken)))}
+              disabled={waSaving || !waInstanceId.trim() || (!waApiToken.trim() && !waHasToken)}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl transition text-sm disabled:opacity-50">
               {waSaving
                 ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />

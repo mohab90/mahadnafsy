@@ -54,14 +54,19 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_content: 'تعديل محتوى الموقع',
   view_staff: 'عرض الموظفين (قراءة فقط)',
   manage_staff: 'إدارة الموظفين والصلاحيات',
+  view_hr: 'عرض الموارد البشرية',
+  manage_hr: 'إدارة الموارد البشرية',
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
+  manage_payments: 'تسجيل وتعديل المدفوعات',
+  approve_refunds: 'اعتماد أو رفض الاستردادات',
   view_financial: 'عرض النظام المحاسبي',
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',
   view_reports: 'عرض التقارير والإحصائيات',
   manage_inbox: 'إدارة صندوق الوارد والمحادثات',
   manage_notifications: 'إدارة الإشعارات',
   manage_channel_settings: 'إعدادات قنوات التواصل',
+  bulk_whatsapp: 'إرسال واتساب جماعي',
   view_join_us: 'عرض طلبات الانضمام',
   manage_join_us: 'إدارة طلبات الانضمام',
   view_contacts: 'عرض رسائل التواصل',
@@ -69,6 +74,10 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_activity: 'عرض سجل النشاط',
   manage_daqqi: 'إدارة جدول كورسات الدقي',
   manage_automation: 'إدارة الأتوميشن والوركفلو',
+  view_security: 'عرض الأمن والمراقبة',
+  manage_security: 'إدارة الأمن والمراقبة',
+  view_settings: 'عرض إعدادات النظام',
+  manage_settings: 'إدارة إعدادات النظام',
   ask_ai: 'استخدام المساعد الذكي (AI)',
   ai_dev: 'تبويب AI البرمجي',
   manage_ai_settings: 'إعدادات الذكاء الاصطناعي',
@@ -77,6 +86,8 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
 
 const ROLE_OPTIONS: { value: StaffMember['role']; label: string }[] = [
   { value: 'manager', label: 'مدير' },
+  { value: 'online_manager', label: 'مدير الأونلاين' },
+  { value: 'daqqi_manager', label: 'مدير الدقي' },
   { value: 'sales_collection_manager', label: 'مدير المبيعات والتحصيل' },
   { value: 'sales', label: 'مسئول مبيعات' },
   { value: 'collection', label: 'مسئول تحصيل' },
@@ -100,7 +111,7 @@ const ROLE_DEFAULT_PERMISSIONS: Record<string, StaffPermission[]> = {
     Object.keys(MASTER_ROLE_PERMS).map(r => [r, getDefaultPermsArray(r) as StaffPermission[]])
   ),
   // Legacy roles kept for backwards-compat
-  expert: ['view_dashboard', 'view_courses', 'view_subscribers'] as StaffPermission[],
+  expert: ['view_dashboard', 'view_courses'] as StaffPermission[],
   other:  ['view_dashboard'] as StaffPermission[],
 };
 void (MASTER_ROLE_PERMS as unknown); void ('' as unknown as RoleKey);
@@ -110,6 +121,8 @@ const ROLE_PRESETS = [
   { role:'collection',               icon:'💰', label:'مسئول تحصيل',             desc:'عملاء أونلاين + مدفوعات + مالية' },
   { role:'support',                  icon:'🎧', label:'مسئول خدمة عملاء',        desc:'ليدات + عملاء أونلاين + رسائل' },
   { role:'sales_collection_manager', icon:'🏆', label:'مدير المبيعات والتحصيل', desc:'إشراف على فرق المبيعات والتحصيل + تقارير' },
+  { role:'online_manager',            icon:'🌐', label:'مدير الأونلاين',          desc:'إدارة عملاء الأونلاين + المحتوى + التحصيل' },
+  { role:'daqqi_manager',             icon:'🏢', label:'مدير الدقي',              desc:'إدارة فرع الدقي + الجداول + الحضور' },
   { role:'hr',                       icon:'🧑‍💼', label:'موارد بشرية',              desc:'إدارة الفريق + الطلبات الوظيفية + التقارير' },
   { role:'reception_daqqi',          icon:'🏢', label:'ريسبشن الدقي',            desc:'ليدات + عملاء الدقي + الجدول' },
   { role:'manager',                  icon:'👔', label:'مدير',                     desc:'وصول كامل لكل الأقسام' },
@@ -125,11 +138,11 @@ const PERM_CATEGORIES = [
   { key:'leads',       label:'العملاء المحتملين (CRM / الليدات)',      icon:'👥', bg:'bg-blue-50',    border:'border-blue-200',    text:'text-blue-700',    perms:['view_leads','manage_leads','delete_leads','export_leads'] as StaffPermission[] },
   { key:'subscribers', label:'عملاء الأونلاين المسجلين',            icon:'🎓', bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700', perms:['view_subscribers','manage_subscribers','delete_subscribers','export_subscribers'] as StaffPermission[] },
   { key:'courses',     label:'الكورسات والمحتوى التعليمي',             icon:'📚', bg:'bg-orange-50',  border:'border-orange-200',  text:'text-orange-700',  perms:['view_courses','manage_courses','manage_lectures','manage_instructors','manage_bundles','manage_discounts','manage_testimonials'] as StaffPermission[] },
-  { key:'financial',   label:'الطلبات والنظام المالي',                 icon:'💰', bg:'bg-green-50',   border:'border-green-200',   text:'text-green-700',   perms:['view_orders','manage_orders','view_financial','manage_financial'] as StaffPermission[] },
+  { key:'financial',   label:'الطلبات والنظام المالي',                 icon:'💰', bg:'bg-green-50',   border:'border-green-200',   text:'text-green-700',   perms:['view_orders','manage_orders','manage_payments','approve_refunds','view_financial','manage_financial'] as StaffPermission[] },
   { key:'consult',     label:'الاستشارات والمواعيد',                   icon:'🤝', bg:'bg-teal-50',    border:'border-teal-200',    text:'text-teal-700',    perms:['view_consultations','manage_consultations'] as StaffPermission[] },
-  { key:'comm',        label:'التواصل والمجتمع والرسائل',              icon:'💬', bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700',  perms:['view_community','manage_community','manage_inbox','manage_notifications','manage_channel_settings','view_join_us','manage_join_us','view_contacts','manage_contacts'] as StaffPermission[] },
-  { key:'team',        label:'إدارة الفريق والعمليات',                 icon:'👔', bg:'bg-indigo-50',  border:'border-indigo-200',  text:'text-indigo-700',  perms:['view_staff','manage_staff','manage_daqqi'] as StaffPermission[] },
-  { key:'system',      label:'الإعدادات والتطوير والذكاء الاصطناعي',  icon:'⚙️', bg:'bg-gray-50',    border:'border-gray-200',    text:'text-gray-700',    perms:['manage_content','manage_automation','ask_ai','ai_dev','manage_ai_settings'] as StaffPermission[] },
+  { key:'comm',        label:'التواصل والمجتمع والرسائل',              icon:'💬', bg:'bg-purple-50',  border:'border-purple-200',  text:'text-purple-700',  perms:['view_community','manage_community','manage_inbox','manage_notifications','manage_channel_settings','bulk_whatsapp','view_join_us','manage_join_us','view_contacts','manage_contacts'] as StaffPermission[] },
+  { key:'team',        label:'إدارة الفريق والعمليات',                 icon:'👔', bg:'bg-indigo-50',  border:'border-indigo-200',  text:'text-indigo-700',  perms:['view_staff','manage_staff','view_hr','manage_hr','manage_daqqi'] as StaffPermission[] },
+  { key:'system',      label:'الإعدادات والتطوير والذكاء الاصطناعي',  icon:'⚙️', bg:'bg-gray-50',    border:'border-gray-200',    text:'text-gray-700',    perms:['manage_content','manage_automation','ask_ai','ai_dev','manage_ai_settings','view_security','manage_security','view_settings','manage_settings'] as StaffPermission[] },
 ];
 
 const ACCESS_PREVIEW_TABS = [

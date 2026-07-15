@@ -139,7 +139,7 @@ export default function ExpenseAnalyticsTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => fmtMoney(v)} />
-              <Tooltip formatter={((v: number) => [`${fmtMoney(v)} ج`, '']) as any} />
+              <Tooltip formatter={(v: number) => [`${fmtMoney(v)} ج`, '']} />
               <Legend />
               <Bar dataKey="إيراد" fill="#10b981" radius={[4,4,0,0]} />
               <Bar dataKey="مصروفات" fill="#f87171" radius={[4,4,0,0]} />

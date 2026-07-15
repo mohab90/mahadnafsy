@@ -4,6 +4,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
+type NpsPeriod = 'month' | 'quarter' | 'year';
 
 // NPS Score from subscriber status distribution
 // Active/paid = promoters (score 9-10), late/paused = passives (7-8), blocked/refunded = detractors (0-6)
@@ -16,7 +17,7 @@ function calcNPS(promoters: number, passives: number, detractors: number) {
 const NpsDashboardTab: React.FC<Props> = ({ notify }) => {
   const { subscribers, orders, courses } = useSiteData();
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
-  const [period, setPeriod] = useState<'month' | 'quarter' | 'year'>('month');
+  const [period, setPeriod] = useState<NpsPeriod>('month');
 
   const NOW = Date.now();
   const periodMs = period === 'month' ? 30 : period === 'quarter' ? 90 : 365;
@@ -125,7 +126,7 @@ const NpsDashboardTab: React.FC<Props> = ({ notify }) => {
 
       {/* Filters + Stats */}
       <div className="flex flex-wrap gap-3 items-center">
-        <select value={period} onChange={e => setPeriod(e.target.value as any)}
+        <select value={period} onChange={e => setPeriod(e.target.value as NpsPeriod)}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
           <option value="month">آخر 30 يوم</option>
           <option value="quarter">آخر 3 أشهر</option>

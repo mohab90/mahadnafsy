@@ -4,6 +4,16 @@ import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
+type RevenuePoint = {
+  label: string;
+  shortLabel: string;
+  revenue: number;
+  isForecast: boolean;
+  month: number;
+  year: number;
+  optimistic?: number;
+  pessimistic?: number;
+};
 
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
@@ -60,10 +70,10 @@ const RevenueForecastTab: React.FC<Props> = ({ notify }) => {
     return { forecastData: forecast, avgRevenue: avg, trendRate: trend, pipeline: pipelineValue };
   }, [historicalMonths, leads, forecastMonths, growthRate]);
 
-  const allData = [...historicalMonths, ...forecastData];
-  const maxValue = Math.max(...allData.map(d => d.isForecast ? (d as any).optimistic : d.revenue), 1);
+  const allData: RevenuePoint[] = [...historicalMonths, ...forecastData];
+  const maxValue = Math.max(...allData.map(d => d.isForecast ? (d.optimistic || d.revenue) : d.revenue), 1);
 
-  const format = (n: number) => Math.round(n).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
+  const format = (n: number) => Math.round(n).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 
   const totalForecast = forecastData.reduce((s, d) => s + d.revenue, 0);
   const totalHistorical = historicalMonths.reduce((s, d) => s + d.revenue, 0);
@@ -146,14 +156,14 @@ const RevenueForecastTab: React.FC<Props> = ({ notify }) => {
           {allData.map((d, i) => {
             const isForecast = d.isForecast;
             const h = (d.revenue / maxValue) * 100;
-            const optH = isForecast ? ((d as any).optimistic / maxValue) * 100 : null;
-            const pesH = isForecast ? ((d as any).pessimistic / maxValue) * 100 : null;
+            const optH = isForecast ? (((d.optimistic || d.revenue) / maxValue) * 100) : null;
+            const pesH = isForecast ? (((d.pessimistic || d.revenue) / maxValue) * 100) : null;
             return (
               <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
                 {/* Tooltip */}
                 <div className="absolute bottom-10 opacity-0 group-hover:opacity-100 bg-gray-800 text-white text-xs rounded-lg px-2 py-1 whitespace-nowrap z-10 transition-opacity pointer-events-none text-center">
                   {isForecast ? (
-                    <>توقع: {format(d.revenue)}<br />محتمل: {format((d as any).optimistic)}<br />محافظ: {format((d as any).pessimistic)}</>
+                    <>توقع: {format(d.revenue)}<br />محتمل: {format(d.optimistic || d.revenue)}<br />محافظ: {format(d.pessimistic || d.revenue)}</>
                   ) : format(d.revenue)}
                 </div>
                 {/* Optimistic range */}

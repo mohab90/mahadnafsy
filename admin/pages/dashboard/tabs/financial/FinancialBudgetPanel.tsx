@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Edit3, Save, X } from 'lucide-react';
+import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
 interface BudgetRow {
   id?: string;
@@ -13,7 +14,7 @@ interface BudgetRow {
 
 const DEFAULT_CATS = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'مرافق', 'سفر', 'أخرى'];
 
-const fmtN = (n: number) => Math.round(n).toLocaleString('ar-EG-u-nu-latn');
+const fmtN = (n: number) => Math.round(n).toLocaleString('ar-EG');
 
 function pctColor(pct: number) {
   if (pct >= 100) return { bar: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50 border-red-200' };
@@ -33,7 +34,7 @@ export default function FinancialBudgetPanel({ notify }: { notify: (msg: string,
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/admin/finance/budgets?month=${month}`, { credentials: 'include' });
+      const r = await fetch(`/api/admin/finance/budgets?month=${month}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error(await r.text());
       const data: BudgetRow[] = await r.json();
 
@@ -72,7 +73,7 @@ export default function FinancialBudgetPanel({ notify }: { notify: (msg: string,
       const r = await fetch('/api/admin/finance/budgets', {
         method: 'PUT',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify({ month, budgets }),
       });
       if (!r.ok) throw new Error(await r.text());

@@ -3,6 +3,7 @@ import {
   AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, CheckCircle2,
   CreditCard, Eye, RefreshCw, Target, TrendingDown, TrendingUp, Users, Wallet,
 } from 'lucide-react';
+import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
 interface CockpitData {
   revenue: {
@@ -25,7 +26,7 @@ interface CockpitData {
   generatedAt: string;
 }
 
-const fmt = (n: number) => Math.round(n).toLocaleString('ar-EG-u-nu-latn');
+const fmt = (n: number) => Math.round(n).toLocaleString('ar-EG');
 const fmtK = (n: number) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : Math.round(n).toString();
 
 function HealthRing({ score }: { score: number }) {
@@ -99,7 +100,7 @@ export default function FinancialCockpitPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/admin/finance/cockpit', { credentials: 'include' });
+      const r = await fetch('/api/admin/finance/cockpit', { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: unknown) {
@@ -133,7 +134,7 @@ export default function FinancialCockpitPanel({
         <div>
           <h2 className="text-xl font-black text-gray-900">🎯 لوحة القيادة المالية</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            بيانات حية من قاعدة البيانات · آخر تحديث: {data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString('ar-EG-u-nu-latn') : '—'}
+            بيانات حية من قاعدة البيانات · آخر تحديث: {data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString('ar-EG') : '—'}
           </p>
         </div>
         <button onClick={load} disabled={loading}

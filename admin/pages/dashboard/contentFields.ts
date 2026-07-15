@@ -105,11 +105,6 @@ export const pageCoursesFields: ContentField[] = [
   { key: 'courses.categories.child', label: 'فلتر: أطفال ومراهقين', multiline: false },
   { key: 'courses.categories.diagnosis', label: 'فلتر: تشخيص', multiline: false },
   { key: 'courses.emptyState', label: 'رسالة عدم وجود نتائج', multiline: false },
-  // ── صفحة تفاصيل الكورس (عناصر التحويل) ──
-  { key: 'courseDetails.guaranteeText', label: 'تفاصيل الكورس: نص ضمان الاسترداد', multiline: true },
-  { key: 'courseDetails.seatsNote', label: 'تفاصيل الكورس: نص المقاعد المحدودة', multiline: true },
-  { key: 'courseDetails.faqTitle', label: 'تفاصيل الكورس: عنوان الأسئلة الشائعة', multiline: false },
-  { key: 'courseDetails.faqList', label: 'تفاصيل الكورس: الأسئلة الشائعة (سطر لكل سؤال بصيغة: السؤال :: الجواب)', multiline: true },
 ];
 
 export const pageBundlesFields: ContentField[] = [
@@ -141,11 +136,6 @@ export const pageConsultationsFields: ContentField[] = [
   { key: 'express.price.EGP', label: 'سعر الجلسة السريعة (جنيه)', multiline: false },
   { key: 'express.price.SAR', label: 'سعر الجلسة السريعة (ريال)', multiline: false },
   { key: 'express.price.USD', label: 'سعر الجلسة السريعة (دولار)', multiline: false },
-  { key: 'consult.express.badge', label: 'الجلسة السريعة: الشارة (مثال: متاح الآن 24/7)', multiline: false },
-  { key: 'consult.express.desc', label: 'الجلسة السريعة: الوصف', multiline: true },
-  { key: 'consult.express.timeLabel', label: 'الجلسة السريعة: عنوان زمن الرد', multiline: false },
-  { key: 'consult.express.timeValue', label: 'الجلسة السريعة: زمن الرد (مثال: خلال ساعة واحدة)', multiline: false },
-  { key: 'consult.cancelPolicy', label: 'سياسة الإلغاء (سؤال شائع)', multiline: true },
 ];
 
 export const pageInstructorsFields: ContentField[] = [

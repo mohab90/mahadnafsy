@@ -189,7 +189,7 @@ export default function RevenueSourcesTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => fmtMoney(v)} />
-              <Tooltip formatter={((v: number) => [`${fmtMoney(v)} ج`, '']) as any} />
+              <Tooltip formatter={(v: number) => [`${fmtMoney(v)} ج`, '']} />
               <Legend />
               {topSources.map((src, i) => (
                 <Bar key={src} dataKey={src} fill={COLORS[i % COLORS.length]} radius={[4,4,0,0]} stackId="a" />

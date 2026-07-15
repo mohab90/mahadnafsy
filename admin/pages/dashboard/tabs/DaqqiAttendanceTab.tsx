@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
 interface AttendeeRow {
   subscriberId: string;
@@ -51,64 +52,31 @@ function pctBar(pct: number | null) {
   );
 }
 
-interface MonthRow {
-  month: string;
-  rounds: number;
-  attendees: number;
-  sessions: number;
-  revenue: number;
-  avgAttendancePct: number | null;
-  topReception: string;
-}
-interface MonthlyReport {
-  months: MonthRow[];
-  totals: { rounds: number; attendees: number; sessions: number; revenue: number; avgAttendancePct: number | null } | null;
-}
-
-const MONTH_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const fmtMonth = (ym: string) => {
-  const [y, m] = ym.split('-');
-  return `${MONTH_AR[Number(m) - 1] || m} ${y}`;
-};
-
 export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t?: 'success' | 'error') => void }) {
-  const [view, setView] = useState<'sheet' | 'monthly'>('sheet');
   const [rounds, setRounds] = useState<RoundReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'active' | 'finished' | ''>('active');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
-  const [monthly, setMonthly] = useState<MonthlyReport | null>(null);
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const notifyRef = useRef(notify);
 
-  const loadMonthly = useCallback(async () => {
-    setMonthlyLoading(true);
-    try {
-      const r = await fetch('/api/admin/daqqi/attendance-monthly?months=12', { credentials: 'include' });
-      if (!r.ok) throw new Error(await r.text());
-      setMonthly(await r.json());
-    } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : 'فشل تحميل التقرير الشهري', 'error');
-    } finally {
-      setMonthlyLoading(false);
-    }
+  useEffect(() => {
+    notifyRef.current = notify;
   }, [notify]);
-
-  useEffect(() => { if (view === 'monthly' && !monthly) loadMonthly(); }, [view, monthly, loadMonthly]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const qs = statusFilter ? `?status=${statusFilter}` : '';
-      const r = await fetch(`/api/admin/daqqi/attendance-report${qs}`, { credentials: 'include' });
+      const r = await fetch(`/api/admin/daqqi/attendance-report${qs}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error(await r.text());
       setRounds(await r.json());
     } catch (e: unknown) {
-      notify(e instanceof Error ? e.message : 'فشل التحميل', 'error');
+      notifyRef.current(e instanceof Error ? e.message : 'فشل التحميل', 'error');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, notify]);
+  }, [statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -127,7 +95,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
     const qs = statusFilter ? `?status=${statusFilter}` : '';
     const url = `/api/admin/daqqi/attendance-export${qs}`;
     try {
-      const r = await fetch(url, { credentials: 'include' });
+      const r = await fetch(url, { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error('فشل التصدير');
       const blob = await r.blob();
       const a = document.createElement('a');
@@ -135,7 +103,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
       a.download = `daqqi_attendance_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
     } catch {
-      notify('فشل تصدير CSV', 'error');
+      notifyRef.current('فشل تصدير CSV', 'error');
     }
   };
 
@@ -167,14 +135,6 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* View toggle */}
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            <button onClick={() => setView('sheet')}
-              className={`px-3 py-1 rounded-md text-sm font-semibold transition ${view === 'sheet' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>كشف الحضور</button>
-            <button onClick={() => setView('monthly')}
-              className={`px-3 py-1 rounded-md text-sm font-semibold transition ${view === 'monthly' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}>التقرير الشهري</button>
-          </div>
-          {view === 'sheet' && (<>
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
@@ -203,17 +163,9 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
             className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition">
             {loading ? '...' : 'تحديث'}
           </button>
-          </>)}
-          {view === 'monthly' && (
-            <button onClick={loadMonthly} disabled={monthlyLoading}
-              className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition">
-              {monthlyLoading ? '...' : 'تحديث'}
-            </button>
-          )}
         </div>
       </div>
 
-      {view === 'sheet' && (<>
       {loading && (
         <div className="text-center py-16 text-gray-400">جاري التحميل...</div>
       )}
@@ -310,7 +262,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                                   )}
                                 </td>
                                 <td className="px-4 py-2 text-center text-xs text-gray-600">
-                                  {att.amountPaid ? att.amountPaid.toLocaleString('ar-EG-u-nu-latn') + ' ج' : '—'}
+                                  {att.amountPaid ? att.amountPaid.toLocaleString('ar-EG') + ' ج' : '—'}
                                 </td>
                               </tr>
                             ))}
@@ -324,70 +276,6 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
           );
         })}
       </div>
-      </>)}
-
-      {view === 'monthly' && (
-        <div className="space-y-4">
-          {monthlyLoading && <div className="text-center py-16 text-gray-400">جاري التحميل...</div>}
-          {!monthlyLoading && (!monthly || monthly.months.length === 0) && (
-            <div className="text-center py-16 text-gray-400">لا توجد بيانات شهرية</div>
-          )}
-          {!monthlyLoading && monthly && monthly.months.length > 0 && (
-            <>
-              {/* Totals cards */}
-              {monthly.totals && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                  {[
-                    { label: 'إجمالي الدورات', value: monthly.totals.rounds, color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-                    { label: 'إجمالي المتدربين', value: monthly.totals.attendees, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-                    { label: 'إجمالي الجلسات', value: monthly.totals.sessions, color: 'bg-violet-50 text-violet-700 border-violet-200' },
-                    { label: 'متوسط الحضور', value: monthly.totals.avgAttendancePct !== null ? `${monthly.totals.avgAttendancePct}%` : '—', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-                    { label: 'إجمالي التحصيل', value: `${monthly.totals.revenue.toLocaleString('ar-EG-u-nu-latn')} ج`, color: 'bg-amber-50 text-amber-700 border-amber-200' },
-                  ].map((c, i) => (
-                    <div key={i} className={`rounded-xl border p-3 ${c.color}`}>
-                      <p className="text-[11px] font-semibold opacity-80">{c.label}</p>
-                      <p className="text-lg font-extrabold mt-0.5">{c.value}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Monthly table */}
-              <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-500 text-xs">
-                      <th className="px-4 py-2.5 text-right font-semibold">الشهر</th>
-                      <th className="px-4 py-2.5 text-center font-semibold">الدورات</th>
-                      <th className="px-4 py-2.5 text-center font-semibold">المتدربون</th>
-                      <th className="px-4 py-2.5 text-center font-semibold">الجلسات</th>
-                      <th className="px-4 py-2.5 text-center font-semibold">متوسط الحضور</th>
-                      <th className="px-4 py-2.5 text-center font-semibold">التحصيل</th>
-                      <th className="px-4 py-2.5 text-right font-semibold">أكثر استقبال</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {monthly.months.map(m => (
-                      <tr key={m.month} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-2.5 font-bold text-gray-800">{fmtMonth(m.month)}</td>
-                        <td className="px-4 py-2.5 text-center text-gray-700">{m.rounds}</td>
-                        <td className="px-4 py-2.5 text-center text-gray-700">{m.attendees}</td>
-                        <td className="px-4 py-2.5 text-center text-gray-700">{m.sessions}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          {m.avgAttendancePct !== null
-                            ? <span className={pctColor(m.avgAttendancePct)}>{m.avgAttendancePct}%</span>
-                            : <span className="text-gray-400">—</span>}
-                        </td>
-                        <td className="px-4 py-2.5 text-center font-semibold text-emerald-700">{m.revenue.toLocaleString('ar-EG-u-nu-latn')} ج</td>
-                        <td className="px-4 py-2.5 text-gray-600 text-xs">{m.topReception}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Layers, Plus, Play, Pause, Trash2, Clock, ChevronDown, ChevronUp, CheckCircle, RefreshCw, Mail, MessageSquare, Bell } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -54,7 +55,7 @@ export default function DripCampaignsTab({ notify }: { notify: NotifyFn }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/drip-campaigns`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/drip-campaigns`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setSequences(await res.json());
     } catch { notify('error', 'تعذّر تحميل التسلسلات'); }
     setLoading(false);
@@ -74,7 +75,7 @@ export default function DripCampaignsTab({ notify }: { notify: NotifyFn }) {
     try {
       const res = await fetch(`/api/admin/drip-campaigns/${seq.id}`, {
         method: 'PUT', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify({ name: seq.name, trigger_event: seq.trigger_event, audience: seq.audience, status: newStatus, steps: seq.steps }),
       });
       if (res.ok) { setSequences(ss => ss.map(s => s.id === seq.id ? { ...s, status: newStatus } : s)); }
@@ -83,7 +84,7 @@ export default function DripCampaignsTab({ notify }: { notify: NotifyFn }) {
 
   async function deleteSeq(id: string) {
     try {
-      const res = await fetch(`/api/admin/drip-campaigns/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/admin/drip-campaigns/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) { notify('success', 'تم الحذف'); load(); }
     } catch { notify('error', 'خطأ في الحذف'); }
   }
@@ -94,7 +95,7 @@ export default function DripCampaignsTab({ notify }: { notify: NotifyFn }) {
     try {
       const res = await fetch(`/api/admin/drip-campaigns`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify(newSeq),
       });
       if (res.ok) {

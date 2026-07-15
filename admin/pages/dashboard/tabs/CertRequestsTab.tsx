@@ -1,6 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Star, Trash2, X, ExternalLink } from 'lucide-react';
+import { Search, Star, Trash2, X } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -11,22 +10,25 @@ interface Props {
   courses: Course[];
   subscribers: SubscriberItem[];
   updateSubscriber: (s: SubscriberItem) => void;
+  certSearch: string;
+  setCertSearch: (v: string) => void;
+  certTypeFilter: string;
+  setCertTypeFilter: (v: string) => void;
+  certStatusFilter: string;
+  setCertStatusFilter: (v: string) => void;
 }
 
 export default function CertRequestsTab({
   notify, courses, subscribers, updateSubscriber,
+  certSearch, setCertSearch, certTypeFilter, setCertTypeFilter,
+  certStatusFilter, setCertStatusFilter,
 }: Props) {
-              const navigate = useNavigate();
-              // Filters — tab-local (lifted out of the Dashboard god-hub).
-              const [certSearch, setCertSearch] = useState('');
-              const [certTypeFilter, setCertTypeFilter] = useState('all');
-              const [certStatusFilter, setCertStatusFilter] = useState('all');
               // Gather all extra certificate requests from all subscribers
-              type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string; subscriberCode?: string };
+              type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string };
               const allRequests: CertReqRow[] = [];
               subscribers.forEach(sub => {
                 (sub.extraCertificateRequests || []).forEach(req => {
-                  allRequests.push({ ...req, subscriberName: sub.name, subscriberPhone: sub.phone, subscriberEmail: sub.email, subscriberId: sub.id, subscriberCode: sub.clientCode });
+                  allRequests.push({ ...req, subscriberName: sub.name, subscriberPhone: sub.phone, subscriberEmail: sub.email, subscriberId: sub.id });
                 });
               });
               allRequests.sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
@@ -50,8 +52,8 @@ export default function CertRequestsTab({
                 paid:        { label: 'مدفوعة',                badge: 'bg-blue-100 text-blue-700' },
                 in_progress: { label: 'في الجهة المسئولة',     badge: 'bg-purple-100 text-purple-700' },
                 not_sent:    { label: 'لسه متتبعتش للجهة',     badge: 'bg-orange-100 text-orange-700' },
-                shipped:     { label: 'تم الشحن',              badge: 'bg-indigo-100 text-indigo-700' },
-                issued:      { label: 'صدرت / جاهزة',          badge: 'bg-green-100 text-green-700' },
+                issued:      { label: 'جاهزة للشحن',           badge: 'bg-green-100 text-green-700' },
+                shipped:     { label: 'اتشحنت',                badge: 'bg-cyan-100 text-cyan-700' },
                 at_branch:   { label: 'في الفرع',              badge: 'bg-teal-100 text-teal-700' },
                 delivered:   { label: 'العميل استلمها',        badge: 'bg-emerald-100 text-emerald-800' },
               };
@@ -63,24 +65,19 @@ export default function CertRequestsTab({
               };
 
               const changeStatus = (req: CertReqRow, newStatus: CertStatus) => {
-                // Optimistic UI, then persist to the certificate_requests TABLE (single source of truth).
                 const sub = subscribers.find(s => s.id === req.subscriberId);
-                if (sub) {
-                  const updated = (sub.extraCertificateRequests || []).map(r => r.id === req.id ? { ...r, status: newStatus } : r);
-                  updateSubscriber({ ...sub, extraCertificateRequests: updated });
-                }
-                void mysqlAdmin.updateCertificateRequest(req.id, newStatus).catch(() => {});
+                if (!sub) return;
+                const updated = (sub.extraCertificateRequests || []).map(r => r.id === req.id ? { ...r, status: newStatus } : r);
+                updateSubscriber({ ...sub, extraCertificateRequests: updated });
                 notify('success', `تم تحديث الحالة: ${STATUS_META[newStatus]?.label || newStatus}`);
               };
 
               const deleteCertReq = (req: CertReqRow) => {
                 if (!window.confirm(`حذف طلب الشهادة لـ "${req.subscriberName}"؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
                 const sub = subscribers.find(s => s.id === req.subscriberId);
-                if (sub) {
-                  const updated = (sub.extraCertificateRequests || []).filter(r => r.id !== req.id);
-                  updateSubscriber({ ...sub, extraCertificateRequests: updated });
-                }
-                void mysqlAdmin.deleteCertificateRequest(req.id).catch(() => {});
+                if (!sub) return;
+                const updated = (sub.extraCertificateRequests || []).filter(r => r.id !== req.id);
+                updateSubscriber({ ...sub, extraCertificateRequests: updated });
                 notify('success', 'تم حذف الطلب.');
               };
 
@@ -203,15 +200,7 @@ export default function CertRequestsTab({
                               <tr key={req.id} className="hover:bg-gray-50 border border-gray-100">
                                 {/* Client */}
                                 <td className="px-3 py-2 border border-gray-100">
-                                  {req.subscriberCode ? (
-                                    <button onClick={() => navigate(`/client/${req.subscriberCode}`)}
-                                      title="فتح ملف العميل"
-                                      className="font-bold text-gray-900 hover:text-primary-600 text-xs flex items-center gap-1 transition">
-                                      {req.subscriberName} <ExternalLink size={11} className="text-gray-300" />
-                                    </button>
-                                  ) : (
-                                    <div className="font-bold text-gray-900 text-xs">{req.subscriberName}</div>
-                                  )}
+                                  <div className="font-bold text-gray-900 text-xs">{req.subscriberName}</div>
                                   <div className="text-[11px] text-gray-400">{req.subscriberPhone}</div>
                                 </td>
                                 {/* Cert type */}
@@ -264,22 +253,16 @@ export default function CertRequestsTab({
                                 </td>
                                 {/* Date */}
                                 <td className="px-3 py-2 border border-gray-100 text-xs text-gray-400">{req.requestedAt || '—'}</td>
-                                {/* Actions — one-click status transitions + delete */}
+                                {/* Actions */}
                                 <td className="px-3 py-2 border border-gray-100">
                                   <div className="flex flex-wrap gap-1 items-center">
-                                    {req.status !== 'in_progress' && req.status !== 'issued' && req.status !== 'delivered' && (
-                                      <button onClick={() => changeStatus(req, 'in_progress' as CertStatus)} title="بدء المعالجة" className="text-[10px] px-2 py-1 rounded-lg bg-purple-100 text-purple-700 font-bold hover:bg-purple-200">بدء</button>
-                                    )}
-                                    {req.status !== 'shipped' && req.status !== 'delivered' && (
-                                      <button onClick={() => changeStatus(req, 'shipped' as CertStatus)} title="تم الشحن" className="text-[10px] px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200">📦 شحن</button>
-                                    )}
-                                    {req.status !== 'issued' && req.status !== 'delivered' && (
-                                      <button onClick={() => changeStatus(req, 'issued' as CertStatus)} title="صدرت / جاهزة" className="text-[10px] px-2 py-1 rounded-lg bg-green-100 text-green-700 font-bold hover:bg-green-200">✅ صدرت</button>
-                                    )}
-                                    {req.status !== 'delivered' && (
-                                      <button onClick={() => changeStatus(req, 'delivered' as CertStatus)} title="العميل استلمها" className="text-[10px] px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 font-bold hover:bg-emerald-200">🎓 تسليم</button>
-                                    )}
-                                    <button onClick={() => deleteCertReq(req)} title="حذف الطلب" className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={14} /></button>
+                                    <button
+                                      onClick={() => deleteCertReq(req)}
+                                      title="حذف الطلب"
+                                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
                                   </div>
                                 </td>
                               </tr>

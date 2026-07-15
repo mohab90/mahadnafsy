@@ -1,14 +1,20 @@
 import React, { useState, useMemo } from 'react';
 import { BookOpen, Download, FileText, Save, Sparkles } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { SafeHtml } from '../../../components/SafeHtml';
-import type { CourseQuiz, QuizQuestion } from '../../../types';
+import { SafeHtml } from '../../../../shared/ui/SafeHtml';
+import type { Course, CourseLectureItem, CourseQuiz, QuizAttempt, QuizQuestion } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 interface Props {
   notify: NotifyFn;
 }
+
+const safeStoredImageSrc = (image: string | undefined) => {
+  const value = String(image || '').trim();
+  if (!value || /top4top\.io/i.test(value)) return '';
+  return value;
+};
 
 // ─── AI helper ───────────────────────────────────────────────────────────────
 async function callAI(apiKey: string, model: string, prompt: string, maxTokens = 6000): Promise<string> {
@@ -54,7 +60,7 @@ function downloadLectureNotesAsPdf(lectureTitle: string, courseTitle: string, ht
 <div class="header">
   <div class="course-label">${courseTitle}</div>
   <h1>${lectureTitle}</h1>
-  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
 </div>
 ${htmlContent}
 <div class="footer">تم إنشاء هذا المحتوى بالذكاء الاصطناعي — ${courseTitle}</div>
@@ -79,7 +85,7 @@ ${htmlContent}
 // ─── Main component ───────────────────────────────────────────────────────────
 const QuizzesTab: React.FC<Props> = ({ notify }) => {
   const { courses, lectures: allLectures, courseQuizzes, quizAttempts,
-    addCourseQuiz, updateCourseQuiz, deleteCourseQuiz, updateLecture, adminAiConfig } = useSiteData() as any;
+    addCourseQuiz, updateCourseQuiz, deleteCourseQuiz, updateLecture, adminAiConfig } = useSiteData();
 
   const [mainTab, setMainTab] = useState<'quiz' | 'content'>('quiz');
   const [selectedCourseId, setSelectedCourseId] = useState('');
@@ -98,16 +104,16 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
   const [notesCache, setNotesCache] = useState<Record<string, string>>({});
   const [savingLectureId, setSavingLectureId] = useState('');
 
-  const selectedCourse = (courses as any[]).find((c: any) => String(c.id) === selectedCourseId);
-  const existingQuiz = (courseQuizzes as any[]).find((q: any) => q.courseId === selectedCourseId);
+  const selectedCourse = courses.find((c: Course) => String(c.id) === selectedCourseId);
+  const existingQuiz = courseQuizzes.find((q: CourseQuiz) => q.courseId === selectedCourseId);
   const activeQuiz = quizDraft || existingQuiz || null;
-  const courseAttempts = (quizAttempts as any[]).filter((a: any) => a.courseId === selectedCourseId);
-  const avgScore = courseAttempts.length > 0 ? Math.round(courseAttempts.reduce((s: number, a: any) => s + a.score, 0) / courseAttempts.length) : null;
+  const courseAttempts = quizAttempts.filter((a: QuizAttempt) => a.courseId === selectedCourseId);
+  const avgScore = courseAttempts.length > 0 ? Math.round(courseAttempts.reduce((s: number, a: QuizAttempt) => s + a.score, 0) / courseAttempts.length) : null;
 
   // Lectures for selected course
   const courseLectures = useMemo(() =>
-    (allLectures as any[]).filter((l: any) => String(l.courseId) === selectedCourseId)
-      .sort((a: any, b: any) => (a.order ?? a.sortOrder ?? 0) - (b.order ?? b.sortOrder ?? 0)),
+    allLectures.filter((l: CourseLectureItem) => String(l.courseId) === selectedCourseId)
+      .sort((a: CourseLectureItem, b: CourseLectureItem) => (a.order ?? 0) - (b.order ?? 0)),
     [allLectures, selectedCourseId]
   );
 
@@ -118,7 +124,7 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
     if (selectedCourse.description) mat += `الوصف: ${selectedCourse.description}\n\n`;
     if (courseLectures.length > 0) {
       mat += `محاضرات الكورس (${courseLectures.length} محاضرة):\n`;
-      courseLectures.forEach((l: any, i: number) => { mat += `${i + 1}. ${l.title}\n`; });
+      courseLectures.forEach((l: CourseLectureItem, i: number) => { mat += `${i + 1}. ${l.title}\n`; });
     }
     return mat;
   };
@@ -162,13 +168,13 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
 
   // ── Generate lecture notes ──
   const handleGenerateNotes = async (lectureId: string) => {
-    const lecture = courseLectures.find((l: any) => l.id === lectureId);
+    const lecture = courseLectures.find((l: CourseLectureItem) => l.id === lectureId);
     if (!lecture || !selectedCourse) return;
     const apiKey = getApiKey();
     if (!apiKey) { alert('لم يتم ضبط مفتاح API.'); return; }
     setGeneratingLectureId(lectureId);
     try {
-      const lectureList = courseLectures.map((l: any, i: number) => `${i + 1}. ${l.title}`).join('\n');
+      const lectureList = courseLectures.map((l: CourseLectureItem, i: number) => `${i + 1}. ${l.title}`).join('\n');
       const prompt = `أنت خبير تعليمي. اكتب محتوى تعليمياً شاملاً ومنظماً للمحاضرة التالية.
 
 الكورس: ${selectedCourse.title}
@@ -206,7 +212,7 @@ ${lectureList}
   };
 
   const handleSaveLectureNotes = async (lectureId: string) => {
-    const lecture = courseLectures.find((l: any) => l.id === lectureId);
+    const lecture = courseLectures.find((l: CourseLectureItem) => l.id === lectureId);
     if (!lecture) return;
     const notes = getLectureNotes(lectureId);
     if (!notes) return;
@@ -223,17 +229,18 @@ ${lectureList}
   // ── Course sidebar ──
   const CourseSidebar = () => (
     <div className="w-64 flex-shrink-0 space-y-1 max-h-[640px] overflow-y-auto pr-1">
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pb-1.5">الكورسات ({(courses as any[]).length})</p>
-      {(courses as any[]).map((course: any) => {
-        const hasQuiz = (courseQuizzes as any[]).some((q: any) => q.courseId === String(course.id));
-        const notesCount = (allLectures as any[]).filter((l: any) => String(l.courseId) === String(course.id) && (localStorage.getItem(`lecture_notes:${l.id}`) || l.aiNotes)).length;
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pb-1.5">الكورسات ({courses.length})</p>
+      {courses.map((course: Course) => {
+        const hasQuiz = courseQuizzes.some((q: CourseQuiz) => q.courseId === String(course.id));
+        const notesCount = allLectures.filter((l: CourseLectureItem) => String(l.courseId) === String(course.id) && (localStorage.getItem(`lecture_notes:${l.id}`) || l.aiNotes)).length;
         const isSel = selectedCourseId === String(course.id);
+        const thumbnailSrc = safeStoredImageSrc(course.thumbnail);
         return (
           <button key={course.id}
             onClick={() => { setSelectedCourseId(String(course.id)); setQuizDraft(null); setQuizEditIdx(null); setQuizMaterial(''); setSelectedLectureId(''); }}
             className={['w-full text-right p-2.5 rounded-xl border transition', isSel ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-100 hover:border-gray-200'].join(' ')}>
             <div className="flex items-center gap-2">
-              {course.thumbnail && <img src={course.thumbnail} alt="" className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />}
+              {thumbnailSrc ? <img src={thumbnailSrc} alt="" className="w-7 h-7 rounded-lg object-cover flex-shrink-0" /> : <BookOpen size={18} className="text-gray-300 flex-shrink-0" />}
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-800 text-xs leading-snug line-clamp-1">{course.title}</p>
                 <div className="flex gap-1 mt-0.5">
@@ -293,7 +300,7 @@ ${lectureList}
                     <div className="mt-3 flex gap-3 text-xs flex-wrap">
                       <span className="bg-blue-50 text-blue-700 font-bold px-3 py-1 rounded-full">{courseAttempts.length} محاولة</span>
                       {avgScore !== null && <span className="bg-amber-50 text-amber-700 font-bold px-3 py-1 rounded-full">متوسط {avgScore}%</span>}
-                      <span className="bg-green-50 text-green-700 font-bold px-3 py-1 rounded-full">{courseAttempts.filter((a: any) => a.passed).length} ناجح</span>
+                      <span className="bg-green-50 text-green-700 font-bold px-3 py-1 rounded-full">{courseAttempts.filter((a: QuizAttempt) => a.passed).length} ناجح</span>
                     </div>
                   )}
                 </div>
@@ -301,7 +308,7 @@ ${lectureList}
                   <h4 className="font-bold text-gray-800 flex items-center gap-2 text-sm"><Sparkles size={15} className="text-purple-500"/>توليد اختبار بالذكاء الاصطناعي (20 سؤال)</h4>
                   <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-700">
                     <strong>المنهج المستخدم ({courseLectures.length} محاضرة):</strong>
-                    <div className="mt-1 text-indigo-600 line-clamp-3">{courseLectures.map((l: any) => l.title).join(' — ')}</div>
+                    <div className="mt-1 text-indigo-600 line-clamp-3">{courseLectures.map((l: CourseLectureItem) => l.title).join(' — ')}</div>
                   </div>
                   <textarea rows={3} value={quizMaterial} onChange={e => setQuizMaterial(e.target.value)}
                     placeholder="أضف محتوى إضافياً اختيارياً (أو اتركه فارغاً لاستخدام منهج الكورس تلقائياً)"
@@ -374,7 +381,7 @@ ${lectureList}
                 {courseLectures.length === 0 && (
                   <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">لا توجد محاضرات لهذا الكورس</div>
                 )}
-                {courseLectures.map((lecture: any) => {
+                {courseLectures.map((lecture: CourseLectureItem) => {
                   const notes = getLectureNotes(lecture.id);
                   const isGenSel = selectedLectureId === lecture.id;
                   const isGenerating = generatingLectureId === lecture.id;

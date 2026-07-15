@@ -39,9 +39,13 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   // Staff
   view_staff: 'عرض الموظفين (قراءة فقط)',
   manage_staff: 'إدارة الموظفين والصلاحيات',
+  view_hr: 'عرض الموارد البشرية',
+  manage_hr: 'إدارة الموارد البشرية',
   // Orders & payments
   view_orders: 'عرض الطلبات والمدفوعات',
   manage_orders: 'إدارة الطلبات والمدفوعات',
+  manage_payments: 'تسجيل وتعديل المدفوعات',
+  approve_refunds: 'اعتماد أو رفض الاستردادات',
   view_financial: 'عرض النظام المحاسبي',
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',
   // Reports
@@ -50,6 +54,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_inbox: 'إدارة صندوق الوارد والمحادثات',
   manage_notifications: 'إدارة الإشعارات',
   manage_channel_settings: 'إعدادات قنوات التواصل',
+  bulk_whatsapp: 'إرسال واتساب جماعي',
   // Communication records
   view_join_us: 'عرض طلبات الانضمام',
   manage_join_us: 'إدارة طلبات الانضمام',
@@ -59,6 +64,10 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_activity: 'عرض سجل النشاط',
   manage_daqqi: 'إدارة جدول كورسات الدقي',
   manage_automation: 'إدارة الأتوميشن والوركفلو',
+  view_security: 'عرض الأمن والمراقبة',
+  manage_security: 'إدارة الأمن والمراقبة',
+  view_settings: 'عرض إعدادات النظام',
+  manage_settings: 'إدارة إعدادات النظام',
   // Client database
   view_client_db: 'عرض قاعدة العملاء الموحدة',
   // AI
@@ -96,7 +105,7 @@ const blankLead = (): LeadItem => ({
   phone: '',
   source: 'Manual',
   status: 'new',
-  createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', {
+  createdAt: new Date().toLocaleString('ar-EG', {
     hour12: false,
     year: 'numeric',
     month: '2-digit',
@@ -189,7 +198,7 @@ const ROLE_DEFAULT_PERMISSIONS: Record<string, StaffPermission[]> = {
     Object.keys(MASTER_ROLE_PERMS).map(r => [r, getDefaultPermsArray(r) as StaffPermission[]])
   ),
   // Legacy roles kept for UI backwards-compat (not in master 14-role list)
-  expert: ['view_dashboard', 'view_courses', 'view_subscribers'] as StaffPermission[],
+  expert: ['view_dashboard', 'view_courses'] as StaffPermission[],
   other:  ['view_dashboard'] as StaffPermission[],
 };
 // Dummy reference to suppress "unused import" lint warnings
@@ -532,7 +541,7 @@ const _normalizeClientDate = (d: unknown): string => {
 
 const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   overview:           'view_dashboard',
-  branch_workspace:   'view_client_db',
+  kpi_dashboard:      'view_reports',
   analytics:          'view_reports',
   ask_ai:             'ask_ai',
   ai_dev:             'ai_dev',
@@ -552,6 +561,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   daqqi_team:         'manage_daqqi',
   daqqi_accounting:   'manage_daqqi',
   daqqi_stats:        'manage_daqqi',
+  daqqi_attendance:   'manage_daqqi',
   waitlist:           'manage_daqqi',
   courses:            'view_courses',
   lectures:           'manage_lectures',
@@ -563,12 +573,18 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   live_streams:       'manage_courses',
   orders:             'view_orders',
   financial:          'view_financial',
+  financial_reports:  'view_financial',
   balance_sheet:      'view_financial',
   cash_flow:          'view_financial',
   recurring_expenses: 'view_financial',
   budget_tracker:     'view_financial',
   revenue_forecast:   'view_financial',
-  hr:                 'view_staff',
+  retention:          'view_reports',
+  cohort_analysis:    'view_reports',
+  revenue_sources:    'view_reports',
+  expense_analytics:  'view_reports',
+  hr:                 'view_hr',
+  customer_inbox:     'manage_inbox',
   join_us:            'view_join_us',
   contacts:           'view_contacts',
   tickets:            'manage_inbox',
@@ -580,11 +596,15 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   automation:         'manage_automation',
   admin_ai_settings:  'manage_ai_settings',
   messaging_agent:    'manage_channel_settings',
-  system_settings:    'manage_staff',
-  server_monitor:     'manage_staff',
-  webhooks:           'manage_staff',
-  security_dashboard: 'manage_staff',
-  pg_migrate:         'manage_staff',
+  system_settings:    'manage_settings',
+  payment_settings:   'manage_settings',
+  lead_sources_settings: 'manage_settings',
+  otp_settings:       'manage_security',
+  branch_workspaces:  'manage_settings',
+  server_monitor:     'view_security',
+  webhooks:           'manage_settings',
+  security_dashboard: 'view_security',
+  pg_migrate:         'manage_settings',
   // Staff personal portal — accessible by any authenticated staff
   staff_home:         'view_dashboard',
   my_hr:              'view_dashboard',

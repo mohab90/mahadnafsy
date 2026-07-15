@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Shield, Plus, Trash2, CheckCircle, XCircle, Globe, AlertCircle, RefreshCw, Save } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -21,7 +22,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
   async function loadWhitelist() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/ip-whitelist`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/ip-whitelist`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setWhitelist(data.whitelist || []);
@@ -48,7 +49,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
       const res = await fetch(`/api/admin/ip-whitelist`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify({ ip: newIp.trim(), label: newLabel.trim() || null }),
       });
       if (res.ok) {
@@ -65,7 +66,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
 
   async function removeIp(id: number) {
     try {
-      const res = await fetch(`/api/admin/ip-whitelist/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/admin/ip-whitelist/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) { setWhitelist(prev => prev.filter(e => e.id !== id)); notify('success', 'تم حذف الـ IP'); }
       else notify('error', 'فشل الحذف');
     } catch { notify('error', 'خطأ في الحذف'); }
@@ -101,7 +102,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
         <AlertCircle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
         <div className="text-amber-800 text-sm">
-          <strong>تنبيه مهم:</strong> الفرض الفعلي للقائمة على مسارات <code>/api/admin</code> يعمل فقط عند تفعيله من السيرفر بضبط متغيّر البيئة <code>IP_WHITELIST_ENFORCE=true</code>. قبل التفعيل القائمة مرجعية فقط. حمايات ضد الإغلاق: القائمة الفارغة = مُعطّلة، وصفحة إدارة الـ IP نفسها لا تُحجب أبداً حتى تستطيع التعديل دائماً. <strong>أضِف الـ IP الحالي الخاص بك أولاً قبل التفعيل.</strong>
+          <strong>تحذير:</strong> إضافة IP لا يعني تلقائياً تفعيل قيود الوصول. هذه القائمة مرجعية وستُربط بإعدادات الأمان من خلال API لاحقاً.
         </div>
       </div>
 

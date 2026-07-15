@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Target, Trophy, Edit2, Save, X, Plus, TrendingUp, Users, CheckCircle, AlertCircle } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -11,10 +10,11 @@ interface Goal {
   monthlyLeadsTarget: number;
 }
 
-const MONTH_LABEL = new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
+const MONTH_LABEL = new Date().toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
 
 export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   const { staffMembers, leads, orders } = useSiteData();
+  const [goals, setGoals] = useState<Record<string, Goal>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ monthlyTarget: string; monthlyLeadsTarget: string }>({ monthlyTarget: '', monthlyLeadsTarget: '' });
 
@@ -22,22 +22,6 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   const monthStart = `${MONTH}-01`;
 
   const salesStaff = useMemo(() => staffMembers.filter(s => s.status === 'active'), [staffMembers]);
-
-  // Goals come from the shared sales_targets table (per staff, this month) — the
-  // single source of truth also used by the leads performance panel. Survives refresh.
-  const [goals, setGoals] = useState<Record<string, Goal>>({});
-  useEffect(() => {
-    let alive = true;
-    mysqlAdmin.listSalesTargets(MONTH).then(rows => {
-      if (!alive) return;
-      const m: Record<string, Goal> = {};
-      for (const r of (rows as unknown as { staffId: string; revenueTarget: number; leadsTarget: number }[])) {
-        m[r.staffId] = { staffId: r.staffId, monthlyTarget: Number(r.revenueTarget) || 0, monthlyLeadsTarget: Number(r.leadsTarget) || 0 };
-      }
-      setGoals(m);
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, [MONTH]);
 
   const stats = useMemo(() => salesStaff.map(s => {
     const g = goals[s.id];
@@ -67,14 +51,16 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
   }
 
   function saveEdit(staffId: string) {
-    const revenueTarget = Number(editValues.monthlyTarget) || 0;
-    const leadsTarget = Number(editValues.monthlyLeadsTarget) || 0;
-    // Persist to the shared sales_targets table for this month.
-    setGoals(prev => ({ ...prev, [staffId]: { staffId, monthlyTarget: revenueTarget, monthlyLeadsTarget: leadsTarget } }));
+    setGoals(prev => ({
+      ...prev,
+      [staffId]: {
+        staffId,
+        monthlyTarget: Number(editValues.monthlyTarget) || 0,
+        monthlyLeadsTarget: Number(editValues.monthlyLeadsTarget) || 0,
+      }
+    }));
     setEditingId(null);
-    mysqlAdmin.saveSalesTarget({ staffId, period: MONTH, revenueTarget, leadsTarget })
-      .then(() => notify('success', 'تم حفظ الهدف'))
-      .catch(() => notify('error', 'تعذّر حفظ الهدف'));
+    notify('success', 'تم حفظ الهدف');
   }
 
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
@@ -181,8 +167,8 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
         </div>
       </div>
 
-      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 text-sm">
-        <strong>ملاحظة:</strong> تُحفظ الأهداف في قاعدة البيانات (جدول الأهداف المشترك) وتبقى بعد إعادة التحميل ومن أي جهاز.
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-800 text-sm">
+        <strong>ملاحظة:</strong> الأهداف المحددة هنا مؤقتة ولا تُحفظ في قاعدة البيانات حتى الآن. ستُضاف ميزة الحفظ الدائم قريباً.
       </div>
     </div>
   );

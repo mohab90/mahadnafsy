@@ -1,10 +1,26 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { Info, ArrowRight, Loader } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { LeadItem, SubscriberItem } from '../types';
-import UnifiedClientPage from './UnifiedClientPage';
+
+const UnifiedClientPage = React.lazy(() => import('./UnifiedClientPage'));
+
+const UnifiedClientFallback = () => (
+  <div className="min-h-screen flex items-center justify-center" dir="rtl">
+    <div className="text-center text-gray-400">
+      <Loader size={36} className="animate-spin mx-auto mb-3 text-indigo-400" />
+      <p>جاري تحميل ملف العميل...</p>
+    </div>
+  </div>
+);
+
+const UnifiedClientView: React.FC<{ subscriber?: SubscriberItem; lead?: LeadItem }> = (props) => (
+  <React.Suspense fallback={<UnifiedClientFallback />}>
+    <UnifiedClientPage {...props} />
+  </React.Suspense>
+);
 
 /**
  * Unified client profile page — accessible via /client/:code
@@ -43,7 +59,7 @@ const ClientProfile: React.FC = () => {
   // ─── 1. Look up subscriber (by id OR clientCode) ─────────────────────
   const sub = allSubs.find((s) => s.id === code || (s.clientCode && s.clientCode === code));
   if (sub) {
-    return <UnifiedClientPage subscriber={sub} />;
+    return <UnifiedClientView subscriber={sub} />;
   }
 
   // ─── 2. Look up lead (by id OR clientCode) ─────────────────────────────
@@ -58,7 +74,7 @@ const ClientProfile: React.FC = () => {
         (leadPhone && leadPhone.length >= 8 && s.phone && s.phone.replace(/\D/g, '') === leadPhone)
     );
     if (linkedSub) return <Navigate to={`/client/${linkedSub.clientCode || linkedSub.id}`} replace />;
-    return <UnifiedClientPage lead={lead} />;
+    return <UnifiedClientView lead={lead} />;
   }
 
   // ─── 3. Look up via DaqqiRound attendees ───────────────────────────────
@@ -66,7 +82,7 @@ const ClientProfile: React.FC = () => {
     const attendee = round.attendees.find((a) => a.subscriberId === code);
     if (attendee) {
       const attendeeSub = allSubs.find((s) => s.id === attendee.subscriberId);
-      if (attendeeSub) return <UnifiedClientPage subscriber={attendeeSub} />;
+      if (attendeeSub) return <UnifiedClientView subscriber={attendeeSub} />;
     }
   }
 
@@ -82,13 +98,13 @@ const ClientProfile: React.FC = () => {
         (consult.clientEmail && s.email && s.email.toLowerCase() === consult.clientEmail.toLowerCase()) ||
         (consult.clientPhone && s.phone && s.phone.replace(/\D/g, '') === consult.clientPhone.replace(/\D/g, ''))
     );
-    if (consultSub) return <UnifiedClientPage subscriber={consultSub} />;
+    if (consultSub) return <UnifiedClientView subscriber={consultSub} />;
     const consultLead = allLeads.find(
       (l) =>
         (consult.clientEmail && l.email && l.email.toLowerCase() === consult.clientEmail.toLowerCase()) ||
         (consult.clientPhone && l.phone && l.phone.replace(/\D/g, '') === consult.clientPhone.replace(/\D/g, ''))
     );
-    if (consultLead) return <UnifiedClientPage lead={consultLead} />;
+    if (consultLead) return <UnifiedClientView lead={consultLead} />;
   }
 
   // ─── 5. Remote fetch — for non-admin staff whose context is empty ───────
@@ -149,8 +165,8 @@ const RemoteFallback: React.FC<{
     );
   }
 
-  if (remoteSub) return <UnifiedClientPage subscriber={remoteSub} />;
-  if (remoteLead) return <UnifiedClientPage lead={remoteLead} />;
+  if (remoteSub) return <UnifiedClientView subscriber={remoteSub} />;
+  if (remoteLead) return <UnifiedClientView lead={remoteLead} />;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-gray-500" dir="rtl">

@@ -134,7 +134,7 @@ export default function ForecastTab({ notify }: { notify: NotifyFn }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="month" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={v => fmtMoney(v)} />
-            <Tooltip formatter={((v: number) => [`${v?.toLocaleString()} ج`, '']) as any} />
+            <Tooltip formatter={(v: number) => [`${v?.toLocaleString()} ج`, '']} />
             <Area type="monotone" dataKey="actual" stroke="#6366f1" fill="url(#actualGrad)" strokeWidth={2} name="فعلي" dot={{ r: 3 }} connectNulls={false} />
             <Area type="monotone" dataKey="forecast" stroke="#06b6d4" fill="url(#forecastGrad)" strokeWidth={2} strokeDasharray="6 3" name="متوقع" dot={{ r: 3 }} connectNulls={false} />
           </AreaChart>

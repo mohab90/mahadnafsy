@@ -54,7 +54,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
       if (branchFilter) params.set('branch', branchFilter);
-      const data = await mysqlAdmin.adminGet<WaitlistEntry[]>(`/api/admin/waitlist?${params}`);
+      const data = await mysqlAdmin.adminGet<WaitlistEntry[]>(`/admin/waitlist?${params}`);
       setEntries(Array.isArray(data) ? data : []);
     } catch { notify('error', 'فشل تحميل قائمة الانتظار'); }
     finally { setLoading(false); }
@@ -65,7 +65,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
   const updateStatus = async (id: string, status: WaitlistEntry['status']) => {
     setUpdatingId(id);
     try {
-      await mysqlAdmin.adminPatch(`/api/admin/waitlist/${id}`, { status });
+      await mysqlAdmin.adminPatch(`/admin/waitlist/${id}`, { status });
       setEntries(prev => prev.map(e => e.id === id ? { ...e, status } : e));
       notify('success', `تم تحديث الحالة إلى: ${STATUS_LABELS[status]}`);
     } catch { notify('error', 'فشل تحديث الحالة'); }
@@ -81,7 +81,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
         id: crypto.randomUUID(),
         name: entry.name,
         phone: entry.phone,
-        email: entry.email || '',
+        email: entry.email || undefined,
         status: 'new',
         leadType: 'general',
         interestLevel: 'medium',
@@ -94,7 +94,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
         clientCode,
       };
       await addLead(lead);
-      await mysqlAdmin.adminPatch(`/api/admin/waitlist/${entry.id}`, { status: 'enrolled' });
+      await mysqlAdmin.adminPatch(`/admin/waitlist/${entry.id}`, { status: 'enrolled' });
       setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, status: 'enrolled' } : e));
       notify('success', `تم تحويل ${entry.name} إلى Lead بكود ${clientCode}`);
     } catch { notify('error', 'فشل تحويل العميل إلى Lead'); }

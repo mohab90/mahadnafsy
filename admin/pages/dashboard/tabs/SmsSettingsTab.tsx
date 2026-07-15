@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { MessageSquare, Save, RefreshCw, CheckCircle, AlertCircle, Send, TestTube, Globe, Key, Phone } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -39,10 +40,15 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
   async function loadSettings() {
     setLoading(true);
     try {
-      const res = await fetch(apiPath('/settings/sms'), { credentials: 'include' });
+      const res = await fetch(apiPath('/admin/sms-settings'), { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) {
         const d = await res.json();
-        setConfig({ ...DEFAULT_CONFIG, ...d });
+        setConfig({
+          ...DEFAULT_CONFIG,
+          provider: d.provider || DEFAULT_CONFIG.provider,
+          senderId: d.sender_id || DEFAULT_CONFIG.senderId,
+          enabled: Boolean(d.is_active),
+        });
       }
     } catch {}
     finally { setLoading(false); }
@@ -58,11 +64,16 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
   async function saveSettings() {
     setSaving(true);
     try {
-      const res = await fetch(apiPath('/settings/sms'), {
-        method: 'POST',
+      const res = await fetch(apiPath('/admin/sms-settings'), {
+        method: 'PUT',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        headers: adminAuthHeaders(true),
+        body: JSON.stringify({
+          provider: config.provider,
+          sender_id: config.senderId,
+          is_active: config.enabled,
+          ...(config.apiKey.trim() ? { api_key: config.apiKey.trim() } : {}),
+        }),
       });
       if (res.ok) notify('success', 'تم حفظ إعدادات SMS');
       else notify('error', 'فشل الحفظ');
@@ -75,11 +86,11 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
     if (!testPhone.trim()) { notify('error', 'أدخل رقم الهاتف'); return; }
     setTesting(true);
     try {
-      const res = await fetch(apiPath('/settings/sms/test'), {
+      const res = await fetch(apiPath('/admin/sms/send'), {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: testPhone, message: testMessage }),
+        headers: adminAuthHeaders(true),
+        body: JSON.stringify({ to: testPhone, message: testMessage }),
       });
       const d = await res.json();
       if (res.ok) notify('success', 'تم إرسال رسالة الاختبار بنجاح!');

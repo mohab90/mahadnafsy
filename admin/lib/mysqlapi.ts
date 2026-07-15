@@ -121,6 +121,8 @@ export const mysqlAdmin = {
   listAllCourses:          (limit = 500)  => apiFetch<AR[]>(`/admin/courses?limit=${limit}`, {}, A),
   getOnlineUsers:          ()             => apiFetch<AR[]>('/admin/online-users', {}, A),
   listAllTherapists:       ()             => apiFetch<AR[]>('/admin/therapists', {}, A),
+  listSubscribersPage:     (limit = 500, offset = 0) => apiFetch<AR[]>(`/admin/subscribers?limit=${limit}&offset=${offset}`, {}, A),
+  listLeadsPage:           (limit = 500, offset = 0) => apiFetch<AR[]>(`/admin/leads?limit=${limit}&offset=${offset}`, {}, A),
   // pageSize=5000 matches the server's parseLimit(...,500,5000) hard cap on both
   // endpoints — the largest page the server will ever actually return. At the
   // real prod scale (1164 subscribers, 13173 leads) this cuts the sequential

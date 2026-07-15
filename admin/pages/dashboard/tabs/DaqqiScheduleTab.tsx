@@ -1,54 +1,46 @@
 ﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeftRight, CalendarDays, ChevronRight,
-  CreditCard, Eye, List, MessageCircle, Pencil, Phone, Plus,
+  ArrowLeftRight, BookOpen, CalendarDays, ChevronRight,
+  CreditCard, Eye, MessageCircle, Pencil, Phone,
   Search, UserCheck, UserPlus, Users, X,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type {
   DaqqiDayOfWeek, DaqqiRound, DaqqiTimeSlot,
-  PaymentHistoryEntry, CommunicationRecord, SubscriberItem,
+  PaymentHistoryEntry, PaymentItemType, CommunicationRecord,
+  ExtraCertificateRequest, ExtraCertificateType, SubscriberItem,
   Bundle, Course,
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { DaqqiPayModal } from './daqqi/DaqqiPayModal';
-import type { DaqqiPayDraft } from './daqqi/DaqqiPayModal';
-import { DaqqiPayReceiptModal } from './daqqi/DaqqiPayReceiptModal';
-import type { DaqqiPayPrintData } from './daqqi/DaqqiPayReceiptModal';
-import { DaqqiAddClientModal } from './daqqi/DaqqiAddClientModal';
-import { DaqqiEditRoundModal } from './daqqi/DaqqiEditRoundModal';
-import type { DaqqiDraftType } from './daqqi/DaqqiEditRoundModal';
-import { DaqqiTransferModal } from './daqqi/DaqqiTransferModal';
-import { DaqqiToskeenModal } from './daqqi/DaqqiToskeenModal';
-import { DaqqiPostponeModal } from './daqqi/DaqqiPostponeModal';
-import { DaqqiCommModal } from './daqqi/DaqqiCommModal';
-import { DaqqiClientsSection } from './daqqi/DaqqiClientsSection';
+import { DaqqiScheduleHeader } from './daqqi/DaqqiScheduleHeader';
+import { useDaqqiPaymentState } from './daqqi/useDaqqiPaymentState';
+import { useDaqqiViewFilters } from './daqqi/useDaqqiViewFilters';
+import {
+  DAQQI_DAYS_OF_WEEK,
+  DAQQI_STATUS_COLORS,
+  DAQQI_TIME_SLOT_COLORS,
+  DAQQI_TIME_SLOTS,
+} from './daqqi/daqqiScheduleConfig';
+import {
+  blankDaqqiDraft,
+  calcCurrentLecture,
+  courseBundles,
+  enrolledLabels,
+  getCurrentWeekKey,
+  isEnrolledInCourse,
+  normalizeDaqqiBranchId,
+  parseDaqqiBranchIds,
+  parseDaqqiRooms,
+  type DaqqiDraftType,
+} from './daqqi/daqqiScheduleUtils';
+import { branchMatchesFilter } from '../branchWorkspaceFilters';
 
-// ── Module-level helpers ────────────────────────────────────────────────────
-const calcCurrentLecture = (startDate: string, postponedWeeks?: string[]): number => {
-  if (!startDate) return 1;
-  const start = new Date(startDate);
-  const today = new Date();
-  const daysDiff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  const weeksElapsed = Math.max(0, Math.floor(daysDiff / 7));
-  return Math.max(1, weeksElapsed + 1 - (postponedWeeks?.length || 0));
-};
-
-const getCurrentWeekKey = (): string => {
-  const d = new Date();
-  const day = d.getDay();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return monday.toISOString().slice(0, 10);
-};
-
-const blankDaqqiDraft = (): DaqqiDraftType => ({
-  courseId: '', instructorId: '', receptionId: '', roomId: '',
-  dayOfWeek: 'الأحد' as DaqqiDayOfWeek,
-  startDate: new Date().toISOString().slice(0, 10),
-  timeSlot: 'مساءً' as DaqqiTimeSlot,
-});
+const DaqqiPayModal = React.lazy(() => import('./daqqi/DaqqiPayModal').then(module => ({ default: module.DaqqiPayModal })));
+const DaqqiPaymentReceiptModal = React.lazy(() => import('./daqqi/DaqqiPaymentReceiptModal').then(module => ({ default: module.DaqqiPaymentReceiptModal })));
+const DaqqiPostponeRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiPostponeRoundModal })));
+const DaqqiToskeenRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiToskeenRoundModal })));
+const DaqqiTransferRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiTransferRoundModal })));
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -61,9 +53,10 @@ interface Props {
   onRoundUpdate?: (round: DaqqiRound) => void;
   onRoundCreate?: (round: DaqqiRound) => void;
   createRoundRef?: React.MutableRefObject<(() => void) | null>;
+  branchFilter?: string;
 }
 
-const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef }) => {
+const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter }) => {
   const navigate = useNavigate();
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber,
@@ -109,110 +102,74 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const [daqqiAddClientsCourseSel, setDaqqiAddClientsCourseSel] = useState<Record<string, string>>({});
   const [daqqiEditRoundId, setDaqqiEditRoundId] = useState<string>('');
   const [daqqiEditDraft, setDaqqiEditDraft] = useState<DaqqiDraftType>(blankDaqqiDraft());
-  const [daqqiView, setDaqqiView] = useState<'table' | 'calendar'>('table');
-  const [daqqiFilterCourse, setDaqqiFilterCourse] = useState('');
-  const [daqqiFilterInstructor, setDaqqiFilterInstructor] = useState('');
-  const [daqqiFilterDay, setDaqqiFilterDay] = useState('');
-  const [daqqiFilterTimeSlot, setDaqqiFilterTimeSlot] = useState('');
-  const [daqqiFilterStatus, setDaqqiFilterStatus] = useState('');
-  const [daqqiFilterReception, setDaqqiFilterReception] = useState('');
-  const [daqqiPayModal, setDaqqiPayModal] = useState<{ subscriberId: string; subscriberName: string; roundId?: string; attendeeAmountPaid?: number } | null>(null);
-  const [daqqiPayDraft, setDaqqiPayDraft] = useState<DaqqiPayDraft>({
-    bookingType: 'new_booking',
-    paymentType: 'course',
-    courseId: '', courseExpected: '', bookingDiscount: '',
-    customExpected: '', discountPct: '',
-    certType: '', certReqId: '',
-    amount: '', currency: 'EGP',
-    paymentMethod: '', transactionId: '', fromAccountNumber: '',
-    date: new Date().toISOString().slice(0, 10), note: '',
-    extraItems: [],
-  });
+  const {
+    daqqiView,
+    setDaqqiView,
+    daqqiFilterCourse,
+    setDaqqiFilterCourse,
+    daqqiFilterInstructor,
+    setDaqqiFilterInstructor,
+    daqqiFilterDay,
+    setDaqqiFilterDay,
+    daqqiFilterTimeSlot,
+    setDaqqiFilterTimeSlot,
+    daqqiFilterStatus,
+    setDaqqiFilterStatus,
+    daqqiFilterReception,
+    setDaqqiFilterReception,
+    hasDaqqiFilters,
+    clearDaqqiFilters,
+  } = useDaqqiViewFilters();
+  const {
+    daqqiPayModal,
+    setDaqqiPayModal,
+    daqqiPayDraft,
+    setDaqqiPayDraft,
+    resetDaqqiPayDraft,
+    daqqiPayPrintData,
+    setDaqqiPayPrintData,
+  } = useDaqqiPaymentState();
   const [daqqiTransferModal, setDaqqiTransferModal] = useState<{ subscriberId: string; fromRoundId: string } | null>(null);
   const [daqqiTransferTargetId, setDaqqiTransferTargetId] = useState('');
   const [daqqiPostponeModal, setDaqqiPostponeModal] = useState<{ roundId: string; newDate: string } | null>(null);
   const [daqqiToskeenSubId, setDaqqiToskeenSubId] = useState<string | null>(null);
   const [daqqiToskeenTargetRoundId, setDaqqiToskeenTargetRoundId] = useState('');
+  const [daqqiClientTab, setDaqqiClientTab] = useState<'all' | 'assigned' | 'unassigned'>('unassigned');
   const [daqqiCommModal, setDaqqiCommModal] = useState<{ subscriberId: string; subscriberName: string; phone: string } | null>(null);
+  const [daqqiCommType, setDaqqiCommType] = useState<CommunicationRecord['type']>('call');
+  const [daqqiCommNote, setDaqqiCommNote] = useState('');
+  const [daqqiClientSearch, setDaqqiClientSearch] = useState('');
+  const [daqqiClientFilterCourse2, setDaqqiClientFilterCourse2] = useState('');
+  const [daqqiClientFilterReception2, setDaqqiClientFilterReception2] = useState('');
+  const [daqqiClientFilterPay, setDaqqiClientFilterPay] = useState('');
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
-  const [daqqiPayPrintData, setDaqqiPayPrintData] = useState<DaqqiPayPrintData | null>(null);
+  const [daqqiNewClientDraft, setDaqqiNewClientDraft] = useState({
+    name: '', phone: '', email: '', courseIds: [] as string[],
+    paymentType: 'course' as PaymentItemType,
+    courseExpected: '', amount: '', currency: 'EGP' as 'EGP' | 'SAR' | 'USD',
+    paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '',
+    bookingType: 'new_booking' as 'new_booking' | 'installment',
+  });
+  const [daqqiNewClientPrintReceipt, setDaqqiNewClientPrintReceipt] = useState<null | { name: string; phone: string; courses: string[]; amount: number; currency: string; method: string; bookingType: string; date: string }>(null);
 
   // ── Derived data ───────────────────────────────────────────────────────────
-  // Resolve which branch IDs represent الدقي — matches 'daqqi' (any case/dash) and any admin-configured
-  // branch whose label contains 'دق' (Arabic root for Doqqi), enabling flexible branch naming.
-  const daqqiBranchIds = (() => {
-    const norm = (v: string) => v.toUpperCase().replace(/[-\s]/g, '_');
-    const ids = new Set<string>(['daqqi', 'DAQQI']);
-    try {
-      const raw = content['institute.branches'];
-      if (raw) {
-        const branches: { id: string; label: string }[] = JSON.parse(raw);
-        branches.forEach(b => {
-          if (norm(b.id) === 'DAQQI' || (b.label || '').includes('دق')) ids.add(b.id);
-        });
-      }
-    } catch { /* ignore */ }
-    return ids;
-  })();
-  const normBranchId = (v?: string | null) => String(v || '').toUpperCase().replace(/[-\s]/g, '_');
+  const daqqiBranchIds = parseDaqqiBranchIds(content);
   const daqqiSubs = subscribers.filter(s => {
     const rawBranch = s.branch || '';
-    return normBranchId(rawBranch) === 'DAQQI' || daqqiBranchIds.has(rawBranch);
+    if (branchFilter) return branchMatchesFilter(rawBranch, branchFilter);
+    return normalizeDaqqiBranchId(rawBranch) === 'DAQQI' || daqqiBranchIds.has(rawBranch);
   });
 
-  // Training rooms: parsed from institute.branches for the Daqqi branch entry
-  const daqqiRooms = (() => {
-    try {
-      const raw = content['institute.branches'];
-      if (!raw) return [] as { name: string; capacity: number }[];
-      const branches: { id: string; label: string; rooms?: { name: string; capacity: number }[] }[] = JSON.parse(raw);
-      const norm = (v: string) => v.toUpperCase().replace(/[-\s]/g, '_');
-      const daqBranch = branches.find(b => norm(b.id) === 'DAQQI' || (b.label || '').includes('دق'));
-      return daqBranch?.rooms || [] as { name: string; capacity: number }[];
-    } catch { return [] as { name: string; capacity: number }[]; }
-  })();
-
-  // Helper: check if a subscriber is enrolled in a specific course, directly OR via a bundle containing it
-  const isEnrolledInCourse = (enrolledIds: string[], courseId: string): boolean => {
-    if (enrolledIds.includes(courseId)) return true;
-    return enrolledIds.some(eid => {
-      if (!eid.startsWith('bundle:')) return false;
-      const b = bundles.find(bx => bx.id === eid.replace('bundle:', ''));
-      return b?.courses.some(c => c.id === courseId) ?? false;
-    });
-  };
-
-  // Helper: get human-readable enrolled labels (includes bundle names)
-  const enrolledLabels = (enrolledIds: string[]): string[] =>
-    enrolledIds.map(cid => {
-      if (cid.startsWith('bundle:')) {
-        const b = bundles.find(bx => bx.id === cid.replace('bundle:', ''));
-        return b ? `مسار: ${b.title}` : null;
-      }
-      const c = courses.find(cx => cx.id === cid);
-      return c ? (c.titleAr || c.title) : null;
-    }).filter(Boolean) as string[];
-
-  // Helper: get bundle names that contain a given courseId
-  const courseBundles = (courseId: string) =>
-    bundles.filter(b => b.courses.some(c => c.id === courseId));
+  const daqqiRooms = parseDaqqiRooms(content);
 
   const instructorOptions = therapists;
   const receptionOptions = staffMembers.filter(s =>
     s.role === 'reception_daqqi' && s.status === 'active'
   );
-  const daysOfWeek: DaqqiDayOfWeek[] = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-  const timeSlotsList: DaqqiTimeSlot[] = ['صباحاً', 'ظهراً', 'مساءً'];
-  const timeSlotColors: Record<string, string> = {
-    'صباحاً': 'bg-amber-100 text-amber-700',
-    'ظهراً': 'bg-blue-100 text-blue-700',
-    'مساءً': 'bg-indigo-100 text-indigo-700',
-  };
-  const statusColorsMap: Record<string, string> = {
-    new: 'bg-blue-100 text-blue-700',
-    active: 'bg-green-100 text-green-700',
-    finished: 'bg-gray-200 text-gray-600',
-  };
+  const daysOfWeek = DAQQI_DAYS_OF_WEEK;
+  const timeSlotsList = DAQQI_TIME_SLOTS;
+  const timeSlotColors = DAQQI_TIME_SLOT_COLORS;
+  const statusColorsMap = DAQQI_STATUS_COLORS;
   const assignedSubIds = new Set(daqqiRounds.flatMap(r => r.attendees.map(a => a.subscriberId)));
   const unassignedDaqqiSubs = daqqiSubs.filter(s => !assignedSubIds.has(s.id));
 
@@ -425,7 +382,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       });
     }
     setDaqqiPayModal(null);
-    setDaqqiPayDraft({ bookingType: 'new_booking', paymentType: 'course', courseId: '', courseExpected: '', bookingDiscount: '', customExpected: '', discountPct: '', certType: '', certReqId: '', amount: '', currency: 'EGP', paymentMethod: '', transactionId: '', fromAccountNumber: '', date: new Date().toISOString().slice(0, 10), note: '', extraItems: [] });
+    resetDaqqiPayDraft();
     notify(requirePaymentApproval ? 'info' : 'success',
       requirePaymentApproval ? 'تم إرسال الدفعة للمراجعة ✓ — بانتظار موافقة المدير' : 'تم تسجيل الدفعة بنجاح.'
     );
@@ -492,65 +449,367 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     doUpdateRound({ ...round, postponedWeeks: updatedWeeks });
   };
 
-  const handleDaqqiAddComm = (type: CommunicationRecord['type'], note: string) => {
-    if (!daqqiCommModal) return;
+  const handleDaqqiAddComm = () => {
+    if (!daqqiCommModal || !daqqiCommNote.trim()) return;
     const sub = subscribers.find(s => s.id === daqqiCommModal.subscriberId);
     if (!sub) return;
     const rec: CommunicationRecord = {
-      id: `dq-comm-${Date.now()}`, type,
-      date: new Date().toISOString().slice(0, 10), notes: note,
+      id: `dq-comm-${Date.now()}`, type: daqqiCommType,
+      date: new Date().toISOString().slice(0, 10), notes: daqqiCommNote.trim(),
     };
     updateSubscriber({ ...sub, communications: [...(sub.communications ?? []), rec] });
-    setDaqqiCommModal(null);
+    setDaqqiCommNote('');
     notify('success', 'تم تسجيل التواصل بنجاح.');
   };
 
+  const handleDaqqiAddNewClient = async () => {
+    if (!daqqiNewClientDraft.name.trim() || !daqqiNewClientDraft.phone.trim()) {
+      notify('error', 'الاسم والهاتف مطلوبان.');
+      return;
+    }
+    const amount = Number(daqqiNewClientDraft.amount);
+    const courseIds = daqqiNewClientDraft.courseIds;
+    const courseAccessMap: Record<string, { mode: 'full' }> = {};
+    courseIds.forEach(cid => { courseAccessMap[cid] = { mode: 'full' }; });
+    const newSub: any = {
+      id: `daqqi-client-${Date.now()}`,
+      name: daqqiNewClientDraft.name.trim(),
+      phone: daqqiNewClientDraft.phone.trim(),
+      email: daqqiNewClientDraft.email.trim(),
+      branch: 'daqqi',
+      status: 'active' as const,
+      enrolledCourseIds: courseIds,
+      paymentHistory: [],
+      courseAccess: courseAccessMap,
+      createdAt: new Date().toISOString().slice(0, 10),
+      clientCode: '',
+    };
+    if (amount > 0) {
+      const entry: PaymentHistoryEntry = {
+        id: `dq-pay-${Date.now()}`,
+        amount,
+        currency: daqqiNewClientDraft.currency,
+        paymentType: daqqiNewClientDraft.paymentType,
+        isInstallment: daqqiNewClientDraft.bookingType === 'installment',
+        courseId: daqqiNewClientDraft.paymentType === 'course' ? (courseIds[0] || '') : '',
+        note: [daqqiNewClientDraft.note, daqqiNewClientDraft.transactionId].filter(Boolean).join(' | ') || undefined,
+        paymentMethod: daqqiNewClientDraft.paymentMethod || undefined,
+        at: daqqiNewClientDraft.date,
+      };
+      newSub.paymentHistory = [entry];
+    }
+    let ok = false;
+    try {
+      ok = await addSubscriber(newSub);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify('error', `فشل إضافة العميل: ${msg}`);
+      return;
+    }
+    if (!ok) {
+      notify('error', 'العميل موجود بالفعل (هاتف أو إيميل مكرر).');
+      return;
+    }
+    // Track the new subscriber's ID so it appears immediately in the filtered view
+    if (subscribersOverride) {
+      setLocallyAddedSubIds(prev => { const n = new Set(prev); n.add(newSub.id); return n; });
+    }
+    notify('success', 'تم إضافة العميل بنجاح.');
+    setDaqqiClientTab('unassigned');
+    // Show print receipt if payment was made
+    if (Number(daqqiNewClientDraft.amount) > 0) {
+      const courseLabels = daqqiNewClientDraft.courseIds.map(cid => {
+        if (cid.startsWith('bundle:')) {
+          const b = bundles.find(bx => bx.id === cid.replace('bundle:', ''));
+          return b?.title || cid;
+        }
+        const c = courses.find(cx => cx.id === cid);
+        return c?.titleAr || c?.title || cid;
+      });
+      setDaqqiNewClientPrintReceipt({
+        name: daqqiNewClientDraft.name.trim(),
+        phone: daqqiNewClientDraft.phone.trim(),
+        courses: courseLabels,
+        amount: Number(daqqiNewClientDraft.amount),
+        currency: daqqiNewClientDraft.currency,
+        method: daqqiNewClientDraft.paymentMethod || '—',
+        bookingType: daqqiNewClientDraft.bookingType,
+        date: daqqiNewClientDraft.date,
+      });
+    }
+    setDaqqiAddClientModal(false);
+    setDaqqiNewClientDraft({
+      name: '', phone: '', email: '', courseIds: [],
+      paymentType: 'course',
+      courseExpected: '', amount: '', currency: 'EGP',
+      paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '',
+      bookingType: 'new_booking',
+    });
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col gap-5">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-          <CalendarDays size={18} className="text-primary-500" />
-          جدول كورسات الدقي
-        </h3>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden">
-            <button onClick={() => setDaqqiView('table')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition ${daqqiView === 'table' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              <List size={13} />جدول
-            </button>
-            <button onClick={() => setDaqqiView('calendar')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition ${daqqiView === 'calendar' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              <CalendarDays size={13} />تقويم
-            </button>
-          </div>
-          {!hideCreateRound && (
-            <button
-              onClick={() => { setDaqqiFormOpen(true); setDaqqiStep('form'); setDaqqiDraft(blankDaqqiDraft()); setDaqqiPendingRound(null); }}
-              className="flex items-center gap-1.5 bg-primary-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-700 transition"
-            >
-              <Plus size={15} />إنشاء روند جديدة
-            </button>
-          )}
-        </div>
-      </div>
+      <DaqqiScheduleHeader
+        view={daqqiView}
+        setView={setDaqqiView}
+        hideCreateRound={hideCreateRound}
+        onCreateRound={() => {
+          setDaqqiFormOpen(true);
+          setDaqqiStep('form');
+          setDaqqiDraft(blankDaqqiDraft());
+          setDaqqiPendingRound(null);
+        }}
+      />
 
 
 
       {/* Clients panel */}
-      <DaqqiClientsSection
-        daqqiSubs={daqqiSubs}
-        daqqiRounds={daqqiRounds}
-        courses={courses}
-        bundles={bundles}
-        assignedSubIds={assignedSubIds}
-        receptionOptions={receptionOptions}
-        notify={notify}
-        onAddClient={() => setDaqqiAddClientModal(true)}
-        onComm={(subId, subName, phone) => setDaqqiCommModal({ subscriberId: subId, subscriberName: subName, phone })}
-        onPayment={(subId, subName, firstCourseId) => { setDaqqiPayModal({ subscriberId: subId, subscriberName: subName }); setDaqqiPayDraft({ bookingType: 'new_booking', paymentType: 'course', courseId: firstCourseId || '', courseExpected: '', bookingDiscount: '', customExpected: '', discountPct: '', certType: '', certReqId: '', amount: '', currency: 'EGP', paymentMethod: '', transactionId: '', fromAccountNumber: '', date: new Date().toISOString().slice(0, 10), note: '', extraItems: [] }); }}
-        onHousing={(subId) => { setDaqqiToskeenSubId(subId); setDaqqiToskeenTargetRoundId(''); }}
-      />
+      {(() => {
+        const getSubRounds = (subId: string) => daqqiRounds.filter(r => r.attendees.some(a => a.subscriberId === subId));
+        const getSubReception = (subId: string) => {
+          const rounds = getSubRounds(subId);
+          const activeRound = rounds.find(r => r.status === 'active') || rounds.find(r => (r.status || 'new') === 'new') || rounds[0];
+          return activeRound ? { name: activeRound.receptionName, id: activeRound.receptionId } : null;
+        };
+        let filteredClients = daqqiSubs;
+        if (daqqiClientTab === 'assigned') filteredClients = daqqiSubs.filter(s => assignedSubIds.has(s.id));
+        if (daqqiClientTab === 'unassigned') filteredClients = daqqiSubs.filter(s => !assignedSubIds.has(s.id));
+        if (daqqiClientSearch) {
+          const q = daqqiClientSearch.toLowerCase();
+          filteredClients = filteredClients.filter(s => s.name.toLowerCase().includes(q) || s.phone.includes(daqqiClientSearch));
+        }
+        if (daqqiClientFilterCourse2) filteredClients = filteredClients.filter(s => s.enrolledCourseIds.includes(daqqiClientFilterCourse2));
+        if (daqqiClientFilterReception2) filteredClients = filteredClients.filter(s => getSubRounds(s.id).some(r => r.receptionId === daqqiClientFilterReception2));
+        if (daqqiClientFilterPay === 'outstanding') {
+          filteredClients = filteredClients.filter(s => {
+            const paid = (s.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+            const expected = s.enrolledCourseIds.reduce((sum, cid) => sum + (courses.find(c => c.id === cid)?.price?.EGP ?? 0), 0);
+            return expected > 0 && paid < expected;
+          });
+        } else if (daqqiClientFilterPay === 'paid') {
+          filteredClients = filteredClients.filter(s => {
+            const paid = (s.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+            const expected = s.enrolledCourseIds.reduce((sum, cid) => sum + (courses.find(c => c.id === cid)?.price?.EGP ?? 0), 0);
+            return expected === 0 || paid >= expected;
+          });
+        }
+        return (
+          <div className="border border-blue-200 rounded-2xl bg-white overflow-hidden order-last">
+            {/* Header toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-blue-100 bg-blue-50/40">
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-blue-600" />
+                <h4 className="font-bold text-gray-800 text-sm">
+                  عملاء فرع الدقي <span className="text-gray-400 font-normal">({filteredClients.length} / {daqqiSubs.length})</span>
+                </h4>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs">
+                  {(['all', 'assigned', 'unassigned'] as const).map(tab => {
+                    const labels: Record<string, string> = { all: 'الكل', assigned: 'المسكّنون', unassigned: 'الغير مسكّنون' };
+                    return (
+                      <button key={tab} onClick={() => setDaqqiClientTab(tab)}
+                        className={`px-3 py-1.5 font-bold transition ${daqqiClientTab === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        {labels[tab]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => { setDaqqiAddClientModal(true); setDaqqiNewClientDraft({ name: '', phone: '', email: '', courseIds: [], paymentType: 'course', courseExpected: '', amount: '', currency: 'EGP', paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '', bookingType: 'new_booking' }); }}
+                  className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-green-700 transition"
+                ><UserPlus size={13} /> إضافة عميل</button>
+              </div>
+            </div>
+            {/* Filter bar */}
+            <div className="flex flex-wrap gap-2 px-4 py-2.5 bg-gray-50/70 border-b border-gray-100">
+              <div className="relative">
+                <Search size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input type="text" placeholder="بحث بالاسم أو الهاتف..." value={daqqiClientSearch}
+                  onChange={e => setDaqqiClientSearch(e.target.value)}
+                  className="pr-7 pl-3 py-1.5 border border-gray-200 rounded-lg text-xs min-w-[160px] focus:outline-none focus:border-blue-400 bg-white" />
+              </div>
+              <select value={daqqiClientFilterCourse2} onChange={e => setDaqqiClientFilterCourse2(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px] bg-white">
+                <option value="">كل الكورسات</option>
+                {courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}
+                {bundles.map(b => <option key={`bundle:${b.id}`} value={`bundle:${b.id}`}>📦 {b.title}</option>)}
+              </select>
+              <select value={daqqiClientFilterReception2} onChange={e => setDaqqiClientFilterReception2(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px] bg-white">
+                <option value="">كل الريسبشن</option>
+                {receptionOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select value={daqqiClientFilterPay} onChange={e => setDaqqiClientFilterPay(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px] bg-white">
+                <option value="">كل الحالات المالية</option>
+                <option value="outstanding">متبقي دفع</option>
+                <option value="paid">مكتمل الدفع</option>
+              </select>
+              {(daqqiClientSearch || daqqiClientFilterCourse2 || daqqiClientFilterReception2 || daqqiClientFilterPay) && (
+                <button onClick={() => { setDaqqiClientSearch(''); setDaqqiClientFilterCourse2(''); setDaqqiClientFilterReception2(''); setDaqqiClientFilterPay(''); }}
+                  className="px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold flex items-center gap-1">
+                  <X size={11} /> مسح
+                </button>
+              )}
+            </div>
+            {/* Table */}
+            {filteredClients.length === 0 ? (
+              <div className="py-10 text-center text-gray-400 text-sm">لا يوجد عملاء مطابقون للفلاتر.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px] border-collapse" dir="rtl">
+                  <thead className="bg-gray-50 text-gray-700 sticky top-0 z-10">
+                    <tr>
+                      <th className="text-right px-2 py-2 border border-gray-200 font-semibold">الاسم</th>
+                      <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px] whitespace-nowrap">تاريخ الاشتراك</th>
+                      <th className="text-right px-2 py-2 border border-gray-200 font-semibold">الكورسات</th>
+                      <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px]">القيمة</th>
+                      <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px]">المدفوع</th>
+                      <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px]">المتبقي</th>
+                      <th className="text-center px-1 py-2 border border-gray-200 font-semibold text-[11px]">الشهادات</th>
+                      <th className="text-right px-2 py-2 border border-gray-200 font-semibold">رسيبشن الدقي</th>
+                      <th className="text-center px-1 py-2 border border-indigo-200 bg-indigo-50 font-semibold text-[11px] whitespace-nowrap text-indigo-700">التسكين والروند</th>
+                      <th className="text-right px-2 py-2 border border-gray-200 font-semibold">ملاحظات التواصل</th>
+                      <th className="text-right px-2 py-2 border border-gray-200 font-semibold">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredClients.map(s => {
+                      const paidHistory = (s.paymentHistory || []).filter(p => p.status !== 'pending' && p.status !== 'failed');
+                      const pendingAmt = (s.paymentHistory || []).filter(p => p.status === 'pending').reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+                      const reception = getSubReception(s.id);
+                      const subRounds = getSubRounds(s.id);
+                      const totalPaid = paidHistory.reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+                      const sortedComms = [...(s.communications || [])].sort((a, b) => b.date.localeCompare(a.date));
+                      const lastComm = sortedComms[0] || null;
+                      const contactCell = lastComm ? (
+                        <div>
+                          <div className="text-gray-600 text-[10px] leading-snug">{lastComm.notes?.slice(0, 50) || lastComm.outcome || '—'}</div>
+                          <div className="text-gray-400 text-[9px] mt-0.5">{lastComm.date.slice(0, 10)}</div>
+                        </div>
+                      ) : <span className="text-gray-300 text-[10px]">—</span>;
+                      // Per-course rows (one table row per enrolled course)
+                      const courseRows = [...new Set(s.enrolledCourseIds)].map(cid => {
+                        const course = courses.find(c => c.id === cid);
+                        const bundle = cid.startsWith('bundle:') ? bundles.find(b => b.id === cid.replace('bundle:', '')) : null;
+                        const cPay = paidHistory.filter(p => p.courseId === cid);
+                        const paid = cPay.reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+                        const price = bundle ? (bundle.price.EGP ?? 0) : (course?.price?.EGP ?? 0);
+                        const certCount = (s.certificates || []).filter(cert => cert.courseId === cid).length;
+                        return { cid, label: bundle?.title || course?.titleAr || course?.title || cid, price, paid, certCount };
+                      });
+                      const rowSpan = Math.max(courseRows.length, 1);
+                      const nameCell = (
+                        <div className="min-w-0">
+                          <button onClick={() => navigate(`/client/${s.clientCode || s.id}`)} className="font-bold text-gray-800 hover:text-primary-700 text-[11px] block truncate max-w-[110px]">{s.name}</button>
+                          <a href={`tel:${s.phone}`} className="text-xs font-semibold text-blue-600">{s.phone}</a>
+                          {pendingAmt > 0 && <div className="mt-0.5"><span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded-full border border-amber-200">⏳ {pendingAmt.toLocaleString()}</span></div>}
+                        </div>
+                      );
+                      // Housing/reception cell
+                      const receptionCell = (
+                        <div className="flex flex-col gap-0.5">
+                          {reception
+                            ? <>
+                              <div className="flex items-center gap-1">
+                                <span className="inline-flex w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 items-center justify-center text-[9px] font-bold flex-shrink-0">{(reception.name||'?').charAt(0)}</span>
+                                <span className="font-medium text-indigo-700 text-[10px]">{reception.name}</span>
+                              </div>
+                            </>
+                            : <span className="text-gray-400 text-[10px]">— غير مسند —</span>}
+                        </div>
+                      );
+                      // Housing status cell
+                      const housingCell = subRounds.length > 0 ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-1.5 py-0.5">🏠 مسكن</span>
+                          <div className="flex flex-wrap gap-0.5">
+                            {subRounds.slice(0, 2).map(r => (
+                              <span key={r.id} className="text-[9px] font-bold text-gray-700">{r.code}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : <span className="text-[9px] text-gray-400">غير مسكن</span>;
+                      const actionsCell = (
+                        <div className="flex flex-col gap-0.5">
+                          <div className="grid grid-cols-4 gap-0.5">
+                            <button onClick={() => { setDaqqiCommModal({ subscriberId: s.id, subscriberName: s.name, phone: s.phone }); setDaqqiCommType('call'); setDaqqiCommNote(''); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-600 flex items-center justify-center transition" title="تسجيل تواصل"><Phone size={12} /></button>
+                            <button onClick={() => { setDaqqiPayModal({ subscriberId: s.id, subscriberName: s.name }); resetDaqqiPayDraft({ courseId: s.enrolledCourseIds[0] || '' }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
+                            <button onClick={() => { const wNum = s.phone.replace(/\D/g, ''); const waNum = wNum.startsWith('0') ? '2' + wNum : wNum; window.open(`https://wa.me/${waNum}`, '_blank'); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition" title="واتساب"><MessageCircle size={12} /></button>
+                            <button onClick={() => navigate(`/client/${s.clientCode || s.id}`)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="عرض الملف"><Eye size={12} /></button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-0.5">
+                            <button title={subRounds.length > 0 ? `مسكن في روند ${subRounds[0]?.code}` : 'تسكين في روند'}
+                              onClick={() => { setDaqqiToskeenSubId(s.id); setDaqqiToskeenTargetRoundId(''); }}
+                              className={`h-7 rounded flex items-center justify-center transition text-xs font-bold ${subRounds.length > 0 ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}`}>
+                              🏠
+                            </button>
+                            <button onClick={() => navigate(`/client/${s.clientCode || s.id}`)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition" title="الملف الكامل"><ArrowLeftRight size={12} /></button>
+                            <button onClick={() => { if (confirm(`حذف "${s.name}"؟`)) { mysqlAdmin.deleteSubscriber(s.id).then(() => notify('success', 'تم الحذف')).catch(() => notify('error', 'فشل الحذف')); } }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف"><X size={12} /></button>
+                          </div>
+                        </div>
+                      );
+                      if (courseRows.length === 0) {
+                        return (
+                          <tr key={s.id} className={`hover:bg-gray-50/80`}>
+                            <td className="px-2 py-2 border border-gray-200">{nameCell}</td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{(s.createdAt||'').slice(0,10)||'—'}</td>
+                            <td className="px-3 py-2 border border-gray-200 text-xs text-gray-400">لا يوجد</td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>
+                            <td className="px-2 py-2 border border-gray-200 text-center">
+                              {totalPaid > 0 ? <span className="font-bold text-emerald-700 text-[11px]">{totalPaid.toLocaleString()} ج.م</span> : <span className="text-gray-300 text-xs">—</span>}
+                            </td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-gray-300 text-xs">—</td>
+                            <td className="px-2 py-2 border border-gray-200">{receptionCell}</td>
+                            <td className="px-2 py-2 border border-indigo-100 text-center">{housingCell}</td>
+                            <td className="px-2 py-2 border border-gray-200 text-[10px]">{contactCell}</td>
+                            <td className="px-1 py-1.5 border border-gray-200 w-[90px]">{actionsCell}</td>
+                          </tr>
+                        );
+                      }
+                      return courseRows.map((cr, ci) => {
+                        const courseRemaining = cr.price > 0 ? Math.max(0, cr.price - cr.paid) : 0;
+                        return (
+                          <tr key={`${s.id}-${cr.cid}`} className={`hover:bg-gray-50/40 ${ci % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                            {ci === 0 && (
+                              <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 align-top">{nameCell}</td>
+                            )}
+                            <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{(s.createdAt||'').slice(0,10)||'—'}</td>
+                            <td className="px-2 py-2 border border-gray-200 text-[11px] text-gray-700 max-w-[150px] truncate" title={cr.label}>{cr.label}</td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-gray-600">
+                              {cr.price > 0 ? `${cr.price.toLocaleString()} ج.م` : '—'}
+                            </td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-emerald-700">
+                              {cr.paid > 0 ? `${cr.paid.toLocaleString()} ج.م` : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold">
+                              {cr.price > 0
+                                ? courseRemaining > 0
+                                  ? <span className="text-red-600">{courseRemaining.toLocaleString()} ج.م</span>
+                                  : <span className="text-emerald-600 text-[10px]">✅ مكتمل</span>
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-2 py-2 border border-gray-200 text-center">
+                              {cr.certCount > 0
+                                ? <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-1.5 py-0.5">🎓 {cr.certCount}</span>
+                                : <span className="text-gray-300 text-[10px]">—</span>}
+                            </td>
+                            {ci === 0 && <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 align-top">{receptionCell}</td>}
+                            {ci === 0 && <td rowSpan={rowSpan} className="px-2 py-2 border border-indigo-100 text-center align-top">{housingCell}</td>}
+                            {ci === 0 && <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 align-top text-[10px]">{contactCell}</td>}
+                            {ci === 0 && <td rowSpan={rowSpan} className="px-1 py-1.5 border border-gray-200 align-top w-[90px]">{actionsCell}</td>}
+                          </tr>
+                        );
+                      });
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Empty or main view */}
       {daqqiRounds.length === 0 ? (
@@ -590,8 +849,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
               <option value="">كل الريسبشن</option>
               {receptionOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            {(daqqiFilterCourse || daqqiFilterInstructor || daqqiFilterDay || daqqiFilterTimeSlot || daqqiFilterStatus || daqqiFilterReception) && (
-              <button onClick={() => { setDaqqiFilterCourse(''); setDaqqiFilterInstructor(''); setDaqqiFilterDay(''); setDaqqiFilterTimeSlot(''); setDaqqiFilterStatus(''); setDaqqiFilterReception(''); }} className="px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold flex items-center gap-1">
+            {hasDaqqiFilters && (
+              <button onClick={clearDaqqiFilters} className="px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold flex items-center gap-1">
                 <X size={11} />مسح الفلاتر
               </button>
             )}
@@ -639,7 +898,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                           <td className="px-3 py-2.5 text-xs font-mono font-bold text-purple-700">{round.code || '—'}</td>
                           <td className="px-3 py-2.5 text-xs">
                             <span className="font-bold text-gray-800">{course?.titleAr || course?.title || round.courseId}</span>
-                            {courseBundles(round.courseId).map(b => (
+                            {courseBundles(bundles, round.courseId).map(b => (
                               <div key={b.id} className="text-[10px] text-violet-600 font-semibold mt-0.5">مسار: {b.title}</div>
                             ))}
                           </td>
@@ -753,7 +1012,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                                             <td className="py-1.5 pr-4">
                                               <div className="grid grid-cols-5 gap-0.5">
                                                 <button onClick={e => { e.stopPropagation(); const wNum = a.phone.replace(/\D/g, ''); const waNum = wNum.startsWith('0') ? '2' + wNum : wNum; window.open(`https://wa.me/${waNum}`, '_blank'); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition" title="واتساب"><MessageCircle size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: a.amountPaid }); setDaqqiPayDraft({ bookingType: 'new_booking', paymentType: 'course', courseId: round.courseId || '', courseExpected: '', bookingDiscount: '', customExpected: '', discountPct: '', amount: '', currency: 'EGP', paymentMethod: '', transactionId: '', fromAccountNumber: '', date: new Date().toISOString().slice(0, 10), note: '', certType: '', certReqId: '', extraItems: [] as { type: import('../../../types').PaymentItemType; label: string; amount: string; }[] }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
+                                                <button onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: a.amountPaid }); resetDaqqiPayDraft({ courseId: round.courseId || '' }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); const s = subscribers.find(x => x.id === a.subscriberId); navigate(`/client/${s?.clientCode || a.subscriberId}`); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="عرض الملف"><Eye size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); setDaqqiTransferTargetId(''); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="نقل لروند أخرى"><ArrowLeftRight size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); handleRemoveAttendeeFromRound(round.id, a.subscriberId); }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف من الروند"><X size={12} /></button>
@@ -932,7 +1191,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                   {(() => {
                     const roundCourseId = daqqiPendingRound.courseId;
                     const candidatesFiltered = daqqiSubs.filter(s =>
-                      !assignedSubIds.has(s.id) && isEnrolledInCourse(s.enrolledCourseIds || [], roundCourseId)
+                      !assignedSubIds.has(s.id) && isEnrolledInCourse(bundles, s.enrolledCourseIds || [], roundCourseId)
                     );
                     const candidatesAll = daqqiSubs.filter(s => !assignedSubIds.has(s.id));
                     const displayList = daqqiShowAllClients ? candidatesAll : candidatesFiltered;
@@ -962,7 +1221,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                             {displayList.map(s => {
                               const paid = (s.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
                               const cp = roundCourse?.price?.EGP ?? 0;
-                              const enrolledNames = enrolledLabels(s.enrolledCourseIds || []);
+                              const enrolledNames = enrolledLabels(courses, bundles, s.enrolledCourseIds || []);
                               const bookingDate = (s.createdAt || '').slice(0, 10);
                               return (
                                 <label key={s.id} className="flex items-center gap-3 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-gray-50">
@@ -1008,7 +1267,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         const available = daqqiSubs.filter(s => {
           if (alreadyIn.has(s.id)) return false;
           if (daqqiShowAllClients) return true;
-          return isEnrolledInCourse(s.enrolledCourseIds || [], addRound!.courseId);
+          return isEnrolledInCourse(bundles, s.enrolledCourseIds || [], addRound!.courseId);
         });
         return (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setDaqqiAddClientsRoundId(''); setDaqqiAddClientsSel(new Set()); setDaqqiAddClientsCourseSel({}); }}>
@@ -1038,7 +1297,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                     const paidForCourse = (s.paymentHistory || []).filter(p => p.currency === 'EGP' && (!p.courseId || p.courseId === chosenCourseId)).reduce((sum, p) => sum + Number(p.amount), 0);
                     const cp = addCourse?.price?.EGP ?? 0;
                     const rem = cp > 0 ? Math.max(0, cp - paidForCourse) : 0;
-                    const enrolled = enrolledLabels(enrolledIds);
+                    const enrolled = enrolledLabels(courses, bundles, enrolledIds);
                     // Multi-course: show selector when client has >1 enrollment AND we need to pick
                     const hasMultiCourse = enrolledIds.length > 1;
                     const isSelected = daqqiAddClientsSel.has(s.id);
@@ -1094,14 +1353,256 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       })()}
 
       {/* Add New Client Modal */}
-      <DaqqiAddClientModal
-        isOpen={daqqiAddClientModal}
-        onClose={() => setDaqqiAddClientModal(false)}
-        notify={notify}
-        subscribersOverride={subscribersOverride}
-        onLocallyAdd={id => setLocallyAddedSubIds(prev => { const n = new Set(prev); n.add(id); return n; })}
-        onClientAdded={() => {}}
-      />
+      {daqqiAddClientModal && (() => {
+        const pmList: string[] = content['finance.payment_methods']
+          ? content['finance.payment_methods'].split('||').map((s: string) => s.trim()).filter(Boolean)
+          : ['خزنة الدقي', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'أونلاين', 'أخرى'];
+        const hasPayment = !!daqqiNewClientDraft.amount && Number(daqqiNewClientDraft.amount) > 0;
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setDaqqiAddClientModal(false)}>
+            <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-auto" dir="rtl" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="sticky top-0 bg-gradient-to-l from-red-700 to-red-500 rounded-t-3xl sm:rounded-t-2xl px-5 pt-5 pb-4 z-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                      <UserPlus size={18} className="text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-white text-base">إضافة عميل جديد</h4>
+                      <p className="text-red-100 text-[11px]">فرع الدقي</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setDaqqiAddClientModal(false)} className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white transition"><X size={16} /></button>
+                </div>
+              </div>
+
+              <div className="px-5 py-5 space-y-5">
+                {/* ── Section 1: بيانات العميل ── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center text-sm">👤</div>
+                    <p className="text-xs font-extrabold text-gray-700 tracking-wide uppercase">بيانات العميل</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">الاسم الكامل <span className="text-red-500">*</span></label>
+                      <input type="text" placeholder="الاسم الكامل" value={daqqiNewClientDraft.name}
+                        onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, name: e.target.value })}
+                        className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm focus:outline-none transition ${daqqiNewClientDraft.name.trim() ? 'border-green-300 focus:border-green-400' : 'border-gray-200 focus:border-blue-400'}`}
+                        autoFocus />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">رقم الهاتف <span className="text-red-500">*</span></label>
+                      <input type="tel" placeholder="01xxxxxxxxx" value={daqqiNewClientDraft.phone}
+                        onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, phone: e.target.value })}
+                        className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm focus:outline-none transition ${daqqiNewClientDraft.phone.trim() ? 'border-green-300 focus:border-green-400' : 'border-gray-200 focus:border-blue-400'}`} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></label>
+                    <input type="email" placeholder="example@mail.com" value={daqqiNewClientDraft.email}
+                      onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, email: e.target.value })}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none" />
+                  </div>
+                </div>
+
+                {/* ── Section 2: الكورسات ── */}
+                <div className="border-t border-gray-100 pt-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center text-sm">📚</div>
+                    <p className="text-xs font-extrabold text-gray-700 tracking-wide uppercase">الكورسات</p>
+                    <span className="text-[10px] text-gray-400 font-medium">(يمكن اختيار أكثر من كورس)</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-44 overflow-auto pr-1">
+                    {bundles.length > 0 && bundles.map(b => {
+                      const bKey = `bundle:${b.id}`;
+                      const checked = daqqiNewClientDraft.courseIds.includes(bKey);
+                      return (
+                        <label key={bKey} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-xs cursor-pointer transition ${checked ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}>
+                          <input type="checkbox" checked={checked}
+                            onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, courseIds: e.target.checked ? [...daqqiNewClientDraft.courseIds, bKey] : daqqiNewClientDraft.courseIds.filter(x => x !== bKey) })}
+                            className="w-3.5 h-3.5 rounded accent-purple-600 flex-shrink-0" />
+                          <span className="font-medium text-gray-700">📌 {b.title}</span>
+                          {b.price?.EGP && <span className="text-gray-400 mr-auto font-normal">{Number(b.price.EGP).toLocaleString()} ج</span>}
+                        </label>
+                      );
+                    })}
+                    {courses.map(c => {
+                      const checked = daqqiNewClientDraft.courseIds.includes(c.id);
+                      return (
+                        <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-xs cursor-pointer transition ${checked ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}>
+                          <input type="checkbox" checked={checked}
+                            onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, courseIds: e.target.checked ? [...daqqiNewClientDraft.courseIds, c.id] : daqqiNewClientDraft.courseIds.filter(x => x !== c.id) })}
+                            className="w-3.5 h-3.5 rounded accent-purple-600 flex-shrink-0" />
+                          <span className="font-medium text-gray-700">{c.titleAr || c.title}</span>
+                          {c.price?.EGP && <span className="text-gray-400 mr-auto font-normal">{Number(c.price.EGP).toLocaleString()} ج</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Section 3: الدفع الأولي ── */}
+                <div className="border-t border-gray-100 pt-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center text-sm">💰</div>
+                    <p className="text-xs font-extrabold text-gray-700 tracking-wide uppercase">الدفع الأولي</p>
+                    <span className="text-[10px] text-gray-400 font-medium">(اختياري)</span>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
+                    {/* Booking type + Payment type chips */}
+                    <div className="space-y-1.5 pb-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">نوع الحجز:</span>
+                        {[{v:'new_booking',ic:'🆕',lb:'حجز جديد'},{v:'installment',ic:'💳',lb:'قسط'}].map(bt => (
+                          <button key={bt.v} type="button"
+                            onClick={() => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, bookingType: bt.v as 'new_booking' | 'installment' })}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition ${daqqiNewClientDraft.bookingType === bt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'}`}>
+                            <span>{bt.ic}</span>{bt.lb}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">النوع:</span>
+                        {[{v:'course',ic:'🎓',lb:'كورس'},{v:'certificate',ic:'🏅',lb:'شهادة'},{v:'consultation',ic:'💬',lb:'استشارة'},{v:'book',ic:'📚',lb:'كتاب'},{v:'carneh',ic:'🗂️',lb:'كارنيه'},{v:'other',ic:'📦',lb:'أخرى'}].map(opt => (
+                          <button key={opt.v} type="button"
+                            onClick={() => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, paymentType: opt.v as PaymentItemType })}
+                            className={`flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold border transition ${daqqiNewClientDraft.paymentType === opt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}>
+                            {opt.ic} {opt.lb}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Amount + currency */}
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">المبلغ المدفوع</label>
+                        <input type="number" min="0" placeholder="0.00" value={daqqiNewClientDraft.amount}
+                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, amount: e.target.value })}
+                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-base font-bold focus:border-green-400 focus:outline-none bg-white" />
+                      </div>
+                      <div className="w-28">
+                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">العملة</label>
+                        <select value={daqqiNewClientDraft.currency}
+                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, currency: e.target.value as 'EGP' | 'SAR' | 'USD' })}
+                          className="w-full border-2 border-gray-200 rounded-xl px-2 py-2.5 text-sm focus:border-green-400 focus:outline-none bg-white font-bold">
+                          <option value="EGP">🇪🇬 ج.م</option>
+                          <option value="SAR">🇸🇦 ر.س</option>
+                          <option value="USD">🇺🇸 $</option>
+                        </select>
+                      </div>
+                    </div>
+                    {/* Payment method */}
+                    <div>
+                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">وسيلة الدفع</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {pmList.map(m => (
+                          <button key={m} type="button"
+                            onClick={() => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, paymentMethod: m })}
+                            className={`py-2 px-1 rounded-xl border-2 text-[11px] font-bold text-center transition ${daqqiNewClientDraft.paymentMethod === m ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Transaction + date */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">رقم العملية</label>
+                        <input type="text" placeholder="اختياري" value={daqqiNewClientDraft.transactionId}
+                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, transactionId: e.target.value })}
+                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-green-400 focus:outline-none bg-white" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">التاريخ</label>
+                        <input type="date" value={daqqiNewClientDraft.date}
+                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, date: e.target.value })}
+                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-green-400 focus:outline-none bg-white" />
+                      </div>
+                    </div>
+                    {/* Note */}
+                    <div>
+                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">ملاحظة</label>
+                      <input type="text" placeholder="اكتب أي ملاحظة..." value={daqqiNewClientDraft.note}
+                        onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, note: e.target.value })}
+                        className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-green-400 focus:outline-none bg-white" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Summary ── */}
+                {daqqiNewClientDraft.name.trim() && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs">
+                    <p className="font-bold text-blue-800 mb-1">ملخص الإضافة</p>
+                    <div className="text-blue-700 space-y-0.5">
+                      <div>👤 {daqqiNewClientDraft.name.trim()}{daqqiNewClientDraft.phone && ` — ${daqqiNewClientDraft.phone}`}</div>
+                      {daqqiNewClientDraft.courseIds.length > 0 && daqqiNewClientDraft.courseIds.map(cid => {
+                        if (cid.startsWith('bundle:')) { const b = bundles.find(bx => bx.id === cid.replace('bundle:', '')); return <div key={cid}>📌 {b?.title || cid}</div>; }
+                        const c = courses.find(cx => cx.id === cid); return <div key={cid}>📚 {c?.titleAr || c?.title || cid}</div>;
+                      })}
+                      {hasPayment && <div>💰 {Number(daqqiNewClientDraft.amount).toLocaleString()} {daqqiNewClientDraft.currency}{daqqiNewClientDraft.paymentMethod && ` عبر ${daqqiNewClientDraft.paymentMethod}`}</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Actions ── */}
+                <div className="flex gap-3 pb-2">
+                  <button onClick={handleDaqqiAddNewClient}
+                    disabled={!daqqiNewClientDraft.name.trim() || !daqqiNewClientDraft.phone.trim()}
+                    className="flex-1 py-3.5 bg-gradient-to-l from-red-700 to-red-500 text-white rounded-2xl text-sm font-extrabold hover:from-red-800 hover:to-red-600 disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2">
+                    <UserPlus size={16} /> إضافة العميل
+                  </button>
+                  <button onClick={() => setDaqqiAddClientModal(false)}
+                    className="px-5 py-3.5 bg-gray-100 text-gray-700 rounded-2xl text-sm font-bold hover:bg-gray-200 transition">
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Print Receipt Modal */}
+      {daqqiNewClientPrintReceipt && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 print:hidden" onClick={() => setDaqqiNewClientPrintReceipt(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="bg-gray-800 text-white rounded-t-2xl px-4 py-3 flex items-center justify-between">
+              <span className="font-bold text-sm">طباعة الوصل</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => window.print()} className="px-3 py-1.5 bg-white text-gray-800 rounded-lg text-xs font-bold hover:bg-gray-100 transition">🖨️ طباعة</button>
+                <button onClick={() => setDaqqiNewClientPrintReceipt(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition"><X size={14} /></button>
+              </div>
+            </div>
+            {/* Receipt preview */}
+            <div id="daqqiPrintReceipt" className="p-5 font-mono text-xs text-center space-y-2">
+              <div className="font-extrabold text-base">مهاد نفسي — الدقي</div>
+              <div className="text-gray-500 text-[11px]">{daqqiNewClientPrintReceipt.date}</div>
+              <div className="border-t border-dashed border-gray-300 my-2" />
+              <div className="text-right space-y-1">
+                <div><span className="text-gray-500">الاسم: </span><span className="font-bold">{daqqiNewClientPrintReceipt.name}</span></div>
+                <div><span className="text-gray-500">الهاتف: </span><span className="font-bold">{daqqiNewClientPrintReceipt.phone}</span></div>
+              </div>
+              {daqqiNewClientPrintReceipt.courses.length > 0 && <>
+                <div className="border-t border-dashed border-gray-300 my-2" />
+                <div className="text-right">
+                  <div className="text-gray-500 mb-1">الكورسات:</div>
+                  {daqqiNewClientPrintReceipt.courses.map((c, i) => <div key={i} className="font-bold">• {c}</div>)}
+                </div>
+              </>}
+              <div className="border-t border-dashed border-gray-300 my-2" />
+              <div className="text-right space-y-1">
+                <div><span className="text-gray-500">المدفوع: </span><span className="font-extrabold text-lg">{daqqiNewClientPrintReceipt.amount.toLocaleString()}</span> <span className="text-gray-500">{daqqiNewClientPrintReceipt.currency}</span></div>
+                <div><span className="text-gray-500">الوسيلة: </span><span className="font-bold">{daqqiNewClientPrintReceipt.method}</span></div>
+                <div><span className="text-gray-500">النوع: </span><span className="font-bold">{daqqiNewClientPrintReceipt.bookingType === 'new_booking' ? 'حجز جديد' : 'قسط'}</span></div>
+              </div>
+              <div className="border-t border-dashed border-gray-300 my-2" />
+              <div className="text-gray-400 text-[10px]">شكراً لثقتكم 🌿</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Print styles */}
       <style>{`
@@ -1122,20 +1623,77 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         }
       `}</style>
 
-      {/* Pay Receipt Print Modal */}
-      <DaqqiPayReceiptModal data={daqqiPayPrintData} onClose={() => setDaqqiPayPrintData(null)} />
+      <DaqqiPaymentReceiptModal
+        data={daqqiPayPrintData}
+        content={content}
+        onClose={() => setDaqqiPayPrintData(null)}
+      />
 
       {/* Edit Round Modal */}
-      {daqqiEditRoundId && (
-        <DaqqiEditRoundModal
-          roundId={daqqiEditRoundId}
-          rounds={daqqiRounds}
-          draft={daqqiEditDraft}
-          onChange={setDaqqiEditDraft}
-          onSave={handleSaveEditRound}
-          onClose={() => setDaqqiEditRoundId('')}
-        />
-      )}
+      {daqqiEditRoundId && (() => {
+        const editRound = daqqiRounds.find(r => r.id === daqqiEditRoundId);
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDaqqiEditRoundId('')}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto p-6" dir="rtl" onClick={e => e.stopPropagation()}>
+              <h4 className="font-extrabold text-gray-900 text-lg mb-4 flex items-center gap-2"><Pencil size={16} className="text-amber-500" />تعديل الروند — {editRound?.code}</h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-gray-600 font-bold mb-1 block">الكورس <span className="text-red-500">*</span></label>
+                  <select value={daqqiEditDraft.courseId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, courseId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
+                    <option value="">اختر الكورس...</option>
+                    {courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 font-bold mb-1 block">المحاضر <span className="text-red-500">*</span></label>
+                  <select value={daqqiEditDraft.instructorId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, instructorId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
+                    <option value="">اختر المحاضر...</option>
+                    {instructorOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 font-bold mb-1 block">مسؤول الريسبشن <span className="text-red-500">*</span></label>
+                  <select value={daqqiEditDraft.receptionId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, receptionId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
+                    <option value="">اختر مسؤول الريسبشن...</option>
+                    {receptionOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                {daqqiRooms.length > 0 && (
+                  <div>
+                    <label className="text-xs text-gray-600 font-bold mb-1 block">القاعة</label>
+                    <select value={daqqiEditDraft.roomId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, roomId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
+                      <option value="">— بدون قاعة —</option>
+                      {daqqiRooms.map(r => <option key={r.name} value={r.name}>{r.name}{r.capacity ? ` (${r.capacity} فرد)` : ''}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-600 font-bold mb-1 block">اليوم</label>
+                    <select value={daqqiEditDraft.dayOfWeek} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, dayOfWeek: e.target.value as DaqqiDayOfWeek })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
+                      {daysOfWeek.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 font-bold mb-1 block">الموعد</label>
+                    <select value={daqqiEditDraft.timeSlot} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, timeSlot: e.target.value as DaqqiTimeSlot })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
+                      {timeSlotsList.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 font-bold mb-1 block">تاريخ البدء <span className="text-red-500">*</span></label>
+                  <input type="date" value={daqqiEditDraft.startDate} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, startDate: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={handleSaveEditRound} disabled={!daqqiEditDraft.courseId || !daqqiEditDraft.instructorId || !daqqiEditDraft.receptionId || !daqqiEditDraft.startDate} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">حفظ التعديلات</button>
+                <button onClick={() => setDaqqiEditRoundId('')} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Pay Modal */}
       <DaqqiPayModal
@@ -1151,57 +1709,94 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         requirePaymentApproval={requirePaymentApproval}
       />
 
-      {/* Transfer Modal */}
-      {daqqiTransferModal && (
-        <DaqqiTransferModal
-          modal={daqqiTransferModal}
-          targetId={daqqiTransferTargetId}
-          onTargetChange={setDaqqiTransferTargetId}
-          onClose={() => { setDaqqiTransferModal(null); setDaqqiTransferTargetId(''); }}
-          onConfirm={handleDaqqiTransfer}
-          rounds={daqqiRounds}
-          subscribers={subscribers}
-          courses={courses}
-        />
-      )}
+      <DaqqiTransferRoundModal
+        modal={daqqiTransferModal}
+        targetId={daqqiTransferTargetId}
+        setTargetId={setDaqqiTransferTargetId}
+        rounds={daqqiRounds}
+        subscribers={subscribers}
+        courses={courses}
+        onClose={() => { setDaqqiTransferModal(null); setDaqqiTransferTargetId(''); }}
+        onConfirm={handleDaqqiTransfer}
+      />
 
-      {/* Toskeen Modal */}
-      {daqqiToskeenSubId && (
-        <DaqqiToskeenModal
-          subId={daqqiToskeenSubId}
-          targetRoundId={daqqiToskeenTargetRoundId}
-          onTargetChange={setDaqqiToskeenTargetRoundId}
-          onClose={() => { setDaqqiToskeenSubId(null); setDaqqiToskeenTargetRoundId(''); }}
-          onConfirm={handleDaqqiToskeen}
-          rounds={daqqiRounds}
-          subscribers={subscribers}
-          courses={courses}
-        />
-      )}
+      <DaqqiToskeenRoundModal
+        subscriberId={daqqiToskeenSubId}
+        targetRoundId={daqqiToskeenTargetRoundId}
+        setTargetRoundId={setDaqqiToskeenTargetRoundId}
+        rounds={daqqiRounds}
+        subscribers={subscribers}
+        courses={courses}
+        onClose={() => { setDaqqiToskeenSubId(null); setDaqqiToskeenTargetRoundId(''); }}
+        onConfirm={handleDaqqiToskeen}
+      />
 
-      {/* Postpone Modal */}
-      {daqqiPostponeModal && (
-        <DaqqiPostponeModal
-          modal={daqqiPostponeModal}
-          onChange={setDaqqiPostponeModal}
-          onClose={() => setDaqqiPostponeModal(null)}
-          onConfirm={handleDaqqiPostponeStartDate}
-          onToggleWeek={handleDaqqiTogglePostpone}
-          rounds={daqqiRounds}
-          courses={courses}
-        />
-      )}
+      <DaqqiPostponeRoundModal
+        modal={daqqiPostponeModal}
+        setModal={(next) => setDaqqiPostponeModal(next)}
+        rounds={daqqiRounds}
+        courses={courses}
+        onClose={() => setDaqqiPostponeModal(null)}
+        onConfirmStartDate={handleDaqqiPostponeStartDate}
+        onUpdateRound={doUpdateRound}
+        notify={notify}
+      />
       {/* Communication Modal */}
       {daqqiCommModal && (
-        <DaqqiCommModal
-          key={daqqiCommModal.subscriberId}
-          modal={daqqiCommModal}
-          onClose={() => setDaqqiCommModal(null)}
-          onSave={handleDaqqiAddComm}
-        />
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDaqqiCommModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-extrabold text-gray-900 text-lg flex items-center gap-2">
+                  <Phone size={18} className="text-purple-600" /> تسجيل تواصل
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">{daqqiCommModal.subscriberName}</p>
+              </div>
+              <button onClick={() => setDaqqiCommModal(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-2">نوع التواصل</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['call', 'whatsapp', 'email', 'meeting', 'note', 'payment_followup'] as CommunicationRecord['type'][]).map(t => {
+                    const typeLabels: Record<string, string> = { call: '📞 مكالمة', whatsapp: '💬 واتساب', email: '📧 إيميل', meeting: '🤝 اجتماع', note: '📝 ملاحظة', payment_followup: '💰 متابعة دفع' };
+                    return (
+                      <button key={t} onClick={() => setDaqqiCommType(t)}
+                        className={`py-2 rounded-xl text-xs font-bold border-2 transition ${daqqiCommType === t ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                        {typeLabels[t]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1.5">ملاحظات <span className="text-red-500">*</span></label>
+                <textarea value={daqqiCommNote} onChange={e => setDaqqiCommNote(e.target.value)}
+                  placeholder="تفاصيل التواصل..." rows={3}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-purple-400" />
+              </div>
+              <div className="flex items-center gap-2">
+                <a href={`tel:${daqqiCommModal.phone}`} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition">
+                  <Phone size={12} /> {daqqiCommModal.phone}
+                </a>
+                <button onClick={() => { const wNum = daqqiCommModal.phone.replace(/\D/g, ''); const waNum = wNum.startsWith('0') ? '2' + wNum : wNum; window.open(`https://wa.me/${waNum}`, '_blank'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 text-xs text-teal-700 hover:bg-teal-100 transition">
+                  <MessageCircle size={12} /> واتساب
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={handleDaqqiAddComm} disabled={!daqqiCommNote.trim()}
+                className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 disabled:opacity-40 transition">
+                تسجيل التواصل
+              </button>
+              <button onClick={() => setDaqqiCommModal(null)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
+            </div>
+          </div>
+        </div>
       )}
     </article>
   );
 };
 
 export default DaqqiScheduleTab;
+

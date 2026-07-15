@@ -34,6 +34,31 @@ interface ServerStatusData {
   dbPool: { connectionLimit: number | null };
 }
 
+interface MonitoringData {
+  db?: { ok: boolean; latencyMs: number };
+  jobs?: { pending: number | null; failed: number | null; dead: number | null };
+  queueJobs?: { active: number | null; failed: number | null };
+  audit?: { eventsToday: number | null };
+  errors?: { active: boolean; errorsInWindow: number; db503InWindow: number; financeErrorsInWindow: number };
+}
+
+interface QueueDashboardData {
+  summary?: Array<{ source: string; status: string; count: number }>;
+  jobQueue?: unknown[];
+  queueJobs?: unknown[];
+}
+
+interface FinancialAuditData {
+  reconciliation?: { diff: number; balanced: boolean; paymentsCashEgp: number; journalCashDebitEgp: number };
+  summary?: {
+    payments?: { total_count: number; paid_count: number; refunded_count: number; paid_egp: number };
+    refunds?: { total_count: number; pending_count: number; approved_count: number; rejected_count: number };
+  };
+  recent?: { payments?: unknown[]; refunds?: unknown[]; journalEntries?: unknown[] };
+  issues?: { duplicatePaymentJournals?: unknown[]; orphanPaymentJournals?: unknown[]; missingPaymentJournals?: unknown[] };
+  rollbackPolicy?: { destructiveRollbackAllowed: boolean; recommendedAction: string };
+}
+
 function formatUptime(ms: number | null): string {
   if (!ms || ms < 0) return '-';
   const s = Math.floor(ms / 1000);
@@ -55,6 +80,10 @@ function formatBytes(bytes: number): string {
 
 export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
   const [data, setData] = useState<ServerStatusData | null>(null);
+  const [monitoring, setMonitoring] = useState<MonitoringData | null>(null);
+  const [queueDashboard, setQueueDashboard] = useState<QueueDashboardData | null>(null);
+  const [financialAudit, setFinancialAudit] = useState<FinancialAuditData | null>(null);
+  const [auditRows, setAuditRows] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [restartConfirm, setRestartConfirm] = useState(false);
@@ -65,8 +94,18 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
   const fetchStatus = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const json = await mysqlAdmin.adminGet<ServerStatusData>('/admin/server-status');
+      const [json, monitoringJson, queueJson, auditJson, financialAuditJson] = await Promise.all([
+        mysqlAdmin.adminGet<ServerStatusData>('/admin/server-status'),
+        mysqlAdmin.adminGet<MonitoringData>('/admin/monitoring').catch(() => null),
+        mysqlAdmin.adminGet<QueueDashboardData>('/admin/queue-dashboard?limit=20').catch(() => null),
+        mysqlAdmin.adminGet<unknown[]>('/admin/audit-logs?limit=20').catch(() => []),
+        mysqlAdmin.adminGet<FinancialAuditData>('/admin/financial-audit-dashboard?limit=10').catch(() => null),
+      ]);
       setData(json);
+      setMonitoring(monitoringJson);
+      setQueueDashboard(queueJson);
+      setFinancialAudit(financialAuditJson);
+      setAuditRows(Array.isArray(auditJson) ? auditJson : []);
       setLastFetch(new Date());
     } catch (e: unknown) {
       if (!silent) notify('error', 'تعذّر جلب حالة السيرفر: ' + (e instanceof Error ? e.message : String(e)));
@@ -120,7 +159,7 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
             <h2 className="font-extrabold text-gray-900">مراقبة السيرفر</h2>
             {lastFetch && (
               <p className="text-xs text-gray-400">
-                آخر تحديث: {lastFetch.toLocaleTimeString('ar-EG-u-nu-latn')} — يتحدث كل 30 ث
+                آخر تحديث: {lastFetch.toLocaleTimeString('ar-EG')} — يتحدث كل 30 ث
               </p>
             )}
           </div>
@@ -233,6 +272,101 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
               <CheckCircle2 size={11} /> Auto-Heal ({data.stats?.autoHeals ?? 0} مرة)
             </span>
           </div>
+        </div>
+      )}
+
+      {data && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className={`rounded-2xl border p-4 ${monitoring?.db?.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+            <p className="text-xs font-bold text-gray-500">DB latency</p>
+            <p className="text-xl font-extrabold">{monitoring?.db?.latencyMs ?? '-'} ms</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-bold text-gray-500">Job queue</p>
+            <p className="text-xl font-extrabold text-slate-700">{monitoring?.jobs?.pending ?? '-'} / {monitoring?.jobs?.failed ?? '-'}</p>
+            <p className="text-[10px] text-gray-400">pending / failed</p>
+          </div>
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+            <p className="text-xs font-bold text-gray-500">Queue jobs</p>
+            <p className="text-xl font-extrabold text-violet-700">{monitoring?.queueJobs?.active ?? '-'} / {monitoring?.queueJobs?.failed ?? '-'}</p>
+            <p className="text-[10px] text-gray-400">active / failed</p>
+          </div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-xs font-bold text-gray-500">Audit today</p>
+            <p className="text-xl font-extrabold text-blue-700">{monitoring?.audit?.eventsToday ?? auditRows.length}</p>
+          </div>
+          <div className={`rounded-2xl border p-4 ${(monitoring?.errors?.errorsInWindow ?? 0) > 0 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+            <p className="text-xs font-bold text-gray-500">Observability</p>
+            <p className="text-xl font-extrabold">{monitoring?.errors?.active ? 'Sentry' : 'Logs'}</p>
+            <p className="text-[10px] text-gray-400">{monitoring?.errors?.errorsInWindow ?? 0} errors / window</p>
+          </div>
+        </div>
+      )}
+
+      {data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+            <h3 className="font-bold text-gray-800 text-sm mb-3">Queue dashboard</h3>
+            <div className="space-y-2 text-xs">
+              {(queueDashboard?.summary ?? []).slice(0, 8).map((row, index) => (
+                <div key={`${row.source}-${row.status}-${index}`} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-600">{row.source} / {row.status}</span>
+                  <span className="font-extrabold text-gray-900">{row.count}</span>
+                </div>
+              ))}
+              {!(queueDashboard?.summary ?? []).length && <p className="text-gray-400">No queue rows yet.</p>}
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+            <h3 className="font-bold text-gray-800 text-sm mb-3">Audit log</h3>
+            <div className="space-y-2 text-xs max-h-56 overflow-y-auto">
+              {auditRows.slice(0, 8).map((row: any, index) => (
+                <div key={row?.id || index} className="rounded-lg bg-gray-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-gray-700 truncate">{row?.action || '-'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row?.severity === 'critical' ? 'bg-red-100 text-red-700' : row?.severity === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{row?.severity || 'info'}</span>
+                  </div>
+                  <p className="text-gray-400 truncate">{row?.entity_type || '-'} / {row?.entity_id || '-'}</p>
+                </div>
+              ))}
+              {!auditRows.length && <p className="text-gray-400">No audit rows yet.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {data && financialAudit && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h3 className="font-bold text-gray-800 text-sm">Financial audit dashboard</h3>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${financialAudit.reconciliation?.balanced ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+              ledger diff: {financialAudit.reconciliation?.diff ?? '-'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
+              <p className="font-bold text-gray-500">Paid payments</p>
+              <p className="text-lg font-extrabold text-emerald-700">{financialAudit.summary?.payments?.paid_count ?? '-'}</p>
+            </div>
+            <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
+              <p className="font-bold text-gray-500">Pending refunds</p>
+              <p className="text-lg font-extrabold text-amber-700">{financialAudit.summary?.refunds?.pending_count ?? '-'}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+              <p className="font-bold text-gray-500">Recent journal</p>
+              <p className="text-lg font-extrabold text-slate-700">{financialAudit.recent?.journalEntries?.length ?? '-'}</p>
+            </div>
+            <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
+              <p className="font-bold text-gray-500">Rollback policy</p>
+              <p className="text-[11px] font-bold text-blue-700">{financialAudit.rollbackPolicy?.destructiveRollbackAllowed ? 'manual delete allowed' : 'reversal only'}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-gray-500">{financialAudit.rollbackPolicy?.recommendedAction}</p>
+          <p className="mt-2 text-xs text-gray-500">
+            issues: duplicate journals {financialAudit.issues?.duplicatePaymentJournals?.length ?? 0}
+            {' | '}orphan journals {financialAudit.issues?.orphanPaymentJournals?.length ?? 0}
+            {' | '}missing journals {financialAudit.issues?.missingPaymentJournals?.length ?? 0}
+          </p>
         </div>
       )}
 

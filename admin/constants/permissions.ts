@@ -68,8 +68,12 @@ export const PERMISSIONS = {
   MANAGE_COMMUNITY:         'manage_community',
   VIEW_STAFF:               'view_staff',
   MANAGE_STAFF:             'manage_staff',
+  VIEW_HR:                  'view_hr',
+  MANAGE_HR:                'manage_hr',
   VIEW_ORDERS:              'view_orders',
   MANAGE_ORDERS:            'manage_orders',
+  MANAGE_PAYMENTS:          'manage_payments',
+  APPROVE_REFUNDS:          'approve_refunds',
   VIEW_FINANCIAL:           'view_financial',
   MANAGE_FINANCIAL:         'manage_financial',
   VIEW_REPORTS:             'view_reports',
@@ -77,6 +81,7 @@ export const PERMISSIONS = {
   MANAGE_INBOX:             'manage_inbox',
   MANAGE_NOTIFICATIONS:     'manage_notifications',
   MANAGE_CHANNEL_SETTINGS:  'manage_channel_settings',
+  BULK_WHATSAPP:            'bulk_whatsapp',
   VIEW_JOIN_US:             'view_join_us',
   MANAGE_JOIN_US:           'manage_join_us',
   VIEW_CONTACTS:            'view_contacts',
@@ -88,6 +93,10 @@ export const PERMISSIONS = {
   MANAGE_AI_SETTINGS:       'manage_ai_settings',
   AI_DEV:                   'ai_dev',
   MANAGE_AUTOMATION:        'manage_automation',
+  VIEW_SECURITY:            'view_security',
+  MANAGE_SECURITY:          'manage_security',
+  VIEW_SETTINGS:            'view_settings',
+  MANAGE_SETTINGS:          'manage_settings',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -116,8 +125,12 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_community:        'إدارة المجتمع',
   view_staff:              'عرض فريق العمل',
   manage_staff:            'إدارة فريق العمل',
+  view_hr:                 'عرض الموارد البشرية',
+  manage_hr:               'إدارة الموارد البشرية',
   view_orders:             'عرض الطلبات',
   manage_orders:           'إدارة الطلبات',
+  manage_payments:         'تسجيل وتعديل المدفوعات',
+  approve_refunds:         'اعتماد أو رفض الاستردادات',
   view_financial:          'عرض المالية',
   manage_financial:        'إدارة المالية',
   view_reports:            'عرض التقارير',
@@ -125,6 +138,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_inbox:            'إدارة الرسائل الواردة',
   manage_notifications:    'إدارة الإشعارات',
   manage_channel_settings: 'إعدادات قنوات التواصل',
+  bulk_whatsapp:           'إرسال واتساب جماعي',
   view_join_us:            'عرض طلبات الانضمام',
   manage_join_us:          'إدارة طلبات الانضمام',
   view_contacts:           'عرض رسائل التواصل',
@@ -136,6 +150,10 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   manage_ai_settings:      'إعدادات الذكاء الاصطناعي',
   ai_dev:                  'وضع تطوير الذكاء الاصطناعي',
   manage_automation:       'إدارة الأتمتة',
+  view_security:           'عرض الأمن والمراقبة',
+  manage_security:         'إدارة الأمن والمراقبة',
+  view_settings:           'عرض إعدادات النظام',
+  manage_settings:         'إدارة إعدادات النظام',
 };
 
 // ── 5. PERMISSION CATEGORIES (for StaffProfile UI) ────────────────────────────
@@ -150,7 +168,7 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
   },
   {
     label: 'الطلبات والمالية',
-    perms: ['view_orders', 'manage_orders', 'view_financial', 'manage_financial'],
+    perms: ['view_orders', 'manage_orders', 'manage_payments', 'approve_refunds', 'view_financial', 'manage_financial'],
   },
   {
     label: 'الكورسات والمحتوى التعليمي',
@@ -166,11 +184,11 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
   },
   {
     label: 'فريق العمل والموارد البشرية',
-    perms: ['view_staff', 'manage_staff', 'view_join_us', 'manage_join_us', 'view_contacts', 'manage_contacts'],
+    perms: ['view_staff', 'manage_staff', 'view_hr', 'manage_hr', 'view_join_us', 'manage_join_us', 'view_contacts', 'manage_contacts'],
   },
   {
     label: 'المراسلات والإشعارات',
-    perms: ['manage_inbox', 'manage_notifications', 'manage_channel_settings'],
+    perms: ['manage_inbox', 'manage_notifications', 'manage_channel_settings', 'bulk_whatsapp'],
   },
   {
     label: 'إدارة الدقي',
@@ -182,7 +200,7 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
   },
   {
     label: 'الذكاء الاصطناعي والأتمتة',
-    perms: ['ask_ai', 'manage_ai_settings', 'ai_dev', 'manage_automation'],
+    perms: ['ask_ai', 'manage_ai_settings', 'ai_dev', 'manage_automation', 'view_security', 'manage_security', 'view_settings', 'manage_settings'],
   },
 ];
 
@@ -198,17 +216,18 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_dashboard',
     'view_leads', 'manage_leads', 'export_leads', 'delete_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
-    'view_orders', 'manage_orders',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports', 'view_activity',
     'view_staff',
     'view_client_db',
+    'bulk_whatsapp',
     'ask_ai',
   ],
 
   sales: [
     'view_dashboard',
-    'view_leads', 'manage_leads', 'export_leads',
+    'view_leads', 'manage_leads', 'export_leads', 'bulk_whatsapp',
     'view_subscribers',
     'view_orders',
     'view_consultations',
@@ -218,22 +237,23 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   collection: [
     'view_dashboard',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
-    'view_orders', 'manage_orders',
+    'view_orders', 'manage_orders', 'manage_payments',
     'view_financial', 'manage_financial',
     'view_reports',
     'view_client_db',
+    'bulk_whatsapp',
     'ask_ai',
   ],
 
   support: [
     'view_dashboard',
-    'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers',
     'view_orders',
     'manage_inbox', 'manage_notifications',
     'view_consultations',
     'view_reports',
     'view_client_db',
+    'bulk_whatsapp',
     'ask_ai',
   ],
 
@@ -248,9 +268,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   hr: [
     'view_dashboard',
-    'view_staff', 'manage_staff',
-    'view_leads',
-    'view_subscribers',
+    'view_staff', 'manage_staff', 'view_hr', 'manage_hr',
     'view_reports', 'view_activity',
     'view_join_us', 'manage_join_us',
     'view_contacts', 'manage_contacts',
@@ -259,7 +277,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   accountant: [
     'view_dashboard',
-    'view_orders', 'manage_orders',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports',
   ],
@@ -275,20 +293,18 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   trainer: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
-    'view_subscribers',
     'view_consultations',
   ],
 
   instructor: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
-    'view_subscribers',
   ],
 };
 
 // ── 7. DATA SCOPE PER ROLE ────────────────────────────────────────────────────
 // Controls what rows the server returns from the unified /api/staff/subscribers endpoint.
-export type DataScope = 'all' | 'assigned_sales' | 'assigned_cs' | `branch:${string}`;
+export type DataScope = 'all' | 'assigned_sales' | 'assigned_cs' | 'none' | `branch:${string}`;
 
 export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
   admin:                    'all',
@@ -299,12 +315,12 @@ export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
   reception_daqqi:          'branch:DAQQI',
   sales:                    'assigned_sales',
   collection:               'assigned_cs',
-  support:                  'all',
-  hr:                       'all',
+  support:                  'assigned_cs',
+  hr:                       'none',
   accountant:               'all',
   consultant:               'assigned_sales',
-  trainer:                  'all',
-  instructor:               'all',
+  trainer:                  'none',
+  instructor:               'none',
 };
 
 // ── 8. FULL-ACCESS ROLES ──────────────────────────────────────────────────────

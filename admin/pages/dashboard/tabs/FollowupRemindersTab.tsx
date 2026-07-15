@@ -9,6 +9,7 @@ import type { LeadItem, LeadStatus } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
+type FollowupSort = 'date' | 'name';
 
 const STATUS_LABELS: Partial<Record<LeadStatus, string>> = {
   new: 'جديد', contacted: 'تم التواصل', interested: 'مهتم',
@@ -114,7 +115,7 @@ const FollowupRemindersTab: React.FC<Props> = ({ notify }) => {
           <option value="all">كل المبيعات</option>
           {salesTeam.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as FollowupSort)}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
           <option value="date">ترتيب: حسب التاريخ</option>
           <option value="name">ترتيب: حسب الاسم</option>

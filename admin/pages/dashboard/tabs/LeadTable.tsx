@@ -1,8 +1,8 @@
 import React from 'react';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
-import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
-import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, WA_QUICK_TEMPLATES, calcLeadScore, getRottenLevel } from './leadUtils';
+import type { Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
+import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, calcLeadScore, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
@@ -721,36 +721,6 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 </div>
                 <button onClick={() => setWaMenuRow(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
               </div>
-              {/* ── Quick templates for current lead status ── */}
-              {(() => {
-                const quickTpls = WA_QUICK_TEMPLATES.filter(t => t.statuses.includes(waMenuRow.status));
-                if (!quickTpls.length) return null;
-                return (
-                  <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                    <p className="text-[11px] font-bold text-emerald-700 mb-2">⚡ مقترحة لحالة "{STATUS_CFG[waMenuRow.status]?.label || waMenuRow.status}"</p>
-                    <div className="space-y-1.5">
-                      {quickTpls.map(t => (
-                        <div key={t.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-50 transition group">
-                          <span className="text-sm font-bold text-gray-700 group-hover:text-emerald-700 flex-1">{t.label}</span>
-                          <button
-                            onClick={() => navigator.clipboard?.writeText(t.text(firstName))}
-                            title="نسخ النص"
-                            className="p-1 rounded-lg bg-gray-50 text-gray-400 hover:bg-gray-200 text-xs flex-shrink-0">
-                            📋
-                          </button>
-                          <a
-                            href={`https://wa.me/${waPhone}?text=${encodeURIComponent(t.text(firstName))}`}
-                            target="_blank" rel="noopener noreferrer"
-                            onClick={() => setWaMenuRow(null)}
-                            className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-bold hover:bg-emerald-700 flex-shrink-0">
-                            إرسال ↗
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
               <div className="space-y-4">
                 {templates.map(cat => (
                   <div key={cat.cat}>

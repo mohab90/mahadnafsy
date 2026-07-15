@@ -75,10 +75,9 @@ const CAT_LABELS: Record<TicketCategory, string> = {
 };
 
 const TicketsTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, contactMessages } = useSiteData();
+  const { staffMembers } = useSiteData();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialLoadDone = useRef(false);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -90,25 +89,60 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const [draft, setDraft] = useState<Partial<SupportTicket>>({});
   const [showCanned, setShowCanned] = useState(false);
 
-  useEffect(() => {
-    mysqlAdmin.adminGet<{ ok: boolean; data: SupportTicket[] | null }>('/admin/kv/support_tickets')
-      .then(res => { if (res.data) setTickets(res.data); })
-      .catch(() => {})
-      .finally(() => { setLoading(false); initialLoadDone.current = true; });
-  }, []);
-
-  // Debounced save to API
-  const persistTickets = (updated: SupportTicket[]) => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      mysqlAdmin.adminPut('/admin/kv/support_tickets', updated).catch(() => {});
-    }, 800);
+  const statusFromApi = (status?: string): TicketStatus => {
+    if (status === 'in_progress') return 'inprogress';
+    if (status === 'resolved' || status === 'closed' || status === 'open') return status;
+    return 'open';
   };
 
-  useEffect(() => {
-    if (!initialLoadDone.current) return;
-    persistTickets(tickets);
-  }, [tickets]);
+  const statusToApi = (status: TicketStatus) => status === 'inprogress' ? 'in_progress' : status;
+
+  const mapTicket = (row: any): SupportTicket => {
+    const priority = (['low', 'medium', 'high', 'urgent'].includes(row.priority) ? row.priority : 'medium') as TicketPriority;
+    const createdAt = row.created_at || row.createdAt || new Date().toISOString();
+    const replies = Array.isArray(row.replies) ? row.replies : [];
+    return {
+      id: String(row.id),
+      title: row.subject || row.title || 'تذكرة دعم',
+      description: row.body || row.description || '',
+      status: statusFromApi(row.status),
+      priority,
+      category: 'other',
+      clientName: row.subscriber_name || row.clientName || row.subscriber_email || 'عميل',
+      clientEmail: row.subscriber_email || row.clientEmail || '',
+      assigneeId: row.assigned_to || row.assigneeId || '',
+      createdAt,
+      updatedAt: row.updated_at || row.updatedAt || createdAt,
+      resolvedAt: row.resolved_at || row.resolvedAt || undefined,
+      respondedAt: row.responded_at || row.respondedAt || undefined,
+      slaHours: row.sla_hours || row.slaHours || SLA_BY_PRIORITY[priority],
+      slaBreached: !!(row.sla_breached || row.slaBreached),
+      escalatedTo: row.escalated_to || row.escalatedTo || undefined,
+      escalatedAt: row.escalated_at || row.escalatedAt || undefined,
+      messages: replies.map((reply: any) => ({
+        id: String(reply.id),
+        text: reply.body || '',
+        author: reply.author_name || (reply.author_type === 'subscriber' ? 'العميل' : 'الإدارة'),
+        isStaff: reply.author_type !== 'subscriber',
+        at: reply.created_at || new Date().toISOString(),
+      })),
+    };
+  };
+
+  const loadTickets = async () => {
+    setLoading(true);
+    try {
+      const rows = await mysqlAdmin.adminGet<any[]>('/admin/tickets');
+      setTickets(rows.map(mapTicket));
+    } catch (error) {
+      notify('error', 'تعذر تحميل تذاكر الدعم');
+    } finally {
+      setLoading(false);
+      initialLoadDone.current = true;
+    }
+  };
+
+  useEffect(() => { loadTickets(); }, []);
 
   useEffect(() => {
     if (selectedTicket) {
@@ -215,6 +249,102 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     notify('success', 'تم حذف التذكرة');
   };
 
+  const createTicketApi = async () => {
+    if (!draft.title?.trim() || !draft.clientName?.trim()) { notify('error', 'أدخل العنوان واسم العميل'); return; }
+    try {
+      await mysqlAdmin.adminPost('/admin/tickets', {
+        subject: draft.title,
+        body: draft.description || '',
+        subscriber_name: draft.clientName,
+        subscriber_email: draft.clientEmail || '',
+        priority: draft.priority || 'medium',
+        assigned_to: draft.assigneeId || null,
+      });
+      setDraft({});
+      setShowCreate(false);
+      await loadTickets();
+      notify('success', 'تم إنشاء التذكرة');
+    } catch (error) {
+      notify('error', 'تعذر إنشاء التذكرة');
+    }
+  };
+
+  const updateStatusApi = async (id: string, status: TicketStatus) => {
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}`, {
+        status: statusToApi(status),
+        priority: selectedTicket?.priority || 'medium',
+        assigned_to: selectedTicket?.assigneeId || null,
+      });
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString(), ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) } : t));
+      notify('success', `تم تحديث الحالة إلى "${STATUS_CFG[status].label}"`);
+    } catch (error) {
+      notify('error', 'تعذر تحديث حالة التذكرة');
+    }
+  };
+
+  const addReplyApi = async () => {
+    if (!replyText.trim() || !selectedTicket) return;
+    try {
+      const currentText = replyText;
+      await mysqlAdmin.adminPost(`/admin/tickets/${selectedTicket.id}/reply`, { body: currentText });
+      const msg: TicketMessage = { id: Date.now().toString(), text: currentText, author: 'الإدارة', isStaff: true, at: new Date().toISOString() };
+      setTickets(prev => prev.map(t => t.id === selectedTicket.id
+        ? { ...t, status: t.status === 'open' ? 'inprogress' : t.status, messages: [...t.messages, msg], updatedAt: new Date().toISOString(), respondedAt: t.respondedAt || new Date().toISOString() }
+        : t
+      ));
+      setReplyText('');
+      setShowCanned(false);
+      notify('success', 'تم إضافة الرد');
+    } catch (error) {
+      notify('error', 'تعذر إرسال الرد');
+    }
+  };
+
+  const escalateTicketApi = async (id: string) => {
+    const admins = supportTeam.filter(s => s.role === 'admin' || s.role === 'manager');
+    if (!admins.length) { notify('error', 'لا يوجد مدير للتصعيد إليه'); return; }
+    const manager = admins[0];
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}`, {
+        status: statusToApi(selectedTicket?.status || 'open'),
+        priority: 'urgent',
+        assigned_to: manager.id,
+      });
+      setTickets(prev => prev.map(t => t.id === id
+        ? { ...t, escalatedTo: manager.id, escalatedAt: new Date().toISOString(), priority: 'urgent' as TicketPriority, assigneeId: manager.id, updatedAt: new Date().toISOString() }
+        : t
+      ));
+      notify('info', `تم تصعيد التذكرة إلى ${manager.name}`);
+    } catch (error) {
+      notify('error', 'تعذر تصعيد التذكرة');
+    }
+  };
+
+  const deleteTicketApi = async (id: string) => {
+    try {
+      await mysqlAdmin.adminDelete(`/admin/tickets/${id}`);
+      setTickets(prev => prev.filter(t => t.id !== id));
+      if (selectedTicket?.id === id) setSelectedTicket(null);
+      notify('success', 'تم حذف التذكرة');
+    } catch (error) {
+      notify('error', 'تعذر حذف التذكرة');
+    }
+  };
+
+  const selectTicketApi = async (ticket: SupportTicket, isSelected: boolean) => {
+    if (isSelected) { setSelectedTicket(null); return; }
+    setSelectedTicket(ticket);
+    try {
+      const row = await mysqlAdmin.adminGet<any>(`/admin/tickets/${ticket.id}`);
+      const detailed = mapTicket(row);
+      setTickets(prev => prev.map(t => t.id === detailed.id ? { ...t, ...detailed } : t));
+      setSelectedTicket(detailed);
+    } catch (error) {
+      notify('error', 'تعذر تحميل تفاصيل التذكرة');
+    }
+  };
+
   return (
     <div className="space-y-5" dir="rtl">
       {loading && (
@@ -288,7 +418,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 </select>
               </div>
               <div className="flex gap-3 mt-2">
-                <button onClick={createTicket} className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm hover:bg-blue-700">إنشاء التذكرة</button>
+                <button onClick={createTicketApi} className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm hover:bg-blue-700">إنشاء التذكرة</button>
                 <button onClick={() => setShowCreate(false)} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl font-bold text-sm hover:bg-gray-200">إلغاء</button>
               </div>
             </div>
@@ -343,7 +473,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
             const isSelected = selectedTicket?.id === ticket.id;
             return (
               <div key={ticket.id}
-                onClick={() => setSelectedTicket(isSelected ? null : ticket)}
+                onClick={() => selectTicketApi(ticket, isSelected)}
                 className={`bg-white border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all ${isSelected ? 'border-blue-400 shadow-md' : 'border-gray-200'} ${ticket.slaBreached ? 'border-l-4 border-l-pink-500' : ticket.priority === 'urgent' ? 'border-r-4 border-r-red-500' : ticket.priority === 'high' ? 'border-r-4 border-r-orange-400' : ''}`}>
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex-1 min-w-0">
@@ -383,13 +513,13 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
             {/* Actions */}
             <div className="px-4 py-2 border-b border-gray-50 flex gap-2 flex-wrap">
               {(['open', 'inprogress', 'resolved', 'closed'] as TicketStatus[]).map(s => (
-                <button key={s} onClick={() => updateStatus(selectedTicket.id, s)}
+                <button key={s} onClick={() => updateStatusApi(selectedTicket.id, s)}
                   className={`text-xs px-2 py-1 rounded-lg border transition-colors ${selectedTicket.status === s ? `${STATUS_CFG[s].bg} ${STATUS_CFG[s].color} font-bold` : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
                   {STATUS_CFG[s].label}
                 </button>
               ))}
               {!selectedTicket.escalatedAt && (
-                <button onClick={() => escalateTicket(selectedTicket.id)}
+                <button onClick={() => escalateTicketApi(selectedTicket.id)}
                   className="text-xs px-2 py-1 rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 flex items-center gap-1">
                   <TrendingUp size={11} /> تصعيد
                 </button>
@@ -404,7 +534,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                   <Zap size={11} /> تجاوز SLA
                 </span>
               )}
-              <button onClick={() => deleteTicket(selectedTicket.id)}
+              <button onClick={() => deleteTicketApi(selectedTicket.id)}
                 className="text-xs px-2 py-1 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mr-auto">حذف</button>
             </div>
             {/* Messages */}
@@ -446,10 +576,10 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 <Star size={14} />
               </button>
               <input value={replyText} onChange={e => setReplyText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addReply(); } }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addReplyApi(); } }}
                 placeholder="اكتب ردك هنا..."
                 className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              <button onClick={addReply} className="bg-blue-600 text-white px-3 py-2 rounded-xl hover:bg-blue-700 transition-colors">
+              <button onClick={addReplyApi} className="bg-blue-600 text-white px-3 py-2 rounded-xl hover:bg-blue-700 transition-colors">
                 <Send size={15} />
               </button>
             </div>

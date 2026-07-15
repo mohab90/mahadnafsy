@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Star, MessageSquare, Send, X, Zap, Filter } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+type LeadScoreSort = 'score' | 'date';
 
 const STATUS_WEIGHTS: Record<string, number> = {
   converted: 100, interested_booking: 85, interested: 70, follow_up: 55,
@@ -62,7 +64,7 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
     try {
       const r = await fetch('/api/admin/leads/bulk-whatsapp', {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify({ lead_ids: leads.map(l => l.id), message }),
       });
       const data = await r.json();
@@ -207,7 +209,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={90} />
             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <Tooltip formatter={((v: number) => [v, 'عدد الليدات']) as any} />
+            <Tooltip formatter={(v: number) => [v, 'عدد الليدات']} />
             <Bar dataKey="count" radius={[0, 4, 4, 0]} name="عدد الليدات">
               {distribution.map((d, i) => <Cell key={i} fill={d.fill} />)}
             </Bar>
@@ -244,7 +246,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
             <option value="all">كل المصادر</option>
             {sources.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as LeadScoreSort)}
             className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
             <option value="score">ترتيب بالدرجة</option>
             <option value="date">ترتيب بالتاريخ</option>

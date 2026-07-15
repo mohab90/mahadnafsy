@@ -1,119 +1,50 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  BarChart3, BookOpen, ChevronDown, Eye, Plus, Radio, Save,
-  Search, Upload, Users, Video, X, TrendingUp,
+  Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
-import { Bundle, Course, CourseChapterItem, CourseAccessSetting, DiscountRule, Therapist, TherapistAvailabilitySlot } from '../../../types';
-import { meetingProviderLabels, defaultMeetingBaseUrls } from '../../../lib/consultations';
+import { Bundle, Course, CourseChapterItem, DiscountRule, Therapist, TherapistAvailabilitySlot } from '../../../types';
+import { defaultMeetingBaseUrls } from '../../../lib/consultations';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { SafeHtml } from '../../../components/SafeHtml';
+import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import TestimonialsManager from './TestimonialsManager';
-import BundlesManager from './BundlesManager';
-import InstructorsManager from './InstructorsManager';
-import LecturesManager from './LecturesManager';
-import CoursesManager from './CoursesManager';
-import DiscountsManager from './DiscountsManager';
+import { compressImageFile } from '../../../lib/imageBudget';
+import { sanitizeRichHtml } from '../../../../shared/ui/sanitizeHtml';
+import type { LessonAnalyticsRow } from './courses/LessonAnalyticsModal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+type RichField = 'shortDescription' | 'description';
+
+const CourseInstructorsPanel = React.lazy(() => import('./courses/CourseInstructorsPanel').then(module => ({ default: module.CourseInstructorsPanel })));
+const CourseLectureList = React.lazy(() => import('./courses/CourseLectureList').then(module => ({ default: module.CourseLectureList })));
+const CourseListPanel = React.lazy(() => import('./courses/CourseListPanel').then(module => ({ default: module.CourseListPanel })));
+const LessonAnalyticsModal = React.lazy(() => import('./courses/LessonAnalyticsModal').then(module => ({ default: module.LessonAnalyticsModal })));
 
 const _vk = '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
 const obfV = (u: string): string => { if (!u || u.startsWith('enc:')) return u; try { return 'enc:' + btoa(u.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))).join('')); } catch { return u; } };
 const deobfV = (u: string): string => { if (!u || !u.startsWith('enc:')) return u; try { return atob(u.slice(4)).split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))).join(''); } catch { return u; } };
 
-// \u2500\u2500 Slug generation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-// Produces a REAL English slug (never Franco/transliteration). Strategy:
-//   1. English input (titleEn) \u2192 just lowercase + hyphenate.
-//   2. Arabic input \u2192 translate via a domain dictionary (full phrases first, then
-//      single words) + keep any Latin acronym present (NLP/ACT/CBT\u2026).
-//   3. Nothing recognised \u2192 '' (empty), so the field stays blank for manual entry.
-const asciiSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-
-// Full-phrase map (normalised bare-stem Arabic \u2192 English), longest/most-specific first.
-const SLUG_PHRASES: [string, string][] = [
-  ['\u0628\u0631\u0645\u062c\u0647 \u0644\u063a\u0648\u064a\u0647 \u0639\u0635\u0628\u064a\u0647', 'nlp'],
-  ['\u0641\u0646 \u0643\u0644\u0627\u0645 \u062a\u0627\u062b\u064a\u0631', 'art-of-speaking-and-influencing'],
-  ['\u0627\u0639\u062f\u0627\u062f \u0645\u0639\u0627\u0644\u062c \u0627\u062f\u0645\u0627\u0646', 'addiction-therapist-preparation'],
-  ['\u0645\u0639\u0627\u0644\u062c \u0627\u062f\u0645\u0627\u0646', 'addiction-therapist'],
-  ['\u0644\u0627\u064a\u0641 \u0643\u0648\u062a\u0634\u064a\u0646\u062c', 'life-coaching'],
-  ['\u062a\u0646\u0645\u064a\u0647 \u0645\u0647\u0627\u0631\u0627\u062a \u0627\u0637\u0641\u0627\u0644', 'developing-childrens-skills'],
-  ['\u062a\u0646\u0645\u064a\u0647 \u0645\u0647\u0627\u0631\u0627\u062a', 'skills-development'],
-  ['\u0639\u0644\u0645 \u0646\u0641\u0633 \u0627\u064a\u062c\u0627\u0628\u064a', 'positive-psychology'],
-  ['\u0639\u0644\u0645 \u0646\u0641\u0633 \u0645\u0638\u0644\u0645', 'dark-psychology'],
-  ['\u0639\u0644\u0645 \u0646\u0641\u0633 \u0627\u0643\u0644\u064a\u0646\u064a\u0643\u064a', 'clinical-psychology'],
-  ['\u062a\u0644\u0627\u0639\u0628 \u062a\u062d\u0635\u064a\u0646 \u0646\u0641\u0633\u064a', 'dark-psychology'],
-  ['\u0627\u0636\u0637\u0631\u0627\u0628 \u0637\u064a\u0641 \u062a\u0648\u062d\u062f', 'autism-spectrum-disorder'],
-  ['\u0637\u064a\u0641 \u062a\u0648\u062d\u062f', 'autism-spectrum'],
-  ['\u062a\u062f\u062e\u0644 \u0645\u0628\u0643\u0631', 'early-intervention'],
-  ['\u062a\u0631\u0628\u064a\u0647 \u062e\u0627\u0635\u0647', 'special-education'],
-  ['\u062a\u0631\u0628\u064a\u0647 \u0627\u064a\u062c\u0627\u0628\u064a\u0647', 'positive-parenting'],
-  ['\u062a\u0639\u062f\u064a\u0644 \u0633\u0644\u0648\u0643', 'behavior-modification'],
-  ['\u0635\u0639\u0648\u0628\u0627\u062a \u062a\u0639\u0644\u0645', 'learning-difficulties'],
-  ['\u0639\u0644\u0627\u062c \u0645\u062e\u0637\u0637\u0627\u062a \u0645\u0639\u0631\u0641\u064a\u0647', 'schema-therapy'],
-  ['\u0645\u062e\u0637\u0637\u0627\u062a \u0645\u0639\u0631\u0641\u064a\u0647', 'schema-therapy'],
-  ['\u0639\u0644\u0627\u062c \u0642\u0628\u0648\u0644 \u0627\u0644\u062a\u0632\u0627\u0645', 'act'],
-  ['\u0639\u0644\u0627\u062c \u0633\u0644\u0648\u0643\u064a \u0645\u0639\u0631\u0641\u064a', 'cbt'],
-  ['\u0639\u0644\u0627\u062c \u062c\u062f\u0644\u064a \u0633\u0644\u0648\u0643\u064a', 'dbt'],
-  ['\u0639\u0644\u0627\u062c \u0646\u0641\u0633\u064a', 'psychotherapy'],
-  ['\u0635\u062d\u0647 \u0646\u0641\u0633\u064a\u0647', 'mental-health'],
-  ['\u0627\u0631\u0634\u0627\u062f \u0632\u0648\u0627\u062c\u064a \u0627\u0633\u0631\u064a', 'family-counseling'],
-  ['\u0627\u0631\u0634\u0627\u062f \u0632\u0648\u0627\u062c\u064a', 'marital-counseling'],
-  ['\u0627\u0631\u0634\u0627\u062f \u0627\u0633\u0631\u064a', 'family-counseling'],
-  ['\u0627\u0631\u0634\u0627\u062f \u0646\u0641\u0633\u064a', 'psychological-counseling'],
-  ['\u062a\u062e\u0627\u0637\u0628', 'speech-therapy'],
-];
-// Single-word map (normalised bare stem \u2192 English) for whatever the phrases leave behind.
-const SLUG_WORDS: Record<string, string> = {
-  '\u0646\u0641\u0633': 'psychology', '\u0646\u0641\u0633\u064a': 'psychology', '\u0646\u0641\u0633\u064a\u0647': 'mental', '\u0639\u0644\u0645': 'science',
-  '\u0639\u0644\u0627\u062c': 'therapy', '\u0645\u0639\u0627\u0644\u062c': 'therapist', '\u0627\u062e\u0635\u0627\u064a\u064a': 'specialist', '\u0627\u062e\u0635\u0627\u064a': 'specialist',
-  '\u0627\u0639\u062f\u0627\u062f': 'preparation', '\u0627\u062d\u062a\u0631\u0627\u0641': 'mastering', '\u062f\u0628\u0644\u0648\u0645\u0647': 'diploma', '\u0627\u0633\u0627\u0633\u064a\u0627\u062a': 'fundamentals', '\u0645\u0642\u062f\u0645\u0647': 'intro',
-  '\u0627\u0637\u0641\u0627\u0644': 'children', '\u0637\u0641\u0644': 'child', '\u0645\u0631\u0627\u0647\u0642\u064a\u0646': 'adolescents', '\u0627\u0633\u0631\u064a': 'family', '\u0632\u0648\u0627\u062c\u064a': 'marital',
-  '\u0627\u062f\u0645\u0627\u0646': 'addiction', '\u0633\u0644\u0648\u0643': 'behavior', '\u0633\u0644\u0648\u0643\u064a': 'behavioral', '\u0645\u0639\u0631\u0641\u064a': 'cognitive', '\u0645\u0639\u0631\u0641\u064a\u0647': 'cognitive',
-  '\u062a\u0639\u0644\u0645': 'learning', '\u062a\u0639\u0644\u064a\u0645': 'education', '\u0645\u0647\u0627\u0631\u0627\u062a': 'skills', '\u062a\u0646\u0645\u064a\u0647': 'development', '\u062a\u0637\u0648\u064a\u0631': 'development',
-  '\u062a\u0631\u0628\u064a\u0647': 'education', '\u062e\u0627\u0635\u0647': 'special', '\u0627\u064a\u062c\u0627\u0628\u064a': 'positive', '\u0627\u064a\u062c\u0627\u0628\u064a\u0647': 'positive', '\u0645\u0638\u0644\u0645': 'dark',
-  '\u0635\u062d\u0647': 'health', '\u0627\u0636\u0637\u0631\u0627\u0628': 'disorder', '\u0627\u0636\u0637\u0631\u0627\u0628\u0627\u062a': 'disorders', '\u0642\u0644\u0642': 'anxiety', '\u0627\u0643\u062a\u064a\u0627\u0628': 'depression',
-  '\u0636\u063a\u0648\u0637': 'stress', '\u063a\u0636\u0628': 'anger', '\u062a\u0646\u0648\u064a\u0645': 'hypnosis', '\u0627\u0633\u062a\u0631\u062e\u0627\u0621': 'relaxation',
-  '\u0637\u064a\u0641': 'spectrum', '\u062a\u0648\u062d\u062f': 'autism', '\u0645\u0628\u0643\u0631': 'early', '\u062a\u062f\u062e\u0644': 'intervention', '\u062a\u062e\u0627\u0637\u0628': 'speech-therapy',
-  '\u0627\u0631\u0634\u0627\u062f': 'counseling', '\u0627\u0633\u062a\u0634\u0627\u0631\u0627\u062a': 'consulting', '\u062a\u0627\u0645\u0644': 'meditation', '\u0630\u0643\u0627\u0621': 'intelligence', '\u0639\u0627\u0637\u0641\u064a': 'emotional',
-  '\u0641\u0646': 'art', '\u0643\u0644\u0627\u0645': 'speaking', '\u062a\u0627\u062b\u064a\u0631': 'influence', '\u0627\u0642\u0646\u0627\u0639': 'persuasion', '\u062a\u0641\u0627\u0648\u0636': 'negotiation',
-  '\u0642\u064a\u0627\u062f\u0647': 'leadership', '\u0627\u062f\u0627\u0631\u0647': 'management', '\u0648\u0642\u062a': 'time', '\u0630\u0627\u062a': 'self', '\u062b\u0642\u0647': 'confidence',
-  '\u062a\u0644\u0627\u0639\u0628': 'manipulation', '\u062a\u062d\u0635\u064a\u0646': 'protection', '\u0643\u0648\u062a\u0634\u064a\u0646\u062c': 'coaching', '\u0643\u0648\u062a\u0634': 'coach', '\u0644\u0627\u064a\u0641': 'life',
-  '\u0627\u0643\u0644\u064a\u0646\u064a\u0643\u064a': 'clinical', '\u062c\u062f\u0644\u064a': 'dialectical', '\u0642\u0628\u0648\u0644': 'acceptance', '\u0627\u0644\u062a\u0632\u0627\u0645': 'commitment', '\u0645\u062e\u0637\u0637\u0627\u062a': 'schemas',
-};
-const normalizeArabic = (x: string): string =>
-  x.replace(/[\u0640\u064b-\u0652\u0670]/g, '').replace(/[\u0623\u0625\u0622]/g, '\u0627')
-   .replace(/\u0649/g, '\u064a').replace(/\u0629/g, '\u0647').replace(/\u0624/g, '\u0648')
-   .replace(/\u0626/g, '\u064a').replace(/\u0621/g, '');
-const stripArticle = (tok: string): string =>
-  tok.replace(/^(?:\u0648)?(?:\u0628\u0627\u0644|\u0643\u0627\u0644|\u0641\u0627\u0644|\u0644\u0627\u0644|\u0648\u0627\u0644|\u0644\u0644)/, '').replace(/^\u0627\u0644/, '');
-
 const slugify = (text: string): string => {
-  if (!text || !text.trim()) return '';
-  // English (or any non-Arabic) input \u2192 straight asciify.
-  if (!/[\u0600-\u06ff]/.test(text)) return asciiSlug(text);
-  // Arabic input \u2192 dictionary translation.
-  const latin = (text.match(/[A-Za-z][A-Za-z0-9]+/g) || []).map(w => w.toLowerCase());
-  const toks = normalizeArabic(text)
-    .replace(/[^\u0600-\u06ff\s]/g, ' ').split(/\s+/).filter(Boolean)
-    .map(stripArticle).filter(Boolean);
-  let s = ' ' + toks.join(' ') + ' ';
-  const out: string[] = [];
-  // Tokens are single-space separated, so plain substring matching is enough (and avoids regex escaping).
-  for (const [ar, en] of SLUG_PHRASES) {
-    if (s.includes(' ' + ar + ' ')) { out.push(en); s = s.replace(' ' + ar + ' ', ' '); }
-  }
-  for (const tok of s.split(/\s+/).filter(Boolean)) {
-    const en = SLUG_WORDS[tok];
-    if (en) out.push(en);
-  }
-  // Append Latin acronyms (NLP/ACT…) unless already covered by a phrase result (e.g. schema-therapy).
-  for (const w of latin) if (!out.some(o => o.split('-').includes(w))) out.push(w);
-  return asciiSlug([...new Set(out)].join('-'));
+  const arabicToLatin: Record<string, string> = { '\u0623':'a','\u0625':'a','\u0622':'a','\u0627':'a','\u0628':'b','\u062a':'t','\u062b':'th','\u062c':'j','\u062d':'h','\u062e':'kh','\u062f':'d','\u0630':'z','\u0631':'r','\u0632':'z','\u0633':'s','\u0634':'sh','\u0635':'s','\u0636':'d','\u0637':'t','\u0638':'z','\u0639':'a','\u063a':'g','\u0641':'f','\u0642':'q','\u0643':'k','\u0644':'l','\u0645':'m','\u0646':'n','\u0647':'h','\u0648':'w','\u064a':'y','\u0649':'a','\u0629':'a','\u0621':'a' };
+  return text.split('').map(c => arabicToLatin[c] ?? c).join('').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 };
 
-const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '', isPublished: true });
+const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '' });
 
 const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
+
+const blankTherapistSlot = (): TherapistAvailabilitySlot => ({ id: `slot-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, day: 'sunday', startTime: '17:00', endTime: '17:50', timezone: 'Africa/Cairo', label: '', meetingLink: '', isActive: true });
+
+const therapistAvatarDataUrl = (name?: string) => {
+  const initial = String(name || 'M').trim().charAt(0).toUpperCase() || 'M';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112"><rect width="112" height="112" rx="24" fill="#eef2ff"/><circle cx="56" cy="44" r="18" fill="#818cf8"/><path d="M24 100c5-22 18-34 32-34s27 12 32 34" fill="#6366f1"/><text x="56" y="62" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700" fill="white">${initial}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+const safeTherapistImageSrc = (image: string | undefined, name?: string) => {
+  const value = String(image || '').trim();
+  if (!value || /top4top\.io/i.test(value)) return therapistAvatarDataUrl(name);
+  return value;
+};
 
 interface Props {
   notify: NotifyFn;
@@ -155,9 +86,15 @@ export default function CoursesTab({
   const [courseDetailsJson, setCourseDetailsJson] = useState('{}');
   const [courseListSearch, setCourseListSearch] = useState('');
   const [isCourseFormOpen, setIsCourseFormOpen] = useState(false);
+  const [activeRichField, setActiveRichField] = useState<RichField>('shortDescription');
+  const shortDescriptionRef = useRef<HTMLDivElement | null>(null);
+  const descriptionRef = useRef<HTMLDivElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const certificateInputRef = useRef<HTMLInputElement | null>(null);
   const [courseModulesDraft, setCourseModulesDraft] = useState<{ title: string; items: string[] }[]>([]);
   const [courseMaterialsDraft, setCourseMaterialsDraft] = useState<import('../../../types').CourseMaterial[]>([]);
   const [coursePainPoints, setCoursePainPoints] = useState<{ left: string[]; right: string[] }>({ left: ['', '', ''], right: ['', '', ''] });
+  const therapistImageInputRef = useRef<HTMLInputElement | null>(null);
   const [editingTherapistId, setEditingTherapistId] = useState('');
   const [isTherapistFormOpen, setIsTherapistFormOpen] = useState(false);
   const [therapistDraft, setTherapistDraft] = useState<Therapist>(blankTherapist());
@@ -173,7 +110,6 @@ export default function CoursesTab({
   const [bundlePrice, setBundlePrice] = useState({ EGP: 0, SAR: 0, USD: 0 });
   const [bundleOriginalPrice, setBundleOriginalPrice] = useState({ EGP: 0, SAR: 0, USD: 0 });
   const [bundleDetailsJson, setBundleDetailsJson] = useState('{}');
-  const [bundleIsPublished, setBundleIsPublished] = useState(true);
   const [editingTestimonialId, setEditingTestimonialId] = useState<number | null>(null);
   const [isTestimonialFormOpen, setIsTestimonialFormOpen] = useState(false);
   const [testimonialDraft, setTestimonialDraft] = useState({ id: 0, name: '', role: '', text: '', image: '' });
@@ -196,7 +132,6 @@ export default function CoursesTab({
   const [promoFormOpen, setPromoFormOpen] = useState(false);
 
   // ── Lesson Analytics ─────────────────────────────────────────────────────
-  type LessonAnalyticsRow = { id: string; title: string; sort_order: number; view_count: number };
   const [analyticsRows, setAnalyticsRows] = useState<LessonAnalyticsRow[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsCourseId, setAnalyticsCourseId] = useState('');
@@ -227,6 +162,14 @@ export default function CoursesTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  // ── Effects ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isCourseFormOpen) {
+      if (shortDescriptionRef.current) shortDescriptionRef.current.innerHTML = sanitizeRichHtml(courseDraft.shortDescription);
+      if (descriptionRef.current) descriptionRef.current.innerHTML = sanitizeRichHtml(courseDraft.description);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCourseFormOpen, editingCourseId]);
 
   // ── Computed ─────────────────────────────────────────────────────────────
   const selectedCourseLectures = lectureCourseId ? getCourseLectures(lectureCourseId) : [];
@@ -234,56 +177,15 @@ export default function CoursesTab({
     const text = `${course.title} ${course.instructor} ${course.category} ${course.level}`.toLowerCase();
     return text.includes(courseListSearch.toLowerCase());
   });
-  const courseAccessStatsMap = useMemo(() => {
-    const map = new Map<string, { full: number; preview: number; limited: number }>();
-    const normalizeEntry = (entry?: { mode?: string } | string): { mode: string } => {
-      if (entry === 'full') return { mode: 'full' };
-      if (entry === 'preview' || !entry) return { mode: 'preview' };
-      return { mode: (entry as { mode: string }).mode || 'preview' };
-    };
-    courses.forEach(c => { map.set(c.id, { full: 0, preview: 0, limited: 0 }); });
-    subscribers.forEach(sub => {
-      (sub.enrolledCourseIds || []).forEach(courseId => {
-        const stats = map.get(courseId);
-        if (!stats) return;
-        const access = normalizeEntry(sub.courseAccess?.[courseId]);
-        if (access.mode === 'full') stats.full++;
-        else if (access.mode === 'limited') stats.limited++;
-        else stats.preview++;
-      });
-    });
-    return map;
-  }, [courses, subscribers]);
-
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const normalizeAccessEntry = (entry?: CourseAccessSetting | 'preview' | 'full'): CourseAccessSetting => {
-    if (entry === 'full') return { mode: 'full' };
-    if (entry === 'preview') return { mode: 'preview' };
-    if (!entry) return { mode: 'preview' };
-    if (entry.mode === 'limited') { const rawLimit = Number(entry.lectureLimit || 1); return { mode: 'limited', lectureLimit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 1 }; }
-    return { mode: entry.mode };
-  };
-  const readFileAsDataUrl = (file: File, maxPx = 900, quality = 0.78) => new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('file-read-failed'));
-    reader.onload = (ev) => {
-      const img = document.createElement('img');
-      img.onerror = () => reject(new Error('image-load-failed'));
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxPx || height > maxPx) { if (width > height) { height = Math.round((height / width) * maxPx); width = maxPx; } else { width = Math.round((width / height) * maxPx); height = maxPx; } }
-        const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d'); if (!ctx) { resolve(String(ev.target?.result || '')); return; }
-        ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.src = String(ev.target?.result || '');
-    };
-    reader.readAsDataURL(file);
-  });
-  const handleGalleryUpload = async (files: FileList | null) => { if (!files || files.length === 0) return; try { const uploaded = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file))); setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), ...uploaded])) })); } catch { notify('error', '\u062d\u062f\u062b \u062e\u0637\u0623 \u0623\u062b\u0646\u0627\u0621 \u0631\u0641\u0639 \u0635\u0648\u0631 \u0645\u0639\u0631\u0636 \u0627\u0644\u062e\u0631\u064a\u062c\u064a\u0646.'); } };
-  const handleCertificateUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file); setCourseDraft((prev) => ({ ...prev, certificateTemplateUrl: uploaded, certificateTemplateName: file.name })); } catch { notify('error', '\u062d\u062f\u062b \u062e\u0637\u0623 \u0623\u062b\u0646\u0627\u0621 \u0631\u0641\u0639 \u0646\u0645\u0648\u0630\u062c \u0627\u0644\u0634\u0647\u0627\u062f\u0629.'); } };
-  const handleTherapistImageUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file); setTherapistDraft((prev) => ({ ...prev, image: uploaded })); } catch { notify('error', '\u062d\u062f\u062b \u062e\u0637\u0623 \u0623\u062b\u0646\u0627\u0621 \u0631\u0641\u0639 \u0635\u0648\u0631\u0629 \u0627\u0644\u0645\u062d\u0627\u0636\u0631.'); } };
-  const getCourseAccessStats = (courseId: string) => courseAccessStatsMap.get(courseId) ?? { full: 0, preview: 0, limited: 0 };
+  const getEditorRef = (field: RichField) => (field === 'shortDescription' ? shortDescriptionRef : descriptionRef);
+  const focusEditor = (field: RichField) => { setActiveRichField(field); getEditorRef(field).current?.focus(); };
+  const syncEditorContent = (field: RichField) => { const editor = getEditorRef(field).current; setCourseDraft((prev) => ({ ...prev, [field]: sanitizeRichHtml(editor?.innerHTML || '') })); };
+  const runEditorCommand = (command: string, value?: string) => { document.execCommand(command, false, value); syncEditorContent(activeRichField); getEditorRef(activeRichField).current?.focus(); };
+  const readFileAsDataUrl = (file: File, maxPx = 900, quality = 0.78) => compressImageFile(file, { maxPx, quality });
+  const handleGalleryUpload = async (files: FileList | null) => { if (!files || files.length === 0) return; try { const uploaded = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file))); setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), ...uploaded])) })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627. \u062c\u0631\u0628 \u0635\u0648\u0631\u0629 \u0623\u0635\u063a\u0631.'); } };
+  const handleCertificateUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file, 1200, 0.82); setCourseDraft((prev) => ({ ...prev, certificateTemplateUrl: uploaded, certificateTemplateName: file.name })); } catch { notify('error', '\u0646\u0645\u0648\u0630\u062c \u0627\u0644\u0634\u0647\u0627\u062f\u0629 \u0643\u0628\u064a\u0631 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647.'); } };
+  const handleTherapistImageUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file, 720, 0.76); setTherapistDraft((prev) => ({ ...prev, image: uploaded })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627.'); } };
 const startEditCourse = (course: Course) => {
   setEditingCourseId(course.id);
   setCourseDraft({
@@ -317,7 +219,7 @@ const saveCourse = () => {
   const stripHtmlTags = (html: string): string => {
     try {
       const el = document.createElement('div');
-      el.innerHTML = html;
+      el.innerHTML = sanitizeRichHtml(html);
       return (el.textContent ?? el.innerText ?? '').replace(/\s+/g, ' ').trim();
     } catch {
       return html.replace(/<[^>]*>/g, '').trim();
@@ -361,12 +263,10 @@ const saveCourse = () => {
   if (coursePainPoints.right[2]) parsedDetails['courseDetails.pain.right3'] = coursePainPoints.right[2];
 
   const filteredModules = courseModulesDraft.filter(m => m.title.trim());
-  const tempId = `c-${Date.now()}`;
   const payload = {
     ...courseDraft,
-    id: courseDraft.id || courseDraft.slug || tempId,
-    slug: courseDraft.slug || courseDraft.id || tempId,
-    isPublished: courseDraft.isPublished ?? false,
+    id: courseDraft.id || courseDraft.slug || `c-${Date.now()}`,
+    slug: courseDraft.slug || courseDraft.id || `c-${Date.now()}`,
     shortDescription: stripHtmlTags(courseDraft.shortDescription || ''),
     description: cleanWordHtml(courseDraft.description || ''),
     thumbnail: courseDraft.thumbnail || '',
@@ -462,7 +362,6 @@ const startEditBundle = (row: Bundle) => {
   setBundlePrice({ ...row.price });
   setBundleOriginalPrice({ ...row.originalPrice });
   setBundleDetailsJson(JSON.stringify(row.detailsContent ?? {}, null, 2));
-  setBundleIsPublished(row.isPublished !== false);
   setActiveTab('bundles');
 };
 
@@ -498,7 +397,6 @@ const saveBundle = () => {
     price: { ...bundlePrice },
     originalPrice: { ...bundleOriginalPrice },
     detailsContent: parsedDetails,
-    isPublished: bundleIsPublished,
   };
   if (editingBundleId) updateBundle(payload); else addBundle(payload);
   setEditingBundleId('');
@@ -513,7 +411,6 @@ const saveBundle = () => {
   setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
   setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
   setBundleDetailsJson('{}');
-  setBundleIsPublished(true);
   notify('success', `تم حفظ المسار: ${payload.title}`);
 };
 
@@ -588,236 +485,1198 @@ const saveChapter = () => {
 };
 
   return (
-    <>
-  {activeTab === 'courses' && (
-    <CoursesManager
-      isAdmin={isAdmin}
-      courses={courses}
-      therapists={therapists}
-      subscribers={subscribers}
-      chapters={chapters}
-      lectures={lectures}
-      instituteGalleryImages={instituteGalleryImages}
-      filteredCourses={filteredCourses}
-      courseDraft={courseDraft}
-      setCourseDraft={setCourseDraft}
-      editingCourseId={editingCourseId}
-      setEditingCourseId={setEditingCourseId}
-      isCourseFormOpen={isCourseFormOpen}
-      setIsCourseFormOpen={setIsCourseFormOpen}
-      courseDetailsJson={courseDetailsJson}
-      setCourseDetailsJson={setCourseDetailsJson}
-      courseListSearch={courseListSearch}
-      setCourseListSearch={setCourseListSearch}
-      coursePainPoints={coursePainPoints}
-      setCoursePainPoints={setCoursePainPoints}
-      courseModulesDraft={courseModulesDraft}
-      setCourseModulesDraft={setCourseModulesDraft}
-      courseMaterialsDraft={courseMaterialsDraft}
-      setCourseMaterialsDraft={setCourseMaterialsDraft}
-      blankCourse={blankCourse}
-      slugify={slugify}
-      normalizeAccessEntry={normalizeAccessEntry}
-      getCourseAccessStats={getCourseAccessStats}
-      getCourseLectures={getCourseLectures}
-      handleGalleryUpload={handleGalleryUpload}
-      handleCertificateUpload={handleCertificateUpload}
-      saveCourse={saveCourse}
-      startEditCourse={startEditCourse}
-      deleteCourse={deleteCourse}
-      updateCourse={updateCourse}
-      setLectureCourseId={setLectureCourseId}
-      setActiveTab={setActiveTab}
-      setSubscriberCourseFilter={setSubscriberCourseFilter}
-      setAnalyticsCourseId={setAnalyticsCourseId}
-      loadLessonAnalytics={loadLessonAnalytics}
-      notify={notify}
-    />
+    <>  {activeTab === 'courses' && (
+    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-bold text-gray-900">إدارة الكورسات</h3>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => {
+                const now = new Date();
+                const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
+                const backup = { _meta: { createdAt: now.toISOString(), type: 'courses' }, courses, chapters, lectures };
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `backup_courses_${stamp}.json`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-xl text-sm font-bold hover:bg-green-100 transition flex items-center gap-1"
+            >
+              💾 نسخة احتياطية
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (isCourseFormOpen && !editingCourseId) {
+                setIsCourseFormOpen(false);
+                return;
+              }
+              setEditingCourseId('');
+              setCourseDraft(blankCourse());
+              setCourseDetailsJson('{}');
+              setIsCourseFormOpen(true);
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm"
+          >
+            <Plus size={16} className="inline ml-1" />
+            {isCourseFormOpen ? 'إغلاق نموذج الكورس' : 'إنشاء كورس جديد'}
+          </button>
+        </div>
+      </div>
+
+      {isCourseFormOpen ? (
+        <div className="border border-gray-200 rounded-2xl p-4 mb-5 bg-gray-50/60 space-y-4 min-h-[78vh]">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="font-bold text-gray-900">{editingCourseId ? 'تعديل بيانات الكورس' : 'إنشاء كورس جديد'}</h4>
+            <button
+              onClick={() => {
+                setEditingCourseId('');
+                setCourseDraft(blankCourse());
+                setCourseDetailsJson('{}');
+                setIsCourseFormOpen(false);
+              }}
+              className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 text-sm"
+            >
+              <X size={14} className="inline ml-1" />
+              إلغاء
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">عنوان الكورس (عربي)</label>
+              <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.title} onChange={(e) => {
+                const title = e.target.value;
+                // Auto-generate slug only if not edited manually yet
+                const autoSlug = !editingCourseId && (!courseDraft.slug || courseDraft.slug === slugify(courseDraft.title))
+                  ? slugify(title)
+                  : courseDraft.slug;
+                setCourseDraft({ ...courseDraft, title, slug: autoSlug });
+              }} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">
+                اسم الكورس بالإنجليزية — <span className="text-amber-600 font-bold">يظهر على الشهادة</span>
+              </label>
+              <input
+                className="w-full border border-amber-300 rounded-xl px-4 py-2.5 text-sm ltr bg-amber-50"
+                dir="ltr"
+                placeholder="e.g. Cognitive Behavioral Therapy Diploma"
+                value={courseDraft.titleEn || ''}
+                onChange={(e) => setCourseDraft({ ...courseDraft, titleEn: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">
+                رابط URL الكورس (Slug) — <span className="text-primary-600 font-bold">مهم للـ SEO</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono ltr"
+                  dir="ltr"
+                  placeholder="cognitive-behavioral-therapy"
+                  value={courseDraft.slug || ''}
+                  onChange={(e) => setCourseDraft({ ...courseDraft, slug: e.target.value.replace(/[^a-z0-9-]/g, '').toLowerCase() })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setCourseDraft({ ...courseDraft, slug: slugify(courseDraft.title) })}
+                  className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 border border-gray-300 whitespace-nowrap"
+                >
+                  توليد تلقائي
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">الرابط: /c/{courseDraft.slug || 'slug'}</p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-600 mb-1">
+                أسماء بديلة / مرادفات <span className="text-blue-600 font-normal text-[10px]">(للمطابقة مع فيسبوك ليدز — افصل بين الأسماء بفاصلة)</span>
+              </label>
+              <input
+                className="w-full border border-blue-200 rounded-xl px-4 py-2.5 text-sm bg-blue-50"
+                placeholder="مثال: دبلومة CBT, كورس العلاج المعرفي السلوكي, CBT Diploma"
+                value={(courseDraft.aliases || []).join(', ')}
+                onChange={(e) => {
+                  const aliases = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                  setCourseDraft({ ...courseDraft, aliases });
+                }}
+              />
+              <p className="text-[10px] text-blue-500 mt-1">عند وصول ليد من فيسبوك بأي من هذه الأسماء، يتم ربطه تلقائياً بهذا الكورس</p>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">المحاضر (من قائمة المحاضرين)</label>
+              <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.instructor} onChange={(e) => setCourseDraft({ ...courseDraft, instructor: e.target.value })}>
+                <option value="">اختر المحاضر</option>
+                {therapists.map((row) => <option key={row.id} value={row.name}>{row.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">رابط صورة الغلاف</label>
+              <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.thumbnail} onChange={(e) => setCourseDraft({ ...courseDraft, thumbnail: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">مدة الكورس (مثال: 12 أسبوع)</label>
+              <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.duration} onChange={(e) => setCourseDraft({ ...courseDraft, duration: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">تصنيف الكورس</label>
+              <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.category} onChange={(e) => setCourseDraft({ ...courseDraft, category: e.target.value as Course['category'] })}>
+                <option value="General">عام</option><option value="Therapy">علاج</option><option value="Diagnosis">تشخيص</option><option value="Child">أطفال</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">نوع الكورس</label>
+              <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.type} onChange={(e) => setCourseDraft({ ...courseDraft, type: e.target.value as Course['type'] })}>
+                <option value="Recorded">مسجل</option><option value="Live">لايف</option><option value="Mix">مختلط</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي EGP (جنيه)</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.price.EGP} onChange={(e) => setCourseDraft({ ...courseDraft, price: { ...courseDraft.price, EGP: Number(e.target.value) } })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم EGP (جنيه)</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.originalPrice.EGP} onChange={(e) => setCourseDraft({ ...courseDraft, originalPrice: { ...courseDraft.originalPrice, EGP: Number(e.target.value) } })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي SAR (ريال)</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.price.SAR} onChange={(e) => setCourseDraft({ ...courseDraft, price: { ...courseDraft.price, SAR: Number(e.target.value) } })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم SAR (ريال)</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.originalPrice.SAR} onChange={(e) => setCourseDraft({ ...courseDraft, originalPrice: { ...courseDraft.originalPrice, SAR: Number(e.target.value) } })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي USD (دولار)</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.price.USD} onChange={(e) => setCourseDraft({ ...courseDraft, price: { ...courseDraft.price, USD: Number(e.target.value) } })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم USD (دولار)</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.originalPrice.USD} onChange={(e) => setCourseDraft({ ...courseDraft, originalPrice: { ...courseDraft.originalPrice, USD: Number(e.target.value) } })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">عدد الطلاب المتوقع</label>
+              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.students} onChange={(e) => setCourseDraft({ ...courseDraft, students: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">مستوى الكورس</label>
+              <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.level} onChange={(e) => setCourseDraft({ ...courseDraft, level: e.target.value })} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-600 mb-1">فيديو برومو الكورس (YouTube/Vimeo/MP4)</label>
+              <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="https://..." value={courseDraft.promoVideoUrl || ''} onChange={(e) => setCourseDraft({ ...courseDraft, promoVideoUrl: e.target.value })} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-600 mb-1">رابط البث المباشر للمشتركين (Zoom/Meet/YouTube Live)</label>
+              <div className="flex flex-wrap gap-2">
+                <input className="flex-1 min-w-[220px] border border-gray-300 rounded-xl px-4 py-2.5" placeholder="https://..." value={courseDraft.liveSessionUrl || ''} onChange={(e) => setCourseDraft({ ...courseDraft, liveSessionUrl: e.target.value })} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!courseDraft.liveSessionUrl) {
+                      notify('error', 'أدخل رابط البث المباشر أولاً.');
+                      return;
+                    }
+                    window.open(courseDraft.liveSessionUrl, '_blank');
+                  }}
+                  className="px-3 py-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-sm font-bold"
+                >
+                  <Radio size={14} className="inline ml-1" />
+                  بدء لايف للمشتركين
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!courseDraft.id) {
+                      notify('info', 'احفظ الكورس أولاً لعرض العملاء المسجلين.');
+                      return;
+                    }
+                    setSubscriberCourseFilter(courseDraft.id);
+                    setActiveTab('subscribers');
+                  }}
+                  className="px-3 py-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-sm font-bold"
+                >
+                  <Users size={14} className="inline ml-1" />
+                  العملاء المسجلين: {courseDraft.id ? subscribers.filter((sub) => sub.enrolledCourseIds.includes(courseDraft.id)).length : 0}
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-600 mb-1">الوصف القصير (WYSIWYG)</label>
+              <div className="border border-gray-300 rounded-xl bg-white overflow-hidden">
+                <div className="flex flex-wrap gap-2 p-2 border-b border-gray-200 bg-gray-50">
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('bold'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">عريض</button>
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('italic'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مائل</button>
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('underline'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">تسطير</button>
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('formatBlock', '<h2>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H2</button>
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('formatBlock', '<h3>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H3</button>
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('insertUnorderedList'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">قائمة</button>
+                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('removeFormat'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مسح</button>
+                </div>
+                <div
+                  ref={shortDescriptionRef}
+                  dir="rtl"
+                  contentEditable
+                  suppressContentEditableWarning
+                  className="min-h-[120px] p-3 outline-none"
+                  onFocus={() => setActiveRichField('shortDescription')}
+                  onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, shortDescription: html })); }}
+                />
+              </div>
+              <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">
+                <p className="text-xs font-bold text-gray-500 mb-2">معاينة مباشرة</p>
+                <SafeHtml className="prose prose-sm max-w-none" html={courseDraft.shortDescription || '<p class="text-gray-400">لا يوجد نص بعد</p>'} />
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-600 mb-1">الوصف التفصيلي (WYSIWYG)</label>
+              <div className="border border-gray-300 rounded-xl bg-white overflow-hidden">
+                <div className="flex flex-wrap gap-2 p-2 border-b border-gray-200 bg-gray-50">
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('bold'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">عريض</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('italic'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مائل</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('underline'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">تسطير</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('formatBlock', '<h2>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H2</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('formatBlock', '<h3>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H3</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('insertUnorderedList'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">قائمة</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('justifyRight'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">يمين</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('justifyLeft'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">يسار</button>
+                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('removeFormat'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مسح</button>
+                </div>
+                <div
+                  ref={descriptionRef}
+                  dir="rtl"
+                  contentEditable
+                  suppressContentEditableWarning
+                  className="min-h-[180px] p-3 outline-none"
+                  onFocus={() => setActiveRichField('description')}
+                  onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, description: html })); }}
+                />
+              </div>
+              <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">
+                <p className="text-xs font-bold text-gray-500 mb-2">معاينة مباشرة</p>
+                <SafeHtml className="prose prose-sm max-w-none" html={courseDraft.description || '<p class="text-gray-400">لا يوجد نص بعد</p>'} />
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <label className="block text-xs font-bold text-gray-600">معرض صور الخريجين</label>
+                <button type="button" onClick={() => galleryInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs font-bold text-gray-700">
+                  <Upload size={14} className="inline ml-1" />رفع صور جديدة
+                </button>
+              </div>
+              <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { void handleGalleryUpload(e.target.files); e.target.value = ''; }} />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                {(courseDraft.galleryImages || []).map((img, index) => (
+                  <div key={`${img}-${index}`} className="relative border border-gray-200 rounded-lg overflow-hidden bg-white">
+                    <img src={img} alt="gallery" className="w-full h-20 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setCourseDraft((prev) => ({ ...prev, galleryImages: (prev.galleryImages || []).filter((_, i) => i !== index) }))}
+                      className="absolute top-1 left-1 bg-white/90 text-red-600 rounded-full p-1"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="border border-dashed border-gray-300 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-bold text-gray-600">اختر من معرض صور المعهد (حتى 5 صور):</p>
+                {instituteGalleryImages.length === 0 ? (
+                  <p className="text-xs text-gray-400">لا توجد صور في معرض المعهد بعد — أضفها من تبويب «معرض صور المعهد»</p>
+                ) : (
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2 max-h-48 overflow-auto">
+                    {instituteGalleryImages.map((img) => {
+                      const alreadyAdded = (courseDraft.galleryImages || []).includes(img);
+                      return (
+                        <button
+                          key={img}
+                          type="button"
+                          disabled={alreadyAdded}
+                          onClick={() => setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), img])).slice(0, 10) }))}
+                          className={`relative border-2 rounded-lg overflow-hidden transition ${alreadyAdded ? 'border-green-400 opacity-60 cursor-default' : 'border-gray-200 hover:border-primary-500 cursor-pointer'}`}
+                        >
+                          <img src={img} alt="institute" className="w-full h-14 object-cover" />
+                          {alreadyAdded && (
+                            <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center">
+                              <span className="text-green-700 font-bold text-lg">✓</span>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <label className="block text-xs font-bold text-gray-600">نموذج الشهادة (PDF/صورة)</label>
+                <button type="button" onClick={() => certificateInputRef.current?.click()} className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-xs font-bold text-gray-700">
+                  <Upload size={14} className="inline ml-1" />رفع نموذج الشهادة
+                </button>
+              </div>
+              <input ref={certificateInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { void handleCertificateUpload(e.target.files); e.target.value = ''; }} />
+              <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 mb-2" placeholder="أو ضع رابط نموذج الشهادة" value={courseDraft.certificateTemplateUrl || ''} onChange={(e) => setCourseDraft({ ...courseDraft, certificateTemplateUrl: e.target.value })} />
+              {courseDraft.certificateTemplateName && <p className="text-xs text-gray-500">آخر ملف مرفوع: {courseDraft.certificateTemplateName}</p>}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-gray-600 mb-1">محتوى صفحة تفاصيل الكورس (JSON keys)</label>
+              <textarea className="w-full border border-gray-300 rounded-xl px-4 py-2.5 font-mono text-xs" rows={8} value={courseDetailsJson} onChange={(e) => setCourseDetailsJson(e.target.value)} />
+            </div>
+
+            {/* Pain / Solution UI */}
+            <div className="md:col-span-2 border border-amber-200 bg-amber-50 rounded-xl p-4">
+              <p className="text-xs font-bold text-amber-800 mb-3">هل هذه الدبلومة لك؟ — نقاط المشكلة (يسار) والحل (يمين)</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-red-700">مشاكل / تحديات (يسار)</p>
+                  {[0, 1, 2].map((i) => (
+                    <input key={i} className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder={`المشكلة ${i + 1}`} value={coursePainPoints.left[i]} onChange={(e) => { const l = [...coursePainPoints.left]; l[i] = e.target.value; setCoursePainPoints({ ...coursePainPoints, left: l }); }} />
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-green-700">حلول / نتائج (يمين)</p>
+                  {[0, 1, 2].map((i) => (
+                    <input key={i} className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder={`الحل ${i + 1}`} value={coursePainPoints.right[i]} onChange={(e) => { const r = [...coursePainPoints.right]; r[i] = e.target.value; setCoursePainPoints({ ...coursePainPoints, right: r }); }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Module editor */}
+            <div className="md:col-span-2 border border-indigo-200 bg-indigo-50 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-indigo-800">وحدات المنهج (Modules)</p>
+                <button type="button" onClick={() => setCourseModulesDraft([...courseModulesDraft, { title: '', items: ['', '', ''] }])} className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">+ وحدة جديدة</button>
+              </div>
+              {courseModulesDraft.length === 0 && <p className="text-xs text-indigo-400">لا توجد وحدات. اضغط "+ وحدة جديدة" للإضافة.</p>}
+              <div className="space-y-3">
+                {courseModulesDraft.map((mod, mi) => (
+                  <div key={mi} className="border border-indigo-200 rounded-xl bg-white p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <input className="flex-1 border border-indigo-200 rounded-lg px-3 py-1.5 text-sm" placeholder={`عنوان الوحدة ${mi + 1}`} value={mod.title} onChange={(e) => { const mods = [...courseModulesDraft]; mods[mi] = { ...mods[mi], title: e.target.value }; setCourseModulesDraft(mods); }} />
+                      <button type="button" onClick={() => setCourseModulesDraft(courseModulesDraft.filter((_, i) => i !== mi))} className="text-red-500 text-xs font-bold px-2 py-1 rounded-lg hover:bg-red-50">حذف</button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {[0, 1, 2].map((ii) => (
+                        <input key={ii} className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs" placeholder={`عنصر ${ii + 1}`} value={mod.items[ii] || ''} onChange={(e) => { const mods = [...courseModulesDraft]; const items = [...(mods[mi].items || ['', '', ''])]; items[ii] = e.target.value; mods[mi] = { ...mods[mi], items }; setCourseModulesDraft(mods); }} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Materials (PDFs) editor */}
+            <div className="md:col-span-2 border border-emerald-200 bg-emerald-50 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-emerald-800">المادة العلمية (ملفات PDF)</p>
+                <button type="button" onClick={() => setCourseMaterialsDraft([...courseMaterialsDraft, { id: `mat-${Date.now()}`, title: '', url: '', accessLevel: 'full' }])} className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold">+ ملف جديد</button>
+              </div>
+              {courseMaterialsDraft.length === 0 && <p className="text-xs text-emerald-600">لا توجد ملفات. اضغط "+ ملف جديد" للإضافة.</p>}
+              <div className="space-y-2">
+                {courseMaterialsDraft.map((mat, mi) => (
+                  <div key={mat.id} className="border border-emerald-200 rounded-xl bg-white p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input className="flex-1 border border-emerald-200 rounded-lg px-3 py-1.5 text-sm" placeholder="عنوان الملف" value={mat.title} onChange={(e) => { const mats = [...courseMaterialsDraft]; mats[mi] = { ...mats[mi], title: e.target.value }; setCourseMaterialsDraft(mats); }} />
+                      <select className="border border-emerald-200 rounded-lg px-2 py-1.5 text-xs bg-white" value={mat.accessLevel} onChange={(e) => { const mats = [...courseMaterialsDraft]; mats[mi] = { ...mats[mi], accessLevel: e.target.value as 'partial' | 'full' }; setCourseMaterialsDraft(mats); }}>
+                        <option value="full">مشترك كامل</option>
+                        <option value="partial">أي مشترك</option>
+                      </select>
+                      <button type="button" onClick={() => setCourseMaterialsDraft(courseMaterialsDraft.filter((_, i) => i !== mi))} className="text-red-500 text-xs font-bold px-2 py-1 rounded-lg hover:bg-red-50">حذف</button>
+                    </div>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs" placeholder="رابط PDF (Firebase Storage أو رابط خارجي)" dir="ltr" value={mat.url} onChange={(e) => { const mats = [...courseMaterialsDraft]; mats[mi] = { ...mats[mi], url: e.target.value }; setCourseMaterialsDraft(mats); }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 border border-gray-200 rounded-xl p-3 bg-white">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-xs font-bold text-gray-700">المحاضرات المسجلة المضافة لهذا الكورس</p>
+                <button type="button" onClick={() => { setLectureCourseId(courseDraft.id); setActiveTab('lectures'); }} className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold">
+                  <Video size={13} className="inline ml-1" />إدارة المحاضرات
+                </button>
+              </div>
+              {courseDraft.id ? (
+                <div className="space-y-2 max-h-44 overflow-auto">
+                  {getCourseLectures(courseDraft.id).filter((row) => row.lectureType === 'recorded').length === 0 && <p className="text-xs text-gray-500">لا توجد محاضرات مسجلة بعد.</p>}
+                  {getCourseLectures(courseDraft.id).filter((row) => row.lectureType === 'recorded').map((row) => (
+                    <div key={row.id} className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+                      <p className="text-xs text-gray-700">{row.order}. {row.title}</p>
+                      <button type="button" onClick={() => window.open(row.videoUrl, '_blank')} className="text-xs text-primary-700 font-bold">فتح</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">بعد حفظ الكورس ستظهر المحاضرات المسجلة هنا.</p>
+              )}
+            </div>
+          </div>
+
+          {/* ── SEO Fields ── */}
+          <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50 space-y-3 mt-2">
+            <p className="text-xs font-bold text-violet-700 mb-1">🔍 إعدادات SEO (اختياري)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">عنوان SEO (seo_title) — يظهر في نتائج البحث</label>
+                <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
+                  placeholder="عنوان مُحسَّن للبحث (50-60 حرفاً)" maxLength={120}
+                  value={courseDraft.seo_title || ''}
+                  onChange={e => setCourseDraft({ ...courseDraft, seo_title: e.target.value })} />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">وصف SEO (meta description)</label>
+                <textarea className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none"
+                  rows={2} placeholder="وصف مختصر يظهر في نتائج جوجل (150-160 حرفاً)" maxLength={300}
+                  value={courseDraft.seo_description || ''}
+                  onChange={e => setCourseDraft({ ...courseDraft, seo_description: e.target.value })} />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">الكلمات المفتاحية (keywords) — مفصولة بفاصلة</label>
+                <input className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"
+                  placeholder="علاج نفسي, صحة نفسية, دورات معهد..."
+                  value={courseDraft.seo_keywords || ''}
+                  onChange={e => setCourseDraft({ ...courseDraft, seo_keywords: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <button onClick={saveCourse} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">
+            <Save size={16} className="inline ml-2" />
+            {editingCourseId ? 'تحديث الكورس' : 'إضافة الكورس'}
+          </button>
+        </div>
+      ) : (
+        <CourseListPanel
+          courses={courses}
+          filteredCourses={filteredCourses}
+          lecturesCount={lectures.length}
+          subscribers={subscribers}
+          search={courseListSearch}
+          onSearchChange={setCourseListSearch}
+          getCourseLectures={getCourseLectures}
+          onEditCourse={startEditCourse}
+          onOpenLectures={(courseId) => { setLectureCourseId(courseId); setActiveTab('lectures'); }}
+          onOpenSubscribers={(courseId) => { setSubscriberCourseFilter(courseId); setActiveTab('subscribers'); }}
+          onShowAccessStats={(course, accessStats) => {
+            setSubscriberCourseFilter(course.id);
+            setActiveTab('subscribers');
+            notify('info', `إحصائيات وصول ${course.title}: Full ${accessStats.full} / Preview ${accessStats.preview} / Limited ${accessStats.limited}`);
+          }}
+          onOpenAnalytics={(courseId) => { setAnalyticsCourseId(courseId); loadLessonAnalytics(courseId); }}
+          onDeleteCourse={deleteCourse}
+          notifyMissingLiveUrl={() => notify('error', 'لا يوجد رابط لايف محفوظ لهذا الكورس.')}
+        />
+      )}
+    </article>
   )}
 
   {activeTab === 'lectures' && (
-    <LecturesManager
-      isAdmin={isAdmin}
-      lectures={lectures}
-      chapters={chapters}
-      courses={courses}
-      lectureCourseId={lectureCourseId}
-      setLectureCourseId={setLectureCourseId}
-      isLectureFormOpen={isLectureFormOpen}
-      setIsLectureFormOpen={setIsLectureFormOpen}
-      editingLectureId={editingLectureId}
-      setEditingLectureId={setEditingLectureId}
-      lectureDraft={lectureDraft}
-      setLectureDraft={setLectureDraft}
-      isChapterFormOpen={isChapterFormOpen}
-      setIsChapterFormOpen={setIsChapterFormOpen}
-      setEditingChapterId={setEditingChapterId}
-      chapterDraft={chapterDraft}
-      setChapterDraft={setChapterDraft}
-      selectedCourseLectures={selectedCourseLectures}
-      expandedLectureCourses={expandedLectureCourses}
-      setExpandedLectureCourses={setExpandedLectureCourses}
-      expandedLectureChapters={expandedLectureChapters}
-      setExpandedLectureChapters={setExpandedLectureChapters}
-      getCourseChapters={getCourseChapters}
-      getCourseLectures={getCourseLectures}
-      saveLecture={saveLecture}
-      startEditLecture={startEditLecture}
-      deleteLecture={deleteLecture}
-      saveChapter={saveChapter}
-      deleteChapter={deleteChapter}
-      updateCourse={updateCourse}
-      notify={notify}
-    />
+    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-bold text-gray-900">محاضرات الكورسات وإضافة محاضرة داخل الكورس</h3>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => {
+                const now = new Date();
+                const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
+                const backup = { _meta: { createdAt: now.toISOString(), type: 'lectures' }, lectures, chapters };
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `backup_lectures_${stamp}.json`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-xl text-sm font-bold hover:bg-green-100 transition flex items-center gap-1"
+            >
+              💾 نسخة احتياطية
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (isLectureFormOpen && !editingLectureId) {
+                setIsLectureFormOpen(false);
+                return;
+              }
+              setEditingLectureId('');
+              setLectureDraft({ title: '', lectureType: 'recorded', videoUrl: '', duration: '', order: 1, thumbnail: '', chapterId: '' });
+              setIsLectureFormOpen(true);
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm"
+          >
+            <Plus size={16} className="inline ml-1" />
+            {isLectureFormOpen ? 'إغلاق نموذج المحاضرة' : 'إضافة محاضرة'}
+          </button>
+        </div>
+      </div>
+
+      {isLectureFormOpen && (
+        <div className="border border-gray-200 rounded-2xl p-4 mb-4 bg-gray-50/70 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <select className="border border-gray-300 rounded-xl px-4 py-2.5" value={lectureCourseId} onChange={(e) => setLectureCourseId(e.target.value)}>
+              <option value="">اختر الكورس</option>
+              {courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
+            </select>
+            <select className="border border-gray-300 rounded-xl px-4 py-2.5" value={lectureDraft.chapterId} onChange={(e) => setLectureDraft({ ...lectureDraft, chapterId: e.target.value })}>
+              <option value="">بدون فصل (غير مصنف)</option>
+              {lectureCourseId && getCourseChapters(lectureCourseId).map((ch) => <option key={ch.id} value={ch.id}>{ch.order}. {ch.title}</option>)}
+            </select>
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="عنوان المحاضرة" value={lectureDraft.title} onChange={(e) => setLectureDraft({ ...lectureDraft, title: e.target.value })} />
+            <select className="border border-gray-300 rounded-xl px-4 py-2.5" value={lectureDraft.lectureType} onChange={(e) => setLectureDraft({ ...lectureDraft, lectureType: e.target.value as 'recorded' | 'live' })}>
+              <option value="recorded">مسجلة</option>
+              <option value="live">لايف</option>
+            </select>
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="المدة" value={lectureDraft.duration} onChange={(e) => setLectureDraft({ ...lectureDraft, duration: e.target.value })} />
+            <input className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط الفيديو / Zoom" value={lectureDraft.videoUrl} onChange={(e) => setLectureDraft({ ...lectureDraft, videoUrl: e.target.value })} />
+            <input type="number" className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="الترتيب" value={lectureDraft.order} onChange={(e) => setLectureDraft({ ...lectureDraft, order: Number(e.target.value) })} />
+            <input className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط صورة غلاف المحاضرة (اختياري)" value={lectureDraft.thumbnail} onChange={(e) => setLectureDraft({ ...lectureDraft, thumbnail: e.target.value })} />
+          </div>
+            <button onClick={saveLecture} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingLectureId ? 'تحديث المحاضرة' : 'إضافة محاضرة'}</button>
+        </div>
+      )}
+
+      {/* Chapter management panel */}
+      {lectureCourseId && (
+        <div className="border border-purple-200 bg-purple-50 rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-bold text-purple-800 text-sm">فصول الكورس (Chapters)</p>
+            <button type="button" onClick={() => { setEditingChapterId(''); setChapterDraft({ title: '', order: (getCourseChapters(lectureCourseId).length + 1) }); setIsChapterFormOpen(true); }} className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold">+ فصل جديد</button>
+          </div>
+          {isChapterFormOpen && (
+            <div className="flex flex-wrap gap-2 items-center mb-3 bg-white border border-purple-200 rounded-xl p-3">
+              <input className="flex-1 min-w-[180px] border border-purple-200 rounded-lg px-3 py-2 text-sm" placeholder="عنوان الفصل" value={chapterDraft.title} onChange={(e) => setChapterDraft({ ...chapterDraft, title: e.target.value })} />
+              <input type="number" className="w-20 border border-purple-200 rounded-lg px-3 py-2 text-sm" placeholder="الترتيب" value={chapterDraft.order} onChange={(e) => setChapterDraft({ ...chapterDraft, order: Number(e.target.value) })} />
+              <button type="button" onClick={saveChapter} className="px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold">حفظ</button>
+              <button type="button" onClick={() => { setIsChapterFormOpen(false); setEditingChapterId(''); setChapterDraft({ title: '', order: 1 }); }} className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-bold">إلغاء</button>
+            </div>
+          )}
+          {getCourseChapters(lectureCourseId).length === 0 && !isChapterFormOpen && <p className="text-xs text-purple-400">لا توجد فصول لهذا الكورس. أضف فصلاً لتنظيم المحاضرات.</p>}
+          <div className="space-y-2">
+            {getCourseChapters(lectureCourseId).map((ch) => (
+              <div key={ch.id} className="flex items-center justify-between bg-white border border-purple-200 rounded-xl px-3 py-2">
+                <p className="text-sm text-gray-800 font-medium">{ch.order}. {ch.title}</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setEditingChapterId(ch.id); setChapterDraft({ title: ch.title, order: ch.order }); setIsChapterFormOpen(true); }} className="text-xs px-2 py-1 rounded-lg bg-purple-50 text-purple-700 font-bold">تعديل</button>
+                  <button type="button" onClick={() => { deleteChapter(ch.id); notify('success', 'تم حذف الفصل.'); }} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-700 font-bold">حذف</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <CourseLectureList
+        courses={courses}
+        lectures={lectures}
+        lectureCourseId={lectureCourseId}
+        selectedCourseLectures={selectedCourseLectures}
+        expandedLectureCourses={expandedLectureCourses}
+        setExpandedLectureCourses={setExpandedLectureCourses}
+        expandedLectureChapters={expandedLectureChapters}
+        setExpandedLectureChapters={setExpandedLectureChapters}
+        getCourseLectures={getCourseLectures}
+        getCourseChapters={getCourseChapters}
+        startEditLecture={startEditLecture}
+        deleteLecture={deleteLecture}
+      />
+
+      {lectureCourseId && (
+        <div className="mt-4 border border-rose-200 bg-rose-50 rounded-xl p-4">
+          <h4 className="font-bold text-rose-800 mb-2">البث المباشر للمشتركين</h4>
+          <p className="text-xs text-rose-700 mb-3">يمكنك استخدام رابط اللايف المحفوظ في الكورس لبث مباشر للعملاء المشتركين فقط.</p>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              className="flex-1 min-w-[220px] border border-rose-200 rounded-lg px-3 py-2 text-sm"
+              placeholder="رابط اللايف"
+              value={courses.find((c) => c.id === lectureCourseId)?.liveSessionUrl || ''}
+              onChange={(e) => {
+                const targetCourse = courses.find((c) => c.id === lectureCourseId);
+                if (!targetCourse) return;
+                updateCourse({ ...targetCourse, liveSessionUrl: e.target.value });
+              }}
+            />
+            <button
+              onClick={() => {
+                const url = courses.find((c) => c.id === lectureCourseId)?.liveSessionUrl;
+                if (!url) {
+                  notify('error', 'لا يوجد رابط لايف محفوظ لهذا الكورس.');
+                  return;
+                }
+                window.open(url, '_blank');
+              }}
+              className="px-3 py-2 rounded-lg bg-rose-600 text-white text-sm font-bold"
+            >
+              <Radio size={14} className="inline ml-1" />بدء لايف الآن
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
   )}
 
-  {activeTab === 'instructors' && (
-    <InstructorsManager
-      isAdmin={isAdmin}
-      therapists={therapists}
-      consultations={consultations}
-      isTherapistFormOpen={isTherapistFormOpen}
-      setIsTherapistFormOpen={setIsTherapistFormOpen}
-      editingTherapistId={editingTherapistId}
-      setEditingTherapistId={setEditingTherapistId}
-      therapistDraft={therapistDraft}
-      setTherapistDraft={setTherapistDraft}
-      onImageUpload={handleTherapistImageUpload}
-      saveTherapist={saveTherapist}
-      startEditTherapist={startEditTherapist}
-      deleteTherapist={deleteTherapist}
-      updateTherapist={updateTherapist}
-    />
-  )}
+  <CourseInstructorsPanel
+    activeTab={activeTab}
+    isAdmin={isAdmin}
+    therapists={therapists}
+    consultations={consultations}
+    isTherapistFormOpen={isTherapistFormOpen}
+    setIsTherapistFormOpen={setIsTherapistFormOpen}
+    editingTherapistId={editingTherapistId}
+    setEditingTherapistId={setEditingTherapistId}
+    therapistDraft={therapistDraft}
+    setTherapistDraft={setTherapistDraft}
+    therapistImageInputRef={therapistImageInputRef}
+    handleTherapistImageUpload={handleTherapistImageUpload}
+    blankTherapist={blankTherapist}
+    blankTherapistSlot={blankTherapistSlot}
+    therapistAvatarDataUrl={therapistAvatarDataUrl}
+    safeTherapistImageSrc={safeTherapistImageSrc}
+    saveTherapist={saveTherapist}
+    updateTherapist={updateTherapist}
+    startEditTherapist={startEditTherapist}
+    deleteTherapist={deleteTherapist}
+  />
 
   {activeTab === 'bundles' && (
-    <BundlesManager
-      isAdmin={isAdmin}
-      bundles={bundles}
-      courses={courses}
-      isBundleFormOpen={isBundleFormOpen}
-      setIsBundleFormOpen={setIsBundleFormOpen}
-      editingBundleId={editingBundleId}
-      setEditingBundleId={setEditingBundleId}
-      bundleTitle={bundleTitle}
-      setBundleTitle={setBundleTitle}
-      bundleTitleEn={bundleTitleEn}
-      setBundleTitleEn={setBundleTitleEn}
-      bundleSlug={bundleSlug}
-      setBundleSlug={setBundleSlug}
-      bundleVideoUrl={bundleVideoUrl}
-      setBundleVideoUrl={setBundleVideoUrl}
-      bundleShortDesc={bundleShortDesc}
-      setBundleShortDesc={setBundleShortDesc}
-      bundleDescription={bundleDescription}
-      setBundleDescription={setBundleDescription}
-      bundleCourseIds={bundleCourseIds}
-      setBundleCourseIds={setBundleCourseIds}
-      bundlePrice={bundlePrice}
-      setBundlePrice={setBundlePrice}
-      bundleOriginalPrice={bundleOriginalPrice}
-      setBundleOriginalPrice={setBundleOriginalPrice}
-      bundleDetailsJson={bundleDetailsJson}
-      setBundleDetailsJson={setBundleDetailsJson}
-      bundleIsPublished={bundleIsPublished}
-      setBundleIsPublished={setBundleIsPublished}
-      saveBundle={saveBundle}
-      startEditBundle={startEditBundle}
-      deleteBundle={deleteBundle}
-      updateBundle={updateBundle}
-    />
+    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-bold text-gray-900">إدارة المسارات والباقات</h3>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => {
+                const now = new Date();
+                const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'00')}`;
+                const backup = { _meta: { createdAt: now.toISOString(), type: 'bundles' }, bundles };
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `backup_bundles_${stamp}.json`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-xl text-sm font-bold hover:bg-green-100 transition flex items-center gap-1"
+            >
+              💾 نسخة احتياطية
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (isBundleFormOpen && !editingBundleId) {
+                setIsBundleFormOpen(false);
+                return;
+              }
+              setEditingBundleId('');
+              setBundleTitle('');
+              setBundleTitleEn('');
+              setBundleSlug('');
+              setBundleVideoUrl('');
+              setBundleShortDesc('');
+              setBundleDescription('');
+              setBundleCourseIds([]);
+              setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
+              setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
+              setBundleDetailsJson('{}');
+              setIsBundleFormOpen(true);
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm"
+          >
+            <Plus size={16} className="inline ml-1" />
+            {isBundleFormOpen ? 'إغلاق نموذج المسار' : 'إضافة مسار'}
+          </button>
+        </div>
+      </div>
+
+      {isBundleFormOpen && (
+        <div className="border border-gray-200 rounded-2xl p-4 mb-4 bg-gray-50/70 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="عنوان المسار (عربي)" value={bundleTitle} onChange={(e) => setBundleTitle(e.target.value)} />
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="اسم المسار بالإنجليزية (English Name)" value={bundleTitleEn} onChange={(e) => setBundleTitleEn(e.target.value)} />
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط URL المسار (slug) مثال: psychology-track" value={bundleSlug} onChange={(e) => setBundleSlug(e.target.value)} />
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-1" placeholder="رابط فيديو تعريفي (YouTube embed)" value={bundleVideoUrl} onChange={(e) => setBundleVideoUrl(e.target.value)} />
+            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي EGP (جنيه مصري)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.EGP} onChange={(e) => setBundlePrice({ ...bundlePrice, EGP: Number(e.target.value) })} /></div>
+            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم EGP (جنيه)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.EGP} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, EGP: Number(e.target.value) })} /></div>
+            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي SAR (ريال سعودي)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.SAR} onChange={(e) => setBundlePrice({ ...bundlePrice, SAR: Number(e.target.value) })} /></div>
+            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم SAR (ريال)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.SAR} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, SAR: Number(e.target.value) })} /></div>
+            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي USD (دولار أمريكي)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.USD} onChange={(e) => setBundlePrice({ ...bundlePrice, USD: Number(e.target.value) })} /></div>
+            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم USD (دولار)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.USD} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, USD: Number(e.target.value) })} /></div>
+            <div className="md:col-span-2 text-xs text-gray-500 -mb-1">لاختيار أكثر من كورس: استخدم Ctrl أو Cmd أثناء التحديد.</div>
+            <select multiple className="border border-gray-300 rounded-xl px-4 py-2.5 min-h-36" value={bundleCourseIds} onChange={(e) => setBundleCourseIds(Array.from(e.target.selectedOptions).map((o) => (o as HTMLOptionElement).value))}>
+              {courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+            </select>
+            <div className="flex gap-2 md:col-span-2">
+              <button onClick={() => setBundleCourseIds(courses.map((c) => c.id))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">اختيار كل الكورسات</button>
+              <button onClick={() => setBundleCourseIds([])} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">مسح الاختيار</button>
+            </div>
+            <textarea className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" rows={2} placeholder="وصف قصير (tagline) - يظهر تحت العنوان في الهيدر" value={bundleShortDesc} onChange={(e) => setBundleShortDesc(e.target.value)} />
+            <textarea className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" rows={3} placeholder="وصف كامل للمسار - يظهر في أول الصفحة" value={bundleDescription} onChange={(e) => setBundleDescription(e.target.value)} />
+            <textarea
+              className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5 font-mono text-xs"
+              rows={8}
+              placeholder='تفاصيل صفحة المسار JSON (key:value)'
+              value={bundleDetailsJson}
+              onChange={(e) => setBundleDetailsJson(e.target.value)}
+            />
+          </div>
+          <button onClick={saveBundle} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingBundleId ? 'تحديث المسار' : 'إضافة مسار'}</button>
+        </div>
+      )}
+      <div className="mt-5 border-t pt-4 space-y-2 max-h-80 overflow-auto">
+        {bundles.map((row) => (
+          <div key={row.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl p-3">
+            <div><p className="font-bold text-gray-800">{row.title}</p><p className="text-xs text-gray-500">{row.courses.length} كورس</p></div>
+            <div className="flex gap-2">
+              <button onClick={() => window.open(`https://mahadnafsy.com/bundle/${row.id}`, '_blank')} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">عرض</button>
+              <button onClick={() => startEditBundle(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button>
+              <button onClick={() => deleteBundle(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
   )}
 
   {activeTab === 'testimonials' && (
-    <TestimonialsManager
-      testimonials={testimonials}
-      draft={testimonialDraft}
-      setDraft={setTestimonialDraft}
-      isFormOpen={isTestimonialFormOpen}
-      setIsFormOpen={setIsTestimonialFormOpen}
-      editingId={editingTestimonialId}
-      setEditingId={setEditingTestimonialId}
-      onSave={saveTestimonial}
-      onStartEdit={startEditTestimonial}
-      onDelete={deleteTestimonial}
-    />
+    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-bold text-gray-900">إدارة آراء العملاء</h3>
+        <button
+          onClick={() => {
+            if (isTestimonialFormOpen && !editingTestimonialId) {
+              setIsTestimonialFormOpen(false);
+              return;
+            }
+            setEditingTestimonialId(null);
+            setTestimonialDraft({ id: 0, name: '', role: '', text: '', image: '' });
+            setIsTestimonialFormOpen(true);
+          }}
+          className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm"
+        >
+          <Plus size={16} className="inline ml-1" />
+          {isTestimonialFormOpen ? 'إغلاق نموذج الرأي' : 'إضافة رأي'}
+        </button>
+      </div>
+
+      {isTestimonialFormOpen && (
+        <div className="border border-gray-200 rounded-2xl p-4 mb-4 bg-gray-50/70 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="الاسم" value={testimonialDraft.name} onChange={(e) => setTestimonialDraft({ ...testimonialDraft, name: e.target.value })} />
+            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="الصفة" value={testimonialDraft.role} onChange={(e) => setTestimonialDraft({ ...testimonialDraft, role: e.target.value })} />
+            <input className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط الصورة" value={testimonialDraft.image} onChange={(e) => setTestimonialDraft({ ...testimonialDraft, image: e.target.value })} />
+            <textarea className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" rows={3} placeholder="نص الرأي" value={testimonialDraft.text} onChange={(e) => setTestimonialDraft({ ...testimonialDraft, text: e.target.value })} />
+          </div>
+          <button onClick={saveTestimonial} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTestimonialId ? 'تحديث الرأي' : 'إضافة رأي'}</button>
+        </div>
+      )}
+      <div className="mt-5 border-t pt-4 space-y-2 max-h-80 overflow-auto">
+        {testimonials.map((row) => (
+          <div key={row.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl p-3">
+            <div><p className="font-bold text-gray-800">{row.name}</p><p className="text-xs text-gray-500">{row.role}</p></div>
+            <div className="flex gap-2"><button onClick={() => startEditTestimonial(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button><button onClick={() => deleteTestimonial(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button></div>
+          </div>
+        ))}
+      </div>
+    </article>
   )}
 
   {/* ═══════════════════════════════════════════════════════════════════
       DISCOUNTS TAB — الخصومات والكوبونات
   ═══════════════════════════════════════════════════════════════════ */}
-  {activeTab === 'discounts' && (
-    <DiscountsManager
-      discounts={discounts}
-      editingDiscountId={editingDiscountId}
-      setEditingDiscountId={setEditingDiscountId}
-      discountDraft={discountDraft}
-      setDiscountDraft={setDiscountDraft}
-      addDiscount={addDiscount}
-      updateDiscount={updateDiscount}
-      deleteDiscount={deleteDiscount}
-      courses={courses}
-      bundles={bundles}
-      therapists={therapists}
-      policyDrafts={policyDrafts}
-      setPolicyDrafts={setPolicyDrafts}
-      content={content}
-      setContentValue={setContentValue}
-      promoCodes={promoCodes}
-      promoLoading={promoLoading}
-      promoForm={promoForm}
-      setPromoForm={setPromoForm}
-      promoFormOpen={promoFormOpen}
-      setPromoFormOpen={setPromoFormOpen}
-      loadPromoCodes={loadPromoCodes}
-      createPromoCode={(payload) => mysqlAdmin.createPromoCode(payload)}
-      updatePromoCode={(id, payload) => mysqlAdmin.updatePromoCode(id, payload)}
-      deletePromoCode={(id) => mysqlAdmin.deletePromoCode(id)}
-      notify={notify}
-    />
-  )}
-
-    {/* ── Lesson Analytics Modal ─────────────────────────────────────────── */}
-    {analyticsCourseId && analyticsRows.length >= 0 && (() => {
-      const course = courses.find(c => c.id === analyticsCourseId);
-      const maxViews = Math.max(...analyticsRows.map(r => r.view_count), 1);
-      return (
-        <div className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-4" onClick={() => setAnalyticsCourseId('')}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div>
-                <h3 className="font-bold text-gray-900">مشاهدات المحاضرات</h3>
-                {course && <p className="text-xs text-gray-400">{course.title}</p>}
-              </div>
-              <button onClick={() => setAnalyticsCourseId('')} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 grid place-items-center"><X size={14} /></button>
+  {activeTab === 'discounts' && (() => {
+    const activeDiscounts = discounts.filter(d => d.active && (!d.expiresAt || d.expiresAt >= new Date().toISOString().slice(0,10)));
+    const expiredDiscounts = discounts.filter(d => !d.active || (d.expiresAt && d.expiresAt < new Date().toISOString().slice(0,10)));
+    const startEdit = (d: DiscountRule) => {
+      setEditingDiscountId(d.id);
+      setDiscountDraft({ type: d.type, targetId: d.targetId || '', discountPercent: d.discountPercent, label: d.label || '', promoCode: d.promoCode || '', active: d.active, expiresAt: d.expiresAt || '' });
+    };
+    const cancelEdit = () => { setEditingDiscountId(''); setDiscountDraft({ type: 'course', targetId: '', discountPercent: 10, label: '', promoCode: '', active: true, expiresAt: '' }); };
+    const saveDiscount = () => {
+      if (!discountDraft.discountPercent || discountDraft.discountPercent <= 0 || discountDraft.discountPercent > 100) { alert('نسبة الخصم يجب أن تكون بين 1 و 100'); return; }
+      if (editingDiscountId) {
+        updateDiscount({ ...discountDraft, id: editingDiscountId, createdAt: discounts.find(d => d.id === editingDiscountId)?.createdAt || new Date().toISOString() } as DiscountRule);
+      } else {
+        addDiscount({ ...discountDraft, id: `disc-${Date.now()}`, createdAt: new Date().toISOString() } as DiscountRule);
+      }
+      cancelEdit();
+    };
+    const typeLabel: Record<string, string> = { course: 'كورس بعينه', bundle: 'مسار/باقة', all_courses: 'كل الكورسات', therapist_consultation: 'مستشار بعينه', all_consultations: 'كل الاستشارات' };
+    return (
+      <div className="space-y-5 animate-fade-in" dir="rtl">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-6 text-white">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-extrabold flex items-center gap-2">🎫 الخصومات والكوبونات</h2>
+              <p className="text-emerald-100 text-sm mt-1">إدارة كوبونات الخصم وعروض الأسعار</p>
             </div>
-            <div className="overflow-y-auto p-5">
-              {analyticsLoading ? (
-                <div className="text-center py-10 text-gray-400">جارٍ التحميل...</div>
-              ) : analyticsRows.length === 0 ? (
-                <div className="text-center py-10 text-gray-400">لا توجد بيانات مشاهدات بعد</div>
-              ) : (
-                <div className="space-y-2">
-                  {analyticsRows.map(row => (
-                    <div key={row.id} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-5 text-left flex-shrink-0">{row.sort_order}</span>
-                      <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{row.title}</span>
-                      <div className="w-32 bg-gray-100 rounded-full h-2 flex-shrink-0">
-                        <div className="bg-purple-500 h-2 rounded-full transition-all" style={{ width: `${(row.view_count / maxViews) * 100}%` }} />
-                      </div>
-                      <span className="text-xs font-bold text-purple-700 w-12 text-left flex-shrink-0">{row.view_count.toLocaleString('ar-EG-u-nu-latn')}</span>
-                    </div>
-                  ))}
-                  <div className="pt-3 border-t border-gray-100 text-xs text-gray-400 text-center">
-                    إجمالي المشاهدات: {analyticsRows.reduce((s, r) => s + r.view_count, 0).toLocaleString('ar-EG-u-nu-latn')}
-                  </div>
-                </div>
-              )}
+            <div className="flex gap-3 text-center">
+              <div className="bg-white/20 rounded-xl px-4 py-2"><p className="text-2xl font-black">{discounts.length}</p><p className="text-xs">إجمالي</p></div>
+              <div className="bg-white/20 rounded-xl px-4 py-2"><p className="text-2xl font-black text-green-200">{activeDiscounts.length}</p><p className="text-xs">نشطة</p></div>
+              <div className="bg-white/20 rounded-xl px-4 py-2"><p className="text-2xl font-black text-red-200">{expiredDiscounts.length}</p><p className="text-xs">منتهية</p></div>
             </div>
           </div>
         </div>
-      );
-    })()}
+
+        {/* Cash Discount Setting */}
+        <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm">
+          <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">💵 خصم الدفع الفوري (الكاش)</h3>
+          <p className="text-sm text-gray-500 mb-3">نسبة خصم تُطبَّق تلقائياً على الكورسات والمسارات عند الدفع بالكاش في صفحة الدفع. اضبطها على 0 لإلغاء التفعيل.</p>
+          <div className="flex items-center gap-3 max-w-xs">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              className="border border-gray-300 rounded-xl px-4 py-2.5 text-sm w-32"
+              placeholder="0"
+              value={policyDrafts['checkout.cashDiscountPercent'] ?? content['checkout.cashDiscountPercent'] ?? ''}
+              onChange={(e) => setPolicyDrafts(prev => ({ ...prev, 'checkout.cashDiscountPercent': e.target.value }))}
+            />
+            <span className="text-gray-600 font-bold">%</span>
+            {policyDrafts['checkout.cashDiscountPercent'] !== undefined && (
+              <>
+                <button
+                  onClick={() => {
+                    setContentValue('checkout.cashDiscountPercent', policyDrafts['checkout.cashDiscountPercent'] ?? '');
+                    setPolicyDrafts(prev => { const next = { ...prev }; delete next['checkout.cashDiscountPercent']; return next; });
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-sm"
+                >
+                  حفظ
+                </button>
+                <button
+                  onClick={() => setPolicyDrafts(prev => { const next = { ...prev }; delete next['checkout.cashDiscountPercent']; return next; })}
+                  className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm"
+                >
+                  إلغاء
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <h3 className="font-bold text-gray-800 mb-4">{editingDiscountId ? '✏️ تعديل كوبون' : '➕ إضافة كوبون جديد'}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">نوع الخصم</label>
+              <select value={discountDraft.type} onChange={e => setDiscountDraft(p => ({ ...p, type: e.target.value as DiscountRule['type'], targetId: '' }))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <option value="course">كورس بعينه</option>
+                <option value="bundle">مسار/باقة بعينها</option>
+                <option value="all_courses">كل الكورسات</option>
+                <option value="therapist_consultation">مستشار بعينه</option>
+                <option value="all_consultations">كل الاستشارات</option>
+              </select>
+            </div>
+            {(discountDraft.type === 'course') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">اختر الكورس</label>
+                <select value={discountDraft.targetId || ''} onChange={e => setDiscountDraft(p => ({ ...p, targetId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                  <option value="">— اختر كورساً —</option>
+                  {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+              </div>
+            )}
+            {(discountDraft.type === 'bundle') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">اختر المسار/الباقة</label>
+                <select value={discountDraft.targetId || ''} onChange={e => setDiscountDraft(p => ({ ...p, targetId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                  <option value="">— اختر مساراً —</option>
+                  {bundles.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+                </select>
+              </div>
+            )}
+            {(discountDraft.type === 'therapist_consultation') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">اختر المستشار</label>
+                <select value={discountDraft.targetId || ''} onChange={e => setDiscountDraft(p => ({ ...p, targetId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                  <option value="">— اختر مستشاراً —</option>
+                  {therapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">نسبة الخصم %</label>
+              <input type="number" min={1} max={100} value={discountDraft.discountPercent}
+                onChange={e => setDiscountDraft(p => ({ ...p, discountPercent: Number(e.target.value) }))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">كود الكوبون (اختياري)</label>
+              <input type="text" placeholder="مثال: PSYCH20" value={discountDraft.promoCode || ''}
+                onChange={e => setDiscountDraft(p => ({ ...p, promoCode: e.target.value.toUpperCase() }))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">اسم/وصف الخصم</label>
+              <input type="text" placeholder="مثال: خصم العيد" value={discountDraft.label || ''}
+                onChange={e => setDiscountDraft(p => ({ ...p, label: e.target.value }))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الانتهاء (اختياري)</label>
+              <input type="date" value={discountDraft.expiresAt || ''}
+                onChange={e => setDiscountDraft(p => ({ ...p, expiresAt: e.target.value }))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            </div>
+            <div className="flex items-center gap-2 pt-5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={discountDraft.active} onChange={e => setDiscountDraft(p => ({ ...p, active: e.target.checked }))} className="w-4 h-4 rounded" />
+                <span className="text-sm font-medium text-gray-700">نشط الآن</span>
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <button onClick={saveDiscount} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition">
+              {editingDiscountId ? 'حفظ التعديل' : 'إضافة الكوبون'}
+            </button>
+            {editingDiscountId && (
+              <button onClick={cancelEdit} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-bold transition">إلغاء</button>
+            )}
+          </div>
+        </div>
+
+        {/* Discounts List */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <h3 className="font-bold text-gray-800 mb-4">قائمة الكوبونات ({discounts.length})</h3>
+          {discounts.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <div className="text-5xl mb-3">🎫</div>
+              <p className="font-medium">لا يوجد كوبونات بعد</p>
+              <p className="text-sm mt-1">استخدم الفورم أعلاه لإضافة أول كوبون خصم</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-gray-100 text-gray-500 text-right">
+                    <th className="pb-3 font-semibold">الوصف</th>
+                    <th className="pb-3 font-semibold">الكود</th>
+                    <th className="pb-3 font-semibold">النوع</th>
+                    <th className="pb-3 font-semibold">الخصم</th>
+                    <th className="pb-3 font-semibold">الانتهاء</th>
+                    <th className="pb-3 font-semibold">الحالة</th>
+                    <th className="pb-3 font-semibold">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discounts.map(d => {
+                    const isExpired = d.expiresAt && d.expiresAt < new Date().toISOString().slice(0,10);
+                    const targetName = d.type === 'course' ? (courses.find(c => c.id === d.targetId)?.title || d.targetId) :
+                      d.type === 'bundle' ? (bundles.find(b => b.id === d.targetId)?.title || d.targetId) :
+                      d.type === 'therapist_consultation' ? (therapists.find(t => t.id === d.targetId)?.name || d.targetId) : '';
+                    return (
+                      <tr key={d.id} className={`border-b border-gray-50 hover:bg-gray-50 transition ${editingDiscountId === d.id ? 'bg-emerald-50' : ''}`}>
+                        <td className="py-3 font-medium text-gray-800">{d.label || '—'}{targetName && <span className="block text-xs text-gray-400">{targetName}</span>}</td>
+                        <td className="py-3"><span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs font-bold">{d.promoCode || '—'}</span></td>
+                        <td className="py-3 text-gray-600 text-xs">{typeLabel[d.type] || d.type}</td>
+                        <td className="py-3"><span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-lg text-sm">{d.discountPercent}%</span></td>
+                        <td className="py-3 text-xs text-gray-500">{d.expiresAt || 'بلا تاريخ'}</td>
+                        <td className="py-3">
+                          {isExpired ? (
+                            <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-lg font-medium">منتهي</span>
+                          ) : d.active ? (
+                            <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-lg font-medium">نشط</span>
+                          ) : (
+                            <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-lg font-medium">موقف</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          <div className="flex gap-2">
+                            <button onClick={() => startEdit(d)} className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition">تعديل</button>
+                            <button onClick={() => updateDiscount({ ...d, active: !d.active })}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${d.active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                              {d.active ? 'وقف' : 'تفعيل'}
+                            </button>
+                            <button onClick={() => { if (window.confirm('حذف هذا الكوبون؟')) deleteDiscount(d.id); }}
+                              className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition">حذف</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ── New Promo Codes Section (Backend DB) ── */}
+        <div className="bg-white border border-purple-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">🎟️ كوبونات الدفع (مع تتبع الاستخدام)</h3>
+            <button
+              onClick={() => setPromoFormOpen(o => !o)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-bold transition"
+            >
+              <Plus size={15} /> إضافة كوبون
+            </button>
+          </div>
+
+          {promoFormOpen && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4">
+              <h4 className="font-bold text-gray-700 mb-3 text-sm">➕ كوبون جديد</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">كود الكوبون *</label>
+                  <input type="text" value={promoForm.code} onChange={e => setPromoForm(p => ({ ...p, code: e.target.value.toUpperCase().replace(/\s/g,'') }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="PSYCH20" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">نوع الخصم</label>
+                  <select value={promoForm.discount_type} onChange={e => setPromoForm(p => ({ ...p, discount_type: e.target.value as 'percent' | 'fixed' }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+                    <option value="percent">نسبة مئوية %</option>
+                    <option value="fixed">مبلغ ثابت</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">قيمة الخصم *</label>
+                  <input type="number" min={1} value={promoForm.discount_value} onChange={e => setPromoForm(p => ({ ...p, discount_value: Number(e.target.value) }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">الحد الأدنى للطلب (EGP)</label>
+                  <input type="number" min={0} value={promoForm.min_order_amount} onChange={e => setPromoForm(p => ({ ...p, min_order_amount: Number(e.target.value) }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">أقصى استخدام (فارغ = بلا حد)</label>
+                  <input type="number" min={1} value={promoForm.max_uses} onChange={e => setPromoForm(p => ({ ...p, max_uses: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="بلا حد" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">تاريخ الانتهاء (اختياري)</label>
+                  <input type="date" value={promoForm.expires_at} onChange={e => setPromoForm(p => ({ ...p, expires_at: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={async () => {
+                    if (!promoForm.code.trim()) { notify('error', 'كود الكوبون مطلوب'); return; }
+                    try {
+                      await mysqlAdmin.createPromoCode({ code: promoForm.code, discount_type: promoForm.discount_type, discount_value: promoForm.discount_value, min_order_amount: promoForm.min_order_amount, max_uses: promoForm.max_uses ? Number(promoForm.max_uses) : null, expires_at: promoForm.expires_at || null } as Record<string, unknown>);
+                      notify('success', 'تم إنشاء الكوبون');
+                      setPromoForm({ code: '', discount_type: 'percent', discount_value: 10, min_order_amount: 0, max_uses: '', expires_at: '' });
+                      setPromoFormOpen(false);
+                      loadPromoCodes();
+                    } catch (err) { notify('error', err instanceof Error ? err.message : 'خطأ في الإنشاء'); }
+                  }}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-bold transition"
+                >
+                  حفظ الكوبون
+                </button>
+                <button onClick={() => setPromoFormOpen(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm">إلغاء</button>
+              </div>
+            </div>
+          )}
+
+          {promoLoading ? (
+            <div className="text-center py-8 text-gray-400">جارٍ التحميل...</div>
+          ) : promoCodes.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">
+              <div className="text-4xl mb-2">🎟️</div>
+              <p>لا توجد كوبونات دفع بعد</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-gray-100 text-gray-500 text-right">
+                    <th className="pb-3 font-semibold">الكود</th>
+                    <th className="pb-3 font-semibold">الخصم</th>
+                    <th className="pb-3 font-semibold">الحد الأدنى</th>
+                    <th className="pb-3 font-semibold">الاستخدام</th>
+                    <th className="pb-3 font-semibold">الانتهاء</th>
+                    <th className="pb-3 font-semibold">الحالة</th>
+                    <th className="pb-3 font-semibold">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promoCodes.map(pc => {
+                    const isExpired = pc.expires_at && pc.expires_at < new Date().toISOString().slice(0, 10);
+                    const isFull = pc.max_uses != null && pc.used_count >= pc.max_uses;
+                    return (
+                      <tr key={pc.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                        <td className="py-3">
+                          <span className="font-mono bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold text-xs">{pc.code}</span>
+                        </td>
+                        <td className="py-3 font-bold text-purple-700">
+                          {pc.discount_value}{pc.discount_type === 'percent' ? '%' : ' EGP'}
+                        </td>
+                        <td className="py-3 text-xs text-gray-500">{pc.min_order_amount > 0 ? `${pc.min_order_amount} EGP` : '—'}</td>
+                        <td className="py-3 text-xs">
+                          <span className={isFull ? 'text-red-600 font-bold' : 'text-gray-600'}>
+                            {pc.used_count} / {pc.max_uses ?? '∞'}
+                          </span>
+                        </td>
+                        <td className="py-3 text-xs text-gray-500">{pc.expires_at ?? '—'}</td>
+                        <td className="py-3">
+                          {isExpired || isFull ? (
+                            <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-lg font-medium">{isFull ? 'مكتمل' : 'منتهي'}</span>
+                          ) : pc.active ? (
+                            <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-lg font-medium">نشط</span>
+                          ) : (
+                            <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-lg font-medium">موقف</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await mysqlAdmin.updatePromoCode(pc.id, { active: pc.active ? 0 : 1 } as Record<string, unknown>);
+                                  loadPromoCodes();
+                                } catch (err) { notify('error', err instanceof Error ? err.message : 'خطأ'); }
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${pc.active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+                            >
+                              {pc.active ? 'وقف' : 'تفعيل'}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm(`حذف الكوبون ${pc.code}؟`)) return;
+                                try {
+                                  await mysqlAdmin.deletePromoCode(pc.id);
+                                  notify('success', 'تم حذف الكوبون');
+                                  loadPromoCodes();
+                                } catch (err) { notify('error', err instanceof Error ? err.message : 'خطأ'); }
+                              }}
+                              className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition"
+                            >
+                              حذف
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  })()}
+
+    {analyticsCourseId && (
+      <LessonAnalyticsModal
+        course={courses.find((course) => course.id === analyticsCourseId)}
+        rows={analyticsRows}
+        loading={analyticsLoading}
+        onClose={() => setAnalyticsCourseId('')}
+      />
+    )}
 
     </>
   );

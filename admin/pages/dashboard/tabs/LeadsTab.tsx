@@ -1,16 +1,13 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { Suspense } from 'react';
 import {
-  Activity, AlertCircle, Award, BarChart2, Bell, BookOpen, CalendarPlus, CheckCheck,
-  Clock, CreditCard, ExternalLink, EyeOff, Eye,
-  Globe, Inbox, Link2, MessageSquare, MessageSquareText,
-  Plus, Search, Settings, Share2, Star, Tag, Trash2,
+  AlertCircle, Archive, Award, BookOpen, CalendarPlus,
+  Columns, CreditCard, EyeOff, Eye,
+  Inbox, Link2, MessageSquare, MessageSquareText,
+  Plus, Search, Share2, Tag, Trash2,
   Upload, Wallet, X,
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, PieChart, Pie, Cell,
-} from 'recharts';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import { mysqlAdmin, mysqlClient } from '../../../lib/mysqlapi';
@@ -18,27 +15,35 @@ import { useResizableCols } from '../../../components/useResizableCols';
 import type {
   LeadItem, LeadStatus, CommunicationRecord, SalesTarget, Course, Bundle,
   BranchType, FacebookLeadAdsConfig, PaymentHistoryEntry, PaymentItemType,
-  SubscriberItem, StaffMember, AccessMode, CourseAccessSetting,
+  SubscriberItem, StaffMember, CourseAccessSetting,
 } from '../../../types';
-import { CrmSettingsModal, DEFAULT_CRM_SETTINGS } from './CrmSettingsModal';
-import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../../../components/PaymentModal';
+import { DEFAULT_CRM_SETTINGS } from './CrmSettingsModal';
+import type { PaymentDraft } from '../../../components/PaymentModal';
+import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import type { CrmSettings, NotifyFn } from './CrmSettingsModal';
-import { useLeadsImport } from './useLeadsImport';
-import { useLeadCrmContact } from './useLeadCrmContact';
-import { useLeadPayment } from './useLeadPayment';
 import { DEFAULT_SOURCES, ONLINE_EXCLUDED_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from './crmConstants';
 import { LeadTable } from './LeadTable';
+import { blankLead } from './leads/leadDrafts';
+import { useLeadSubTab } from './leads/useLeadSubTab';
+import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
+import { useLeadCommunicationsData, type LeadCommunicationFilter } from './leads/useLeadCommunicationsData';
+import { useLeadPerformanceData } from './leads/useLeadPerformanceData';
+import { useLeadFilteringData } from './leads/useLeadFilteringData';
+import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
+import { useLeadRemindersData } from './leads/useLeadRemindersData';
+import { useLeadOpsInsights } from './leads/useLeadOpsInsights';
+import { useLeadAnalyticsData } from './leads/useLeadAnalyticsData';
+import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
+import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 import {
   BRANCH_ENUM_LABELS,
   COMM_ICON,
   COMM_LABEL,
   IL_LABEL,
-  PIE_COLORS,
   PIPELINE_COLS,
   PRESET_TAGS,
   ROTTEN_CFG,
   STATUS_CFG,
-  calcLeadScore,
   getLeadBranchRaw,
   getRottenLevel,
   // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
@@ -54,31 +59,41 @@ interface LeadsTabProps {
   salesDataLoading?: boolean;
   fetchSalesData?: () => void;
   setActiveTab?: (tab: string) => void;
+  branchFilter?: string;
 }
 
-const blankLead = (): LeadItem => ({
-  id: '', name: '', email: '', phone: '', status: 'new', leadType: 'general',
-  enrolledCourseId: '', branch: undefined, interestLevel: 'medium',
-  source: '', assignedSalesId: '', assignedSalesName: '',
-  interestedCourseIds: [], communications: [], notes: '', createdAt: '', hidden: false,
-});
+type StaffSelfSnapshot = {
+  id?: string;
+  role?: string;
+  name?: string;
+};
 
+import { TagInput, getScoreBreakdown, LeadJourneyTimeline, QuickEditPanel, MultiSelectDropdown, crmSourceLabels, normBranchId, mkPromoCode, paymentTypeLabels, EVENT_CFG } from './leads/LeadSubcomponents';
+import type { CertPricingMap } from './leads/LeadSubcomponents';
+import { LeadsTabHeader } from './leads/LeadsTabHeader';
+import { LeadFilterBar } from './leads/LeadFilterBar';
+import { LeadSalesKpiStrip } from './leads/LeadSalesKpiStrip';
+import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
+import type { StaleLeadRow } from './leads/LeadStaleLeadsPanel';
+import { buildCsv, leadFromCsvRow, parseCsvText, parseFacebookCsvLeads } from './leads/leadCsvUtils';
+import { fetchFacebookLeadForms, syncFacebookLeadAds } from './leads/leadFacebookGraphApi';
 
-import { AddLeadModal, BulkWhatsAppModal, WhatsAppRepModal, TagInput, getScoreBreakdown, ScoreBadge, LeadJourneyTimeline, QuickEditPanel, MultiSelectDropdown, ArchiveTab, crmSourceLabels, formatWaPhone, normBranchId, mkPromoCode, crmStatusLabels, paymentTypeLabels, EVENT_CFG } from './leads/LeadSubcomponents';
-import { LeadsCommunicationsPanel } from './leads/LeadsCommunicationsPanel';
-import { LeadsPerformancePanel } from './leads/LeadsPerformancePanel';
-import type { ArchiveTabProps, CertPricingMap } from './leads/LeadSubcomponents';
-import { LeadsHeaderBar } from './leads/LeadsHeaderBar';
-import type { LeadsSubTabKey } from './leads/LeadsHeaderBar';
-import { LeadsSalesKpiStrip } from './leads/LeadsSalesKpiStrip';
-import { LeadsFilterBar } from './leads/LeadsFilterBar';
-import type { FollowupFilter } from './leads/LeadsFilterBar';
-import { LeadsPipelineBoard } from './leads/LeadsPipelineBoard';
-import { ConvertLeadModal } from './leads/ConvertLeadModal';
-import { SalesFollowupPanel } from './leads/SalesFollowupPanel';
+const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
+const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));
+const LeadModalsHost = React.lazy(() => import('./leads/LeadModalsHost').then(module => ({ default: module.LeadModalsHost })));
+const LeadPerformancePanel = React.lazy(() => import('./leads/LeadPerformancePanel').then(module => ({ default: module.LeadPerformancePanel })));
+const LeadPerformanceOverview = React.lazy(() => import('./leads/LeadPerformanceOverview').then(module => ({ default: module.LeadPerformanceOverview })));
+const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').then(module => ({ default: module.LeadPipelineBoard })));
+const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel').then(module => ({ default: module.LeadRemindersPanel })));
+
+const LeadSectionFallback = () => (
+  <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">
+    جاري تحميل قسم العملاء المحتملين...
+  </div>
+);
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab }: LeadsTabProps) {
+export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
   const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, deleteLead, addSubscriber, updateSubscriber, authUser, isAdmin, fbLeadAdsConfig, setFbLeadAdsConfig, issueClientCodeAsync, content } = useSiteData();
   const instituteBranches = useBranches();
   const navigate = useNavigate();
@@ -97,10 +112,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const draggedLeadRef = useRef<LeadItem | null>(null);
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
-  type SubTabKey = LeadsSubTabKey;
-  const [searchParams, setSearchParams] = useSearchParams();
-  const subTab = (searchParams.get('tab') as SubTabKey) || 'table';
-  const setSubTab = (t: SubTabKey) => setSearchParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n; }, { replace: true });
+  const { subTab, setSubTab } = useLeadSubTab();
   const [lostReasonRow, setLostReasonRow] = useState<{ lead: LeadItem; newStatus: LeadStatus } | null>(null);
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
@@ -115,47 +127,54 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [searchTerm, setSearchTerm] = useState('');
   const [assignFilter, setAssignFilter] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [distributing, setDistributing] = useState(false);
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [migratingBranches, setMigratingBranches] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<LeadStatus>>(new Set());
   const [courseFilter, setCourseFilter] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState<string | null>(null);
+  useEffect(() => {
+    setBranchFilter(workspaceBranchFilter || null);
+  }, [workspaceBranchFilter]);
+  const [targetMonth, setTargetMonth] = useState(new Date().toISOString().slice(0, 7));
   // Bulk WhatsApp
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [showBulkWA, setShowBulkWA] = useState(false);
 
+  // Stale leads (server-fetched — leads not contacted in 7+ days)
+  const [staleLeads, setStaleLeads] = useState<StaleLeadRow[]>([]);
+  const [staleLoading, setStaleLoading] = useState(false);
+  const [staleBulkMsg, setStaleBulkMsg] = useState('أهلاً {name} 💚 نتمنى تواصلك معنا لمعرفة المزيد عن برامجنا. فريق مهاد للدراسات النفسية 🌿');
+  const [staleSending, setStaleSending] = useState(false);
+  const [staleSelected, setStaleSelected] = useState<Set<string>>(new Set());
 
+  // Due-today leads (server-fetched — follow-up date is today)
+  const [dueToday, setDueToday] = useState<{
+    id: string; name: string; phone: string; email: string;
+    status: string; interest_level: string;
+    next_follow_up_date: string; assigned_sales_name: string | null; overdue_days: number;
+  }[]>([]);
+  const [dueTodayLoading, setDueTodayLoading] = useState(false);
 
   // Self staff — for role-based UI gating (SALES vs admin)
   const [selfStaff, setSelfStaff] = useState<{ id: string; role: string; name: string } | null>(null);
   useEffect(() => {
     mysqlClient.getStaffSelf()
-      .then((s: any) => { if (s?.id) setSelfStaff(s); })
+      .then((s: StaffSelfSnapshot) => { if (s?.id) setSelfStaff({ id: s.id, role: s.role || '', name: s.name || '' }); })
       .catch(() => {});
   }, []);
   const isSalesOnly = selfStaff?.role === 'sales' || staffSelfProp?.role === 'sales';
-  // Merge salesOwnLeads (API snapshot) with context leads — new/updated leads appear immediately
-  const effectiveLeads = isSalesOnly
-    ? (() => {
-        const staffId = selfStaff?.id || staffSelfProp?.id;
-        const snapMap = new Map((salesOwnLeads || []).map(l => [l.id, l]));
-        // Context wins: override any lead already in the snapshot by id, or assigned to this sales person
-        leads.filter(l => snapMap.has(l.id) || l.assignedSalesId === staffId)
-          .forEach(l => snapMap.set(l.id, l));
-        return [...snapMap.values()];
-      })()
-    : leads;
-  // Merge salesOwnSubscribers (API snapshot) with context subscribers so new bookings appear immediately
-  const effectiveSubs = isSalesOnly
-    ? (() => {
-        const snapMap = new Map((salesOwnSubscribers || []).map(s => [s.id, s]));
-        const contextOwn = subscribers.filter(s => s.assignedSalesId === (selfStaff?.id || staffSelfProp?.id));
-        contextOwn.forEach(s => snapMap.set(s.id, s));
-        return [...snapMap.values()];
-      })()
-    : subscribers;
+  const { effectiveLeads, effectiveSubs } = useLeadEffectiveRecords({
+    leads,
+    subscribers,
+    isSalesOnly,
+    selfStaff,
+    staffSelfProp,
+    salesOwnLeads,
+    salesOwnSubscribers,
+  });
   // Sales users: do NOT auto-set assignFilter — salesOwnLeads is already pre-filtered server-side
 
   // Close actions menu on outside click
@@ -179,12 +198,54 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     }).catch(() => {});
   }, []);
 
+  const refreshStaleLeads = useCallback(() => {
+    setStaleLoading(true);
+    mysqlAdmin.adminGet<StaleLeadRow[]>('/api/admin/crm/stale-leads?days=7')
+      .then(data => { setStaleLeads(Array.isArray(data) ? data : []); })
+      .catch(() => {})
+      .finally(() => setStaleLoading(false));
+  }, []);
+
+  const sendStaleBulkWhatsapp = useCallback(async () => {
+    if (!staleBulkMsg.trim() || staleSelected.size === 0) return;
+    setStaleSending(true);
+    try {
+      const selectedLeads = staleLeads
+        .filter(lead => staleSelected.has(lead.id))
+        .map(lead => ({ id: lead.id, phone: lead.phone, name: lead.name }));
+      const result = await mysqlAdmin.adminPost<{ sent: number; failed: number }>('/api/admin/crm/bulk-whatsapp', { leads: selectedLeads, message: staleBulkMsg });
+      notify('success', `تم الإرسال: ${result.sent} رسالة ✅`);
+      setStaleSelected(new Set());
+      const fresh = await mysqlAdmin.adminGet<StaleLeadRow[]>('/api/admin/crm/stale-leads?days=7');
+      setStaleLeads(Array.isArray(fresh) ? fresh : []);
+    } catch (e: unknown) {
+      notify('error', (e as Error).message || 'فشل الإرسال');
+    } finally {
+      setStaleSending(false);
+    }
+  }, [notify, staleBulkMsg, staleLeads, staleSelected]);
+
+  const refreshDueToday = useCallback(() => {
+    setDueTodayLoading(true);
+    mysqlAdmin.adminGet<typeof dueToday>('/api/admin/crm/follow-up-due')
+      .then(data => { setDueToday(Array.isArray(data) ? data : []); })
+      .catch(() => {})
+      .finally(() => setDueTodayLoading(false));
+  }, []);
+
   // Fetch stale leads + due-today leads when reminders tab is active
+  useEffect(() => {
+    if (subTab !== 'reminders') return;
+    refreshStaleLeads();
+    refreshDueToday();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTab]);
 
   // Pagination: how many cards shown per column (default 15)
   const [colLimit, setColLimit] = useState<Record<LeadStatus, number>>(
     Object.fromEntries(Object.keys(STATUS_CFG).map(k => [k, 15])) as Record<LeadStatus, number>
   );
+  const { salesTargets, saveSalesTargets } = useSalesTargetsStorage();
 
 
   // ── Extra state (payment / convert / FB / CRM contact) ──────────────────
@@ -192,38 +253,83 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [editingLeadId, setEditingLeadId] = useState('');
   const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
   const [leadDraft, setLeadDraft] = useState<LeadItem>(blankLead());
-  // CSV + Facebook lead-import feature — extracted to ./useLeadsImport (state +
-  // handlers). Destructured with identical names so the render JSX is unchanged.
-  const {
-    bulkUploadNotice, setBulkUploadNotice,
-    csvHeaders, setCsvHeaders, csvRows, setCsvRows, csvMapping, setCsvMapping,
-    csvImportOpen, setCsvImportOpen, csvImporting, setCsvImporting,
-    fbDraft, setFbDraft, fbIntegOpen, setFbIntegOpen,
-    fbSyncLoading, setFbSyncLoading, fbSyncNotice, setFbSyncNotice,
-    fbFormsLoading, setFbFormsLoading, fbAvailableForms, setFbAvailableForms,
-    handleBulkFbUpload, handleCsvFileChange, handleCsvImport,
-    handleFetchFbForms, handleFbApiSync, handleSaveFbConfig,
-  } = useLeadsImport(notify);
-  const [convertLeadModal, setConvertLeadModal] = useState<{
-    lead: LeadItem | null; courseId: string; accessMode: AccessMode;
-  }>({ lead: null, courseId: '', accessMode: 'full' });
-  // Lead payment / conversion (220-line money handler) — extracted to ./useLeadPayment.
-  // Same names returned so the render JSX (PaymentModal + print) is unchanged.
-  const {
-    leadPayRow, setLeadPayRow, leadPayDraft, setLeadPayDraft,
-    showDiscountSection, setShowDiscountSection, leadPayPrintData, setLeadPayPrintData,
-    handleLeadPayment,
-  } = useLeadPayment({ effectiveLeads, effectiveSubs, branchLabelMap, isSalesOnly, fetchSalesData, setActiveDashboardTab, notify });
-  // "Log CRM contact" feature — extracted to ./useLeadCrmContact (same names, render unchanged).
-  const { crmContactRow, setCrmContactRow, crmContactDraft, setCrmContactDraft, handleSaveCrmContact } = useLeadCrmContact(notify);
+  const [bulkUploadNotice, setBulkUploadNotice] = useState('');
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
+  const [csvMapping, setCsvMapping] = useState<Record<string, string>>({});
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [convertLeadModal, setConvertLeadModal] = useState<ConvertLeadModalState>({ lead: null, courseId: '', accessMode: 'full' });
+  const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
+  const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
+  const [showDiscountSection, setShowDiscountSection] = useState(false);
+  const [leadPayPrintData, setLeadPayPrintData] = useState<null | {
+    subName: string; phone: string; courseName: string;
+    items: { label: string; amount: number; currency: string }[];
+    total: number; currency: string; method: string; date: string;
+    note?: string; bookingType: string; courseExpected: number;
+    prevPaid: number; remaining: number; staffName: string; transactionId?: string;
+  }>(null);
+  const [fbDraft, setFbDraft] = useState<FacebookLeadAdsConfig>(() => fbLeadAdsConfig ?? ({
+    enabled: false, pageId: '', pageAccessToken: '', appId: '', webhookVerifyToken: '',
+    adForms: [], defaultLeadType: 'course' as LeadItem['leadType'],
+    defaultStatus: 'new' as LeadStatus,
+    defaultInterestedCourseId: '', defaultAssignedSalesId: '',
+    autoSyncEnabled: false, totalImported: 0, updatedAt: '',
+  }));
+  const [fbIntegOpen, setFbIntegOpen] = useState(false);
+  const [fbSyncLoading, setFbSyncLoading] = useState(false);
+  const [fbSyncNotice, setFbSyncNotice] = useState('');
+  const [fbFormsLoading, setFbFormsLoading] = useState(false);
+  const [fbAvailableForms, setFbAvailableForms] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [crmContactRow, setCrmContactRow] = useState<LeadItem | null>(null);
+  const [crmContactDraft, setCrmContactDraft] = useState<{
+    type: CommunicationRecord['type']; date: string; notes: string;
+    outcome: string; nextFollowUp: string; newStatus: LeadStatus | '';
+  }>({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
   const [leadsSearch, setLeadsSearch] = useState('');
   const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]);
   const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
   const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
   const [leadsCourseFilter, setLeadsCourseFilter] = useState<string>('all');
-  const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<FollowupFilter>('all');
+  const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue' | 'past3d' | 'past7d' | 'past30d' | 'next3d' | 'next7d' | 'no_followup'>('all');
   const [salesSourceFilter, setSalesSourceFilter] = useState<string>('');
 
+  // ── Smart redistribution threshold (admin-tunable) ───────────────────────
+  const [smartIdleDays, setSmartIdleDays] = useState(7);
+  // ── Communications tab state ─────────────────────────────────────────────
+  const [commFilter, setCommFilter] = useState<LeadCommunicationFilter>({ staffId: '', type: '', dateFrom: '', dateTo: '', search: '' });
+  const {
+    showAddComm,
+    setShowAddComm,
+    addCommDraft,
+    setAddCommDraft,
+    addCommSearchResults,
+    handleLeadSearchChange,
+    selectLeadForCommunication,
+    saveQuickCommunication,
+  } = useLeadQuickCommunication({ effectiveLeads, updateLead });
+  // ── Reminders tab state ──────────────────────────────────────────────────
+  const [reminderStaffFilter, setReminderStaffFilter] = useState('');
+  const [reminderView, setReminderView] = useState<'list' | 'kanban'>('kanban');
+  const [snoozeIds, setSnoozeIds] = useState<Set<string>>(new Set());
+  const {
+    overdue,
+    today: reminderToday,
+    upcoming,
+    overdueFiltered,
+    todayFiltered,
+    upcomingFiltered,
+    completionRate,
+    snooze1Day,
+    markDone,
+  } = useLeadRemindersData({
+    leads,
+    reminderStaffFilter,
+    snoozeIds,
+    updateLead,
+    setSnoozeIds,
+  });
 
   const salesReps = useMemo(() =>
     staffMembers.filter(s =>
@@ -232,107 +338,76 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     ),
     [staffMembers]
   );
+  const {
+    todayStr: commTodayStr,
+    allComms,
+    filteredComms,
+    callCount,
+    waCount,
+    meetingCount,
+    uniqueLeadsToday,
+    typeMeta: TYPE_META,
+    exportCommsCsv,
+    repStats,
+  } = useLeadCommunicationsData(effectiveLeads, commFilter, salesReps);
 
-  // ── Weekly scorecard (last 7 days) ────────────────────────────────────────
+  const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays);
 
-  // ── Smart redistribution candidates ──────────────────────────────────────
+  const { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads, today } = useLeadFilteringData({
+    effectiveLeads,
+    leads,
+    salesReps,
+    selectedId,
+    isSalesOnly,
+    assignFilter,
+    searchTerm,
+    tagFilter,
+    sourceFilter,
+    courseFilter,
+    branchFilter,
+    singleStatus,
+    showHiddenLeads,
+    rottenFilter,
+    salesSourceFilter,
+    leadsFollowupFilter,
+    statusFilter,
+    instituteBranches,
+  });
 
-  const today = new Date().toISOString().slice(0, 10);
-  const activeLead = selectedId ? (leads.find(l => l.id === selectedId) ?? null) : null;
-
-  // For filter dropdown: only actual sales-role staff
-  const assignedReps = useMemo(() => {
-    return salesReps
-      .map(s => ({ id: s.id, name: s.name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
-  }, [salesReps]);
-
-  const visibleLeads = useMemo(() => effectiveLeads.filter(l =>
-    (showHiddenLeads ? l.hidden === true : !l.hidden) &&
-    (isSalesOnly || !isOnlineSource(l.source)) &&
-    !['converted', 'lost'].includes((l.status || '').toLowerCase()) &&
-    (isSalesOnly || sourceFilter.size === 0 || sourceFilter.has(l.source || '')) &&
-    (isSalesOnly || assignFilter.size === 0 || (() => {
-      if (assignFilter.has('__none__')) return !l.assignedSalesId && !l.assignedSalesName;
-      return assignFilter.has(l.assignedSalesId || '') || (!l.assignedSalesId && assignFilter.has(l.assignedSalesName || ''));
-    })()) &&
-    (!tagFilter || (l.tags || []).includes(tagFilter)) &&
-    (courseFilter === null || (courseFilter === '__none__'
-      ? !(l.interestedCourseIds || []).length
-      : (l.interestedCourseIds || []).includes(courseFilter)
-    )) &&
-    (branchFilter === null || (branchFilter === '__none__'
-      ? !getLeadBranchRaw(l)
-      : (() => {
-          const raw = getLeadBranchRaw(l);
-          if (!raw) return false;
-          if (raw === branchFilter) return true;
-          const normRaw = normBranchId(raw);
-          const normFilter = normBranchId(branchFilter);
-          if (normRaw === normFilter) return true;
-          const filterLabel = instituteBranches.find(b => b.id === branchFilter)?.label
-            || BRANCH_ENUM_LABELS[branchFilter] || BRANCH_ENUM_LABELS[normFilter];
-          return !!filterLabel && (raw === filterLabel || normBranchId(raw) === normBranchId(filterLabel));
-        })()
-    )) &&
-    (singleStatus === '' || l.status === singleStatus) &&
-    (!rottenFilter || getRottenLevel(l) >= 2) &&
-    !!(l.name?.trim() || l.phone?.trim()) &&
-    (!salesSourceFilter || (salesSourceFilter === '__none__' ? !l.source?.trim() : (l.source || '') === salesSourceFilter)) &&
-    (leadsFollowupFilter === 'all' || (() => {
-      const td = new Date().toISOString().slice(0, 10);
-      const nfd = l.nextFollowUpDate || '';
-      if (leadsFollowupFilter === 'no_followup') return !nfd;
-      if (!nfd) return false;
-      const d3ago = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
-      const d7ago = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-      const d30ago = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      const d3fwd = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-      const d7fwd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-      if (leadsFollowupFilter === 'today') return nfd === td;
-      if (leadsFollowupFilter === 'overdue') return nfd < td;
-      if (leadsFollowupFilter === 'past3d') return nfd >= d3ago && nfd < td;
-      if (leadsFollowupFilter === 'past7d') return nfd >= d7ago && nfd < td;
-      if (leadsFollowupFilter === 'past30d') return nfd >= d30ago && nfd < td;
-      if (leadsFollowupFilter === 'next3d') return nfd > td && nfd <= d3fwd;
-      if (leadsFollowupFilter === 'next7d') return nfd > td && nfd <= d7fwd;
-      return true;
-    })()) &&
-    (searchTerm === '' || (() => {
-      const q = searchTerm.trim().toLowerCase();
-      const qd = q.replace(/\D/g, '');
-      const phoneMatch = qd.length >= 4
-        ? (l.phone || '').replace(/\D/g, '').includes(qd)
-        : (l.phone || '').includes(searchTerm);
-      return l.name.toLowerCase().includes(q) || phoneMatch || (l.email || '').toLowerCase().includes(q)
-        || (l.notes || '').toLowerCase().includes(q);
-    })())
-  ), [effectiveLeads, isSalesOnly, assignFilter, searchTerm, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus, showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter]);
-
-  const scoredLeads = useMemo(() =>
-    [...visibleLeads]
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-      .map(l => ({ ...l, _score: calcLeadScore(l) })),
-    [visibleLeads]
+  const leadFiltersActive = Boolean(
+    searchTerm.trim() ||
+    assignFilter.size ||
+    tagFilter ||
+    sourceFilter.size ||
+    statusFilter.size ||
+    courseFilter ||
+    branchFilter ||
+    singleStatus ||
+    showHiddenLeads ||
+    rottenFilter ||
+    salesSourceFilter ||
+    leadsFollowupFilter !== 'all'
   );
 
-  // Dynamic kanban columns: show ALL PIPELINE_COLS that have leads OR are always-on columns
-  const activeStatusCols = useMemo(() => {
-    const alwaysOn: LeadStatus[] = ['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested'];
-    const inUse = new Set(visibleLeads.map(l => l.status));
-    // Show always-on cols always; also show any other PIPELINE_COLS col that has leads
-    const baseCols = PIPELINE_COLS.filter(s => alwaysOn.includes(s) || inUse.has(s));
-    return statusFilter.size === 0 ? baseCols : baseCols.filter(s => statusFilter.has(s));
-  }, [visibleLeads, statusFilter]);
+  const clearLeadFilters = useCallback(() => {
+    setSearchTerm('');
+    setAssignFilter(new Set());
+    setTagFilter(null);
+    setSourceFilter(new Set());
+    setStatusFilter(new Set());
+    setCourseFilter(null);
+    setBranchFilter(workspaceBranchFilter || null);
+    setSingleStatus('');
+    setShowHiddenLeads(false);
+    setRottenFilter(false);
+    setSalesSourceFilter('');
+    setLeadsFollowupFilter('all');
+  }, [workspaceBranchFilter]);
 
-  const overdueLeads = useMemo(() =>
-    leads
-      .filter(l => !l.hidden && l.nextFollowUpDate && l.nextFollowUpDate <= today && !['converted', 'lost'].includes(l.status))
-      .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || '')),
-    [leads, today]
-  );
+  const { salesPerformance, commsByRep } = useLeadPerformanceData(salesReps, leads, subscribers, salesTargets, targetMonth);
 
-  // Sales performance per rep for targetMonth
+  const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leads, effectiveLeads);
+
 
   const waActiveRep = waRepId ? salesReps.find(r => r.id === waRepId) ?? null : null;
 
@@ -355,6 +430,27 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     }
   };
 
+  const handleDistribute = async () => {
+    if (salesReps.length === 0) return notify('error', 'لا يوجد مندوبو مبيعات');
+    setDistributing(true);
+    try {
+      const validRepIds = new Set(salesReps.map(r => r.id));
+      // Include unassigned leads AND leads assigned to reps no longer active
+      const toAssign = leads.filter(l =>
+        !l.hidden && !['converted', 'lost'].includes(l.status) &&
+        (!l.assignedSalesId || !validRepIds.has(l.assignedSalesId))
+      );
+      if (toAssign.length === 0) return notify('info', 'جميع الليدز النشطة لديها مندوب مُعيَّن');
+      const updates = toAssign.map((lead, i) => {
+        const rep = salesReps[i % salesReps.length];
+        return { ...lead, assignedSalesId: rep.id, assignedSalesName: rep.name };
+      });
+      for (const u of updates) await updateLead(u);
+      notify('success', `تم توزيع ${toAssign.length} ليد على ${salesReps.length} مندوب بالتساوي`);
+    } finally {
+      setDistributing(false);
+    }
+  };
 
   const handleMigrateBranches = async () => {
     const missing = leads.filter(l => !l.hidden && !l.branch);
@@ -492,9 +588,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     statusDebounceRef.current.set(lead.id, timer);
   };
 
-  const totalConverted = effectiveLeads.filter(l => l.status === 'converted').length;
-  const totalLost = effectiveLeads.filter(l => l.status === 'lost').length;
-
   // ═══════════════════════════════════════════════════════════════════════
   // Extra handlers from LeadsTab
   // ═══════════════════════════════════════════════════════════════════════
@@ -502,10 +595,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const exportLeadsCsv = () => {
     const rows = leads;
     if (rows.length === 0) return;
-    const escapeCsv = (v: string | number | undefined) => { const s = String(v ?? ''); return `"${s.replace(/"/g, '""')}"`; };
     const header = ['id', 'name', 'phone', 'email', 'status', 'source', 'branch', 'leadType', 'assignedSalesName', 'createdAt', 'notes'];
     const csvRows = rows.map(r => [r.id, r.name, r.phone, r.email, r.status, r.source, r.branch, r.leadType, r.assignedSalesName, r.createdAt, r.notes]);
-    const csv = [header, ...csvRows].map(line => line.map(c => escapeCsv(c as string)).join(',')).join('\n');
+    const csv = buildCsv([header, ...csvRows]);
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -544,11 +636,263 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     setLeadPayRow(row);
     const defaultCourseId = row.interestedCourseIds?.[0] || row.enrolledCourseId || '';
     const currency = (['ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(normBranchId(row.branch))) ? 'SAR' : 'EGP';
-    setLeadPayDraft(blankPaymentDraft({ courseId: defaultCourseId, currency, branch: row.branch || '', email: row.email || '' }));
+    setLeadPayDraft(createClientPaymentDraft({ courseId: defaultCourseId, currency, branch: row.branch || '', email: row.email || '' }));
   };
 
 
+  const handleLeadPayment = async (draft: PaymentDraft) => {
+    if (!leadPayRow) return;
+    // shadow leadPayDraft so handler body needs no changes
+    const _courseItems = draft.paymentType === 'course'
+      ? [{ courseId: draft.courseId, amount: draft.amount, discountPct: draft.discountPct, customExpected: draft.customExpected }]
+      : [];
+    const leadPayDraft = {
+      ...draft,
+      courseItems: _courseItems,
+      transferRef: draft.fromAccountNumber,
+      discountCustom: '',
+    };
+    const freshLead = effectiveLeads.find(l => l.id === leadPayRow.id) || leadPayRow;
+    const _isCustomPrice = leadPayDraft.discountPct === 'custom';
+    const _customFinalPrice = _isCustomPrice ? Number(leadPayDraft.discountCustom) : 0;
+    const _discountPct = _isCustomPrice ? 0 : Number(leadPayDraft.discountPct);
+    const _totalOrig = leadPayDraft.paymentType === 'course'
+      ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
+      : Number(leadPayDraft.amount);
+    const _applyDiscount = (amt: number) => {
+      if (_isCustomPrice && _customFinalPrice > 0 && _totalOrig > 0) return Math.round(_customFinalPrice * amt / _totalOrig);
+      return _discountPct > 0 ? Math.round(amt * (1 - _discountPct / 100)) : amt;
+    };
+    // Lookup system price for a course/bundle by ID
+    const _getSystemPrice = (courseId: string): number => {
+      if (courseId.startsWith('bundle:')) {
+        const bId = courseId.replace('bundle:', '');
+        const b = bundles.find(bx => bx.id === bId);
+        return (b?.price as unknown as Record<string,number>)?.[leadPayDraft.currency] || (b?.price as unknown as Record<string,number>)?.EGP || 0;
+      }
+      const c = courses.find(cx => cx.id === courseId);
+      return (c?.price as unknown as Record<string,number>)?.[leadPayDraft.currency] || (c?.price as unknown as Record<string,number>)?.EGP || 0;
+    };
+    const _getExpectedPrice = (courseId: string, fallbackAmount: number): number => {
+      const sysPrice = _getSystemPrice(courseId);
+      if (_isCustomPrice && _customFinalPrice > 0) return _customFinalPrice;
+      if (sysPrice > 0 && _discountPct > 0) return Math.round(sysPrice * (1 - _discountPct / 100));
+      return sysPrice || fallbackAmount;
+    };
+    // Branch-based access level for new enrollments
+    const _branchForAccess = normBranchId(leadPayDraft.branch || freshLead.branch || '');
+    const _isOnlineBranch = ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(_branchForAccess);
+    const _newCourseAccess: CourseAccessSetting = _isOnlineBranch
+      ? { mode: 'limited', lectureLimit: 20 }
+      : { mode: 'preview' };
+    // Build price note for courses
+    const _buildCourseNote = (courseId: string, advanceAmt: number): string => {
+      const sysPrice = _getSystemPrice(courseId);
+      if (sysPrice > 0 && _discountPct > 0) {
+        const afterDiscount = Math.round(sysPrice * (1 - _discountPct / 100));
+        return `سعر الكورس: ${sysPrice.toLocaleString()}، خصم ${_discountPct}%، بعد الخصم: ${afterDiscount.toLocaleString()}، مقدم: ${advanceAmt.toLocaleString()}`;
+      }
+      if (sysPrice > 0 && _isCustomPrice && _customFinalPrice > 0) {
+        return `سعر الكورس: ${sysPrice.toLocaleString()}، سعر نهائي: ${_customFinalPrice.toLocaleString()}، مقدم: ${advanceAmt.toLocaleString()}`;
+      }
+      if (sysPrice > 0 && advanceAmt > 0 && advanceAmt < sysPrice) {
+        return `سعر الكورس: ${sysPrice.toLocaleString()}، مقدم: ${advanceAmt.toLocaleString()}`;
+      }
+      return '';
+    };
+    const noteParts = [leadPayDraft.note, leadPayDraft.transactionId, leadPayDraft.transferRef ? `تحويل: ${leadPayDraft.transferRef}` : '', leadPayDraft.nationalId ? `ر.ق: ${leadPayDraft.nationalId}` : '', leadPayDraft.branch ? `فرع: ${branchLabelMap[leadPayDraft.branch] || leadPayDraft.branch}` : '', leadPayDraft.paymentType === 'certificate' && leadPayDraft.certType ? leadPayDraft.certType : '', leadPayDraft.paymentType === 'book' && leadPayDraft.courseId ? `كتاب: ${courses.find(c => c.id === leadPayDraft.courseId)?.title || ''}` : ''].filter(Boolean);
+    const isMultiCourse = leadPayDraft.paymentType === 'course';
 
+    const normPhone = (freshLead.phone || '').replace(/\D/g, '');
+    const normEmail = (freshLead.email || '').toLowerCase().trim();
+    const existingSub = effectiveSubs.find(s =>
+      s.leadId === freshLead.id ||
+      (normPhone.length > 5 && (s.phone || '').replace(/\D/g, '') === normPhone) ||
+      (normEmail.length > 3 && (s.email || '').toLowerCase().trim() === normEmail)
+    );
+    let updatedLead = { ...freshLead };
+
+    if (isMultiCourse) {
+      // Multi-course new booking
+      const validItems = leadPayDraft.courseItems.filter(item => item.courseId && item.amount);
+      if (validItems.length === 0) return;
+
+      const payEntries: PaymentHistoryEntry[] = [
+        ...validItems.map(item => {
+          const isBundleItem = item.courseId.startsWith('bundle:');
+          const bundleId = isBundleItem ? item.courseId.replace('bundle:', '') : undefined;
+          const expectedPrice = _getExpectedPrice(item.courseId, Number(item.amount));
+          return {
+            id: `pay-${Date.now()}-${item.courseId}`,
+            amount: Number(item.amount),
+            currency: leadPayDraft.currency,
+            paymentType: leadPayDraft.paymentType as PaymentItemType,
+            isInstallment: leadPayDraft.bookingType === 'installment',
+            courseId: isBundleItem ? undefined : (item.courseId || undefined),
+            bundleId,
+            courseExpected: leadPayDraft.bookingType === 'new_booking' && expectedPrice > 0 ? expectedPrice : undefined,
+            note: [...noteParts, _buildCourseNote(item.courseId, Number(item.amount))].filter(Boolean).join(' | ') || undefined,
+            paymentMethod: leadPayDraft.paymentMethod || undefined,
+            transactionId: leadPayDraft.transactionId || undefined,
+            fromAccountNumber: leadPayDraft.transferRef || undefined,
+            at: leadPayDraft.date,
+          } as PaymentHistoryEntry;
+        }),
+        ...(leadPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).map((i, ix) => ({
+          id: `pay-${Date.now()}-xtra-${ix}`,
+          amount: Number(i.amount),
+          currency: leadPayDraft.currency,
+          paymentType: i.type as PaymentItemType,
+          isInstallment: leadPayDraft.bookingType === 'installment',
+          note: [i.label, ...noteParts].filter(Boolean).join(' | ') || undefined,
+          paymentMethod: leadPayDraft.paymentMethod || undefined,
+          at: leadPayDraft.date,
+        } as PaymentHistoryEntry)),
+      ];
+      // Expand bundle:b-xxx → individual course IDs so enrolledCourseIds never stores raw bundle IDs
+      const enrollIds: string[] = [];
+      for (const item of validItems) {
+        if (item.courseId.startsWith('bundle:')) {
+          const bId = item.courseId.replace('bundle:', '');
+          const bObj = bundles.find((b: { id: string; courses: { id: string }[] }) => b.id === bId);
+          if (bObj) enrollIds.push(...bObj.courses.map((c: { id: string }) => c.id));
+          else enrollIds.push(item.courseId);
+        } else {
+          enrollIds.push(item.courseId);
+        }
+      }
+      const enrollIds_unique = [...new Set(enrollIds)];
+      const courseAccessPatch = Object.fromEntries(enrollIds_unique.map(id => [id, _newCourseAccess]));
+
+      if (existingSub) {
+        const allCourseIds = [...new Set([...(existingSub.enrolledCourseIds || []), ...enrollIds_unique])];
+        updateSubscriber({
+          ...existingSub,
+          enrolledCourseIds: allCourseIds,
+          courseAccess: { ...(existingSub.courseAccess ?? {}), ...courseAccessPatch },
+          paymentHistory: [...(existingSub.paymentHistory || []), ...payEntries],
+          leadId: existingSub.leadId || freshLead.id,
+          email: leadPayDraft.email || existingSub.email,
+        });
+      } else {
+        const added = await addSubscriber({
+          id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(),
+          leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone,
+          enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
+          paymentHistory: payEntries, branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined,
+          status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
+          createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        });
+        if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
+      }
+      updatedLead = { ...updatedLead, status: 'converted', email: leadPayDraft.email || updatedLead.email };
+    } else {
+      // Single payment (installment or non-course type)
+      if (!leadPayDraft.amount) return;
+      const singlePaymentIsBundle = Boolean(leadPayDraft.courseId?.startsWith('bundle:'));
+      const singlePaymentBundleId = singlePaymentIsBundle ? leadPayDraft.courseId.replace('bundle:', '') : undefined;
+      const singlePaymentExpected = leadPayDraft.courseId
+        ? _getExpectedPrice(leadPayDraft.courseId, Number(leadPayDraft.amount))
+        : 0;
+      const payHistEntry: PaymentHistoryEntry = {
+        id: `pay-${Date.now()}`, amount: _applyDiscount(Number(leadPayDraft.amount)),
+        currency: leadPayDraft.currency, paymentType: leadPayDraft.paymentType as PaymentItemType,
+        isInstallment: leadPayDraft.bookingType === 'installment',
+        courseId: singlePaymentIsBundle ? undefined : (leadPayDraft.courseId || undefined),
+        bundleId: singlePaymentBundleId,
+        courseExpected: leadPayDraft.bookingType === 'new_booking' && singlePaymentExpected > 0 ? singlePaymentExpected : undefined,
+        note: noteParts.join(' | ') || undefined,
+        paymentMethod: leadPayDraft.paymentMethod || undefined,
+        transactionId: leadPayDraft.transactionId || undefined,
+        fromAccountNumber: leadPayDraft.transferRef || undefined,
+        at: leadPayDraft.date,
+      };
+      if (leadPayDraft.bookingType === 'new_booking' && leadPayDraft.paymentType === 'course' && leadPayDraft.courseId) {
+        // Expand bundle ID to actual course IDs for single-item booking too
+        const singleCourseId = leadPayDraft.courseId;
+        let singleEnrollIds: string[];
+        if (singleCourseId.startsWith('bundle:')) {
+          const bId = singleCourseId.replace('bundle:', '');
+          const bObj = bundles.find((b: { id: string; courses: { id: string }[] }) => b.id === bId);
+          singleEnrollIds = bObj ? bObj.courses.map((c: { id: string }) => c.id) : [singleCourseId];
+        } else {
+          singleEnrollIds = [singleCourseId];
+        }
+        const singleAccessPatch = Object.fromEntries(singleEnrollIds.map(id => [id, _newCourseAccess]));
+        if (existingSub) {
+          const newCourseIds = [...new Set([...(existingSub.enrolledCourseIds || []), ...singleEnrollIds])];
+          const singleNote = [...noteParts, _buildCourseNote(leadPayDraft.courseId, Number(leadPayDraft.amount))].filter(Boolean).join(' | ') || undefined;
+          updateSubscriber({ ...existingSub, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), ...singleAccessPatch }, paymentHistory: [...(existingSub.paymentHistory || []), { ...payHistEntry, note: singleNote }], leadId: existingSub.leadId || freshLead.id, email: leadPayDraft.email || existingSub.email });
+        } else {
+          const singleNote = [...noteParts, _buildCourseNote(leadPayDraft.courseId, Number(leadPayDraft.amount))].filter(Boolean).join(' | ') || undefined;
+          const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: singleEnrollIds, courseAccess: singleAccessPatch, paymentHistory: [{ ...payHistEntry, note: singleNote }], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
+          if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
+        }
+        updatedLead = { ...updatedLead, status: 'converted', email: leadPayDraft.email || updatedLead.email };
+      } else if (existingSub) {
+        updateSubscriber({ ...existingSub, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
+      } else {
+        await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
+      }
+    }
+
+    updateLead(updatedLead);
+
+    setLeadPayRow(null);
+    const _notifCourse = leadPayDraft.paymentType === 'course'
+      ? leadPayDraft.courseItems.filter(i => i.courseId && i.amount).map(i => {
+          if (i.courseId.startsWith('bundle:')) return bundles.find((b: {id:string;title:string}) => b.id === i.courseId.replace('bundle:', ''))?.title || '';
+          return courses.find((c: {id:string;title:string}) => c.id === i.courseId)?.title || '';
+        }).filter(Boolean).join(' + ')
+      : '';
+    const _notifAmt = leadPayDraft.paymentType === 'course'
+      ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
+      : Number(leadPayDraft.amount);
+    notify('success', `✅ ${updatedLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`);
+    // Fire welcome email if new_booking for a course and email is available
+    if (leadPayDraft.paymentType === 'course' && updatedLead.status === 'converted') {
+      const _welcomeEmail = leadPayDraft.email || freshLead.email;
+      if (_welcomeEmail && _welcomeEmail.includes('@')) {
+        const _courseTitles = leadPayDraft.courseItems
+          .filter(i => i.courseId)
+          .map(i => {
+            if (i.courseId.startsWith('bundle:')) {
+              const bId = i.courseId.replace('bundle:', '');
+              return bundles.find((b: { id: string; title: string }) => b.id === bId)?.title || i.courseId;
+            }
+            return courses.find((c: { id: string; title: string }) => c.id === i.courseId)?.title || i.courseId;
+          })
+          .filter(Boolean);
+        void mysqlAdmin.enrollmentWelcome({
+          email: _welcomeEmail,
+          name: freshLead.name,
+          courseTitle: _courseTitles.join(' + ') || 'الكورس',
+          branch: leadPayDraft.branch || freshLead.branch || '',
+          courseIds: leadPayDraft.courseItems.filter(i => i.courseId).map(i => i.courseId),
+          phone: freshLead.phone || undefined,
+        }).catch(() => {});
+      }
+    }
+    // Refresh sales user's own data so new subscriber/payment appears immediately in عملائي and مدفوعاتي
+    if (fetchSalesData) fetchSalesData();
+    // Auto-navigate: if booking was for DAQQI branch, go to daqqi_clients tab (admins/managers only)
+    const _branchNorm = (leadPayDraft.branch || freshLead.branch || '').toUpperCase().trim().replace(/[-\s]/g, '_');
+    if ((_branchNorm === 'DAQQI' || _branchNorm === 'DQI') && setActiveDashboardTab && !isSalesOnly) {
+      setActiveDashboardTab('daqqi_clients');
+    }
+  };
+
+  const handleSaveCrmContact = () => {
+    if (!crmContactRow || !crmContactDraft.notes.trim()) return;
+    const freshLead = leads.find(l => l.id === crmContactRow.id) || crmContactRow;
+    const rec: CommunicationRecord = { id: `comm-${Date.now()}`, type: crmContactDraft.type, date: crmContactDraft.date.replace('T', ' '), notes: crmContactDraft.notes, outcome: crmContactDraft.outcome || undefined, nextFollowUp: crmContactDraft.nextFollowUp || undefined };
+    const updatedComms = [...(freshLead.communications || []), rec];
+    const newStatus: LeadStatus = (crmContactDraft.newStatus as LeadStatus) || (freshLead.status === 'new' ? 'contacted' : freshLead.status);
+    updateLead({ ...freshLead, communications: updatedComms, status: newStatus, lastFollowUp: rec.date, lastContactNote: crmContactDraft.notes, nextFollowUpDate: crmContactDraft.nextFollowUp || freshLead.nextFollowUpDate });
+    setCrmContactRow(null);
+    setCrmContactDraft({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
+    notify('success', 'تم تسجيل التواصل بنجاح.');
+  };
 
 
   const saveLeadDraft = () => {
@@ -574,7 +918,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       id: leadDraft.id || `l-${Date.now()}`,
       assignedSalesId,
       assignedSalesName,
-      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG-u-nu-latn', {
+      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG', {
         hour12: false,
         year: 'numeric',
         month: '2-digit',
@@ -621,11 +965,114 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         branch: lead.branch,
         status: 'active',
         paymentHistory: (lead.paymentRecords ?? []).map((p) => ({ id: p.id, amount: p.amount, currency: p.currency, note: [p.note, p.paymentMethod, p.transactionId].filter(Boolean).join(' | ') || undefined, paymentType: p.paymentType, courseId: p.courseId || undefined, isInstallment: false, at: p.date })),
-        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       });
     }
     updateLead({ ...lead, status: 'converted' });
     setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' });
+  };
+  const handleBulkFbUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const createdAt = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const importedLeads = parseFacebookCsvLeads(text, leads, createdAt);
+      if (!importedLeads) { setBulkUploadNotice('الملف فارغ أو غير صحيح.'); return; }
+      importedLeads.forEach(addLead);
+      const added = importedLeads.length;
+      setBulkUploadNotice(`تم إضافة ${added} عميل من فيسبوك.`);
+      setTimeout(() => setBulkUploadNotice(''), 4000);
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  };
+
+  // ── General CSV Import ────────────────────────────────────────────────────
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = (ev.target?.result as string) || '';
+      const parsed = parseCsvText(text);
+      if (!parsed) { notify('error', 'الملف فارغ أو لا يحتوي صفوف بيانات.'); return; }
+      setCsvHeaders(parsed.headers);
+      setCsvRows(parsed.rows);
+      setCsvMapping(parsed.autoMap);
+      setCsvImportOpen(true);
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  };
+  const handleCsvImport = () => {
+    if (!csvRows.length) return;
+    setCsvImporting(true);
+    let added = 0;
+    const now = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    for (const row of csvRows) {
+      const importedLead = leadFromCsvRow(row, csvMapping, leads, now);
+      if (!importedLead) continue;
+      addLead(importedLead);
+      added++;
+    }
+    setCsvImporting(false);
+    setCsvImportOpen(false);
+    setCsvRows([]);
+    setCsvHeaders([]);
+    setCsvMapping({});
+    notify('success', `تم استيراد ${added} عميل بنجاح.`);
+  };
+
+  // ── Facebook Lead Ads: Fetch available forms from Graph API ───────────────
+
+  const handleFetchFbForms = async () => {
+    const token = fbDraft.pageAccessToken.trim();
+    const pageId = fbDraft.pageId.trim();
+    if (!token || !pageId) { setFbSyncNotice('أدخل Page ID و Access Token أولاً.'); return; }
+    setFbFormsLoading(true);
+    setFbSyncNotice('');
+    try {
+      const forms = await fetchFacebookLeadForms(pageId, token);
+      setFbAvailableForms(forms);
+      if (forms.length === 0) setFbSyncNotice('لا توجد نماذج. تأكد من صحة الـ Page ID والـ Access Token.');
+    } catch (error) {
+      setFbSyncNotice(`فشل الاتصال بـ Facebook Graph API: ${error instanceof Error ? error.message : 'تأكد من الإعدادات والاتصال بالإنترنت.'}`);
+    } finally {
+      setFbFormsLoading(false);
+    }
+  };
+
+  // ── Facebook Lead Ads: Sync leads from Graph API ──────────────────────────
+  const handleFbApiSync = async () => {
+    const token = fbDraft.pageAccessToken.trim();
+    if (!token) { setFbSyncNotice('أدخل Access Token أولاً.'); return; }
+    const enabledForms = fbDraft.adForms.filter(f => f.enabled);
+    if (enabledForms.length === 0) { setFbSyncNotice('اختر نموذجاً واحداً على الأقل.'); return; }
+    setFbSyncLoading(true);
+    setFbSyncNotice('');
+    try {
+      const result = await syncFacebookLeadAds({
+        config: { ...fbDraft, totalImported: fbLeadAdsConfig?.totalImported || fbDraft.totalImported || 0 },
+        leads,
+        staffMembers,
+        addLead,
+      });
+      setFbLeadAdsConfig(result.updatedConfig);
+      setFbDraft(result.updatedConfig);
+      setFbSyncNotice(`✅ تم: إضافة ${result.added} عميل جديد (تخطي ${result.skipped} مكرر).`);
+    } catch (error) {
+      setFbSyncNotice(`فشل الاتصال: ${error instanceof Error ? error.message : 'تحقق من الإنترنت والإعدادات.'}`);
+    } finally {
+      setFbSyncLoading(false);
+    }
+  };
+
+  const handleSaveFbConfig = () => {
+    setFbLeadAdsConfig({ ...fbDraft, updatedAt: new Date().toISOString() });
+    setFbSyncNotice('✅ تم حفظ الإعدادات.');
+    setTimeout(() => setFbSyncNotice(''), 3000);
   };
 
   const startEditLead = (row: LeadItem) => {
@@ -634,95 +1081,146 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     setIsLeadFormOpen(true);
   };
 
+  const handleExportVisibleLeadsCsv = () => {
+    const headers = ['الاسم', 'الهاتف', 'البريد', 'المصدر', 'الحالة', 'مستوى الاهتمام', 'المندوب', 'تاريخ الإنشاء'];
+    const rows = visibleLeads.map(l => [
+      l.name,
+      l.phone,
+      l.email || '',
+      l.source || '',
+      l.status,
+      l.interestLevel || '',
+      l.assignedSalesName || '',
+      (l.createdAt || '').slice(0, 10),
+    ]);
+    const csv = buildCsv([headers, ...rows]);
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCleanupJunkLeads = async () => {
+    if (!window.confirm('سيتم إخفاء العملاء المحتملين بدون اسم ولا هاتف. تأكيد؟')) return;
+    try {
+      const r = await mysqlAdmin.adminPost('/api/admin/cleanup-junk-leads', {}) as Record<string, unknown>;
+      notify('success', `تم إخفاء ${r.hidden as number} سجل جنك`);
+      reloadLeads();
+    } catch {
+      notify('error', 'فشل التنظيف');
+    }
+  };
+
 
   return (
     <div className="space-y-4" dir="rtl">
       {/* Row 1: Title + tabs + primary actions — all on one line */}
-      <LeadsHeaderBar
-        notify={notify}
+      <LeadsTabHeader
         isSalesOnly={isSalesOnly}
-        leads={leads}
-        overdueLeadsCount={overdueLeads.length}
+        totalOfflineLeads={leads.filter(l => !l.hidden && !isOnlineSource(l.source)).length}
+        overdueCount={overdueLeads.length}
         rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length}
+        dueTodayCount={dueToday.length}
         subTab={subTab}
         setSubTab={setSubTab}
+        onAddLead={() => setShowAddLead(true)}
         showActionsMenu={showActionsMenu}
-        setShowActionsMenu={setShowActionsMenu}
         actionsMenuRef={actionsMenuRef}
-        setShowAddLead={setShowAddLead}
-        setShowSettings={setShowSettings}
+        onToggleActionsMenu={() => setShowActionsMenu(v => !v)}
+        onCloseActionsMenu={() => setShowActionsMenu(false)}
+        onOpenSettings={() => setShowSettings(true)}
+        notify={notify}
+        onSyncSheet={handleSyncSheet}
         syncingSheet={syncingSheet}
-        handleSyncSheet={handleSyncSheet}
+        onMigrateBranches={handleMigrateBranches}
         migratingBranches={migratingBranches}
-        handleMigrateBranches={handleMigrateBranches}
-        visibleLeads={visibleLeads}
+        onExportCsv={handleExportVisibleLeadsCsv}
         bulkMode={bulkMode}
-        setBulkMode={setBulkMode}
-        selectedLeadIds={selectedLeadIds}
-        setSelectedLeadIds={setSelectedLeadIds}
-        setShowBulkWA={setShowBulkWA}
-        reloadLeads={reloadLeads}
+        selectedLeadCount={selectedLeadIds.size}
+        onToggleBulkMode={() => { setBulkMode(b => !b); setSelectedLeadIds(new Set()); }}
+        onOpenBulkWhatsApp={() => setShowBulkWA(true)}
+        onCleanupJunk={handleCleanupJunkLeads}
       />
 
-      {/* ── Sales KPI strip — 7 احصائيات ─────────────────────────────── */}
-      {isSalesOnly && <LeadsSalesKpiStrip effectiveLeads={effectiveLeads} effectiveSubs={effectiveSubs} />}
+      <LeadSalesKpiStrip
+        isSalesOnly={isSalesOnly}
+        effectiveLeads={effectiveLeads}
+        effectiveSubs={effectiveSubs}
+      />
 
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
 
-      {/* ═══════════════ SHARED FILTER BAR (pipeline + table) ═══════════════ */}
-      {(subTab === 'pipeline' || subTab === 'table') && (
-        <LeadsFilterBar
-          isSalesOnly={isSalesOnly}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          assignedReps={assignedReps}
-          assignFilter={assignFilter}
-          setAssignFilter={setAssignFilter}
-          singleStatus={singleStatus}
-          setSingleStatus={setSingleStatus}
-          courses={courses}
-          bundles={bundles}
-          courseFilter={courseFilter}
-          setCourseFilter={setCourseFilter}
-          instituteBranches={instituteBranches}
-          branchFilter={branchFilter}
-          setBranchFilter={setBranchFilter}
-          effectiveLeads={effectiveLeads}
-          salesSourceFilter={salesSourceFilter}
-          setSalesSourceFilter={setSalesSourceFilter}
-          leadsFollowupFilter={leadsFollowupFilter}
-          setLeadsFollowupFilter={setLeadsFollowupFilter}
-          showHiddenLeads={showHiddenLeads}
-          setShowHiddenLeads={setShowHiddenLeads}
-          totalConverted={totalConverted}
-          totalLost={totalLost}
-          visibleLeadsCount={visibleLeads.length}
-        />
-      )}
+      <LeadFilterBar
+        visible={subTab === 'pipeline' || subTab === 'table'}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        isSalesOnly={isSalesOnly}
+        assignedReps={assignedReps}
+        assignFilter={assignFilter}
+        setAssignFilter={setAssignFilter}
+        singleStatus={singleStatus}
+        setSingleStatus={setSingleStatus}
+        courses={courses}
+        bundles={bundles}
+        courseFilter={courseFilter}
+        setCourseFilter={setCourseFilter}
+        branchFilter={branchFilter}
+        setBranchFilter={setBranchFilter}
+        instituteBranches={instituteBranches}
+        effectiveLeads={effectiveLeads}
+        salesSourceFilter={salesSourceFilter}
+        setSalesSourceFilter={setSalesSourceFilter}
+        leadsFollowupFilter={leadsFollowupFilter}
+        setLeadsFollowupFilter={setLeadsFollowupFilter}
+        showHiddenLeads={showHiddenLeads}
+        setShowHiddenLeads={setShowHiddenLeads}
+        totalConverted={totalConverted}
+        totalLost={totalLost}
+        visibleLeadsCount={visibleLeads.length}
+      />
+
+      <LeadEmptyDiagnostics
+        visible={subTab === 'pipeline' || subTab === 'table'}
+        isSalesOnly={isSalesOnly}
+        salesDataLoading={salesDataLoading}
+        totalLeads={leads.length}
+        effectiveCount={effectiveLeads.length}
+        visibleCount={visibleLeads.length}
+        filtersActive={leadFiltersActive}
+        currentStaffName={currentStaff?.name || selfStaff?.name || authUser?.email || ''}
+        onClearFilters={clearLeadFilters}
+        onReload={reloadLeads}
+        onOpenLeadSources={setActiveDashboardTab ? () => setActiveDashboardTab('lead_sources_settings') : undefined}
+      />
 
       {/* ═══════════════ PIPELINE ═══════════════ */}
       {subTab === 'pipeline' && (
-        <LeadsPipelineBoard
-          activeStatusCols={activeStatusCols}
-          scoredLeads={scoredLeads}
-          colLimit={colLimit}
-          setColLimit={setColLimit}
-          dragOverCol={dragOverCol}
-          setDragOverCol={setDragOverCol}
-          draggedLeadRef={draggedLeadRef}
-          handleStatusChange={handleStatusChange}
-          bulkMode={bulkMode}
-          selectedLeadIds={selectedLeadIds}
-          setSelectedLeadIds={setSelectedLeadIds}
-          setSelectedId={setSelectedId}
-          openLeadBook={openLeadBook}
-          setCrmContactRow={setCrmContactRow}
-          setCrmContactDraft={setCrmContactDraft}
-          instituteBranches={instituteBranches}
-          courses={courses}
-          bundles={bundles}
-        />
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadPipelineBoard
+            activeStatusCols={activeStatusCols}
+            scoredLeads={scoredLeads}
+            colLimit={colLimit}
+            setColLimit={setColLimit}
+            dragOverCol={dragOverCol}
+            setDragOverCol={setDragOverCol}
+            draggedLeadRef={draggedLeadRef}
+            bulkMode={bulkMode}
+            selectedLeadIds={selectedLeadIds}
+            setSelectedLeadIds={setSelectedLeadIds}
+            setSelectedId={setSelectedId}
+            handleStatusChange={handleStatusChange}
+            openLeadBook={openLeadBook}
+            setCrmContactRow={setCrmContactRow}
+            setCrmContactDraft={setCrmContactDraft}
+            instituteBranches={instituteBranches}
+            courses={courses}
+            bundles={bundles}
+          />
+        </Suspense>
       )}
 
       {/* ═══════════════ REMINDERS ═══════════════ */}
@@ -748,49 +1246,122 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         />
       )}
 
-      {/* ═══════════════ COMMUNICATIONS (Full Rebuild) ═══════════════ */}
-      {subTab === 'communications' && <LeadsCommunicationsPanel effectiveLeads={effectiveLeads} isSalesOnly={isSalesOnly} notify={notify} onSelectLead={id => setSelectedId(id)} />}
+      {subTab === 'communications' && (
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadCommunicationsTimeline
+            todayStr={commTodayStr}
+            callCount={callCount}
+            waCount={waCount}
+            meetingCount={meetingCount}
+            uniqueLeadsToday={uniqueLeadsToday}
+            repStats={repStats}
+            filteredComms={filteredComms}
+            allComms={allComms}
+            commFilter={commFilter}
+            setCommFilter={setCommFilter}
+            salesReps={salesReps}
+            isSalesOnly={isSalesOnly}
+            showAddComm={showAddComm}
+            setShowAddComm={setShowAddComm}
+            addCommDraft={addCommDraft}
+            setAddCommDraft={setAddCommDraft}
+            addCommSearchResults={addCommSearchResults}
+            handleLeadSearchChange={handleLeadSearchChange}
+            selectLeadForCommunication={selectLeadForCommunication}
+            saveQuickCommunication={saveQuickCommunication}
+            exportCommsCsv={exportCommsCsv}
+            effectiveLeads={effectiveLeads}
+            setSelectedId={setSelectedId}
+            typeMeta={TYPE_META}
+          />
+        </Suspense>
+      )}
 
-      {/* ═══════════════ PERFORMANCE ═══════════════ */}
-      {subTab === 'performance' && <LeadsPerformancePanel notify={notify} />}
+      {subTab === 'communications' && (
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadRemindersPanel
+            overdueCount={overdue.length}
+            todayCount={reminderToday.length}
+            upcomingCount={upcoming.length}
+            completionRate={completionRate}
+            reminderView={reminderView}
+            setReminderView={setReminderView}
+            isSalesOnly={isSalesOnly}
+            reminderStaffFilter={reminderStaffFilter}
+            setReminderStaffFilter={setReminderStaffFilter}
+            salesReps={salesReps}
+            snoozeCount={snoozeIds.size}
+            onClearSnoozes={() => setSnoozeIds(new Set())}
+            dueTodayLoading={dueTodayLoading}
+            onRefreshDueToday={refreshDueToday}
+            overdueFiltered={overdueFiltered}
+            todayFiltered={todayFiltered}
+            upcomingFiltered={upcomingFiltered}
+            todayStr={todayStr}
+            onSnooze={snooze1Day}
+            onDone={markDone}
+            onOpenLead={setSelectedId}
+            staleLeads={staleLeads}
+            staleLoading={staleLoading}
+            staleBulkMsg={staleBulkMsg}
+            staleSending={staleSending}
+            staleSelected={staleSelected}
+            setStaleBulkMsg={setStaleBulkMsg}
+            setStaleSelected={setStaleSelected}
+            onRefreshStaleLeads={refreshStaleLeads}
+            onSendStaleBulk={sendStaleBulkWhatsapp}
+          />
+        </Suspense>
+      )}
+
+      {subTab === 'performance' && (
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadPerformanceOverview
+            targetMonth={targetMonth}
+            setTargetMonth={setTargetMonth}
+            salesReps={salesReps}
+            handleDistribute={handleDistribute}
+            distributing={distributing}
+            leads={leads}
+            salesPerformance={salesPerformance}
+            salesTargets={salesTargets}
+            saveSalesTargets={saveSalesTargets}
+            weeklyScorecard={weeklyScorecard}
+            smartIdleDays={smartIdleDays}
+            setSmartIdleDays={setSmartIdleDays}
+            smartRedistCandidates={smartRedistCandidates}
+            updateLead={updateLead}
+            notify={notify}
+            navigate={navigate}
+            scoredLeads={scoredLeads}
+            totalConverted={totalConverted}
+            overdueLeads={overdueLeads}
+          />
+        </Suspense>
+      )}
+
+      {/* ═══════════════ ANALYTICS / FEES ═══════════════ */}
+      {subTab === 'performance' && (
+        <Suspense fallback={<div className="text-center py-10 text-gray-400">جاري تحميل الرسوم...</div>}>
+          <LeadPerformancePanel
+            leads={leads}
+            totalConverted={totalConverted}
+            monthlyTrend={monthlyTrend}
+            funnelData={funnelData}
+            sourcesData={sourcesData}
+            commsByRep={commsByRep}
+          />
+        </Suspense>
+      )}
 
       {/* online25 section moved to Dashboard.tsx */}
 
-      {/* ═══════════════ DAWLI NEW ═══════════════ */}
-      {subTab === 'dawliNew' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Globe size={20} className="text-blue-500" />
-              دولي جديد
-            </h3>
-          </div>
-          <LeadTable
-            rows={[]}
-            showCourseCol={true}
-            courses={courses}
-            bundles={bundles}
-            navigate={navigate}
-            updateLead={updateLead}
-            deleteLead={deleteLead ?? (() => Promise.resolve())}
-            addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
-            updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-            subscribers={effectiveSubs}
-            salesStaff={salesReps}
-            isSalesOnly={isSalesOnly}
-            onBook={openLeadBook}
-            branchOptions={instituteBranches}
-            sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
-          />
-        </div>
-      )}
-
-      {/* ═══════════════ DAWLI OLD ═══════════════ */}
-      {subTab === 'dawliOld' && (
-        <ArchiveTab
+      <Suspense fallback={null}>
+        <LeadArchiveViews
+          subTab={subTab}
           leads={leads}
           staffMembers={staffMembers}
-          addLead={addLead as (l: Partial<LeadItem>) => Promise<unknown>}
+          addLead={addLead}
           updateLead={updateLead}
           notify={notify}
           courses={courses}
@@ -802,37 +1373,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           subscribers={effectiveSubs}
           salesReps={salesReps}
           isSalesOnly={isSalesOnly}
-            onBook={openLeadBook}
-          branchOptions={instituteBranches}
-          sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
-          title="محلي قديم — الاستيراد والتعيين الجماعي"
-          defaultSource="محلي قديم"
-        />
-      )}
-
-      {/* ═══════════════ ARCHIVE / OLD DATA ═══════════════ */}
-      {subTab === 'archive' && (
-        <ArchiveTab
-          leads={leads}
-          staffMembers={staffMembers}
-          addLead={addLead as (l: Partial<LeadItem>) => Promise<unknown>}
-          updateLead={updateLead}
-          notify={notify}
-          courses={courses}
-          bundles={bundles}
-          navigate={navigate}
-          deleteLead={deleteLead ?? (() => Promise.resolve())}
-          addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
-          updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-          subscribers={effectiveSubs}
-          salesReps={salesReps}
-          isSalesOnly={isSalesOnly}
-            onBook={openLeadBook}
+          onBook={openLeadBook}
           branchOptions={instituteBranches}
           sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
         />
-      )}
-
+      </Suspense>
 
       {/* Quick Edit Panel */}
       {activeLead && (
@@ -847,98 +1392,43 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         />
       )}
 
-      {/* CRM Settings Modal */}
-
-      {/* ── CONVERT LEAD MODAL ──────────────────────────────────────── */}
-      <ConvertLeadModal
-        convertLeadModal={convertLeadModal}
-        setConvertLeadModal={setConvertLeadModal}
-        courses={courses}
-        convertLeadToSubscriber={convertLeadToSubscriber}
-      />
-
-      {/* ── PAYMENT MODAL ─────────────────────────────────────────────── */}
-      {leadPayRow && (
-        <PaymentModal
-          mode="lead"
-          subject={{
-            id: leadPayRow.id,
-            name: leadPayRow.name,
-            phone: leadPayRow.phone,
-            branch: leadPayRow.branch,
-            email: leadPayRow.email,
-          }}
-          draft={leadPayDraft}
-          setDraft={setLeadPayDraft}
-          onSubmit={(d) => { void handleLeadPayment(d); }}
-          onClose={() => setLeadPayRow(null)}
-          branchOptions={instituteBranches.map(b => ({ id: b.id, label: b.label }))}
-          instituteName={'مهاد نفسي'}
-        />
-      )}
-
-      {/* ── SALES NOTIF PANEL ───────────────────────────────────────── */}
-      {salesNotifOpen && (
-        <SalesFollowupPanel
+      <Suspense fallback={null}>
+        <LeadModalsHost
+          convertLeadModal={convertLeadModal}
+          setConvertLeadModal={setConvertLeadModal}
+          convertLeadToSubscriber={convertLeadToSubscriber}
+          courses={courses}
+          bundles={bundles}
+          leadPayRow={leadPayRow}
+          leadPayDraft={leadPayDraft}
+          setLeadPayDraft={setLeadPayDraft}
+          handleLeadPayment={handleLeadPayment}
+          setLeadPayRow={setLeadPayRow}
+          instituteBranches={instituteBranches}
+          salesNotifOpen={salesNotifOpen}
+          leads={leads}
           isSalesOnly={isSalesOnly}
           currentStaff={currentStaff}
-          leads={leads}
           setSalesNotifOpen={setSalesNotifOpen}
           setLeadsFollowupFilter={setLeadsFollowupFilter}
           setActiveDashboardTab={setActiveDashboardTab}
-        />
-      )}
-
-      {showSettings && (
-        <CrmSettingsModal
-          onClose={() => setShowSettings(false)}
+          showSettings={showSettings}
+          setShowSettings={setShowSettings}
           notify={notify}
           salesReps={salesReps}
-          onSynced={async () => {
-            setShowSettings(false);
-            await reloadLeads();
-            // Reload settings so sources list updates
-            mysqlAdmin.getCrmSettings().then(data => {
-              if (data && (data as Partial<CrmSettings>).leadSources?.length) {
-                setCrmSettings(x => ({ ...x, ...(data as Partial<CrmSettings>) }));
-              }
-            }).catch(() => {});
-          }}
-        />
-      )}
-
-      {/* Add Lead Modal */}
-      {showAddLead && (
-        <AddLeadModal
-          courses={courses}
-          bundles={bundles}
-          salesReps={salesReps}
-          leads={leads}
+          reloadLeads={reloadLeads}
+          setCrmSettings={setCrmSettings}
+          showAddLead={showAddLead}
+          setShowAddLead={setShowAddLead}
           sources={crmSettings.leadSources}
-          branches={instituteBranches}
-          onClose={() => setShowAddLead(false)}
-          onSave={handleAddLead}
-        />
-      )}
-
-      {/* Bulk WhatsApp Modal */}
-      {showBulkWA && (
-        <BulkWhatsAppModal
+          handleAddLead={handleAddLead}
+          showBulkWA={showBulkWA}
           selectedLeads={leads.filter(l => selectedLeadIds.has(l.id))}
-          onClose={() => { setShowBulkWA(false); setBulkMode(false); setSelectedLeadIds(new Set()); }}
-          notify={notify}
+          closeBulkWhatsApp={() => { setShowBulkWA(false); setBulkMode(false); setSelectedLeadIds(new Set()); }}
+          waActiveRep={waActiveRep}
+          setWaRepId={setWaRepId}
         />
-      )}
-
-      {/* WhatsApp Per-Rep Modal */}
-      {waActiveRep && (
-        <WhatsAppRepModal
-          rep={waActiveRep}
-          leads={leads}
-          onClose={() => setWaRepId(null)}
-          notify={notify}
-        />
-      )}
+      </Suspense>
     </div>
   );
 }

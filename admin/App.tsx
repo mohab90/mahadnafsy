@@ -2,8 +2,8 @@ import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
-import ErrorBoundary from './components/ErrorBoundary';
-import { ToastProvider } from './components/Toast';
+import ErrorBoundary from '../shared/ui/ErrorBoundary';
+import { ToastProvider } from '../shared/ui/Toast';
 import { mysqlClient } from './lib/mysqlapi';
 
 // ── Lazily-loaded admin pages ────────────────────────────────────────────────

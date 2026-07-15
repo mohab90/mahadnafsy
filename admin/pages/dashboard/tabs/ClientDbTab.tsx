@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Search, Users, UserCheck, UserPlus, MessageSquare,
   CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square,
@@ -83,20 +83,18 @@ const SUB_TYPE_COLOR: Record<string, string> = {
   regular: 'bg-emerald-100 text-emerald-700',
 };
 
-export default function ClientDbTab({ notify, onBook, lockedBranch }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void; lockedBranch?: string }) {
-  const { subscribers, leads, courses, bundles, authUser, staffScopedSubscribers, staffScopedLeads } = useSiteData();
-  const isAdmin = authUser?.isAdmin === true;
-  // Non-admin staff: use context-scoped data populated by Dashboard's fetchSalesData
-  const effectiveSubs = isAdmin ? subscribers : (staffScopedSubscribers.length > 0 ? staffScopedSubscribers : subscribers);
-  const effectiveLeads = isAdmin ? leads : (staffScopedLeads.length > 0 ? staffScopedLeads : leads);
+export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
+  const { subscribers, leads, courses, bundles, staffScopedSubscribers, staffScopedLeads } = useSiteData();
+  // Staff-scoped data is populated from the original DB rows by Dashboard's fetchSalesData.
+  // Prefer it whenever available so full-access staff roles (online manager) do not fall back to a separate admin-only context path.
+  const effectiveSubs = staffScopedSubscribers.length > 0 ? staffScopedSubscribers : subscribers;
+  const effectiveLeads = staffScopedLeads.length > 0 ? staffScopedLeads : leads;
   const branches = useBranches();
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl'>('all');
-  const [branchFilter, setBranchFilter] = useState(lockedBranch || '');
-  // When embedded in a branch workspace, keep the branch filter pinned to that branch.
-  useEffect(() => { if (lockedBranch !== undefined) setBranchFilter(lockedBranch); }, [lockedBranch]);
+  const [branchFilter, setBranchFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
   const [sort, setSort] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'amount_desc'>('date_desc');
   const [page, setPage] = useState(0);

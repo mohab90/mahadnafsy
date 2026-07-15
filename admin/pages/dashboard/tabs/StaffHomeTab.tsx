@@ -5,10 +5,13 @@ import {
   BarChart3, Zap, RefreshCw, ChevronRight, MessageCircle,
   UserPlus, Percent, AlertCircle, Briefcase, Award,
 } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../../types';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
+type TimestampedLead = LeadItem & { updatedAt?: string };
+type StaffWithCommission = StaffMember & { commissionRate?: number };
 
 interface StaffHomeTabProps {
   staff: StaffMember;
@@ -65,7 +68,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     const totalLeads = myLeads.length;
     const converted = myLeads.filter(l => l.status === 'converted');
     const convertedThisMonth = converted.filter(
-      l => ((l as any).updatedAt || l.createdAt || '').slice(0, 7) === thisMonth,
+      l => ((l as TimestampedLead).updatedAt || l.createdAt || '').slice(0, 7) === thisMonth,
     );
     const convRate = totalLeads > 0 ? Math.round((converted.length / totalLeads) * 100) : 0;
 
@@ -103,12 +106,12 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       const dateStr = d.toISOString().slice(0, 10);
       return {
         day: dateStr,
-        label: d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' }),
+        label: d.toLocaleDateString('ar-EG', { weekday: 'short' }),
         calls: myLeads.reduce((n, l) =>
           n + (l.communications || []).filter(c => c.date?.slice(0, 10) === dateStr).length, 0,
         ),
         converted: converted.filter(c =>
-          ((c as any).updatedAt || c.createdAt || '').slice(0, 10) === dateStr,
+          ((c as TimestampedLead).updatedAt || c.createdAt || '').slice(0, 10) === dateStr,
         ).length,
       };
     });
@@ -117,7 +120,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
 
     // Recent activity — leads updated in last 3 days
     const recentActivity = [...myLeads]
-      .sort((a, b) => ((b as any).updatedAt || b.createdAt || '') > ((a as any).updatedAt || a.createdAt || '') ? 1 : -1)
+      .sort((a, b) => ((b as TimestampedLead).updatedAt || b.createdAt || '') > ((a as TimestampedLead).updatedAt || a.createdAt || '') ? 1 : -1)
       .slice(0, 8);
 
     // Urgent leads: new + interested with no follow-up set
@@ -125,7 +128,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       .filter(l => ['new', 'interested', 'contacted'].includes(l.status || '') && !l.nextFollowUpDate)
       .slice(0, 5);
 
-    const commissionRate = (staff as any).commissionRate || 0;
+    const commissionRate = (staff as StaffWithCommission).commissionRate || 0;
     const commission = commissionRate > 0 ? Math.round(revenueThisMonth * commissionRate / 100) : 0;
 
     return {
@@ -140,7 +143,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   const loadHrData = useCallback(async () => {
     if (!staff?.id) return;
     try {
-      const res = await fetch(`/api/admin/hr/leaves?staff_id=${staff.id}`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/hr/leaves?staff_id=${staff.id}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) {
         const data: any[] = await res.json();
         setPendingLeaves(data.filter(l => l.status === 'PENDING').length);
@@ -159,7 +162,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   const loadTasks = useCallback(async () => {
     setLoadingTasks(true);
     try {
-      const res = await fetch('/api/admin/tasks?limit=5&my=true', { credentials: 'include' });
+      const res = await fetch('/api/admin/tasks?limit=5&my=true', { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setMyTasks(await res.json());
     } catch { /* silent */ } finally { setLoadingTasks(false); }
   }, []);
@@ -213,7 +216,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
         <div>
           <h2 className="text-xl font-extrabold text-gray-900">بوابتي الشخصية</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
         <button
@@ -294,14 +297,14 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
             />
             <KpiCard
               title="إيرادات هذا الشهر"
-              value={`${Math.round(stats.revenueThisMonth).toLocaleString('ar-EG-u-nu-latn')} ج`}
+              value={`${Math.round(stats.revenueThisMonth).toLocaleString('ar-EG')} ج`}
               icon={BarChart3} bg="bg-green-50" text="text-green-600" border="border-green-200"
             />
           </>)}
           {stats.commissionRate > 0 && (
             <KpiCard
               title="عمولتي هذا الشهر"
-              value={`${stats.commission.toLocaleString('ar-EG-u-nu-latn')} ج`}
+              value={`${stats.commission.toLocaleString('ar-EG')} ج`}
               icon={Star} bg="bg-orange-50" text="text-orange-600" border="border-orange-200"
             />
           )}

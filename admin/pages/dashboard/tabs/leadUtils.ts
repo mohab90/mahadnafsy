@@ -17,9 +17,9 @@ export function getRottenLevel(lead: LeadItem): 0 | 1 | 2 | 3 {
 
 export const ROTTEN_CFG: { label: string; bar: string; badge: string; row: string }[] = [
   { label: '', bar: '', badge: '', row: '' },
-  { label: '⚠️ 3+ أيام', bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300', row: 'border-r-[3px] border-r-yellow-400' },
-  { label: '🟠 أسبوع+', bar: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800 border-orange-300', row: 'border-r-[3px] border-r-orange-500' },
-  { label: '🔴 فاسد', bar: 'bg-red-500', badge: 'bg-red-100 text-red-800 border-red-300', row: 'border-r-[3px] border-r-red-500' },
+  { label: '3+ أيام', bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-800 border-yellow-300', row: 'border-r-[3px] border-r-yellow-400' },
+  { label: 'أسبوع+', bar: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800 border-orange-300', row: 'border-r-[3px] border-r-orange-500' },
+  { label: 'فاسد', bar: 'bg-red-500', badge: 'bg-red-100 text-red-800 border-red-300', row: 'border-r-[3px] border-r-red-500' },
 ];
 
 // IMPORTANT: Keep this in sync with calcLeadScoreServer() in api/server.js.
@@ -89,13 +89,13 @@ export const PIPELINE_COLS: LeadStatus[] = [
 ];
 
 export const IL_LABEL: Record<string, string> = {
-  high: '🔥 عالي',
-  medium: '⚡ متوسط',
-  low: '❄️ منخفض',
+  high: 'عالي',
+  medium: 'متوسط',
+  low: 'منخفض',
 };
 
 export const BRANCH_ENUM_LABELS: Record<string, string> = {
-  DAQQI: 'دقي',
+  DAQQI: 'الدقي',
   TAGAMOA: 'التجمع',
   ONLINE_EGYPT: 'أونلاين - مصر',
   ONLINE_SAUDI: 'أونلاين - السعودية',
@@ -115,22 +115,22 @@ export function getScoreBreakdown(lead: LeadItem) {
   const commScore = Math.min((lead.communications?.length || 0) * 5, 25);
   return [
     { label: 'حالة الليد', pts: statusScore[lead.status] ?? 0, max: 50 },
-    { label: 'مستوى الاهتمام', pts: ilScore, max: 30, tip: lead.interestLevel !== 'high' ? `ارفع لـ عالي +${30 - ilScore}` : '' },
-    { label: 'تواصلات', pts: commScore, max: 25, tip: commScore < 25 ? `سجّل تواصل إضافي +${25 - commScore}` : '' },
+    { label: 'مستوى الاهتمام', pts: ilScore, max: 30, tip: lead.interestLevel !== 'high' ? `ارفعه لعالي +${30 - ilScore}` : '' },
+    { label: 'تواصلات', pts: commScore, max: 25, tip: commScore < 25 ? `سجل تواصل إضافي +${25 - commScore}` : '' },
     { label: 'موعد متابعة', pts: lead.nextFollowUpDate ? 5 : 0, max: 5, tip: !lead.nextFollowUpDate ? 'أضف موعد +5' : '' },
     { label: 'كورسات مهتم بها', pts: (lead.interestedCourseIds?.length || 0) > 0 ? 10 : 0, max: 10, tip: !(lead.interestedCourseIds?.length) ? 'أضف كورس +10' : '' },
   ];
 }
 
 export const COMM_ICON: Record<string, string> = {
-  call: '📞',
-  whatsapp: '💬',
-  email: '✉️',
-  meeting: '🤝',
-  note: '📝',
-  payment_followup: '💳',
-  new_course_sale: '🎓',
-  certificate: '🏆',
+  call: 'هاتف',
+  whatsapp: 'واتساب',
+  email: 'إيميل',
+  meeting: 'اجتماع',
+  note: 'ملاحظة',
+  payment_followup: 'متابعة دفع',
+  new_course_sale: 'بيع كورس',
+  certificate: 'شهادة',
 };
 
 export const COMM_LABEL: Record<string, string> = {
@@ -143,54 +143,6 @@ export const COMM_LABEL: Record<string, string> = {
   new_course_sale: 'بيع كورس',
   certificate: 'شهادة',
 };
-
-// ── WhatsApp Quick Templates ── (personalised with {name}) ──────────────────
-export type WaTemplate = { id: string; label: string; statuses: string[]; text: (name: string) => string };
-
-export const WA_QUICK_TEMPLATES: WaTemplate[] = [
-  {
-    id: 'first_contact',
-    label: '👋 تواصل أول',
-    statuses: ['new'],
-    text: (name) =>
-      `أهلاً ${name}،\nأنا ${''} من معهد الدراسات النفسية 🌟\nوصلنا اهتمامك بالانضمام إلينا وسعداء جداً بالتواصل معك!\nهل يناسبك الحديث الآن لنشرح لك أكثر عن برامجنا؟`,
-  },
-  {
-    id: 'follow_up',
-    label: '📞 متابعة عامة',
-    statuses: ['contacted', 'follow_up', 'interested'],
-    text: (name) =>
-      `أهلاً ${name} 😊\nأردت فقط المتابعة معك بخصوص انضمامك لمعهد الدراسات النفسية.\nهل لديك أي أسئلة يمكنني الإجابة عليها؟\nنحن هنا دائماً لمساعدتك 🌟`,
-  },
-  {
-    id: 'interested_booking',
-    label: '🎯 دفع مبدئي',
-    statuses: ['interested_booking', 'interested'],
-    text: (name) =>
-      `أهلاً ${name} 🎉\nرائع أنك مهتم بالانضمام! للحجز تحتاج فقط إلى سداد مبلغ التسجيل الأولي.\nهل تريد أن أرسل لك تفاصيل الدفع الآن؟`,
-  },
-  {
-    id: 'no_answer',
-    label: '💬 لا يرد - واتس',
-    statuses: ['no_answer', 'no_answer_wa', 'no_answer_nowa'],
-    text: (name) =>
-      `أهلاً ${name}،\nحاولنا التواصل معك هاتفياً ولم نتمكن من الوصول إليك.\nإذا كنت مهتماً بمعرفة المزيد عن برامجنا، يمكنك التواصل معنا هنا 🌿`,
-  },
-  {
-    id: 'urgent_offer',
-    label: '⏰ عرض محدود',
-    statuses: ['interested', 'interested_booking', 'interested_followup'],
-    text: (name) =>
-      `أهلاً ${name} 🌟\nعندنا عرض خاص لفترة محدودة جداً!\nهل يمكنني إطلاعك على التفاصيل الآن؟ هذه فرصة رائعة لن تتكرر قريباً 🎯`,
-  },
-  {
-    id: 'welcome_converted',
-    label: '🎊 ترحيب بمشترك',
-    statuses: ['converted'],
-    text: (name) =>
-      `مرحباً ${name} وأهلاً بك في عائلة معهد الدراسات النفسية! 🎉\nنحن سعداء جداً بانضمامك إلينا ونتطلع إلى رحلة تعليمية رائعة معك.\nإذا احتجت أي مساعدة، نحن دائماً هنا 💙`,
-  },
-];
 
 export function getLeadBranchRaw(lead: LeadItem): string {
   if (lead.branch) return lead.branch;

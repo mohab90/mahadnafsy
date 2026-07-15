@@ -165,7 +165,7 @@ const TasksBoardTab: React.FC<Props> = ({ notify }) => {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        <select value={filterPriority} onChange={e => setFilterPriority(e.target.value as any)}
+        <select value={filterPriority} onChange={e => setFilterPriority(e.target.value as Priority | 'all')}
           className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
           <option value="all">كل الأولويات</option>
           {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (

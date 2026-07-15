@@ -5,6 +5,7 @@ import type { SubscriberItem, InstallmentEntry, InstallmentPlan } from '../../..
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
+type InstallmentSort = 'dueDate' | 'amount';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -141,7 +142,7 @@ const InstallmentPlansTab: React.FC<Props> = ({ notify }) => {
             placeholder="بحث باسم العميل أو هاتفه..."
             className="w-full pr-9 pl-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
         </div>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as InstallmentSort)}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
           <option value="dueDate">ترتيب: تاريخ الاستحقاق</option>
           <option value="amount">ترتيب: المبلغ</option>

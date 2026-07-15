@@ -5,7 +5,7 @@ const ContactsTab: React.FC = () => {
   const { contactMessages, updateContactMessage, deleteContactMessage } = useSiteData();
 
   const [cSearch, setCSearch] = useState('');
-  const [cStatusFilter, setCStatusFilter] = useState<'all' | 'new' | 'read' | 'replied' | 'closed'>('all');
+  const [cStatusFilter, setCStatusFilter] = useState<'all' | 'new' | 'read' | 'replied'>('all');
 
   const filtered = contactMessages.filter(m =>
     (cStatusFilter === 'all' || m.status === cStatusFilter) &&
@@ -15,25 +15,16 @@ const ContactsTab: React.FC = () => {
     new: contactMessages.filter(m => m.status === 'new').length,
     read: contactMessages.filter(m => m.status === 'read').length,
     replied: contactMessages.filter(m => m.status === 'replied').length,
-    closed: contactMessages.filter(m => m.status === 'closed').length,
   };
-  const statusLabels: Record<string, string> = { new: 'جديد', read: 'تمت القراءة', replied: 'تم الرد', closed: 'تم الحل' };
-  const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', read: 'bg-amber-100 text-amber-700', replied: 'bg-emerald-100 text-emerald-700', closed: 'bg-gray-200 text-gray-600' };
-
-  // Normalise an Egyptian phone for a wa.me link (digits only, 0xxxx → 20xxxx).
-  const waNum = (p?: string) => {
-    let d = (p || '').replace(/\D/g, '');
-    if (d.startsWith('00')) d = d.slice(2);
-    if (d.startsWith('0')) d = '2' + d;
-    return d;
-  };
+  const statusLabels: Record<string, string> = { new: 'جديد', read: 'تمت القراءة', replied: 'تم الرد' };
+  const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', read: 'bg-amber-100 text-amber-700', replied: 'bg-emerald-100 text-emerald-700' };
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-gray-900">رسائل التواصل</h2>
         <div className="flex flex-wrap gap-2">
-          {(['all', 'new', 'read', 'replied', 'closed'] as const).map(s => (
+          {(['all', 'new', 'read', 'replied'] as const).map(s => (
             <button key={s} onClick={() => setCStatusFilter(s)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${cStatusFilter === s ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
               {s === 'all' ? `الكل (${contactMessages.length})` : `${statusLabels[s]} (${counts[s as keyof typeof counts]})`}
@@ -62,18 +53,6 @@ const ContactsTab: React.FC = () => {
                 {msg.subject && <div className="col-span-2"><span className="text-gray-400 text-xs">الموضوع:</span> <span className="font-medium text-gray-700">{msg.subject}</span></div>}
               </div>
               <p className="text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2 leading-relaxed"><span className="font-bold text-gray-700 block mb-0.5">الرسالة:</span>{msg.message}</p>
-              {/* Quick reply — turns the log into an actionable inbox; marks replied */}
-              <div className="flex gap-2">
-                <a href={`https://wa.me/${waNum(msg.phone)}?text=${encodeURIComponent(`مرحباً ${msg.name}، بخصوص رسالتك لمعهد الدراسات النفسية:`)}`}
-                  target="_blank" rel="noopener noreferrer"
-                  onClick={() => { if (msg.status !== 'replied') updateContactMessage({ ...msg, status: 'replied' }); }}
-                  className="flex-1 text-center py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition">💬 رد واتساب</a>
-                {msg.email && (
-                  <a href={`mailto:${msg.email}?subject=${encodeURIComponent('رد على رسالتك — معهد الدراسات النفسية')}`}
-                    onClick={() => { if (msg.status !== 'replied') updateContactMessage({ ...msg, status: 'replied' }); }}
-                    className="flex-1 text-center py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition">✉️ رد إيميل</a>
-                )}
-              </div>
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">الحالة</label>
                 <select value={msg.status} onChange={e => updateContactMessage({ ...msg, status: e.target.value as typeof msg.status })}
@@ -81,7 +60,6 @@ const ContactsTab: React.FC = () => {
                   <option value="new">جديد</option>
                   <option value="read">تمت القراءة</option>
                   <option value="replied">تم الرد</option>
-                  <option value="closed">تم الحل / مغلق</option>
                 </select>
               </div>
               <div>
@@ -90,13 +68,8 @@ const ContactsTab: React.FC = () => {
                   placeholder="أضف ملاحظة داخلية..."
                   className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none" />
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => { if (msg.status !== 'closed') updateContactMessage({ ...msg, status: 'closed' as typeof msg.status }); }}
-                  disabled={msg.status === 'closed'}
-                  className="flex-1 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 rounded-xl text-sm font-bold transition">✓ تم الحل</button>
-                <button onClick={() => { if (window.confirm('حذف هذه الرسالة نهائياً؟')) deleteContactMessage(msg.id); }}
-                  className="flex-1 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm font-bold transition">حذف</button>
-              </div>
+              <button onClick={() => { if (window.confirm('حذف هذه الرسالة؟')) deleteContactMessage(msg.id); }}
+                className="w-full py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm font-bold transition">حذف الرسالة</button>
             </div>
           ))}
         </div>

@@ -1,9 +1,57 @@
-import React, { useState } from 'react';
-import { Activity, Search } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Activity, Database, Download, Search, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { DataTable, type Column } from '../../../components/shared/DataTable';
+import type { ActivityLogItem } from '../../../types';
 
 interface Props {
   isSalesOnly: boolean;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  create: 'إضافة',
+  update: 'تحديث',
+  delete: 'حذف',
+  login: 'دخول',
+  logout: 'خروج',
+  bulk: 'إجراء جماعي',
+};
+
+const ACTION_CLASS: Record<string, string> = {
+  create: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  update: 'bg-blue-50 text-blue-700 border-blue-200',
+  delete: 'bg-red-50 text-red-700 border-red-200',
+  login: 'bg-purple-50 text-purple-700 border-purple-200',
+  logout: 'bg-gray-50 text-gray-700 border-gray-200',
+};
+
+function csvEscape(value: unknown) {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadCsv(filename: string, rows: ActivityLogItem[]) {
+  const header = ['action', 'entity', 'label', 'actor', 'section', 'at'];
+  const csv = [
+    header.join(','),
+    ...rows.map((row) => header.map((key) => csvEscape((row as unknown as Record<string, unknown>)[key])).join(',')),
+  ].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
@@ -30,188 +78,174 @@ const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
     content,
   } = useSiteData();
 
-  // Online users — no longer tracked (always empty)
-  const onlineUsers: { uid: string; email?: string; displayName?: string; lastActiveAt: string }[] = [];
+  const [search, setSearch] = useState('');
+  const [actor, setActor] = useState('');
+  const [section, setSection] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
-  const [activitySearch, setActivitySearch] = useState('');
-  const [activityFilterActor, setActivityFilterActor] = useState('');
-  const [activityFilterSection, setActivityFilterSection] = useState('');
-  const [activityFilterDateFrom, setActivityFilterDateFrom] = useState('');
-  const [activityFilterDateTo, setActivityFilterDateTo] = useState('');
+  const actors = useMemo(
+    () => [...new Set(activityLogs.map((row) => row.actorName || row.actor || '').filter(Boolean))],
+    [activityLogs],
+  );
+  const sections = useMemo(
+    () => [...new Set(activityLogs.map((row) => row.section || 'عام').filter(Boolean))],
+    [activityLogs],
+  );
 
-  const sectionColors: Record<string, string> = {
-    'إدارة الأكاديمية': 'bg-blue-50 text-blue-700 border-blue-200',
-    'إدارة العملاء': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    'الاستشارات': 'bg-sky-50 text-sky-700 border-sky-200',
-    'المحاضرون': 'bg-violet-50 text-violet-700 border-violet-200',
-    'المالية': 'bg-amber-50 text-amber-700 border-amber-200',
-    'إدارة الفريق': 'bg-rose-50 text-rose-700 border-rose-200',
-    'إعدادات الموقع': 'bg-gray-100 text-gray-600 border-gray-200',
-    'المجتمع': 'bg-pink-50 text-pink-700 border-pink-200',
-    'عام': 'bg-gray-50 text-gray-500 border-gray-100',
-  };
-  const actionIcons: Record<string, string> = {
-    create: '➕', update: '✏️', delete: '🗑️', login: '🔑', logout: '🚪', bulk: '📦',
-  };
-  const actionColors: Record<string, string> = {
-    create: 'text-emerald-600 font-bold', update: 'text-blue-600 font-bold',
-    delete: 'text-red-600 font-bold', login: 'text-purple-600 font-bold',
-  };
+  const filteredLogs = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return activityLogs.filter((row) => {
+      const rowActor = row.actorName || row.actor || '';
+      const rowSection = row.section || 'عام';
+      const rowDate = String(row.at || '').slice(0, 10);
+      if (actor && rowActor !== actor) return false;
+      if (section && rowSection !== section) return false;
+      if (dateFrom && rowDate < dateFrom) return false;
+      if (dateTo && rowDate > dateTo) return false;
+      if (query) {
+        const haystack = `${row.action} ${row.entity} ${row.label} ${rowActor} ${rowSection}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+  }, [activityLogs, actor, dateFrom, dateTo, search, section]);
 
-  // Unique actors from logs
-  const allActors = [...new Set(activityLogs.map(l => l.actorName || l.actor || '').filter(Boolean))];
-  const allSections = [...new Set(activityLogs.map(l => l.section || 'عام').filter(Boolean))];
+  const columns: Column<ActivityLogItem>[] = [
+    {
+      key: 'action',
+      header: 'الإجراء',
+      render: (row) => (
+        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${ACTION_CLASS[row.action] || 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+          {ACTION_LABELS[row.action] || row.action || 'إجراء'}
+        </span>
+      ),
+    },
+    {
+      key: 'section',
+      header: 'القسم',
+      render: (row) => row.section || 'عام',
+    },
+    {
+      key: 'label',
+      header: 'التفاصيل',
+      className: 'min-w-[220px]',
+      render: (row) => <span title={row.label}>{row.label || row.entity || '-'}</span>,
+    },
+    {
+      key: 'actor',
+      header: 'المسؤول',
+      render: (row) => row.actorName || row.actor || '-',
+    },
+    {
+      key: 'at',
+      header: 'التوقيت',
+      render: (row) => row.at || '-',
+    },
+  ];
 
-  // Apply filters
-  const filteredLogs = activityLogs.filter(row => {
-    if (activityFilterActor && (row.actorName || row.actor || '') !== activityFilterActor) return false;
-    if (activityFilterSection && (row.section || 'عام') !== activityFilterSection) return false;
-    if (activitySearch) {
-      const q = activitySearch.toLowerCase();
-      if (!`${row.action} ${row.entity} ${row.label} ${row.actor || ''} ${row.actorName || ''}`.toLowerCase().includes(q)) return false;
-    }
-    if (activityFilterDateFrom || activityFilterDateTo) {
-      const rowDate = (row.at || '').slice(0, 10);
-      if (activityFilterDateFrom && rowDate < activityFilterDateFrom) return false;
-      if (activityFilterDateTo && rowDate > activityFilterDateTo) return false;
-    }
-    return true;
-  });
+  const hasFilters = Boolean(search || actor || section || dateFrom || dateTo);
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 
   return (
-    <div className="space-y-5">
-      {/* Online Now */}
-      {isAdmin && onlineUsers.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-          <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2 text-sm">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-            </span>
-            متصل الآن ({onlineUsers.length})
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {onlineUsers.map(u => (
-              <div key={u.uid} className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-xs">
-                <div className="w-7 h-7 rounded-full bg-green-500 text-white flex items-center justify-center font-bold flex-shrink-0">
-                  {(u.displayName || u.email || '?')[0].toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-800 leading-none">{u.displayName || u.email || u.uid.slice(0, 8)}</p>
-                  <p className="text-gray-400 mt-0.5">{new Date(u.lastActiveAt).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-              </div>
-            ))}
+    <div className="space-y-5" dir="rtl">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-900 text-white">
+            <Activity size={20} />
           </div>
-        </div>
-      )}
-
-      {/* Main log card */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-gray-800 to-gray-700 px-5 py-4 text-white flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-extrabold text-lg flex items-center gap-2"><Activity size={18} />سجل النظام</h3>
-            <p className="text-xs text-gray-300 mt-0.5">{filteredLogs.length} حركة {activityLogs.length !== filteredLogs.length ? `(من إجمالي ${activityLogs.length})` : ''}</p>
-          </div>
-          <div className="flex gap-2">
-            {isAdmin && (
-              <button
-                onClick={() => {
-                  const now = new Date();
-                  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
-                  const backup = { _meta: { createdAt: now.toISOString(), version: '1.0' }, courses, bundles, lectures, chapters, therapists, testimonials, subscribers, leads, staffMembers, consultations, orders, communityPosts, communityLibraryItems, communityVideos, communityEvents, discounts, content };
-                  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a'); a.href = url; a.download = `backup_full_site_${stamp}.json`; a.click(); URL.revokeObjectURL(url);
-                }}
-                className="bg-green-500/20 border border-green-400/30 text-green-100 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-green-500/30 flex items-center gap-1.5"
-              >💾 نسخة احتياطية</button>
-            )}
-            {!isSalesOnly && (
-              <button
-                onClick={() => {
-                  if (!window.confirm('⚠️ سيتم مسح جميع البيانات. هل أنت متأكد؟')) return;
-                  const typed = window.prompt('اكتب كلمة "حذف" للتأكيد:');
-                  if (typed?.trim() !== 'حذف') { window.alert('تم الإلغاء.'); return; }
-                  clearAllData();
-                }}
-                className="bg-red-500/20 border border-red-400/30 text-red-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-red-500/30"
-              >استعادة الافتراضي</button>
-            )}
+            <h3 className="text-lg font-extrabold text-gray-900">سجل النظام</h3>
+            <p className="text-xs text-gray-500">
+              {filteredLogs.length} حركة{activityLogs.length !== filteredLogs.length ? ` من إجمالي ${activityLogs.length}` : ''}
+            </p>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex flex-wrap gap-2 items-center">
-          <div className="relative shrink-0" style={{ minWidth: '180px' }}>
-            <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="w-full border border-gray-300 rounded-lg pr-8 pl-3 py-1.5 text-xs bg-white focus:outline-none focus:border-primary-400" placeholder="بحث في السجل..." value={activitySearch} onChange={e => setActivitySearch(e.target.value)} />
-          </div>
-          <select className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white shrink-0" value={activityFilterSection} onChange={e => setActivityFilterSection(e.target.value)}>
-            <option value="">كل الأقسام</option>
-            {allSections.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white shrink-0" value={activityFilterActor} onChange={e => setActivityFilterActor(e.target.value)}>
-            <option value="">كل الموظفين</option>
-            {allActors.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <input type="date" className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white shrink-0" value={activityFilterDateFrom} onChange={e => setActivityFilterDateFrom(e.target.value)} />
-          <span className="text-xs text-gray-400 shrink-0">→</span>
-          <input type="date" className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white shrink-0" value={activityFilterDateTo} onChange={e => setActivityFilterDateTo(e.target.value)} />
-          {(activitySearch || activityFilterActor || activityFilterSection || activityFilterDateFrom || activityFilterDateTo) && (
-            <button onClick={() => { setActivitySearch(''); setActivityFilterActor(''); setActivityFilterSection(''); setActivityFilterDateFrom(''); setActivityFilterDateTo(''); }}
-              className="text-xs text-gray-500 hover:text-red-600 border border-gray-300 bg-white rounded-lg px-2 py-1.5 shrink-0">× مسح</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => downloadCsv(`activity_logs_${stamp}.csv`, filteredLogs)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
+          >
+            <Download size={14} /> CSV
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => downloadJson(`backup_full_site_${stamp}.json`, {
+                _meta: { createdAt: new Date().toISOString(), version: '1.0' },
+                courses, bundles, lectures, chapters, therapists, testimonials, subscribers, leads,
+                staffMembers, consultations, orders, communityPosts, communityLibraryItems,
+                communityVideos, communityEvents, discounts, content,
+              })}
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+            >
+              <Database size={14} /> نسخة احتياطية
+            </button>
+          )}
+          {!isSalesOnly && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!window.confirm('سيتم مسح جميع البيانات المحلية. هل أنت متأكد؟')) return;
+                if (window.prompt('اكتب كلمة حذف للتأكيد:')?.trim() !== 'حذف') return;
+                clearAllData();
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+            >
+              <Trash2 size={14} /> استعادة الافتراضي
+            </button>
           )}
         </div>
+      </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" dir="rtl">
-            <thead className="bg-gray-50/80 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600">الإجراء</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600">القسم</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600">التفاصيل</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600">المسؤول</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-gray-600">التوقيت</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLogs.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">لا توجد سجلات تطابق الفلتر.</td></tr>
-              ) : filteredLogs.map((row, idx) => (
-                <tr key={row.id} className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                  <td className="px-4 py-3">
-                    <span className={`flex items-center gap-1.5 text-xs ${actionColors[row.action] || 'text-gray-700 font-medium'}`}>
-                      <span>{actionIcons[row.action] || '•'}</span>
-                      {row.action === 'create' ? 'إضافة' : row.action === 'update' ? 'تعديل' : row.action === 'delete' ? 'حذف' : row.action}
-                    </span>
-                    <span className="text-[10px] text-gray-400 block mt-0.5">{row.entity}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.section && (
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${sectionColors[row.section] || sectionColors['عام']}`}>
-                        {row.section}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-700 max-w-[220px] truncate" title={row.label}>{row.label}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                        {(row.actorName || row.actor || '?')[0].toUpperCase()}
-                      </div>
-                      <span className="text-xs text-gray-600 truncate max-w-[100px]">{row.actorName || row.actor?.split('@')[0] || '—'}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{row.at}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-5">
+          <label className="relative md:col-span-2">
+            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="بحث في السجل..."
+              className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-3 pr-9 text-sm outline-none focus:border-indigo-400"
+            />
+          </label>
+          <select value={section} onChange={(event) => setSection(event.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+            <option value="">كل الأقسام</option>
+            {sections.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <select value={actor} onChange={(event) => setActor(event.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+            <option value="">كل الموظفين</option>
+            {actors.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+          <button
+            type="button"
+            disabled={!hasFilters}
+            onClick={() => {
+              setSearch('');
+              setActor('');
+              setSection('');
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+          >
+            مسح الفلاتر
+          </button>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" />
+          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm" />
         </div>
       </div>
+
+      <DataTable<ActivityLogItem>
+        data={filteredLogs}
+        columns={columns}
+        total={filteredLogs.length}
+        limit={filteredLogs.length || 25}
+      />
     </div>
   );
 };

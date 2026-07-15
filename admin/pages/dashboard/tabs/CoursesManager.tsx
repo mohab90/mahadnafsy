@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Plus, X, Radio, Users, Upload, Save, Search, BookOpen, Eye, Video, BarChart3, TrendingUp } from 'lucide-react';
 import type { Course, CourseAccessSetting, CourseMaterial, Therapist, SubscriberItem, CourseLectureItem, CourseChapterItem } from '../../../types';
-import { SafeHtml } from '../../../components/SafeHtml';
+import { SafeHtml } from '../../../../shared/ui/SafeHtml';
+import { sanitizeRichHtml } from '../../../../shared/ui/sanitizeHtml';
 
 type RichField = 'shortDescription' | 'description';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -65,13 +66,13 @@ export default function CoursesManager(p: Props) {
   const certificateInputRef = useRef<HTMLInputElement | null>(null);
   const getEditorRef = (field: RichField) => (field === 'shortDescription' ? shortDescriptionRef : descriptionRef);
   const focusEditor = (field: RichField) => { setActiveRichField(field); getEditorRef(field).current?.focus(); };
-  const syncEditorContent = (field: RichField) => { const editor = getEditorRef(field).current; setCourseDraft((prev) => ({ ...prev, [field]: editor?.innerHTML || '' })); };
+  const syncEditorContent = (field: RichField) => { const editor = getEditorRef(field).current; setCourseDraft((prev) => ({ ...prev, [field]: sanitizeRichHtml(editor?.innerHTML || '') })); };
   const runEditorCommand = (command: string, value?: string) => { document.execCommand(command, false, value); syncEditorContent(activeRichField); getEditorRef(activeRichField).current?.focus(); };
   // Seed the contentEditable DOM from the draft when the form opens / target changes.
   useEffect(() => {
     if (isCourseFormOpen) {
-      if (shortDescriptionRef.current) shortDescriptionRef.current.innerHTML = courseDraft.shortDescription || '';
-      if (descriptionRef.current) descriptionRef.current.innerHTML = courseDraft.description || '';
+      if (shortDescriptionRef.current) shortDescriptionRef.current.innerHTML = sanitizeRichHtml(courseDraft.shortDescription);
+      if (descriptionRef.current) descriptionRef.current.innerHTML = sanitizeRichHtml(courseDraft.description);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCourseFormOpen, editingCourseId]);
@@ -311,7 +312,7 @@ export default function CoursesManager(p: Props) {
                   suppressContentEditableWarning
                   className="min-h-[120px] p-3 outline-none"
                   onFocus={() => setActiveRichField('shortDescription')}
-                  onInput={(e) => { const html = (e.currentTarget as HTMLDivElement).innerHTML; setCourseDraft((prev) => ({ ...prev, shortDescription: html })); }}
+                  onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, shortDescription: html })); }}
                 />
               </div>
               <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">
@@ -341,7 +342,7 @@ export default function CoursesManager(p: Props) {
                   suppressContentEditableWarning
                   className="min-h-[180px] p-3 outline-none"
                   onFocus={() => setActiveRichField('description')}
-                  onInput={(e) => { const html = (e.currentTarget as HTMLDivElement).innerHTML; setCourseDraft((prev) => ({ ...prev, description: html })); }}
+                  onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, description: html })); }}
                 />
               </div>
               <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Mail, Plus, Send, Trash2, Eye, Pause, Play, RefreshCw, CheckCircle, Clock } from 'lucide-react';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -39,7 +40,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/email-campaigns`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/email-campaigns`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setCampaigns(await res.json());
     } catch { notify('error', 'تعذّر تحميل الحملات'); }
     setLoading(false);
@@ -67,7 +68,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
     try {
       const res = await fetch(`/api/admin/email-campaigns`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminAuthHeaders(true),
         body: JSON.stringify(newCampaign),
       });
       if (res.ok) {
@@ -84,7 +85,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
     setSending(id);
     try {
       const res = await fetch(`/api/admin/email-campaigns/${id}/send`, {
-        method: 'POST', credentials: 'include',
+        method: 'POST', credentials: 'include', headers: adminAuthHeaders(),
       });
       const data = await res.json();
       if (res.ok) { notify('success', `تم الإرسال: ${data.sentCount} رسالة`); load(); }
@@ -95,7 +96,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
 
   async function deleteCampaign(id: string) {
     try {
-      const res = await fetch(`/api/admin/email-campaigns/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/admin/email-campaigns/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) { notify('success', 'تم الحذف'); load(); }
     } catch { notify('error', 'خطأ في الحذف'); }
   }

@@ -6,8 +6,22 @@ import type { ActivityLogItem } from '../../../types';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
+const LS_IP_KEY = 'mahad_ip_whitelist_v1';
+
 interface IpEntry { id: string; ip: string; label: string; addedAt: string; active: boolean; }
-interface IpApiRow { id: string | number; ip: string; label: string | null; created_at: string; }
+
+function loadIPs(): IpEntry[] {
+  try { return JSON.parse(localStorage.getItem(LS_IP_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveIPs(items: IpEntry[]) { localStorage.setItem(LS_IP_KEY, JSON.stringify(items)); }
+
+function defaultIPs(): IpEntry[] {
+  return [
+    { id: '1', ip: '127.0.0.1', label: 'Localhost', addedAt: new Date().toISOString(), active: true },
+    { id: '2', ip: '192.168.1.0/24', label: 'الشبكة المحلية', addedAt: new Date().toISOString(), active: true },
+  ];
+}
 
 const SECURITY_ACTIONS = ['login', 'logout', 'login_failed', 'password_changed', 'role_changed', 'permission_granted', 'permission_revoked', 'account_locked', 'account_unlocked', 'bulk_delete', 'export_data', 'settings_changed'];
 const SENSITIVE_ACTIONS = ['bulk_delete', 'export_data', 'role_changed', 'account_locked', 'settings_changed', 'permission_granted', 'permission_revoked'];
@@ -20,23 +34,17 @@ function isSuspicious(logs: ActivityLogItem[], actorId: string, windowHours = 1)
 const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
   const { activityLogs, staffMembers } = useSiteData();
   const [subTab, setSubTab] = useState<'overview' | 'activity' | 'ip' | 'access'>('overview');
-  const [ipList, setIpList] = useState<IpEntry[]>([]);
+  const [ipList, setIpList] = useState<IpEntry[]>(() => {
+    const stored = loadIPs();
+    return stored.length > 0 ? stored : defaultIPs();
+  });
   const [newIp, setNewIp] = useState('');
   const [newIpLabel, setNewIpLabel] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [eventFilter, setEventFilter] = useState<string>('all');
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // IP whitelist is backed by the real, server-enforced ip_whitelist table.
-  const reloadIps = React.useCallback(async () => {
-    try {
-      const r = await fetch('/api/admin/ip-whitelist', { credentials: 'include' });
-      if (!r.ok) throw new Error('load');
-      const d = await r.json() as { whitelist: IpApiRow[] };
-      setIpList((d.whitelist || []).map(w => ({ id: String(w.id), ip: w.ip, label: w.label || 'غير محدد', addedAt: w.created_at, active: true })));
-    } catch { setIpList([]); }
-  }, []);
-  useEffect(() => { void reloadIps(); }, [reloadIps]);
+  useEffect(() => { saveIPs(ipList); }, [ipList]);
 
   const securityLogs = useMemo(() =>
     activityLogs.filter(l => SECURITY_ACTIONS.includes(l.action) || SENSITIVE_ACTIONS.includes(l.action))
@@ -87,18 +95,12 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
     account_locked: 'text-red-700', settings_changed: 'text-indigo-600',
   };
 
-  const addIp = async () => {
+  const addIp = () => {
     if (!newIp.trim()) { notify('error', 'أدخل عنوان IP'); return; }
-    try {
-      const r = await fetch('/api/admin/ip-whitelist', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: newIp.trim(), label: newIpLabel.trim() || null }),
-      });
-      if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b.error || 'add'); }
-      setNewIp(''); setNewIpLabel('');
-      await reloadIps();
-      notify('success', 'تم إضافة IP');
-    } catch (e) { notify('error', e instanceof Error && e.message === 'Invalid IP format' ? 'صيغة IP غير صحيحة' : 'فشل إضافة IP'); }
+    const entry: IpEntry = { id: Date.now().toString(), ip: newIp.trim(), label: newIpLabel.trim() || 'غير محدد', addedAt: new Date().toISOString(), active: true };
+    setIpList(prev => [...prev, entry]);
+    setNewIp(''); setNewIpLabel('');
+    notify('success', 'تم إضافة IP');
   };
 
   return (
@@ -294,14 +296,9 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
                   <span className={`text-xs px-2 py-0.5 rounded-full border ${entry.active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                     {entry.active ? '● نشط' : 'معطل'}
                   </span>
-                  <button onClick={async () => {
-                      try {
-                        const r = await fetch(`/api/admin/ip-whitelist/${entry.id}`, { method: 'DELETE', credentials: 'include' });
-                        if (!r.ok) throw new Error('del');
-                        await reloadIps();
-                        notify('success', 'تم حذف IP');
-                      } catch { notify('error', 'فشل حذف IP'); }
-                    }}
+                  <button onClick={() => setIpList(prev => prev.map(e => e.id === entry.id ? { ...e, active: !e.active } : e))}
+                    className="text-gray-400 hover:text-amber-500"><Lock size={14} /></button>
+                  <button onClick={() => { setIpList(prev => prev.filter(e => e.id !== entry.id)); notify('success', 'تم حذف IP'); }}
                     className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
                 </div>
               ))}

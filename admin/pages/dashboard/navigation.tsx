@@ -6,7 +6,6 @@ import {
   BookOpen,
   Bot,
   Briefcase,
-  Building2,
   CalendarCheck2,
   CalendarDays,
   Clock,
@@ -29,7 +28,6 @@ import {
   Star,
   Target,
   TrendingUp,
-  User,
   UserCheck,
   UserPlus,
   Users,
@@ -40,7 +38,7 @@ import {
 
 export type TabKey =
   | 'overview'
-  | 'support_inbox'
+  | 'kpi_dashboard'
   | 'content'
   | 'staff_management'
   | 'policies'
@@ -67,19 +65,13 @@ export type TabKey =
   | 'orders'
   | 'financial'
   | 'financial_reports'
-  | 'chart_of_accounts'
-  | 'branch_workspace'
-  | 'hr_hub'
-  | 'analytics_hub'
-  | 'saas_settings'
-  | 'rbac_settings'
   | 'activity'
   | 'footer_settings'
   | 'discounts'
   | 'notifications'
-  | 'daqqi_attendance'
   | 'daqqi_schedule'
   | 'client'
+  | 'customer_inbox'
   | 'join_us'
   | 'contacts'
   | 'analytics'
@@ -99,13 +91,13 @@ export type TabKey =
   | 'refund_requests'
   | 'daqqi_accounting'
   | 'daqqi_stats'
+  | 'daqqi_attendance'
   | 'sales_hub'
   | 'marketing_hub'
   | 'online_hub'
   | 'staff_performance'
   | 'retention'
   | 'cohort_analysis'
-  | 'kpi_dashboard'
   | 'forecast'
   | 'tasks_board'
   | 'sales_team'
@@ -131,7 +123,12 @@ export type TabKey =
   | 'my_hr'
   | 'staff_applications'
   | 'lecturer_applications'
+  | 'settings_hub'
   | 'system_settings'
+  | 'payment_settings'
+  | 'lead_sources_settings'
+  | 'otp_settings'
+  | 'branch_workspaces'
   | 'automation_dashboard'
   | 'webhooks'
   | 'ip_whitelist'
@@ -167,11 +164,15 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: LayoutDashboard,
     color: 'text-slate-700',
     items: [
+      { key: 'kpi_dashboard', label: 'لوحة KPI للمدير', icon: BarChart3 },
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
-      { key: 'analytics_hub', label: 'التحليلات والمؤشرات', icon: TrendingUp },
       { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
+      { key: 'retention', label: 'تحليل الاستبقاء', icon: TrendingUp },
+      { key: 'cohort_analysis', label: 'تحليل Cohort', icon: Users },
+      { key: 'revenue_sources', label: 'مصادر الإيراد', icon: BarChart3 },
+      { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
     ],
   },
   {
@@ -194,6 +195,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
       { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
+      { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
     ],
   },
   {
@@ -216,12 +218,13 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Headphones,
     color: 'text-rose-500',
     items: [
-      { key: 'support_inbox', label: 'صندوق الوارد الموحّد', icon: Headphones },
+      { key: 'customer_inbox', label: 'Inbox خدمة العملاء', icon: Headphones },
       { key: 'tickets', label: 'تذاكر الدعم', icon: Mail },
       { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
       { key: 'cert_requests', label: 'طلبات الشهادات', icon: Star },
       { key: 'contacts', label: 'رسائل التواصل', icon: Mail },
       { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck2 },
+      { key: 'nps_dashboard', label: 'رضا العملاء (NPS)', icon: TrendingUp },
     ],
   },
   {
@@ -232,8 +235,12 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'financial', label: 'النظام المحاسبي', icon: BarChart3 },
       { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
-      { key: 'financial_reports', label: 'التقارير المالية', icon: BarChart3 },
-      { key: 'chart_of_accounts', label: 'دليل الحسابات', icon: BarChart3 },
+      { key: 'financial_reports', label: 'التقارير المالية المتقدمة', icon: BarChart3 },
+      { key: 'balance_sheet', label: 'الميزانية العمومية', icon: BarChart3 },
+      { key: 'cash_flow', label: 'التدفق النقدي', icon: TrendingUp },
+      { key: 'recurring_expenses', label: 'المصاريف المتكررة', icon: RotateCcw },
+      { key: 'budget_tracker', label: 'الميزانية مقابل الفعلي', icon: Target },
+      { key: 'revenue_forecast', label: 'توقعات الإيرادات', icon: TrendingUp },
     ],
   },
   {
@@ -242,7 +249,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Briefcase,
     color: 'text-purple-600',
     items: [
-      { key: 'hr_hub', label: 'الموارد البشرية والموظفون', icon: Briefcase },
+      { key: 'hr', label: 'نظام HR', icon: Briefcase },
+      { key: 'staff_management', label: 'الموظفون', icon: Users },
       { key: 'instructors', label: 'المحاضرون والخبراء', icon: GraduationCap },
       { key: 'join_us', label: 'طلبات الانضمام', icon: GraduationCap },
     ],
@@ -262,14 +270,13 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: FileText,
     color: 'text-violet-600',
     items: [
+      { key: 'content_hub', label: 'صفحات الموقع', icon: Globe },
       { key: 'courses', label: 'الكورسات والدبلومات', icon: BookOpen },
       { key: 'lectures', label: 'المحاضرات', icon: ListOrdered },
       { key: 'bundles', label: 'المسارات والباقات', icon: FolderKanban },
-      { key: 'testimonials', label: 'آراء العملاء', icon: MessageSquareText },
       { key: 'quizzes', label: 'الاختبارات', icon: FileText },
       { key: 'live_streams', label: 'البث المباشر', icon: Video },
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
-      { key: 'content_hub', label: 'صفحات الموقع', icon: Globe },
     ],
   },
   {
@@ -278,10 +285,17 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Settings2,
     color: 'text-gray-600',
     items: [
-      // All settings (general, finance, platform, AI, security, system) are now
-      // consolidated inside this single page — see SystemSettingsTab sections.
-      { key: 'system_settings', label: 'الإعدادات', icon: Settings2 },
-      { key: 'branch_workspace', label: 'مساحات الفروع', icon: Building2 },
+      { key: 'settings_hub', label: 'مركز الإعدادات', icon: Settings2 },
+      { key: 'system_settings', label: 'إعدادات الإدارة', icon: Settings2 },
+      { key: 'payment_settings', label: 'بوابات الدفع', icon: CreditCard },
+      { key: 'lead_sources_settings', label: 'مصادر الليد والداتا', icon: UserPlus },
+      { key: 'otp_settings', label: 'OTP والقنوات', icon: Shield },
+      { key: 'messaging_agent', label: 'عميل المراسلة AI', icon: Bot },
+      { key: 'admin_ai_settings', label: 'إعدادات AI', icon: Settings2 },
+      { key: 'server_monitor', label: 'مراقبة السيرفر', icon: Activity },
+      { key: 'webhooks', label: 'Webhooks', icon: Zap },
+      { key: 'security_dashboard', label: 'لوحة الأمان', icon: Shield },
+      { key: 'pg_migrate', label: 'ترحيل قاعدة البيانات', icon: Database },
     ],
   },
 ];

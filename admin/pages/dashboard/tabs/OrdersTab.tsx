@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight, CheckCircle, Clock, CreditCard, Download,
@@ -6,10 +6,6 @@ import {
 } from 'lucide-react';
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { exportOrdersCsv } from '../dashboardExports';
-import OrdersOnlineManagerView from './orders-sections/OrdersOnlineManagerView';
-import OrdersDaqqiManagerView from './orders-sections/OrdersDaqqiManagerView';
-import { payMethodBadge, typeBadge } from './orders-sections/orderBadges';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -46,72 +42,81 @@ interface Props {
 
   // OM + Daqqi views
   salesOwnSubscribers: SubscriberItem[];
+  daqqiSubSearch: string;
+  setDaqqiSubSearch: (v: string) => void;
+  daqqiAccDateFrom: string;
+  setDaqqiAccDateFrom: (v: string) => void;
+  daqqiAccDateTo: string;
+  setDaqqiAccDateTo: (v: string) => void;
   updateSubscriber: (s: SubscriberItem) => void;
 
-  // Admin view — raw data + stats; all filters/modals are now tab-local state below
+  // OM only
+  omOrdReviewTab: 'review' | 'accepted' | 'failed';
+  setOmOrdReviewTab: (v: 'review' | 'accepted' | 'failed') => void;
+
+  // Admin view
   effectiveOrders: OrderItem[];
+  filteredOrders: OrderItem[];
   ordersStats: OrdersStats;
+  orderSearch: string;
+  setOrderSearch: (v: string) => void;
+  orderStatusFilter: 'all' | 'paid' | 'failed' | 'refunded';
+  setOrderStatusFilter: (v: 'all' | 'paid' | 'failed' | 'refunded') => void;
+  orderTypeFilter: 'all' | 'course' | 'bundle' | 'consultation';
+  setOrderTypeFilter: (v: 'all' | 'course' | 'bundle' | 'consultation') => void;
+  orderMethodFilter: string;
+  setOrderMethodFilter: (v: string) => void;
+  orderDateFrom: string;
+  setOrderDateFrom: (v: string) => void;
+  orderDateTo: string;
+  setOrderDateTo: (v: string) => void;
+  orderStaffFilter: string;
+  setOrderStaffFilter: (v: string) => void;
+  orderReviewTab: 'review' | 'accepted' | 'failed' | 'transfers';
+  setOrderReviewTab: (v: 'review' | 'accepted' | 'failed' | 'transfers') => void;
+  showAddTransfer: boolean;
+  setShowAddTransfer: (v: boolean) => void;
+  linkTransferModal: { row: OrderItem } | null;
+  setLinkTransferModal: (v: { row: OrderItem } | null) => void;
+  linkOrderModal: { row: OrderItem } | null;
+  setLinkOrderModal: (v: { row: OrderItem } | null) => void;
+  transferForm: TransferForm;
+  setTransferForm: React.Dispatch<React.SetStateAction<TransferForm>>;
   currentStaff: StaffMember | null;
   authUser: { displayName?: string | null; email?: string | null; uid?: string } | null;
   content: Record<string, string>;
   updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => void;
   addOrder: (order: OrderItem) => void;
   deleteOrder: (id: string) => void;
+  exportFilteredOrdersCsv: () => void;
 }
 
 export default function OrdersTab({
   isOnlineManager, isDaqqiManager, isAdmin,
   notify, courses, bundles,
-  salesOwnSubscribers, updateSubscriber,
-  effectiveOrders, ordersStats,
+  salesOwnSubscribers,
+  daqqiSubSearch, setDaqqiSubSearch,
+  daqqiAccDateFrom, setDaqqiAccDateFrom,
+  daqqiAccDateTo, setDaqqiAccDateTo,
+  updateSubscriber,
+  omOrdReviewTab, setOmOrdReviewTab,
+  effectiveOrders, filteredOrders, ordersStats,
+  orderSearch, setOrderSearch,
+  orderStatusFilter, setOrderStatusFilter,
+  orderTypeFilter, setOrderTypeFilter,
+  orderMethodFilter, setOrderMethodFilter,
+  orderDateFrom, setOrderDateFrom,
+  orderDateTo, setOrderDateTo,
+  orderStaffFilter, setOrderStaffFilter,
+  orderReviewTab, setOrderReviewTab,
+  showAddTransfer, setShowAddTransfer,
+  linkTransferModal, setLinkTransferModal,
+  linkOrderModal, setLinkOrderModal,
+  transferForm, setTransferForm,
   currentStaff, authUser, content,
-  updateOrderStatus, addOrder, deleteOrder,
+  updateOrderStatus, addOrder, deleteOrder, exportFilteredOrdersCsv,
 }: Props) {
   const navigate = useNavigate();
-
-  // ── Tab-local state (lifted out of the Dashboard god-hub) ──────────────────
-  const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
-  const [daqqiAccDateFrom, setDaqqiAccDateFrom] = useState('');
-  const [daqqiAccDateTo, setDaqqiAccDateTo] = useState('');
-  const [omOrdReviewTab, setOmOrdReviewTab] = useState<'review' | 'accepted' | 'failed'>('review');
-  const [orderSearch, setOrderSearch] = useState('');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'paid' | 'failed' | 'refunded'>('all');
-  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'course' | 'bundle' | 'consultation'>('all');
-  const [orderMethodFilter, setOrderMethodFilter] = useState<string>('all');
-  const [orderDateFrom, setOrderDateFrom] = useState('');
-  const [orderDateTo, setOrderDateTo] = useState('');
-  const [orderStaffFilter, setOrderStaffFilter] = useState<string>('all');
-  const [orderReviewTab, setOrderReviewTab] = useState<'review' | 'accepted' | 'failed' | 'transfers'>('review');
-  const [showAddTransfer, setShowAddTransfer] = useState(false);
-  const [linkTransferModal, setLinkTransferModal] = useState<{ row: OrderItem } | null>(null);
-  const [linkOrderModal, setLinkOrderModal] = useState<{ row: OrderItem } | null>(null);
-  const [consumedTransferIds, setConsumedTransferIds] = useState<Set<string>>(new Set());
-  // A transfer is "used up" once an order is linked to it (persisted linkedTransferId,
-  // or linked this session) — so the same transfer can't confirm two different payments.
-  const consumedTransfers = useMemo(() => {
-    const s = new Set<string>(consumedTransferIds);
-    for (const o of effectiveOrders) if (o.linkedTransferId) s.add(o.linkedTransferId);
-    return s;
-  }, [effectiveOrders, consumedTransferIds]);
-  const [transferForm, setTransferForm] = useState<TransferForm>({
-    amount: '', currency: 'EGP', method: '', senderName: '', senderPhone: '',
-    reference: '', note: '', date: new Date().toISOString().slice(0, 10),
-    time: new Date().toTimeString().slice(0, 5), status: 'paid',
-  });
-  const filteredOrders = useMemo(() => effectiveOrders.filter((row) => {
-    const text = `${row.id} ${row.itemTitle} ${row.customerName} ${row.staffName || ''}`.toLowerCase();
-    const matchesSearch = text.includes(orderSearch.toLowerCase());
-    const matchesStatus = orderStatusFilter === 'all' || row.status === orderStatusFilter;
-    const matchesType = orderTypeFilter === 'all' || row.type === orderTypeFilter;
-    const matchesMethod = orderMethodFilter === 'all' || row.paymentMethod === orderMethodFilter;
-    const matchesStaff = orderStaffFilter === 'all' || (row.staffName || '') === orderStaffFilter;
-    const rowTime = new Date(row.createdAt.replace(' ', 'T')).getTime();
-    const fromTime = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`).getTime() : null;
-    const toTime = orderDateTo ? new Date(`${orderDateTo}T23:59:59`).getTime() : null;
-    const hasValidTime = !Number.isNaN(rowTime);
-    const matchesDate = hasValidTime && (fromTime === null || rowTime >= fromTime) && (toTime === null || rowTime <= toTime);
-    return matchesSearch && matchesStatus && matchesType && matchesMethod && matchesStaff && matchesDate;
-  }), [effectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo]);
 
   const handleConfirmOrder = (row: OrderItem) => {
     if (!isAdmin && currentStaff?.role !== 'manager') {
@@ -127,32 +132,280 @@ export default function OrdersTab({
 
   // ── Online Manager view ──────────────────────────────────────────────────
   if (isOnlineManager && !isAdmin) {
-    return (
-      <OrdersOnlineManagerView
-        salesOwnSubscribers={salesOwnSubscribers}
-        updateSubscriber={updateSubscriber}
-        courses={courses}
-        bundles={bundles}
-        notify={notify}
-        daqqiSubSearch={daqqiSubSearch} setDaqqiSubSearch={setDaqqiSubSearch}
-        daqqiAccDateFrom={daqqiAccDateFrom} setDaqqiAccDateFrom={setDaqqiAccDateFrom}
-        daqqiAccDateTo={daqqiAccDateTo} setDaqqiAccDateTo={setDaqqiAccDateTo}
-        omOrdReviewTab={omOrdReviewTab} setOmOrdReviewTab={setOmOrdReviewTab}
-      />
-    );
+              const omSubs = salesOwnSubscribers;
+              const omAllPay = omSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({
+                ...p, clientName: s.name, clientCode: s.clientCode||s.id, clientId: s.id, subEmail: s.email,
+              }))).sort((a,b)=>((b.at||'')>(a.at||'')?1:-1));
+              const [omOrdDateFrom2, setOmOrdDateFrom2] = [daqqiAccDateFrom, setDaqqiAccDateFrom];
+              const [omOrdDateTo2, setOmOrdDateTo2] = [daqqiAccDateTo, setDaqqiAccDateTo];
+              const filteredOm = omAllPay.filter(p => {
+                const d=(p.at||'').slice(0,10);
+                if(omOrdDateFrom2&&d<omOrdDateFrom2) return false;
+                if(omOrdDateTo2&&d>omOrdDateTo2) return false;
+                if(daqqiSubSearch.trim()){
+                  const q=daqqiSubSearch.toLowerCase();
+                  if(!(p.clientName||'').toLowerCase().includes(q)&&!(p.clientCode||'').toLowerCase().includes(q)) return false;
+                }
+                return true;
+              });
+              const pendingOm   = filteredOm.filter(p=>p.status==='pending');
+              const acceptedOm  = filteredOm.filter(p=>p.status!=='pending'&&p.status!=='failed'&&p.status!=='refunded');
+              const failedOm    = filteredOm.filter(p=>p.status==='failed'||p.status==='refunded');
+              const tabRowsOm = omOrdReviewTab==='review' ? pendingOm : omOrdReviewTab==='accepted' ? acceptedOm : failedOm;
+              const todayOmStr = new Date().toISOString().slice(0,10);
+              const thisMonthOmStr = new Date().toISOString().slice(0,7);
+              const toEGP = (p:{amount:unknown;currency?:string}) => {
+                const n=Number(p.amount)||0;
+                return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n;
+              };
+              const todayAmtOm  = acceptedOm.filter(p=>(p.at||'').slice(0,10)===todayOmStr).reduce((s,p)=>s+toEGP(p),0);
+              const monthAmtOm  = acceptedOm.filter(p=>(p.at||'').startsWith(thisMonthOmStr)).reduce((s,p)=>s+toEGP(p),0);
+              return (
+                <article className="space-y-4" dir="rtl">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      {label:'إجمالي الدفعات', value:acceptedOm.length, color:'bg-slate-50 text-slate-700 border-slate-200'},
+                      {label:'انتظار تأكيد',   value:pendingOm.length,  color:'bg-amber-50 text-amber-700 border-amber-200'},
+                      {label:'تحصيل اليوم',    value:`${todayAmtOm.toLocaleString()} ج`, color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
+                      {label:'تحصيل الشهر',   value:`${monthAmtOm.toLocaleString()} ج`, color:'bg-blue-50 text-blue-700 border-blue-200'},
+                    ].map(k=>(
+                      <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.color}`}>
+                        <div className="text-xs font-medium mb-1">{k.label}</div>
+                        <div className="text-xl font-extrabold">{k.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Review tabs */}
+                  <div className="flex gap-2">
+                    {([
+                      {key:'review' as const,  label:'قيد المراجعة', count:pendingOm.length,  color:'amber'},
+                      {key:'accepted' as const,label:'مقبولة',        count:acceptedOm.length, color:'green'},
+                      {key:'failed' as const,  label:'فاشلة',         count:failedOm.length,   color:'red'},
+                    ]).map(({key,label,count,color}) => {
+                      const active = omOrdReviewTab===key;
+                      const cls:{[k:string]:string} = {
+                        amber: active?'bg-amber-500 text-white border-amber-500':'text-amber-700 border-amber-200 hover:bg-amber-50',
+                        green: active?'bg-green-600 text-white border-green-600':'text-green-700 border-green-200 hover:bg-green-50',
+                        red:   active?'bg-red-600 text-white border-red-600':'text-red-700 border-red-200 hover:bg-red-50',
+                      };
+                      return <button key={key} onClick={()=>setOmOrdReviewTab(key)} className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${cls[color]}`}>{label} ({count})</button>;
+                    })}
+                  </div>
+                  {/* Filters */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center">
+                    <div className="relative flex-1 min-w-[160px]">
+                      <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                      <input value={daqqiSubSearch} onChange={e=>setDaqqiSubSearch(e.target.value)}
+                        placeholder="بحث اسم عميل / كود..."
+                        className="w-full border border-gray-200 rounded-lg pr-7 pl-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200"/>
+                    </div>
+                    <input type="date" value={omOrdDateFrom2} onChange={e=>setOmOrdDateFrom2(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="من"/>
+                    <input type="date" value={omOrdDateTo2} onChange={e=>setOmOrdDateTo2(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى"/>
+                    {(daqqiSubSearch||omOrdDateFrom2||omOrdDateTo2)&&(
+                      <button onClick={()=>{setDaqqiSubSearch('');setOmOrdDateFrom2('');setOmOrdDateTo2('');}}
+                        className="text-xs text-red-500 border border-red-200 rounded-lg px-2 py-1.5 bg-red-50 hover:bg-red-100">مسح</button>
+                    )}
+                    <span className="text-xs text-gray-400 ml-auto">{tabRowsOm.length} دفعة — {tabRowsOm.reduce((s,p)=>s+toEGP(p),0).toLocaleString()} ج</span>
+                  </div>
+                  {/* Table */}
+                  <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs min-w-[900px] border-collapse">
+                        <thead>
+                          <tr className="bg-gradient-to-l from-emerald-50 to-white text-gray-700">
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">رقم الطلب</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">العميل</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">الكورس</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">المبلغ</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">وسيلة الدفع</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الموظف</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">التاريخ</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الحالة</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">ملاحظة</th>
+                            {omOrdReviewTab==='review' && <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">إجراءات</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tabRowsOm.slice(0,200).map((p,i)=>{
+                            const cid = (p as {courseId?:string}).courseId||'';
+                            const courseTitle = cid.startsWith('bundle:')?bundles.find(b=>b.id===cid.replace('bundle:',''))?.title||'مسار':courses.find(c=>c.id===cid)?.title||(p as {paymentType?:string}).paymentType||'—';
+                            const isPending = p.status==='pending';
+                            const payAmt = Number(p.amount)||0;
+                            const payCur = (p as {currency?:string}).currency||'EGP';
+                            const currSymbol = payCur==='SAR'?'ر.س':payCur==='USD'?'$':'ج';
+                            const payId = (p as {id?:string}).id||`${i}`;
+                            return (
+                              <tr key={payId} className={`hover:bg-emerald-50/20 ${isPending?'bg-amber-50/40':''}`}>
+                                <td className="px-2 py-2 border border-gray-200 text-[10px] font-mono text-gray-400">#{payId.slice(-6)}</td>
+                                <td className="px-2 py-2 border border-gray-200">
+                                  <button onClick={()=>navigate(`/client/${p.clientCode}`)} className="font-semibold text-gray-800 hover:text-emerald-700 text-[11px]">{p.clientName}</button>
+                                  {p.clientCode&&<div className="text-[9px] text-indigo-600 font-mono">#{p.clientCode}</div>}
+                                </td>
+                                <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-600 max-w-[140px] truncate" title={courseTitle}>{courseTitle}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{payAmt.toLocaleString()} {currSymbol}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-600">{(p as {paymentMethod?:string}).paymentMethod||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{(p as {staffName?:string}).staffName||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{((p as {at?:string}).at||'').slice(0,10)||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center">
+                                  {isPending
+                                    ?<span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5 font-bold">⏳ انتظار</span>
+                                    :p.status==='failed'||p.status==='refunded'
+                                      ?<span className="text-[10px] bg-red-100 text-red-700 border border-red-200 rounded-full px-1.5 py-0.5 font-bold">❌ {p.status==='refunded'?'مرتجع':'فاشلة'}</span>
+                                      :<span className="text-[10px] bg-green-100 text-green-700 border border-green-200 rounded-full px-1.5 py-0.5 font-bold">✅ مؤكد</span>}
+                                </td>
+                                <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-400 max-w-[100px] truncate">{(p as {note?:string}).note||'—'}</td>
+                                {omOrdReviewTab==='review' && (
+                                  <td className="px-2 py-2 border border-gray-200 text-center">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button onClick={async()=>{
+                                        const sub = omSubs.find(s=>s.id===p.clientId);
+                                        if(!sub) return;
+                                        const newPH = (sub.paymentHistory||[]).map(ph=>ph.id===payId?{...ph,status:'paid' as const}:ph);
+                                        const updated = {...sub, paymentHistory: newPH};
+                                        updateSubscriber(updated);
+                                        await mysqlAdmin.saveSubscriber(updated as unknown as Record<string, unknown>);
+                                        notify('success', 'تم قبول الدفعة ✅');
+                                      }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg font-bold">قبول</button>
+                                      <button onClick={async()=>{
+                                        const sub = omSubs.find(s=>s.id===p.clientId);
+                                        if(!sub) return;
+                                        const newPH = (sub.paymentHistory||[]).map(ph=>ph.id===payId?{...ph,status:'failed' as const}:ph);
+                                        const updated = {...sub, paymentHistory: newPH};
+                                        updateSubscriber(updated);
+                                        await mysqlAdmin.saveSubscriber(updated as unknown as Record<string, unknown>);
+                                        notify('info', 'تم رفض الدفعة');
+                                      }} className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold">رفض</button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                          {tabRowsOm.length===0&&<tr><td colSpan={10} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </article>
+              );
   }
 
   // ── Daqqi Manager view ───────────────────────────────────────────────────
   if (isDaqqiManager && !isAdmin) {
-    return (
-      <OrdersDaqqiManagerView
-        salesOwnSubscribers={salesOwnSubscribers}
-        courses={courses}
-        daqqiSubSearch={daqqiSubSearch} setDaqqiSubSearch={setDaqqiSubSearch}
-        daqqiAccDateFrom={daqqiAccDateFrom} setDaqqiAccDateFrom={setDaqqiAccDateFrom}
-        daqqiAccDateTo={daqqiAccDateTo} setDaqqiAccDateTo={setDaqqiAccDateTo}
-      />
-    );
+              const daqqiSubs = salesOwnSubscribers;
+              const daqqiOrdAllPay = daqqiSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({
+                ...p, clientName: s.name, clientCode: s.clientCode||s.id, clientId: s.id,
+              }))).filter(p => (p.currency==='EGP'||!p.currency) && p.status!=='failed').sort((a,b)=>((b.at||'')>(a.at||'')?1:-1));
+              const [daqqiOrdDateFrom2, setDaqqiOrdDateFrom2] = [daqqiAccDateFrom, setDaqqiAccDateFrom];
+              const [daqqiOrdDateTo2, setDaqqiOrdDateTo2] = [daqqiAccDateTo, setDaqqiAccDateTo];
+              const filtered2 = daqqiOrdAllPay.filter(p => {
+                const d=(p.at||'').slice(0,10);
+                if(daqqiOrdDateFrom2&&d<daqqiOrdDateFrom2) return false;
+                if(daqqiOrdDateTo2&&d>daqqiOrdDateTo2) return false;
+                if(daqqiSubSearch.trim()){
+                  const q=daqqiSubSearch.toLowerCase();
+                  if(!(p.clientName||'').toLowerCase().includes(q)&&!(p.clientCode||'').toLowerCase().includes(q)&&!(p.paymentMethod||'').toLowerCase().includes(q)) return false;
+                }
+                return true;
+              });
+              const todayOrd=new Date().toISOString().slice(0,10);
+              const thisMonthOrd=new Date().toISOString().slice(0,7);
+              const sumOrd=(arr:{amount:unknown}[])=>arr.reduce((s,p)=>s+(Number(p.amount)||0),0);
+              const confirmedPay=daqqiOrdAllPay.filter(p=>p.status!=='pending');
+              const pendingPay=daqqiOrdAllPay.filter(p=>p.status==='pending');
+              const todayAmt=sumOrd(confirmedPay.filter(p=>(p.at||'').slice(0,10)===todayOrd));
+              const monthAmt=sumOrd(confirmedPay.filter(p=>(p.at||'').startsWith(thisMonthOrd)));
+              return (
+                <article className="space-y-4" dir="rtl">
+                  {/* KPI */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      {label:'إجمالي الدفعات',  value:confirmedPay.length,                      color:'bg-slate-50 text-slate-700 border-slate-200'},
+                      {label:'انتظار تأكيد',     value:pendingPay.length,                         color:'bg-amber-50 text-amber-700 border-amber-200'},
+                      {label:'محصّل اليوم',      value:`${todayAmt.toLocaleString()} ج.م`,        color:'bg-emerald-50 text-emerald-700 border-emerald-200'},
+                      {label:'محصّل هذا الشهر', value:`${monthAmt.toLocaleString()} ج.م`,        color:'bg-blue-50 text-blue-700 border-blue-200'},
+                    ].map(k=>(
+                      <div key={k.label} className={`border rounded-xl px-3 py-3 ${k.color}`}>
+                        <div className="text-xs font-medium mb-1">{k.label}</div>
+                        <div className="text-xl font-extrabold">{k.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Filters */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center">
+                    <div className="relative flex-1 min-w-[160px]">
+                      <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                      <input value={daqqiSubSearch} onChange={e=>setDaqqiSubSearch(e.target.value)}
+                        placeholder="بحث اسم عميل / كود..."
+                        className="w-full border border-gray-200 rounded-lg pr-7 pl-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200"/>
+                    </div>
+                    <input type="date" value={daqqiAccDateFrom} onChange={e=>setDaqqiAccDateFrom(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="من"/>
+                    <input type="date" value={daqqiAccDateTo} onChange={e=>setDaqqiAccDateTo(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى"/>
+                    {(daqqiSubSearch||daqqiAccDateFrom||daqqiAccDateTo)&&(
+                      <button onClick={()=>{setDaqqiSubSearch('');setDaqqiAccDateFrom('');setDaqqiAccDateTo('');}}
+                        className="text-xs text-red-500 border border-red-200 rounded-lg px-2 py-1.5 bg-red-50 hover:bg-red-100">مسح</button>
+                    )}
+                    <span className="text-xs text-gray-400 ml-auto">{filtered2.length} دفعة — {sumOrd(filtered2.filter(p=>p.status!=='pending')).toLocaleString()} ج.م</span>
+                    <button onClick={()=>{
+                      const rows=[['العميل','الكود','الكورس','المبلغ','وسيلة الدفع','الموظف','التاريخ','الحالة','ملاحظة'],...filtered2.map(p=>[p.clientName,p.clientCode,courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'',''+p.amount,p.paymentMethod||'',p.staffName||'',(p.at||'').slice(0,10),p.status==='pending'?'انتظار':'مؤكد',p.note||''])];
+                      const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+                      const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+                      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`daqqi_payments_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+                    }} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
+                      <Download size={12}/> تصدير CSV
+                    </button>
+                  </div>
+                  {/* Payments table */}
+                  <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs min-w-[750px] border-collapse">
+                        <thead>
+                          <tr className="bg-gradient-to-l from-purple-50 to-white text-gray-700">
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">العميل</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">الكورس</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">المبلغ</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">وسيلة الدفع</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الموظف</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">التاريخ</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الحالة</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">ملاحظة</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered2.slice(0,200).map((p,i)=>{
+                            const courseTitle=courses.find(c=>c.id===p.courseId)?.titleAr||courses.find(c=>c.id===p.courseId)?.title||p.paymentType||'—';
+                            const isPending=p.status==='pending';
+                            return (
+                              <tr key={i} className={`hover:bg-purple-50/20 ${isPending?'bg-amber-50/40':''}`}>
+                                <td className="px-2 py-2 border border-gray-200">
+                                  <button onClick={()=>navigate(`/client/${p.clientCode}`)} className="font-semibold text-gray-800 hover:text-purple-700 text-[11px]">{p.clientName}</button>
+                                  {p.clientCode&&<div className="text-[9px] text-indigo-600 font-mono">#{p.clientCode}</div>}
+                                </td>
+                                <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-600 max-w-[120px] truncate" title={courseTitle}>{courseTitle}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{Number(p.amount).toLocaleString()} ج.م</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-600">{p.paymentMethod||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{p.staffName||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{(p.at||'').slice(0,10)||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center">
+                                  {isPending
+                                    ?<span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5 font-bold">⏳ انتظار</span>
+                                    :<span className="text-[10px] bg-green-100 text-green-700 border border-green-200 rounded-full px-1.5 py-0.5 font-bold">✅ مؤكد</span>}
+                                </td>
+                                <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-400 max-w-[100px] truncate">{p.note||'—'}</td>
+                              </tr>
+                            );
+                          })}
+                          {filtered2.length===0&&<tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </article>
+              );
   }
 
   // ── Admin / default view ─────────────────────────────────────────────────
@@ -174,7 +427,7 @@ export default function OrdersTab({
                 const d = new Date(); d.setDate(d.getDate() - (6 - i));
                 const ds = d.toISOString().slice(0, 10);
                 const rev = paidAll.filter(r => (r.createdAt || '').slice(0, 10) === ds).reduce((s, r) => s + toEGP(r), 0);
-                const label = d.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short' });
+                const label = d.toLocaleDateString('ar-EG', { weekday: 'short' });
                 return { ds, rev, label };
               });
               const maxRev = Math.max(...last7.map(d => d.rev), 1);
@@ -199,6 +452,32 @@ export default function OrdersTab({
               const hasFilters = orderSearch || orderTypeFilter !== 'all' || orderMethodFilter !== 'all'
                 || orderStaffFilter !== 'all' || orderDateFrom || orderDateTo;
 
+              const payMethodBadge = (m: string | undefined) => {
+                const map: Record<string, { label: string; cls: string }> = {
+                  cash:          { label: 'نقدي',          cls: 'bg-gray-100 text-gray-700' },
+                  transfer:      { label: 'تحويل بنكي',    cls: 'bg-blue-100 text-blue-700' },
+                  vodafone_cash: { label: 'فودافون كاش',   cls: 'bg-red-100 text-red-700' },
+                  instapay:      { label: 'انستا باي',     cls: 'bg-purple-100 text-purple-700' },
+                  online_paymob: { label: 'أونلاين/بطاقة', cls: 'bg-indigo-100 text-indigo-700' },
+                  card:          { label: 'بطاقة بنكية',   cls: 'bg-cyan-100 text-cyan-700' },
+                  wallet:        { label: 'محفظة',          cls: 'bg-teal-100 text-teal-700' },
+                  manual:        { label: 'يدوي',           cls: 'bg-orange-100 text-orange-700' },
+                };
+                const key = (m || '').toLowerCase();
+                const info = map[key] || { label: m || '—', cls: 'bg-gray-100 text-gray-500' };
+                return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${info.cls}`}>{info.label}</span>;
+              };
+
+              const typeBadge = (t: string | undefined) => {
+                const map: Record<string, { label: string; cls: string }> = {
+                  course:       { label: 'كورس',       cls: 'bg-emerald-100 text-emerald-700' },
+                  bundle:       { label: 'مسار',        cls: 'bg-violet-100 text-violet-700' },
+                  consultation: { label: 'استشارة',    cls: 'bg-amber-100 text-amber-700' },
+                  certificate:  { label: 'شهادة',      cls: 'bg-sky-100 text-sky-700' },
+                };
+                const info = map[t || ''] || { label: t || '—', cls: 'bg-gray-100 text-gray-500' };
+                return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${info.cls}`}>{info.label}</span>;
+              };
 
               return (
                 <div className="space-y-4" dir="rtl">
@@ -381,7 +660,7 @@ export default function OrdersTab({
                         {tabRows.length} طلب · {tabTotal.toLocaleString()} ج
                       </span>
                       {/* Export */}
-                      <button onClick={() => exportOrdersCsv(filteredOrders)} disabled={filteredOrders.length === 0}
+                      <button onClick={exportFilteredOrdersCsv} disabled={filteredOrders.length === 0}
                         className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition ${filteredOrders.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
                         <Download size={12} /> تصدير CSV
                       </button>
@@ -431,7 +710,7 @@ export default function OrdersTab({
                                   const fmtDate = (() => {
                                     if (!row.createdAt) return '—';
                                     const d = new Date(row.createdAt.replace(' ','T'));
-                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+                                    return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
                                   })();
                                   return (
                                     <tr key={row.id} className={`border-b border-gray-100 ${rowBg} transition-colors`}>
@@ -472,14 +751,10 @@ export default function OrdersTab({
                                                 className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold transition">✕</button>
                                             </>
                                           )}
-                                          {consumedTransfers.has(row.id) ? (
-                                            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-bold" title="هذا التحويل مربوط بدفعة عميل ومؤكَّد">✓ مربوطة</span>
-                                          ) : (
-                                            <button onClick={() => setLinkTransferModal({ row })}
-                                              className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
-                                              🔗 ربط
-                                            </button>
-                                          )}
+                                          <button onClick={() => setLinkTransferModal({ row })}
+                                            className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
+                                            🔗 ربط
+                                          </button>
                                           <button onClick={() => deleteOrder(row.id)}
                                             className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
                                             <Trash2 size={11} />
@@ -545,7 +820,7 @@ export default function OrdersTab({
                             const fmtDate = (() => {
                               if (!row.createdAt) return '—';
                               const d = new Date(row.createdAt.replace(' ', 'T'));
-                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                              return isNaN(d.getTime()) ? row.createdAt : d.toLocaleString('ar-EG', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
                             })();
                             const productTitle = (() => {
                               const t = (row.itemTitle || '').toLowerCase().trim();
@@ -685,9 +960,7 @@ export default function OrdersTab({
                             ) : pendingOrders.map(order => (
                               <button key={order.id}
                                 onClick={() => {
-                                  void mysqlAdmin.linkOrderTransfer(order.id, transfer.id);
                                   updateOrderStatus(order.id, 'paid');
-                                  setConsumedTransferIds(prev => new Set(prev).add(transfer.id));
                                   notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
                                   setLinkTransferModal(null);
                                   setOrderReviewTab('accepted');
@@ -723,7 +996,7 @@ export default function OrdersTab({
                   ══════════════════════════════════════════ */}
                   {linkOrderModal && (() => {
                     const order = linkOrderModal.row;
-                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid' && !consumedTransfers.has(r.id));
+                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid');
                     return (
                       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLinkOrderModal(null)} />
@@ -747,9 +1020,7 @@ export default function OrdersTab({
                             ) : availableTransfers.map(transfer => (
                               <button key={transfer.id}
                                 onClick={() => {
-                                  void mysqlAdmin.linkOrderTransfer(order.id, transfer.id);
                                   updateOrderStatus(order.id, 'paid');
-                                  setConsumedTransferIds(prev => new Set(prev).add(transfer.id));
                                   notify('success', `✅ تم ربط دفعة ${order.customerName} بتحويل ${transfer.customerName} وتأكيدها`);
                                   setLinkOrderModal(null);
                                   setOrderReviewTab('accepted');

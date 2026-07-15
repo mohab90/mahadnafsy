@@ -6,41 +6,29 @@ import type { ExpenseCategory } from '../../../types';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
-// Backend (recurring_expenses) is EGP-only and stores a day_of_month (not a full
-// date) with monthly/quarterly/yearly frequency. The UI maps onto that model.
-type Frequency = 'monthly' | 'quarterly' | 'yearly';
+type Frequency = 'monthly' | 'quarterly' | 'yearly' | 'weekly';
+type CurrencyCode = 'EGP' | 'SAR' | 'USD';
 
 interface RecurringItem {
   id: string;
   name: string;
   category: ExpenseCategory;
   amount: number;
-  currency: 'EGP';
+  currency: CurrencyCode;
   frequency: Frequency;
   nextDue: string;
   active: boolean;
   notes?: string;
 }
 
-interface ApiRow { id: string; title: string; amount_egp: number | string; category: string; notes?: string; frequency: Frequency; day_of_month: number; is_active: number; }
-// Next occurrence of a day-of-month (for display only).
-function dueFromDom(dom: number): string {
-  const now = new Date();
-  const d = Math.min(Math.max(Number(dom) || 1, 1), 28);
-  const m = now.getDate() > d ? now.getMonth() + 1 : now.getMonth();
-  return new Date(now.getFullYear(), m, d).toISOString().slice(0, 10);
+const LS_KEY = 'mahad_recurring_expenses_v1';
+function load(): RecurringItem[] {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
 }
-function mapRow(r: ApiRow): RecurringItem {
-  return {
-    id: r.id, name: r.title, category: (r.category as ExpenseCategory) || 'أخرى',
-    amount: Number(r.amount_egp) || 0, currency: 'EGP', frequency: r.frequency || 'monthly',
-    nextDue: dueFromDom(r.day_of_month), active: !!r.is_active, notes: r.notes,
-  };
-}
-const domFromDate = (d?: string) => (d ? new Date(d).getDate() : 1);
+function save(items: RecurringItem[]) { localStorage.setItem(LS_KEY, JSON.stringify(items)); }
 
-const FREQ_LABELS: Record<Frequency, string> = { monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
-const FREQ_MULTIPLIER: Record<Frequency, number> = { monthly: 12, quarterly: 4, yearly: 1 };
+const FREQ_LABELS: Record<Frequency, string> = { weekly: 'أسبوعي', monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
+const FREQ_MULTIPLIER: Record<Frequency, number> = { weekly: 52, monthly: 12, quarterly: 4, yearly: 1 };
 const CATEGORIES: ExpenseCategory[] = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'أخرى'];
 
 const CAT_COLORS: Record<string, string> = {
@@ -51,25 +39,28 @@ const CAT_COLORS: Record<string, string> = {
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
+// Seed default items if none
+function seedDefaults(): RecurringItem[] {
+  return [
+    { id: '1', name: 'اشتراك Firebase', category: 'برمجيات', amount: 500, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10), active: true },
+    { id: '2', name: 'إيجار المكتب', category: 'إيجار', amount: 8000, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10), active: true },
+    { id: '3', name: 'رواتب الفريق', category: 'رواتب', amount: 25000, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 25).toISOString().slice(0, 10), active: true },
+    { id: '4', name: 'إعلانات Meta', category: 'تسويق', amount: 3000, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10), active: true },
+    { id: '5', name: 'تجديد الدومين', category: 'برمجيات', amount: 800, currency: 'EGP', frequency: 'yearly', nextDue: new Date(new Date().getFullYear() + 1, new Date().getMonth(), 1).toISOString().slice(0, 10), active: true },
+  ];
+}
+
 const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
-  const [items, setItems] = useState<RecurringItem[]>([]);
+  const { expenses } = useSiteData();
+  const [items, setItems] = useState<RecurringItem[]>(() => { const d = load(); return d.length > 0 ? d : seedDefaults(); });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [draft, setDraft] = useState<Partial<RecurringItem>>({});
   const [filter, setFilter] = useState<string>('all');
 
-  // Load from the server (shared + persistent + drives the auto-create cron).
-  const reload = React.useCallback(async () => {
-    try {
-      const r = await fetch('/api/admin/recurring-expenses', { credentials: 'include' });
-      if (!r.ok) throw new Error('load failed');
-      const rows = await r.json() as ApiRow[];
-      setItems((rows || []).map(mapRow));
-    } catch { setItems([]); }
-  }, []);
-  React.useEffect(() => { void reload(); }, [reload]);
+  React.useEffect(() => { save(items); }, [items]);
 
-  const format = (n: number) => n.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
+  const format = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 
   const stats = useMemo(() => {
     const active = items.filter(i => i.active);
@@ -80,62 +71,39 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
     return { monthlyTotal, yearlyTotal, overdue, dueSoon, activeCount: active.length };
   }, [items]);
 
-  const addItem = async () => {
+  const addItem = () => {
     if (!draft.name?.trim() || !draft.amount) { notify('error', 'أدخل الاسم والمبلغ'); return; }
-    try {
-      const r = await fetch('/api/admin/recurring-expenses', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: draft.name, amount_egp: +draft.amount, category: draft.category || 'أخرى',
-          notes: draft.notes || null, frequency: draft.frequency || 'monthly', day_of_month: domFromDate(draft.nextDue),
-        }),
-      });
-      if (!r.ok) throw new Error('save');
-      setDraft({}); setShowAdd(false);
-      await reload();
-      notify('success', 'تم إضافة المصروف المتكرر');
-    } catch { notify('error', 'فشل إضافة المصروف'); }
+    const item: RecurringItem = {
+      id: Date.now().toString(),
+      name: draft.name,
+      category: draft.category || 'أخرى',
+      amount: +draft.amount,
+      currency: draft.currency || 'EGP',
+      frequency: draft.frequency || 'monthly',
+      nextDue: draft.nextDue || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10),
+      active: true,
+      notes: draft.notes,
+    };
+    setItems(prev => [...prev, item]);
+    setDraft({});
+    setShowAdd(false);
+    notify('success', 'تم إضافة المصروف المتكرر');
   };
 
-  const saveEdit = async (id: string) => {
-    const cur = items.find(i => i.id === id);
-    if (!cur) return;
-    const merged = { ...cur, ...draft };
-    try {
-      const r = await fetch(`/api/admin/recurring-expenses/${id}`, {
-        method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: merged.name, amount_egp: merged.amount, category: merged.category,
-          notes: merged.notes || null, frequency: merged.frequency, day_of_month: domFromDate(merged.nextDue),
-        }),
-      });
-      if (!r.ok) throw new Error('save');
-      setEditingId(null); setDraft({});
-      await reload();
-      notify('success', 'تم الحفظ');
-    } catch { notify('error', 'فشل الحفظ'); }
+  const saveEdit = (id: string) => {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, ...draft } : i));
+    setEditingId(null);
+    setDraft({});
+    notify('success', 'تم الحفظ');
   };
 
-  const deleteItem = async (id: string) => {
-    try {
-      const r = await fetch(`/api/admin/recurring-expenses/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!r.ok) throw new Error('del');
-      await reload();
-      notify('success', 'تم الحذف');
-    } catch { notify('error', 'فشل الحذف'); }
+  const deleteItem = (id: string) => {
+    setItems(prev => prev.filter(i => i.id !== id));
+    notify('success', 'تم الحذف');
   };
 
-  const toggleActive = async (id: string) => {
-    const cur = items.find(i => i.id === id);
-    if (!cur) return;
-    try {
-      const r = await fetch(`/api/admin/recurring-expenses/${id}`, {
-        method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: cur.active ? 0 : 1 }),
-      });
-      if (!r.ok) throw new Error('toggle');
-      await reload();
-    } catch { notify('error', 'فشل التحديث'); }
+  const toggleActive = (id: string) => {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, active: !i.active } : i));
   };
 
   const filtered = items.filter(i => filter === 'all' ? true : filter === 'active' ? i.active : filter === 'inactive' ? !i.active : i.category === filter);
@@ -196,6 +164,10 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
             <select value={draft.frequency || 'monthly'} onChange={e => setDraft(p => ({ ...p, frequency: e.target.value as Frequency }))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
               {Object.entries(FREQ_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <select value={draft.currency || 'EGP'} onChange={e => setDraft(p => ({ ...p, currency: e.target.value as CurrencyCode }))}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
+              <option value="EGP">EGP</option><option value="SAR">SAR</option><option value="USD">USD</option>
             </select>
             <input type="date" value={draft.nextDue || ''} onChange={e => setDraft(p => ({ ...p, nextDue: e.target.value }))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none" />

@@ -55,7 +55,7 @@ export default function ConsultationCalendarTab({ notify }: { notify: NotifyFn }
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
-  const monthName = new Date(viewYear, viewMonth, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
+  const monthName = new Date(viewYear, viewMonth, 1).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw, TrendingUp, TrendingDown, Users, DollarSign,
   UserPlus, AlertCircle, Award, BarChart3, Activity,
@@ -35,19 +35,28 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
   const [data, setData] = useState<KpiData | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState('');
+  const notifyRef = useRef(notify);
+
+  useEffect(() => {
+    notifyRef.current = notify;
+  }, [notify]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/kpi/summary', { credentials: 'include' });
+      const token = localStorage.getItem('mahad-token');
+      const res = await fetch('/api/admin/kpi/summary', {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
-      setLastRefresh(new Date().toLocaleTimeString('ar-EG-u-nu-latn'));
+      setLastRefresh(new Date().toLocaleTimeString('ar-EG'));
     } catch (e: any) {
-      notify('error', `خطأ في تحميل لوحة KPI: ${e.message}`);
+      notifyRef.current('error', `خطأ في تحميل لوحة KPI: ${e.message}`);
     } finally { setLoading(false); }
-  }, [notify]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -170,7 +179,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="day" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} />
-              <Tooltip formatter={((v: number) => [`${v.toLocaleString()} ج`, 'إيراد']) as any} />
+              <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ج`, 'إيراد']} />
               <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="url(#revGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
@@ -186,7 +195,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="day" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-              <Tooltip formatter={((v: number) => [v, 'ليد']) as any} />
+              <Tooltip formatter={(v: number) => [v, 'ليد']} />
               <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} name="ليدات" />
             </BarChart>
           </ResponsiveContainer>

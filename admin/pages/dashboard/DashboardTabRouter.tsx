@@ -1,7 +1,7 @@
 import React, { Suspense } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { Settings2, Shield, User } from 'lucide-react';
-import { TabErrorBoundary } from '../../components/TabErrorBoundary';
+import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import type {
   AuthUser,

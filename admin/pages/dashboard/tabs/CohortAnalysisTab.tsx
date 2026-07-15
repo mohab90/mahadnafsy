@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Users, TrendingUp, Calendar } from 'lucide-react';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -33,28 +33,39 @@ function heatColor(p: number): string {
   return 'bg-emerald-600 text-white';
 }
 
+function adminHeaders(): HeadersInit {
+  const token = localStorage.getItem('mahad-token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export default function CohortAnalysisTab({ notify }: { notify: NotifyFn }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [months, setMonths] = useState(6);
   const [data, setData] = useState<CohortData | null>(null);
   const [loading, setLoading] = useState(false);
+  const notifyRef = useRef(notify);
+
+  useEffect(() => {
+    notifyRef.current = notify;
+  }, [notify]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/analytics/cohorts?year=${year}&months=${months}`, {
         credentials: 'include',
+        headers: adminHeaders(),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
     } catch (e: any) {
-      notify('error', `خطأ في تحميل بيانات الكوهورت: ${e.message}`);
+      notifyRef.current('error', `خطأ في تحميل بيانات الكوهورت: ${e.message}`);
     } finally {
       setLoading(false);
     }
-  }, [year, months, notify]);
+  }, [year, months]);
 
   useEffect(() => { load(); }, [load]);
 
