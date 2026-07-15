@@ -1273,11 +1273,22 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Helpers: add to blocked set AND persist to localStorage so deletions survive page refresh
   const deleteSubscriber = (id: string) => {
+    const removed = subscribersRef.current.find((row) => row.id === id);
     const nextSubscribers = subscribersRef.current.filter((row) => row.id !== id);
     subscribersRef.current = nextSubscribers;
     lastCRMWriteRef.current = Date.now();
     setSubscribers(nextSubscribers);
-    void mysqlAdmin.deleteSubscriber(id);
+    // This had no .catch() at all: a 403 (e.g. a role like reception_daqqi that isn't
+    // allowed to delete) silently left the row removed from the UI while it still
+    // existed in the DB — it just reappeared on the next reload with zero explanation.
+    // Revert the optimistic removal on failure and surface the existing error toast.
+    mysqlAdmin.deleteSubscriber(id).catch(() => {
+      if (removed) {
+        subscribersRef.current = [removed, ...subscribersRef.current];
+        setSubscribers(subscribersRef.current);
+      }
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'subscriber', name: removed?.name } }));
+    });
     track('delete', 'subscriber', id);
   };
 
