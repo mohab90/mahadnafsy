@@ -1,0 +1,2 @@
+ALTER TABLE subscribers
+  ADD COLUMN IF NOT EXISTS loyalty_points INT NOT NULL DEFAULT 0 AFTER discount;
