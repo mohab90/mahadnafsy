@@ -104,11 +104,16 @@ async function syncAllConfiguredSheets() {
           if(found) return found.id;
           found = dbCourses.find(c => { const ct=normStr(c.title); return ct.includes(n)||(n.length>=4&&n.includes(ct.substring(0,Math.min(ct.length,6)))); });
           if(found) return found.id;
-          // word overlap fallback
+          // Word-overlap fallback — require overlap across a MEANINGFUL FRACTION of the
+          // query's words, not just a fixed count of 2. A flat ">=2" let long, word-rich
+          // titles (e.g. "دبلومة اضطراب طيف التوحد والتدخل المبكر") absorb unrelated rows
+          // that only coincidentally shared 2 generic words like "دبلومة" — this was
+          // silently mis-tagging Google Sheets leads with the wrong course.
           const qw = n.split(/\s+/).filter(w=>w.length>2);
           let bestId=null,bestScore=0;
           for(const c of dbCourses){ const ctw=normStr(c.title).split(/\s+/).filter(w=>w.length>2); const ov=qw.filter(w=>ctw.some(cw=>cw.includes(w)||w.includes(cw))).length; if(ov>bestScore){bestScore=ov;bestId=c.id;} }
-          return bestScore>=2?bestId:null;
+          const minOverlap = Math.max(2, Math.ceil(qw.length * 0.5));
+          return bestScore>=minOverlap?bestId:null;
         };
         const [reps] = await pool.execute(`SELECT id, name FROM staff WHERE role = 'SALES' AND is_active=1 ORDER BY name ASC`);
         let rrRaw = 0;
