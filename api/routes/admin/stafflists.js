@@ -55,6 +55,23 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
     }
     // scope === 'all' falls through with scopeClause = '1=1' (no extra restriction)
 
+    // Optional server-side search/filter — additive, backward-compatible: callers that
+    // don't pass q/status get identical results to before. Lets the admin UI eventually
+    // query a page at a time instead of paging through the entire table into memory.
+    let searchClause = '';
+    const searchParams = [];
+    const q = (req.query.q || '').trim();
+    if (q) {
+      searchClause += ' AND (s.name LIKE ? OR s.phone LIKE ? OR s.email LIKE ? OR s.client_code LIKE ?)';
+      const like = `%${q}%`;
+      searchParams.push(like, like, like, like);
+    }
+    const statusFilter = (req.query.status || '').trim();
+    if (statusFilter && statusFilter !== 'all') {
+      searchClause += ' AND s.status = ?';
+      searchParams.push(statusFilter);
+    }
+
     const [rows] = await pool.query(
       `SELECT s.*,
               COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
@@ -64,9 +81,9 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id
        WHERE s.tenant_id = ? AND (${scopeClause}) AND NOT EXISTS (
          SELECT 1 FROM staff st WHERE LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
-       ) ${adminExclusions}
+       ) ${adminExclusions}${searchClause}
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
-      [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), limit, offset]
+      [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), ...searchParams, limit, offset]
     );
     if (rows.length === 0) return res.json([]);
 

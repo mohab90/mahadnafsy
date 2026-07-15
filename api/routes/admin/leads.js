@@ -760,6 +760,21 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
       }
       // scope === 'all' → no additional filter
     }
+
+    // Optional server-side search/filter — additive, backward-compatible: callers that
+    // don't pass q/status get identical results to before.
+    const q = (req.query.q || '').trim();
+    if (q) {
+      sql += ' AND (l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.client_code LIKE ?)';
+      const like = `%${q}%`;
+      params.push(like, like, like, like);
+    }
+    const statusFilter = (req.query.status || '').trim().toLowerCase();
+    if (statusFilter && statusFilter !== 'all') {
+      sql += ' AND LOWER(l.status) = ?';
+      params.push(statusFilter);
+    }
+
     // Cursor (keyset) pagination — opt-in via ?cursor=, falls back to offset.
     let nextCursorFn = null;
     if (req.query.cursor) {
