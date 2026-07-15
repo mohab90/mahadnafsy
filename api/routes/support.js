@@ -13,7 +13,7 @@ const { pool, getStaffIdByEmail } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { sendEmail } = require('../lib/email');
 const { createNotification } = require('../lib/notification');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const {
   CATEGORY_META, DEPARTMENT_LABEL, resolveDepartment, defaultPriority,
   computeSlaDue, pickAssignee, logTicketEvent,
@@ -71,7 +71,7 @@ async function createRoutedTicket(conn, {
 
 // ── UNIFIED INBOX ────────────────────────────────────────────────────────────
 // Tickets + not-yet-converted contact messages, with routing + SLA, filterable.
-router.get('/api/admin/cs/inbox', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { department, category, status, sla, assignee, q } = req.query;
     const where = ['t.tenant_id = ?'];
@@ -117,7 +117,7 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdmin, async (req, res) =>
 });
 
 // ── STATS + AGENT WORKLOAD ───────────────────────────────────────────────────
-router.get('/api/admin/cs/stats', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/cs/stats', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const [[counts]] = await pool.query(
       `SELECT
@@ -142,7 +142,7 @@ router.get('/api/admin/cs/stats', requireAuth, requireAdmin, async (req, res) =>
 });
 
 // ── LIST + DETAIL ────────────────────────────────────────────────────────────
-router.get('/api/admin/tickets', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/tickets', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const where = ['t.tenant_id = ?']; const params = [req.tenantId];
     if (req.query.status) { where.push('t.status = ?'); params.push(req.query.status); }
@@ -155,7 +155,7 @@ router.get('/api/admin/tickets', requireAuth, requireAdmin, async (req, res) => 
   } catch (e) { logger.error('[cs/list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/tickets/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const [[t]] = await pool.query('SELECT * FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
     if (!t) return res.status(404).json({ error: 'Not found' });
@@ -178,7 +178,7 @@ router.get('/api/admin/tickets/:id', requireAuth, requireAdmin, async (req, res)
 });
 
 // ── CREATE (staff, e.g. phone/whatsapp intake) ───────────────────────────────
-router.post('/api/admin/cs/tickets', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/cs/tickets', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { subject, body, category, priority, channel, subscriber_id, email, name } = req.body;
     if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
@@ -192,7 +192,7 @@ router.post('/api/admin/cs/tickets', requireAuth, requireAdmin, async (req, res)
 });
 
 // ── CONVERT a website contact message → routed ticket ────────────────────────
-router.post('/api/admin/cs/contact/:id/convert', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/cs/contact/:id/convert', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const [[c]] = await pool.query('SELECT * FROM contact_messages WHERE id=? LIMIT 1', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
@@ -219,7 +219,7 @@ router.post('/api/admin/cs/contact/:id/convert', requireAuth, requireAdmin, asyn
 });
 
 // ── RE-ROUTE (change category → recompute dept + reassign) ───────────────────
-router.put('/api/admin/tickets/:id/route', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/tickets/:id/route', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { category, priority } = req.body;
     const [[t]] = await pool.query('SELECT category, department, priority FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
@@ -238,7 +238,7 @@ router.put('/api/admin/tickets/:id/route', requireAuth, requireAdmin, async (req
 });
 
 // ── ASSIGN (manual) ──────────────────────────────────────────────────────────
-router.put('/api/admin/tickets/:id/assign', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/tickets/:id/assign', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { staff_id } = req.body;
     const [[st]] = staff_id ? await pool.query('SELECT id, name FROM staff WHERE id=? LIMIT 1', [staff_id]) : [[null]];
@@ -251,13 +251,13 @@ router.put('/api/admin/tickets/:id/assign', requireAuth, requireAdmin, async (re
 });
 
 // ── REPLY (records first response for SLA) ───────────────────────────────────
-router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { body } = req.body;
     if (!body) return res.status(400).json({ error: 'body required' });
     const actor = await actorOf(req);
     await pool.query('INSERT INTO ticket_replies (id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?)',
-      [uuidv4(), req.params.id, 'staff', actor.name, body]);
+      [uuidv4(), req.params.id, 'STAFF', actor.name, body]);
     // First response closes the SLA clock; move open→in_progress.
     await pool.query(
       `UPDATE support_tickets
@@ -293,7 +293,7 @@ router.post('/api/admin/tickets/:id/reply', requireAuth, requireAdmin, async (re
 });
 
 // ── STATUS change (+ closed reason) ──────────────────────────────────────────
-router.put('/api/admin/tickets/:id/status', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const { status, closed_reason } = req.body;
     const valid = ['open', 'in_progress', 'resolved', 'closed'];
@@ -311,7 +311,7 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdmin, async (re
 });
 
 // ── ESCALATE to management ───────────────────────────────────────────────────
-router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   try {
     const assignee = await pickAssignee(pool, req.tenantId, 'management');
     await pool.query(
@@ -323,6 +323,17 @@ router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdmin, async 
     createNotification('ticket', '⚠️ تذكرة مُصعّدة', `تم تصعيد تذكرة للإدارة${req.body.reason ? ': ' + req.body.reason : ''}`, { ticketId: req.params.id }).catch(() => {});
     res.json({ ok: true, assignee });
   } catch (e) { logger.error('[cs/escalate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── DELETE (admin cleanup — e.g. test/duplicate tickets) ─────────────────────
+router.delete('/api/admin/tickets/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM ticket_replies WHERE ticket_id=?', [req.params.id]);
+    await pool.query('DELETE FROM ticket_events WHERE ticket_id=?', [req.params.id]).catch(() => {});
+    const [r] = await pool.query('DELETE FROM support_tickets WHERE id=?', [req.params.id]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/delete]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── CLIENT: submit + list own tickets (auto-routed) ──────────────────────────
@@ -373,7 +384,7 @@ router.post('/api/me/tickets/:id/reply', requireAuth, async (req, res) => {
       'SELECT id, subscriber_email, subscriber_name, subject FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
     if (!t || String(t.subscriber_email || '').toLowerCase().trim() !== email) return res.status(404).json({ error: 'Not found' });
     await pool.query('INSERT INTO ticket_replies (id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?)',
-      [uuidv4(), req.params.id, 'subscriber', t.subscriber_name || req.user.name || 'العميل', String(body)]);
+      [uuidv4(), req.params.id, 'CLIENT', t.subscriber_name || req.user.name || 'العميل', String(body)]);
     await pool.query("UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW() WHERE id=?", [req.params.id]);
     await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'replied', actorName: t.subscriber_name || 'العميل', detail: String(body).slice(0, 200) });
     createNotification('ticket', 'رد جديد من العميل', `${t.subscriber_name || email}: ${t.subject}`, { ticketId: req.params.id }).catch(() => {});

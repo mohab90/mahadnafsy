@@ -8,7 +8,7 @@ interface Props { notify: NotifyFn; }
 
 type TicketStatus = 'open' | 'inprogress' | 'resolved' | 'closed';
 type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
-type TicketCategory = 'technical' | 'billing' | 'course' | 'consultation' | 'complaint' | 'other';
+type TicketCategory = 'billing' | 'refund' | 'complaint' | 'technical' | 'course_access' | 'sales_inquiry' | 'consultation' | 'certificate' | 'general';
 
 interface SupportTicket {
   id: string;
@@ -70,8 +70,9 @@ const PRIORITY_CFG: Record<TicketPriority, { label: string; color: string; icon:
 };
 
 const CAT_LABELS: Record<TicketCategory, string> = {
-  technical: '💻 تقني', billing: '💳 مالي', course: '📚 كورس',
-  consultation: '🩺 استشارة', complaint: '⚠️ شكوى', other: '📌 أخرى',
+  billing: '💳 مدفوعات وفواتير', refund: '💰 طلب استرداد', complaint: '⚠️ شكوى',
+  technical: '💻 مشكلة تقنية', course_access: '📚 وصول للدورة', sales_inquiry: '🛒 استفسار مبيعات',
+  consultation: '🩺 استشارة', certificate: '🎓 شهادات', general: '📌 عام',
 };
 
 const TicketsTab: React.FC<Props> = ({ notify }) => {
@@ -88,6 +89,8 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const [replyText, setReplyText] = useState('');
   const [draft, setDraft] = useState<Partial<SupportTicket>>({});
   const [showCanned, setShowCanned] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const statusFromApi = (status?: string): TicketStatus => {
     if (status === 'in_progress') return 'inprogress';
@@ -96,6 +99,10 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   };
 
   const statusToApi = (status: TicketStatus) => status === 'inprogress' ? 'in_progress' : status;
+
+  const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general'];
+  const categoryFromApi = (category?: string): TicketCategory =>
+    (CATEGORY_KEYS as string[]).includes(category || '') ? (category as TicketCategory) : 'general';
 
   const mapTicket = (row: any): SupportTicket => {
     const priority = (['low', 'medium', 'high', 'urgent'].includes(row.priority) ? row.priority : 'medium') as TicketPriority;
@@ -107,7 +114,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
       description: row.body || row.description || '',
       status: statusFromApi(row.status),
       priority,
-      category: 'other',
+      category: categoryFromApi(row.category),
       clientName: row.subscriber_name || row.clientName || row.subscriber_email || 'عميل',
       clientEmail: row.subscriber_email || row.clientEmail || '',
       assigneeId: row.assigned_to || row.assigneeId || '',
@@ -182,7 +189,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
       description: draft.description || '',
       status: 'open',
       priority,
-      category: draft.category || 'other',
+      category: draft.category || 'general',
       clientName: draft.clientName,
       clientPhone: draft.clientPhone,
       clientEmail: draft.clientEmail,
@@ -252,14 +259,16 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const createTicketApi = async () => {
     if (!draft.title?.trim() || !draft.clientName?.trim()) { notify('error', 'أدخل العنوان واسم العميل'); return; }
     try {
-      await mysqlAdmin.adminPost('/admin/tickets', {
+      const { id } = await mysqlAdmin.adminPost<{ id: string }>('/admin/cs/tickets', {
         subject: draft.title,
         body: draft.description || '',
-        subscriber_name: draft.clientName,
-        subscriber_email: draft.clientEmail || '',
+        name: draft.clientName,
+        email: draft.clientEmail || '',
+        category: draft.category || 'general',
         priority: draft.priority || 'medium',
-        assigned_to: draft.assigneeId || null,
+        channel: 'phone',
       });
+      if (draft.assigneeId && id) await mysqlAdmin.adminPut(`/admin/tickets/${id}/assign`, { staff_id: draft.assigneeId });
       setDraft({});
       setShowCreate(false);
       await loadTickets();
@@ -271,17 +280,64 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
 
   const updateStatusApi = async (id: string, status: TicketStatus) => {
     try {
-      await mysqlAdmin.adminPut(`/admin/tickets/${id}`, {
-        status: statusToApi(status),
-        priority: selectedTicket?.priority || 'medium',
-        assigned_to: selectedTicket?.assigneeId || null,
-      });
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, { status: statusToApi(status) });
       setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString(), ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) } : t));
       notify('success', `تم تحديث الحالة إلى "${STATUS_CFG[status].label}"`);
     } catch (error) {
       notify('error', 'تعذر تحديث حالة التذكرة');
     }
   };
+
+  const assignTicketApi = async (id: string, staffId: string | null) => {
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}/assign`, { staff_id: staffId });
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, assigneeId: staffId || undefined, updatedAt: new Date().toISOString() } : t));
+      notify('success', staffId ? 'تم تحويل التذكرة' : 'تم إلغاء الإسناد');
+    } catch (error) {
+      notify('error', 'تعذر تحويل التذكرة');
+    }
+  };
+
+  const setCategoryApi = async (id: string, category: TicketCategory) => {
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}/route`, { category });
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, category, updatedAt: new Date().toISOString() } : t));
+      notify('success', 'تم تصنيف التذكرة');
+    } catch (error) {
+      notify('error', 'تعذر تصنيف التذكرة');
+    }
+  };
+
+  // ── Bulk actions on the current selection ────────────────────────────────
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleSelectAll = (ids: string[]) => setSelectedIds(prev => prev.size === ids.length ? new Set() : new Set(ids));
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const runBulk = async (label: string, fn: (id: string) => Promise<void>) => {
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    let ok = 0;
+    for (const id of ids) {
+      try { await fn(id); ok++; } catch { /* per-ticket error already surfaced by fn's own notify */ }
+    }
+    setBulkBusy(false);
+    clearSelection();
+    notify(ok === ids.length ? 'success' : 'error', `${label}: ${ok}/${ids.length} تذكرة`);
+  };
+
+  const bulkSetStatus = (status: TicketStatus) => runBulk('تحديث الحالة', id =>
+    mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, { status: statusToApi(status) })
+      .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString() } : t))));
+  const bulkAssign = (staffId: string) => runBulk('التحويل', id =>
+    mysqlAdmin.adminPut(`/admin/tickets/${id}/assign`, { staff_id: staffId || null })
+      .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, assigneeId: staffId || undefined, updatedAt: new Date().toISOString() } : t))));
+  const bulkSetCategory = (category: TicketCategory) => runBulk('التصنيف', id =>
+    mysqlAdmin.adminPut(`/admin/tickets/${id}/route`, { category })
+      .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, category, updatedAt: new Date().toISOString() } : t))));
 
   const addReplyApi = async () => {
     if (!replyText.trim() || !selectedTicket) return;
@@ -302,20 +358,14 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   };
 
   const escalateTicketApi = async (id: string) => {
-    const admins = supportTeam.filter(s => s.role === 'admin' || s.role === 'manager');
-    if (!admins.length) { notify('error', 'لا يوجد مدير للتصعيد إليه'); return; }
-    const manager = admins[0];
     try {
-      await mysqlAdmin.adminPut(`/admin/tickets/${id}`, {
-        status: statusToApi(selectedTicket?.status || 'open'),
-        priority: 'urgent',
-        assigned_to: manager.id,
-      });
+      const res = await mysqlAdmin.adminPost<{ ok: boolean; assignee?: { id: string; name: string } }>(`/admin/tickets/${id}/escalate`, {});
+      const managerName = res.assignee?.name || 'الإدارة';
       setTickets(prev => prev.map(t => t.id === id
-        ? { ...t, escalatedTo: manager.id, escalatedAt: new Date().toISOString(), priority: 'urgent' as TicketPriority, assigneeId: manager.id, updatedAt: new Date().toISOString() }
+        ? { ...t, escalatedTo: res.assignee?.id, escalatedAt: new Date().toISOString(), priority: 'urgent' as TicketPriority, assigneeId: res.assignee?.id || t.assigneeId, updatedAt: new Date().toISOString() }
         : t
       ));
-      notify('info', `تم تصعيد التذكرة إلى ${manager.name}`);
+      notify('info', `تم تصعيد التذكرة إلى ${managerName}`);
     } catch (error) {
       notify('error', 'تعذر تصعيد التذكرة');
     }
@@ -407,7 +457,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                   className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none">
                   {Object.entries(PRIORITY_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
                 </select>
-                <select value={draft.category || 'other'} onChange={e => setDraft(p => ({ ...p, category: e.target.value as TicketCategory }))}
+                <select value={draft.category || 'general'} onChange={e => setDraft(p => ({ ...p, category: e.target.value as TicketCategory }))}
                   className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none">
                   {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
@@ -452,6 +502,34 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
         <span className="text-sm text-gray-400 mr-auto">{filtered.length} تذكرة</span>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+          <span className="text-sm font-bold text-blue-800">{selectedIds.size} محددة</span>
+          <select disabled={bulkBusy} onChange={e => { if (e.target.value) bulkSetStatus(e.target.value as TicketStatus); e.target.value = ''; }}
+            defaultValue="" className="border border-blue-200 rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-50">
+            <option value="" disabled>تغيير الحالة إلى...</option>
+            {Object.entries(STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <select disabled={bulkBusy} onChange={e => { bulkAssign(e.target.value); e.target.value = ''; }}
+            defaultValue="" className="border border-blue-200 rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-50">
+            <option value="" disabled>تحويل إلى موظف...</option>
+            {supportTeam.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select disabled={bulkBusy} onChange={e => { if (e.target.value) bulkSetCategory(e.target.value as TicketCategory); e.target.value = ''; }}
+            defaultValue="" className="border border-blue-200 rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-50">
+            <option value="" disabled>تصنيف كـ...</option>
+            {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <button disabled={bulkBusy} onClick={() => bulkSetStatus('closed')}
+            className="text-xs px-3 py-1.5 rounded-lg bg-gray-700 text-white font-bold disabled:opacity-50">
+            {bulkBusy ? 'جارٍ التنفيذ...' : '📦 أرشفة (إغلاق جماعي)'}
+          </button>
+          <button disabled={bulkBusy} onClick={clearSelection}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 mr-auto hover:bg-gray-50">إلغاء التحديد</button>
+        </div>
+      )}
+
       {/* Layout: list + detail */}
       <div className="flex gap-4" style={{ minHeight: '400px' }}>
         {/* Ticket list */}
@@ -461,7 +539,13 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
               <Ticket size={40} className="mx-auto mb-3 opacity-20" />
               <p>لا توجد تذاكر</p>
             </div>
-          ) : filtered.map(ticket => {
+          ) : (<>
+          <label className="flex items-center gap-2 text-xs text-gray-500 px-1 cursor-pointer select-none">
+            <input type="checkbox" checked={selectedIds.size > 0 && selectedIds.size === filtered.length}
+              onChange={() => toggleSelectAll(filtered.map(t => t.id))} className="rounded" />
+            تحديد الكل
+          </label>
+          {filtered.map(ticket => {
             const s = STATUS_CFG[ticket.status];
             const p = PRIORITY_CFG[ticket.priority];
             const assignee = supportTeam.find(m => m.id === ticket.assigneeId);
@@ -476,9 +560,13 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 onClick={() => selectTicketApi(ticket, isSelected)}
                 className={`bg-white border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all ${isSelected ? 'border-blue-400 shadow-md' : 'border-gray-200'} ${ticket.slaBreached ? 'border-l-4 border-l-pink-500' : ticket.priority === 'urgent' ? 'border-r-4 border-r-red-500' : ticket.priority === 'high' ? 'border-r-4 border-r-orange-400' : ''}`}>
                 <div className="flex justify-between items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-800 truncate">{ticket.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{ticket.clientName} {ticket.clientPhone && `· ${ticket.clientPhone}`}</p>
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    <input type="checkbox" checked={selectedIds.has(ticket.id)} onClick={e => e.stopPropagation()}
+                      onChange={() => toggleSelect(ticket.id)} className="rounded mt-1 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-800 truncate">{ticket.title}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{ticket.clientName} {ticket.clientPhone && `· ${ticket.clientPhone}`}</p>
+                    </div>
                   </div>
                   <span className={`text-xs px-1.5 py-0.5 rounded-full border shrink-0 flex items-center gap-0.5 ${s.bg} ${s.color}`}>
                     {s.icon} {s.label}
@@ -498,6 +586,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
               </div>
             );
           })}
+          </>)}
         </div>
 
         {/* Ticket detail */}
@@ -534,6 +623,15 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                   <Zap size={11} /> تجاوز SLA
                 </span>
               )}
+              <select value={selectedTicket.assigneeId || ''} onChange={e => assignTicketApi(selectedTicket.id, e.target.value || null)}
+                className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-600 bg-white">
+                <option value="">— تحويل لموظف —</option>
+                {supportTeam.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select value={selectedTicket.category} onChange={e => setCategoryApi(selectedTicket.id, e.target.value as TicketCategory)}
+                className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-600 bg-white">
+                {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
               <button onClick={() => deleteTicketApi(selectedTicket.id)}
                 className="text-xs px-2 py-1 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mr-auto">حذف</button>
             </div>

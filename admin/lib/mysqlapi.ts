@@ -110,6 +110,7 @@ export const mysqlAdmin = {
   adminPost: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }, A),
   adminPatch: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, A),
   adminPut: <T = AR>(path: string, body: unknown) => apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) }, A),
+  adminDelete: <T = AR>(path: string) => apiFetch<T>(path, { method: 'DELETE' }, A),
   // ── Users management ──
   listAllUsers:  () => apiFetch<AR[]>('/admin/users', {}, A),
   deactivateUser: (id: string) => apiFetch<{ ok: boolean }>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
