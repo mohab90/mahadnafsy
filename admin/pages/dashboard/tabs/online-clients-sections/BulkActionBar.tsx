@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Course, StaffMember, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { paymentAmountInEGP } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type BulkAction = null|'pause'|'finish'|'delete'|'refund'|'assign';
@@ -16,8 +17,8 @@ interface Props {
   staffMembers: StaffMember[];
   filtered: SubscriberItem[];
   courses: Course[];
-  subscribers: SubscriberItem[];
-  salesOwnSubscribers: SubscriberItem[];
+  actionSubscribers: SubscriberItem[];
+  shouldUseScopedSubscribers: boolean;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   deleteSubscriber: (id: string) => void;
   updateSubscriber: (s: SubscriberItem) => void;
@@ -27,7 +28,7 @@ interface Props {
 export function BulkActionBar({
   collOnlineSelected, setCollOnlineSelected, collOnlineBulkConfirm, setCollOnlineBulkConfirm,
   collOnlineBulkAssignTo, setCollOnlineBulkAssignTo, isAdmin, staffMembers, filtered, courses,
-  subscribers, salesOwnSubscribers, setSalesOwnSubscribers, deleteSubscriber, updateSubscriber, notify,
+  actionSubscribers, shouldUseScopedSubscribers, setSalesOwnSubscribers, deleteSubscriber, updateSubscriber, notify,
 }: Props) {
   if (collOnlineSelected.size === 0 && !collOnlineBulkConfirm) return null;
 
@@ -44,10 +45,9 @@ export function BulkActionBar({
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('delete')} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">🗑 حذف</button>}
           <button onClick={() => {
             const toExport = filtered.filter(s => collOnlineSelected.has(s.id));
-            const toEGP = (p: {amount?:number|string;currency?:string}) => { const n=Number(p.amount)||0; return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n; };
             const header = 'الاسم,الهاتف,الإيميل,الفرع,الكورسات,الحالة,المدفوع (ج.م),المتبقي,الكود\n';
             const csvRows = toExport.map(s => {
-              const paid = (s.paymentHistory||[]).reduce((a,p)=>a+toEGP(p),0);
+              const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
               const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||id).join(' | ');
               return [s.name,s.phone,s.email,s.branch||'',crs,s.clientStatus||s.status||'',paid,Math.max(0,(Number(s.totalValue)||0)-paid),s.clientCode||''].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',');
             }).join('\n');
@@ -92,21 +92,21 @@ export function BulkActionBar({
                     if (isAdmin) deleteSubscriber(id);
                     else await mysqlAdmin.deleteSubscriber(id).catch(()=>{});
                   }
-                  if (!isAdmin) setSalesOwnSubscribers(prev => prev.filter(s => !collOnlineSelected.has(s.id)));
+                  if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.filter(s => !collOnlineSelected.has(s.id)));
                 } else if (collOnlineBulkConfirm === 'assign') {
                   if (!collOnlineBulkAssignTo) return;
                   for (const id of ids) {
-                    const sub = (isAdmin ? subscribers : salesOwnSubscribers).find(s=>s.id===id);
+                    const sub = actionSubscribers.find(s=>s.id===id);
                     if (sub) updateSubscriber({ ...sub, collectionStaffId: collOnlineBulkAssignTo });
                   }
-                  if (!isAdmin) setSalesOwnSubscribers(prev=>prev.map(s=>collOnlineSelected.has(s.id)?{...s,collectionStaffId:collOnlineBulkAssignTo}:s));
+                  if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>collOnlineSelected.has(s.id)?{...s,collectionStaffId:collOnlineBulkAssignTo}:s));
                 } else {
                   const newStatus = collOnlineBulkConfirm === 'pause' ? 'paused' : collOnlineBulkConfirm === 'refund' ? 'refunded' : 'finished';
                   for (const id of ids) {
-                    const sub = (isAdmin ? subscribers : salesOwnSubscribers).find(s=>s.id===id);
+                    const sub = actionSubscribers.find(s=>s.id===id);
                     if (sub) updateSubscriber({ ...sub, clientStatus: newStatus });
                   }
-                  if (!isAdmin) setSalesOwnSubscribers(prev=>prev.map(s=>collOnlineSelected.has(s.id)?{...s,clientStatus:newStatus}:s));
+                  if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>collOnlineSelected.has(s.id)?{...s,clientStatus:newStatus}:s));
                 }
                 setCollOnlineSelected(new Set());
                 setCollOnlineBulkConfirm(null);
