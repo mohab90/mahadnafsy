@@ -13,6 +13,7 @@ interface LeadsTabHeaderProps {
   overdueCount: number;
   rottenCount: number;
   dueTodayCount: number;
+  unassignedCount?: number;
   subTab: SubTabKey;
   setSubTab: (tab: SubTabKey) => void;
   onAddLead: () => void;
@@ -40,6 +41,7 @@ export function LeadsTabHeader({
   overdueCount,
   rottenCount,
   dueTodayCount,
+  unassignedCount = 0,
   subTab,
   setSubTab,
   onAddLead,
@@ -81,6 +83,7 @@ export function LeadsTabHeader({
           rottenCount={rottenCount}
           overdueCount={overdueCount}
           dueTodayCount={dueTodayCount}
+          unassignedCount={unassignedCount}
           setSubTab={setSubTab}
         />
         <div className="w-px h-6 bg-gray-200 mx-1" />

@@ -9,6 +9,17 @@ type LeadArchiveViewsProps = ArchiveTabProps & {
 };
 
 export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsProps) {
+  if (subTab === 'localNew') {
+    return (
+      <ArchiveTab
+        {...archiveProps}
+        title="محلي جديد — عملاء بلا مندوب مبيعات"
+        hideImport
+        customFilter={lead => !lead.hidden && !lead.assignedSalesId && !['converted', 'lost'].includes(lead.status)}
+      />
+    );
+  }
+
   if (subTab === 'dawliNew') {
     return (
       <div className="space-y-4">

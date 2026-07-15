@@ -19,6 +19,22 @@ const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('
 const { onlineMap } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
+const { branchIdForBranch } = require('../../lib/branches');
+function sendRouteError(res, err) {
+  if (res.headersSent) return;
+  const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
+  const status = err && dbCodes.has(err.code) ? 503 : 500;
+  res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
+}
+
+function cleanLegacyLeadText(value) {
+  if (typeof value !== 'string') return value;
+  return value
+    .replace(/الفرع:\s*اون_لاين_داخ(?:ل|�+|\?+)_مصر/gi, 'الفرع: أونلاين مصر')
+    .replace(/اون_لاين_داخ(?:ل|�+|\?+)_مصر/gi, 'أونلاين مصر')
+    .replace(/اونلاين_داخل_مصر/gi, 'أونلاين مصر');
+}
+
 
 router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
@@ -194,7 +210,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, re
     }
 
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
 // ── POST /api/admin/import/daqqi — bulk import subscribers + enrollments + payments for DAQQI branch ──
@@ -260,13 +276,19 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
         // Find or create subscriber
         let subscriberId, clientCode, isNew = false;
         const [[existing]] = await conn.query(
-          'SELECT id, client_code FROM subscribers WHERE email=? OR phone=? LIMIT 1',
+          'SELECT id, client_code, tenant_id, branch, branch_id FROM subscribers WHERE email=? OR phone=? LIMIT 1',
           [email, phone]
         );
 
+        let subscriberTenantId = req.tenantId || 'tenant-default';
+        let subscriberBranch = 'DAQQI';
+        let subscriberBranchId = branchIdForBranch(subscriberBranch);
         if (existing) {
           subscriberId = existing.id;
           clientCode   = existing.client_code;
+          subscriberTenantId = existing.tenant_id || subscriberTenantId;
+          subscriberBranch = existing.branch || subscriberBranch;
+          subscriberBranchId = existing.branch_id || branchIdForBranch(subscriberBranch);
           stats.existingSubscribers++;
         } else {
           subscriberId = uuidv4();
@@ -274,9 +296,9 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
           isNew        = true;
           if (!dryRun) {
             await conn.query(
-              `INSERT INTO subscribers (id,client_code,name,email,phone,national_id,whatsapp,nationality,branch,discount,is_active,notes,created_at,tenant_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
-              [subscriberId,clientCode,name,email,phone,nationalId,whatsapp,nationality,'DAQQI',discount,notes,createdAt,req.tenantId]
+              `INSERT INTO subscribers (id,client_code,name,email,phone,national_id,whatsapp,nationality,branch,branch_id,discount,is_active,notes,created_at,tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+              [subscriberId,clientCode,name,email,phone,nationalId,whatsapp,nationality,subscriberBranch,subscriberBranchId,discount,notes,createdAt,subscriberTenantId]
             );
           }
           stats.newSubscribers++;
@@ -291,9 +313,9 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
           } else {
             if (!dryRun) {
               await conn.query(
-                `INSERT INTO enrollments (id,subscriber_id,course_id,enrolled_at,access_type,tenant_id) VALUES (?,?,?,?,?,?)
-                 ON DUPLICATE KEY UPDATE access_type=VALUES(access_type)`,
-                [uuidv4(),subscriberId,courseId,createdAt,'FULL',req.tenantId]
+                `INSERT INTO enrollments (id,subscriber_id,course_id,enrolled_at,access_type,tenant_id,branch_id) VALUES (?,?,?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE access_type=VALUES(access_type), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
+                [uuidv4(),subscriberId,courseId,createdAt,'FULL',subscriberTenantId,subscriberBranchId]
               );
             }
             stats.newEnrollments++;
@@ -306,9 +328,9 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
         if (payAmount > 0) {
           if (!dryRun) {
             await conn.query(
-              `INSERT INTO payments (id,subscriber_id,course_id,amount,currency,payment_type,payment_method,transaction_id,is_installment,course_expected,date,note,status,tenant_id)
-               VALUES (?,?,?,?,?,'COURSE',?,?,?,?,?,?,'paid',?)`,
-              [uuidv4(),subscriberId,courseId||null,payAmount,payCurrency,payMethod,transactionId,isInstallment,courseExpected,payDate,payNote,req.tenantId]
+              `INSERT INTO payments (id,subscriber_id,course_id,amount,currency,payment_type,payment_method,transaction_id,is_installment,course_expected,date,note,status,tenant_id,branch,branch_id)
+               VALUES (?,?,?,?,?,'COURSE',?,?,?,?,?,?,'paid',?,?,?)`,
+              [uuidv4(),subscriberId,courseId||null,payAmount,payCurrency,payMethod,transactionId,isInstallment,courseExpected,payDate,payNote,subscriberTenantId,subscriberBranch,subscriberBranchId]
             );
           }
           stats.newPayments++;
@@ -330,7 +352,7 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, async (
     }
 
     res.json({ ok: true, dryRun: !!dryRun, stats, results });
-  } catch (e) { logger.error('[import/daqqi]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[import/daqqi]', e.message); sendRouteError(res, e); }
 });
 
 // POST /api/admin/leads/bulk-assign — assign all unassigned NEW/INTERESTED leads to sales round-robin
@@ -354,13 +376,21 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, as
 
     if (!unassigned.length) return res.json({ assigned: 0, message: 'لا يوجد ليدز غير معيّنة' });
 
-    // Round-robin assignment using current RR index
+    // Round-robin assignment using current RR index. The cycle has one extra virtual
+    // "no rep" slot on top of the real reps, so roughly 1 in (reps+1) leads is
+    // deliberately left unassigned — they land in the "محلي جديد" tab for a human to
+    // review/hand-place instead of every single lead being force-assigned.
     const [rrRows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'crm_rr_index' LIMIT 1");
     let idx = parseInt(rrRows[0]?.value || '0', 10) || 0;
+    const totalSlots = reps.length + 1;
 
-    const updates = unassigned.map((lead, i) => {
-      const rep = reps[(idx + i) % reps.length];
-      return { id: lead.id, salesId: rep.id, salesName: rep.name };
+    const updates = [];
+    let leftUnassigned = 0;
+    unassigned.forEach((lead, i) => {
+      const slot = (idx + i) % totalSlots;
+      if (slot === reps.length) { leftUnassigned++; return; }
+      const rep = reps[slot];
+      updates.push({ id: lead.id, salesId: rep.id, salesName: rep.name });
     });
 
     // Batch update via CASE WHEN for efficiency
@@ -385,8 +415,8 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, as
       [String(idx + unassigned.length)]
     );
 
-    res.json({ assigned: unassigned.length, reps: reps.length, message: `تم توزيع ${unassigned.length} ليد على ${reps.length} مندوب` });
-  } catch (e) { logger.error('[bulk-assign]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+    res.json({ assigned: updates.length, unassigned: leftUnassigned, reps: reps.length, message: `تم توزيع ${updates.length} ليد على ${reps.length} مندوب، وترك ${leftUnassigned} بدون مندوب (محلي جديد)` });
+  } catch (e) { logger.error('[bulk-assign]', e.message); sendRouteError(res, e); }
 });
 
 // POST /api/admin/leads/bulk-whatsapp — send WhatsApp message to multiple leads
@@ -422,7 +452,7 @@ router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, 
     }
 
     res.json({ ok: true, sent, failed, total: leads.length });
-  } catch (e) { logger.error('[bulk-whatsapp]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[bulk-whatsapp]', e.message); sendRouteError(res, e); }
 });
 
 // POST /api/admin/leads/dedup-cleanup — delete duplicate leads (leads matching subscriber phones + dup-phone leads)
@@ -468,7 +498,7 @@ router.post('/api/admin/leads/dedup-cleanup', requireAuth, requireAdmin, async (
     }
 
     res.json({ ok: true, deleted: ids.length });
-  } catch (e) { logger.error('[dedup-cleanup]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[dedup-cleanup]', e.message); sendRouteError(res, e); }
 });
 
 // GET /api/admin/leads/:id/timeline
@@ -493,7 +523,7 @@ router.get('/api/admin/leads/:id/timeline', requireAuth, requireAdminOrStaff, as
       meta: tryJson(r.meta_json, {}),
       at: r.at,
     })));
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -563,7 +593,9 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
 
     // 6. Map lead → subscriber fields
 
-    const branch = (lead.branch && VALID_BRANCHES.has(lead.branch)) ? lead.branch : null;
+    const branch = (lead.branch && VALID_BRANCHES.has(lead.branch)) ? lead.branch : 'ONLINE_EGYPT';
+    const branchId = branchIdForBranch(branch);
+    const tenantId = req.tenantId || 'tenant-default';
 
     // Build crm_json from lead fields
     const crmJson = {
@@ -590,8 +622,8 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
          (id, client_code, lead_id, name, email, phone, is_active,
           branch, assigned_sales_id, assigned_sales_name,
           assigned_cs_id, assigned_cs_name, notes, crm_json,
-          created_at, updated_at)
-       VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,NOW(),NOW())`,
+          source, tenant_id, branch_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())`,
       [
         subId, clientCode, leadId,
         sanitize(lead.name, 300),
@@ -602,15 +634,18 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
         csId, csName,
         sanitize(lead.notes, 2000) || null,
         JSON.stringify(crmJson),
+        lead.source || 'lead_conversion',
+        tenantId,
+        branchId,
       ]
     );
 
     // 8. Auto-enroll in enrolled_course_id if present
     if (lead.enrolled_course_id) {
       await conn.query(
-        `INSERT IGNORE INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type)
-         VALUES (UUID(),?,?,NOW(),'full')`,
-        [subId, lead.enrolled_course_id]
+        `INSERT IGNORE INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, tenant_id, branch_id)
+         VALUES (UUID(),?,?,NOW(),'full',?,?)`,
+        [subId, lead.enrolled_course_id, tenantId, branchId]
       ).catch(() => {});
     }
 
@@ -677,7 +712,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     await conn.rollback().catch(() => {});
     conn.release();
     logger.error('[lead-convert]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    sendRouteError(res, e);
   }
 });
 
@@ -743,8 +778,8 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
       // crm_json spread goes FIRST so explicit DB columns always win
       return { ...crm,
         id: r.id, name: r.name, email: r.email, phone: r.phone,
-        source: r.source, status, notes: r.notes, createdAt: r.created_at,
-        branch, interestedCourseIds, clientCode, dealValue,
+        source: r.source, status, notes: cleanLegacyLeadText(r.notes), createdAt: r.created_at,
+        branch, rawBranch: cleanLegacyLeadText(crm.rawBranch || rawBranch || ''), interestedCourseIds, clientCode, dealValue,
         assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
         assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
         assignedCsId: r.assigned_cs_id || crm.assignedCsId || null,
@@ -754,7 +789,7 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
         lastFollowUp: r.last_follow_up || crm.lastFollowUp || null,
       };
     }));
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
 // GET /api/admin/payments?startDate=&endDate=&channel=&paymentType=

@@ -26,8 +26,10 @@ export interface ArchiveTabProps {
   sources: string[];
   title?: string;
   defaultSource?: string;
+  customFilter?: (lead: LeadItem) => boolean;
+  hideImport?: boolean;
 }
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم' }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false }: ArchiveTabProps) {
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
   const [archiveParseErr, setArchiveParseErr] = useState('');
@@ -95,7 +97,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
     if (created > 0) notify('success', `تم استيراد ${created} عميل بنجاح`);
   };
 
-  const archiveLeads = leads.filter(l => !l.hidden && l.source === archiveSource);
+  const archiveLeads = leads.filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource));
   const totalArchivePages = Math.ceil(archiveLeads.length / ARCHIVE_PAGE_SIZE);
   const filteredBulkLeads = archiveLeads;
   const bulkPaginated = filteredBulkLeads.slice((archivePage - 1) * ARCHIVE_PAGE_SIZE, archivePage * ARCHIVE_PAGE_SIZE);
@@ -135,6 +137,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
       </div>
 
       {/* ── Section 1: Import CSV ── */}
+      {!hideImport && (
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Upload size={14} className="text-indigo-500" /> استيراد ملف CSV / Excel
@@ -213,6 +216,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
           </div>
         )}
       </div>
+      )}
 
       {/* ── Section 2: Bulk Assign ── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
@@ -322,6 +326,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
         onBook={onBook}
         branchOptions={branchOptions}
         sources={sources}
+        onSalesClick={!isSalesOnly ? (staffId: string) => navigate(`/staff/${staffId}`) : undefined}
       />
     </div>
   );

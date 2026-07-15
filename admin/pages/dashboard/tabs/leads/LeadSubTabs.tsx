@@ -1,7 +1,7 @@
 import React from 'react';
-import { Archive, Columns, Globe, Phone, TrendingUp, Users } from 'lucide-react';
+import { Archive, Columns, Globe, Phone, TrendingUp, UserX, Users } from 'lucide-react';
 
-export type SubTabKey = 'pipeline' | 'table' | 'communications' | 'performance' | 'dawliNew' | 'dawliOld' | 'archive' | 'reminders';
+export type SubTabKey = 'pipeline' | 'table' | 'communications' | 'performance' | 'localNew' | 'dawliNew' | 'dawliOld' | 'archive' | 'reminders';
 
 interface LeadSubTabsProps {
   subTab: SubTabKey;
@@ -9,6 +9,7 @@ interface LeadSubTabsProps {
   rottenCount: number;
   overdueCount: number;
   dueTodayCount: number;
+  unassignedCount?: number;
   setSubTab: (tab: SubTabKey) => void;
 }
 
@@ -18,6 +19,7 @@ export function LeadSubTabs({
   rottenCount,
   overdueCount,
   dueTodayCount,
+  unassignedCount = 0,
   setSubTab,
 }: LeadSubTabsProps) {
   const alertCount = rottenCount + overdueCount + dueTodayCount;
@@ -26,6 +28,7 @@ export function LeadSubTabs({
     ['table', 'الجدول', Users],
     ['communications', 'الاتصالات', Phone],
     ...(!isSalesOnly ? ([['performance', 'أداء الفريق', TrendingUp]] as [SubTabKey, string, React.ElementType][]) : []),
+    ...(!isSalesOnly ? ([['localNew', 'محلي جديد', UserX]] as [SubTabKey, string, React.ElementType][]) : []),
     ['dawliNew', 'دولي جديد', Globe],
     ['dawliOld', 'دولي قديم', Globe],
     ...(!isSalesOnly ? ([['archive', 'محلي قديم', Archive]] as [SubTabKey, string, React.ElementType][]) : []),
@@ -46,6 +49,11 @@ export function LeadSubTabs({
           {tab === 'communications' && alertCount > 0 && (
             <span className="w-3.5 h-3.5 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center">
               {alertCount}
+            </span>
+          )}
+          {tab === 'localNew' && unassignedCount > 0 && (
+            <span className="w-3.5 h-3.5 bg-amber-500 text-white text-[9px] rounded-full flex items-center justify-center">
+              {unassignedCount}
             </span>
           )}
         </button>

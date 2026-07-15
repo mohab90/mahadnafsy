@@ -441,12 +441,20 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         (!l.assignedSalesId || !validRepIds.has(l.assignedSalesId))
       );
       if (toAssign.length === 0) return notify('info', 'جميع الليدز النشطة لديها مندوب مُعيَّن');
-      const updates = toAssign.map((lead, i) => {
-        const rep = salesReps[i % salesReps.length];
-        return { ...lead, assignedSalesId: rep.id, assignedSalesName: rep.name };
+      // One extra virtual "بدون مندوب" slot alongside the real reps in the rotation, so
+      // roughly 1 in (reps+1) leads is deliberately left unassigned — those stay visible
+      // in "محلي جديد" for manual placement instead of every lead being force-assigned.
+      const totalSlots = salesReps.length + 1;
+      const updates: typeof toAssign = [];
+      let leftUnassigned = 0;
+      toAssign.forEach((lead, i) => {
+        const slot = i % totalSlots;
+        if (slot === salesReps.length) { leftUnassigned++; return; }
+        const rep = salesReps[slot];
+        updates.push({ ...lead, assignedSalesId: rep.id, assignedSalesName: rep.name });
       });
       for (const u of updates) await updateLead(u);
-      notify('success', `تم توزيع ${toAssign.length} ليد على ${salesReps.length} مندوب بالتساوي`);
+      notify('success', `تم توزيع ${updates.length} ليد على ${salesReps.length} مندوب، وترك ${leftUnassigned} بدون مندوب (محلي جديد)`);
     } finally {
       setDistributing(false);
     }
@@ -1124,6 +1132,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         overdueCount={overdueLeads.length}
         rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length}
         dueTodayCount={dueToday.length}
+        unassignedCount={leads.filter(l => !l.hidden && !l.assignedSalesId && !['converted', 'lost'].includes(l.status)).length}
         subTab={subTab}
         setSubTab={setSubTab}
         onAddLead={() => setShowAddLead(true)}
@@ -1243,6 +1252,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           onBook={openLeadBook}
           branchOptions={instituteBranches}
           sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
+          onSalesClick={!isSalesOnly ? (staffId: string) => navigate(`/staff/${staffId}`) : undefined}
         />
       )}
 
