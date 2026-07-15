@@ -8,7 +8,7 @@ const { uuidv4 } = require('../../lib/id');
 const { pool, cacheInvalidate } = require('../../lib/db');
 const { mailer, sendEmail, htmlEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { tryJson, sanitize, parseLimit, parseOffset, validate } = require('../../lib/helpers');
+const { tryJson, sanitize, parseLimit, parseOffset, validate, normalizePhone } = require('../../lib/helpers');
 const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp } = require('../../lib/finance');
@@ -83,7 +83,18 @@ router.post('/api/registrations', async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const item = req.body;
-    const id = item.id || uuidv4();
+    // The client generates a fresh id per submission, so ON DUPLICATE KEY UPDATE (keyed
+    // on id below) never catches a returning customer — check by phone first and reuse
+    // their existing lead id so this becomes an update, not a second row.
+    const normPhone = normalizePhone(item.phone);
+    let id = item.id || uuidv4();
+    if (normPhone) {
+      const [[existing]] = await conn.query(
+        `SELECT id, client_code FROM leads WHERE RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = RIGHT(?, 10) AND hidden = 0 LIMIT 1`,
+        [normPhone]
+      );
+      if (existing) id = existing.id;
+    }
     // Atomic client code issuance
     let code = `C${Date.now()}`;
     try {
@@ -123,6 +134,26 @@ router.post('/api/leads-public', publicLimiter,
   async (req, res) => {
   try {
     const { name, phone, email, notes, source } = req.body;
+    const trimmedPhone = phone.trim().slice(0, 30);
+    const normPhone = normalizePhone(trimmedPhone);
+
+    // Same customer submitting again (chatbot re-visit, double-click, etc.) must not
+    // create a second lead row — compare by the last 10 digits so 01xx / +201xx / 0020 1xx
+    // all match the same physical number regardless of how it was typed.
+    if (normPhone) {
+      const [[existing]] = await pool.query(
+        `SELECT id FROM leads WHERE RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = RIGHT(?, 10) AND hidden = 0 LIMIT 1`,
+        [normPhone]
+      );
+      if (existing) {
+        await pool.query(
+          `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END, updated_at = NOW() WHERE id = ?`,
+          [(notes || '').trim().slice(0, 500), (notes || '').trim().slice(0, 500), existing.id]
+        );
+        return res.json({ ok: true, id: existing.id, existing: true });
+      }
+    }
+
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     // Assign sequential client code
     let code = null;
@@ -134,12 +165,12 @@ router.post('/api/leads-public', publicLimiter,
     await pool.execute(
       `INSERT INTO leads (id, client_code, name, phone, email, notes, status, interest_level, source, lead_type, created_at, hidden)
        VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', NOW(), 0)`,
-      [id, code, name.trim().slice(0, 120), phone.trim().slice(0, 30),
+      [id, code, name.trim().slice(0, 120), trimmedPhone,
        (email || '').toString().trim().slice(0, 255) || null,
        (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50)]
     );
     // Lifecycle: instant welcome to the new lead (whatsapp; email skipped if absent).
-    require('../../lib/lifecycle').trigger('lead_created', { name: name.trim(), phone: phone.trim() });
+    require('../../lib/lifecycle').trigger('lead_created', { name: name.trim(), phone: trimmedPhone });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -183,14 +214,20 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     // Use persisted round-robin index
     const [rrRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_rr_index'");
     let rrIdx = parseInt(rrRows[0]?.value || '0') || 0;
+    // One extra virtual "no rep" slot in the cycle alongside the real reps, so roughly
+    // 1 in (reps+1) leads is deliberately left unassigned instead of force-distributing
+    // every single lead — those land in the "محلي جديد" tab for manual placement.
+    const totalSlots = reps.length + 1;
     let count = 0;
     for (let i = 0; i < targets.length; i++) {
-      const rep = reps[rrIdx % reps.length];
+      const slot = rrIdx % totalSlots;
+      rrIdx++;
+      if (slot === reps.length) continue;
+      const rep = reps[slot];
       await pool.execute(
         `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=? WHERE id=?`,
         [rep.id, rep.name, targets[i].id]
       );
-      rrIdx++;
       count++;
     }
     // Persist updated RR index

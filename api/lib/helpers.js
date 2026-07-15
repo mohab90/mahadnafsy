@@ -16,6 +16,14 @@ function sanitize(str, maxLen = 1000) {
 // ── Input Validation Helpers ──────────────────────────────────────────────────
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 const PHONE_RE = /^[+\d\s\-().]{7,20}$/;
+
+// Collapses the three ways an Egyptian number shows up (01xxxxxxxxx, 0020xxxxxxxxxx,
+// +20xxxxxxxxxx) to the same bare digits, so phone-based dedup checks actually match
+// across formats instead of only catching byte-for-byte identical strings.
+function normalizePhone(phone) {
+  if (!phone) return '';
+  return String(phone).replace(/\D/g, '').replace(/^00/, '').replace(/^20/, '').replace(/^0/, '');
+}
 function validate(body, schema) {
   for (const [field, rule] of Object.entries(schema)) {
     const [type, maxStr] = rule.split('|');
@@ -103,4 +111,4 @@ function parseCrm(str) {
 const parseLimit  = (v, def = 100, max = 1000) => Math.min(parseInt(v) || def, max);
 const parseOffset = (v)                          => parseInt(v) || 0;
 
-module.exports = { sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset };
+module.exports = { sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone };
