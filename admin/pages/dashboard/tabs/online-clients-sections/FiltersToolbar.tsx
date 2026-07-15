@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download, Eye, Search } from 'lucide-react';
 import type { Bundle, Course, DaqqiRound, StaffMember, SubscriberItem } from '../../../../types';
+import { paymentAmountInEGP } from '../onlineClientsUtils';
 
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 
@@ -144,10 +145,9 @@ export function FiltersToolbar({
         {!isDaqqiClientsTab && (
           <button onClick={() => {
             const toExport = collOnlineSelected.size > 0 ? filtered.filter(s => collOnlineSelected.has(s.id)) : filtered;
-            const toEGP = (p: {amount?:number|string;currency?:string}) => { const n=Number(p.amount)||0; return p.currency==='SAR'?n*13:p.currency==='USD'?n*50:n; };
             const header = 'الاسم,الهاتف,الإيميل,الفرع,الكورسات,الحالة,المدفوع (ج.م),المتبقي (ج.م),مسئول التحصيل,تاريخ الاشتراك,الكود\n';
             const rows = toExport.map(s => {
-              const paid = (s.paymentHistory||[]).reduce((a,p)=>a+toEGP(p),0);
+              const paid = (s.paymentHistory||[]).reduce((a,p)=>a+paymentAmountInEGP(p),0);
               const total = Number(s.totalValue)||0;
               const crs = (s.enrolledCourseIds||[]).map(id=>courses.find(c=>c.id===id)?.title||bundles.find(b=>`bundle:${b.id}`===id)?.title||id).join(' | ');
               const agent = staffMembers.find(st=>st.id===s.assignedCsId)?.name || '';
