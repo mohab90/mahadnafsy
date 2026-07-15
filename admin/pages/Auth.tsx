@@ -54,7 +54,7 @@ const Auth: React.FC = () => {
             setOtpStep(1);
         } catch (err) {
             const msg = err instanceof Error ? err.message : '';
-            setNotice({ type: 'error', text: msg.includes('محاولات') ? msg : 'حدث خطأ، تأكد من البريد الإلكتروني وحاول مرة أخرى.' });
+            setNotice({ type: 'error', text: msg || 'حدث خطأ، تأكد من البريد الإلكتروني وحاول مرة أخرى.' });
         } finally {
             setLoading(false);
         }

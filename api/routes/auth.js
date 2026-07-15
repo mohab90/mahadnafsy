@@ -93,7 +93,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
         );
         logger.info(`[register] Reused existing lead ${existingLeadId} for ${normalizedEmail}`);
       } else {
-        const leadId = uuidv4();
+        const leadId = `lead-reg-${uuidv4()}`;
         createdLeadId = leadId;
         await conn.execute(
           `INSERT INTO leads (id, client_code, name, email, phone, source, status, hidden, created_at)
@@ -185,11 +185,11 @@ router.post('/api/user/signup', registerLimiter,
         const newName = (name || '').trim();
         await conn.execute('UPDATE leads SET name = IF(LENGTH(?) > 0, ?, name), client_code = IF(client_code IS NULL, ?, client_code) WHERE id = ?', [newName, newName, sharedClientCode, existingLeadId]);
       } else {
-        const leadId = uuidv4();
+        const leadId = `lead-reg-${uuidv4()}`;
         await conn.execute(`INSERT INTO leads (id, client_code, name, email, phone, source, status, hidden, created_at) VALUES (?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, NOW())`, [leadId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail, phone || '']);
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }).catch(() => {});
       }
-    } catch (leadErr) { logger.error('[user/signup] Could not create lead:', leadErr.message); }
+    } catch { }
     const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
     res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });

@@ -63,8 +63,6 @@ const PERMISSIONS = Object.freeze({
   // Staff
   VIEW_STAFF:               'view_staff',
   MANAGE_STAFF:             'manage_staff',
-  VIEW_HR:                  'view_hr',
-  MANAGE_HR:                'manage_hr',
   // Orders & Financial
   VIEW_ORDERS:              'view_orders',
   MANAGE_ORDERS:            'manage_orders',
@@ -157,7 +155,7 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.HR]: [
     'view_dashboard',
-    'view_staff', 'manage_staff', 'view_hr', 'manage_hr',
+    'view_staff', 'manage_staff',
     'view_leads',
     'view_subscribers',
     'view_reports', 'view_activity',
