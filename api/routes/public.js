@@ -436,16 +436,20 @@ router.get('/api/lectures', async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 500, 5000);
     const offset = parseOffset(req.query.offset);
-    const [rows] = await pool.query(
-      'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE is_published = 1 ORDER BY course_id, sort_order ASC LIMIT ? OFFSET ?',
-      [limit, offset]
-    );
-    const previewLimit = await getPreviewLimit();
-    const posByCourse = {};
-    res.json(rows.map(r => {
-      const pos = (posByCourse[r.course_id] = (posByCourse[r.course_id] ?? -1) + 1);
-      return publicLecture(r, pos, previewLimit);
-    }));
+    const data = await cached(`lectures:${limit}:${offset}`, 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE is_published = 1 ORDER BY course_id, sort_order ASC LIMIT ? OFFSET ?',
+        [limit, offset]
+      );
+      const previewLimit = await getPreviewLimit();
+      const posByCourse = {};
+      return rows.map(r => {
+        const pos = (posByCourse[r.course_id] = (posByCourse[r.course_id] ?? -1) + 1);
+        return publicLecture(r, pos, previewLimit);
+      });
+    });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -453,9 +457,13 @@ router.get('/api/lectures', async (req, res) => {
 router.get('/api/chapters', async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 500, 1000);
-    const [rows] = await pool.query(
-      'SELECT id, course_id, title, sort_order FROM course_chapters ORDER BY course_id, sort_order ASC LIMIT ?', [limit]);
-    res.json(rows.map(mapChapter));
+    const data = await cached(`chapters:${limit}`, 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        'SELECT id, course_id, title, sort_order FROM course_chapters ORDER BY course_id, sort_order ASC LIMIT ?', [limit]);
+      return rows.map(mapChapter);
+    });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json(data);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -585,7 +593,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
 router.get('/api/jobs', async (_req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT j.id, j.title, j.employment_type, j.description, j.requirements,
+      `SELECT j.id, j.title, j.branch, j.employment_type, j.description, j.requirements,
               j.salary_min, j.salary_max, j.created_at, d.name AS department
          FROM job_postings j LEFT JOIN hr_departments d ON d.id = j.department_id
         WHERE j.status='open' AND j.id <> 'job-talent-pool'

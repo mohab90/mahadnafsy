@@ -4,6 +4,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 
 type JoinUsStatus = 'new' | 'reviewed' | 'accepted' | 'rejected';
 type JoinUsType = 'all' | 'instructor' | 'consultant' | 'staff';
+type JoinUsGroupTab = 'teaching' | 'staff';
 
 function normalizeJoinStatus(status?: string): JoinUsStatus {
   if (status === 'reviewed' || status === 'accepted' || status === 'rejected') return status;
@@ -29,9 +30,10 @@ const typeLabels: Record<Exclude<JoinUsType, 'all'>, string> = {
 const JoinUsAdminTab: React.FC<{ initialType?: JoinUsType }> = ({ initialType = 'all' }) => {
   const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication } = useSiteData();
 
+  const [groupTab, setGroupTab] = useState<JoinUsGroupTab>(initialType === 'staff' ? 'staff' : 'teaching');
   const [juSearch, setJuSearch] = useState('');
   const [juStatusFilter, setJuStatusFilter] = useState<'all' | JoinUsStatus>('all');
-  const [juTypeFilter, setJuTypeFilter] = useState<JoinUsType>(initialType);
+  const [juTypeFilter, setJuTypeFilter] = useState<JoinUsType>('all');
 
   const statusCfg: Record<JoinUsStatus, { label: string; cls: string }> = {
     new: { label: 'جديد', cls: 'bg-blue-100 text-blue-700' },
@@ -41,19 +43,29 @@ const JoinUsAdminTab: React.FC<{ initialType?: JoinUsType }> = ({ initialType = 
   };
 
   const safeText = (value?: string | null) => String(value || '').toLowerCase();
-  const safeCreatedAt = (app: JoinUsApplication) => String(app.createdAt || app.submittedAt || app.updatedAt || '');
+  const safeCreatedAt = (app: JoinUsApplication) => String(app.createdAt || '');
+
+  const matchesGroup = (app: JoinUsApplication, group: JoinUsGroupTab) => {
+    const t = normalizeJoinType(app.type);
+    return group === 'staff' ? t === 'staff' : (t === 'instructor' || t === 'consultant');
+  };
 
   const filteredApps = joinUsApplications.filter(app => {
     const q = juSearch.toLowerCase();
     const matchQ = !q || safeText(app.name).includes(q) || safeText(app.email).includes(q) || safeText(app.specialty).includes(q);
     const appStatus = normalizeJoinStatus(app.status);
     const matchStatus = juStatusFilter === 'all' || appStatus === juStatusFilter;
+    const matchGroup = matchesGroup(app, groupTab);
     const matchType = juTypeFilter === 'all' || normalizeJoinType(app.type) === juTypeFilter;
-    return matchQ && matchStatus && matchType;
+    return matchQ && matchStatus && matchGroup && matchType;
   }).sort((a, b) => safeCreatedAt(b).localeCompare(safeCreatedAt(a)));
 
+  const groupCounts = {
+    teaching: joinUsApplications.filter(app => matchesGroup(app, 'teaching')).length,
+    staff: joinUsApplications.filter(app => matchesGroup(app, 'staff')).length,
+  };
   const typeCounts = {
-    all: joinUsApplications.length,
+    all: joinUsApplications.filter(app => matchesGroup(app, groupTab)).length,
     instructor: joinUsApplications.filter(app => normalizeJoinType(app.type) === 'instructor').length,
     consultant: joinUsApplications.filter(app => normalizeJoinType(app.type) === 'consultant').length,
     staff: joinUsApplications.filter(app => normalizeJoinType(app.type) === 'staff').length,
@@ -74,17 +86,31 @@ const JoinUsAdminTab: React.FC<{ initialType?: JoinUsType }> = ({ initialType = 
         </div>
       </div>
 
+      {/* Group tabs: instructors/consultants vs. employees */}
+      <div className="flex gap-2 border-b border-gray-200">
+        {([
+          { key: 'teaching' as const, label: '🎓 المحاضرين والاستشاريين', count: groupCounts.teaching },
+          { key: 'staff' as const, label: '💼 الموظفين', count: groupCounts.staff },
+        ]).map(t => (
+          <button key={t.key} onClick={() => { setGroupTab(t.key); setJuTypeFilter('all'); }}
+            className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${groupTab === t.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+            {t.label} <span className="text-xs opacity-70">({t.count})</span>
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <input value={juSearch} onChange={e => setJuSearch(e.target.value)} placeholder="بحث بالاسم أو البريد أو التخصص..."
           className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-        <select value={juTypeFilter} onChange={e => setJuTypeFilter(e.target.value as typeof juTypeFilter)}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm">
-          <option value="all">كل الأنواع ({typeCounts.all})</option>
-          <option value="instructor">محاضرين ({typeCounts.instructor})</option>
-          <option value="consultant">استشاريين ({typeCounts.consultant})</option>
-          <option value="staff">موظفين ({typeCounts.staff})</option>
-        </select>
+        {groupTab === 'teaching' && (
+          <select value={juTypeFilter} onChange={e => setJuTypeFilter(e.target.value as typeof juTypeFilter)}
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm">
+            <option value="all">الكل ({typeCounts.all})</option>
+            <option value="instructor">محاضرين ({typeCounts.instructor})</option>
+            <option value="consultant">استشاريين ({typeCounts.consultant})</option>
+          </select>
+        )}
         <select value={juStatusFilter} onChange={e => setJuStatusFilter(e.target.value as typeof juStatusFilter)}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm">
           <option value="all">كل الحالات</option>

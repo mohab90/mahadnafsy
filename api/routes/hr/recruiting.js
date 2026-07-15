@@ -21,17 +21,17 @@ router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermis
 // Create job posting
 router.post('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    const { title, department_id, employment_type, description, requirements, salary_min, salary_max, status } = req.body;
+    const { title, department_id, branch, employment_type, description, requirements, salary_min, salary_max, status } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO job_postings (id, title, department_id, employment_type, description, requirements, salary_min, salary_max, status, posted_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [id, title, department_id||null, employment_type||'full_time', description||null, requirements||null,
+      `INSERT INTO job_postings (id, title, department_id, branch, employment_type, description, requirements, salary_min, salary_max, status, posted_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, title, department_id||null, branch||null, employment_type||'full_time', description||null, requirements||null,
        salary_min||null, salary_max||null, status||'open', req.staffRecord?.id||null]
     );
     const [[row]] = await pool.query(
-      `SELECT id, title, department_id, employment_type, description, requirements,
+      `SELECT id, title, department_id, branch, employment_type, description, requirements,
               salary_min, salary_max, status, posted_by, created_at
        FROM job_postings WHERE id=?`, [id]
     );
@@ -43,14 +43,14 @@ router.post('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermi
 router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { jobId } = req.params;
-    const fields = ['title','department_id','employment_type','description','requirements','salary_min','salary_max','status'];
+    const fields = ['title','department_id','branch','employment_type','description','requirements','salary_min','salary_max','status'];
     const sets = []; const vals = [];
     for (const f of fields) { if (req.body[f] !== undefined) { sets.push(`${f}=?`); vals.push(req.body[f]); } }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     vals.push(jobId);
     await pool.query(`UPDATE job_postings SET ${sets.join(',')} WHERE id=?`, vals);
     const [[row]] = await pool.query(
-      `SELECT id, title, department_id, employment_type, description, requirements,
+      `SELECT id, title, department_id, branch, employment_type, description, requirements,
               salary_min, salary_max, status, posted_by, created_at
        FROM job_postings WHERE id=?`, [jobId]
     );

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2 } from 'lucide-react';
+import { BRANCHES, BRANCH_LABELS_AR } from '../../../constants/branches';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
-interface Job { id: string; title: string; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; created_at?: string; }
+interface Job { id: string; title: string; branch: string | null; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; created_at?: string; }
 const EMP_TYPES: [string, string][] = [['full_time', 'دوام كامل'], ['part_time', 'دوام جزئي'], ['contract', 'عقد'], ['remote', 'عن بُعد'], ['internship', 'تدريب']];
-const blank = (): Partial<Job> => ({ title: '', employment_type: 'full_time', description: '', requirements: '', salary_min: null, salary_max: null, status: 'open' });
+const blank = (): Partial<Job> => ({ title: '', branch: null, employment_type: 'full_time', description: '', requirements: '', salary_min: null, salary_max: null, status: 'open' });
 
 export default function JobPostingsPanel({ notify }: { notify: Notify }) {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -55,6 +56,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-gray-800 text-sm">{j.title}</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{EMP_TYPES.find(e => e[0] === j.employment_type)?.[1] || j.employment_type}</span>
+                    {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{BRANCH_LABELS_AR[j.branch as keyof typeof BRANCH_LABELS_AR] || j.branch}</span>}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{j.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
                     {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
                   </div>
@@ -81,6 +83,10 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
                 <option value="open">مفتوحة</option><option value="closed">مغلقة</option>
               </select>
             </div>
+            <select className={inp} value={editing.branch || ''} onChange={e => setEditing({ ...editing, branch: e.target.value || null })}>
+              <option value="">كل الفروع (غير محدد بفرع)</option>
+              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS_AR[b]}</option>)}
+            </select>
             <textarea className={inp} rows={3} placeholder="وصف الوظيفة" value={editing.description || ''} onChange={e => setEditing({ ...editing, description: e.target.value })} />
             <textarea className={inp} rows={2} placeholder="المتطلبات" value={editing.requirements || ''} onChange={e => setEditing({ ...editing, requirements: e.target.value })} />
             <div className="grid grid-cols-2 gap-2">

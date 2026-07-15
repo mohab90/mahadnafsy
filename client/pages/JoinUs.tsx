@@ -18,6 +18,7 @@ const JoinUs: React.FC = () => {
     fetch('/api/jobs').then(r => r.json()).then(d => setJobs(Array.isArray(d) ? d : [])).catch(() => {});
   }, [isEmployee]);
   const EMP_LABEL: Record<string, string> = { full_time: 'دوام كامل', part_time: 'دوام جزئي', contract: 'عقد', remote: 'عن بُعد', internship: 'تدريب' };
+  const BRANCH_LABEL: Record<string, string> = { DAQQI: 'فرع الدقي', TAGAMOA: 'فرع التجمع', ONLINE_EGYPT: 'أونلاين محلي (مصر)', ONLINE_SAUDI: 'أونلاين سعودي', ONLINE_ABROAD: 'أونلاين دولي', OTHER: 'أخرى' };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +177,7 @@ const JoinUs: React.FC = () => {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-gray-800 text-sm">{j.title}</span>
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{EMP_LABEL[j.employment_type] || j.employment_type}</span>
+                              {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{BRANCH_LABEL[j.branch] || j.branch}</span>}
                               {j.department && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-100 text-primary-700">{j.department}</span>}
                               {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
                             </div>
