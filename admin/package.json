@@ -10,7 +10,6 @@
     "deploy": "npm run build && node deploy_admin.cjs"
   },
   "dependencies": {
-    "@tanstack/react-virtual": "^3.13.24",
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.3.3",
     "jspdf": "^4.2.1",

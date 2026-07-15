@@ -18,7 +18,7 @@
     "react-dom": "^19.2.0",
     "react-is": "^19.2.6",
     "react-router-dom": "^7.17.0",
-    "recharts": "^3.5.1"
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
