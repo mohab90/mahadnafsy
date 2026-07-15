@@ -1903,7 +1903,7 @@ const Dashboard: React.FC = () => {
     const totalRevenue = paidOrders.reduce((sum, o) => sum + toEGP(o), 0)
       + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? []).filter(p => !p.isInstallment).reduce((ps, p) => ps + toEGP(p), 0), 0);
     const leadsBySource: [string, number][] = (Object.entries(
-      leads.reduce((acc: Record<string, number>, l) => { acc[l.source] = (acc[l.source] || 0) + 1; return acc; }, {})
+      leads.reduce((acc: Record<string, number>, l) => { const src = l.source || 'غير محدد'; acc[src] = (acc[src] || 0) + 1; return acc; }, {})
     ) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const courseEnrollments = courses.map(c => ({
       id: c.id,

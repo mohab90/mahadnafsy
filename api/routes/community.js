@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('../lib/id');
 
-const { pool } = require('../lib/db');
+const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
@@ -12,6 +12,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 // Map a DB row to the client-facing shape (camelCase author* + status), keeping snake-case too.
 const mapPost = (r) => ({
   ...r,
+  tag: r.category || '',
   tags: tryJson(r.tags, []),
   authorName: r.author || '',
   authorRole: r.author_role || '',
@@ -37,11 +38,15 @@ router.get('/api/admin/community/posts', requireAuth, requireAdmin, async (_req,
 // Public feed — only APPROVED posts are visible to everyone.
 router.get('/api/community/posts', async (_req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at
-       FROM community_posts WHERE status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`
-    );
-    res.json(rows.map(mapPost));
+    const data = await cached('community:posts:public', 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at
+         FROM community_posts WHERE status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`
+      );
+      return rows.map(mapPost);
+    });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json(data);
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -65,6 +70,7 @@ router.post('/api/community/posts', requireAuth, async (req, res) => {
         0, 0, 0, p.createdAt || new Date().toISOString(),
       ]
     );
+    cacheInvalidate('community:posts');
     res.json({ ok: true, id, status: 'pending' });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -91,6 +97,7 @@ router.post('/api/admin/community/posts', requireAuth, requireAdmin, async (req,
         status, p.createdAt || new Date().toISOString(),
       ]
     );
+    cacheInvalidate('community:posts');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -101,6 +108,7 @@ router.post('/api/admin/community/posts', requireAuth, requireAdmin, async (req,
 router.delete('/api/admin/community/posts/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM community_posts WHERE id = ?', [req.params.id]);
+    cacheInvalidate('community:posts');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -111,11 +119,15 @@ router.delete('/api/admin/community/posts/:id', requireAuth, requireAdmin, async
 // Community Library
 router.get('/api/community/library', async (_req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT id, title, category, description, file_url, thumbnail, file_type, tags, created_at
-       FROM community_library ORDER BY created_at DESC LIMIT 200`
-    );
-    res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
+    const data = await cached('community:library:public', 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        `SELECT id, title, category, description, file_url, thumbnail, file_type, tags, created_at
+         FROM community_library ORDER BY created_at DESC LIMIT 200`
+      );
+      return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
+    });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json(data);
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -136,6 +148,7 @@ router.post('/api/admin/community/library', requireAuth, requireAdmin, async (re
         l.createdAt || new Date().toISOString(),
       ]
     );
+    cacheInvalidate('community:library');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -146,6 +159,7 @@ router.post('/api/admin/community/library', requireAuth, requireAdmin, async (re
 router.delete('/api/admin/community/library/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM community_library WHERE id = ?', [req.params.id]);
+    cacheInvalidate('community:library');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -156,11 +170,15 @@ router.delete('/api/admin/community/library/:id', requireAuth, requireAdmin, asy
 // Community Videos
 router.get('/api/community/videos', async (_req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT id, title, category, description, video_url, thumbnail, duration, tags, created_at
-       FROM community_videos ORDER BY created_at DESC LIMIT 200`
-    );
-    res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
+    const data = await cached('community:videos:public', 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        `SELECT id, title, category, description, video_url, thumbnail, duration, tags, created_at
+         FROM community_videos ORDER BY created_at DESC LIMIT 200`
+      );
+      return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
+    });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json(data);
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -181,6 +199,7 @@ router.post('/api/admin/community/videos', requireAuth, requireAdmin, async (req
         v.createdAt || new Date().toISOString(),
       ]
     );
+    cacheInvalidate('community:videos');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -191,6 +210,7 @@ router.post('/api/admin/community/videos', requireAuth, requireAdmin, async (req
 router.delete('/api/admin/community/videos/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM community_videos WHERE id = ?', [req.params.id]);
+    cacheInvalidate('community:videos');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -201,12 +221,16 @@ router.delete('/api/admin/community/videos/:id', requireAuth, requireAdmin, asyn
 // Community Events
 router.get('/api/community/events', async (_req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT id, title, category, description, image_url, event_date, date_label,
-       location_name, registration_url, is_online, tags, created_at
-       FROM community_events ORDER BY created_at DESC LIMIT 200`
-    );
-    res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []) })));
+    const data = await cached('community:events:public', 5 * 60 * 1000, async () => {
+      const [rows] = await pool.query(
+        `SELECT id, title, category, description, image_url, event_date, date_label,
+         location_name, registration_url, is_online, tags, created_at
+         FROM community_events ORDER BY created_at DESC LIMIT 200`
+      );
+      return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
+    });
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+    res.json(data);
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -231,6 +255,7 @@ router.post('/api/admin/community/events', requireAuth, requireAdmin, async (req
         JSON.stringify(ev.tags || []), ev.createdAt || new Date().toISOString(),
       ]
     );
+    cacheInvalidate('community:events');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -241,6 +266,7 @@ router.post('/api/admin/community/events', requireAuth, requireAdmin, async (req
 router.delete('/api/admin/community/events/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM community_events WHERE id = ?', [req.params.id]);
+    cacheInvalidate('community:events');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);

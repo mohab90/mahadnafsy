@@ -133,7 +133,7 @@ export function DashboardCommunityAdminPanel({
                               </div>
                               <p className="font-bold text-gray-800">{post.title}</p>
                               <p className="text-sm text-gray-600 mt-1 line-clamp-2">{post.body}</p>
-                              <p className="text-xs text-gray-500 mt-1">بقلم: {post.authorName} ({post.authorRole})</p>
+                              <p className="text-xs text-gray-500 mt-1">بقلم: {post.authorName} ({post.authorRole === 'Admin' ? 'الإدارة' : post.authorRole})</p>
                             </div>
                             <div className="flex gap-2 flex-shrink-0">
                               <button onClick={() => updateCommunityPost({ ...post, status: 'approved' })}
@@ -154,7 +154,7 @@ export function DashboardCommunityAdminPanel({
                 {communityAdminTab === 'posts' && (
                   <div className="space-y-4">
                     <div className="flex justify-end">
-                      <button onClick={() => { setEditingCommunityPostId(''); setCommunityPostDraft({ title: '', body: '', tag: 'نقاش عام', authorName: 'إدارة المنصة', authorRole: 'Admin', authorImage: '', pinned: false }); setIsCommunityPostFormOpen(true); }}
+                      <button onClick={() => { setEditingCommunityPostId(''); setCommunityPostDraft({ title: '', body: '', tag: 'نقاش عام', authorName: 'إدارة المنصة', authorRole: 'الإدارة', authorImage: '', pinned: false }); setIsCommunityPostFormOpen(true); }}
                         className="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-teal-700 flex items-center gap-2">
                         <span>+</span> منشور جديد
                       </button>

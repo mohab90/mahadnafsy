@@ -85,7 +85,7 @@ const AnalyticsTab: React.FC<Props> = () => {
     { label: 'ضائعون',           count: filteredLeads.filter(l => l.status === 'lost').length,       color: 'bg-red-400',     light: 'bg-red-50 text-red-700' },
   ];
   const leadsBySource: [string, number][] = (
-    Object.entries(filteredLeads.reduce((acc: Record<string, number>, l) => { acc[l.source] = (acc[l.source] || 0) + 1; return acc; }, {})) as [string, number][]
+    Object.entries(filteredLeads.reduce((acc: Record<string, number>, l) => { const src = l.source || 'غير محدد'; acc[src] = (acc[src] || 0) + 1; return acc; }, {})) as [string, number][]
   ).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const maxSrc = Math.max(...leadsBySource.map(([, n]) => n), 1);
 
@@ -132,7 +132,7 @@ const AnalyticsTab: React.FC<Props> = () => {
   }).sort((a, b) => b.count - a.count).slice(0, 8);
 
   // ── Community, discounts, contacts ───────────────────────────
-  const topTags = (Object.entries(communityPosts.reduce((acc: Record<string, number>, p) => { acc[p.tag] = (acc[p.tag] || 0) + 1; return acc; }, {})) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const topTags = (Object.entries(communityPosts.reduce((acc: Record<string, number>, p) => { const tag = p.tag || 'بدون تصنيف'; acc[tag] = (acc[tag] || 0) + 1; return acc; }, {})) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const discountUsage = discounts.map(d => ({ code: d.promoCode, used: orders.filter(o => o.couponCode === d.promoCode).length, type: d.type, value: d.discountPercent })).filter(d => d.used > 0).sort((a, b) => b.used - a.used).slice(0, 6);
   const joinNew      = joinUsApplications.filter(j => j.status === 'new').length;
   const joinReviewed = joinUsApplications.filter(j => j.status === 'reviewed').length;
