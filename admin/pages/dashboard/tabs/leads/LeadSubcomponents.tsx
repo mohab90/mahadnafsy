@@ -516,7 +516,7 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-600 mb-1 block">Instance ID</label>
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">معرّف الجهاز (Instance ID)</label>
                   <input value={instanceId} onChange={e => setInstanceId(e.target.value)}
                     placeholder="1234567890" dir="ltr"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono" />

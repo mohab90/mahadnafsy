@@ -104,11 +104,11 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
             <span className="text-sm font-semibold text-gray-600">ربط Facebook</span>
             <Toggle checked={!!config.facebook.enabled} onChange={value => update('facebook.enabled', value)} />
           </div>
-          <Field label="Page ID"><Input value={String(config.facebook.page_id || '')} onChange={value => update('facebook.page_id', value)} /></Field>
-          <Field label="App ID"><Input value={String(config.facebook.app_id || '')} onChange={value => update('facebook.app_id', value)} /></Field>
-          <Field label="Webhook Verify Token"><Input value={String(config.facebook.webhook_verify_token || '')} onChange={value => update('facebook.webhook_verify_token', value)} /></Field>
-          <Field label="Page Access Token"><Input type="password" value={String(config.facebook.page_access_token || '')} onChange={value => update('facebook.page_access_token', value)} /></Field>
-          <Field label="App Secret"><Input type="password" value={String(config.facebook.app_secret || '')} onChange={value => update('facebook.app_secret', value)} /></Field>
+          <Field label="معرّف الصفحة (Page ID)"><Input value={String(config.facebook.page_id || '')} onChange={value => update('facebook.page_id', value)} /></Field>
+          <Field label="معرّف التطبيق (App ID)"><Input value={String(config.facebook.app_id || '')} onChange={value => update('facebook.app_id', value)} /></Field>
+          <Field label="رمز تحقق الـ Webhook"><Input value={String(config.facebook.webhook_verify_token || '')} onChange={value => update('facebook.webhook_verify_token', value)} /></Field>
+          <Field label="رمز وصول الصفحة"><Input type="password" value={String(config.facebook.page_access_token || '')} onChange={value => update('facebook.page_access_token', value)} /></Field>
+          <Field label="سر التطبيق (App Secret)"><Input type="password" value={String(config.facebook.app_secret || '')} onChange={value => update('facebook.app_secret', value)} /></Field>
           <Field label="الفرع الافتراضي"><Input value={String(config.facebook.default_branch || '')} onChange={value => update('facebook.default_branch', value)} /></Field>
           <Field label="مسؤول السيلز الافتراضي"><Input value={String(config.facebook.default_sales_id || '')} onChange={value => update('facebook.default_sales_id', value)} /></Field>
         </div>
@@ -143,13 +143,13 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
             <div key={source.id || index} className="grid grid-cols-1 gap-2 rounded-xl border border-gray-200 p-3 md:grid-cols-5">
               <Input value={source.name} onChange={value => updateApiSource(index, { name: value })} placeholder="اسم المصدر" />
               <Input value={source.default_branch} onChange={value => updateApiSource(index, { default_branch: value })} placeholder="الفرع الافتراضي" />
-              <Input type="password" value={source.secret} onChange={value => updateApiSource(index, { secret: value })} placeholder="Secret" />
+              <Input type="password" value={source.secret} onChange={value => updateApiSource(index, { secret: value })} placeholder="السر" />
               <div className="flex items-center justify-center"><Toggle checked={!!source.enabled} onChange={value => updateApiSource(index, { enabled: value })} /></div>
               <button className="inline-flex items-center justify-center rounded-xl border border-red-200 text-red-600" onClick={() => update('api_sources', config.api_sources.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
             </div>
           ))}
           <button className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700" onClick={() => update('api_sources', [...config.api_sources, { id: `api_${Date.now()}`, name: '', enabled: true, secret: '', default_branch: '' }])}>
-            <Plus size={15} /> إضافة API Source
+            <Plus size={15} /> إضافة مصدر API
           </button>
         </div>
       </Card>

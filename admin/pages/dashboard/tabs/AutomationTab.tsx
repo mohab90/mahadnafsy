@@ -497,7 +497,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-gray-700 mb-1 block">Instance ID *</label>
+              <label className="text-xs font-bold text-gray-700 mb-1 block">معرّف الجهاز (Instance ID) *</label>
               <input
                 value={waInstanceId}
                 onChange={e => setWaInstanceId(e.target.value)}
@@ -565,7 +565,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
 
           {/* Verify Token */}
           <div>
-            <label className="text-xs font-bold text-gray-600 mb-1 block">Verify Token (ضعه في Facebook أيضاً)</label>
+            <label className="text-xs font-bold text-gray-600 mb-1 block">رمز التحقق (Verify Token) — ضعه في Facebook أيضاً</label>
             <input value={fbToken} onChange={e => setFbToken(e.target.value)} dir="ltr"
               placeholder="mahad_fb_2025"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
@@ -573,7 +573,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
 
           {/* Page Access Token */}
           <div>
-            <label className="text-xs font-bold text-gray-600 mb-1 block">Page Access Token <span className="text-red-500">*</span></label>
+            <label className="text-xs font-bold text-gray-600 mb-1 block">رمز وصول الصفحة (Page Access Token) <span className="text-red-500">*</span></label>
             <input value={fbPageToken} onChange={e => setFbPageToken(e.target.value)} dir="ltr" type="password"
               placeholder="EAAxxxxx... (من Facebook Developers → Tools → Graph API Explorer)"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono" />

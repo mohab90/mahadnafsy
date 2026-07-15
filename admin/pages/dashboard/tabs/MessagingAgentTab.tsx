@@ -310,7 +310,7 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400" dir="ltr" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">API Key</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">مفتاح API</label>
                 <input type="password" value={agentDraft.apiKey || ''} onChange={e => setAgentDraft(p => ({ ...p, apiKey: e.target.value }))}
                   placeholder="AIza... / sk-... / sk-ant-..."
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400" dir="ltr" />
@@ -323,13 +323,13 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 resize-none" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Temperature (0.1 – 1.0)</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">درجة الإبداعية (Temperature) — من 0.1 إلى 1.0</label>
                 <input type="number" min={0.1} max={1.0} step={0.1} value={agentDraft.temperature ?? 0.7}
                   onChange={e => setAgentDraft(p => ({ ...p, temperature: parseFloat(e.target.value) }))}
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400" dir="ltr" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Max Tokens</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1">أقصى عدد رموز (Max Tokens)</label>
                 <input type="number" min={100} max={4000} value={agentDraft.maxTokens ?? 800}
                   onChange={e => setAgentDraft(p => ({ ...p, maxTokens: parseInt(e.target.value) }))}
                   className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400" dir="ltr" />

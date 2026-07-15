@@ -63,6 +63,7 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
   };
 
   const methodOptions = ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'];
+  const METHOD_LABEL_AR: Record<string, string> = { cash: 'نقدي', instapay: 'إنستاباي', bank_transfer: 'تحويل بنكي', vodafone_cash: 'فودافون كاش' };
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -71,24 +72,24 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Field label="المزود النشط">
             <select value={config.active_provider} onChange={event => update('active_provider', event.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
-              <option value="manual">Manual payments</option>
+              <option value="manual">دفع يدوي</option>
               <option value="paymob">Paymob</option>
             </select>
           </Field>
           <Field label="البيئة">
             <select value={config.mode} onChange={event => update('mode', event.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
-              <option value="sandbox">Sandbox</option>
-              <option value="live">Live</option>
+              <option value="sandbox">تجريبية</option>
+              <option value="live">حية (فعلية)</option>
             </select>
           </Field>
           <div className="flex items-end justify-between rounded-xl border border-gray-200 px-4 py-3">
-            <span className="text-sm font-semibold text-gray-600">Manual enabled</span>
+            <span className="text-sm font-semibold text-gray-600">تفعيل الدفع اليدوي</span>
             <Toggle checked={!!config.manual.enabled} onChange={value => update('manual.enabled', value)} />
           </div>
         </div>
       </Card>
 
-      <Card title="Manual payment flow" hint="طرق الدفع اليدوية التي تظهر للعميل أو تستخدم داخل فريق التحصيل.">
+      <Card title="طرق الدفع اليدوي" hint="طرق الدفع اليدوية التي تظهر للعميل أو تستخدم داخل فريق التحصيل.">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {methodOptions.map(method => (
             <label key={method} className="flex items-center gap-2 rounded-xl border border-gray-200 p-3 text-sm">
@@ -102,26 +103,26 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
                   update('manual.supported_methods', next);
                 }}
               />
-              {method}
+              {METHOD_LABEL_AR[method] || method}
             </label>
           ))}
         </div>
       </Card>
 
-      <Card title="Paymob credentials" hint="القيم السرية لا تظهر مرة أخرى بعد الحفظ؛ اترك الحقل كما هو للحفاظ على السر القديم.">
+      <Card title="بيانات اعتماد Paymob" hint="القيم السرية لا تظهر مرة أخرى بعد الحفظ؛ اترك الحقل كما هو للحفاظ على السر القديم.">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
-            <span className="text-sm font-semibold text-gray-600">Paymob enabled</span>
+            <span className="text-sm font-semibold text-gray-600">تفعيل Paymob</span>
             <Toggle checked={!!config.paymob.enabled} onChange={value => update('paymob.enabled', value)} />
           </div>
-          <Field label="Merchant ID"><Input value={String(config.paymob.merchant_id || '')} onChange={value => update('paymob.merchant_id', value)} /></Field>
-          <Field label="API Key"><Input type="password" value={String(config.paymob.api_key || '')} onChange={value => update('paymob.api_key', value)} /></Field>
-          <Field label="Secret Key"><Input type="password" value={String(config.paymob.secret_key || '')} onChange={value => update('paymob.secret_key', value)} /></Field>
-          <Field label="HMAC Secret"><Input type="password" value={String(config.paymob.hmac_secret || '')} onChange={value => update('paymob.hmac_secret', value)} /></Field>
-          <Field label="Card Integration ID"><Input value={String(config.paymob.integration_id_card || '')} onChange={value => update('paymob.integration_id_card', value)} /></Field>
-          <Field label="Wallet Integration ID"><Input value={String(config.paymob.integration_id_wallet || '')} onChange={value => update('paymob.integration_id_wallet', value)} /></Field>
-          <Field label="Iframe ID"><Input value={String(config.paymob.iframe_id || '')} onChange={value => update('paymob.iframe_id', value)} /></Field>
-          <Field label="Webhook URL"><Input value={String(config.paymob.webhook_url || '')} onChange={value => update('paymob.webhook_url', value)} /></Field>
+          <Field label="معرّف التاجر (Merchant ID)"><Input value={String(config.paymob.merchant_id || '')} onChange={value => update('paymob.merchant_id', value)} /></Field>
+          <Field label="مفتاح API"><Input type="password" value={String(config.paymob.api_key || '')} onChange={value => update('paymob.api_key', value)} /></Field>
+          <Field label="المفتاح السري"><Input type="password" value={String(config.paymob.secret_key || '')} onChange={value => update('paymob.secret_key', value)} /></Field>
+          <Field label="سر HMAC"><Input type="password" value={String(config.paymob.hmac_secret || '')} onChange={value => update('paymob.hmac_secret', value)} /></Field>
+          <Field label="معرّف تكامل البطاقات"><Input value={String(config.paymob.integration_id_card || '')} onChange={value => update('paymob.integration_id_card', value)} /></Field>
+          <Field label="معرّف تكامل المحفظة"><Input value={String(config.paymob.integration_id_wallet || '')} onChange={value => update('paymob.integration_id_wallet', value)} /></Field>
+          <Field label="معرّف الإطار (Iframe ID)"><Input value={String(config.paymob.iframe_id || '')} onChange={value => update('paymob.iframe_id', value)} /></Field>
+          <Field label="رابط Webhook"><Input value={String(config.paymob.webhook_url || '')} onChange={value => update('paymob.webhook_url', value)} /></Field>
         </div>
       </Card>
 

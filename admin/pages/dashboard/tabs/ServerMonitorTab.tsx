@@ -278,27 +278,27 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
       {data && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className={`rounded-2xl border p-4 ${monitoring?.db?.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-            <p className="text-xs font-bold text-gray-500">DB latency</p>
+            <p className="text-xs font-bold text-gray-500">زمن استجابة قاعدة البيانات</p>
             <p className="text-xl font-extrabold">{monitoring?.db?.latencyMs ?? '-'} ms</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold text-gray-500">Job queue</p>
+            <p className="text-xs font-bold text-gray-500">طابور المهام</p>
             <p className="text-xl font-extrabold text-slate-700">{monitoring?.jobs?.pending ?? '-'} / {monitoring?.jobs?.failed ?? '-'}</p>
-            <p className="text-[10px] text-gray-400">pending / failed</p>
+            <p className="text-[10px] text-gray-400">قيد الانتظار / فشلت</p>
           </div>
           <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
-            <p className="text-xs font-bold text-gray-500">Queue jobs</p>
+            <p className="text-xs font-bold text-gray-500">مهام الطابور</p>
             <p className="text-xl font-extrabold text-violet-700">{monitoring?.queueJobs?.active ?? '-'} / {monitoring?.queueJobs?.failed ?? '-'}</p>
-            <p className="text-[10px] text-gray-400">active / failed</p>
+            <p className="text-[10px] text-gray-400">نشطة / فشلت</p>
           </div>
           <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-            <p className="text-xs font-bold text-gray-500">Audit today</p>
+            <p className="text-xs font-bold text-gray-500">أحداث المراجعة اليوم</p>
             <p className="text-xl font-extrabold text-blue-700">{monitoring?.audit?.eventsToday ?? auditRows.length}</p>
           </div>
           <div className={`rounded-2xl border p-4 ${(monitoring?.errors?.errorsInWindow ?? 0) > 0 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
-            <p className="text-xs font-bold text-gray-500">Observability</p>
-            <p className="text-xl font-extrabold">{monitoring?.errors?.active ? 'Sentry' : 'Logs'}</p>
-            <p className="text-[10px] text-gray-400">{monitoring?.errors?.errorsInWindow ?? 0} errors / window</p>
+            <p className="text-xs font-bold text-gray-500">مراقبة الأخطاء</p>
+            <p className="text-xl font-extrabold">{monitoring?.errors?.active ? 'Sentry' : 'السجلات'}</p>
+            <p className="text-[10px] text-gray-400">{monitoring?.errors?.errorsInWindow ?? 0} خطأ / نافذة المراقبة</p>
           </div>
         </div>
       )}
@@ -306,7 +306,7 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-3">Queue dashboard</h3>
+            <h3 className="font-bold text-gray-800 text-sm mb-3">لوحة طابور المهام</h3>
             <div className="space-y-2 text-xs">
               {(queueDashboard?.summary ?? []).slice(0, 8).map((row, index) => (
                 <div key={`${row.source}-${row.status}-${index}`} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
@@ -314,11 +314,11 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
                   <span className="font-extrabold text-gray-900">{row.count}</span>
                 </div>
               ))}
-              {!(queueDashboard?.summary ?? []).length && <p className="text-gray-400">No queue rows yet.</p>}
+              {!(queueDashboard?.summary ?? []).length && <p className="text-gray-400">لا توجد بيانات طابور بعد.</p>}
             </div>
           </div>
           <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-3">Audit log</h3>
+            <h3 className="font-bold text-gray-800 text-sm mb-3">سجل المراجعة</h3>
             <div className="space-y-2 text-xs max-h-56 overflow-y-auto">
               {auditRows.slice(0, 8).map((row: any, index) => (
                 <div key={row?.id || index} className="rounded-lg bg-gray-50 px-3 py-2">
@@ -329,7 +329,7 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
                   <p className="text-gray-400 truncate">{row?.entity_type || '-'} / {row?.entity_id || '-'}</p>
                 </div>
               ))}
-              {!auditRows.length && <p className="text-gray-400">No audit rows yet.</p>}
+              {!auditRows.length && <p className="text-gray-400">لا توجد بيانات مراجعة بعد.</p>}
             </div>
           </div>
         </div>
@@ -338,34 +338,34 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
       {data && financialAudit && (
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <h3 className="font-bold text-gray-800 text-sm">Financial audit dashboard</h3>
+            <h3 className="font-bold text-gray-800 text-sm">لوحة المراجعة المالية</h3>
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${financialAudit.reconciliation?.balanced ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-              ledger diff: {financialAudit.reconciliation?.diff ?? '-'}
+              فرق دفتر الأستاذ: {financialAudit.reconciliation?.diff ?? '-'}
             </span>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
             <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
-              <p className="font-bold text-gray-500">Paid payments</p>
+              <p className="font-bold text-gray-500">مدفوعات مكتملة</p>
               <p className="text-lg font-extrabold text-emerald-700">{financialAudit.summary?.payments?.paid_count ?? '-'}</p>
             </div>
             <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
-              <p className="font-bold text-gray-500">Pending refunds</p>
+              <p className="font-bold text-gray-500">استردادات معلقة</p>
               <p className="text-lg font-extrabold text-amber-700">{financialAudit.summary?.refunds?.pending_count ?? '-'}</p>
             </div>
             <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-              <p className="font-bold text-gray-500">Recent journal</p>
+              <p className="font-bold text-gray-500">قيود يومية حديثة</p>
               <p className="text-lg font-extrabold text-slate-700">{financialAudit.recent?.journalEntries?.length ?? '-'}</p>
             </div>
             <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
-              <p className="font-bold text-gray-500">Rollback policy</p>
-              <p className="text-[11px] font-bold text-blue-700">{financialAudit.rollbackPolicy?.destructiveRollbackAllowed ? 'manual delete allowed' : 'reversal only'}</p>
+              <p className="font-bold text-gray-500">سياسة التراجع</p>
+              <p className="text-[11px] font-bold text-blue-700">{financialAudit.rollbackPolicy?.destructiveRollbackAllowed ? 'الحذف اليدوي مسموح' : 'عكس القيد فقط'}</p>
             </div>
           </div>
           <p className="mt-3 text-xs text-gray-500">{financialAudit.rollbackPolicy?.recommendedAction}</p>
           <p className="mt-2 text-xs text-gray-500">
-            issues: duplicate journals {financialAudit.issues?.duplicatePaymentJournals?.length ?? 0}
-            {' | '}orphan journals {financialAudit.issues?.orphanPaymentJournals?.length ?? 0}
-            {' | '}missing journals {financialAudit.issues?.missingPaymentJournals?.length ?? 0}
+            مشاكل: قيود مكررة {financialAudit.issues?.duplicatePaymentJournals?.length ?? 0}
+            {' | '}قيود يتيمة {financialAudit.issues?.orphanPaymentJournals?.length ?? 0}
+            {' | '}قيود ناقصة {financialAudit.issues?.missingPaymentJournals?.length ?? 0}
           </p>
         </div>
       )}

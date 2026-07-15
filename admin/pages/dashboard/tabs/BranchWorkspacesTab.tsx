@@ -95,8 +95,8 @@ export default function BranchWorkspacesTab({ notify }: { notify: NotifyFn }) {
         {items.map((item, index) => (
           <Card key={item.key || index} title={item.label || 'فرع'}>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-              <Field label="Key"><Input value={item.key} onChange={value => update(index, { key: value.toUpperCase().replace(/\s+/g, '_') })} /></Field>
-              <Field label="Slug"><Input value={item.slug} onChange={value => update(index, { slug: value.toLowerCase().replace(/\s+/g, '-') })} /></Field>
+              <Field label="المعرّف (Key)"><Input value={item.key} onChange={value => update(index, { key: value.toUpperCase().replace(/\s+/g, '_') })} /></Field>
+              <Field label="الرابط المختصر (Slug)"><Input value={item.slug} onChange={value => update(index, { slug: value.toLowerCase().replace(/\s+/g, '-') })} /></Field>
               <Field label="الاسم"><Input value={item.label} onChange={value => update(index, { label: value })} /></Field>
               <Field label="النوع">
                 <select value={item.type} onChange={event => update(index, { type: event.target.value as BranchWorkspace['type'] })} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
@@ -105,8 +105,8 @@ export default function BranchWorkspacesTab({ notify }: { notify: NotifyFn }) {
                   <option value="hybrid">هجين</option>
                 </select>
               </Field>
-              <Field label="Timezone"><Input value={item.timezone} onChange={value => update(index, { timezone: value })} /></Field>
-              <Field label="Currency"><Input value={item.currency} onChange={value => update(index, { currency: value.toUpperCase() })} /></Field>
+              <Field label="المنطقة الزمنية"><Input value={item.timezone} onChange={value => update(index, { timezone: value })} /></Field>
+              <Field label="العملة"><Input value={item.currency} onChange={value => update(index, { currency: value.toUpperCase() })} /></Field>
               <div className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                 <span className="text-sm font-semibold text-gray-600">نشط</span>
                 <Toggle checked={!!item.is_active} onChange={value => update(index, { is_active: value })} />

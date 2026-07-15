@@ -177,7 +177,7 @@ export default function SaasSetupWizard({
 
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-bold text-slate-500">Next required action</p>
+          <p className="text-xs font-bold text-slate-500">الإجراء المطلوب التالي</p>
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
             <p className="font-extrabold text-slate-900">{nextRequiredStep.title}</p>
             <button
@@ -192,15 +192,15 @@ export default function SaasSetupWizard({
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-emerald-50 px-3 py-2 text-center">
             <p className="text-lg font-black text-emerald-700">{done}</p>
-            <p className="text-[10px] font-bold text-emerald-600">Done</p>
+            <p className="text-[10px] font-bold text-emerald-600">مكتمل</p>
           </div>
           <div className="rounded-xl bg-amber-50 px-3 py-2 text-center">
             <p className="text-lg font-black text-amber-700">{partial}</p>
-            <p className="text-[10px] font-bold text-amber-600">Partial</p>
+            <p className="text-[10px] font-bold text-amber-600">جزئي</p>
           </div>
           <div className="rounded-xl bg-rose-50 px-3 py-2 text-center">
             <p className="text-lg font-black text-rose-700">{missing}</p>
-            <p className="text-[10px] font-bold text-rose-600">Missing</p>
+            <p className="text-[10px] font-bold text-rose-600">ناقص</p>
           </div>
         </div>
       </div>
@@ -208,7 +208,7 @@ export default function SaasSetupWizard({
       <div className={`mb-4 rounded-xl border p-3 ${pilotReady ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className={`text-xs font-bold ${pilotReady ? 'text-emerald-700' : 'text-amber-700'}`}>Production pilot readiness</p>
+            <p className={`text-xs font-bold ${pilotReady ? 'text-emerald-700' : 'text-amber-700'}`}>جاهزية التشغيل التجريبي</p>
             <p className="mt-1 font-extrabold text-slate-900">
               {pilotReady ? 'جاهز كبداية pilot بعد اختبارات التشغيل' : 'غير جاهز للـ pilot قبل إكمال العناصر الأساسية'}
             </p>
@@ -230,12 +230,12 @@ export default function SaasSetupWizard({
 
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[220px_1fr]">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-bold text-slate-500">Production readiness</p>
+          <p className="text-xs font-bold text-slate-500">جاهزية التشغيل الفعلي</p>
           <p className={`mt-1 text-3xl font-black ${productionScore >= 80 ? 'text-emerald-700' : productionScore >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
             {productionScore}%
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            Minimum operational checks before exposing the system to a real institute workspace.
+            الحد الأدنى من الفحوصات التشغيلية قبل فتح النظام لمساحة عمل معهد حقيقي.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
