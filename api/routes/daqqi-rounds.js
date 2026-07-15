@@ -22,13 +22,20 @@ function toMysqlDt(v) {
   return String(v).slice(0, 19).replace('T', ' ');
 }
 
-router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (req, res) => {
+// Shared by every Dokki-schedule route below — was only actually applied to
+// GET /api/admin/daqqi-rounds; the attendance-report/export/monthly routes had no
+// role check at all, so e.g. a SALES or HR account could pull every Dokki attendee's
+// name/phone/payments via CSV export.
+const DAQQI_ALLOWED_ROLES = new Set(['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'INSTRUCTOR', 'TRAINER']);
+function requireDaqqiAccess(req, res, next) {
   const role = (req.staffRecord?.role || '').toUpperCase();
-  const allowedRoles = new Set(['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'INSTRUCTOR', 'TRAINER']);
-  if (req.staffRecord && !req.isSuperAdmin && !allowedRoles.has(role)) {
+  if (req.staffRecord && !req.isSuperAdmin && !DAQQI_ALLOWED_ROLES.has(role)) {
     return res.status(403).json({ error: 'Access denied' });
   }
+  next();
+}
 
+router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
   try {
     const [rounds] = await pool.query(
       `SELECT id, code, course_id, instructor_id, instructor_name, reception_id, reception_name,
@@ -170,7 +177,7 @@ router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdmin, async (r
 });
 
 // ── Attendance report: all rounds (or filtered by status) with per-attendee stats ──
-router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
   try {
     const { status } = req.query; // 'active' | 'finished' | '' (all)
     const statusFilter = status && ['NEW','ACTIVE','FINISHED'].includes(String(status).toUpperCase())
@@ -237,7 +244,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
 });
 
 // ── Attendance CSV export ──
-router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
   try {
     const { status } = req.query;
     const statusFilter = status && ['NEW','ACTIVE','FINISHED'].includes(String(status).toUpperCase())
@@ -299,7 +306,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
 });
 
 // ── Monthly attendance report — aggregate rounds by month ──
-router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
   try {
     const months = Math.min(24, Math.max(1, Number(req.query.months) || 12));
 
