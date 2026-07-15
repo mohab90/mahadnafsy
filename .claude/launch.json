@@ -14,6 +14,34 @@
       "runtimeArgs": ["vite", "--port", "3000"],
       "cwd": "client",
       "port": 3000
+    },
+    {
+      "name": "client-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "3020", "--strictPort"],
+      "cwd": "client",
+      "port": 3020
+    },
+    {
+      "name": "client-prod-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "preview", "--port", "3021", "--strictPort"],
+      "cwd": "client",
+      "port": 3021
+    },
+    {
+      "name": "admin-prod-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "preview", "--port", "4001", "--strictPort"],
+      "cwd": "admin",
+      "port": 4001
+    },
+    {
+      "name": "admin-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "4020", "--strictPort"],
+      "cwd": "admin",
+      "port": 4020
     }
   ]
 }

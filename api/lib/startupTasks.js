@@ -8,6 +8,7 @@ const logger = require('./logger');
 // backwards compatibility on existing servers, but every NEW schema
 // change must be a numbered file in api/migrations/.
 const { VALID_BRANCHES } = require('../constants/permissions');
+const { branchIdForBranch } = require('./branches');
 
 function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, sendWhatsApp, uuidv4 }) {
   // ── Schema migrations (run once per version, not on every boot) ──────────────
@@ -1016,6 +1017,17 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
         }
         if (salesFixed > 0 || csFixed > 0)
           logger.info(`[schema] v19: backfilled ${salesFixed} sales assignments + ${csFixed} collection assignments`);
+
+        const [branchBackfill] = await pool.query(
+          `UPDATE subscribers
+           SET branch = COALESCE(NULLIF(branch, ''), 'ONLINE_EGYPT'),
+               branch_id = COALESCE(NULLIF(branch_id, ''), ?)
+           WHERE branch IS NULL OR branch='' OR branch_id IS NULL OR branch_id=''`,
+          [branchIdForBranch('ONLINE_EGYPT')]
+        ).catch(e => { logger.warn('[schema] subscriber branch backfill:', e.message); return [{ affectedRows: 0 }]; });
+        if (branchBackfill?.affectedRows > 0) {
+          logger.info(`[schema] backfilled ${branchBackfill.affectedRows} subscribers with default branch`);
+        }
 
         await pool.query(
           "INSERT INTO site_config (`key`, `value`) VALUES ('schema_version', '19') ON DUPLICATE KEY UPDATE `value`='19'"

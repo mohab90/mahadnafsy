@@ -11,11 +11,11 @@ const { tryJson, validate } = require('../lib/helpers');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE v23: Progress Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FEATURE v23: Progress Tracking ───────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
-// POST /api/me/progress â€” mark a lecture complete (or update watch progress)
+// POST /api/me/progress — mark a lecture complete (or update watch progress)
 router.post('/api/me/progress', requireAuth, async (req, res) => {
   try {
     const { lecture_id, course_id, progress_pct, watch_seconds } = req.body;
@@ -34,7 +34,7 @@ router.post('/api/me/progress', requireAuth, async (req, res) => {
       [sub.id, lecture_id, course_id || null, pct, Number(watch_seconds) || 0]
     );
 
-    // â”€â”€ Auto-certificate check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Auto-certificate check ─────────────────────────────────────────────
     if (course_id) {
       try {
         // Video progress %
@@ -72,12 +72,12 @@ router.post('/api/me/progress', requireAuth, async (req, res) => {
               const certUrl = `${process.env.CLIENT_URL || ''}/certificate/${certCode}`;
               sendEmail(
                 subInfo.email,
-                `ðŸŽ“ Ù…Ø¨Ø±ÙˆÙƒ! Ø´Ù‡Ø§Ø¯Ø© Ø¥ØªÙ…Ø§Ù… ${courseRow?.title || 'Ø§Ù„ÙƒÙˆØ±Ø³'} Ø¬Ø§Ù‡Ø²Ø©`,
+                `🎓 مبروك! شهادة إتمام ${courseRow?.title || 'الكورس'} جاهزة`,
                 `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
-                  <h2 style="color:#7c3aed">ðŸŽ“ Ù…Ø¨Ø±ÙˆÙƒ ÙŠØ§ ${subInfo.name || ''}!</h2>
-                  <p>Ø£ØªÙ…Ù…Øª <strong>${Math.round(progressPct)}%</strong> Ù…Ù† Ù…Ø­ØªÙˆÙ‰ Ø§Ù„ÙƒÙˆØ±Ø³ ÙˆØ£ÙƒÙ…Ù„Øª Ù…ØªØ·Ù„Ø¨Ø§Øª Ø§Ù„Ø¯ÙØ¹ â€” Ø´Ù‡Ø§Ø¯ØªÙƒ Ø¬Ø§Ù‡Ø²Ø© Ø§Ù„Ø¢Ù†!</p>
-                  <p><a href="${certUrl}" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">Ø¹Ø±Ø¶ Ø§Ù„Ø´Ù‡Ø§Ø¯Ø©</a></p>
-                  <p style="color:#666;font-size:12px">Ø±Ù‚Ù… Ø§Ù„Ø´Ù‡Ø§Ø¯Ø©: ${certCode}</p>
+                  <h2 style="color:#7c3aed">🎓 مبروك يا ${subInfo.name || ''}!</h2>
+                  <p>أتممت <strong>${Math.round(progressPct)}%</strong> من محتوى الكورس وأكملت متطلبات الدفع — شهادتك جاهزة الآن!</p>
+                  <p><a href="${certUrl}" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">عرض الشهادة</a></p>
+                  <p style="color:#666;font-size:12px">رقم الشهادة: ${certCode}</p>
                 </div>`
               ).catch(() => {});
             }
@@ -85,13 +85,13 @@ router.post('/api/me/progress', requireAuth, async (req, res) => {
         }
       } catch (_certErr) { /* don't fail the main request if cert check errors */ }
     }
-    // â”€â”€ End auto-certificate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── End auto-certificate ───────────────────────────────────────────────
 
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/me/progress?course_id=xxx â€” get all lecture completions for subscriber
+// GET /api/me/progress?course_id=xxx — get all lecture completions for subscriber
 router.get('/api/me/progress', requireAuth, async (req, res) => {
   try {
     const email = req.user.email?.toLowerCase().trim();
@@ -106,7 +106,7 @@ router.get('/api/me/progress', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/admin/courses/:courseId/progress â€” admin: completion stats per lecture
+// GET /api/admin/courses/:courseId/progress — admin: completion stats per lecture
 router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -124,11 +124,11 @@ router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrS
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE v23: Drip Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FEATURE v23: Drip Content ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/me/lectures/:lectureId/access â€” check if subscriber can access this lecture
+// GET /api/me/lectures/:lectureId/access — check if subscriber can access this lecture
 router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) => {
   try {
     const email = req.user.email?.toLowerCase().trim();
@@ -202,7 +202,7 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/lectures/:lectureId/drip â€” set drip_unlock_days
+// PATCH /api/admin/lectures/:lectureId/drip — set drip_unlock_days
 router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, async (req, res) => {
   try {
     const days = Math.max(0, Number(req.body.drip_unlock_days) || 0);
@@ -211,9 +211,9 @@ router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, a
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE v23: Live Sessions (Zoom / Google Meet) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FEATURE v23: Live Sessions (Zoom / Google Meet) ───────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/live-sessions?course_id=
 router.get('/api/admin/live-sessions', requireAuth, requireAdminOrStaff, async (req, res) => {
@@ -228,7 +228,7 @@ router.get('/api/admin/live-sessions', requireAuth, requireAdminOrStaff, async (
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/live-sessions â€” create a live session
+// POST /api/admin/live-sessions — create a live session
 router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { course_id, title, platform, meeting_url, meeting_id, meeting_pass, starts_at, duration_min, notes } = req.body;
@@ -251,12 +251,12 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
           const sessionDate = new Date(starts_at).toLocaleString('ar-EG', { dateStyle: 'full', timeStyle: 'short' });
           for (const st of enrolled) {
             if (st.email) {
-              sendEmail(st.email, `ðŸ”´ Ø¬Ù„Ø³Ø© Ù„Ø§ÙŠÙ Ø¬Ø¯ÙŠØ¯Ø© â€” ${title||''}`,
-                `<div dir="rtl"><h2>ØªÙ… Ø¬Ø¯ÙˆÙ„Ø© Ø¬Ù„Ø³Ø© Ù„Ø§ÙŠÙ Ø¬Ø¯ÙŠØ¯Ø©</h2><p>Ø£Ù‡Ù„Ø§Ù‹ ${st.name||''}ØŒ</p><p>ØªÙ… ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯ Ø¬Ù„Ø³Ø© Ù„Ø§ÙŠÙ Ø¨ØªØ§Ø±ÙŠØ® <strong>${sessionDate}</strong></p><p><a href="${meeting_url}" style="background:#4f46e5;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none">Ø§Ù†Ø¶Ù… Ù„Ù„Ø¬Ù„Ø³Ø©</a></p>${meeting_pass?`<p>ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ±: <strong>${meeting_pass}</strong></p>`:''}</div>`
+              sendEmail(st.email, `🔴 جلسة لايف جديدة — ${title||''}`,
+                `<div dir="rtl"><h2>تم جدولة جلسة لايف جديدة</h2><p>أهلاً ${st.name||''}،</p><p>تم تحديد موعد جلسة لايف بتاريخ <strong>${sessionDate}</strong></p><p><a href="${meeting_url}" style="background:#4f46e5;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none">انضم للجلسة</a></p>${meeting_pass?`<p>كلمة المرور: <strong>${meeting_pass}</strong></p>`:''}</div>`
               ).catch(() => {});
             }
             if (st.phone) {
-              sendWhatsApp(st.phone, `ðŸ”´ Ø¬Ù„Ø³Ø© Ù„Ø§ÙŠÙ Ø¬Ø¯ÙŠØ¯Ø©!\nðŸ“… ${sessionDate}\nðŸ”— ${meeting_url}${meeting_pass?`\nðŸ”‘ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ±: ${meeting_pass}`:''}`).catch(() => {});
+              sendWhatsApp(st.phone, `🔴 جلسة لايف جديدة!\n📅 ${sessionDate}\n🔗 ${meeting_url}${meeting_pass?`\n🔑 كلمة المرور: ${meeting_pass}`:''}`).catch(() => {});
             }
           }
         } catch (_) {}
@@ -271,7 +271,7 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/live-sessions/:id â€” update status/recording
+// PATCH /api/admin/live-sessions/:id — update status/recording
 router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const allowed = ['title','platform','meeting_url','meeting_id','meeting_pass','starts_at','duration_min','status','recording_url','notes'];
@@ -289,7 +289,7 @@ router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (r
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/me/live-sessions â€” get upcoming live sessions for enrolled courses
+// GET /api/me/live-sessions — get upcoming live sessions for enrolled courses
 router.get('/api/me/live-sessions', requireAuth, async (req, res) => {
   try {
     const email = req.user.email?.toLowerCase().trim();
@@ -310,9 +310,9 @@ router.get('/api/me/live-sessions', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE v23: Email Sequences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FEATURE v23: Email Sequences ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/email-sequences
 router.get('/api/admin/email-sequences', requireAuth, requireAdmin, async (req, res) => {
@@ -332,7 +332,7 @@ router.get('/api/admin/email-sequences', requireAuth, requireAdmin, async (req, 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/email-sequences â€” create sequence with steps
+// POST /api/admin/email-sequences — create sequence with steps
 router.post('/api/admin/email-sequences', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, trigger_event, is_active, steps } = req.body;
@@ -397,15 +397,15 @@ setInterval(async () => {
   } catch (e) { logger.warn('[email-seq] scheduler error:', e.message); }
 }, 5 * 60 * 1000);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE v23: Employee Self-Service (leaves, payslip, commissions) â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FEATURE v23: Employee Self-Service (leaves, payslip, commissions) ─────────
+// ══════════════════════════════════════════════════════════════════════════════
 
-// POST /api/staff/me/leaves â€” employee submits own leave request
-// GET /api/staff/me/payslip?month=&year= â€” employee views own payslip
-// GET /api/staff/me/commissions?month=&year= â€” employee views own commissions
-// â”€â”€ Wire email sequences into registration + enrollment triggers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// (Done via monkey-patch on pool post-insert â€” safer to call from the register handler above
+// POST /api/staff/me/leaves — employee submits own leave request
+// GET /api/staff/me/payslip?month=&year= — employee views own payslip
+// GET /api/staff/me/commissions?month=&year= — employee views own commissions
+// ── Wire email sequences into registration + enrollment triggers ───────────────
+// (Done via monkey-patch on pool post-insert — safer to call from the register handler above
 //  but here we expose a helper endpoint that can be called retroactively)
 router.post('/api/admin/email-sequences/trigger-test', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -416,11 +416,11 @@ router.post('/api/admin/email-sequences/trigger-test', requireAuth, requireAdmin
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE: Staff Work Schedule (Weekly Shifts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FEATURE: Staff Work Schedule (Weekly Shifts) ──────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-// GET /api/admin/staff/:staffId/schedule â€” get weekly schedule
+// GET /api/admin/staff/:staffId/schedule — get weekly schedule
 router.get('/api/admin/staff/:staffId/schedule', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -428,7 +428,7 @@ router.get('/api/admin/staff/:staffId/schedule', requireAuth, requireAdminOrStaf
       [req.params.staffId]
     );
     // Ensure all 7 days present (fill missing with defaults)
-    const days = ['Ø§Ù„Ø£Ø­Ø¯','Ø§Ù„Ø§Ø«Ù†ÙŠÙ†','Ø§Ù„Ø«Ù„Ø§Ø«Ø§Ø¡','Ø§Ù„Ø£Ø±Ø¨Ø¹Ø§Ø¡','Ø§Ù„Ø®Ù…ÙŠØ³','Ø§Ù„Ø¬Ù…Ø¹Ø©','Ø§Ù„Ø³Ø¨Øª'];
+    const days = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
     const schedule = Array.from({ length: 7 }, (_, i) => {
       const existing = rows.find(r => r.day_of_week === i);
       return existing || { staff_id: req.params.staffId, day_of_week: i, day_name: days[i], start_time: '09:00:00', end_time: '17:00:00', grace_minutes: 15, is_off_day: i === 5 || i === 6 ? 1 : 0 };
@@ -437,7 +437,7 @@ router.get('/api/admin/staff/:staffId/schedule', requireAuth, requireAdminOrStaf
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PUT /api/admin/staff/:staffId/schedule â€” upsert full weekly schedule (array of 7 days)
+// PUT /api/admin/staff/:staffId/schedule — upsert full weekly schedule (array of 7 days)
 router.put('/api/admin/staff/:staffId/schedule', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { schedule } = req.body; // array of { day_of_week, start_time, end_time, grace_minutes, is_off_day }
@@ -464,7 +464,7 @@ router.put('/api/admin/staff/:staffId/schedule', requireAuth, requireAdmin, asyn
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/admin/schedules â€” all staff schedules overview (for weekly roster view)
+// GET /api/admin/schedules — all staff schedules overview (for weekly roster view)
 router.get('/api/admin/schedules', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -484,7 +484,7 @@ router.get('/api/admin/schedules', requireAuth, requireAdminOrStaff, async (req,
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/admin/attendance?staff_id=&from=&to=&status= â€” attendance log
+// GET /api/admin/attendance?staff_id=&from=&to=&status= — attendance log
 router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const { staff_id, from, to, status } = req.query;
@@ -514,7 +514,7 @@ router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (req
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/attendance â€” log a single attendance record
+// POST /api/admin/attendance — log a single attendance record
 router.post('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const { staff_id, date, check_in, check_out, status, notes } = req.body;
@@ -533,31 +533,11 @@ router.post('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (re
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/staff/me/schedule â€” employee views own schedule
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE: Performance Appraisals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// GET /api/staff/me/schedule — employee views own schedule
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FEATURE: Performance Appraisals ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Auto-create table at startup
-pool.query(`
-  CREATE TABLE IF NOT EXISTS performance_appraisals (
-    id              VARCHAR(36)  NOT NULL DEFAULT (UUID()),
-    staff_id        VARCHAR(36)  NOT NULL,
-    reviewer_email  VARCHAR(200) NULL,
-    period_month    TINYINT      NOT NULL COMMENT '1-12',
-    period_year     SMALLINT     NOT NULL,
-    kpi_scores      JSON         NULL     COMMENT 'array of {kpi,target,achieved,score}',
-    overall_score   DECIMAL(5,2) NULL     COMMENT '0-100',
-    grade           VARCHAR(10)  NULL     COMMENT 'A/B/C/D',
-    notes           TEXT         NULL,
-    status          ENUM('draft','submitted','approved') NOT NULL DEFAULT 'draft',
-    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_pa_staff  (staff_id),
-    KEY idx_pa_period (period_year, period_month)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-`).catch(e => logger.warn('[schema] performance_appraisals:', e.message));
 
 // GET /api/admin/appraisals?staff_id=&year=&month=&status=
 router.get('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) => {
@@ -580,7 +560,7 @@ router.get('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/appraisals â€” create appraisal
+// POST /api/admin/appraisals — create appraisal
 router.post('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { staff_id, period_month, period_year, kpi_scores, notes, status } = req.body;
@@ -607,7 +587,7 @@ router.post('/api/admin/appraisals', requireAuth, requireAdmin, async (req, res)
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/appraisals/:id â€” update appraisal
+// PATCH /api/admin/appraisals/:id — update appraisal
 router.patch('/api/admin/appraisals/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { kpi_scores, notes, status, overall_score } = req.body;
@@ -644,8 +624,8 @@ router.delete('/api/admin/appraisals/:id', requireAuth, requireAdmin, async (req
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/staff/me/appraisals â€” employee views own appraisals
-// GET /api/admin/appraisals/summary?year= â€” team performance overview
+// GET /api/staff/me/appraisals — employee views own appraisals
+// GET /api/admin/appraisals/summary?year= — team performance overview
 router.get('/api/admin/appraisals/summary', requireAuth, requireAdmin, async (req, res) => {
   try {
     const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -670,36 +650,12 @@ router.get('/api/admin/appraisals/summary', requireAuth, requireAdmin, async (re
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE: Course Waitlist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FEATURE: Course Waitlist ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure waitlist table + capacity column on courses
-(async () => {
-  try {
-    await pool.query("ALTER TABLE courses ADD COLUMN IF NOT EXISTS max_students INT UNSIGNED NULL COMMENT 'NULL = unlimited'");
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS course_waitlist (
-        id            VARCHAR(36)  NOT NULL DEFAULT (UUID()),
-        course_id     VARCHAR(36)  NOT NULL,
-        subscriber_id VARCHAR(36)  NULL,
-        name          VARCHAR(200) NULL,
-        email         VARCHAR(200) NULL,
-        phone         VARCHAR(50)  NULL,
-        position      INT UNSIGNED NOT NULL DEFAULT 0,
-        status        ENUM('waiting','notified','enrolled','cancelled') NOT NULL DEFAULT 'waiting',
-        notified_at   DATETIME     NULL,
-        created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY idx_wl_course (course_id, status),
-        KEY idx_wl_sub    (subscriber_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    `);
-    logger.info('[schema] course_waitlist + courses.max_students ready');
-  } catch (e) { logger.warn('[schema] waitlist:', e.message); }
-})();
 
-// GET /api/admin/courses/:courseId/waitlist â€” list waitlist entries
+// GET /api/admin/courses/:courseId/waitlist — list waitlist entries
 router.get('/api/admin/courses/:courseId/waitlist', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -725,7 +681,7 @@ router.get('/api/admin/courses/:courseId/waitlist', requireAuth, requireAdminOrS
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/courses/:courseId/waitlist â€” add someone to waitlist
+// POST /api/admin/courses/:courseId/waitlist — add someone to waitlist
 router.post('/api/admin/courses/:courseId/waitlist', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -743,7 +699,7 @@ router.post('/api/admin/courses/:courseId/waitlist', requireAuth, requireAdminOr
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/me/waitlist â€” student joins waitlist for a course
+// POST /api/me/waitlist — student joins waitlist for a course
 router.post('/api/me/waitlist', requireAuth, async (req, res) => {
   try {
     const { course_id } = req.body;
@@ -772,7 +728,7 @@ router.post('/api/me/waitlist', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/courses/:courseId/waitlist/:id â€” update entry status / notify
+// PATCH /api/admin/courses/:courseId/waitlist/:id — update entry status / notify
 router.patch('/api/admin/courses/:courseId/waitlist/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const { status, notify } = req.body;
@@ -789,11 +745,11 @@ router.patch('/api/admin/courses/:courseId/waitlist/:id', requireAuth, requireAd
       );
       const [[course]] = await pool.query('SELECT title FROM courses WHERE id = ?', [req.params.courseId]);
       if (entry?.email) {
-        await sendEmail(entry.email, `ØªÙ†Ø¨ÙŠÙ‡: Ù…ØªØ§Ø­ Ù…Ù‚Ø¹Ø¯ ÙÙŠ ÙƒÙˆØ±Ø³ ${course?.title || ''}`,
-          `<p>Ù…Ø±Ø­Ø¨Ø§Ù‹ ${entry.name || ''}ØŒ</p>
-           <p>ÙŠØ³Ø¹Ø¯Ù†Ø§ Ø¥Ø®Ø¨Ø§Ø±Ùƒ Ø¨ØªÙˆÙØ± Ù…Ù‚Ø¹Ø¯ ÙÙŠ ÙƒÙˆØ±Ø³ <strong>${course?.title || ''}</strong>.</p>
-           <p>ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹Ù†Ø§ ÙÙŠ Ø£Ù‚Ø±Ø¨ ÙˆÙ‚Øª Ù„ØªØ£ÙƒÙŠØ¯ Ø§Ù„ØªØ³Ø¬ÙŠÙ„.</p>
-           <p>ÙØ±ÙŠÙ‚ ${entry._instituteName || 'Ù…Ø¹Ù‡Ø¯ Ù…Ù‡Ø§Ø¯'}</p>`
+        await sendEmail(entry.email, `تنبيه: متاح مقعد في كورس ${course?.title || ''}`,
+          `<p>مرحباً ${entry.name || ''}،</p>
+           <p>يسعدنا إخبارك بتوفر مقعد في كورس <strong>${course?.title || ''}</strong>.</p>
+           <p>يرجى التواصل معنا في أقرب وقت لتأكيد التسجيل.</p>
+           <p>فريق ${entry._instituteName || 'معهد مهاد'}</p>`
         ).catch(() => {});
         await pool.query('UPDATE course_waitlist SET status = ?, notified_at = NOW() WHERE id = ?', ['notified', req.params.id]);
       }
@@ -802,7 +758,7 @@ router.patch('/api/admin/courses/:courseId/waitlist/:id', requireAuth, requireAd
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/courses/:courseId/capacity â€” set max_students
+// PATCH /api/admin/courses/:courseId/capacity — set max_students
 router.patch('/api/admin/courses/:courseId/capacity', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { max_students } = req.body;
@@ -812,11 +768,11 @@ router.patch('/api/admin/courses/:courseId/capacity', requireAuth, requireAdmin,
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE: Auto Course Completion + Certificate Generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FEATURE: Auto Course Completion + Certificate Generation ─────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-// POST /api/admin/completions â€” admin marks a subscriber as completing a course
+// POST /api/admin/completions — admin marks a subscriber as completing a course
 // Idempotent: if already completed, returns existing certificate
 router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
@@ -844,13 +800,13 @@ router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, async (r
     const [[course]] = await pool.query('SELECT title FROM courses WHERE id = ?', [course_id]);
     if (sub?.email) {
       const certLink = `https://mahadnafsy.com/certificate/${certCode}`;
-      await sendEmail(sub.email, `ðŸŽ“ Ù…Ø¨Ø±ÙˆÙƒ! Ø´Ù‡Ø§Ø¯ØªÙƒ ÙÙŠ "${course?.title || 'Ø§Ù„ÙƒÙˆØ±Ø³'}" Ø¬Ø§Ù‡Ø²Ø©`,
+      await sendEmail(sub.email, `🎓 مبروك! شهادتك في "${course?.title || 'الكورس'}" جاهزة`,
         `<div style="direction:rtl;font-family:Arial;max-width:600px;margin:auto">
-          <h2 style="color:#B91C1C">Ù…Ø¨Ø±ÙˆÙƒ ${sub.name || ''} ðŸŽ‰</h2>
-          <p>Ù„Ù‚Ø¯ Ø£ØªÙ…Ù…Øª Ø¨Ù†Ø¬Ø§Ø­ ÙƒÙˆØ±Ø³ <strong>${course?.title || ''}</strong>.</p>
-          <p>ÙŠÙ…ÙƒÙ†Ùƒ ØªØ­Ù…ÙŠÙ„ Ø´Ù‡Ø§Ø¯ØªÙƒ Ù…Ù† Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„ØªØ§Ù„ÙŠ:</p>
-          <a href="${certLink}" style="background:#B91C1C;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;display:inline-block;margin:12px 0;font-weight:bold">ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ø´Ù‡Ø§Ø¯Ø©</a>
-          <p style="color:#999;font-size:12px">ÙƒÙˆØ¯ Ø§Ù„ØªØ­Ù‚Ù‚: ${certCode}</p>
+          <h2 style="color:#B91C1C">مبروك ${sub.name || ''} 🎉</h2>
+          <p>لقد أتممت بنجاح كورس <strong>${course?.title || ''}</strong>.</p>
+          <p>يمكنك تحميل شهادتك من الرابط التالي:</p>
+          <a href="${certLink}" style="background:#B91C1C;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;display:inline-block;margin:12px 0;font-weight:bold">تحميل الشهادة</a>
+          <p style="color:#999;font-size:12px">كود التحقق: ${certCode}</p>
         </div>`
       ).catch(() => {});
     }
@@ -859,7 +815,7 @@ router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, async (r
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// POST /api/admin/completions/bulk â€” bulk mark multiple subscribers as completed
+// POST /api/admin/completions/bulk — bulk mark multiple subscribers as completed
 router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { course_id, subscriber_ids } = req.body;
@@ -884,7 +840,7 @@ router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, async (req
         results.push({ subscriber_id, certificate_code: certCode, created: true });
       }
     }
-    // Batch INSERT in chunks of 200 â€” restores per-item error reporting on chunk failure
+    // Batch INSERT in chunks of 200 — restores per-item error reporting on chunk failure
     const COMP_CHUNK = 200;
     for (let ci = 0; ci < toInsert.length; ci += COMP_CHUNK) {
       const chunk = toInsert.slice(ci, ci + COMP_CHUNK);
@@ -913,7 +869,7 @@ router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, async (req
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/admin/completions?course_id=&subscriber_id= â€” list completions
+// GET /api/admin/completions?course_id=&subscriber_id= — list completions
 router.get('/api/admin/completions', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
     const { course_id, subscriber_id } = req.query;
@@ -934,14 +890,14 @@ router.get('/api/admin/completions', requireAuth, requireAdminOrStaff, async (re
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE: Referral Earnings Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FEATURE: Referral Earnings Dashboard ─────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-// GET /api/admin/referrals â€” admin view all referral codes + earnings
+// GET /api/admin/referrals — admin view all referral codes + earnings
 // (removed dead duplicate GET /api/admin/referrals — live in an earlier-mounted router)
 
-// GET /api/admin/referrals/:code/subscribers â€” who registered with this code
+// GET /api/admin/referrals/:code/subscribers — who registered with this code
 router.get('/api/admin/referrals/:code/subscribers', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -955,7 +911,7 @@ router.get('/api/admin/referrals/:code/subscribers', requireAuth, requireAdmin, 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/referrals/:id/earnings â€” manually adjust referral earnings
+// PATCH /api/admin/referrals/:id/earnings — manually adjust referral earnings
 router.patch('/api/admin/referrals/:id/earnings', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { earnings, adjustment_note } = req.body;
@@ -964,46 +920,16 @@ router.patch('/api/admin/referrals/:id/earnings', requireAuth, requireAdmin, asy
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// â”€â”€ FEATURE: Student Community / Forum â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FEATURE: Student Community / Forum ───────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-pool.query(`
-  CREATE TABLE IF NOT EXISTS forum_posts (
-    id            VARCHAR(36)  NOT NULL DEFAULT (UUID()),
-    author_id     VARCHAR(36)  NOT NULL COMMENT 'subscriber.id',
-    author_name   VARCHAR(200) NULL,
-    course_id     VARCHAR(36)  NULL     COMMENT 'NULL = general community, set = course-specific',
-    parent_id     VARCHAR(36)  NULL     COMMENT 'NULL = top-level post, set = reply',
-    title         VARCHAR(300) NULL     COMMENT 'only for top-level posts',
-    body          TEXT         NOT NULL,
-    upvotes       INT UNSIGNED NOT NULL DEFAULT 0,
-    is_pinned     TINYINT(1)   NOT NULL DEFAULT 0,
-    is_hidden     TINYINT(1)   NOT NULL DEFAULT 0,
-    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    KEY idx_fp_course  (course_id),
-    KEY idx_fp_parent  (parent_id),
-    KEY idx_fp_author  (author_id),
-    KEY idx_fp_pinned  (is_pinned, created_at)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-`).catch(e => logger.warn('[schema] forum_posts:', e.message));
-
-pool.query(`
-  CREATE TABLE IF NOT EXISTS forum_upvotes (
-    post_id       VARCHAR(36)  NOT NULL,
-    subscriber_id VARCHAR(36)  NOT NULL,
-    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (post_id, subscriber_id)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-`).catch(e => logger.warn('[schema] forum_upvotes:', e.message));
 
 // GET /api/community/posts?course_id=&page=&limit=
-// Public to authenticated clients â€” list posts (top-level only by default)
+// Public to authenticated clients — list posts (top-level only by default)
 // (removed dead duplicate GET /api/community/posts — live in an earlier-mounted router)
 
-// GET /api/community/posts/:id â€” single post with replies
+// GET /api/community/posts/:id — single post with replies
 router.get('/api/community/posts/:id', requireAuth, async (req, res) => {
   try {
     const [[post]] = await pool.query(
@@ -1024,7 +950,7 @@ router.get('/api/community/posts/:id', requireAuth, async (req, res) => {
 // community.js (which mounts first) and no frontend calls forum_posts — removed
 // to end the route collision. The distinct /:id/upvote route stays below.
 
-// POST /api/community/posts/:id/upvote â€” toggle upvote
+// POST /api/community/posts/:id/upvote — toggle upvote
 router.post('/api/community/posts/:id/upvote', requireAuth, async (req, res) => {
   try {
     const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE firebase_uid = ? OR email = ?',
@@ -1046,7 +972,7 @@ router.post('/api/community/posts/:id/upvote', requireAuth, async (req, res) => 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/community/posts/:id â€” admin: pin/hide post
+// PATCH /api/admin/community/posts/:id — admin: pin/hide post
 router.patch('/api/admin/community/posts/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { is_pinned, is_hidden } = req.body;
@@ -1061,10 +987,10 @@ router.patch('/api/admin/community/posts/:id', requireAuth, requireAdmin, async 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// DELETE /api/admin/community/posts/:id â€” admin delete
+// DELETE /api/admin/community/posts/:id — admin delete
 // (removed dead duplicate DELETE /api/admin/community/posts/:id — live in an earlier-mounted router)
 
-// GET /api/admin/community/posts?hidden=1 â€” admin: list all including hidden
+// GET /api/admin/community/posts?hidden=1 — admin: list all including hidden
 // (removed dead duplicate GET /api/admin/community/posts — live in an earlier-mounted router)
 
 

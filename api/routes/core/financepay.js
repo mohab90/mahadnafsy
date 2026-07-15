@@ -36,7 +36,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
   try {
     const { id } = req.params;
     const { status, reviewNote } = req.body || {};
-    if (!['paid', 'failed', 'pending'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    if (!['paid', 'failed', 'pending', 'refunded'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const actor = req.user?.email || 'admin';
 
     const [[pay]] = await pool.query(

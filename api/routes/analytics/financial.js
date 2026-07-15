@@ -58,24 +58,6 @@ router.get('/api/admin/financial/pnl', requireAuth, requireAdminOrStaff, require
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Recurring Expenses ───────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS recurring_expenses (
-      id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-      title VARCHAR(200) NOT NULL,
-      amount_egp DECIMAL(12,2) NOT NULL,
-      category VARCHAR(100),
-      notes TEXT,
-      frequency ENUM('monthly','quarterly','yearly') DEFAULT 'monthly',
-      day_of_month TINYINT DEFAULT 1,
-      is_active TINYINT(1) DEFAULT 1,
-      last_run DATE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by VARCHAR(200)
-    )`);
-    logger.info('[schema] recurring_expenses ready');
-  } catch (e) { logger.warn('[schema recurring_expenses]', e.message); }
-})();
 router.get  ('/api/admin/recurring-expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try { const [rows] = await pool.query(
     `SELECT id, title, amount_egp, category, notes, frequency, day_of_month, is_active, last_run, created_at, created_by
@@ -150,30 +132,6 @@ setInterval(async () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Structured Installment Plans ─────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS installment_plans (
-      id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-      subscriber_id VARCHAR(100) NOT NULL,
-      payment_id VARCHAR(100),
-      title VARCHAR(200),
-      total_amount DECIMAL(12,2) NOT NULL,
-      currency VARCHAR(10) DEFAULT 'EGP',
-      installments_count INT NOT NULL DEFAULT 3,
-      paid_count INT DEFAULT 0,
-      installment_amounts JSON,
-      due_dates JSON,
-      paid_dates JSON,
-      status ENUM('active','completed','overdue','cancelled') DEFAULT 'active',
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by VARCHAR(200),
-      KEY idx_inst_sub (subscriber_id),
-      KEY idx_inst_status (status)
-    )`);
-    logger.info('[schema] installment_plans ready');
-  } catch (e) { logger.warn('[schema installment_plans]', e.message); }
-})();
 router.get('/api/admin/installment-plans', requireAuth, async (req, res) => {
   try {
     const { subscriber_id, status } = req.query;
@@ -223,14 +181,6 @@ router.delete('/api/admin/installment-plans/:id', requireAuth, requireAdminOrSta
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: VAT Tracking on Expenses ─────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-(async () => {
-  try {
-    await pool.query("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS vat_rate DECIMAL(5,2) DEFAULT 0");
-    await pool.query("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS vat_amount DECIMAL(12,2) DEFAULT 0");
-    await pool.query("ALTER TABLE expenses ADD COLUMN IF NOT EXISTS amount_before_vat DECIMAL(12,2) DEFAULT NULL");
-    logger.info('[schema] expenses VAT columns ready');
-  } catch (e) { logger.warn('[schema vat]', e.message); }
-})();
 // GET /api/admin/financial/vat-summary?from=&to=
 router.get('/api/admin/financial/vat-summary', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {

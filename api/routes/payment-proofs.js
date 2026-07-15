@@ -10,6 +10,7 @@ const { postPaymentJournal } = require('../lib/finance');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { syncLeadDealValue } = require('./public-orders');
 const { createNotification } = require('../lib/notification');
+const { publishRealtimeEvent } = require('../lib/realtime');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 // ── Payment Proofs — client submits & admin reviews ───────────────────────────
@@ -192,6 +193,14 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
          `تم اعتماد الإيصال${reviewer_note ? ' — ' + reviewer_note : ''}${proof.note ? ' | ملاحظة العميل: ' + proof.note : ''}`,
          reviewerName]
       );
+      const journalId = await postPaymentJournal({
+        paymentId: payId,
+        amount: proof.amount,
+        currency: proof.currency || 'EGP',
+        payType: 'COURSE',
+        actor: req.user?.email || 'system',
+      }, conn);
+      if (!journalId) throw new Error('Payment proof journal posting failed');
     }
 
     await conn.commit();
@@ -199,8 +208,6 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     // Auto-sync lead deal_value after payment approval
     if (action === 'approve' && proof.subscriber_id) {
       syncLeadDealValue(proof.subscriber_id).catch(() => {});
-      // Ledger-first: post the cash/revenue journal for the approved payment.
-      postPaymentJournal({ paymentId: `pp-${proof.id}`, amount: proof.amount, currency: proof.currency || 'EGP', payType: 'COURSE', actor: req.user?.email || 'system' });
     }
 
     // Send WhatsApp notification to subscriber (best-effort, after commit)
@@ -218,6 +225,14 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
           ? `✅ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}. شكراً لك! 🎓`
           : `❌ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}.${reviewer_note ? '\nالسبب: ' + reviewer_note : ''} يرجى التواصل معنا للمساعدة.`;
         await sendWhatsApp(sub.phone, msg);
+      }
+      if (sub?.email) {
+        publishRealtimeEvent('client:payment-updated', {
+          status: newStatus,
+          amount: proof.amount,
+          currency: proof.currency || 'EGP',
+          message: action === 'approve' ? 'تم اعتماد إيصال الدفع وتحديث حسابك.' : 'تم رفض إيصال الدفع. برجاء مراجعة الملاحظة.',
+        }, { room: `user:${String(sub.email).toLowerCase().trim()}` }).catch(() => {});
       }
     } catch (notifyErr) {
       logger.warn('[payment-proof] WhatsApp notify failed:', notifyErr.message);

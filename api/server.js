@@ -27,7 +27,9 @@ const { renderTemplate } = require('./lib/messageTemplates');
 const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode } = require('./lib/mappers');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrOnlineManagerOrCollection, requireAdminOrStaff, requirePermission } = require('./middleware/auth');
 const { adminLimiter, paymobLimiter, whatsappSendLimiter } = require('./middleware/rateLimits');
+const advancedRateLimit = require('./middleware/advancedRateLimit');
 const { createNotification } = require('./lib/notification');
+const { publishRealtimeEvent } = require('./lib/realtime');
 const { logPaymentAudit, postJournalEntry, _paymentAccountCode } = require('./lib/finance');
 const { logLeadEvent } = require('./lib/crm');
 const { enqueueEmailSequence } = require('./lib/emailSequence');
@@ -38,22 +40,42 @@ const monitoringRouter = require('./routes/monitoring');
 const adminMaintenanceRouter = require('./routes/admin-maintenance');
 const funnelRouter = require('./routes/funnel');
 const automationRouter = require('./routes/automation');
+const abandonedCheckoutRouter = require('./routes/abandoned-checkout');
 const campaignsRouter  = require('./routes/campaigns');
 const supportRouter    = require('./routes/support'); // Customer-Service Hub
 const adminUtilsRouter = require('./routes/admin-utils');
 const financeRouter   = require('./routes/finance');
 const analyticsRouter = require('./routes/analytics');
+const crmAdvancedRouter = require('./routes/crm-advanced');
 const miscRouter     = require('./routes/misc');
 const notificationsRouter = require('./routes/notifications');
+const loyaltyRouter = require('./routes/loyalty');
 const ordersRouter = require('./routes/orders');
+const pushRouter = require('./routes/push');
+const uploadRouter = require('./routes/upload');
 const configRouter = require('./routes/config');
 const communityRouter = require('./routes/community');
 const inboxRouter = require('./routes/inbox');
 const daqqiRoundsRouter = require('./routes/daqqi-rounds');
+const dokkiOperationsRouter = require('./routes/dokki-operations');
 const publicOrdersRouter   = require('./routes/public-orders');
 const imageProxyRouter      = require('./routes/imageProxy');
 const certificatesRouter   = require('./routes/certificates');
+const progressRouter = require('./routes/progress');
+const clientMaintenanceRouter = require('./routes/client-maintenance');
+const waitlistRouter = require('./routes/waitlist');
+const accountingPeriodsRouter = require('./routes/accounting-periods');
+const serverMonitorRouter = require('./routes/server-monitor');
+const promoCodesRouter = require('./routes/promo-codes');
+const crmOpsRouter = require('./routes/crm-ops');
+const communicationAdminRouter = require('./routes/communication-admin');
+const adminOperationsRouter = require('./routes/admin-operations');
+const leadCaptureCrmRouter = require('./routes/lead-capture-crm');
+const facebookLeadsWebhookRouter = require('./routes/facebook-leads-webhook');
+const profileRouter = require('./routes/profile');
+const staffRouter = require('./routes/staff');
 const coreRouter            = require('./routes/core');
+const subscriberQrRouter = require('./routes/subscriber-qr');
 const adminRouter           = require('./routes/admin');
 const lmsAdminRouter        = require('./routes/lms-admin');
 const paymentsRouter        = require('./routes/payments');
@@ -72,6 +94,7 @@ const publicRouter = require('./routes/public');
 const paymentsAdminRouter   = require('./routes/payments-admin');
 const { loadBlacklistFromDB } = require('./lib/token');
 const { registerStartupTasks } = require('./lib/startupTasks');
+const { adminFeatureGate } = require('./lib/adminFeatureGate');
 
 // ── Global error guards (registered before any I/O) ──────────────────────────
 process.on('uncaughtException', (err) => {
@@ -130,10 +153,14 @@ setInterval(() => {
   logger.info(`[memory] rss=${Math.round(mem.rss/1048576)}MB heap=${Math.round(mem.heapUsed/1048576)}MB/${Math.round(mem.heapTotal/1048576)}MB ext=${Math.round(mem.external/1048576)}MB`);
 }, 10 * 60 * 1000);
 
-// Startup schema/data tasks live in lib/startupTasks.js (frozen — no NEW DDL
-// here; every new schema change is a numbered file in api/migrations/ applied by
-// the runner below). Kept for backward-compat on installs that predate the runner.
-registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, sendWhatsApp, uuidv4 });
+// Legacy boot-time schema/data tasks are opt-in only. The default production
+// path is numbered migrations; keeping the old runner off avoids noisy runtime
+// DDL attempts and makes schema ownership explicit.
+if (process.env.ENABLE_LEGACY_STARTUP_TASKS === '1' || process.env.ALLOW_RUNTIME_SCHEMA_DDL === '1') {
+  registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, sendWhatsApp, uuidv4 });
+} else {
+  logger.info('[startup] legacy startupTasks skipped; using numbered migrations as schema source of truth');
+}
 
 // Numbered-migration runner: baselines 001..033 on existing DBs, applies only
 // new (034+) migrations, tracked in schema_migrations. Non-blocking + fail-safe.
@@ -465,6 +492,15 @@ app.get('/api/health/detailed', async (_req, res) => {
   });
 });
 
+app.get('/api/health/queues', (_req, res) => {
+  const queueState = require('./lib/queues').getQueueState();
+  res.json({
+    status: queueState.enabled ? 'enabled' : 'disabled',
+    reason: queueState.reason || null,
+    time: new Date().toISOString(),
+  });
+});
+
 // Request timeout — kill long-hanging requests after 45s to free pool connections
 app.use((req, res, next) => {
   res.setTimeout(45000, () => {
@@ -511,6 +547,15 @@ function auditAdmin(req, res, next) {
           'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
           [uuidv4(), action, entity, entityId || null, label, actor]
         ).catch(() => {});
+        publishRealtimeEvent('admin:mutation', {
+          action,
+          entity,
+          entityId,
+          label,
+          actor,
+          path: rawPath,
+          at: new Date().toISOString(),
+        }).catch(() => {});
       } catch (_) {}
     }
   });
@@ -520,6 +565,11 @@ function auditAdmin(req, res, next) {
 app.use('/api/admin', auditAdmin);
 // Apply rate limiter to all /api/admin/* routes (after auth audit, before handlers)
 app.use('/api/admin', adminLimiter);
+if (process.env.ADVANCED_RATE_LIMIT === 'true') {
+  app.use('/api/admin', advancedRateLimit);
+  app.use('/api/staff', advancedRateLimit);
+}
+app.use('/api/admin', adminFeatureGate);
 
 // ── In-memory online presence tracking ───────────────────────────────────────
 const { onlineMap } = require('./lib/onlineUsers');
@@ -571,22 +621,43 @@ app.use(adminIpWhitelistGuard);
 app.use('/', authRouter);
 app.use('/', publicRouter);
 app.use('/', automationRouter);
+app.use('/', abandonedCheckoutRouter);
 app.use('/', campaignsRouter);
 app.use('/', supportRouter);
 app.use('/', adminUtilsRouter);
 app.use('/', financeRouter);
 app.use('/', analyticsRouter);
+app.use('/', crmAdvancedRouter);
 app.use('/', miscRouter);
 app.use('/', notificationsRouter);
+app.use('/', loyaltyRouter);
 app.use('/', ordersRouter);
+app.use('/', pushRouter);
+app.use('/', uploadRouter);
 app.use('/', configRouter);
 app.use('/', communityRouter);
 app.use('/', inboxRouter);
 app.use('/', daqqiRoundsRouter);
+app.use('/', dokkiOperationsRouter);
 app.use('/', publicOrdersRouter);
 app.use('/', imageProxyRouter);
 app.use('/', certificatesRouter);
+app.use('/', progressRouter);
+app.use('/', clientMaintenanceRouter);
+app.use('/', waitlistRouter);
+app.use('/', accountingRouter);
+app.use('/', accountingPeriodsRouter);
+app.use('/', serverMonitorRouter);
+app.use('/', promoCodesRouter);
+app.use('/', crmOpsRouter);
+app.use('/', communicationAdminRouter);
+app.use('/', adminOperationsRouter);
+app.use('/', leadCaptureCrmRouter);
+app.use('/', facebookLeadsWebhookRouter);
+app.use('/', profileRouter);
+app.use('/', staffRouter);
 app.use('/', coreRouter);
+app.use('/', subscriberQrRouter);
 app.use('/', adminRouter);
 app.use('/', lmsAdminRouter);
 app.use('/', paymentsRouter);
@@ -602,10 +673,13 @@ app.use('/', monitoringRouter);
 app.use('/', adminMaintenanceRouter);
 app.use('/', funnelRouter);
 app.use('/', lmsRouter);
+app.use('/api/v2/lms', require('./src/modules/lms/lms.routes'));
+app.use('/api/student-ai', require('./routes/student-ai'));
 app.use('/', gsheetsRouter);
 app.use('/', hrRouter);
 app.use('/', require('./routes/docs')); // /api/docs (Swagger UI) + /api/openapi.json
 app.use('/', paymentsAdminRouter);
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 // SPA catch-all — serve index.html with no-cache so browsers always get latest asset hashes
 const _STATIC_DIR = process.env.STATIC_DIR || null;
@@ -613,7 +687,7 @@ if (_STATIC_DIR) {
   app.get('*', (_req, res) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
-    res.sendFile(path.join(_STATIC_DIR, 'index.html'));
+    res.sendFile(path.resolve(_STATIC_DIR, 'index.html'));
   });
 } else {
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
@@ -629,6 +703,9 @@ app.use((err, req, res, next) => {
   });
   require('./lib/errorMonitor').captureException(err, { reqId: req.reqId, method: req.method, path: req.path });
   if (!res.headersSent) {
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+      return res.status(400).json({ error: 'Invalid JSON body' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -654,6 +731,14 @@ const server = app.listen(PORT, () => {
 
   // Automated daily DB backup (gzipped mysqldump, rotated) — production only.
   require('./lib/dbBackup').scheduleDbBackup();
+
+  if (process.env.ARCHIVE_ACTIVITY_LOGS === 'true') {
+    const runArchive = () => require('./lib/archiveJob').archiveActivityLogs(pool);
+    const dayMs = 24 * 60 * 60 * 1000;
+    setTimeout(runArchive, 10 * 60 * 1000);
+    setInterval(runArchive, dayMs);
+    logger.info('[archive] activity log archive scheduled');
+  }
 
   // Initialize optional error monitoring (Sentry — no-op unless SENTRY_DSN + package present)
   require('./lib/errorMonitor').initErrorMonitor();

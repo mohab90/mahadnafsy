@@ -109,7 +109,11 @@ async function requireAdminOrOnlineManager(req, res, next) {
       `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
       [(email || '').toLowerCase().trim()]
     );
-    if (staff && (staff.role || '').toLowerCase() === 'online_manager') { req.staffRecord = staff; return next(); }
+    if (staff && (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase()) || (staff.role || '').toLowerCase() === 'online_manager')) {
+      req.staffRecord = staff;
+      if (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase())) req.isSuperAdmin = true;
+      return next();
+    }
   } catch (e) { logger.error('[requireAdminOrOnlineManager]', e.message); }
   res.status(403).json({ error: 'Insufficient permissions' });
 }
@@ -122,7 +126,11 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
       `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
       [(email || '').toLowerCase().trim()]
     );
-    if (staff && ['online_manager', 'collection'].includes((staff.role || '').toLowerCase())) { req.staffRecord = staff; return next(); }
+    if (staff && (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase()) || ['online_manager', 'collection'].includes((staff.role || '').toLowerCase()))) {
+      req.staffRecord = staff;
+      if (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase())) req.isSuperAdmin = true;
+      return next();
+    }
   } catch (e) { logger.error('[requireAdminOrOnlineManagerOrCollection]', e.message); }
   res.status(403).json({ error: 'Insufficient permissions' });
 }

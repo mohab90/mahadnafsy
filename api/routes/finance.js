@@ -8,6 +8,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
+const { postJournalEntry, _paymentAccountCode, toEgp } = require('../lib/finance');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -65,7 +66,7 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
     const p = await _loadPaymentForPrint(req.params.id);
     if (!p) return res.status(404).json({ error: 'Payment not found' });
 
-    const statusLabel = p.status === 'paid' ? 'مدفوع ✓' : p.status === 'pending' ? 'معلق' : p.status === 'failed' ? 'ملغى' : p.status || '—';
+    const statusLabel = p.status === 'paid' ? 'مدفوع ✓' : p.status === 'pending' ? 'معلق' : p.status === 'refunded' ? 'مسترد' : p.status === 'failed' ? 'ملغى' : p.status || '—';
     const payMethod = p.payment_method || p.paymentMethod || '—';
     const transId   = p.transaction_id || p.transactionId || null;
 
@@ -735,25 +736,6 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
 // ── FEATURE: Payment Links ────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure payment_links table exists
-pool.query(`
-  CREATE TABLE IF NOT EXISTS payment_links (
-    id VARCHAR(36) PRIMARY KEY,
-    token VARCHAR(128) UNIQUE NOT NULL,
-    item_type ENUM('course','bundle','consultation') NOT NULL,
-    item_id VARCHAR(36) NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    currency VARCHAR(10) DEFAULT 'EGP',
-    subscriber_id VARCHAR(36) DEFAULT NULL,
-    description VARCHAR(500) DEFAULT NULL,
-    expires_at DATETIME NOT NULL,
-    used_at DATETIME DEFAULT NULL,
-    created_by VARCHAR(100),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_token (token),
-    INDEX idx_expires (expires_at)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-`).catch(e => logger.warn('[Startup] payment_links table check:', e.message));
 
 // POST /api/admin/payment-links — generate a payment link
 router.post('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
@@ -1029,12 +1011,13 @@ router.put('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
     if (!month || !Array.isArray(budgets)) return res.status(400).json({ error: 'month and budgets[] required' });
     const { uuidv4: uid } = require('../lib/id');
     for (const b of budgets) {
-      if (!b.category || b.limit == null) continue;
+      const limitAmount = b.limit ?? b.limit_amount ?? b.budgeted_amount;
+      if (!b.category || limitAmount == null) continue;
       await pool.query(
         `INSERT INTO budgets (id, month, category, budgeted_amount, currency, notes)
          VALUES (?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE budgeted_amount=VALUES(budgeted_amount), currency=VALUES(currency), notes=VALUES(notes)`,
-        [uid(), month, b.category, parseFloat(b.limit) || 0, b.currency || 'EGP', b.notes || null]
+        [uid(), month, b.category, parseFloat(limitAmount) || 0, b.currency || 'EGP', b.notes || null]
       );
     }
     res.json({ ok: true });
@@ -1064,19 +1047,106 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
 });
 
 router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const { status, notes } = req.body;
     const normalizedStatus = String(status || '').toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(normalizedStatus))
       return res.status(400).json({ error: 'invalid status' });
-    await pool.query(
+    const actor = req.staffRecord?.name || req.user?.email || 'admin';
+    await conn.beginTransaction();
+
+    const [[rr]] = await conn.query(
+      `SELECT rr.*, s.name AS subscriber_name, s.email AS subscriber_email
+       FROM refund_requests rr
+       LEFT JOIN subscribers s ON s.id = rr.subscriber_id
+       WHERE rr.id = ? FOR UPDATE`,
+      [req.params.id]
+    );
+    if (!rr) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Refund request not found' });
+    }
+
+    await conn.query(
       `UPDATE refund_requests SET status=?, admin_note=?, resolved_by=?, resolved_at=NOW() WHERE id=?`,
       [normalizedStatus, notes || null, req.staffRecord?.id || req.user?.email || null, req.params.id]
     );
+
+    if (normalizedStatus === 'APPROVED' && rr.payment_id) {
+      const [[pay]] = await conn.query(
+        `SELECT id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, status
+         FROM payments WHERE id = ? LIMIT 1 FOR UPDATE`,
+        [rr.payment_id]
+      );
+      if (pay) {
+        await conn.query(
+          `UPDATE payments
+           SET status='refunded',
+               note=CONCAT(COALESCE(note,''), IF(note IS NOT NULL AND note!='',' | ',''), 'Refunded by ', ?)
+           WHERE id=?`,
+          [actor, pay.id]
+        );
+        await conn.query(
+          `INSERT INTO payment_audit_log (id, payment_id, action, old_status, new_status, amount, subscriber_id, actor)
+           VALUES (?,?,?,?,?,?,?,?)`,
+          [uuidv4(), pay.id, 'update', pay.status || null, 'refunded', pay.amount || null, pay.subscriber_id || null, actor]
+        ).catch((e) => logger.warn('[finance/refunds] audit insert:', e.message));
+        await conn.query(
+          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | Cancelled because payment was refunded') WHERE payment_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
+          [pay.id]
+        ).catch((e) => logger.warn('[finance/refunds] commission cancel:', e.message));
+        if (pay.course_id || pay.bundle_id) {
+          await conn.query(
+            'DELETE FROM enrollments WHERE subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
+            [pay.subscriber_id, pay.course_id || null, pay.bundle_id || null]
+          ).catch((e) => logger.warn('[finance/refunds] enrollment remove:', e.message));
+        }
+        const amt = Number(pay.amount) || 0;
+        if (amt > 0) {
+          const [revCode, revName] = _paymentAccountCode(String(pay.payment_type || 'OTHER').toUpperCase());
+          const amtEgp = await toEgp(amt, pay.currency);
+          const journalId = await postJournalEntry(
+            'refund',
+            pay.id,
+            new Date().toISOString().slice(0, 10),
+            `Refund ${amt} ${pay.currency || 'EGP'} (= ${amtEgp} EGP) approved by ${actor}`,
+            [
+              { account_code: revCode, account_name: revName, debit: amtEgp, credit: 0 },
+              { account_code: '1100', account_name: 'Cash and banks', debit: 0, credit: amtEgp },
+            ],
+            actor,
+            conn
+          );
+          if (!journalId) throw new Error('Refund journal posting failed');
+        }
+      }
+    }
+
+    await conn.query(
+      `INSERT INTO financial_audit_log
+         (id, tenant_id, entity_type, entity_id, action, old_json, new_json, amount, actor)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [
+        uuidv4(),
+        rr.tenant_id || req.tenantId || 'tenant-default',
+        'refund_request',
+        req.params.id,
+        normalizedStatus === 'APPROVED' ? 'approved' : 'rejected',
+        JSON.stringify({ status: rr.status, payment_id: rr.payment_id || null }),
+        JSON.stringify({ status: normalizedStatus, notes: notes || null }),
+        rr.amount,
+        actor,
+      ]
+    ).catch((e) => logger.warn('[finance/refunds] financial audit insert:', e.message));
+    await conn.commit();
     res.json({ ok: true });
   } catch (e) {
+    try { await conn.rollback(); } catch (_) {}
     logger.error('[finance/refunds PUT]', e.message);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
   }
 });
 

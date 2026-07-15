@@ -421,7 +421,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, as
 
 // POST /api/admin/leads/bulk-whatsapp — send WhatsApp message to multiple leads
 // Body: { lead_ids: string[], message: string }
-router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, requirePermission('bulk_whatsapp'), async (req, res) => {
   try {
     const { lead_ids, message } = req.body || {};
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) return res.status(400).json({ error: 'lead_ids required' });
@@ -737,17 +737,28 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
       LEFT JOIN staff cs ON cs.id = l.assigned_cs_id
       WHERE l.tenant_id = ? AND l.hidden = 0`;
     const params = [req.tenantId];
-    const role = (req.staffRecord?.role || '').toUpperCase();
+    // Was only scoping SALES/COLLECTION — every other role (RECEPTION_DAQQI, HR,
+    // SUPPORT, CONSULTANT, TRAINER, INSTRUCTOR, and DAQQI_MANAGER despite this file's
+    // own comment claiming otherwise) fell through to "no additional filter" = every
+    // branch's leads. Route through the same DATA_SCOPE table the sibling
+    // /api/staff/subscribers already uses, so RECEPTION_DAQQI/DAQQI_MANAGER only see
+    // DAQQI-branch leads like they're supposed to.
+    const role = (req.staffRecord?.role || '').toLowerCase();
     if (req.staffRecord && !req.isSuperAdmin) {
-      if (role === 'SALES') {
+      const scope = DATA_SCOPE[role] || 'assigned_sales';
+      if (scope === 'none') return res.json([]);
+      if (scope === 'assigned_sales') {
         sql += ' AND l.assigned_sales_id = ?';
         params.push(req.staffRecord.id);
-      } else if (role === 'COLLECTION' || role === 'CS') {
-        // COLLECTION staff see leads whose linked subscriber is assigned to them
+      } else if (scope === 'assigned_cs') {
+        // COLLECTION/SUPPORT staff see leads whose linked subscriber is assigned to them
         sql += ' AND l.id IN (SELECT lead_id FROM subscribers WHERE assigned_cs_id = ? AND lead_id IS NOT NULL)';
         params.push(req.staffRecord.id);
+      } else if (scope.startsWith('branch:')) {
+        sql += ' AND l.branch = ?';
+        params.push(scope.slice(7));
       }
-      // MANAGER / ACCOUNTANT / DAQQI_MANAGER see all — no additional filter
+      // scope === 'all' → no additional filter
     }
     // Cursor (keyset) pagination — opt-in via ?cursor=, falls back to offset.
     let nextCursorFn = null;

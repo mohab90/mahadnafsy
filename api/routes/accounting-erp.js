@@ -1,9 +1,7 @@
 'use strict';
-// ── Chart of Accounts + manual journal entries (ported from the 26 line) ──────
-// Adds an admin-managed chart of accounts on top of 25's existing ledger
-// (journal_entries / journal_entry_lines). Self-contained: creates its table on
-// load and bootstraps it from the accounts already used in the ledger, so it is
-// immediately populated with the institute's real accounts (no manual seeding).
+// Chart of Accounts + manual journal entries.
+// Schema is owned by numbered migrations; this route only bootstraps missing
+// account rows from the existing ledger when the table is already present.
 
 const express = require('express');
 const { uuidv4 } = require('../lib/id');
@@ -13,17 +11,9 @@ const logger = require('../lib/logger').child({ route: 'accounting-erp' });
 
 const router = express.Router();
 
-// Ensure the table exists + bootstrap from the live ledger the first time.
+// Bootstrap from the live ledger the first time.
 (async () => {
   try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS chart_of_accounts (
-      code VARCHAR(32) PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      type ENUM('asset','liability','equity','revenue','expense') NOT NULL,
-      is_active TINYINT(1) NOT NULL DEFAULT 1,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
     const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM chart_of_accounts');
     if (n === 0) {
       // Type inferred from the code prefix (1=asset, 2=liability, 3=equity,

@@ -113,24 +113,6 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdmin, a
 // ── FEATURE: Login History & Security Audit ────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure login_history table
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS login_history (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      user_id INT,
-      email VARCHAR(255),
-      ip VARCHAR(64),
-      user_agent VARCHAR(512),
-      status ENUM('success','failed','2fa_pending','2fa_success') DEFAULT 'success',
-      failure_reason VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_email (email),
-      INDEX idx_created (created_at),
-      INDEX idx_status (status)
-    )`);
-  } catch (e) { logger.warn('[login_history table]', e.message); }
-})();
 
 // Helper to log login events — called from login endpoints
 
@@ -395,22 +377,6 @@ router.get('/api/admin/analytics/expenses', requireAuth, requireAdmin, async (re
 // ── FEATURE: Notification Center ──────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure admin_notifications table
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS admin_notifications (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      type VARCHAR(50) NOT NULL COMMENT 'alert|info|warning|success',
-      title VARCHAR(255) NOT NULL,
-      message TEXT,
-      link VARCHAR(512),
-      is_read TINYINT DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_read (is_read),
-      INDEX idx_created (created_at)
-    )`);
-  } catch (e) { logger.warn('[admin_notifications]', e.message); }
-})();
 
 // Push a notification
 
@@ -475,17 +441,5 @@ setInterval(async () => {
 // ── FEATURE: Daily Follow-up Reminders (Leads) ────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure reminder_log table to avoid duplicate sends
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS reminder_log (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      type ENUM('followup','payment_due') NOT NULL,
-      ref_id VARCHAR(64) NOT NULL,
-      sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_type_ref_day (type, ref_id, sent_at)
-    )`);
-  } catch (e) { logger.warn('[reminder_log]', e.message); }
-})();
 
 module.exports = router;

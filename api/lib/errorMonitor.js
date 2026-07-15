@@ -52,6 +52,7 @@ const WINDOW_MS = Number(process.env.ALERT_WINDOW_MS || 5 * 60 * 1000);
 const THRESHOLD = Number(process.env.ALERT_5XX_THRESHOLD || 10);
 const COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS || 15 * 60 * 1000);
 let _errTimes = [];
+let _recentErrors = [];
 let _lastAlert = 0;
 
 async function alert(title, detail) {
@@ -71,10 +72,27 @@ function recordError(meta) {
   const now = Date.now();
   _errTimes.push(now);
   _errTimes = _errTimes.filter((t) => now - t < WINDOW_MS);
+  _recentErrors.push({ ts: new Date(now).toISOString(), ...(meta || {}) });
+  _recentErrors = _recentErrors.slice(-50);
   if (_errTimes.length >= THRESHOLD && now - _lastAlert > COOLDOWN_MS) {
     _lastAlert = now;
     alert(`${_errTimes.length} server errors in ${Math.round(WINDOW_MS / 60000)}m`, meta || {});
   }
 }
 
-module.exports = { initErrorMonitor, captureException, isActive, alert, recordError };
+function stats() {
+  const now = Date.now();
+  const windowStart = now - WINDOW_MS;
+  const recent = _recentErrors.filter((e) => Date.parse(e.ts) >= windowStart);
+  return {
+    active: isActive(),
+    windowMs: WINDOW_MS,
+    threshold: THRESHOLD,
+    errorsInWindow: _errTimes.filter((t) => t >= windowStart).length,
+    db503InWindow: recent.filter((e) => Number(e.statusCode) === 503 || e.kind === 'db_unavailable').length,
+    financeErrorsInWindow: recent.filter((e) => String(e.flow || e.kind || '').includes('finance') || String(e.flow || '').includes('refund')).length,
+    recent: _recentErrors.slice(-10),
+  };
+}
+
+module.exports = { initErrorMonitor, captureException, isActive, alert, recordError, stats };

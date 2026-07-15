@@ -5,6 +5,7 @@ const router  = express.Router();
 
 const { pool } = require('../lib/db');
 const { parseLimit } = require('../lib/helpers');
+const { publishRealtimeEvent } = require('../lib/realtime');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 
@@ -57,6 +58,13 @@ router.patch('/api/admin/certificate-requests/:id',
               { name: row.name, email: row.email, phone: row.phone, courseTitle: row.course_title },
               { dedupeKey: `cert_ready:${req.params.id}` }
             );
+            if (row.email) {
+              publishRealtimeEvent('client:certificate-updated', {
+                status: status.toUpperCase(),
+                courseTitle: row.course_title,
+                message: 'تم تحديث حالة الشهادة الخاصة بك.',
+              }, { room: `user:${String(row.email).toLowerCase().trim()}` }).catch(() => {});
+            }
           }
         } catch (e) { logger.warn('[lifecycle] certificate_ready failed:', e.message); }
       });

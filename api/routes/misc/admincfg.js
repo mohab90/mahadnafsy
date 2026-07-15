@@ -6,9 +6,50 @@ const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { hasPermission } = require('../../constants/permissions');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
+
+function isPlainJsonObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateConfigSection(section, value) {
+  if (!Object.prototype.hasOwnProperty.call(SYS_DEFAULTS, section)) return `Unknown section: ${section}`;
+  const defaultValue = SYS_DEFAULTS[section];
+  if (Array.isArray(defaultValue)) {
+    if (!Array.isArray(value)) return `${section} must be an array`;
+    if (value.length > 1000) return `${section} exceeds the maximum allowed rows`;
+    return null;
+  }
+  if (isPlainJsonObject(defaultValue)) {
+    if (!isPlainJsonObject(value)) return `${section} must be an object`;
+    if (JSON.stringify(value).length > 200000) return `${section} payload is too large`;
+  }
+  return null;
+}
+
+function sectionMeta(section) {
+  const value = SYS_DEFAULTS[section];
+  return {
+    section,
+    kind: Array.isArray(value) ? 'array' : typeof value,
+    defaultRows: Array.isArray(value) ? value.length : undefined,
+    keys: isPlainJsonObject(value) ? Object.keys(value) : undefined,
+  };
+}
+
+async function publishConfigEvent(req, section) {
+  try {
+    const { publishRealtimeEvent } = require('../../lib/realtime');
+    await publishRealtimeEvent('system-config:updated', {
+      section,
+      actor: req.user?.email || req.user?.uid || 'admin',
+      at: new Date().toISOString(),
+    });
+  } catch (_) {}
+}
 
 router.get('/api/admin/sys-config', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -26,12 +67,23 @@ router.get('/api/admin/sys-config', requireAuth, requireAdmin, async (req, res) 
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+router.get('/api/admin/sys-config/meta', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    res.json({
+      sections: Object.keys(SYS_DEFAULTS).map(sectionMeta),
+      publicSections: ['branches', 'currencies', 'countries', 'payment_methods', 'session_types', 'general'],
+    });
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // PUT /api/admin/sys-config/:section — save a section
 router.put('/api/admin/sys-config/:section', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { section } = req.params;
-    if (!Object.keys(SYS_DEFAULTS).includes(section)) return res.status(400).json({ error: 'Unknown section: ' + section });
+    const validationError = validateConfigSection(section, req.body);
+    if (validationError) return res.status(400).json({ error: validationError });
     await setSysConfig(section, req.body);
+    await publishConfigEvent(req, section);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -42,6 +94,7 @@ router.post('/api/admin/sys-config/:section/reset', requireAuth, requireAdmin, a
     const { section } = req.params;
     if (!SYS_DEFAULTS[section]) return res.status(400).json({ error: 'Unknown section' });
     await setSysConfig(section, SYS_DEFAULTS[section]);
+    await publishConfigEvent(req, section);
     res.json({ ok: true, data: SYS_DEFAULTS[section] });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -53,6 +106,7 @@ router.get('/api/admin/sys-config/public', async (_req, res) => {
     const values = await Promise.all(sections.map(k => getSysConfig(k)));
     const result = {};
     sections.forEach((k, i) => { result[k] = values[i] ?? SYS_DEFAULTS[k]; });
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     res.json(result);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -61,16 +115,22 @@ router.get('/api/admin/sys-config/public', async (_req, res) => {
 // ── FEATURE: Staff Account Password Management ────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /api/admin/staff — list all staff
+// GET /api/admin/staff — list all staff. This list is loaded broadly across the admin
+// app just for name lookups (assignee dropdowns etc.), so it stays open to any staff —
+// but commission/salary/target fields are only included for roles with view_staff (this
+// route had zero permission check at all, so e.g. a TRAINER could read every SALES rep's
+// commission rate).
 router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
+    const canViewSensitive = hasPermission(req.staffRecord, 'view_staff');
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, created_at,
               monthly_target AS monthlyTarget, monthly_target_type AS monthlyTargetType,
               monthly_leads_target AS monthlyLeadsTarget, monthly_bonus AS monthlyBonus
        FROM staff ORDER BY name ASC`
     );
-    res.json(rows);
+    const sanitized = canViewSensitive ? rows : rows.map(({ commission_rate, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus, notes, ...rest }) => rest);
+    res.json(sanitized);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -128,20 +188,6 @@ router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin
 // ── FEATURE: IP Whitelist ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure ip_whitelist table
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS ip_whitelist (
-      id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-      ip VARCHAR(64) NOT NULL,
-      label VARCHAR(255) DEFAULT NULL,
-      added_by VARCHAR(36) DEFAULT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id),
-      UNIQUE KEY uq_ip (ip)
-    ) CHARACTER SET utf8mb4`);
-  } catch (e) { logger.warn('[ip_whitelist table]', e.message); }
-})();
 
 router.get('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, res) => {
   try {

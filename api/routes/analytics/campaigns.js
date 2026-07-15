@@ -12,18 +12,6 @@ const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../../middle
 // ── FEATURE: Campaign Analytics ──────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure UTM tracking columns exist on leads
-(async () => {
-  try {
-    await pool.query("ALTER TABLE leads ADD COLUMN IF NOT EXISTS utm_source   VARCHAR(200) NULL");
-    await pool.query("ALTER TABLE leads ADD COLUMN IF NOT EXISTS utm_medium   VARCHAR(200) NULL");
-    await pool.query("ALTER TABLE leads ADD COLUMN IF NOT EXISTS utm_campaign VARCHAR(200) NULL");
-    await pool.query("ALTER TABLE leads ADD COLUMN IF NOT EXISTS utm_content  VARCHAR(200) NULL");
-    await pool.query("ALTER TABLE leads ADD COLUMN IF NOT EXISTS utm_term     VARCHAR(200) NULL");
-    await pool.query("ALTER TABLE leads ADD COLUMN IF NOT EXISTS referral_url TEXT NULL");
-    logger.info('[schema] leads UTM columns ready');
-  } catch (e) { logger.warn('[schema] leads UTM:', e.message); }
-})();
 
 // GET /api/admin/reports/campaign?from=&to=
 // Returns: leads by source, utm_campaign performance, monthly trend, conversion funnel
@@ -143,35 +131,6 @@ router.patch('/api/admin/leads/:id/utm', requireAuth, requireAdminOrStaff, async
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Drip Campaigns (Lead Nurture Sequences) ──────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS drip_sequences (
-      id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-      name VARCHAR(200) NOT NULL,
-      description TEXT,
-      trigger_status VARCHAR(100),
-      is_active TINYINT(1) DEFAULT 1,
-      steps JSON COMMENT 'Array of {delay_days, subject, body_html}',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by VARCHAR(200)
-    )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS drip_enrollments (
-      id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-      sequence_id VARCHAR(36) NOT NULL,
-      lead_id VARCHAR(36),
-      subscriber_id VARCHAR(100),
-      email VARCHAR(200) NOT NULL,
-      current_step INT DEFAULT 0,
-      started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      next_send_at TIMESTAMP NULL,
-      completed_at TIMESTAMP NULL,
-      unsubscribed_at TIMESTAMP NULL,
-      KEY idx_drip_next (next_send_at),
-      KEY idx_drip_seq (sequence_id)
-    )`);
-    logger.info('[schema] drip_sequences + drip_enrollments ready');
-  } catch (e) { logger.warn('[schema drip]', e.message); }
-})();
 router.get  ('/api/admin/drip-sequences', requireAuth, requireAdmin, async (req, res) => {
   try { const [rows] = await pool.query(
     'SELECT id, name, description, trigger_status, is_active, steps, created_at, created_by FROM drip_sequences ORDER BY created_at DESC'

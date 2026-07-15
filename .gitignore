@@ -37,6 +37,11 @@ Thumbs.db
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 coverage/
+e2e/test-results/
+**/test-results/
+artifacts/
+deploy_package/
+.claude/worktrees/
 tmp/
 *.local
 

@@ -16,7 +16,8 @@ function recordingDb() {
 
 test('postPaymentJournal posts a balanced double entry (cash debit = revenue credit)', async () => {
   const db = recordingDb();
-  await postPaymentJournal({ paymentId: 'PAY1', amount: 1500, currency: 'EGP', payType: 'COURSE', date: '2026-06-01', actor: 'tester' }, db);
+  const journalId = await postPaymentJournal({ paymentId: 'PAY1', amount: 1500, currency: 'EGP', payType: 'COURSE', date: '2026-06-01', actor: 'tester' }, db);
+  assert.ok(journalId, 'returns the posted journal id so callers can make commit/rollback decisions');
 
   const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
   const lines = db.inserts.filter(i => i.sql.includes('INSERT INTO journal_entry_lines'));
@@ -44,8 +45,21 @@ test('postPaymentJournal posts a balanced double entry (cash debit = revenue cre
 
 test('postPaymentJournal skips zero/negative amounts (no posting)', async () => {
   const db = recordingDb();
-  await postPaymentJournal({ paymentId: 'P0', amount: 0, currency: 'EGP', payType: 'COURSE' }, db);
+  const journalId = await postPaymentJournal({ paymentId: 'P0', amount: 0, currency: 'EGP', payType: 'COURSE' }, db);
+  assert.equal(journalId, null);
   assert.equal(db.inserts.length, 0);
+});
+
+test('postPaymentJournal returns null when a caller-owned transaction cannot post the journal', async () => {
+  let calls = 0;
+  const conn = {
+    async query() { calls++; if (calls === 2) throw new Error('line insert failed'); return [{}]; },
+    commit() { throw new Error('must NOT commit an injected connection'); },
+    rollback() { throw new Error('must NOT rollback an injected connection'); },
+    release() { throw new Error('must NOT release an injected connection'); },
+  };
+  const journalId = await postPaymentJournal({ paymentId: 'PFAIL', amount: 100, currency: 'EGP', payType: 'COURSE' }, conn);
+  assert.equal(journalId, null);
 });
 
 test('unknown payment type routes to other-revenue (4900)', async () => {

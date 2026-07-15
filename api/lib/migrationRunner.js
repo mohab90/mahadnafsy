@@ -33,6 +33,13 @@ function checksumOf(sql) {
 }
 
 async function runMigrations(pool) {
+  const prevMigrationFlag = process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE;
+  process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE = '1';
+  const restoreMigrationFlag = () => {
+    if (prevMigrationFlag == null) delete process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE;
+    else process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE = prevMigrationFlag;
+  };
+  try {
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       version VARCHAR(255) PRIMARY KEY,
@@ -42,6 +49,7 @@ async function runMigrations(pool) {
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   } catch (e) {
     logger.error('[migrate] cannot ensure schema_migrations:', e.message);
+    restoreMigrationFlag();
     return { baseline: 0, applied: 0, failed: 0 };
   }
 
@@ -50,10 +58,18 @@ async function runMigrations(pool) {
     files = fs.readdirSync(MIGRATIONS_DIR).filter(f => /^\d+.*\.sql$/.test(f)).sort();
   } catch (e) {
     logger.warn('[migrate] migrations dir unreadable:', e.message);
+    restoreMigrationFlag();
     return { baseline: 0, applied: 0, failed: 0 };
   }
 
-  const [rows] = await pool.query('SELECT version FROM schema_migrations');
+  let rows;
+  try {
+    [rows] = await pool.query('SELECT version FROM schema_migrations');
+  } catch (e) {
+    logger.error('[migrate] cannot read schema_migrations:', e.message);
+    restoreMigrationFlag();
+    return { baseline: 0, applied: 0, failed: 1 };
+  }
   const applied = new Set(rows.map(r => r.version));
 
   // First run against an existing DB → baseline the historical migrations.
@@ -93,7 +109,11 @@ async function runMigrations(pool) {
     }
   }
   if (ranCount === 0 && failed === 0) logger.info('[migrate] schema up to date');
+  restoreMigrationFlag();
   return { baseline, applied: ranCount, failed };
+  } finally {
+    restoreMigrationFlag();
+  }
 }
 
 module.exports = { runMigrations, BASELINE_THROUGH };

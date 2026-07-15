@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mahad API Watchdog — auto-restart via supervisor.js if port 3001 is down
+# Mahad API Watchdog — auto-restart via supervisor.js if port 3101 is down
 NODE='/opt/alt/alt-nodejs22/root/usr/bin/node'
 SUPERVISOR='D:\mahadnafsy25\api\supervisor.js'
 LOG='D:\mahadnafsy25\api\watchdog.log'
@@ -24,8 +24,8 @@ send_wa_alert() {
   fi
 }
 
-# ── Check health (localhost:3001) ─────────────────────────────────────
-HTTP=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:3001/api/health 2>/dev/null)
+# ── Check health (localhost:3101) ─────────────────────────────────────
+HTTP=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:3101/api/health 2>/dev/null)
 if [ "$HTTP" != "200" ]; then
   echo "$TS [CRASH] Server down (HTTP=$HTTP) — recovering via supervisor.js" >> $CRASH_LOG
   echo "$TS [WATCHDOG] Server down (HTTP=$HTTP) — starting supervisor.js..." >> $LOG
@@ -56,7 +56,7 @@ if [ "$HTTP" != "200" ]; then
   send_wa_alert "⚠️ Mahad API restarting via supervisor PID=$SPID"
 
   sleep 15
-  HTTP2=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:3001/api/health 2>/dev/null)
+  HTTP2=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:3101/api/health 2>/dev/null)
   if [ "$HTTP2" = "200" ]; then
     echo "$TS [RECOVERED] API back via supervisor" >> $CRASH_LOG
     echo "$TS [WATCHDOG] OK after restart" >> $LOG

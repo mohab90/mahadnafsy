@@ -14,6 +14,7 @@ const { syncLeadDealValue } = require('./public-orders');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
+const { branchIdForBranch } = require('../lib/branches');
 
 router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_orders'), async (req, res) => {
   let conn;
@@ -22,8 +23,14 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     if (!subscriber_id || !payment) return res.status(400).json({ error: 'subscriber_id and payment required' });
     if (!payment.amount || Number(payment.amount) <= 0) return res.status(400).json({ error: 'payment.amount must be > 0' });
     // Validate subscriber exists — also fetch assigned_sales_id for commission lookup
-    const [[subRow]] = await pool.query('SELECT id, email, assigned_sales_id FROM subscribers WHERE id = ? LIMIT 1', [subscriber_id]);
+    const [[subRow]] = await pool.query(
+      'SELECT id, email, assigned_sales_id, tenant_id, branch, branch_id FROM subscribers WHERE id = ? LIMIT 1',
+      [subscriber_id]
+    );
     if (!subRow) return res.status(404).json({ error: 'Subscriber not found' });
+    const paymentTenantId = subRow.tenant_id || 'tenant-default';
+    const paymentBranch = subRow.branch || 'ONLINE_EGYPT';
+    const paymentBranchId = subRow.branch_id || branchIdForBranch(paymentBranch);
     const id = payment.id || uuidv4();
     const paymentType = (payment.paymentType || payment.payment_type || 'OTHER').toUpperCase();
     const validTypes = ['COURSE','CERTIFICATE','CONSULTATION','BOOK','CARNEH','OTHER'];
@@ -50,8 +57,8 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, date, note, status, staff_id, staff_name,
-          from_account, source, item_title, cert_type, branch)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          from_account, source, item_title, cert_type, tenant_id, branch, branch_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id, subscriber_id,
         courseId, bundleId,
@@ -71,7 +78,9 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         resolvedSource,
         payment.itemTitle || payment.item_title || null,
         payment.certType || payment.cert_type || null,
-        subRow.branch || null,
+        paymentTenantId,
+        paymentBranch,
+        paymentBranchId,
       ]
     );
 
@@ -97,14 +106,16 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         }
       }
       await conn.query(
-        `INSERT INTO enrollments (id, subscriber_id, course_id, bundle_id, enrolled_at, access_type)
-         VALUES (?,?,?,?,NOW(),?)
+        `INSERT INTO enrollments (id, subscriber_id, course_id, bundle_id, enrolled_at, access_type, tenant_id, branch_id)
+         VALUES (?,?,?,?,NOW(),?,?,?)
          ON DUPLICATE KEY UPDATE
            access_type = CASE
              WHEN VALUES(access_type)='full' THEN 'full'
              ELSE access_type
-           END`,
-        [uuidv4(), subscriber_id, courseId, bundleId, enrollAccessType]
+           END,
+           tenant_id = VALUES(tenant_id),
+           branch_id = VALUES(branch_id)`,
+        [uuidv4(), subscriber_id, courseId, bundleId, enrollAccessType, paymentTenantId, paymentBranchId]
       );
       // Also sync crm_json: add courseId/bundleId to enrolledCourseIds and set courseAccess
       setImmediate(async () => {
@@ -198,30 +209,30 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         }
       } catch (feeErr) { logger.warn('[subscriber-payments] instructor fee auto-calc:', feeErr.message); }
     }
+    // Post double-entry journal inside the same transaction. A paid payment is
+    // not financially complete unless the accounting entry is persisted too.
+    if (isPaid) {
+      const [accCode, accName] = _paymentAccountCode(safeType);
+      const rawAmt = Number(payment.amount) || 0;
+      const amtEgp = await toEgp(rawAmt, payment.currency);
+      const journalId = await postJournalEntry('payment', id, resolvedDate,
+        `Payment ${rawAmt} ${payment.currency || 'EGP'} (= ${amtEgp} EGP) - ${safeType}`,
+        [
+          { account_code: '1100', account_name: 'Cash and banks', debit: amtEgp, credit: 0 },
+          { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
+        ],
+        req.user?.email || 'system',
+        conn
+      );
+      if (!journalId) throw new Error('Payment journal posting failed');
+    }
 
     await conn.commit();
     conn.release();
     conn = null;
-    // ── End transaction ───────────────────────────────────────────────────────
+    // End transaction
 
-    // Post double-entry journal (best-effort, post-commit).
-    // Amounts are normalised to EGP so P&L / trial balance stay single-currency.
-    if (isPaid) {
-      const [accCode, accName] = _paymentAccountCode(safeType);
-      const rawAmt = Number(payment.amount) || 0;
-      toEgp(rawAmt, payment.currency).then(amtEgp =>
-        postJournalEntry('payment', id, resolvedDate,
-          `دفعة ${rawAmt} ${payment.currency || 'EGP'} (= ${amtEgp} EGP) — ${safeType}`,
-          [
-            { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
-            { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
-          ],
-          req.user?.email || 'system'
-        )
-      ).catch(() => {});
-    }
-
-    // Sync crm_json.paymentHistory (non-critical, post-commit)
+    // Sync crm_json.paymentHistory
     setImmediate(async () => {
       try {
         const [[subCrm]] = await pool.query('SELECT crm_json FROM subscribers WHERE id = ? LIMIT 1', [subscriber_id]);

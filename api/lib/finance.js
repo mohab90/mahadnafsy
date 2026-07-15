@@ -129,14 +129,15 @@ async function toEgp(amount, currency) {
 }
 
 // Ledger-first helper (Top20 #13): every paid payment must post a double-entry
-// journal (cash 1100 debit / revenue credit), normalised to EGP. Best-effort,
-// call post-commit. Shared by all payment write paths so none bypass the ledger.
+// journal (cash 1100 debit / revenue credit), normalised to EGP. Returns the
+// journal id on success or null on failure so transaction-owning callers can
+// rollback money-moving writes instead of committing an unposted payment.
 async function postPaymentJournal({ paymentId, amount, currency, payType, date, actor }, db = pool) {
   try {
     const [accCode, accName] = _paymentAccountCode((payType || 'OTHER').toUpperCase());
     const amtEgp = await toEgp(Number(amount) || 0, currency);
-    if (amtEgp <= 0) return;
-    await postJournalEntry('payment', paymentId, date || new Date().toISOString().slice(0, 10),
+    if (amtEgp <= 0) return null;
+    return await postJournalEntry('payment', paymentId, date || new Date().toISOString().slice(0, 10),
       `دفعة ${amount} ${currency || 'EGP'} (= ${amtEgp} EGP) — ${payType || 'OTHER'}`,
       [
         { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
@@ -144,7 +145,7 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
       ],
       actor || 'system', db
     );
-  } catch (e) { logger.warn('[finance] postPaymentJournal error:', e.message); }
+  } catch (e) { logger.warn('[finance] postPaymentJournal error:', e.message); return null; }
 }
 
 module.exports = { logPaymentAudit, logFinancialAudit, postJournalEntry, postPaymentJournal, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp };

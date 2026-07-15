@@ -8,7 +8,7 @@ const express = require('express');
 const { uuidv4 } = require('../lib/id');
 const { pool, cacheInvalidate } = require('../lib/db');
 const logger = require('../lib/logger');
-const { loadTenantContext } = require('../lib/tenantScope');
+const { clearTenantContextCache, loadTenantContext } = require('../lib/tenantScope');
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -53,6 +53,7 @@ router.post('/api/admin/saas/tenants', requireAuth, requireSuperAdmin, async (re
        VALUES (?,?,?, 'trialing', NOW(), DATE_ADD(NOW(), INTERVAL 14 DAY))`,
       [uuidv4(), id, planId]);
     cacheInvalidate('tenant_index'); // so subdomain routing resolves the new tenant immediately
+    clearTenantContextCache(id);
     logger.info(`[saas] provisioned tenant ${slug} (${id})`);
     res.json({ ok: true, id, slug, name, status: 'active' });
   } catch (e) { logger.error('[saas provision]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -71,6 +72,7 @@ router.patch('/api/admin/saas/tenants/:id', requireAuth, requireSuperAdmin, asyn
     vals.push(req.params.id);
     await pool.query(`UPDATE tenants SET ${sets.join(', ')} WHERE id=?`, vals);
     cacheInvalidate('tenant_index');
+    clearTenantContextCache(req.params.id);
     res.json({ ok: true });
   } catch (e) { logger.error('[saas patch]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -131,6 +133,7 @@ router.post('/api/admin/saas/feature-flags', requireAuth, requireSuperAdmin, asy
        VALUES (?,?,?,?,?)
        ON DUPLICATE KEY UPDATE is_enabled=VALUES(is_enabled), config_json=VALUES(config_json)`,
       [uuidv4(), tenantId, flagKey, isEnabled, configJson]);
+    clearTenantContextCache(tenantId || undefined);
     res.json({ ok: true });
   } catch (e) { logger.error('[saas]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

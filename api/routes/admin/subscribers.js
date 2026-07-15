@@ -19,6 +19,14 @@ const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('
 const { onlineMap } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
+const { branchIdForBranch } = require('../../lib/branches');
+function sendRouteError(res, err) {
+  if (res.headersSent) return;
+  const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
+  const status = err && dbCodes.has(err.code) ? 503 : 500;
+  res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
+}
+
 
 router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
@@ -132,7 +140,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
     }
 
     return res.status(404).json({ error: 'لم يتم العثور على العميل' });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
 // POST /api/staff/enrollment-welcome — create account + send welcome email + WA after staff booking
@@ -229,7 +237,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
     res.json({ ok: true, newAccount: isNew });
   } catch (e) {
     logger.error('[enrollment-welcome]', e.message);
-    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); sendRouteError(res, e);
   } finally { conn.release(); }
 });
 
@@ -331,6 +339,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     const rawBranch = crmData.branch || null;
     const normBranch = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
     const branchVal = (normBranch && VALID_BRANCHES.has(normBranch)) ? normBranch : null;
+    const branchIdVal = branchIdForBranch(branchVal || 'ONLINE_EGYPT');
     const VALID_CLIENT_TYPES = new Set([
       'ONLINE_LOCAL_NEW','ONLINE_LOCAL_OLD','ONLINE_SAUDI_NEW','ONLINE_SAUDI_OLD',
       'ONLINE_ABROAD','DAQQI_NEW','DAQQI_OLD','QATAMIYA',
@@ -339,8 +348,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     const clientTypeVal = (rawClientType && VALID_CLIENT_TYPES.has(rawClientType.toUpperCase())) ? rawClientType.toUpperCase() : (rawClientType || null);
     await pool.query(
       `INSERT INTO subscribers (id, firebase_uid, client_code, name, email, phone, is_active, notes,
-         assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, client_type, crm_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, branch_id, client_type, crm_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), phone=COALESCE(VALUES(phone), phone), firebase_uid=COALESCE(VALUES(firebase_uid),firebase_uid),
          client_code=COALESCE(client_code, VALUES(client_code)),
          is_active=VALUES(is_active), notes=COALESCE(VALUES(notes),notes),
@@ -349,10 +358,11 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
          assigned_sales_id=COALESCE(VALUES(assigned_sales_id), assigned_sales_id),
          assigned_sales_name=COALESCE(VALUES(assigned_sales_name), assigned_sales_name),
          branch=COALESCE(VALUES(branch), branch),
+         branch_id=COALESCE(NULLIF(VALUES(branch_id),''), branch_id),
          client_type=COALESCE(VALUES(client_type), client_type),
          crm_json=VALUES(crm_json)`,
       [id, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, active?1:0,
-       safeNotes||null, csId, csName, salesId, salesName, branchVal, clientTypeVal, JSON.stringify(crmData)]
+       safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, JSON.stringify(crmData)]
     );
     // Full bi-directional sync: enrolledCourseIds in crm_json ↔ enrollments table
     // This is the authoritative sync — always runs, handles add/remove/update access
@@ -377,8 +387,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
         const newLectureLimit = (typeof rawAccess === 'object' ? rawAccess?.lectureLimit : null) || null;
         const existing = existingMap.get(courseId);
         if (!existing) {
-          enrollInsertRows.push('(?, ?, ?, NOW(), ?, ?)');
-          enrollInsertParams.push(uuidv4(), id, courseId, newAccessMode, newLectureLimit);
+          enrollInsertRows.push('(?, ?, ?, NOW(), ?, ?, ?)');
+          enrollInsertParams.push(uuidv4(), id, courseId, newAccessMode, newLectureLimit, branchIdVal);
         } else if (existing.access_type !== newAccessMode || String(existing.lecture_limit ?? '') !== String(newLectureLimit ?? '')) {
           enrollUpdates.push(pool.query(
             'UPDATE enrollments SET access_type=?, lecture_limit=? WHERE id=?',
@@ -388,7 +398,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
       }
       if (enrollInsertRows.length > 0) {
         await pool.query(
-          `INSERT IGNORE INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, lecture_limit) VALUES ${enrollInsertRows.join(',')}`,
+          `INSERT IGNORE INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, lecture_limit, branch_id) VALUES ${enrollInsertRows.join(',')}`,
           enrollInsertParams
         ).catch(() => {});
       }
@@ -449,7 +459,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
             const dateVal = safeDateOnly(p.at || p.date || new Date()) || new Date().toISOString().slice(0, 10);
             const payStatus = p.status || 'paid';
             const safeSource = VALID_SOURCES.has(p.source) ? p.source : null;
-            payBatchRows.push('(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            payBatchRows.push('(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             payBatchParams.push(
               p.id, id,
               p.courseId || null, p.bundleId || null,
@@ -469,6 +479,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
               safeSource,
               p.itemTitle || null,
               p.certType || null,
+              'tenant-default',
+              branchVal || 'ONLINE_EGYPT',
+              branchIdVal,
             );
           }
           if (payBatchRows.length > 0) {
@@ -476,7 +489,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
               `INSERT INTO payments
                  (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
                   payment_method, transaction_id, is_installment, course_expected, date, note, staff_id, status,
-                  staff_name, from_account, source, item_title, cert_type)
+                  staff_name, from_account, source, item_title, cert_type, tenant_id, branch, branch_id)
                VALUES ${payBatchRows.join(',')}
                ON DUPLICATE KEY UPDATE status=VALUES(status), note=COALESCE(VALUES(note),note),
                  staff_name=COALESCE(VALUES(staff_name),staff_name),
@@ -484,6 +497,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
                  source=COALESCE(VALUES(source),source),
                  item_title=COALESCE(VALUES(item_title),item_title),
                  cert_type=COALESCE(VALUES(cert_type),cert_type),
+                 tenant_id=COALESCE(tenant_id,VALUES(tenant_id)),
+                 branch=COALESCE(branch,VALUES(branch)),
+                 branch_id=COALESCE(NULLIF(branch_id,''),VALUES(branch_id)),
                  course_expected=COALESCE(course_expected,VALUES(course_expected))`,
               payBatchParams
             ).catch(e => logger.error('[payment-sync] batch', e.message));
@@ -503,7 +519,7 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     if (e.code === 'ER_DUP_ENTRY' && e.message.includes('email')) {
       return res.status(409).json({ error: `البريد الإلكتروني ${req.body.email} مسجل بالفعل` });
     }
-    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message); sendRouteError(res, e);
   }
 });
 

@@ -70,22 +70,6 @@ router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdmin, async (r
 // ── FEATURE: Sales Goals / Targets ─────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure sales_goals table
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS sales_goals (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
-      revenue_target DECIMAL(12,2) DEFAULT 0,
-      leads_target INT DEFAULT 0,
-      conversions_target INT DEFAULT 0,
-      new_clients_target INT DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_period (period)
-    )`);
-  } catch (e) { logger.warn('[sales_goals table]', e.message); }
-})();
 
 // GET /api/admin/sales-goals?period=YYYY-MM (or list all)
 router.get('/api/admin/sales-goals', requireAuth, requireAdmin, async (req, res) => {
@@ -121,19 +105,6 @@ router.put('/api/admin/sales-goals/:period', requireAuth, requireAdmin, async (r
 // ── Per-staff sales targets (single source of truth across SalesGoalsTab,
 //    LeadsPerformancePanel and the collection target — were localStorage before).
 //    staff_id '__collection__' holds the org-wide collection monthly target. ──
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS sales_targets (
-      staff_id VARCHAR(64) NOT NULL,
-      period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
-      revenue_target DECIMAL(12,2) DEFAULT 0,
-      leads_target INT DEFAULT 0,
-      updated_by VARCHAR(64) DEFAULT NULL,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (staff_id, period)
-    ) COLLATE utf8mb4_unicode_ci`);
-  } catch (e) { logger.warn('[sales_targets table]', e.message); }
-})();
 
 // GET /api/admin/sales-targets?period=YYYY-MM (omit period → recent across staff)
 router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, async (req, res) => {

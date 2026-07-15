@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /**
  * MASTER PERMISSIONS CONSTANTS
  * ─────────────────────────────────────────────────────────────────────────────
@@ -68,6 +68,8 @@ const PERMISSIONS = Object.freeze({
   // Orders & Financial
   VIEW_ORDERS:              'view_orders',
   MANAGE_ORDERS:            'manage_orders',
+  MANAGE_PAYMENTS:          'manage_payments',
+  APPROVE_REFUNDS:          'approve_refunds',
   VIEW_FINANCIAL:           'view_financial',
   MANAGE_FINANCIAL:         'manage_financial',
   // Reports
@@ -77,6 +79,7 @@ const PERMISSIONS = Object.freeze({
   MANAGE_INBOX:             'manage_inbox',
   MANAGE_NOTIFICATIONS:     'manage_notifications',
   MANAGE_CHANNEL_SETTINGS:  'manage_channel_settings',
+  BULK_WHATSAPP:            'bulk_whatsapp',
   // HR / Content
   VIEW_JOIN_US:             'view_join_us',
   MANAGE_JOIN_US:           'manage_join_us',
@@ -93,6 +96,10 @@ const PERMISSIONS = Object.freeze({
   AI_DEV:                   'ai_dev',
   // Automation
   MANAGE_AUTOMATION:        'manage_automation',
+  VIEW_SECURITY:            'view_security',
+  MANAGE_SECURITY:          'manage_security',
+  VIEW_SETTINGS:            'view_settings',
+  MANAGE_SETTINGS:          'manage_settings',
 });
 
 // ── 3. ROLE DEFAULT PERMISSIONS ───────────────────────────────────────────────
@@ -107,17 +114,18 @@ const ROLE_PERMS = Object.freeze({
     'view_dashboard',
     'view_leads', 'manage_leads', 'export_leads', 'delete_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
-    'view_orders', 'manage_orders',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports', 'view_activity',
     'view_staff',
     'view_client_db',
+    'bulk_whatsapp',
     'ask_ai',
   ],
 
   [ROLES.SALES]: [
     'view_dashboard',
-    'view_leads', 'manage_leads', 'export_leads',
+    'view_leads', 'manage_leads', 'export_leads', 'bulk_whatsapp',
     'view_subscribers',
     'view_orders',
     'view_consultations',
@@ -127,22 +135,23 @@ const ROLE_PERMS = Object.freeze({
   [ROLES.COLLECTION]: [
     'view_dashboard',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
-    'view_orders', 'manage_orders',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports',
     'view_client_db',
+    'bulk_whatsapp',
     'ask_ai',
   ],
 
   [ROLES.SUPPORT]: [
     'view_dashboard',
-    'view_leads', 'manage_leads',
     'view_subscribers', 'manage_subscribers',
     'view_orders',
     'manage_inbox', 'manage_notifications',
     'view_consultations',
     'view_reports',
     'view_client_db',
+    'bulk_whatsapp',
     'ask_ai',
   ],
 
@@ -158,8 +167,6 @@ const ROLE_PERMS = Object.freeze({
   [ROLES.HR]: [
     'view_dashboard',
     'view_staff', 'manage_staff', 'view_hr', 'manage_hr',
-    'view_leads',
-    'view_subscribers',
     'view_reports', 'view_activity',
     'view_join_us', 'manage_join_us',
     'view_contacts', 'manage_contacts',
@@ -168,7 +175,7 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.ACCOUNTANT]: [
     'view_dashboard',
-    'view_orders', 'manage_orders',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports',
   ],
@@ -184,14 +191,12 @@ const ROLE_PERMS = Object.freeze({
   [ROLES.TRAINER]: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
-    'view_subscribers',
     'view_consultations',
   ],
 
   [ROLES.INSTRUCTOR]: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
-    'view_subscribers',
   ],
 });
 
@@ -223,12 +228,12 @@ const DATA_SCOPE = Object.freeze({
   [ROLES.COLLECTION]: 'assigned_cs',      // WHERE assigned_cs_id = me
 
   // View-only (subscribers they're linked to)
-  [ROLES.SUPPORT]:     'all',
-  [ROLES.HR]:          'all',
+  [ROLES.SUPPORT]:     'assigned_cs',
+  [ROLES.HR]:          'none',
   [ROLES.ACCOUNTANT]:  'all',
   [ROLES.CONSULTANT]:  'assigned_sales',
-  [ROLES.TRAINER]:     'all',
-  [ROLES.INSTRUCTOR]:  'all',
+  [ROLES.TRAINER]:     'none',
+  [ROLES.INSTRUCTOR]:  'none',
 });
 
 // ── 6. HELPER: resolve permissions for a staff record ─────────────────────────
@@ -324,3 +329,4 @@ module.exports = {
   VALID_PAY_TYPES,
   VALID_SOURCES,
 };
+

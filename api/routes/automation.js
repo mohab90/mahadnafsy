@@ -490,16 +490,4 @@ router.post('/api/admin/automation-workflows/run-single/:id', requireAuth, requi
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// Create automation_log table silently (best-effort on startup)
-pool.query(`CREATE TABLE IF NOT EXISTS automation_log (
-  id VARCHAR(100) PRIMARY KEY,
-  workflow_id VARCHAR(100),
-  lead_id VARCHAR(100),
-  subscriber_id VARCHAR(100),
-  action VARCHAR(100),
-  triggered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_al_wf (workflow_id),
-  INDEX idx_al_lead (lead_id)
-) CHARACTER SET utf8mb4`).catch(() => {});
-
 module.exports = router;

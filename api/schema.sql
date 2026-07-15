@@ -1,22 +1,14 @@
-﻿-- ══════════════════════════════════════════════════════════════
--- MySQL Schema — المعهد الجديد | mahadnafsy.com
--- ══════════════════════════════════════════════════════════════
--- ⚠️  SOURCE OF TRUTH / مصدر الحقيقة:
---   ملف الـ migrations في api/migrations/ هو المرجع الموثوق لسكيما الإنتاج،
---   ويُطبَّق عبر:  node tools/run-migrations.mjs
---   migration 007_consolidated_runtime_schema.sql = اللقطة الكاملة للإنتاج (90 جدول).
---
---   هذا الملف (schema.sql) لقطة bootstrap مبسّطة (~32 جدول أساسي) للتطوير المحلي
---   فقط. عند أي اختلاف، الـ migrations هي الصحيحة. لا تعتمد عليه في الإنتاج.
--- ══════════════════════════════════════════════════════════════
--- الاستخدام (تطوير محلي فقط): mysql -u USER -p DB < schema.sql
---   ثم: node tools/run-migrations.mjs   (لتطبيق بقية الـ migrations)
--- ══════════════════════════════════════════════════════════════
+﻿-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- MySQL Schema â€” Ø§Ù„Ù…Ø¹Ù‡Ø¯ Ø§Ù„Ø¬Ø¯ÙŠØ¯ | mahadnafsy.com
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- Ø§Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù…: Ø§Ø³ØªÙˆØ±Ø¯ Ù‡Ø°Ø§ Ø§Ù„Ù…Ù„Ù Ù…Ù† phpMyAdmin Ø£Ùˆ CLI:
+--   mysql -u YOUR_USER -p YOUR_DB < schema.sql
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 SET FOREIGN_KEY_CHECKS = 0;
 SET NAMES utf8mb4;
 
--- ── Catalog Tables ───────────────────────────────────────────────────────────
+-- â”€â”€ Catalog Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `courses` (
   `id`                       VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -59,7 +51,7 @@ CREATE TABLE IF NOT EXISTS `courses` (
   KEY `idx_courses_published` (`is_published`, `sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `course_materials` (
   `id`           VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -73,7 +65,7 @@ CREATE TABLE IF NOT EXISTS `course_materials` (
   CONSTRAINT `fk_materials_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `course_chapters` (
   `id`         VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -85,7 +77,7 @@ CREATE TABLE IF NOT EXISTS `course_chapters` (
   CONSTRAINT `fk_chapters_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `course_lectures` (
   `id`           VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -104,7 +96,7 @@ CREATE TABLE IF NOT EXISTS `course_lectures` (
   CONSTRAINT `fk_lectures_chapter`  FOREIGN KEY (`chapter_id`) REFERENCES `course_chapters` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `bundles` (
   `id`                VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -127,7 +119,7 @@ CREATE TABLE IF NOT EXISTS `bundles` (
   UNIQUE KEY `idx_bundles_slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `bundle_courses` (
   `bundle_id`  VARCHAR(36) NOT NULL,
@@ -138,7 +130,7 @@ CREATE TABLE IF NOT EXISTS `bundle_courses` (
   CONSTRAINT `fk_bc_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `testimonials` (
   `id`         VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -152,7 +144,7 @@ CREATE TABLE IF NOT EXISTS `testimonials` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── People Tables ─────────────────────────────────────────────────────────────
+-- â”€â”€ People Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `therapists` (
   `id`                         VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -182,7 +174,7 @@ CREATE TABLE IF NOT EXISTS `therapists` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `therapist_slots` (
   `id`           VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -199,7 +191,7 @@ CREATE TABLE IF NOT EXISTS `therapist_slots` (
   CONSTRAINT `fk_slots_therapist` FOREIGN KEY (`therapist_id`) REFERENCES `therapists` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `staff` (
   `id`               VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -207,7 +199,7 @@ CREATE TABLE IF NOT EXISTS `staff` (
   `name`             VARCHAR(255) NOT NULL,
   `email`            VARCHAR(255) NOT NULL,
   `phone`            VARCHAR(50)  NOT NULL,
-  `role`             ENUM('INSTRUCTOR','TRAINER','EXPERT','SALES','MANAGER','ADMIN','SUPPORT','RECEPTION_DAQQI','COLLECTION','ACCOUNTANT','CONSULTANT','OTHER','ONLINE_MANAGER','DAQQI_MANAGER','SALES_COLLECTION_MANAGER','HR') NOT NULL,
+  `role`             ENUM('INSTRUCTOR','TRAINER','EXPERT','SALES','MANAGER','ADMIN','SUPPORT','RECEPTION_DAQQI','COLLECTION','ACCOUNTANT','CONSULTANT','OTHER') NOT NULL,
   `image`            TEXT DEFAULT NULL,
   `specialization`   VARCHAR(255) DEFAULT NULL,
   `joined_at`        DATETIME NOT NULL,
@@ -221,14 +213,14 @@ CREATE TABLE IF NOT EXISTS `staff` (
   UNIQUE KEY `idx_staff_firebase_uid`(`firebase_uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── CRM Tables ────────────────────────────────────────────────────────────────
+-- â”€â”€ CRM Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `leads` (
   `id`                       VARCHAR(36)  NOT NULL DEFAULT (UUID()),
   `client_code`              VARCHAR(50)  DEFAULT NULL,
   `name`                     VARCHAR(255) NOT NULL,
   `email`                    VARCHAR(255) NOT NULL,
-  `phone`                    VARCHAR(50)  DEFAULT NULL,
+  `phone`                    VARCHAR(50)  NOT NULL,
   `source`                   VARCHAR(255) NOT NULL,
   `status`                   VARCHAR(50) NOT NULL DEFAULT 'new',
   `lead_type`                ENUM('COURSE','CONSULTATION','GENERAL') NOT NULL DEFAULT 'GENERAL',
@@ -260,7 +252,7 @@ CREATE TABLE IF NOT EXISTS `leads` (
   KEY `idx_leads_created_at`(`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `subscribers` (
   `id`                   VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -270,8 +262,8 @@ CREATE TABLE IF NOT EXISTS `subscribers` (
   `name`                 VARCHAR(255) NOT NULL,
   `name_en`              VARCHAR(255) DEFAULT NULL,
   `name_ar`              VARCHAR(255) DEFAULT NULL,
-  `email`                VARCHAR(255) DEFAULT NULL,
-  `phone`                VARCHAR(50)  DEFAULT NULL,
+  `email`                VARCHAR(255) NOT NULL,
+  `phone`                VARCHAR(50)  NOT NULL,
   `national_id`          VARCHAR(50)  DEFAULT NULL,
   `whatsapp`             VARCHAR(50)  DEFAULT NULL,
   `nationality`          ENUM('EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL') DEFAULT NULL,
@@ -295,7 +287,7 @@ CREATE TABLE IF NOT EXISTS `subscribers` (
   KEY `idx_subscribers_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `communications` (
   `id`            VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -315,7 +307,7 @@ CREATE TABLE IF NOT EXISTS `communications` (
   CONSTRAINT `fk_comm_subscriber` FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Student Tables ────────────────────────────────────────────────────────────
+-- â”€â”€ Student Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `enrollments` (
   `id`               VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -337,7 +329,7 @@ CREATE TABLE IF NOT EXISTS `enrollments` (
   CONSTRAINT `fk_enroll_bundle`     FOREIGN KEY (`bundle_id`)     REFERENCES `bundles`     (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `payments` (
   `id`              VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -365,7 +357,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   CONSTRAINT `fk_payments_bundle`     FOREIGN KEY (`bundle_id`)     REFERENCES `bundles`     (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `certificate_requests` (
   `id`          VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -391,7 +383,7 @@ CREATE TABLE IF NOT EXISTS `certificate_requests` (
   CONSTRAINT `fk_cert_course`     FOREIGN KEY (`course_id`)     REFERENCES `courses`     (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Operations Tables ─────────────────────────────────────────────────────────
+-- â”€â”€ Operations Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `consultations` (
   `id`                      VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -410,7 +402,6 @@ CREATE TABLE IF NOT EXISTS `consultations` (
   `session_duration_minutes`INT DEFAULT NULL,
   `meeting_link`            TEXT DEFAULT NULL,
   `subscriber_id`           VARCHAR(36) DEFAULT NULL,
-  `assigned_staff_id`       VARCHAR(36) DEFAULT NULL,
   `created_at`              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -421,7 +412,7 @@ CREATE TABLE IF NOT EXISTS `consultations` (
   CONSTRAINT `fk_consult_subscriber`  FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `orders` (
   `id`             VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -430,7 +421,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `item_title`     VARCHAR(500) NOT NULL,
   `amount`         DECIMAL(12,2) NOT NULL,
   `currency`       ENUM('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
-  `payment_method` VARCHAR(50) NOT NULL DEFAULT 'CARD',
+  `payment_method` ENUM('CARD','WALLET','CASH','TRANSFER','OTHER') NOT NULL DEFAULT 'CARD',
   `customer_name`  VARCHAR(255) NOT NULL,
   `customer_email` VARCHAR(255) DEFAULT NULL,
   `customer_phone` VARCHAR(50)  DEFAULT NULL,
@@ -447,7 +438,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   KEY `idx_orders_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `expenses` (
   `id`          VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -464,7 +455,7 @@ CREATE TABLE IF NOT EXISTS `expenses` (
   KEY `idx_expenses_date` (`date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `daqqi_rounds` (
   `id`                   VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -487,7 +478,7 @@ CREATE TABLE IF NOT EXISTS `daqqi_rounds` (
   CONSTRAINT `fk_daqqi_reception`   FOREIGN KEY (`reception_id`)  REFERENCES `staff`       (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `daqqi_attendees` (
   `round_id`          VARCHAR(36)  NOT NULL,
@@ -502,7 +493,7 @@ CREATE TABLE IF NOT EXISTS `daqqi_attendees` (
   CONSTRAINT `fk_att_subscriber`  FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers`  (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Engagement Tables ─────────────────────────────────────────────────────────
+-- â”€â”€ Engagement Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `discount_rules` (
   `id`               VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -518,7 +509,7 @@ CREATE TABLE IF NOT EXISTS `discount_rules` (
   UNIQUE KEY `idx_discounts_promo_code` (`promo_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `join_us_applications` (
   `id`          VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -527,7 +518,7 @@ CREATE TABLE IF NOT EXISTS `join_us_applications` (
   `phone`       VARCHAR(50)  NOT NULL,
   `specialty`   VARCHAR(255) NOT NULL,
   `experience`  TEXT NOT NULL,
-  `type`        ENUM('INSTRUCTOR','CONSULTANT') NOT NULL,
+  `type`        ENUM('INSTRUCTOR','CONSULTANT','STAFF') NOT NULL DEFAULT 'INSTRUCTOR',
   `linkedin`    TEXT DEFAULT NULL,
   `message`     TEXT DEFAULT NULL,
   `status`      ENUM('NEW','REVIEWED','ACCEPTED','REJECTED') NOT NULL DEFAULT 'NEW',
@@ -536,7 +527,7 @@ CREATE TABLE IF NOT EXISTS `join_us_applications` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `contact_messages` (
   `id`         VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -551,7 +542,7 @@ CREATE TABLE IF NOT EXISTS `contact_messages` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `activity_logs` (
   `id`        VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -566,7 +557,7 @@ CREATE TABLE IF NOT EXISTS `activity_logs` (
   KEY `idx_logs_entity` (`entity`, `entity_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Quiz Tables ───────────────────────────────────────────────────────────────
+-- â”€â”€ Quiz Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `course_quizzes` (
   `id`               VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -583,7 +574,7 @@ CREATE TABLE IF NOT EXISTS `course_quizzes` (
   CONSTRAINT `fk_quizzes_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `quiz_attempts` (
   `id`            VARCHAR(36) NOT NULL DEFAULT (UUID()),
@@ -602,7 +593,7 @@ CREATE TABLE IF NOT EXISTS `quiz_attempts` (
   CONSTRAINT `fk_qa_quiz`       FOREIGN KEY (`quiz_id`)       REFERENCES `course_quizzes` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Live Streams & Automation ─────────────────────────────────────────────────
+-- â”€â”€ Live Streams & Automation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `live_streams` (
   `id`                   VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -623,7 +614,7 @@ CREATE TABLE IF NOT EXISTS `live_streams` (
   KEY `idx_streams_scheduled` (`scheduled_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `automation_workflows` (
   `id`                VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -640,7 +631,7 @@ CREATE TABLE IF NOT EXISTS `automation_workflows` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `issued_certificates` (
   `id`                 VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -657,7 +648,7 @@ CREATE TABLE IF NOT EXISTS `issued_certificates` (
   CONSTRAINT `fk_issued_cert_course`     FOREIGN KEY (`course_id`)     REFERENCES `courses`     (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `notification_broadcasts` (
   `id`         VARCHAR(36)  NOT NULL DEFAULT (UUID()),
@@ -670,13 +661,13 @@ CREATE TABLE IF NOT EXISTS `notification_broadcasts` (
   KEY `idx_notifications_active` (`is_active`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Payment Proofs — client-submitted transfer / instapay receipts ────────────
+-- â”€â”€ Payment Proofs â€” client-submitted transfer / instapay receipts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS `payment_proofs` (
   `id`             VARCHAR(100)  NOT NULL,
   `subscriber_id`  VARCHAR(100)  NOT NULL,
   `course_id`      VARCHAR(100)  DEFAULT NULL,
-  `amount`         DECIMAL(12,2)        NOT NULL,
+  `amount`         DECIMAL(12,2) NOT NULL,
   `currency`       ENUM('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
   `payment_method` VARCHAR(50)   NOT NULL DEFAULT 'instapay',
   `proof_image`    MEDIUMTEXT    DEFAULT NULL,
@@ -694,13 +685,8 @@ CREATE TABLE IF NOT EXISTS `payment_proofs` (
 
 SET FOREIGN_KEY_CHECKS = 1;
 
--- ══════════════════════════════════════════════════════════════
--- IMPORTANT: This file contains the CORE tables only.
--- The full schema requires running ALL files in migrations/ in
--- numeric order (001 → 008+). In particular:
---   007_consolidated_runtime_schema.sql — ~55 additional tables
---     (HR, payroll, tickets, promo codes, journal, ...)
---   008_money_decimal_and_payroll_fix.sql — exact money columns
--- New schema changes MUST be added as numbered migration files,
--- NOT in api/lib/startupTasks.js.
--- ══════════════════════════════════════════════════════════════
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+-- Schema: 31 tables (matches Firebase Data Connect GQL schema).
+-- Run this file once from phpMyAdmin or CLI.
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+

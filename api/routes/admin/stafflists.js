@@ -24,10 +24,37 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
   try {
     const limit  = parseLimit(req.query.limit, 500, 5000);
     const offset = parseOffset(req.query.offset);
-    // Exclude staff accounts and admin emails from the subscribers list
+    // This was the admin dashboard's main subscriber-list load and had NO scoping at
+    // all — every authenticated staff member (including reception_daqqi, who should
+    // only ever see Dokki clients) got every branch's subscribers with full payment
+    // history. /api/staff/subscribers already scopes correctly by DATA_SCOPE; apply
+    // the same rule here since this is the endpoint the admin app actually calls.
+    const role    = (req.staffRecord?.role || '').toLowerCase();
+    const isSuper = !!req.isSuperAdmin;
+    const scope   = isSuper ? 'all' : (DATA_SCOPE[role] || 'assigned_sales');
+    if (scope === 'none') return res.json([]);
+
     const adminExclusions = ADMIN_EMAILS.length > 0
       ? `AND (s.email IS NULL OR LOWER(s.email) NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
       : '';
+    let scopeClause = '1=1';
+    const scopeParams = [];
+    if (scope.startsWith('branch:')) {
+      scopeClause = 's.branch = ?';
+      scopeParams.push(scope.slice(7));
+    } else if (scope === 'assigned_sales') {
+      const staffId = req.staffRecord?.id;
+      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
+      scopeClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.assigned_sales_id = ?)))`;
+      scopeParams.push(staffId, staffId, staffId);
+    } else if (scope === 'assigned_cs') {
+      const staffId = req.staffRecord?.id;
+      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
+      scopeClause = `(s.assigned_cs_id = ? OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?))`;
+      scopeParams.push(staffId, staffId);
+    }
+    // scope === 'all' falls through with scopeClause = '1=1' (no extra restriction)
+
     const [rows] = await pool.query(
       `SELECT s.*,
               COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
@@ -35,11 +62,11 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
        FROM subscribers s
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id
-       WHERE s.tenant_id = ? AND NOT EXISTS (
+       WHERE s.tenant_id = ? AND (${scopeClause}) AND NOT EXISTS (
          SELECT 1 FROM staff st WHERE LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
        ) ${adminExclusions}
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
-      [req.tenantId, ...ADMIN_EMAILS.map(e => e.toLowerCase()), limit, offset]
+      [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), limit, offset]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -136,15 +163,20 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
     const role     = (req.staffRecord?.role || '').toLowerCase();
     const isSuper  = !!req.isSuperAdmin;
     const scope    = isSuper ? 'all' : (DATA_SCOPE[role] || 'assigned_sales');
+    if (scope === 'none') return res.json([]);
 
     let whereClause = '1=1';
-    const params    = [];
+    const params    = [req.tenantId];
 
     if (scope === 'all') {
       // Full access — return everything (excluding staff/admin emails)
+      const adminExclusions = ADMIN_EMAILS.length > 0
+        ? ` AND (s.email IS NULL OR LOWER(s.email) NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+        : '';
       whereClause = `NOT EXISTS (
         SELECT 1 FROM staff st WHERE LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
-      )`;
+      )${adminExclusions}`;
+      params.push(...ADMIN_EMAILS.map(e => e.toLowerCase()));
     } else if (scope === 'assigned_sales') {
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
       whereClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.assigned_sales_id = ?)))`;
@@ -170,7 +202,7 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
        FROM subscribers s
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id
-       WHERE ${whereClause}
+       WHERE s.tenant_id = ? AND (${whereClause})
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
       params
     );
@@ -251,8 +283,9 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, async (req, res
     const scope   = isSuper ? 'all' : (DATA_SCOPE[role] || 'assigned_sales');
 
     // Roles that should NOT see leads at all
-    const noLeadsRoles = new Set(['collection', 'accountant', 'trainer', 'instructor']);
+    const noLeadsRoles = new Set(['collection', 'support', 'hr', 'accountant', 'trainer', 'instructor']);
     if (!isSuper && noLeadsRoles.has(role)) return res.json([]);
+    if (scope === 'none') return res.json([]);
 
     let whereClause = 'hidden = 0';
     const params = [];
@@ -262,9 +295,11 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, async (req, res
       whereClause = 'hidden = 0 AND assigned_sales_id = ?';
       params.push(staffId);
     }
-    // 'all' and branch scopes see all leads (with branch filter for Daqqi)
+    // 'all' sees all leads; branch scopes see only their branch.
     else if (scope.startsWith('branch:')) {
-      whereClause = 'hidden = 0'; // Daqqi staff see all leads for now
+      const branch = scope.slice(7);
+      whereClause = 'hidden = 0 AND branch = ?';
+      params.push(branch);
     }
 
     const limit  = parseLimit(req.query.limit, 5000, 20000);
@@ -275,17 +310,25 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, async (req, res
       `SELECT * FROM leads WHERE tenant_id = ? AND (${whereClause}) ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [req.tenantId, ...params]
     );
-    res.json(rows.map(r => ({
-      id: r.id, name: r.name, email: r.email, phone: r.phone,
-      status: r.status, source: r.source, notes: r.notes,
-      assignedSalesId: r.assigned_sales_id, assignedSalesName: r.assigned_sales_name,
-      interestedCourseIds: tryJson(r.interested_course_ids, []),
-      createdAt: r.created_at, updatedAt: r.updated_at,
-      communications: tryJson(r.communications, []),
-      nextFollowUpDate: r.next_follow_up_date,
-      paidAmount: r.paid_amount, clientCode: r.client_code,
-      hidden: !!r.hidden, branch: r.branch, clientType: r.client_type || null,
-    })));
+    res.json(rows.map(r => {
+      const crm = parseCrm(r.crm_json);
+      return {
+        ...crm,
+        id: r.id, name: r.name, email: r.email, phone: r.phone,
+        status: r.status, source: r.source, notes: r.notes,
+        leadType: r.lead_type || crm.leadType || 'course',
+        enrolledCourseId: r.enrolled_course_id || crm.enrolledCourseId || '',
+        interestLevel: r.interest_level || crm.interestLevel || 'medium',
+        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
+        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
+        interestedCourseIds: tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []),
+        createdAt: r.created_at, updatedAt: r.updated_at,
+        communications: Array.isArray(crm.communications) ? crm.communications : [],
+        nextFollowUpDate: r.next_follow_up_date || crm.nextFollowUpDate || null,
+        paidAmount: r.paid_amount, clientCode: r.client_code,
+        hidden: !!r.hidden, branch: r.branch, clientType: r.client_type || null,
+      };
+    }));
   } catch (e) { logger.error('[/api/staff/leads]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

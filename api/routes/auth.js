@@ -14,6 +14,7 @@ const { getNextClientCode } = require('../lib/mappers');
 const { logLeadEvent } = require('../lib/crm');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
+const { branchIdForBranch } = require('../lib/branches');
 const { JWT_SECRET, JWT_EXPIRY, revokeToken } = require('../lib/token');
 const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter } = require('../middleware/rateLimits');
@@ -30,8 +31,9 @@ router.post('/api/auth/register', registerLimiter, requireDb,
   }),
   async (req, res) => {
   const { email, password, name, phone, country, interest, ref } = req.body || {};
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await pool.getConnection();
     await ensureUsersTable(conn);
     const [existing] = await conn.execute('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
     if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
@@ -103,7 +105,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
         logger.info(`[register] Created lead ${leadId} code=${sharedClientCode} for ${normalizedEmail}`);
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }).catch(() => {});
       }
-    } catch (leadErr) { logger.warn('[register] Could not create lead:', leadErr.message); }
+    } catch (leadErr) { logger.error('[register] Could not create lead:', leadErr.message); }
     // NOTE: No subscriber record created on register — client stays in عملاء محتملين until admin manually
     // converts them after payment (admin moves them to عملاء الأونلاين and assigns a course).
     const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
@@ -293,6 +295,11 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     const phoneVal = (phone || '').trim() || null; // NULL not '' so UNIQUE constraint works
     let action = '';
 
+    // This handler writes across users/subscribers/enrollments/payments — wrap in a
+    // transaction so a mid-way failure (e.g. the enrollments loop) can't leave a user
+    // account with no subscriber row, or a subscriber with a partial course list.
+    await conn.beginTransaction();
+
     if (existing) {
       await conn.execute('UPDATE users SET password_hash=?, name=?, is_active=1 WHERE id=?', [hash, displayName, existing.id]);
       if (phoneVal) await conn.execute('UPDATE subscribers SET phone=? WHERE LOWER(TRIM(email))=? AND (phone IS NULL OR phone=\'\') LIMIT 1', [phoneVal, normEmail]);
@@ -355,9 +362,12 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       let targetSubId;
       if (!subExists) {
         targetSubId = uuidv4();
+        const defaultBranch = 'ONLINE_EGYPT';
         await conn.execute(
-          'INSERT INTO subscribers (id, email, name, phone, is_active, created_at, updated_at) VALUES (?,?,?,?,1,NOW(),NOW())',
-          [targetSubId, normEmail, displayName, phoneVal]
+          `INSERT INTO subscribers
+             (id, email, name, phone, branch, branch_id, is_active, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,1,NOW(),NOW())`,
+          [targetSubId, normEmail, displayName, phoneVal, defaultBranch, branchIdForBranch(defaultBranch)]
         );
       } else {
         targetSubId = subExists.id;
@@ -417,13 +427,19 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     // ── Optional first payment — record it against the subscriber (atomic with account) ──
     if (firstPayment && Number(firstPayment.amount) > 0) {
       try {
-        const [[paySub]] = await conn.execute('SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [normEmail]);
+        const [[paySub]] = await conn.execute(
+          'SELECT id, tenant_id, branch, branch_id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1',
+          [normEmail]
+        );
         if (paySub) {
+          const paymentBranch = paySub.branch || defaultBranch;
+          const paymentBranchId = paySub.branch_id || branchIdForBranch(paymentBranch);
           await conn.execute(
             `INSERT INTO payments
                (id, subscriber_id, course_id, amount, currency, payment_type, payment_method,
-                transaction_id, is_installment, date, note, status, source, staff_id, staff_name)
-             VALUES (UUID(), ?, ?, ?, ?, 'COURSE', ?, ?, 0, ?, ?, 'paid', 'staff', ?, ?)`,
+                transaction_id, is_installment, date, note, status, source, staff_id, staff_name,
+                tenant_id, branch, branch_id)
+             VALUES (UUID(), ?, ?, ?, ?, 'COURSE', ?, ?, 0, ?, ?, 'paid', 'staff', ?, ?, ?, ?, ?)`,
             [
               paySub.id,
               (firstPayment.courseId && !String(firstPayment.courseId).startsWith('bundle:')) ? firstPayment.courseId : null,
@@ -435,6 +451,9 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
               firstPayment.note || null,
               req.staffRecord?.id || null,
               req.staffRecord?.name || req.user?.email || null,
+              paySub.tenant_id || 'tenant-default',
+              paymentBranch,
+              paymentBranchId,
             ]
           );
         }
@@ -443,7 +462,9 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       }
     }
 
-    // Send welcome email with new password
+    await conn.commit();
+
+    // Send welcome email with new password (best-effort, outside the transaction)
     try {
       await mailer.sendMail({
         from: `"معهد الدراسات النفسية" <${process.env.SMTP_USER || 'info@mahadnafsy.com'}>`,
@@ -468,7 +489,11 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     }
 
     res.json({ ok: true, action, email: normEmail, tempPass });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[create-account]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
   finally { conn.release(); }
 });
 
@@ -573,8 +598,9 @@ router.post('/api/auth/login', loginLimiter, requireDb,
   }),
   async (req, res) => {
   const { email, password } = req.body || {};
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await pool.getConnection();
     await ensureUsersTable(conn);
     const [rows] = await conn.execute(
       'SELECT id, email, name, password_hash FROM users WHERE email = ? AND is_active = 1',
@@ -589,7 +615,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       if (subExists) {
         logger.info('[login] subscriber exists but no users record — directing to reset:', email.toLowerCase().trim());
         return res.status(401).json({
-          error: 'لم يتم تعيين كلمة مرور لهذا الحساب بعد. يرجى الضغط على "نسيت كلمة المرور" لتعيين كلمة مرور جديدة.',
+          error: '\u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u0644\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0639\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0636\u063a\u0637 \u0639\u0644\u0649 "\u0646\u0633\u064a\u062a \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" \u0644\u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062c\u062f\u064a\u062f\u0629.',
           needsPasswordReset: true,
         });
       }
@@ -622,10 +648,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       `UPDATE subscribers SET firebase_uid = ? WHERE LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
       [user.id, user.email]
     ).catch(() => {});
-    // Track login count and last login (best-effort ALTER + UPDATE for new columns)
-    pool.query(
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS login_count INT DEFAULT 0, ADD COLUMN IF NOT EXISTS last_login DATETIME`
-    ).catch(() => {});
+    // Track login count and last login. Columns are owned by migrations, not the login path.
     pool.query(
       `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login = NOW() WHERE id = ?`,
       [user.id]
@@ -639,8 +662,11 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
   } catch (err) {
     logger.error('[auth/login]', err);
-    res.status(500).json({ error: 'Login failed' });
-  } finally { conn.release(); }
+    if (!res.headersSent) {
+      const status = err && ['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST'].includes(err.code) ? 503 : 500;
+      res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Login failed' });
+    }
+  } finally { if (conn) conn.release(); }
 });
 
 // POST /api/auth/logout — invalidate token immediately (client must clear storage too)
@@ -657,8 +683,9 @@ const FULL_ACCESS_ROLES_AUTH = ['manager', 'admin', 'daqqi_manager', 'online_man
 
 // GET /api/auth/me
 router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await pool.getConnection();
     const [rows] = await conn.execute('SELECT id, email, name FROM users WHERE id = ?', [req.user.uid]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
@@ -669,7 +696,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
         `SELECT role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
         [u.email.toLowerCase().trim()]
       );
-      if (staff && FULL_ACCESS_ROLES_AUTH.includes(staff.role)) isAdmin = true;
+      if (staff && FULL_ACCESS_ROLES_AUTH.includes(String(staff.role || '').toLowerCase())) isAdmin = true;
     }
     // Surface the user's phone (users table has none) — prefer subscriber, then most recent lead.
     let phone = '';
@@ -689,8 +716,11 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin });
   } catch (err) {
     logger.error('[auth/me]', err);
-    res.status(500).json({ error: 'Server error' });
-  } finally { conn.release(); }
+    if (!res.headersSent) {
+      const status = err && ['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST'].includes(err.code) ? 503 : 500;
+      res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Server error' });
+    }
+  } finally { if (conn) conn.release(); }
 });
 
 // ── Forgot Password + OTP + 2FA ───────────────────────────────────────────────
@@ -832,7 +862,7 @@ router.put('/api/auth/update-profile', requireAuth, async (req, res) => {
   } catch (err) {
     logger.error('[auth/update-profile]', err);
     res.status(500).json({ error: 'Update failed' });
-  } finally { conn.release(); }
+  } finally { if (conn) conn.release(); }
 });
 
 // PUT /api/auth/update-password

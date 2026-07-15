@@ -10,10 +10,6 @@ const { logPaymentAudit } = require('../lib/finance');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { safeIsoString } = require('../lib/dates');
 
-// Reconciliation: a customer payment (order) can be linked to a bank transfer so
-// the accountant's match is recorded + auditable. Idempotent, metadata-only add
-// (a nullable column at the end — instant, no table rebuild).
-pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS linked_transfer_id VARCHAR(36) DEFAULT NULL').catch(() => {});
 
 // GET /api/admin/orders
 router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {

@@ -7,24 +7,7 @@ let notificationsTableReady = false;
 
 async function ensureNotificationsTable() {
   if (notificationsTableReady) return;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS notifications (
-      id VARCHAR(36) PRIMARY KEY,
-      subscriber_id VARCHAR(100) DEFAULT NULL,
-      type VARCHAR(50) NOT NULL DEFAULT 'info',
-      title VARCHAR(255) DEFAULT NULL,
-      message TEXT DEFAULT NULL,
-      data_json TEXT DEFAULT NULL,
-      read_at DATETIME DEFAULT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_notifications_created (created_at),
-      INDEX idx_notifications_read (read_at),
-      INDEX idx_notifications_subscriber (subscriber_id)
-    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS subscriber_id VARCHAR(100) DEFAULT NULL AFTER id').catch(() => {});
-  await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data_json TEXT DEFAULT NULL AFTER message').catch(() => {});
-  await pool.query('ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at DATETIME DEFAULT NULL AFTER data_json').catch(() => {});
-  await pool.query('ALTER TABLE notifications MODIFY title VARCHAR(255) DEFAULT NULL').catch(() => {});
+  await pool.query('SELECT 1 FROM notifications LIMIT 1');
   notificationsTableReady = true;
 }
 

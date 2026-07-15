@@ -32,17 +32,8 @@ async function syncLeadDealValue(arg1, arg2) {
     }
     if (!leadId) return;
 
-    try {
-      await pool.query('UPDATE leads SET deal_value = ? WHERE id = ?', [total, leadId]);
-      logger.info('lead deal_value synced', { leadId, subscriberId, total });
-    } catch (error) {
-      if (error.code === 'ER_BAD_FIELD_ERROR') {
-        await pool.query('ALTER TABLE leads ADD COLUMN deal_value DECIMAL(10,2) DEFAULT NULL').catch(() => {});
-        await pool.query('UPDATE leads SET deal_value = ? WHERE id = ?', [total, leadId]).catch(() => {});
-      } else {
-        throw error;
-      }
-    }
+    await pool.query('UPDATE leads SET deal_value = ? WHERE id = ?', [total, leadId]);
+    logger.info('lead deal_value synced', { leadId, subscriberId, total });
   } catch (error) {
     logger.warn('syncLeadDealValue error', { error: error.message });
   }

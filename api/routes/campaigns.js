@@ -448,26 +448,6 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
 // ── FEATURE: Drip Campaigns ────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Ensure drip_campaigns table exists
-(async () => {
-  try {
-    await pool.query(`CREATE TABLE IF NOT EXISTS drip_campaigns (
-      id VARCHAR(36) NOT NULL DEFAULT (UUID()),
-      name VARCHAR(500) NOT NULL,
-      trigger_event VARCHAR(255) NOT NULL DEFAULT 'subscription_created'
-        COMMENT 'subscription_created|lead_status:interested|consultation_completed|payment_received',
-      audience ENUM('subscribers','leads','all') NOT NULL DEFAULT 'subscribers',
-      status ENUM('active','paused','draft') NOT NULL DEFAULT 'draft',
-      enrolled_count INT NOT NULL DEFAULT 0,
-      completed_count INT NOT NULL DEFAULT 0,
-      steps JSON NOT NULL DEFAULT ('[]'),
-      created_by VARCHAR(36) DEFAULT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (id)
-    ) CHARACTER SET utf8mb4`);
-  } catch (e) { logger.warn('[drip_campaigns table]', e.message); }
-})();
 
 router.get('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, res) => {
   try {
