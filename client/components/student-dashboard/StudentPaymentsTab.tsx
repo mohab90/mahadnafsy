@@ -96,7 +96,7 @@ export function StudentPaymentsTab({
   });
   const methodEntries = Object.entries(methodMap).sort((a, b) => b[1] - a[1]);
 
-  if (history.length === 0) {
+  if (history.length === 0 && enrolledCourses.length === 0 && (subscriber?.installmentPlans ?? []).length === 0) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-gray-100 bg-white p-12 text-center shadow-sm">
         <CreditCard size={40} className="mx-auto mb-4 text-gray-300" />
@@ -113,6 +113,9 @@ export function StudentPaymentsTab({
           {totalEGP > 0 && <div><p className="text-3xl font-extrabold">{totalEGP.toLocaleString()}</p><p className="text-xs text-white/60">جنيه مصري</p></div>}
           {totalSAR > 0 && <div><p className="text-3xl font-extrabold">{totalSAR.toLocaleString()}</p><p className="text-xs text-white/60">ريال سعودي</p></div>}
           {totalUSD > 0 && <div><p className="text-3xl font-extrabold">{totalUSD.toLocaleString()}</p><p className="text-xs text-white/60">دولار</p></div>}
+          {totalEGP + totalSAR + totalUSD === 0 && (
+            <p className="text-sm font-bold text-white/70">لا توجد مدفوعات مؤكدة بعد</p>
+          )}
         </div>
         {methodEntries.length > 0 && (
           <div className="flex flex-wrap gap-2 border-t border-white/20 pt-3">

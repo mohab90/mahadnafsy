@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Admin login smoke. Skips itself unless TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD
- * are provided, so it never fails CI without dedicated test credentials.
- * Provide a *read-only* / disposable test account — this drives the real login.
+ * Admin login smoke. Defaults to the local UAT seed account, while still
+ * allowing CI to override credentials through env vars.
  */
 const ADMIN = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4000';
-const EMAIL = process.env.TEST_ADMIN_EMAIL;
-const PASSWORD = process.env.TEST_ADMIN_PASSWORD;
+const EMAIL = process.env.TEST_ADMIN_EMAIL || 'uat.admin@mahad.test';
+const PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'MahadUat#2026';
 
 test.describe('Admin dashboard', () => {
   test('login page renders', async ({ page }) => {
@@ -17,10 +16,9 @@ test.describe('Admin dashboard', () => {
   });
 
   test('admin can sign in and reach the dashboard', async ({ page }) => {
-    test.skip(!EMAIL || !PASSWORD, 'set TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD to run');
     await page.goto(ADMIN);
-    await page.locator('input[type="email"], input[name="email"]').first().fill(EMAIL!);
-    await page.locator('input[type="password"], input[name="password"]').first().fill(PASSWORD!);
+    await page.locator('input[type="email"], input[name="email"]').first().fill(EMAIL);
+    await page.locator('input[type="password"], input[name="password"]').first().fill(PASSWORD);
     await page.getByRole('button', { name: /دخول|تسجيل|login|sign/i }).first().click();
     // After login the OTP step or dashboard appears; assert we left the bare login form
     await expect(page.locator('body')).toBeVisible();

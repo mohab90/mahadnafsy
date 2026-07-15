@@ -1,7 +1,7 @@
 /* Service Worker — معهد الدراسات النفسية
    Strategy: cache-first for static assets, network-first for API */
 
-const CACHE_NAME = 'mahad-v1';
+const CACHE_NAME = 'mahad-__SW_VERSION__';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

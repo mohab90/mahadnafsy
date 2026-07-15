@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertCircle, Check } from 'lucide-react';
-import { SafeHtml } from '../../components/SafeHtml';
+import { SafeHtml } from '../../../shared/ui/SafeHtml';
 
 interface PainPointsAndAboutSectionProps {
   content: Record<string, string>;

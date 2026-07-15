@@ -1,7 +1,7 @@
 import React from 'react';
 import { Check, PlayCircle, Award, Users, Send, Share2, MessageCircle, ShieldCheck, Clock } from 'lucide-react';
 import type { Course } from '../../types';
-import { SafeHtml } from '../../components/SafeHtml';
+import { SafeHtml } from '../../../shared/ui/SafeHtml';
 import { cdnImg } from '../../lib/img';
 
 interface CourseHeroSectionProps {

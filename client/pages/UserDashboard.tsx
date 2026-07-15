@@ -1,34 +1,40 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BookOpen, Award, Clock, LogOut, User, ChevronRight, Star, CheckCircle,
-  Bell, Settings, MessageSquare, CreditCard, Play, Lock, Edit3, Camera,
-  Eye, EyeOff, Save, X, Calendar, Video, Phone, AlertCircle,
-  ChevronDown, ChevronUp, FileText, Download, Loader2, DollarSign,
-  Users, Sparkles, ExternalLink, ThumbsUp, Radio, Share2, Copy, Gift, Plus,
+  BookOpen, Award, Clock, LogOut, User, ChevronRight, CheckCircle,
+  Bell, Settings, MessageSquare, CreditCard, Play, Edit3, Camera,
+  Save, X, Phone, AlertCircle,
+  ChevronDown, ChevronUp, FileText,
+  Users, Sparkles, Radio, Share2, Gift,
 } from 'lucide-react';
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import type { PaymentProof } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
-import CourseCertificate from '../components/CourseCertificate';
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
-import { StudentCoursesTab } from '../components/student-dashboard/StudentCoursesTab';
-import { StudentPaymentsTab } from '../components/student-dashboard/StudentPaymentsTab';
-import { StudentMaterialsTab } from '../components/student-dashboard/StudentMaterialsTab';
-import { StudentQuizTab } from '../components/student-dashboard/StudentQuizTab';
-import PaymentsTab from './PaymentsTab';
-import { OverviewTab } from './dashboard-sections/OverviewTab';
-import { ConsultationsTab } from './dashboard-sections/ConsultationsTab';
-import { CertificatesTab } from './dashboard-sections/CertificatesTab';
-import { LiveStreamsTab } from './dashboard-sections/LiveStreamsTab';
-import { NotificationsTab } from './dashboard-sections/NotificationsTab';
-import { CommunityTab } from './dashboard-sections/CommunityTab';
-import { ReferralTab } from './dashboard-sections/ReferralTab';
-import { SettingsTab } from './dashboard-sections/SettingsTab';
-import { SupportTab } from './dashboard-sections/SupportTab';
+import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
+import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 
+const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
+const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
+const StudentPaymentsTab = React.lazy(() => import('../components/student-dashboard/StudentPaymentsTab').then((module) => ({ default: module.StudentPaymentsTab })));
+const StudentMaterialsTab = React.lazy(() => import('../components/student-dashboard/StudentMaterialsTab').then((module) => ({ default: module.StudentMaterialsTab })));
+const StudentQuizTab = React.lazy(() => import('../components/student-dashboard/StudentQuizTab').then((module) => ({ default: module.StudentQuizTab })));
+const StudentLoyaltyTab = React.lazy(() => import('../components/student-dashboard/StudentLoyaltyTab').then((module) => ({ default: module.StudentLoyaltyTab })));
+const StudentSupportTab = React.lazy(() => import('../components/student-dashboard/StudentSupportTab').then((module) => ({ default: module.StudentSupportTab })));
+const StudentReferralTab = React.lazy(() => import('../components/student-dashboard/StudentReferralTab').then((module) => ({ default: module.StudentReferralTab })));
+const StudentConsultationsTab = React.lazy(() => import('../components/student-dashboard/StudentConsultationsTab').then((module) => ({ default: module.StudentConsultationsTab })));
+const StudentNotificationsTab = React.lazy(() => import('../components/student-dashboard/StudentNotificationsTab').then((module) => ({ default: module.StudentNotificationsTab })));
+const StudentLiveStreamsTab = React.lazy(() => import('../components/student-dashboard/StudentLiveStreamsTab').then((module) => ({ default: module.StudentLiveStreamsTab })));
+const StudentCommunityTab = React.lazy(() => import('../components/student-dashboard/StudentCommunityTab').then((module) => ({ default: module.StudentCommunityTab })));
+const StudentSettingsTab = React.lazy(() => import('../components/student-dashboard/StudentSettingsTab').then((module) => ({ default: module.StudentSettingsTab })));
+const StudentCertificatesTab = React.lazy(() => import('../components/student-dashboard/StudentCertificatesTab').then((module) => ({ default: module.CertificatesTab })));
 const VideoPlayer = React.lazy(() =>
   import('../components/UserDashboardVideoPlayer').then((module) => ({ default: module.VideoPlayer }))
+);
+const StudentTabFallback = () => (
+  <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-500" dir="rtl">
+    جاري تحميل القسم...
+  </div>
 );
 
 
@@ -40,9 +46,9 @@ const AVATAR_COLORS = [
 const pickColor = (email: string) =>
   AVATAR_COLORS[email.charCodeAt(0) % AVATAR_COLORS.length];
 
-type Tab = 'overview' | 'learning' | 'consultations' | 'community' | 'payments' | 'account';
+type Tab = 'overview' | 'learning' | 'consultations' | 'community' | 'account';
 type LearningSection = 'courses' | 'certificates' | 'materials' | 'quiz' | 'live';
-type AccountSection = 'payments' | 'notifications' | 'referral' | 'support' | 'settings';
+type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 'support' | 'settings';
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
@@ -76,14 +82,33 @@ const UserDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [learningSection, setLearningSection] = useState<LearningSection>('courses');
   const [accountSection, setAccountSection] = useState<AccountSection>('payments');
+  const [realtimeNotice, setRealtimeNotice] = useState('');
+
+  useRealtimeEvents<{ message?: string }>(
+    'client:payment-updated',
+    (payload) => {
+      setRealtimeNotice(payload.message || 'تم تحديث بيانات المدفوعات الخاصة بك.');
+      refreshMySubscriber();
+    },
+    Boolean(authUser && import.meta.env.VITE_WS_URL),
+  );
+
+  useRealtimeEvents<{ message?: string }>(
+    'client:certificate-updated',
+    (payload) => {
+      setRealtimeNotice(payload.message || 'تم تحديث بيانات الشهادات الخاصة بك.');
+      refreshMySubscriber();
+    },
+    Boolean(authUser && import.meta.env.VITE_WS_URL),
+  );
 
   // Deep-link portal sections: ?tab=account&section=payments (used by PaymentSuccess, emails, etc.)
   const [dashSearchParams] = useSearchParams();
   useEffect(() => {
     const t = dashSearchParams.get('tab');
     const s = dashSearchParams.get('section');
-    if (t && ['overview', 'learning', 'consultations', 'community', 'payments', 'account'].includes(t)) setActiveTab(t as Tab);
-    if (s && ['payments', 'notifications', 'referral', 'support', 'settings'].includes(s)) {
+    if (t && ['overview', 'learning', 'consultations', 'community', 'account'].includes(t)) setActiveTab(t as Tab);
+    if (s && ['payments', 'notifications', 'loyalty', 'referral', 'support', 'settings'].includes(s)) {
       setActiveTab('account');
       setAccountSection(s as AccountSection);
     }
@@ -201,6 +226,12 @@ const UserDashboard: React.FC = () => {
     navigate('/');
   };
 
+  const subscriber = authUser?.email
+    ? subscribers.find(
+        s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim()
+      )
+    : undefined;
+
   /* ── Loading ── */
   if (authUser === undefined || !remoteReady) {
     return (
@@ -227,10 +258,9 @@ const UserDashboard: React.FC = () => {
 
   const displayName = authUser.displayName || authUser.email?.split('@')[0] || 'مستخدم';
   const avatarBg = pickColor(authUser.email || '');
-
-  const subscriber = subscribers.find(
-    s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim()
-  );
+  const adminDashboardUrl = ['127.0.0.1', 'localhost'].includes(window.location.hostname)
+    ? 'http://127.0.0.1:4100'
+    : 'https://admin.mahadnafsy.com';
 
   // If the user is authenticated but has no subscriber record, their account was deleted
   // from the CRM. Show a clear message.
@@ -244,20 +274,15 @@ const UserDashboard: React.FC = () => {
       </div>
     );
   }
-  // Admin users without a subscriber record → send to admin dashboard directly
-  if (isAdmin && !subscriber) {
-    navigate('/dashboard');
-    return null;
-  }
-  if (remoteReady && mySubscriberLoaded && !subscriber) {
+  if (remoteReady && (mySubscriberLoaded || isAdmin) && !subscriber) {
     // Wait until the async MySQL staff check resolves
-    if (isStaffMember === null) {
+    if (isStaffMember === null && !isAdmin) {
       return (
         <div className="min-h-screen flex items-center justify-center">
           <div className="w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       );
-    }    if (isStaffMember) {
+    }    if (isStaffMember && !isAdmin) {
       // Staff member — send them to the admin panel
       return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-6 text-center p-8" dir="rtl">
@@ -267,7 +292,7 @@ const UserDashboard: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-800">أهلاً {authUser.displayName || authUser.email?.split('@')[0]}</h2>
           <p className="text-gray-500 max-w-sm">حسابك كموظف — اللوحة الإدارية هي مكانك!</p>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => { window.location.href = adminDashboardUrl; }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl font-bold transition"
           >انتقل للوحة الإدارية</button>
           <button
@@ -282,7 +307,7 @@ const UserDashboard: React.FC = () => {
         <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center">
           <span className="text-4xl">🎓</span>
         </div>
-        <h2 className="text-2xl font-bold text-gray-800">مرحباً بك في معهد مهاد!</h2>
+        <h2 className="text-2xl font-bold text-gray-800">مرحباً بك في معهد الدراسات النفسية!</h2>
         <p className="text-gray-600 max-w-sm">
           لم تنضم بعد إلى أي كورس.<br />
           تواصل معنا لتسجيلك وبدء رحلتك في علم النفس.
@@ -491,7 +516,6 @@ const UserDashboard: React.FC = () => {
     { id: 'learning',      label: 'كورساتي',    icon: <BookOpen size={15} />,      count: enrolledCourses.length || undefined },
     { id: 'consultations', label: 'استشاراتي',  icon: <MessageSquare size={15} />, count: userConsultations.length || undefined },
     { id: 'community',     label: 'المجتمع',    icon: <Users size={15} />,          count: approvedPosts.length || undefined },
-    { id: 'payments',      label: 'مدفوعاتي',   icon: <CreditCard size={15} />,     count: installmentAlerts.length || undefined },
     { id: 'account',       label: 'حسابي',      icon: <User size={15} />,           count: (unreadNotifications.length + installmentAlerts.length) || undefined },
   ];
 
@@ -515,6 +539,20 @@ const UserDashboard: React.FC = () => {
       )}
 
       <div className="min-h-screen bg-gray-50" dir="rtl">
+
+        {realtimeNotice && (
+          <div className="flex items-start gap-3 bg-emerald-600 px-4 py-3 text-white">
+            <Bell size={18} className="mt-0.5 flex-shrink-0" />
+            <div className="min-w-0 flex-1 text-sm font-medium">{realtimeNotice}</div>
+            <button
+              type="button"
+              onClick={() => setRealtimeNotice('')}
+              className="rounded-lg bg-white/10 px-2 py-1 text-xs font-bold hover:bg-white/20"
+            >
+              إغلاق
+            </button>
+          </div>
+        )}
 
         {/* Notification banner */}
         {notifications
@@ -555,7 +593,7 @@ const UserDashboard: React.FC = () => {
                 <div className="relative group mt-1">
                   <div className={`w-20 h-20 rounded-full border-4 border-gray-100 overflow-hidden flex items-center justify-center text-2xl font-extrabold text-white ${!avatarDataUrl ? avatarBg : ''}`}>
                     {avatarDataUrl
-                      ? <img loading="lazy" decoding="async" src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
+                      ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
                       : displayName.charAt(0).toUpperCase()}
                   </div>
                   <button
@@ -656,47 +694,176 @@ const UserDashboard: React.FC = () => {
             <div className="px-4 py-5 md:px-7 md:py-7">
 
           {/* ════ OVERVIEW ════ */}
-          {activeTab === 'overview' && (
-            <OverviewTab
-              displayName={displayName}
-              enrolledCourses={enrolledCourses}
-              userConsultations={userConsultations}
-              subscriber={subscriber}
-              getCourseLectures={getCourseLectures}
-              setActiveTab={setActiveTab}
-              setLearningSection={setLearningSection}
-              setAccountSection={setAccountSection}
-              setPlayerCourseId={setPlayerCourseId}
-            />
-          )}
+          {activeTab === 'overview' && (() => {
+            const totalPaidEGP = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'EGP').reduce((s, p) => s + p.amount, 0);
+            const totalPaidSAR = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'SAR').reduce((s, p) => s + p.amount, 0);
+            const totalPaidUSD = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'USD').reduce((s, p) => s + p.amount, 0);
+            const earnedCertsCount = (subscriber?.extraCertificateRequests?.filter(r => r.status === 'issued').length || 0)
+              + enrolledCourses.filter(c => {
+                  const lecs = getCourseLectures(c.id);
+                  const total = lecs.length;
+                  if (total === 0) return true;
+                  const watched = Object.entries(subscriber?.lectureProgress || {}).filter(([lid, pct]) => lecs.some(l => String(l.id) === lid) && (pct as number) >= 90).length;
+                  return watched === total;
+                }).length;
+            return (
+              <div className="space-y-6">
 
+                {/* Welcome + summary cards */}
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 glass-card-premium shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-2 border-white/50 backdrop-blur-xl bg-white/70">
+                  <h2 className="text-lg font-extrabold text-gray-800 mb-1">أهلاً، {displayName} 👋</h2>
+                  <p className="text-gray-400 text-sm mb-5">هذه نظرة شاملة على حسابك ونشاطك</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: 'كورس مشترك',  val: enrolledCourses.length,      icon: <BookOpen size={18} />,      color: 'bg-sky-50 text-sky-600',     onClick: () => { setActiveTab('learning'); setLearningSection('courses'); } },
+                      { label: 'استشارة',     val: userConsultations.length,    icon: <MessageSquare size={18} />, color: 'bg-violet-50 text-violet-600', onClick: () => setActiveTab('consultations') },
+                      { label: 'شهادة',        val: earnedCertsCount,            icon: <Award size={18} />,         color: 'bg-amber-50 text-amber-600',  onClick: () => { setActiveTab('learning'); setLearningSection('certificates'); } },
+                      { label: 'دفعة مسجلة',  val: subscriber?.paymentHistory?.length ?? 0, icon: <CreditCard size={18} />, color: 'bg-green-50 text-green-600', onClick: () => { setActiveTab('account'); setAccountSection('payments'); } },
+                    ].map((s, i) => (
+                      <button key={i} onClick={s.onClick}
+                        className="flex flex-col items-center gap-1.5 p-4 rounded-2xl border border-gray-100 hover:shadow-md hover:border-gray-200 transition text-center">
+                        <span className={`p-2.5 rounded-xl ${s.color}`}>{s.icon}</span>
+                        <p className="text-2xl font-extrabold text-gray-800">{s.val}</p>
+                        <p className="text-xs text-gray-400">{s.label}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
+                {/* Engagement hero — continue learning + progress + certificate */}
+                <StudentEngagementHero
+                  enrolledCourses={enrolledCourses}
+                  lectureProgress={subscriber?.lectureProgress || {}}
+                  getCourseLectures={getCourseLectures}
+                  onResume={(cid) => { setActiveTab('learning'); setLearningSection('courses'); setPlayerCourseId(cid); }}
+                  onBrowse={() => navigate('/courses')}
+                />
+
+                {/* Referral CTA — surfaced on the home tab (was buried in account → referral) */}
+                <button
+                  onClick={() => { setActiveTab('account'); setAccountSection('referral'); }}
+                  className="w-full text-right bg-gradient-to-l from-emerald-600 to-teal-600 rounded-2xl p-5 text-white shadow flex items-center justify-between gap-3 hover:from-emerald-700 hover:to-teal-700 transition">
+                  <div className="flex items-center gap-3">
+                    <span className="w-11 h-11 rounded-2xl bg-white/20 grid place-items-center text-2xl">🎁</span>
+                    <div>
+                      <p className="font-extrabold text-base">ادعُ أصدقاءك واكسب مكافآت</p>
+                      <p className="text-xs text-white/80">شارك كود الدعوة — كل صديق يشترك يفيدكما معاً</p>
+                    </div>
+                  </div>
+                  <Share2 size={20} className="shrink-0 opacity-80" />
+                </button>
+
+                {/* Total paid summary */}
+                <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-2xl p-5 text-white shadow">
+                  <p className="text-sm font-bold text-white/70 mb-1">إجمالي ما دفعته</p>
+                  <div className="flex flex-wrap gap-4 items-end">
+                    {totalPaidEGP > 0 && <p className="text-3xl font-extrabold">{totalPaidEGP.toLocaleString()} <span className="text-base font-medium">ج.م</span></p>}
+                    {totalPaidSAR > 0 && <p className="text-3xl font-extrabold">{totalPaidSAR.toLocaleString()} <span className="text-base font-medium">ر.س</span></p>}
+                    {totalPaidUSD > 0 && <p className="text-3xl font-extrabold">{totalPaidUSD.toLocaleString()} <span className="text-base font-medium">$</span></p>}
+                    {totalPaidEGP + totalPaidSAR + totalPaidUSD === 0 && <p className="text-xl font-bold text-white/60">لا توجد مدفوعات بعد</p>}
+                  </div>
+                  <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="mt-3 text-xs text-white/70 hover:text-white underline transition">عرض سجل المدفوعات كاملاً ←</button>
+                </div>
+
+                {/* Enrolled courses quick view */}
+                {enrolledCourses.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-extrabold text-gray-700 text-sm">كورساتي</h3>
+                      <button onClick={() => { setActiveTab('learning'); setLearningSection('courses'); }} className="text-xs text-primary-600 hover:underline">عرض الكل</button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {enrolledCourses.slice(0, 6).map(course => {
+                        const lecs = getCourseLectures(course.id);
+                        const total = lecs.length;
+                        const watched = total > 0 ? Object.entries(subscriber?.lectureProgress || {}).filter(([lid, pct]) => lecs.some(l => String(l.id) === lid) && (pct as number) >= 90).length : 0;
+                        const pct = total > 0 ? Math.round((watched / total) * 100) : 100; // no lectures = fully open course
+                        const hasLectures = total > 0;
+                        return (
+                          <button
+                            key={course.id}
+                            onClick={() => setPlayerCourseId(String(course.id))}
+                            className="bg-white rounded-2xl overflow-hidden border border-gray-100 flex gap-3 p-3 items-center hover: hover:border-primary-200 text-right w-full group glass-card-premium shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-2 border-white/50 backdrop-blur-xl bg-white/70"
+                          >
+                            <div className="relative flex-shrink-0">
+                              <img src={course.thumbnail} alt={course.title} className="w-14 h-14 rounded-xl object-cover" />
+                              <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                <Play size={18} className="text-white" />
+                              </div>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-bold text-gray-800 line-clamp-1 mb-1 group-hover:text-primary-600 transition">{course.title}</p>
+                              {hasLectures ? (
+                                <>
+                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-1">
+                                    <div className="h-full bg-primary-500 rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <p className="text-[11px] text-gray-400">{watched}/{total} محاضرة • {pct}% مكتمل</p>
+                                </>
+                              ) : (
+                                <p className="text-[11px] text-primary-500 font-medium">▶ اضغط لمشاهدة الكورس</p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent payments quick view */}
+                {(subscriber?.paymentHistory?.length ?? 0) > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-extrabold text-gray-700 text-sm">آخر المدفوعات</h3>
+                      <button onClick={() => { setActiveTab('account'); setAccountSection('payments'); }} className="text-xs text-primary-600 hover:underline">عرض الكل</button>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto glass-card-premium shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-primary-500/20 transition-all duration-300 hover:-translate-y-2 border-white/50 backdrop-blur-xl bg-white/70">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs">المبلغ</th>
+                            <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs">طريقة الدفع</th>
+                            <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs">ملاحظة</th>
+                            <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs">التاريخ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(subscriber?.paymentHistory ?? []).slice(-5).reverse().map(p => (
+                            <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                              <td className="px-4 py-2.5 font-bold text-primary-700">{p.amount.toLocaleString()} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</td>
+                              <td className="px-4 py-2.5 text-gray-500 text-xs">{p.paymentMethod || '—'}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{p.note || '—'}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{p.at}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            );
+          })()}
 
           {/* ════ LEARNING SUB-NAV ════ */}
           {activeTab === 'learning' && (
-            <div className="flex gap-2 mb-5 flex-wrap">
-              {([
+            <StudentDashboardSectionNav
+              items={[
                 { id: 'courses' as LearningSection,      label: 'كورساتي',       icon: <BookOpen size={14} />,   count: enrolledCourses.length || 0 },
                 { id: 'certificates' as LearningSection, label: 'شهاداتي',       icon: <Award size={14} /> },
                 { id: 'materials' as LearningSection,    label: 'المادة العلمية', icon: <FileText size={14} /> },
                 { id: 'quiz' as LearningSection,         label: 'اختباراتي',     icon: <CheckCircle size={14} />, count: myQuizCount || 0 },
                 { id: 'live' as LearningSection,         label: 'البث المباشر',  icon: <Radio size={14} />,      count: upcomingLives.filter(l => l.status === 'live').length },
-              ] as { id: LearningSection; label: string; icon: React.ReactNode; count?: number }[]).map(s => (
-                <button key={s.id} onClick={() => setLearningSection(s.id)}
-                  className={[
-                    'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold transition',
-                    learningSection === s.id ? 'bg-primary-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300',
-                  ].join(' ')}>
-                  {s.icon} {s.label}
-                  {s.count !== undefined && s.count > 0 && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${learningSection === s.id ? 'bg-white/25 text-white' : 'bg-primary-100 text-primary-700'}`}>{s.count}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+              ]}
+              activeId={learningSection}
+              onChange={setLearningSection}
+            />
           )}
 
           {/* ════ COURSES ════ */}
+          <React.Suspense fallback={<StudentTabFallback />}>
           {activeTab === 'learning' && learningSection === 'courses' && (
             <StudentCoursesTab
               enrolledCourses={enrolledCourses}
@@ -714,17 +881,10 @@ const UserDashboard: React.FC = () => {
           )}
 
           {/* ════ CONSULTATIONS ════ */}
-          {activeTab === 'consultations' && (
-            <ConsultationsTab
-              userConsultations={userConsultations}
-              statusColors={statusColors}
-              statusLabels={statusLabels}
-            />
-          )}
-
-          {/* ════ CERTIFICATES ════ */}
-          {activeTab === 'learning' && learningSection === 'certificates' && (
-            <CertificatesTab
+          {activeTab === 'consultations' && <StudentConsultationsTab consultations={userConsultations} />}
+          {/* Certificates */}
+          {activeTab === 'learning' && learningSection === 'certificates' && subscriber && (
+            <StudentCertificatesTab
               subscriber={subscriber}
               enrolledCourses={enrolledCourses}
               getCourseLectures={getCourseLectures}
@@ -822,36 +982,19 @@ const UserDashboard: React.FC = () => {
           )}
 
           {/* ════ ACCOUNT SUB-NAV ════ */}
-          {activeTab === 'payments' && (
-            <PaymentsTab
-              subscriber={subscriber}
-              currency={currency}
-              onGoToCertificates={() => { setActiveTab('learning'); setLearningSection('certificates'); }}
-              onPaid={() => { if (authUser) refreshMySubscriber(); }}
-            />
-          )}
-
           {activeTab === 'account' && (
-            <div className="flex gap-2 mb-5 flex-wrap">
-              {([
+            <StudentDashboardSectionNav
+              items={[
                 { id: 'payments' as AccountSection,      label: 'المدفوعات',  icon: <CreditCard size={14} /> },
                 { id: 'notifications' as AccountSection, label: 'الإشعارات', icon: <Bell size={14} />, count: (unreadNotifications.length + installmentAlerts.length) },
+                { id: 'loyalty' as AccountSection,       label: 'الولاء', icon: <Gift size={14} /> },
                 { id: 'referral' as AccountSection,      label: 'الإحالة',   icon: <Share2 size={14} /> },
                 { id: 'support' as AccountSection,       label: 'الدعم',     icon: <MessageSquare size={14} /> },
                 { id: 'settings' as AccountSection,      label: 'الإعدادات', icon: <Settings size={14} /> },
-              ] as { id: AccountSection; label: string; icon: React.ReactNode; count?: number }[]).map(s => (
-                <button key={s.id} onClick={() => setAccountSection(s.id)}
-                  className={[
-                    'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold transition',
-                    accountSection === s.id ? 'bg-primary-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary-300',
-                  ].join(' ')}>
-                  {s.icon} {s.label}
-                  {s.count !== undefined && s.count > 0 && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${accountSection === s.id ? 'bg-white/25 text-white' : 'bg-primary-100 text-primary-700'}`}>{s.count}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+              ]}
+              activeId={accountSection}
+              onChange={setAccountSection}
+            />
           )}
 
           {/* ════ PAYMENTS ════ */}
@@ -916,46 +1059,60 @@ const UserDashboard: React.FC = () => {
 
           {/* ════ LIVE STREAMS TAB ════ */}
           {activeTab === 'learning' && learningSection === 'live' && (
-            <LiveStreamsTab upcomingLives={upcomingLives} />
+            <StudentLiveStreamsTab upcomingLives={upcomingLives} />
           )}
 
           {/* ════ NOTIFICATIONS ════ */}
           {activeTab === 'account' && accountSection === 'notifications' && (
-            <NotificationsTab
-              installmentAlerts={installmentAlerts}
+            <StudentNotificationsTab
               notifications={notifications}
               unreadNotifications={unreadNotifications}
               dismissedNotifIds={dismissedNotifIds}
-              setDismissedNotifIds={setDismissedNotifIds}
-              setActiveTab={setActiveTab}
-              setAccountSection={setAccountSection}
+              installmentAlerts={installmentAlerts}
+              onMarkAllRead={() => {
+                const allIds = notifications.map(n => n.id);
+                setDismissedNotifIds(allIds);
+                localStorage.setItem('dismissed-notifs', JSON.stringify(allIds));
+              }}
+              onDismissNotification={(id) => {
+                const next = [...dismissedNotifIds, id];
+                setDismissedNotifIds(next);
+                localStorage.setItem('dismissed-notifs', JSON.stringify(next));
+              }}
+              onOpenPayments={() => {
+                setActiveTab('account');
+                setAccountSection('payments');
+              }}
             />
+          )}
+          {activeTab === 'account' && accountSection === 'loyalty' && (
+            <StudentLoyaltyTab />
           )}
 
           {/* ════ COMMUNITY ════ */}
           {activeTab === 'community' && (
-            <CommunityTab approvedPosts={approvedPosts} />
+            <StudentCommunityTab approvedPosts={approvedPosts} />
           )}
 
 
           {/* ════ REFERRAL ════ */}
           {activeTab === 'account' && accountSection === 'referral' && (
-            <ReferralTab
+            <StudentReferralTab
               referralCode={referralCode}
               referralStats={referralStats}
               referralCopied={referralCopied}
-              setReferralCopied={setReferralCopied}
+              onCopied={() => {
+                setReferralCopied(true);
+                setTimeout(() => setReferralCopied(false), 2000);
+              }}
             />
           )}
-
           {/* ════ SUPPORT TICKETS ════ */}
-          {activeTab === 'account' && accountSection === 'support' && <SupportTab token={localStorage.getItem('mahad-token') || ''} />}
+          {activeTab === 'account' && accountSection === 'support' && <StudentSupportTab token={localStorage.getItem('mahad-token') || ''} />}
 
           {/* ════ SETTINGS ════ */}
           {activeTab === 'account' && accountSection === 'settings' && (
-            <SettingsTab
-              authUser={authUser}
-              subscriber={subscriber}
+            <StudentSettingsTab
               displayName={displayName}
               avatarDataUrl={avatarDataUrl}
               avatarBg={avatarBg}
@@ -964,13 +1121,15 @@ const UserDashboard: React.FC = () => {
               newName={newName}
               setEditingName={setEditingName}
               setNewName={setNewName}
-              newNameEn={newNameEn}
-              setNewNameEn={setNewNameEn}
+              onSaveName={handleSaveName}
               nameSaving={nameSaving}
               nameMsg={nameMsg}
+              newNameEn={newNameEn}
+              setNewNameEn={setNewNameEn}
+              onSaveNameEn={handleSaveNameEn}
               nameEnMsg={nameEnMsg}
-              handleSaveName={handleSaveName}
-              handleSaveNameEn={handleSaveNameEn}
+              authUser={authUser}
+              subscriber={subscriber}
               showPw={showPw}
               setShowPw={setShowPw}
               pwCurrent={pwCurrent}
@@ -979,12 +1138,13 @@ const UserDashboard: React.FC = () => {
               setPwNew={setPwNew}
               pwConfirm={pwConfirm}
               setPwConfirm={setPwConfirm}
-              pwSaving={pwSaving}
               pwMsg={pwMsg}
-              handleChangePassword={handleChangePassword}
-              handleLogout={handleLogout}
+              pwSaving={pwSaving}
+              onChangePassword={handleChangePassword}
+              onLogout={handleLogout}
             />
           )}
+          </React.Suspense>
 
             </div>
           </main>
@@ -1010,6 +1170,5 @@ const UserDashboard: React.FC = () => {
     </>
   );
 };
-
 
 export default UserDashboard;

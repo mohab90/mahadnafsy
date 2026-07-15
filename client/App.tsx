@@ -8,6 +8,7 @@ import Home from './pages/Home';
 const UserDashboard = React.lazy(() => import('./pages/UserDashboard'));
 const Community = React.lazy(() => import('./pages/Community'));
 const Checkout = React.lazy(() => import('./pages/Checkout'));
+const StandalonePayment = React.lazy(() => import('./pages/StandalonePayment'));
 const Auth = React.lazy(() => import('./pages/Auth'));
 const CourseDetails = React.lazy(() => import('./pages/CourseDetails'));
 const Bundles = React.lazy(() => import('./pages/Bundles'));
@@ -30,10 +31,14 @@ const PageSpinner: React.FC = () => (
     <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
   </div>
 );
+
+const lazyPage = (element: React.ReactNode) => (
+  <Suspense fallback={<PageSpinner />}>{element}</Suspense>
+);
 import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
-import ErrorBoundary from './components/ErrorBoundary';
-import { ToastProvider } from './components/Toast';
+import ErrorBoundary from '../shared/ui/ErrorBoundary';
+import { ToastProvider } from '../shared/ui/Toast';
 import { mysqlClient, mysqlForms } from './lib/mysqlapi';
 
 /** Lead Capture Widget — floating "استفسر الآن" form for public visitors */
@@ -276,17 +281,17 @@ const AppShell: React.FC = () => {
               <Route path="/sa" element={<LocaleRoute locale="SAR" />} />
               <Route path="/usd" element={<LocaleRoute locale="USD" />} />
               <Route path="/" element={<Home />} />
-              <Route path="/about" element={<AboutUs />} />
-              <Route path="/courses" element={<Courses />} />
-              <Route path="/course/:id" element={<CourseDetails />} />
-              <Route path="/c/:slug" element={<CourseDetails />} />
-              <Route path="/bundles" element={<Bundles />} />
-              <Route path="/bundle/:id" element={<BundleDetails />} />
-              <Route path="/consultations" element={<Consultations />} />
-              <Route path="/community" element={<Community />} />
-              <Route path="/institute-gallery" element={<InstituteGallery />} />
-              <Route path="/instructors" element={<Instructors />} />
-              <Route path="/instructor/:id" element={<InstructorDetails />} />
+              <Route path="/about" element={lazyPage(<AboutUs />)} />
+              <Route path="/courses" element={lazyPage(<Courses />)} />
+              <Route path="/course/:id" element={lazyPage(<CourseDetails />)} />
+              <Route path="/c/:slug" element={lazyPage(<CourseDetails />)} />
+              <Route path="/bundles" element={lazyPage(<Bundles />)} />
+              <Route path="/bundle/:id" element={lazyPage(<BundleDetails />)} />
+              <Route path="/consultations" element={lazyPage(<Consultations />)} />
+              <Route path="/community" element={lazyPage(<Community />)} />
+              <Route path="/institute-gallery" element={lazyPage(<InstituteGallery />)} />
+              <Route path="/instructors" element={lazyPage(<Instructors />)} />
+              <Route path="/instructor/:id" element={lazyPage(<InstructorDetails />)} />
               <Route path="/therapist-portal" element={<Navigate to="/" replace />} />
               <Route path="/lead/:id" element={<Navigate to="/" replace />} />
               <Route path="/subscriber/:id" element={<Navigate to="/" replace />} />
@@ -294,17 +299,19 @@ const AppShell: React.FC = () => {
               <Route path="/dashboard/:tab" element={<Navigate to="/" replace />} />
               <Route path="/staff/:id" element={<Navigate to="/" replace />} />
               <Route path="/client/:code" element={<Navigate to="/" replace />} />
-              <Route path="/auth" element={<Suspense fallback={<PageSpinner />}><Auth /></Suspense>} />
-              <Route path="/my-account" element={<Suspense fallback={<PageSpinner />}><UserDashboard /></Suspense>} />
-              <Route path="/checkout" element={<Suspense fallback={<PageSpinner />}><Checkout /></Suspense>} />
-              <Route path="/success" element={<Suspense fallback={<PageSpinner />}><PaymentSuccess /></Suspense>} />
-              <Route path="/policies" element={<Suspense fallback={<PageSpinner />}><Policies /></Suspense>} />
+              <Route path="/auth" element={lazyPage(<Auth />)} />
+              <Route path="/my-account" element={lazyPage(<UserDashboard />)} />
+              <Route path="/checkout" element={lazyPage(<Checkout />)} />
+              <Route path="/pay" element={lazyPage(<StandalonePayment />)} />
+              <Route path="/standalone-payment" element={lazyPage(<StandalonePayment />)} />
+              <Route path="/success" element={lazyPage(<PaymentSuccess />)} />
+              <Route path="/policies" element={lazyPage(<Policies />)} />
               <Route path="/privacy" element={<Navigate to="/policies" replace />} />
               <Route path="/terms" element={<Navigate to="/policies" replace />} />
-              <Route path="/contact" element={<Suspense fallback={<PageSpinner />}><Contact /></Suspense>} />
-              <Route path="/join" element={<Suspense fallback={<PageSpinner />}><JoinUs /></Suspense>} />
-              <Route path="/join-us" element={<Suspense fallback={<PageSpinner />}><JoinUs /></Suspense>} />
-              <Route path="/enroll" element={<Suspense fallback={<PageSpinner />}><Enrollment /></Suspense>} />
+              <Route path="/contact" element={lazyPage(<Contact />)} />
+              <Route path="/join" element={lazyPage(<JoinUs />)} />
+              <Route path="/join-us" element={lazyPage(<JoinUs />)} />
+              <Route path="/enroll" element={lazyPage(<Enrollment />)} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
