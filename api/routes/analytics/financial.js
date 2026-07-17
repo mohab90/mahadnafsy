@@ -220,7 +220,10 @@ function toCsv(rows, cols) {
 router.get('/api/admin/export/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const { from, to } = req.query;
-    let sql = `SELECT id, title, amount, category, recurrence, date, notes FROM expenses WHERE tenant_id = ? AND deleted_at IS NULL AND 1=1`;
+    // Real expenses columns are description/note (not title/notes), and there is
+    // no `recurrence` column on this table — selecting those threw
+    // "Unknown column" and broke the whole CSV export.
+    let sql = `SELECT id, description, amount, currency, category, date, note FROM expenses WHERE tenant_id = ? AND deleted_at IS NULL AND 1=1`;
     const params = [req.tenantId];
     if (from) { sql += ' AND date >= ?'; params.push(from); }
     if (to)   { sql += ' AND date <= ?'; params.push(to); }
@@ -228,12 +231,12 @@ router.get('/api/admin/export/expenses', requireAuth, requireAdminOrStaff, requi
     const [rows] = await pool.query(sql, params);
     const cols = [
       { key: 'id', label: 'ID' },
-      { key: 'title', label: 'البند' },
+      { key: 'description', label: 'البند' },
       { key: 'amount', label: 'المبلغ' },
+      { key: 'currency', label: 'العملة' },
       { key: 'category', label: 'الفئة' },
-      { key: 'recurrence', label: 'التكرار' },
       { key: 'date', label: 'التاريخ' },
-      { key: 'notes', label: 'ملاحظات' },
+      { key: 'note', label: 'ملاحظات' },
     ];
     const csv = toCsv(rows, cols);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

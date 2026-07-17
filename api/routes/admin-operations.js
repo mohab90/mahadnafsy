@@ -50,13 +50,17 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
     const id = e2.id || uuidv4();
     const tenantId = scopedTenantId(req);
     const branchCode = defaultDigitalBranch(e2.branch);
+    // Column is `note` (singular) in the real schema — inserting into `notes`
+    // threw "Unknown column 'notes'" and silently broke ALL expense creation
+    // (confirmed: expenses table was empty in prod). Accept either field name
+    // from the request body.
     await pool.query(
-      `INSERT INTO expenses (id, tenant_id, branch_id, date, description, amount, currency, category, notes, created_at)
+      `INSERT INTO expenses (id, tenant_id, branch_id, date, description, amount, currency, category, note, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE description=VALUES(description), amount=VALUES(amount),
-         category=VALUES(category), notes=VALUES(notes)`,
+         category=VALUES(category), note=VALUES(note)`,
       [id, tenantId, branchIdForBranch(branchCode), e2.date || new Date().toISOString().slice(0, 10), e2.description || '',
-       e2.amount || 0, e2.currency || 'EGP', e2.category || 'other', e2.notes || null,
+       e2.amount || 0, e2.currency || 'EGP', e2.category || 'other', e2.note ?? e2.notes ?? null,
        e2.created_at || new Date().toISOString()]
     );
     res.json({ ok: true, id });
@@ -66,10 +70,11 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
 router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const e2 = req.body;
-    const params = [e2.description || '', e2.amount || 0, e2.category || 'other', e2.notes || null, req.params.id];
+    // `note` (singular) is the real column — `notes` does not exist.
+    const params = [e2.description || '', e2.amount || 0, e2.category || 'other', e2.note ?? e2.notes ?? null, req.params.id];
     const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
     await pool.query(
-      `UPDATE expenses SET description=?, amount=?, category=?, notes=? WHERE ${where}`,
+      `UPDATE expenses SET description=?, amount=?, category=?, note=? WHERE ${where}`,
       params
     );
     res.json({ ok: true });
