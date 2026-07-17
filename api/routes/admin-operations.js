@@ -10,6 +10,8 @@ const { parseLimit, parseOffset } = require('../lib/helpers');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
+const { postExpenseJournal } = require('../lib/finance');
+const { assertWritable } = require('../lib/periodLock');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'admin operations route failed') {
@@ -50,33 +52,56 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
     const id = e2.id || uuidv4();
     const tenantId = scopedTenantId(req);
     const branchCode = defaultDigitalBranch(e2.branch);
+    const expDate = e2.date || new Date().toISOString().slice(0, 10);
+    await assertWritable(expDate); // reject writes into a closed accounting period
     // Column is `note` (singular) in the real schema — inserting into `notes`
     // threw "Unknown column 'notes'" and silently broke ALL expense creation
-    // (confirmed: expenses table was empty in prod). Accept either field name
-    // from the request body.
-    await pool.query(
+    // (confirmed: expenses table was empty in prod). Accept either field name.
+    const [result] = await pool.query(
       `INSERT INTO expenses (id, tenant_id, branch_id, date, description, amount, currency, category, note, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE description=VALUES(description), amount=VALUES(amount),
          category=VALUES(category), note=VALUES(note)`,
-      [id, tenantId, branchIdForBranch(branchCode), e2.date || new Date().toISOString().slice(0, 10), e2.description || '',
+      [id, tenantId, branchIdForBranch(branchCode), expDate, e2.description || '',
        e2.amount || 0, e2.currency || 'EGP', e2.category || 'other', e2.note ?? e2.notes ?? null,
        e2.created_at || new Date().toISOString()]
     );
+    // affectedRows: 1 = fresh insert -> post the expense to the double-entry ledger.
+    // 2 = duplicate-key update -> skip (a PATCH re-posts its own journal).
+    if (result.affectedRows === 1) {
+      postExpenseJournal({ id, date: expDate, description: e2.description, amount: e2.amount, currency: e2.currency, category: e2.category }, +1, req.user?.email).catch(() => {});
+    }
     res.json({ ok: true, id });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    routeError(res, e);
+  }
 });
 
 router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const e2 = req.body;
+    const tenantId = scopedTenantId(req);
+    // Fetch the old row (in tenant scope) so its ledger entry can be reversed.
+    const selParams = [req.params.id];
+    const selWhere = appendTenantScope('id=?', '', tenantId, selParams);
+    const [[oldExp]] = await pool.query(
+      `SELECT id, date, description, amount, currency, category FROM expenses WHERE ${selWhere} LIMIT 1`,
+      selParams
+    );
     // `note` (singular) is the real column — `notes` does not exist.
     const params = [e2.description || '', e2.amount || 0, e2.category || 'other', e2.note ?? e2.notes ?? null, req.params.id];
-    const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
+    const where = appendTenantScope('id=?', '', tenantId, params);
     await pool.query(
       `UPDATE expenses SET description=?, amount=?, category=?, note=? WHERE ${where}`,
       params
     );
+    // Journal: reverse the old amount then post the new one (keeps ledger == expenses table).
+    if (oldExp) {
+      postExpenseJournal(oldExp, -1, req.user?.email)
+        .then(() => postExpenseJournal({ ...oldExp, ...e2, id: req.params.id }, +1, req.user?.email))
+        .catch(() => {});
+    }
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
@@ -87,15 +112,21 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, 
     // report already filters `WHERE deleted_at IS NULL` (finance.js, analytics/
     // financial.js, campaigns.js, misc/analytics.js), so a soft-deleted expense
     // disappears from all reports exactly like a hard delete did — same visible
-    // behavior — but the row survives for recovery and audit instead of being
-    // destroyed. The `deleted_at` column is owned by migration 017.
-    // NOTE: deliberately no journal reversal here — the live POST (above) does not
-    // post an expense journal entry on creation, so reversing on delete would post
-    // a phantom entry and unbalance the ledger. Restoring expense↔ledger journaling
-    // is tracked separately.
+    // behavior — but the row survives for recovery and audit instead of destroyed.
+    // The `deleted_at` column is owned by migration 017.
+    const tenantId = scopedTenantId(req);
+    const selParams = [req.params.id];
+    const selWhere = appendTenantScope('id=?', '', tenantId, selParams);
+    const [[oldExp]] = await pool.query(
+      `SELECT id, date, description, amount, currency, category FROM expenses WHERE ${selWhere} AND deleted_at IS NULL LIMIT 1`,
+      selParams
+    );
     const params = [req.params.id];
-    const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
-    await pool.query(`UPDATE expenses SET deleted_at=NOW() WHERE ${where} AND deleted_at IS NULL`, params);
+    const where = appendTenantScope('id=?', '', tenantId, params);
+    const [del] = await pool.query(`UPDATE expenses SET deleted_at=NOW() WHERE ${where} AND deleted_at IS NULL`, params);
+    // Reverse the ledger entry only on a real live->deleted transition, so a
+    // double-delete can't post two reversals.
+    if (oldExp && del.affectedRows > 0) postExpenseJournal(oldExp, -1, req.user?.email).catch(() => {});
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });

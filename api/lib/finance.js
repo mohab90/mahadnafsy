@@ -148,4 +148,31 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
   } catch (e) { logger.warn('[finance] postPaymentJournal error:', e.message); return null; }
 }
 
-module.exports = { logPaymentAudit, logFinancialAudit, postJournalEntry, postPaymentJournal, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp };
+// Expense double-entry, mirror of postPaymentJournal. sign=+1 posts the expense
+// (expense-account debit / cash 1100 credit); sign=-1 posts the reversal (used
+// on edit and on soft-delete so the ledger stays == the expenses table).
+// Amount is normalised to EGP. Lifted out of the (dead, shadowed) core/content.js
+// into the shared finance lib so the LIVE expense handlers can post to the ledger.
+async function postExpenseJournal(expense, sign, actor, db = pool) {
+  try {
+    const amt = await toEgp(Number(expense.amount) || 0, expense.currency);
+    if (!amt) return null;
+    const [accCode, accName] = _expenseAccountCode(expense.category);
+    const dateStr = String(expense.date || new Date().toISOString()).slice(0, 10);
+    const label = sign > 0
+      ? `مصروف ${expense.amount} ${expense.currency || 'EGP'} (= ${amt} EGP) — ${expense.description || accName}`
+      : `عكس مصروف ${expense.amount} ${expense.currency || 'EGP'} (= ${amt} EGP) — ${expense.description || accName}`;
+    const lines = sign > 0
+      ? [
+          { account_code: accCode, account_name: accName, debit: amt, credit: 0 },
+          { account_code: '1100', account_name: 'نقدية وبنوك', debit: 0, credit: amt },
+        ]
+      : [
+          { account_code: '1100', account_name: 'نقدية وبنوك', debit: amt, credit: 0 },
+          { account_code: accCode, account_name: accName, debit: 0, credit: amt },
+        ];
+    return await postJournalEntry(sign > 0 ? 'expense' : 'expense_reversal', expense.id, dateStr, label, lines, actor || 'system', db);
+  } catch (e) { logger.warn('[finance] postExpenseJournal error:', e.message); return null; }
+}
+
+module.exports = { logPaymentAudit, logFinancialAudit, postJournalEntry, postPaymentJournal, postExpenseJournal, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp };
