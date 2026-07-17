@@ -666,7 +666,6 @@ app.use('/', subscriberPayRouter);
 app.use('/', paymentProofsRouter);
 app.use('/', whatsappAdminRouter);
 app.use('/', fbWebhooksRouter);
-app.use('/', accountingRouter);
 app.use('/', accountingErpRouter);
 app.use('/', saasAdminRouter);
 app.use('/', monitoringRouter);

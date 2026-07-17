@@ -20,17 +20,26 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res)
     const id = s.id || uuidv4();
     const role = ((s.role || 'other').toUpperCase());
     const firebaseUid = s.firebaseUid || s.firebase_uid || null;
-    const joinedAt = s.joinedAt || s.joined_at || new Date().toISOString();
+    // Normalise to a MySQL DATETIME literal — a raw ISO string ('...T...Z') is
+    // rejected by DATETIME columns, which 500'd staff creation when no date was supplied.
+    const joinedAt = String(s.joinedAt || s.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const commissionRate = s.commissionRate || s.commission_rate || null;
     const isActive = s.is_active !== undefined ? s.is_active : (s.status === 'inactive' ? 0 : 1);
     const permissionsJson = s.permissions_json
       || (Array.isArray(s.permissions) ? JSON.stringify(s.permissions) : null);
+    // Sales-target / bonus fields (camelCase from frontend or snake_case direct).
+    // `undefined` is coalesced to null so the field is cleared rather than left stale.
+    const numOrNull = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+    const monthlyTarget      = numOrNull(s.monthlyTarget      ?? s.monthly_target);
+    const monthlyTargetType  = s.monthlyTargetType ?? s.monthly_target_type ?? null;
+    const monthlyLeadsTarget = numOrNull(s.monthlyLeadsTarget ?? s.monthly_leads_target);
+    const monthlyBonus       = numOrNull(s.monthlyBonus       ?? s.monthly_bonus);
 
     await pool.query(
-      `INSERT INTO staff (id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json)`,
-      [id, firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson]
+      `INSERT INTO staff (id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
+      [id, firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
     res.json({ ok: true, id });
   } catch (e) {
