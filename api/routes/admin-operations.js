@@ -78,9 +78,19 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, r
 
 router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    // Soft delete (recoverable + auditable), NOT a hard DELETE. Every financial
+    // report already filters `WHERE deleted_at IS NULL` (finance.js, analytics/
+    // financial.js, campaigns.js, misc/analytics.js), so a soft-deleted expense
+    // disappears from all reports exactly like a hard delete did — same visible
+    // behavior — but the row survives for recovery and audit instead of being
+    // destroyed. The `deleted_at` column is owned by migration 017.
+    // NOTE: deliberately no journal reversal here — the live POST (above) does not
+    // post an expense journal entry on creation, so reversing on delete would post
+    // a phantom entry and unbalance the ledger. Restoring expense↔ledger journaling
+    // is tracked separately.
     const params = [req.params.id];
     const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
-    await pool.query(`DELETE FROM expenses WHERE ${where}`, params);
+    await pool.query(`UPDATE expenses SET deleted_at=NOW() WHERE ${where} AND deleted_at IS NULL`, params);
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
