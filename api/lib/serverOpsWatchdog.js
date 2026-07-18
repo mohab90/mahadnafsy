@@ -12,8 +12,11 @@ function buildWatchdogContent({ appDir, port, crashHistoryLog }) {
   const pm2Home = process.env.PM2_HOME || path.join(appDir, '.pm2');
 
   return `#!/bin/bash
-# Mahad API Watchdog - auto-restart via supervisor.js if port ${port} is down
-NODE='/opt/alt/alt-nodejs22/root/usr/bin/node'
+# Mahad API Watchdog - auto-restart if port ${port} is down
+# NODE is the exact binary running the app (process.execPath) — the old
+# hardcoded /opt/alt/... path was from the previous shared host and made every
+# crash-recovery attempt fail with "No such file or directory".
+NODE='${process.execPath}'
 SUPERVISOR='${supervisorPath}'
 LOG='${watchdogLog}'
 CRASH_LOG='${crashHistoryLog}'
@@ -40,12 +43,32 @@ send_wa_alert() {
 # -- Check health (localhost:${port}) -------------------------------------
 HTTP=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:${port}/api/health 2>/dev/null)
 if [ "$HTTP" != "200" ]; then
-  echo "$TS [CRASH] Server down (HTTP=$HTTP) - recovering via supervisor.js" >> $CRASH_LOG
-  echo "$TS [WATCHDOG] Server down (HTTP=$HTTP) - starting supervisor.js..." >> $LOG
+  echo "$TS [CRASH] Server down (HTTP=$HTTP) - recovering" >> $CRASH_LOG
+  echo "$TS [WATCHDOG] Server down (HTTP=$HTTP)" >> $LOG
   send_wa_alert "Mahad API down (HTTP=$HTTP) - restart attempt at $TS"
 
+  # On a systemd host the service manager owns the process — restart through it
+  # so the watchdog never spawns a competing supervisor (that dual-manager fight
+  # is what created unkillable orphan processes and stop-timeouts before).
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files mahad-api.service >/dev/null 2>&1; then
+    systemctl restart mahad-api.service >> $LOG 2>&1
+    echo "$TS [CRASH] restarted via systemctl" >> $CRASH_LOG
+    sleep 15
+    HTTP2=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:${port}/api/health 2>/dev/null)
+    if [ "$HTTP2" = "200" ]; then
+      echo "$TS [RECOVERED] API back via systemctl" >> $CRASH_LOG
+      send_wa_alert "Mahad API restarted via systemctl"
+    else
+      echo "$TS [CRASH] systemctl recovery failed HTTP2=$HTTP2" >> $CRASH_LOG
+      send_wa_alert "Mahad API still failing HTTP=$HTTP2"
+    fi
+    tail -500 $LOG > $LOG.tmp && mv $LOG.tmp $LOG
+    exit 0
+  fi
+
+  # Fallback (non-systemd hosts): recover via supervisor.js
   # Kill PM2 daemon so it won't resurrect a competing server.js
-  NODE='/opt/alt/alt-nodejs22/root/usr/bin/node'
+  NODE='${process.execPath}'
   SUPERVISOR='${supervisorPath}'
   PM2='${pm2Bin}'
   PM2_HOME='${pm2Home}'
