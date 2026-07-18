@@ -206,8 +206,8 @@ const _cronLine = `*/1 * * * * /bin/bash ${_watchdog} >> ${require('path').join(
 
 // Write watchdog.sh content to disk on every startup (self-healing)
 const _watchdogContent = `#!/bin/bash
-# Mahad API Watchdog — auto-restart via supervisor.js if port ${_srvPort} is down
-NODE='/opt/alt/alt-nodejs22/root/usr/bin/node'
+# Mahad API Watchdog — auto-restart if port ${_srvPort} is down
+NODE='${process.execPath}'
 SUPERVISOR='${require('path').join(__dirname, 'supervisor.js')}'
 LOG='${require('path').join(__dirname, 'watchdog.log')}'
 CRASH_LOG='${_crashHistoryLog}'
@@ -234,12 +234,35 @@ send_wa_alert() {
 # ── Check health (localhost:${_srvPort}) ─────────────────────────────────────
 HTTP=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:${_srvPort}/api/health 2>/dev/null)
 if [ "$HTTP" != "200" ]; then
-  echo "$TS [CRASH] Server down (HTTP=$HTTP) — recovering via supervisor.js" >> $CRASH_LOG
-  echo "$TS [WATCHDOG] Server down (HTTP=$HTTP) — starting supervisor.js..." >> $LOG
+  echo "$TS [CRASH] Server down (HTTP=$HTTP) — recovering" >> $CRASH_LOG
+  echo "$TS [WATCHDOG] Server down (HTTP=$HTTP)" >> $LOG
   send_wa_alert "🚨 Mahad API توقف (HTTP=$HTTP) — جاري إعادة التشغيل $TS"
 
-  # Kill PM2 daemon so it won't resurrect a competing server.js
-  NODE='/opt/alt/alt-nodejs22/root/usr/bin/node'
+  # On a systemd host the service manager owns the process — restart through it.
+  # Spawning supervisor.js alongside systemd created competing process managers
+  # (unkillable orphans + 90s stop-timeouts observed on every prior restart).
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files mahad-api.service --no-legend 2>/dev/null | grep -q mahad-api; then
+    systemctl restart mahad-api.service >> $LOG 2>&1
+    echo "$TS [CRASH] restarted via systemctl" >> $CRASH_LOG
+    sleep 15
+    HTTP2=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:${_srvPort}/api/health 2>/dev/null)
+    if [ "$HTTP2" = "200" ]; then
+      echo "$TS [RECOVERED] API back via systemctl" >> $CRASH_LOG
+      send_wa_alert "✅ Mahad API عاد للعمل via systemctl"
+    else
+      echo "$TS [CRASH] systemctl recovery failed HTTP2=$HTTP2" >> $CRASH_LOG
+      send_wa_alert "❌ Mahad API فشل الإصلاح HTTP=$HTTP2"
+    fi
+    tail -500 $LOG > $LOG.tmp && mv $LOG.tmp $LOG
+    exit 0
+  fi
+
+  # Fallback (non-systemd hosts only): recover via supervisor.js.
+  # NODE is process.execPath — the binary actually running this app. The old
+  # hardcoded /opt/alt/... path was from the previous shared host and made
+  # every recovery attempt fail with "No such file or directory" (48 recorded
+  # crashes, zero successful recoveries).
+  NODE='${process.execPath}'
   SUPERVISOR='${require('path').join(__dirname, 'supervisor.js')}'
   PM2='${require('path').join(__dirname, 'local_modules/node_modules/pm2/bin/pm2')}'
   PM2_HOME='${process.env.PM2_HOME || require('path').join(__dirname, '.pm2')}'
