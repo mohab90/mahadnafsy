@@ -253,32 +253,12 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       if (!journalId) throw new Error('Payment journal posting failed');
     }
 
-    // Persist the payment projection before commit so CRM cannot lag behind a paid record.
-    const [[subCrm]] = await conn.query(
-      'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
-      [subscriber_id, paymentTenantId]
-    );
-    if (!subCrm) throw new Error('Subscriber disappeared during payment transaction');
-    const crm = tryJson(subCrm.crm_json, {});
-    crm.paymentHistory = crm.paymentHistory || [];
-    if (!crm.paymentHistory.find(p => p.id === id)) {
-      crm.paymentHistory.push({
-        id, status: payment.status || 'paid', amount: Number(payment.amount) || 0,
-        currency: payment.currency || 'EGP', paymentType: safeType.toLowerCase(),
-        paymentMethod: payment.paymentMethod || payment.payment_method || null,
-        transactionId: payment.transactionId || payment.transaction_id || null,
-        isInstallment: !!payment.isInstallment, courseId, bundleId,
-        note: payment.note || payment.notes || null, at: resolvedDate,
-        staffId: resolvedStaffId, staffName: resolvedStaffName,
-        fromAccountNumber: payment.fromAccountNumber || payment.from_account || null,
-        source: resolvedSource, itemTitle: payment.itemTitle || payment.item_title || null,
-        certType: payment.certType || payment.cert_type || null,
-      });
-      await conn.query(
-        'UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?',
-        [JSON.stringify(crm), subscriber_id, paymentTenantId]
-      );
-    }
+    // P1 CLOSED: the crm_json.paymentHistory dual-write was removed here. The
+    // payments table is the single source of truth — every reader (stafflists,
+    // admin/subscribers, client views) builds paymentHistory from the payments
+    // table, and the crm_json fallback was proven dead (0 subscribers relied on
+    // it). Legacy front-paths that still PATCH crm_json with payment entries are
+    // converged INTO payments by the auto-sync in admin/subscribers.js.
     if (subRow.email) {
       await conn.query(
         "UPDATE leads SET status='converted' WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND LOWER(status) NOT IN ('converted','lost') LIMIT 5",

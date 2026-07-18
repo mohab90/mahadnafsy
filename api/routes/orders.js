@@ -127,23 +127,10 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res
     await conn.query('UPDATE payments SET status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL', [newStatus, req.params.id, req.tenantId]);
     await conn.commit();
     logPaymentAudit(req.params.id, 'update', oldPay?.status || null, newStatus, oldPay?.amount || null, oldPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
-    if (newStatus === 'paid' || newStatus === 'failed') {
-      setImmediate(async () => {
-        const [[pay]] = await pool.query('SELECT subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
-        if (!pay) return;
-        const [[sub]] = await pool.query('SELECT id, crm_json FROM subscribers WHERE id=? LIMIT 1', [pay.subscriber_id]).catch(() => [[null]]);
-        if (!sub) return;
-        let crm = {};
-        try { crm = JSON.parse(sub.crm_json || '{}'); } catch { crm = {}; }
-        const ph = crm.paymentHistory || [];
-        const idx = ph.findIndex(p => p.id === req.params.id);
-        if (idx !== -1) {
-          ph[idx] = { ...ph[idx], status: newStatus };
-          crm.paymentHistory = ph;
-          await pool.query('UPDATE subscribers SET crm_json=? WHERE id=?', [JSON.stringify(crm), sub.id]).catch(() => {});
-        }
-      });
-    }
+    // P1 CLOSED: the crm_json.paymentHistory status-mirror was removed — the
+    // payments table (updated in the transaction above) is the single source of
+    // truth and every reader rebuilds paymentHistory from it, so mirroring the
+    // status into the stale crm_json copy only re-created divergence risk.
     res.json({ ok: true });
   } catch (e) {
     await conn.rollback().catch(() => {});
