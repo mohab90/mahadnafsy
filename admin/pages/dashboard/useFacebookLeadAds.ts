@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { handleFetchFbFormsFn, handleFbApiSyncFn } from './dashboardCsvFbHandlers';
-import { defaultFbDraft } from './dashboardHelpers';
+import { defaultFacebookLeadAdsConfig as defaultFbDraft } from './facebookLeadAdsDefaults';
 import type { FacebookLeadAdsConfig } from '../../types';
 
 /**

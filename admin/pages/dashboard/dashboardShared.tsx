@@ -655,4 +655,5 @@ export {
   TAB_PERMISSION_MAP,
 };
 
+export type InstituteBranch = BranchEntry;
 export type { SubStatus, CertPricingMap, BranchRoom, BranchEntry };

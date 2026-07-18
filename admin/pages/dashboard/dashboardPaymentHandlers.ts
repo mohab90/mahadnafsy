@@ -8,6 +8,7 @@ import type { PaymentDraft } from '../../components/PaymentModal';
 import type { TabKey } from './navigation';
 import { normBranchId } from './dashboardShared';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { priceForCurrency } from './dashboardHelpers';
 
 type Notify = (type: 'success' | 'error' | 'info', msg: string) => void;
 
@@ -31,6 +32,13 @@ export function normalizeCourseAccess(
     nextMap[courseId] = normalizeAccessEntry(currentMap[courseId]);
   });
   return nextMap;
+}
+
+export function normalizeLectureProgress(
+  _enrolledCourseIds: string[],
+  currentMap: Record<string, number> = {},
+): Record<string, number> {
+  return currentMap;
 }
 
 // ── handleSubPayment ─────────────────────────────────────────────────────────
@@ -78,7 +86,7 @@ export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDe
       const isBundleItem = item.courseId.startsWith('bundle:');
       const bId = isBundleItem ? item.courseId.replace('bundle:', '') : null;
       const bObj = bId ? bundles.find(b => b.id === bId) : null;
-      const _bundleCatalog = isBundleItem && bObj ? ((bObj.price as any)?.[subPayDraft.currency] || (bObj.price as any)?.EGP || 0) : 0;
+      const _bundleCatalog = isBundleItem && bObj ? priceForCurrency(bObj.price, subPayDraft.currency) : 0;
       const _courseCatalog = !isBundleItem && item.courseId ? (courses.find(c => c.id === item.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === item.courseId)?.price?.EGP || 0) : 0;
       const _catalogPx = isBundleItem ? _bundleCatalog : _courseCatalog;
       const _customExpSub = Number(item.customExpected) || 0;
@@ -370,9 +378,10 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
         enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
         paymentHistory: payEntries, branch: (freshLead.branch as BranchType) || undefined,
         status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
-        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       } as SubscriberItem);
-      if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
+      void added;
+      notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
     }
     updatedLead = { ...updatedLead, status: 'converted' };
   } else {
@@ -399,14 +408,15 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
           : [...(existingSub.enrolledCourseIds || []), leadPayDraft.courseId];
         updateSubscriber({ ...existingSub, ..._subExtra, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), [leadPayDraft.courseId]: _initAccess }, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry], leadId: existingSub.leadId || freshLead.id });
       } else {
-        const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [leadPayDraft.courseId], courseAccess: { [leadPayDraft.courseId]: _initAccess }, paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
-        if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
+        const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [leadPayDraft.courseId], courseAccess: { [leadPayDraft.courseId]: _initAccess }, paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
+        void added;
+        notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
       }
       updatedLead = { ...updatedLead, status: 'converted' };
     } else if (existingSub) {
       updateSubscriber({ ...existingSub, ..._subExtra, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
     } else {
-      await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
+      await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
     }
   }
 
@@ -420,7 +430,7 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   const _notifAmt = leadPayDraft.paymentType === 'course'
     ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
     : Number(leadPayDraft.amount);
-  notify('success', `✅ ${updatedLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`);
+  notify('success', `? ${updatedLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`);
   if (leadPayDraft.paymentType === 'course' && updatedLead.status === 'converted') {
     const _welcomeEmail = leadPayDraft.email || freshLead.email;
     if (_welcomeEmail && _welcomeEmail.includes('@')) {
@@ -495,7 +505,7 @@ export function handleDashInstCreateFn(deps: HandleDashInstCreateDeps): void {
         const bCids = b.courses.map(c => c.id);
         const bPays = payments.filter(p => bCids.includes(p.courseId || '') || p.courseId === `bundle:${b.id}`);
         const nb = bPays.find(p => !p.isInstallment);
-        expectedAmount += nb?.courseExpected || (b.price as any)?.EGP || b.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0;
+        expectedAmount += nb?.courseExpected || priceForCurrency(b.price, 'EGP') || b.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0;
       });
       partIds.forEach((cid: string) => {
         const c = courses.find(x => x.id === cid);
@@ -514,7 +524,7 @@ export function handleDashInstCreateFn(deps: HandleDashInstCreateDeps): void {
     const bPays = payments.filter(p => bCids.includes(p.courseId || '') || p.courseId === subInstDraft.courseId || (!p.courseId && !row.enrolledCourseIds.some((cid: string) => !bCids.includes(cid))));
     expectedAmount = subInstDraft.overrideExpected
       ? Number(subInstDraft.overrideExpected)
-      : ((b?.price as any)?.EGP || b?.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0);
+      : (priceForCurrency(b?.price, 'EGP') || b?.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0);
     paidAmount = bPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     resolvedCourseId = undefined;
     resolvedTitle = b?.title;

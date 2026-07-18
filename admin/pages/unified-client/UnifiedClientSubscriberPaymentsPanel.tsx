@@ -77,7 +77,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
 
   return (
     <>
-      <button onClick={() => setShowSubPayForm(true)}
+      <button onClick={onShowPaymentForm}
         className="w-full py-3 border-2 border-dashed border-emerald-200 rounded-xl text-emerald-600 hover:bg-emerald-50 text-sm flex items-center justify-center gap-2">
         <Plus size={18} /> حجز أو دفع جديد
       </button>
@@ -88,8 +88,8 @@ export function UnifiedClientSubscriberPaymentsPanel({
             subject={{ id: subscriber.id, name: subscriber.name, phone: subscriber.phone, enrolledCourseIds: subscriber.enrolledCourseIds, paymentHistory: subscriber.paymentHistory || [], extraCertificateRequests: subscriber.extraCertificateRequests || [] }}
             draft={payModalDraft}
             setDraft={setPayModalDraft}
-            onSubmit={(d) => handlePayModalSubmit(d)}
-            onClose={() => setShowSubPayForm(false)}
+            onSubmit={onPaymentSubmit}
+            onClose={onClosePaymentForm}
           />
         </Suspense>
       )}
@@ -210,7 +210,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
       )}
 
       {/* ── Payment Proofs (client-uploaded receipts) ── */}
-      {isSub && (
+      {subscriber && (
         <div className="mt-4 border-t border-gray-100 pt-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">

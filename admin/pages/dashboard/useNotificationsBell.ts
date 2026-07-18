@@ -17,13 +17,11 @@ export function useNotificationsBell(isAdmin: boolean) {
   useEffect(() => {
     if (!isAdmin) return;
     const loadNotifs = () => {
-      Promise.resolve().then(() => {
-        mysqlAdmin.getNotifications().then(res => {
-          const r = res as { rows: NotifRow[]; unread: number };
-          setNotifRows(r.rows || []);
-          setNotifUnread(r.unread || 0);
-        }).catch(() => {});
-      });
+      mysqlAdmin.getNotifications().then(res => {
+        const r = res as { rows: NotifRow[]; unread: number };
+        setNotifRows(r.rows || []);
+        setNotifUnread(r.unread || 0);
+      }).catch(() => {});
     };
     loadNotifs();
     const iv = setInterval(loadNotifs, 60000);

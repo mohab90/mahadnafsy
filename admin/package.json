@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 4000",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "npm run build && node deploy_admin.cjs"

@@ -1043,7 +1043,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                             <td className="px-3 py-2 font-bold text-gray-800">{item.staff_name || item.name || '—'}</td>
                             <td className="px-3 py-2">{fmtMoney(item.base_salary || 0)}</td>
                             <td className="px-3 py-2 text-blue-600">{allowances > 0 ? fmtMoney(allowances) : '—'}</td>
-                            <td className="px-3 py-2 text-amber-600">{item.commission > 0 ? fmtMoney(item.commission) : '—'}</td>
+                            <td className="px-3 py-2 text-amber-600">{(item.commission || 0) > 0 ? fmtMoney(item.commission || 0) : '—'}</td>
                             <td className="px-3 py-2 text-emerald-600">{bonuses - (item.commission || 0) > 0 ? fmtMoney(bonuses - (item.commission || 0)) : '—'}</td>
                             <td className="px-3 py-2 text-red-600">{deductions > 0 ? `-${fmtMoney(deductions)}` : '—'}</td>
                             <td className="px-3 py-2 font-black text-slate-700">{fmtMoney(item.net_salary || 0)}</td>

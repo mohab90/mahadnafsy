@@ -138,7 +138,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
     }
     setWaSaving(true);
     try {
-      await mysqlAdmin.saveWhatsAppConfig(waInstanceId.trim(), waApiToken.trim());
+      await mysqlAdmin.saveWhatsAppConfig({ instanceId: waInstanceId.trim(), apiToken: waApiToken.trim() });
       setWaHasToken(true);
       setWaApiToken('');
       notify('success', 'تم حفظ إعدادات WhatsApp ✅');

@@ -174,7 +174,7 @@ else fail('unhandledRejection not handled — promise failures will crash the pr
 
 // ── 9. Frontend resilience & TypeScript ──────────────────────────────────────
 console.log('\n9. Frontend quality');
-const ebPath = join(ROOT, 'admin/components/ErrorBoundary.tsx');
+const ebPath = join(ROOT, 'shared/ui/ErrorBoundary.tsx');
 if (readText(ebPath) !== null) pass('ErrorBoundary component exists');
 else warn('ErrorBoundary component missing — runtime errors will crash the whole page');
 

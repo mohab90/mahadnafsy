@@ -25,7 +25,7 @@ type Props = {
   searchTerm: string;
   setSearchTerm: Dispatch<SetStateAction<string>>;
   isSalesOnly: boolean;
-  assignedReps: StaffMember[];
+  assignedReps: Pick<StaffMember, 'id' | 'name'>[];
   assignFilter: Set<string>;
   setAssignFilter: Dispatch<SetStateAction<Set<string>>>;
   singleStatus: LeadStatus | '';

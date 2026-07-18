@@ -80,9 +80,10 @@ export const mysqlClient = {
   saveLectureProgress: (lectureId: string, pct: number) =>
     apiFetch<{ ok: boolean }>('/me/progress', { method: 'PATCH', body: JSON.stringify({ lectureId, pct }) }, true),
   // Payment proofs
-  submitPaymentProof: (data: { amount: number; currency: string; course_id?: string | null; payment_method: string; proof_image?: string | null; note?: string }) =>
+  submitPaymentProof: (data: { order_id: string; payment_method: string; proof_image?: string | null; note?: string }) =>
     apiFetch<{ ok: boolean; id: string }>('/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true),
   getMyPaymentProofs: () => apiFetch<AR[]>('/me/payment-proofs', {}, true),
+  getMyOrders: () => apiFetch<Array<{ id: string; item_id: string | null; item_title: string; type: string; status: string; amount: number; currency: string }>>('/me/orders', {}, true),
   // Course ratings
   getCourseRatings: (courseId: string) => apiFetch<{ avg: number; count: number; myRating: { rating: number; comment: string } | null }>(`/courses/${encodeURIComponent(courseId)}/ratings`, {}, true),
   rateCourse: (courseId: string, rating: number, comment?: string) =>
@@ -197,6 +198,17 @@ export const mysqlAdmin = {
   listActivityLogs:        (limit = 200)  => apiFetch<AR[]>(`/admin/activity-logs?limit=${limit}`, {}, A),
   listAllOrders:           (limit = 500)  => apiFetch<AR[]>(`/admin/orders?limit=${limit}`, {}, A),
   listAbandonedCheckouts:  (hours = 2)     => apiFetch<AR[]>(`/admin/abandoned-checkouts?hours=${hours}`, {}, A),
+  runAbandonedCheckout:    (hours = 24, limit = 100) => apiFetch<{ ok: boolean; scanned: number; sent: number; failed: number; skipped: number }>('/admin/automation/abandoned-checkout/run', { method: 'POST', body: JSON.stringify({ hours, limit }) }, A),
+  smartRouteLeads:         (mode: 'all' | 'unassigned' = 'unassigned', limit = 100) => apiFetch<{ ok: boolean; assigned: number; reps: number }>('/admin/crm/leads/smart-route', { method: 'POST', body: JSON.stringify({ mode, limit }) }, A),
+  getPushPublicKey:        ()              => apiFetch<{ ok: boolean; enabled: boolean; publicKey: string | null }>('/push/vapid-public-key'),
+  saveDokkiClassroom:      (body: AR)       => post('/admin/dokki/classrooms', body),
+  bookDokkiClassroom:      (body: AR)       => post('/admin/dokki/classrooms/book', body),
+  checkinDokkiStudent:     (code: string)   => post('/admin/dokki/checkins', { code }),
+  saveDokkiInventoryItem:  (body: AR)       => post('/admin/dokki/inventory/items', body),
+  postDokkiInventoryTransaction: (body: AR) => post('/admin/dokki/inventory/transactions', body),
+  getSubscriberLoyalty:    (id: string)     => apiFetch<AR>(`/admin/subscribers/${encodeURIComponent(id)}/loyalty`, {}, A),
+  awardSubscriberLoyalty:  (id: string, points: number, reason: string) => apiFetch<{ ok: boolean; balance: number }>(`/admin/subscribers/${encodeURIComponent(id)}/loyalty/award`, { method: 'POST', body: JSON.stringify({ points, reason }) }, A),
+  redeemSubscriberLoyalty: (id: string, points: number, reason: string) => apiFetch<{ ok: boolean; balance: number }>(`/admin/subscribers/${encodeURIComponent(id)}/loyalty/redeem`, { method: 'POST', body: JSON.stringify({ points, reason }) }, A),
   listAllDaqqiRounds:      ()             => apiFetch<AR[]>('/admin/daqqi-rounds', {}, A),
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),

@@ -177,7 +177,7 @@ function normalizeStaffStatus(staff: StaffMemberWire): StaffMember['status'] {
 }
 
 const STORAGE_KEY = 'mahad-admin-site-data-v1';
-const DATA_VERSION = 3; // bumped to clear seed bundles b1/b2/b3 from localStorage cache
+const DATA_VERSION = 4; // v4 removes all CRM/HR/finance/PII from browser persistence
 
 const _parseEnvList = (v: string | undefined) =>
   (v || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -599,9 +599,10 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (subsRes.status === 'fulfilled') {
           const subs = (subsRes.value as unknown as SubscriberItem[]).map(s => ({ ...s, enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [] }));
-          if (subs.length > 0) { subscribersRef.current = subs; setSubscribers(subs); }
+          subscribersRef.current = subs;
+          setSubscribers(subs);
         }
-        if (leadsRes.status === 'fulfilled' && leadsRes.value.length > 0) {
+        if (leadsRes.status === 'fulfilled') {
           const normalizedLeads = (leadsRes.value as unknown as LeadItem[]).map(l => ({
             ...l,
             status: (l.status || 'new').toLowerCase() as LeadStatus,
@@ -609,7 +610,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           leadsRef.current = normalizedLeads;
           setLeads(normalizedLeads);
         }
-        if (staffRes.status === 'fulfilled' && staffRes.value.length > 0) {
+        if (staffRes.status === 'fulfilled') {
           const normalizedStaff = (staffRes.value as unknown as StaffMemberWire[]).map(s => ({
             ...s,
             role: (s.role || '').toLowerCase() as StaffMember['role'],
@@ -618,15 +619,15 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           staffMembersRef.current = normalizedStaff;
           setStaffMembers(normalizedStaff);
         }
-        if (consultsRes.status === 'fulfilled' && consultsRes.value.length > 0)
+        if (consultsRes.status === 'fulfilled')
           setConsultations(consultsRes.value as unknown as ConsultationItem[]);
         if (contentRes.status === 'fulfilled' && contentRes.value && Object.keys(contentRes.value).length > 0) {
           const remoteContent = contentRes.value as Record<string, string>;
           setContent(prev => ({ ...prev, ...remoteContent }));
           contentRef.current = { ...contentRef.current, ...remoteContent };
+          // Only a successful, non-empty server snapshot may enable autosave.
+          dbContentLoadedRef.current = true;
         }
-        // Mark DB content as loaded — unblocks the auto-save effect
-        dbContentLoadedRef.current = true;
 
         // Mark ready after batch 1 — admin sees CRM immediately
         clearTimeout(safetyTimer);
@@ -641,7 +642,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             mysqlAdmin.listAllLeads(),
             mysqlAdmin.listAllSubscribers(),
           ]);
-          if (fullLeadsRes.status === 'fulfilled' && fullLeadsRes.value.length > leadsRef.current.length) {
+          if (fullLeadsRes.status === 'fulfilled') {
             const normalized = (fullLeadsRes.value as unknown as LeadItem[]).map(l => ({
               ...l,
               status: (l.status || 'new').toLowerCase() as LeadStatus,
@@ -649,7 +650,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             leadsRef.current = normalized;
             setLeads(normalized);
           }
-          if (fullSubsRes.status === 'fulfilled' && fullSubsRes.value.length > subscribersRef.current.length) {
+          if (fullSubsRes.status === 'fulfilled') {
             const subs = (fullSubsRes.value as unknown as SubscriberItem[]).map(s => ({
               ...s,
               enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [],
@@ -751,7 +752,9 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } catch (err) {
         console.error('[MySQL] Bootstrap failed:', err);
         clearTimeout(safetyTimer);
-        isHydratingRef.current = false;
+        // Keep writes blocked: rendering stale defaults is safer than overwriting
+        // the server after a failed hydration.
+        isHydratingRef.current = true;
         setRemoteReady(true);
       }
     })();
@@ -1390,11 +1393,8 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       leadsRef.current = [leadWithCode, ...leadsRef.current];
       setLeads(prev => [leadWithCode, ...prev.filter(l => l.id !== leadWithCode.id)]);
       track('create', 'lead', leadWithCode.name);
-    } catch {
-      // Fallback: local only
-      const code = item.clientCode || await issueClientCodeAsync();
-      const leadWithCode: LeadItem = { ...(item as LeadItem), clientCode: code };
-      await addLead(leadWithCode);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('تعذر حفظ طلب العميل.');
     }
   };
 
@@ -2199,46 +2199,27 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     track('reset', 'system', 'restore defaults');
   };
 
-  // ── localStorage persist (all data, fast debounce — keeps browser cache in sync always) ──────
+  // ── Public catalog cache only. CRM/HR/finance/customer data must never be
+  // written to localStorage because any script running in the origin can read it.
   useEffect(() => {
     const payloadObject = {
       courses,
       bundles,
       therapists,
       testimonials,
-      subscribers,
-      leads,
-      staffMembers,
-      consultations,
       lectures,
       chapters,
-      orders,
       communityPosts,
       communityLibraryItems,
       communityVideos,
       communityEvents,
       content,
-      activityLogs,
       discounts,
       notifications,
-      expenses,
-      daqqiRounds,
-      joinUsApplications,
-      contactMessages,
-      automationWorkflows,
-      adminAiConfig,
-      aiAgentConfig,
-      messagingChannels,
-      inboxConversations,
-      fbLeadAdsConfig,
       courseQuizzes,
-      quizAttempts,
       liveStreams,
     };
-
-    // Strip loginPassword from leads before writing to localStorage (security)
-    const safeLeadsForStorage = payloadObject.leads.map(({ loginPassword: _pw, ...rest }: LeadItem & { loginPassword?: string }) => rest);
-    const safePayload = JSON.stringify({ ...payloadObject, leads: safeLeadsForStorage, _dataVersion: DATA_VERSION });
+    const safePayload = JSON.stringify({ ...payloadObject, _dataVersion: DATA_VERSION });
 
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
@@ -2296,7 +2277,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // ── MySQL Settings persist — AI & messaging config ─────────────────────────────────────────
   useEffect(() => {
-    if (!remoteReady || !isAdmin || isHydratingRef.current) return;
+    if (!remoteReady || !isAdmin || isHydratingRef.current || !dbContentLoadedRef.current) return;
     if (settingsTimerRef.current) clearTimeout(settingsTimerRef.current);
     settingsTimerRef.current = setTimeout(() => {
       void mysqlAdmin.saveSettings({ adminAiConfig, aiAgentConfig, messagingChannels, fbLeadAdsConfig } as Record<string, unknown>).catch(() => {});

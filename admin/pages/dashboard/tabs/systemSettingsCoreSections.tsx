@@ -128,7 +128,7 @@ export const GeneralSection: React.FC<{ data: General; mutateField: (f: string, 
             ['brand_secondary_color', 'اللون الثانوي', '#0f766e'],
             ['brand_accent_color', 'لون التمييز', '#f59e0b'],
           ].map(([field, label, fallback]) => {
-            const value = String((g as EditableSection)[field] || fallback);
+            const value = String((g as unknown as EditableSection)[field] || fallback);
             return (
               <Field key={field} label={label}>
                 <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export const FinancialSection: React.FC<{ data: Financial; mutateField: (f: stri
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {fields.map(fld => (
           <Field key={fld.key} label={fld.label}>
-            <TextInput value={(f as EditableSection)[fld.key]??''} onChange={v=>mutateField(fld.key, fld.type==='number' ? Number(v) : v)} type={fld.type} suffix={fld.suffix}/>
+            <TextInput value={String((f as unknown as EditableSection)[fld.key] ?? '')} onChange={v=>mutateField(fld.key, fld.type==='number' ? Number(v) : v)} type={fld.type} suffix={fld.suffix}/>
           </Field>
         ))}
       </div>

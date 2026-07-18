@@ -14,6 +14,14 @@ import type {
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { DaqqiScheduleHeader } from './daqqi/DaqqiScheduleHeader';
+import { DaqqiCommunicationModal } from './daqqi/DaqqiCommunicationModal';
+import { DaqqiRoundEditorModal } from './daqqi/DaqqiRoundEditorModal';
+import {
+  DaqqiNewClientModal,
+  DaqqiNewClientReceiptModal,
+  type DaqqiNewClientDraft,
+  type DaqqiNewClientReceipt,
+} from './daqqi/DaqqiNewClientModals';
 import { useDaqqiPaymentState } from './daqqi/useDaqqiPaymentState';
 import { useDaqqiViewFilters } from './daqqi/useDaqqiViewFilters';
 import {
@@ -143,14 +151,14 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const [daqqiClientFilterReception2, setDaqqiClientFilterReception2] = useState('');
   const [daqqiClientFilterPay, setDaqqiClientFilterPay] = useState('');
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
-  const [daqqiNewClientDraft, setDaqqiNewClientDraft] = useState({
+  const [daqqiNewClientDraft, setDaqqiNewClientDraft] = useState<DaqqiNewClientDraft>({
     name: '', phone: '', email: '', courseIds: [] as string[],
     paymentType: 'course' as PaymentItemType,
     courseExpected: '', amount: '', currency: 'EGP' as 'EGP' | 'SAR' | 'USD',
     paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '',
     bookingType: 'new_booking' as 'new_booking' | 'installment',
   });
-  const [daqqiNewClientPrintReceipt, setDaqqiNewClientPrintReceipt] = useState<null | { name: string; phone: string; courses: string[]; amount: number; currency: string; method: string; bookingType: string; date: string }>(null);
+  const [daqqiNewClientPrintReceipt, setDaqqiNewClientPrintReceipt] = useState<DaqqiNewClientReceipt | null>(null);
 
   // ── Derived data ───────────────────────────────────────────────────────────
   const daqqiBranchIds = parseDaqqiBranchIds(content);
@@ -1367,276 +1375,22 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         );
       })()}
 
-      {/* Add New Client Modal */}
-      {daqqiAddClientModal && (() => {
-        const pmList: string[] = content['finance.payment_methods']
-          ? content['finance.payment_methods'].split('||').map((s: string) => s.trim()).filter(Boolean)
-          : ['خزنة الدقي', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'أونلاين', 'أخرى'];
-        const hasPayment = !!daqqiNewClientDraft.amount && Number(daqqiNewClientDraft.amount) > 0;
-        return (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setDaqqiAddClientModal(false)}>
-            <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-auto" dir="rtl" onClick={e => e.stopPropagation()}>
-              {/* Header */}
-              <div className="sticky top-0 bg-gradient-to-l from-red-700 to-red-500 rounded-t-3xl sm:rounded-t-2xl px-5 pt-5 pb-4 z-10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                      <UserPlus size={18} className="text-white" />
-                    </div>
-                    <div>
-                      <h4 className="font-extrabold text-white text-base">إضافة عميل جديد</h4>
-                      <p className="text-red-100 text-[11px]">فرع الدقي</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setDaqqiAddClientModal(false)} className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white transition"><X size={16} /></button>
-                </div>
-              </div>
+      <DaqqiNewClientModal
+        open={daqqiAddClientModal}
+        content={content}
+        courses={courses}
+        bundles={bundles}
+        draft={daqqiNewClientDraft}
+        setDraft={setDaqqiNewClientDraft}
+        onClose={() => setDaqqiAddClientModal(false)}
+        onSubmit={handleDaqqiAddNewClient}
+      />
 
-              <div className="px-5 py-5 space-y-5">
-                {/* ── Section 1: بيانات العميل ── */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center text-sm">👤</div>
-                    <p className="text-xs font-extrabold text-gray-700 tracking-wide uppercase">بيانات العميل</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">الاسم الكامل <span className="text-red-500">*</span></label>
-                      <input type="text" placeholder="الاسم الكامل" value={daqqiNewClientDraft.name}
-                        onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, name: e.target.value })}
-                        className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm focus:outline-none transition ${daqqiNewClientDraft.name.trim() ? 'border-green-300 focus:border-green-400' : 'border-gray-200 focus:border-blue-400'}`}
-                        autoFocus />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">رقم الهاتف <span className="text-red-500">*</span></label>
-                      <input type="tel" placeholder="01xxxxxxxxx" value={daqqiNewClientDraft.phone}
-                        onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, phone: e.target.value })}
-                        className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm focus:outline-none transition ${daqqiNewClientDraft.phone.trim() ? 'border-green-300 focus:border-green-400' : 'border-gray-200 focus:border-blue-400'}`} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></label>
-                    <input type="email" placeholder="example@mail.com" value={daqqiNewClientDraft.email}
-                      onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, email: e.target.value })}
-                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none" />
-                  </div>
-                </div>
+      <DaqqiNewClientReceiptModal
+        receipt={daqqiNewClientPrintReceipt}
+        onClose={() => setDaqqiNewClientPrintReceipt(null)}
+      />
 
-                {/* ── Section 2: الكورسات ── */}
-                <div className="border-t border-gray-100 pt-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center text-sm">📚</div>
-                    <p className="text-xs font-extrabold text-gray-700 tracking-wide uppercase">الكورسات</p>
-                    <span className="text-[10px] text-gray-400 font-medium">(يمكن اختيار أكثر من كورس)</span>
-                  </div>
-                  <div className="space-y-1.5 max-h-44 overflow-auto pr-1">
-                    {bundles.length > 0 && bundles.map(b => {
-                      const bKey = `bundle:${b.id}`;
-                      const checked = daqqiNewClientDraft.courseIds.includes(bKey);
-                      return (
-                        <label key={bKey} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-xs cursor-pointer transition ${checked ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}>
-                          <input type="checkbox" checked={checked}
-                            onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, courseIds: e.target.checked ? [...daqqiNewClientDraft.courseIds, bKey] : daqqiNewClientDraft.courseIds.filter(x => x !== bKey) })}
-                            className="w-3.5 h-3.5 rounded accent-purple-600 flex-shrink-0" />
-                          <span className="font-medium text-gray-700">📌 {b.title}</span>
-                          {b.price?.EGP && <span className="text-gray-400 mr-auto font-normal">{Number(b.price.EGP).toLocaleString()} ج</span>}
-                        </label>
-                      );
-                    })}
-                    {courses.map(c => {
-                      const checked = daqqiNewClientDraft.courseIds.includes(c.id);
-                      return (
-                        <label key={c.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 text-xs cursor-pointer transition ${checked ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-200'}`}>
-                          <input type="checkbox" checked={checked}
-                            onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, courseIds: e.target.checked ? [...daqqiNewClientDraft.courseIds, c.id] : daqqiNewClientDraft.courseIds.filter(x => x !== c.id) })}
-                            className="w-3.5 h-3.5 rounded accent-purple-600 flex-shrink-0" />
-                          <span className="font-medium text-gray-700">{c.titleAr || c.title}</span>
-                          {c.price?.EGP && <span className="text-gray-400 mr-auto font-normal">{Number(c.price.EGP).toLocaleString()} ج</span>}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* ── Section 3: الدفع الأولي ── */}
-                <div className="border-t border-gray-100 pt-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center text-sm">💰</div>
-                    <p className="text-xs font-extrabold text-gray-700 tracking-wide uppercase">الدفع الأولي</p>
-                    <span className="text-[10px] text-gray-400 font-medium">(اختياري)</span>
-                  </div>
-                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
-                    {/* Booking type + Payment type chips */}
-                    <div className="space-y-1.5 pb-0.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">نوع الحجز:</span>
-                        {[{v:'new_booking',ic:'🆕',lb:'حجز جديد'},{v:'installment',ic:'💳',lb:'قسط'}].map(bt => (
-                          <button key={bt.v} type="button"
-                            onClick={() => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, bookingType: bt.v as 'new_booking' | 'installment' })}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition ${daqqiNewClientDraft.bookingType === bt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'}`}>
-                            <span>{bt.ic}</span>{bt.lb}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">النوع:</span>
-                        {[{v:'course',ic:'🎓',lb:'كورس'},{v:'certificate',ic:'🏅',lb:'شهادة'},{v:'consultation',ic:'💬',lb:'استشارة'},{v:'book',ic:'📚',lb:'كتاب'},{v:'carneh',ic:'🗂️',lb:'كارنيه'},{v:'other',ic:'📦',lb:'أخرى'}].map(opt => (
-                          <button key={opt.v} type="button"
-                            onClick={() => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, paymentType: opt.v as PaymentItemType })}
-                            className={`flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold border transition ${daqqiNewClientDraft.paymentType === opt.v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}>
-                            {opt.ic} {opt.lb}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Amount + currency */}
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">المبلغ المدفوع</label>
-                        <input type="number" min="0" placeholder="0.00" value={daqqiNewClientDraft.amount}
-                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, amount: e.target.value })}
-                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-base font-bold focus:border-green-400 focus:outline-none bg-white" />
-                      </div>
-                      <div className="w-28">
-                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">العملة</label>
-                        <select value={daqqiNewClientDraft.currency}
-                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, currency: e.target.value as 'EGP' | 'SAR' | 'USD' })}
-                          className="w-full border-2 border-gray-200 rounded-xl px-2 py-2.5 text-sm focus:border-green-400 focus:outline-none bg-white font-bold">
-                          <option value="EGP">🇪🇬 ج.م</option>
-                          <option value="SAR">🇸🇦 ر.س</option>
-                          <option value="USD">🇺🇸 $</option>
-                        </select>
-                      </div>
-                    </div>
-                    {/* Payment method */}
-                    <div>
-                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">وسيلة الدفع</label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {pmList.map(m => (
-                          <button key={m} type="button"
-                            onClick={() => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, paymentMethod: m })}
-                            className={`py-2 px-1 rounded-xl border-2 text-[11px] font-bold text-center transition ${daqqiNewClientDraft.paymentMethod === m ? 'border-green-500 bg-green-50 text-green-800' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}>
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Transaction + date */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">رقم العملية</label>
-                        <input type="text" placeholder="اختياري" value={daqqiNewClientDraft.transactionId}
-                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, transactionId: e.target.value })}
-                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-green-400 focus:outline-none bg-white" />
-                      </div>
-                      <div>
-                        <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">التاريخ</label>
-                        <input type="date" value={daqqiNewClientDraft.date}
-                          onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, date: e.target.value })}
-                          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-green-400 focus:outline-none bg-white" />
-                      </div>
-                    </div>
-                    {/* Note */}
-                    <div>
-                      <label className="text-[11px] text-gray-500 font-bold mb-1.5 block">ملاحظة</label>
-                      <input type="text" placeholder="اكتب أي ملاحظة..." value={daqqiNewClientDraft.note}
-                        onChange={e => setDaqqiNewClientDraft({ ...daqqiNewClientDraft, note: e.target.value })}
-                        className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-green-400 focus:outline-none bg-white" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Summary ── */}
-                {daqqiNewClientDraft.name.trim() && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs">
-                    <p className="font-bold text-blue-800 mb-1">ملخص الإضافة</p>
-                    <div className="text-blue-700 space-y-0.5">
-                      <div>👤 {daqqiNewClientDraft.name.trim()}{daqqiNewClientDraft.phone && ` — ${daqqiNewClientDraft.phone}`}</div>
-                      {daqqiNewClientDraft.courseIds.length > 0 && daqqiNewClientDraft.courseIds.map(cid => {
-                        if (cid.startsWith('bundle:')) { const b = bundles.find(bx => bx.id === cid.replace('bundle:', '')); return <div key={cid}>📌 {b?.title || cid}</div>; }
-                        const c = courses.find(cx => cx.id === cid); return <div key={cid}>📚 {c?.titleAr || c?.title || cid}</div>;
-                      })}
-                      {hasPayment && <div>💰 {Number(daqqiNewClientDraft.amount).toLocaleString()} {daqqiNewClientDraft.currency}{daqqiNewClientDraft.paymentMethod && ` عبر ${daqqiNewClientDraft.paymentMethod}`}</div>}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Actions ── */}
-                <div className="flex gap-3 pb-2">
-                  <button onClick={handleDaqqiAddNewClient}
-                    disabled={!daqqiNewClientDraft.name.trim() || !daqqiNewClientDraft.phone.trim()}
-                    className="flex-1 py-3.5 bg-gradient-to-l from-red-700 to-red-500 text-white rounded-2xl text-sm font-extrabold hover:from-red-800 hover:to-red-600 disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2">
-                    <UserPlus size={16} /> إضافة العميل
-                  </button>
-                  <button onClick={() => setDaqqiAddClientModal(false)}
-                    className="px-5 py-3.5 bg-gray-100 text-gray-700 rounded-2xl text-sm font-bold hover:bg-gray-200 transition">
-                    إلغاء
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Print Receipt Modal */}
-      {daqqiNewClientPrintReceipt && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 print:hidden" onClick={() => setDaqqiNewClientPrintReceipt(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="bg-gray-800 text-white rounded-t-2xl px-4 py-3 flex items-center justify-between">
-              <span className="font-bold text-sm">طباعة الوصل</span>
-              <div className="flex items-center gap-2">
-                <button onClick={() => window.print()} className="px-3 py-1.5 bg-white text-gray-800 rounded-lg text-xs font-bold hover:bg-gray-100 transition">🖨️ طباعة</button>
-                <button onClick={() => setDaqqiNewClientPrintReceipt(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition"><X size={14} /></button>
-              </div>
-            </div>
-            {/* Receipt preview */}
-            <div id="daqqiPrintReceipt" className="p-5 font-mono text-xs text-center space-y-2">
-              <div className="font-extrabold text-base">مهاد نفسي — الدقي</div>
-              <div className="text-gray-500 text-[11px]">{daqqiNewClientPrintReceipt.date}</div>
-              <div className="border-t border-dashed border-gray-300 my-2" />
-              <div className="text-right space-y-1">
-                <div><span className="text-gray-500">الاسم: </span><span className="font-bold">{daqqiNewClientPrintReceipt.name}</span></div>
-                <div><span className="text-gray-500">الهاتف: </span><span className="font-bold">{daqqiNewClientPrintReceipt.phone}</span></div>
-              </div>
-              {daqqiNewClientPrintReceipt.courses.length > 0 && <>
-                <div className="border-t border-dashed border-gray-300 my-2" />
-                <div className="text-right">
-                  <div className="text-gray-500 mb-1">الكورسات:</div>
-                  {daqqiNewClientPrintReceipt.courses.map((c, i) => <div key={i} className="font-bold">• {c}</div>)}
-                </div>
-              </>}
-              <div className="border-t border-dashed border-gray-300 my-2" />
-              <div className="text-right space-y-1">
-                <div><span className="text-gray-500">المدفوع: </span><span className="font-extrabold text-lg">{daqqiNewClientPrintReceipt.amount.toLocaleString()}</span> <span className="text-gray-500">{daqqiNewClientPrintReceipt.currency}</span></div>
-                <div><span className="text-gray-500">الوسيلة: </span><span className="font-bold">{daqqiNewClientPrintReceipt.method}</span></div>
-                <div><span className="text-gray-500">النوع: </span><span className="font-bold">{daqqiNewClientPrintReceipt.bookingType === 'new_booking' ? 'حجز جديد' : 'قسط'}</span></div>
-              </div>
-              <div className="border-t border-dashed border-gray-300 my-2" />
-              <div className="text-gray-400 text-[10px]">شكراً لثقتكم 🌿</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Print styles */}
-      <style>{`
-        @media print {
-          body > *:not(#daqqiPrintReceipt) { display: none !important; }
-          #daqqiPrintReceipt {
-            display: block !important;
-            width: 80mm !important;
-            max-width: 80mm !important;
-            margin: 0 !important;
-            padding: 3mm !important;
-            font-size: 10px !important;
-            font-family: monospace !important;
-            line-height: 1.4 !important;
-            color: #000 !important;
-          }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
 
       <DaqqiPaymentReceiptModal
         data={daqqiPayPrintData}
@@ -1644,71 +1398,20 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         onClose={() => setDaqqiPayPrintData(null)}
       />
 
-      {/* Edit Round Modal */}
-      {daqqiEditRoundId && (() => {
-        const editRound = daqqiRounds.find(r => r.id === daqqiEditRoundId);
-        return (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDaqqiEditRoundId('')}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-              <h4 className="font-extrabold text-gray-900 text-lg mb-4 flex items-center gap-2"><Pencil size={16} className="text-amber-500" />تعديل الروند — {editRound?.code}</h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-600 font-bold mb-1 block">الكورس <span className="text-red-500">*</span></label>
-                  <select value={daqqiEditDraft.courseId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, courseId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                    <option value="">اختر الكورس...</option>
-                    {courses.map(c => <option key={c.id} value={c.id}>{c.titleAr || c.title}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 font-bold mb-1 block">المحاضر <span className="text-red-500">*</span></label>
-                  <select value={daqqiEditDraft.instructorId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, instructorId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                    <option value="">اختر المحاضر...</option>
-                    {instructorOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 font-bold mb-1 block">مسؤول الريسبشن <span className="text-red-500">*</span></label>
-                  <select value={daqqiEditDraft.receptionId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, receptionId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                    <option value="">اختر مسؤول الريسبشن...</option>
-                    {receptionOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-                {daqqiRooms.length > 0 && (
-                  <div>
-                    <label className="text-xs text-gray-600 font-bold mb-1 block">القاعة</label>
-                    <select value={daqqiEditDraft.roomId} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, roomId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                      <option value="">— بدون قاعة —</option>
-                      {daqqiRooms.map(r => <option key={r.name} value={r.name}>{r.name}{r.capacity ? ` (${r.capacity} فرد)` : ''}</option>)}
-                    </select>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-600 font-bold mb-1 block">اليوم</label>
-                    <select value={daqqiEditDraft.dayOfWeek} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, dayOfWeek: e.target.value as DaqqiDayOfWeek })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                      {daysOfWeek.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600 font-bold mb-1 block">الموعد</label>
-                    <select value={daqqiEditDraft.timeSlot} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, timeSlot: e.target.value as DaqqiTimeSlot })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                      {timeSlotsList.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 font-bold mb-1 block">تاريخ البدء <span className="text-red-500">*</span></label>
-                  <input type="date" value={daqqiEditDraft.startDate} onChange={e => setDaqqiEditDraft({ ...daqqiEditDraft, startDate: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none" />
-                </div>
-              </div>
-              <div className="flex gap-3 mt-5">
-                <button onClick={handleSaveEditRound} disabled={!daqqiEditDraft.courseId || !daqqiEditDraft.instructorId || !daqqiEditDraft.receptionId || !daqqiEditDraft.startDate} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">حفظ التعديلات</button>
-                <button onClick={() => setDaqqiEditRoundId('')} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <DaqqiRoundEditorModal
+        open={!!daqqiEditRoundId}
+        roundCode={daqqiRounds.find((round) => round.id === daqqiEditRoundId)?.code}
+        draft={daqqiEditDraft}
+        setDraft={setDaqqiEditDraft}
+        courses={courses}
+        instructors={instructorOptions}
+        receptionStaff={receptionOptions}
+        rooms={daqqiRooms}
+        daysOfWeek={daysOfWeek}
+        timeSlots={timeSlotsList}
+        onClose={() => setDaqqiEditRoundId('')}
+        onSave={handleSaveEditRound}
+      />
 
       {/* Pay Modal */}
       <DaqqiPayModal
@@ -1756,62 +1459,17 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         onUpdateRound={doUpdateRound}
         notify={notify}
       />
-      {/* Communication Modal */}
-      {daqqiCommModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDaqqiCommModal(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h4 className="font-extrabold text-gray-900 text-lg flex items-center gap-2">
-                  <Phone size={18} className="text-purple-600" /> تسجيل تواصل
-                </h4>
-                <p className="text-xs text-gray-500 mt-0.5">{daqqiCommModal.subscriberName}</p>
-              </div>
-              <button onClick={() => setDaqqiCommModal(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-600 mb-2">نوع التواصل</label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(['call', 'whatsapp', 'email', 'meeting', 'note', 'payment_followup'] as CommunicationRecord['type'][]).map(t => {
-                    const typeLabels: Record<string, string> = { call: '📞 مكالمة', whatsapp: '💬 واتساب', email: '📧 إيميل', meeting: '🤝 اجتماع', note: '📝 ملاحظة', payment_followup: '💰 متابعة دفع' };
-                    return (
-                      <button key={t} onClick={() => setDaqqiCommType(t)}
-                        className={`py-2 rounded-xl text-xs font-bold border-2 transition ${daqqiCommType === t ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                        {typeLabels[t]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1.5">ملاحظات <span className="text-red-500">*</span></label>
-                <textarea value={daqqiCommNote} onChange={e => setDaqqiCommNote(e.target.value)}
-                  placeholder="تفاصيل التواصل..." rows={3}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-purple-400" />
-              </div>
-              <div className="flex items-center gap-2">
-                <a href={`tel:${daqqiCommModal.phone}`} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition">
-                  <Phone size={12} /> {daqqiCommModal.phone}
-                </a>
-                <button onClick={() => { const wNum = daqqiCommModal.phone.replace(/\D/g, ''); const waNum = wNum.startsWith('0') ? '2' + wNum : wNum; window.open(`https://wa.me/${waNum}`, '_blank'); }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 text-xs text-teal-700 hover:bg-teal-100 transition">
-                  <MessageCircle size={12} /> واتساب
-                </button>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={handleDaqqiAddComm} disabled={!daqqiCommNote.trim()}
-                className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 disabled:opacity-40 transition">
-                تسجيل التواصل
-              </button>
-              <button onClick={() => setDaqqiCommModal(null)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DaqqiCommunicationModal
+        target={daqqiCommModal}
+        type={daqqiCommType}
+        note={daqqiCommNote}
+        setType={setDaqqiCommType}
+        setNote={setDaqqiCommNote}
+        onClose={() => setDaqqiCommModal(null)}
+        onSubmit={handleDaqqiAddComm}
+      />
     </article>
   );
 };
 
 export default DaqqiScheduleTab;
-

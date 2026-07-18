@@ -81,7 +81,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
         id: crypto.randomUUID(),
         name: entry.name,
         phone: entry.phone,
-        email: entry.email || undefined,
+        email: entry.email || '',
         status: 'new',
         leadType: 'general',
         interestLevel: 'medium',

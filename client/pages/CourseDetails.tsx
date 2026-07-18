@@ -209,7 +209,7 @@ const CourseDetails: React.FC = () => {
     navigate(`/checkout?type=course&id=${course.id}`);
   };
 
-    const handleLeadSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    const handleLeadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!course) return;
         if (!leadName.trim() || !leadPhone.trim() || !leadBranch.trim()) {
@@ -237,11 +237,15 @@ const CourseDetails: React.FC = () => {
             createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
         };
 
-        addPublicLead(payload);
-        setLeadName('');
-        setLeadPhone('');
-        setLeadBranch('');
-        setLeadNotice('تم تسجيل بياناتك وسيتم التواصل معك خلال 48 ساعة من خدمة العملاء.');
+        try {
+            await addPublicLead(payload);
+            setLeadName('');
+            setLeadPhone('');
+            setLeadBranch('');
+            setLeadNotice('تم تسجيل بياناتك وسيتم التواصل معك خلال 48 ساعة من خدمة العملاء.');
+        } catch {
+            setLeadNotice('تعذر تسجيل بياناتك حاليًا. حاول مرة أخرى أو تواصل معنا على واتساب.');
+        }
     };
 
   // ── Course rating state ────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ const Contact = React.lazy(() => import('./pages/Contact'));
 const JoinUs = React.lazy(() => import('./pages/JoinUs'));
 const Enrollment = React.lazy(() => import('./pages/Enrollment'));
 const Courses = React.lazy(() => import('./pages/Courses'));
+const AiTutorWidget = React.lazy(() => import('./components/AiTutorWidget'));
 
 /** Minimal spinner shown while lazy pages load */
 const PageSpinner: React.FC = () => (
@@ -50,6 +51,7 @@ const LeadCaptureWidget: React.FC = () => {
   const [msg, setMsg] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   // Only show for non-admin, non-logged-in visitors
   if (isAdmin || authUser) return null;
@@ -58,10 +60,13 @@ const LeadCaptureWidget: React.FC = () => {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) return;
     setBusy(true);
+    setSubmitError('');
     try {
       await mysqlForms.submitLead({ name: name.trim(), phone: phone.trim(), notes: msg.trim(), source: 'chatbot' });
       setSent(true);
-    } catch {} finally { setBusy(false); }
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'تعذر إرسال طلبك حاليًا. حاول مرة أخرى أو تواصل معنا عبر واتساب.');
+    } finally { setBusy(false); }
   };
 
   return (
@@ -92,6 +97,7 @@ const LeadCaptureWidget: React.FC = () => {
               </div>
             ) : (
               <form onSubmit={submit} className="space-y-3">
+                {submitError && <p role="alert" className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">{submitError}</p>}
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">الاسم *</label>
                   <input required value={name} onChange={e => setName(e.target.value)}
@@ -303,6 +309,7 @@ const AppShell: React.FC = () => {
               <Route path="/my-account" element={lazyPage(<UserDashboard />)} />
               <Route path="/checkout" element={lazyPage(<Checkout />)} />
               <Route path="/pay" element={lazyPage(<StandalonePayment />)} />
+              <Route path="/payments" element={lazyPage(<StandalonePayment />)} />
               <Route path="/standalone-payment" element={lazyPage(<StandalonePayment />)} />
               <Route path="/success" element={lazyPage(<PaymentSuccess />)} />
               <Route path="/policies" element={lazyPage(<Policies />)} />
@@ -317,6 +324,7 @@ const AppShell: React.FC = () => {
           </main>
           <Footer mini={miniFooter} />
           <LeadCaptureWidget />
+          <Suspense fallback={null}><AiTutorWidget /></Suspense>
           <WaFloat />
           <SessionTimeoutWarner />
         </div>

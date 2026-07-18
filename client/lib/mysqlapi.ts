@@ -85,9 +85,10 @@ export const mysqlClient = {
   getLectureAccess: (lectureId: string) =>
     apiFetch<{ accessible: boolean; video_url?: string; reason?: string }>(`/me/lectures/${encodeURIComponent(lectureId)}/access`, {}, true),
   // Payment proofs
-  submitPaymentProof: (data: { amount: number; currency: string; course_id?: string | null; payment_method: string; proof_image?: string | null; note?: string }) =>
+  submitPaymentProof: (data: { order_id: string; payment_method: string; proof_image?: string | null; note?: string }) =>
     apiFetch<{ ok: boolean; id: string }>('/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true),
   getMyPaymentProofs: () => apiFetch<AR[]>('/me/payment-proofs', {}, true),
+  getMyOrders: () => apiFetch<Array<{ id: string; item_id: string | null; item_title: string; type: string; status: string; amount: number; currency: string }>>('/me/orders', {}, true),
   // Course ratings
   getCourseRatings: (courseId: string) => apiFetch<{ avg: number; count: number; myRating: { rating: number; comment: string } | null }>(`/courses/${encodeURIComponent(courseId)}/ratings`, {}, true),
   rateCourse: (courseId: string, rating: number, comment?: string) =>
@@ -97,7 +98,7 @@ export const mysqlClient = {
     apiFetch<{ ok: boolean; id: string; status: string }>('/community/posts', { method: 'POST', body: JSON.stringify(o) }, true),
   // Certificate request — writes to the certificate_requests table (single source of truth)
   createCertificateRequest: (o: AR) =>
-    apiFetch<{ ok: boolean; status: string }>('/me/certificate-request', { method: 'POST', body: JSON.stringify(o) }, true),
+    apiFetch<{ ok: boolean; id: string; status: string; price: number | null; currency: 'EGP' | 'SAR' | 'USD' | null }>('/me/certificate-request', { method: 'POST', body: JSON.stringify(o) }, true),
   // Lecture view tracking
   trackLectureView: (lectureId: string) =>
     apiFetch<{ ok: boolean }>(`/lectures/${encodeURIComponent(lectureId)}/view`, { method: 'POST' }, true),
@@ -106,6 +107,11 @@ export const mysqlClient = {
   verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
   // Referral
   getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),
+  getMyLoyalty: () => apiFetch<{ ok: boolean; balance: number; ledger: AR[] }>('/me/loyalty', {}, true),
+  getPushPublicKey: () => apiFetch<{ ok: boolean; enabled: boolean; publicKey: string | null }>('/push/vapid-public-key'),
+  subscribePush: (subscription: PushSubscriptionJSON) =>
+    apiFetch<{ ok: boolean }>('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription }) }, true),
+  sendTestPush: () => apiFetch<{ ok: boolean; sent: number }>('/push/test-send', { method: 'POST', body: JSON.stringify({}) }, true),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

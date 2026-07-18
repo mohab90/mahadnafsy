@@ -646,7 +646,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
                         <td className="p-3">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-bold text-indigo-600">{d.code}</span>
-                            <button onClick={() => { navigator.clipboard?.writeText(d.code); notify('success', 'تم نسخ الكود'); }}
+                            <button onClick={() => { navigator.clipboard?.writeText(d.code || ''); notify('success', 'تم نسخ الكود'); }}
                               className="text-gray-400 hover:text-gray-600">
                               <Copy size={12} />
                             </button>

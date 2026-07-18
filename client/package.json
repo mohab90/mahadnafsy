@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && node deploy_client.js"
+    "deploy": "npm run build && node deploy_client.cjs"
   },
   "dependencies": {
     "@types/dompurify": "^3.0.5",

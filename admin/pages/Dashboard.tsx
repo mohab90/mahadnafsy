@@ -2,16 +2,12 @@
 import { adminAuthHeaders } from '../lib/adminAuthHeaders';
 
 import {
-  ActivityTab,
   AnalyticsTab,
   AutomationDashboardTab,
   BalanceSheetTab,
   BudgetTrackerTab,
   CashFlowTab,
-  CohortAnalysisTab,
-  ConsultationCalendarTab,
   CoursesTab,
-  DaqqiAttendanceTab,
   DaqqiTeamTab,
   DripCampaignsTab,
   EmailCampaignsTab,
@@ -21,15 +17,11 @@ import {
   HrTab,
   InstallmentPlansTab,
   IpWhitelistTab,
-  KpiDashboardTab,
   LeadScoringTab,
-  LiveStreamsTab,
   MyHrTab,
   NpsDashboardTab,
   NotifInboxMgmtTab,
-  NotificationsAdminTab,
   OnlineTeamMgmtTab,
-  QuizzesTab,
   RecurringExpensesTab,
   RetentionTab,
   RevenueForecastTab,
@@ -51,11 +43,11 @@ import {
 import { AdminBootstrapLoading, StaffPermissionsLoading } from './dashboard/DashboardGuards';
 import { DashboardTabContainer } from './dashboard/DashboardTabContainer';
 import { DashboardNavigation } from './dashboard/DashboardNavigation';
+import { DashboardPaymentOverlays } from './dashboard/DashboardPaymentOverlays';
+import { DashboardStandaloneTabs } from './dashboard/DashboardStandaloneTabs';
 import { DASHBOARD_MENU_GROUPS, type TabKey } from './dashboard/navigation';
 import { branchMatchesFilter, branchSlugToFilter } from './dashboard/branchWorkspaceFilters';
-import {
-  aboutPageFields, homeOfferFields, policySections,
-} from './dashboard/contentFields';
+import { aboutPageFields, homeOfferFields, policySections } from './dashboard/contentFields';
 import { CrmSettingsModal } from './dashboard/tabs/CrmSettingsModal';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SafeHtml } from '../../shared/ui/SafeHtml';
@@ -157,7 +149,6 @@ import {
   type RoleKey,
   type PermissionKey,
 } from '../constants/permissions';
-import { TabErrorBoundary } from '../../shared/ui/TabErrorBoundary';
 import { useToast } from '../../shared/ui/Toast';
 import { useResizableCols } from '../components/useResizableCols';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
@@ -167,7 +158,21 @@ import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { contentHubRouteTabs, directContentTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { priceForCurrency, staffStatusFromWire, translatePayMethod, type StaffWire } from './dashboard/dashboardHelpers';
 import { defaultFacebookLeadAdsConfig } from './dashboard/facebookLeadAdsDefaults';
+import {
+  handleCsvFileChangeFn,
+  handleCsvImportFn,
+  handleFbApiSyncFn,
+  handleFetchFbFormsFn,
+} from './dashboard/dashboardCsvFbHandlers';
+import {
+  handleDashInstCreateFn,
+  handleLeadPaymentFn,
+  handleSubPaymentFn,
+  normalizeCourseAccess,
+  normalizeLectureProgress,
+} from './dashboard/dashboardPaymentHandlers';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
+import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import {
   DashboardClientTabs,
   DashboardCommunityAdminPanel,
@@ -184,8 +189,13 @@ import {
   DashboardStaffSettingsPanel,
   DashboardStaffTabs,
   OverviewTab,
-  PaymentModal,
 } from './dashboard/lazyDashboardComponents';
+import { useDashboardBadges } from './dashboard/useDashboardBadges';
+import { useNotificationsBell } from './dashboard/useNotificationsBell';
+import { useSubscriberGrant } from './dashboard/useSubscriberGrant';
+import { useStaffOwnData } from './dashboard/useStaffOwnData';
+import { useDashboardDerived } from './dashboard/useDashboardDerived';
+import { compressInstituteGalleryFiles } from './dashboard/dashboardGallery';
 
 // --- Video URL obfuscation (protects YouTube IDs from plain-text storage) ---
 
@@ -217,8 +227,6 @@ import {
 
 const _BUILD = '20260502';
 
-// Branch entries stored in content['institute.branches'] as a JSON array
-type BranchEntry = { id: string; label: string };
 // Shorthand for the subscriber status union
 type SubStatus = SubscriberItem['status'];
 
@@ -336,37 +344,7 @@ const Dashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
   const branchQueryFilter = branchSlugToFilter(searchParams.get('branch'));
 
-  const inboxUnreadCount = useMemo(() =>
-    notifications.filter(n => !n.isRead).length,
-    [notifications]
-  );
-
-  // branch label map from admin settings
-  const instituteBranches = useMemo(() => {
-    try {
-      const parsed = JSON.parse(content['institute.branches'] || '[]');
-      return Array.isArray(parsed) ? parsed as BranchEntry[] : [];
-    } catch { return [] as BranchEntry[]; }
-  }, [content]);
-  const branchLabelMap = useMemo((): Record<string, string> => {
-    const base = Object.fromEntries(instituteBranches.flatMap(b => [
-      [b.id, b.label],
-      [normBranchId(b.id), b.label],
-    ]));
-    // Legacy / un-normalized values that may still appear in DB or old records
-    return {
-      ...base,
-      'online-egypt':        base['ONLINE_EGYPT']  || 'أونلاين مصر',
-      'online-saudi':        base['ONLINE_SAUDI']  || 'أونلاين السعودية',
-      'online-abroad':       base['ONLINE_ABROAD'] || 'أونلاين خارج مصر',
-      'online-26':           base['ONLINE_EGYPT']  || 'أونلاين مصر',
-      'daqqi':               base['DAQQI']         || 'دقي',
-      'tagamoa':             base['TAGAMOA']       || 'التجمع',
-      'other':               'أخرى',
-      'اون_لاين_داخل_مصر':  base['ONLINE_EGYPT']  || 'أونلاين مصر',
-      'اونلاين_داخل_مصر':   base['ONLINE_EGYPT']  || 'أونلاين مصر',
-    };
-  }, [instituteBranches]);
+  const { inboxUnreadCount, instituteBranches, branchLabelMap } = useDashboardDerived(content, notifications);
 
   // -- Pre-memoized ask_ai computations (must be inside Dashboard after useSiteData) ----------------------
   const _aiToEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
@@ -578,12 +556,14 @@ const Dashboard: React.FC = () => {
   const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
   const [bulkSubStatus, setBulkSubStatus] = useState<SubStatus | ''>('');
   const [isSubscriberFormOpen, setIsSubscriberFormOpen] = useState(false);
-  const [grantSubscriberId, setGrantSubscriberId] = useState('');
-  const [grantEnrolledCourseIds, setGrantEnrolledCourseIds] = useState<string[]>([]);
-  const [grantCourseAccess, setGrantCourseAccess] = useState<Record<string, CourseAccessSetting>>({});
-  const [grantPaymentAmount, setGrantPaymentAmount] = useState('');
-  const [grantPaymentCurrency, setGrantPaymentCurrency] = useState<'EGP' | 'SAR' | 'USD'>('EGP');
-  const [grantPaymentNote, setGrantPaymentNote] = useState('منح صلاحية مشاهدة');
+  const {
+    grantSubscriberId, setGrantSubscriberId,
+    grantEnrolledCourseIds, setGrantEnrolledCourseIds,
+    grantCourseAccess, setGrantCourseAccess,
+    grantPaymentAmount, setGrantPaymentAmount,
+    grantPaymentCurrency, setGrantPaymentCurrency,
+    grantPaymentNote, setGrantPaymentNote,
+  } = useSubscriberGrant();
 
   // Refund requests section state (shared with refund_requests tab)
   const [refundActionSaving, setRefundActionSaving] = useState<string|null>(null);
@@ -703,34 +683,12 @@ const Dashboard: React.FC = () => {
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
 
   // -- In-app Notifications Bell --------------------------------------------
-  type NotifRow = { id: string; type: string; title: string; message: string; read_at: string | null; created_at: string };
-  const [notifRows, setNotifRows] = useState<NotifRow[]>([]);
-  const [notifUnread, setNotifUnread] = useState(0);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const notifRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    const loadNotifs = () => {
-      mysqlAdmin.getNotifications().then(res => {
-        const r = res as { rows: NotifRow[]; unread: number };
-        setNotifRows(r.rows || []);
-        setNotifUnread(r.unread || 0);
-      }).catch(() => {});
-    };
-    loadNotifs();
-    const iv = setInterval(loadNotifs, 60000);
-    return () => clearInterval(iv);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
-
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-    };
-    if (notifOpen) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [notifOpen]);
+  const {
+    notifRows, setNotifRows,
+    notifUnread, setNotifUnread,
+    notifOpen, setNotifOpen,
+    notifRef,
+  } = useNotificationsBell(isAdmin);
 
   const [onlineUsers] = useState<{ uid: string; email?: string; displayName?: string; lastActiveAt: string }[]>([]);
   const [kpiModal, setKpiModal] = useState<{ title: string; rows: { label: string; sub?: string }[] } | null>(null);
@@ -1137,40 +1095,17 @@ const Dashboard: React.FC = () => {
     }
   }, [content]);
 
-  // For non-admin staff: load own staff record from MySQL
-  const [staffSelf, setStaffSelf] = useState<import('../types').StaffMember | null>(null);
-  // Start as true so non-admin staff see a spinner immediately (no flash of admin tabs before permissions load)
-  const [staffSelfLoading, setStaffSelfLoading] = useState(true);
-  useEffect(() => {
-    if (isAdmin || !authUser?.email) return;
-    setStaffSelfLoading(true);
-    (mysqlClient.getStaffSelf() as Promise<unknown>).then((record) => {
-      if (record) {
-        const s = record as StaffWire;
-        setStaffSelf({ ...s, role: (s.role || '').toLowerCase() as StaffMember['role'], status: staffStatusFromWire(s) });
-      }
-    }).catch(() => {/* not a staff member or not logged in */})
-      .finally(() => setStaffSelfLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, authUser?.uid]);
-
-  // Detect if the current logged-in user is a staff member (for role-based filtering)
-  const currentStaff = useMemo(() => {
-    if (!authUser) return null;
-    return staffMembers.find((s) => s.email.toLowerCase() === (authUser.email ?? '').toLowerCase())
-      ?? staffSelf ?? null;
-  }, [staffMembers, staffSelf, authUser]);
-  const isSalesOnly = currentStaff?.role === 'sales';
-  // Collection staff sees all subscribers but no leads — still needs own data fetch
-  const isCollectionRole = (currentStaff?.role||'').toLowerCase() === 'collection';
-  // Reception Daqqi staff — sees only DAQQI branch subscribers
-  const isReceptionDaqqi = currentStaff?.role === 'reception_daqqi';
-  // Daqqi Manager — manages the whole Daqqi branch
-  const isDaqqiManager = currentStaff?.role === 'daqqi_manager';
-  // Online Manager — manages all online-branch subscribers + financial view
-  const isOnlineManager = (currentStaff?.role as string) === 'online_manager';
-  // Sales & Collection Manager — manages both sales team and online/collection team
-  const isSalesCollectionManager = (currentStaff?.role as string) === 'sales_collection_manager';
+  const {
+    staffSelf,
+    staffSelfLoading,
+    currentStaff,
+    isSalesOnly,
+    isCollectionRole,
+    isReceptionDaqqi,
+    isDaqqiManager,
+    isOnlineManager,
+    isSalesCollectionManager,
+  } = useCurrentStaff({ isAdmin, authUser, staffMembers });
   useStaffRoleRedirects({ isAdmin, currentStaff, urlTab, setActiveTabState });
 
   // -- URL: when staff_settings tab is active, reflect username in URL ------
@@ -1204,45 +1139,38 @@ const Dashboard: React.FC = () => {
   // -- Own-data subscriptions for non-admin staff -----------------------------
   // SiteDataContext only loads CRM data for admins. Non-admin staff (sales, collection)
   // query MySQL directly.
-  const [salesOwnLeads, setSalesOwnLeads] = useState<LeadItem[]>([]);
-  const [salesOwnSubscribers, setSalesOwnSubscribers] = useState<SubscriberItem[]>([]);
-  const [salesOwnOrders, setSalesOwnOrders] = useState<OrderItem[]>([]);
-  const [salesOwnDaqqiRounds, setSalesOwnDaqqiRounds] = useState<DaqqiRound[] | null>(null);
-  const [onlineTeamMembers, setOnlineTeamMembers] = useState<StaffMember[]>([]);
-  const [salesDataLoading, setSalesDataLoading] = useState(false);
-  // Badge count for staff notification bell (overdue + today followup leads)
-  const _staffNotifTodayStr = new Date().toISOString().slice(0, 10);
-  const staffNotifBadge = currentStaff ? (usesStaffScopedData ? salesOwnLeads : leads).filter(l =>
-    !['converted', 'lost'].includes(l.status) && l.nextFollowUpDate && l.nextFollowUpDate <= _staffNotifTodayStr
-  ).length : 0;
-
-  // Online manager: collection/installment follow-up badge
-  const onlineMgrFollowupBadge = React.useMemo(() => {
-    if (!isOnlineManager) return 0;
-    const today = new Date().toISOString().slice(0, 10);
-    const subs = usesStaffScopedData ? salesOwnSubscribers : subscribers;
-    let count = 0;
-    for (const sub of subs) {
-      for (const plan of (sub.installmentPlans || [])) {
-        for (const entry of (plan.entries || [])) {
-          if (!entry.paidAt && entry.dueDate && entry.dueDate <= today) count++;
-        }
-      }
-    }
-    return count;
-  }, [isOnlineManager, usesStaffScopedData, salesOwnSubscribers, subscribers]);
-
-  // Online manager: new subscribers + payments in last 7 days badge
-  const onlineMgrNewEventsBadge = React.useMemo(() => {
-    if (!isOnlineManager) return 0;
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const subs = usesStaffScopedData ? salesOwnSubscribers : subscribers;
-    const newSubs = subs.filter(s => s.createdAt && s.createdAt.slice(0, 10) >= since).length;
-    const newPayments = subs.reduce((acc, s) =>
-      acc + (s.paymentHistory || []).filter(p => p.at && p.at.slice(0, 10) >= since).length
-    , 0);
-    return newSubs + newPayments;
-  }, [isOnlineManager, usesStaffScopedData, salesOwnSubscribers, subscribers]);
+  const {
+    salesOwnLeads, setSalesOwnLeads,
+    salesOwnSubscribers, setSalesOwnSubscribers,
+    salesOwnOrders, setSalesOwnOrders,
+    salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
+    onlineTeamMembers, setOnlineTeamMembers,
+    salesDataLoading, setSalesDataLoading,
+    fetchSalesData,
+  } = useStaffOwnData({
+    isAdmin,
+    isOnlineManager,
+    staffSelf,
+    currentStaff,
+    bundles,
+    courses,
+    setStaffScopedSubscribers,
+    setStaffScopedLeads,
+    mergeContent,
+  });
+  const {
+    staffNotifBadge,
+    onlineMgrFollowupBadge,
+    onlineMgrNewEventsBadge,
+  } = useDashboardBadges({
+    currentStaff,
+    isNonAdminStaff: usesStaffScopedData,
+    isOnlineManager,
+    leads,
+    salesOwnLeads,
+    subscribers,
+    salesOwnSubscribers,
+  });
 
   // -- ClientDbTab booking callback — opens subPayRow or leadPayRow modal ----
   const handleClientDbBook = useCallback((clientId: string, type: 'subscriber' | 'lead') => {
@@ -1316,111 +1244,6 @@ const Dashboard: React.FC = () => {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribers, salesOwnSubscribers]);
-
-  const fetchSalesData = useCallback(async () => {
-    // Online manager has isAdmin=true but still needs their own scoped data for the online_clients tab
-    const staffRef = staffSelf || (isOnlineManager ? currentStaff : null);
-    if (!staffRef) return;
-    if (isAdmin && !isOnlineManager) return; // Real admins skip — they have full context data
-    setSalesDataLoading(true);
-    try {
-
-      // ONE unified call — server scopes data automatically based on role
-      const [subsRaw, leadsRaw] = await Promise.allSettled([
-        mysqlAdmin.listStaffSubscribers() as Promise<unknown>,
-        mysqlAdmin.listStaffLeads()       as Promise<unknown>,
-      ]);
-
-      const mySubs:  SubscriberItem[] = subsRaw.status  === 'fulfilled' ? subsRaw.value  as SubscriberItem[]  : [];
-      const myLeads: LeadItem[]       = leadsRaw.status === 'fulfilled' ? leadsRaw.value as LeadItem[] : [];
-
-      setSalesOwnSubscribers(mySubs);
-      setSalesOwnLeads(myLeads);
-      // Sync to context so ClientDbTab (and any other tab) can access scoped data
-      setStaffScopedSubscribers(mySubs);
-      setStaffScopedLeads(myLeads);
-
-      const resolveCourseTitle = (courseId: string | undefined) => {
-        if (!courseId) return '';
-        if (courseId.startsWith('bundle:')) {
-          const bId = courseId.replace('bundle:', '');
-          return bundles.find(b => b.id === bId)?.title || courseId;
-        }
-        return courses.find(c => c.id === courseId)?.title || bundles.find(b => b.id === courseId)?.title || courseId;
-      };
-      const syntheticOrders: OrderItem[] = mySubs.flatMap(sub =>
-        (sub.paymentHistory || []).map(p => ({
-          id: p.id, type: 'course' as const, itemId: p.courseId || '',
-          subscriberId: sub.id,
-          itemTitle: resolveCourseTitle(p.courseId) || p.paymentType || '',
-          amount: Number(p.amount) || 0, currency: (p.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
-          paymentMethod: (p.paymentMethod || 'other') as OrderItem['paymentMethod'],
-          customerName: sub.name, customerEmail: sub.email,
-          status: 'paid' as const, createdAt: p.at || sub.createdAt || new Date().toISOString(),
-          transactionId: p.id,
-          staffId: (p as { staffId?: string }).staffId || undefined,
-          staffName: (p as { staffName?: string }).staffName || undefined,
-        }))
-      );
-      setSalesOwnOrders(syntheticOrders);
-
-      // Daqqi rounds — only for daqqi roles
-      const isDaqqiRole = staffRef.role === 'daqqi_manager' || staffRef.role === 'reception_daqqi';
-      if (isDaqqiRole) {
-        try {
-          const roundsRaw = (await mysqlAdmin.listAllDaqqiRounds()) as unknown as Record<string, unknown>[];
-          const parsedRounds: DaqqiRound[] = roundsRaw.map((r) => ({
-            id: String(r.id || ''),
-            code: String(r.code || ''),
-            courseId: String(r.course_id || r.courseId || ''),
-            instructorId: String(r.instructor_id || r.instructorId || ''),
-            instructorName: String(r.instructor_name || r.instructorName || ''),
-            receptionId: String(r.reception_id || r.receptionId || ''),
-            receptionName: String(r.reception_name || r.receptionName || ''),
-            dayOfWeek: (r.day_of_week || r.dayOfWeek || '') as DaqqiRound['dayOfWeek'],
-            startDate: String(r.start_date || r.startDate || '').slice(0, 10),
-            timeSlot: (r.time_slot || r.timeSlot || 'مساءً') as DaqqiRound['timeSlot'],
-            status: ((r.status || 'new') as string).toLowerCase() as DaqqiRound['status'],
-            currentLecture: Number(r.current_lecture || r.currentLecture || 0),
-            attendees: Array.isArray(r.attendees) ? (r.attendees as DaqqiRound['attendees']) : [],
-            postponedWeeks: r.postponedWeeks
-              ? (r.postponedWeeks as string[])
-              : r.postponed_weeks_json
-                ? (() => { try { return JSON.parse(String(r.postponed_weeks_json)); } catch { return []; } })()
-                : [],
-            createdAt: String(r.created_at || r.createdAt || ''),
-          }));
-          setSalesOwnDaqqiRounds(parsedRounds);
-        } catch { setSalesOwnDaqqiRounds([]); }
-      }
-
-      // Team members — for manager/online_manager/sales_collection_manager
-      const needsTeam = ['online_manager', 'sales_collection_manager', 'manager'].includes(staffRef.role);
-      if (needsTeam) {
-        try {
-          const allStaffData = (await mysqlAdmin.listAllStaff()) as unknown as StaffMember[];
-          setOnlineTeamMembers(allStaffData.map(s => ({
-            ...s,
-            role: (s.role || '').toLowerCase() as StaffMember['role'],
-            status: staffStatusFromWire(s as StaffWire),
-          })));
-        } catch { setOnlineTeamMembers([]); }
-      }
-
-      // Content (branches, payment methods, etc.)
-      try {
-        const contentData = (await mysqlAdmin.getContent()) as Record<string, string>;
-        if (contentData && typeof contentData === 'object' && Object.keys(contentData).length > 0) {
-          mergeContent(contentData);
-        }
-      } catch { /* non-fatal */ }
-    } catch {
-      // Keep dashboard usable if optional staff/content bootstrap data is unavailable.
-    } finally {
-      setSalesDataLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, isOnlineManager, staffSelf?.id, staffSelf?.role, currentStaff?.id, currentStaff?.role]);
 
   useEffect(() => {
     void fetchSalesData();
@@ -2019,31 +1842,6 @@ const Dashboard: React.FC = () => {
     document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   };
 
-  const normalizeAccessEntry = (entry?: CourseAccessSetting | 'preview' | 'full'): CourseAccessSetting => {
-    if (entry === 'full') return { mode: 'full' };
-    if (entry === 'preview') return { mode: 'preview' };
-    if (!entry) return { mode: 'preview' };
-    if (entry.mode === 'limited') {
-      const rawLimit = Number(entry.lectureLimit || 1);
-      return { mode: 'limited', lectureLimit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 1 };
-    }
-    return { mode: entry.mode };
-  };
-
-  const normalizeCourseAccess = (enrolledCourseIds: string[], currentMap: Record<string, CourseAccessSetting | 'preview' | 'full'> = {}) => {
-    const nextMap: Record<string, CourseAccessSetting> = {};
-    enrolledCourseIds.forEach((courseId) => {
-      nextMap[courseId] = normalizeAccessEntry(currentMap[courseId]);
-    });
-    return nextMap;
-  };
-
-  // lectureProgress is stored as { [lectureId]: percentNumber } where 100 = complete.
-  // Pass through unchanged — it is keyed by lectureId, not courseId.
-  const normalizeLectureProgress = (_enrolledCourseIds: string[], currentMap: Record<string, number> = {}) => {
-    return currentMap;
-  };
-
   const saveInstituteGalleryImages = (images: string[]) => {
     setContentValue('institute.gallery.images', JSON.stringify(images, null, 2));
   };
@@ -2071,29 +1869,10 @@ const Dashboard: React.FC = () => {
   const [certStatusFilter, setCertStatusFilter] = useState('all');
 
   const handleInstituteGalleryUpload = async (files: FileList | null) => {
-    const readFileAsDataUrl = (file: File, maxWidth: number, quality: number): Promise<string> =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new window.Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const scale = Math.min(1, maxWidth / img.width);
-            canvas.width = img.width * scale;
-            canvas.height = img.height * scale;
-            canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', quality));
-          };
-          img.onerror = reject;
-          img.src = e.target!.result as string;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
     if (!files || files.length === 0) return;
     try {
       // Compress to max 600px wide, 65% quality — keeps each image ~15-30KB in base64
-      const uploaded = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file, 600, 0.65)));
+      const uploaded = await compressInstituteGalleryFiles(files);
       saveInstituteGalleryImages(Array.from(new Set([...instituteGalleryImages, ...uploaded])));
       notify('success', 'تم رفع صور المعرض بنجاح.');
     } catch {
@@ -2202,212 +1981,17 @@ const Dashboard: React.FC = () => {
   };
 
   const handleSubPayment = (draft: PaymentDraft) => {
-    if (!subPayRow) return;
-    // Adapt unified PaymentDraft to handler's legacy shape
-    const courseItemsComputed = draft.paymentType === 'course'
-      ? [
-          { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct },
-          ...draft.extraItems.filter(i => i.type === 'course').map(i => ({
-            courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '',
-          })),
-        ].filter(item => item.courseId && item.amount)
-      : [];
-    // Shadow outer subPayDraft so all existing references work unchanged
-    const subPayDraft = {
-      ...draft,
-      courseItems: courseItemsComputed,
-      transferRef: draft.fromAccountNumber,
-      extraItems: draft.extraItems.filter(i => i.type !== 'course'),
-    };
-    const freshSub = subscribers.find(s => s.id === subPayRow.id) || subPayRow;
-    const noteParts = [subPayDraft.note, subPayDraft.transactionId, subPayDraft.transferRef ? `تحويل: ${subPayDraft.transferRef}` : '', subPayDraft.nationalId ? `ر.ق: ${subPayDraft.nationalId}` : ''].filter(Boolean);
-    const isMultiCourse = subPayDraft.paymentType === 'course' && subPayDraft.bookingType === 'new_booking';
-
-    let updated = { ...freshSub };
-
-    if (isMultiCourse) {
-      // Multi-course new booking: one payment entry per course item
-      const validItems = subPayDraft.courseItems.filter(item => item.courseId && item.amount);
-      if (validItems.length === 0) return;
-      const newEntries: PaymentHistoryEntry[] = [];
-      for (const item of validItems) {
-        const isBundleItem = item.courseId.startsWith('bundle:');
-        const bId = isBundleItem ? item.courseId.replace('bundle:', '') : null;
-        const bObj = bId ? bundles.find(b => b.id === bId) : null;
-        const _bundleCatalog = isBundleItem && bObj ? priceForCurrency(bObj.price, subPayDraft.currency) : 0;
-        const _courseCatalog = !isBundleItem && item.courseId ? (courses.find(c => c.id === item.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === item.courseId)?.price?.EGP || 0) : 0;
-        const _catalogPx = isBundleItem ? _bundleCatalog : _courseCatalog;
-        const _customExpSub = Number(item.customExpected) || 0;
-        const _discPctSub = Number(item.discountPct) || 0;
-        const _itemExpected = _customExpSub > 0 ? _customExpSub : (_discPctSub > 0 && _catalogPx > 0 ? Math.round(_catalogPx * (1 - _discPctSub / 100)) : _catalogPx);
-        const entry: PaymentHistoryEntry = {
-          id: `pay-${Date.now()}-${item.courseId}`,
-          amount: Number(item.amount),
-          courseExpected: _itemExpected > 0 ? _itemExpected : Number(item.amount),
-          currency: subPayDraft.currency,
-          paymentType: subPayDraft.paymentType,
-          isInstallment: false,
-          courseId: isBundleItem ? undefined : (item.courseId || undefined),
-          note: [noteParts.join(' | '), isBundleItem && bObj ? `مسار تعليمي: ${bObj.title}` : undefined].filter(Boolean).join(' | ') || undefined,
-          paymentMethod: subPayDraft.paymentMethod || undefined,
-          at: subPayDraft.date,
-          staffId: currentStaff?.id || undefined,
-          staffName: currentStaff?.name || undefined,
-          status: isAdmin ? 'paid' : 'pending',
-        };
-        newEntries.push(entry);
-        if (isBundleItem && bObj) {
-          const bundleCourseIds = bObj.courses.map((c: { id: string }) => c.id);
-          const newIds = [...new Set([...(updated.enrolledCourseIds || []), ...bundleCourseIds])];
-          updated = { ...updated, enrolledCourseIds: newIds };
-        } else if (item.courseId && !(updated.enrolledCourseIds || []).includes(item.courseId)) {
-          updated = { ...updated, enrolledCourseIds: [...(updated.enrolledCourseIds || []), item.courseId] };
-        }
-      }
-      updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), ...newEntries] };
-    } else {
-      // Single-course installment OR non-course payment type
-      if (!subPayDraft.amount) return;
-      const isBundleSelection = subPayDraft.courseId?.startsWith('bundle:');
-      const bundleId = isBundleSelection ? subPayDraft.courseId.replace('bundle:', '') : null;
-      const bundle = bundleId ? bundles.find(b => b.id === bundleId) : null;
-      const _singleExpected = isBundleSelection && bundle
-        ? priceForCurrency(bundle.price, subPayDraft.currency)
-        : (!isBundleSelection && subPayDraft.courseId ? (courses.find(c => c.id === subPayDraft.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === subPayDraft.courseId)?.price?.EGP || 0) : 0);
-      const entry: PaymentHistoryEntry = {
-        id: `pay-${Date.now()}`,
-        amount: Number(subPayDraft.amount),
-        courseExpected: subPayDraft.bookingType !== 'installment' && _singleExpected > 0 ? _singleExpected : undefined,
-        currency: subPayDraft.currency,
-        paymentType: subPayDraft.paymentType,
-        isInstallment: subPayDraft.bookingType === 'installment',
-        courseId: isBundleSelection ? undefined : (subPayDraft.courseId || undefined),
-        note: [noteParts.join(' | '), isBundleSelection && bundle ? `مسار تعليمي: ${bundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
-        paymentMethod: subPayDraft.paymentMethod || undefined,
-        at: subPayDraft.date,
-        staffId: currentStaff?.id || undefined,
-        staffName: currentStaff?.name || undefined,
-        status: isAdmin ? 'paid' : 'pending',
-      };
-      updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), entry] };
-
-      // Auto-enroll course on installment/single payment (so the course row appears in the table)
-      if (subPayDraft.paymentType === 'course') {
-        if (isBundleSelection && bundle) {
-          const bundleCourseIds = bundle.courses.map((c: { id: string }) => c.id);
-          const newIds = [...new Set([...(updated.enrolledCourseIds || []), ...bundleCourseIds])];
-          updated = { ...updated, enrolledCourseIds: newIds };
-        } else if (!isBundleSelection && subPayDraft.courseId && !(updated.enrolledCourseIds || []).includes(subPayDraft.courseId)) {
-          updated = { ...updated, enrolledCourseIds: [...(updated.enrolledCourseIds || []), subPayDraft.courseId] };
-        }
-      }
-
-      // Cert installment: update paidAmount on the linked cert request
-      if (subPayDraft.paymentType === 'certificate' && subPayDraft.certReqId) {
-        updated = {
-          ...updated,
-          extraCertificateRequests: (updated.extraCertificateRequests || []).map(req =>
-            req.id === subPayDraft.certReqId
-              ? { ...req, paidAmount: (req.paidAmount || 0) + Number(subPayDraft.amount) }
-              : req
-          ),
-        };
-      }
-
-      // Cert new_booking: create a cert request entry so it appears in cert_requests tab
-      if (subPayDraft.paymentType === 'certificate' && subPayDraft.bookingType === 'new_booking' && subPayDraft.certType) {
-        const newCertReq: ExtraCertificateRequest = {
-          id: `certreq-${Date.now()}`,
-          type: subPayDraft.certType as ExtraCertificateType,
-          courseId: subPayDraft.courseId || undefined,
-          status: 'priced',
-          price: Number(subPayDraft.amount),
-          paidAmount: Number(subPayDraft.amount),
-          currency: subPayDraft.currency,
-          requestedAt: subPayDraft.date,
-          note: noteParts.join(' | ') || undefined,
-        };
-        updated = {
-          ...updated,
-          extraCertificateRequests: [...(updated.extraCertificateRequests || []), newCertReq],
-        };
-      }
-    }
-
-    // -- Auto-unlock videos on course payment ----------------------------------
-    if (subPayDraft.paymentType === 'course') {
-      const depositVids = Math.max(1, Number(content['access.videos_on_deposit'] || 20));
-      const perPayVids = Math.max(1, Number(content['access.videos_per_payment'] || 15));
-
-      // Collect affected courseIds
-      const affectedCourseIds: string[] = [];
-      if (isMultiCourse) {
-        for (const item of subPayDraft.courseItems.filter(i => i.courseId && i.amount)) {
-          if (item.courseId.startsWith('bundle:')) {
-            const bId = item.courseId.replace('bundle:', '');
-            const bObj = bundles.find(b => b.id === bId);
-            if (bObj) bObj.courses.forEach((c: { id: string }) => affectedCourseIds.push(c.id));
-          } else {
-            affectedCourseIds.push(item.courseId);
-          }
-        }
-      } else if (subPayDraft.courseId) {
-        if (subPayDraft.courseId.startsWith('bundle:')) {
-          const bId = subPayDraft.courseId.replace('bundle:', '');
-          const bObj = bundles.find(b => b.id === bId);
-          if (bObj) bObj.courses.forEach((c: { id: string }) => affectedCourseIds.push(c.id));
-        } else {
-          affectedCourseIds.push(subPayDraft.courseId);
-        }
-      }
-
-      const isFirstPayment = subPayDraft.bookingType === 'new_booking';
-      let newCourseAccess = { ...(updated.courseAccess ?? {}) };
-
-      for (const cid of affectedCourseIds) {
-        const curAccess = normalizeAccessEntry(newCourseAccess[cid]);
-        if (curAccess.mode === 'full') continue; // already full — don't downgrade
-
-        // Check if fully paid by looking at total paid vs installment plan total
-        const plan = (updated.installmentPlans || []).find(p => p.courseId === cid);
-        const totalPaid = (updated.paymentHistory || [])
-          .filter(p => p.courseId === cid && (p.paymentType === 'course' || !p.paymentType))
-          .reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        const isFullyPaid = plan && plan.totalAmount > 0 && totalPaid >= plan.totalAmount;
-
-        if (isFullyPaid) {
-          newCourseAccess[cid] = { mode: 'full' };
-        } else if (isFirstPayment) {
-          // First payment: start with depositVids (only if not already limited with more)
-          const existingLimit = curAccess.mode === 'limited' ? (curAccess.lectureLimit || 0) : 0;
-          newCourseAccess[cid] = { mode: 'limited', lectureLimit: Math.max(depositVids, existingLimit) };
-        } else {
-          // Subsequent payment: add perPayVids to current limit
-          const currentLimit = curAccess.mode === 'limited' ? (curAccess.lectureLimit || depositVids) : depositVids;
-          newCourseAccess[cid] = { mode: 'limited', lectureLimit: currentLimit + perPayVids };
-        }
-      }
-      updated = { ...updated, courseAccess: newCourseAccess };
-    }
-
-    // Extra paid items (book / certificate / carneh / other)
-    const subExtraEntries: PaymentHistoryEntry[] = (subPayDraft.extraItems || [])
-      .filter(i => i.amount && Number(i.amount) > 0)
-      .map((i, ix) => ({
-        id: `pay-${Date.now()}-xtra-${ix}`,
-        amount: Number(i.amount),
-        currency: subPayDraft.currency,
-        paymentType: i.type,
-        isInstallment: false,
-        note: [i.label, ...noteParts].filter(Boolean).join(' | ') || undefined,
-        paymentMethod: subPayDraft.paymentMethod || undefined,
-        at: subPayDraft.date,
-      }));
-    if (subExtraEntries.length > 0) {
-      updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), ...subExtraEntries] };
-    }
-    updateSubscriber(updated);
-    notify('success', 'تم تسجيل الدفعة بنجاح.');
+    handleSubPaymentFn(draft, {
+      subPayRow,
+      subscribers,
+      bundles,
+      courses,
+      content,
+      updateSubscriber,
+      notify,
+      currentStaff,
+      isAdmin,
+    });
   };
 
   const openLeadBook = (row: LeadItem) => {
@@ -2422,191 +2006,26 @@ const Dashboard: React.FC = () => {
   };
 
   const handleLeadPayment = async (draft: PaymentDraft) => {
-    if (!leadPayRow) return;
-    // Adapt unified PaymentDraft to handler's legacy shape
-    const courseItemsComputed = draft.paymentType === 'course'
-      ? [
-          { courseId: draft.courseId, amount: draft.amount, customExpected: draft.customExpected, discountPct: draft.discountPct },
-          ...draft.extraItems.filter(i => i.type === 'course').map(i => ({
-            courseId: i.courseId || '', amount: i.amount, customExpected: i.customExpected || '', discountPct: i.discountPct || '',
-          })),
-        ].filter(item => item.courseId && item.amount)
-      : [];
-    // Shadow outer leadPayDraft so all existing references work unchanged
-    const leadPayDraft = {
-      ...draft,
-      courseItems: courseItemsComputed,
-      transferRef: draft.fromAccountNumber,
-      extraItems: draft.extraItems.filter(i => i.type !== 'course'),
-      discountPct: draft.discountPct,
-      discountCustom: draft.customExpected,
-    };
-    const freshLead = leads.find(l => l.id === leadPayRow.id) || leadPayRow;
-    const noteParts = [leadPayDraft.note, leadPayDraft.transactionId, leadPayDraft.transferRef ? `تحويل: ${leadPayDraft.transferRef}` : '', leadPayDraft.nationalId ? `ر.ق: ${leadPayDraft.nationalId}` : '', leadPayDraft.branch ? `فرع: ${branchLabelMap[leadPayDraft.branch] || leadPayDraft.branch}` : ''].filter(Boolean);
-    const isMultiCourse = leadPayDraft.paymentType === 'course';
-
-    const normPhone = (freshLead.phone || '').replace(/\D/g, '');
-    const normEmail = (freshLead.email || '').toLowerCase().trim();
-    const existingSub = subscribers.find(s =>
-      s.leadId === freshLead.id ||
-      (normPhone.length > 5 && (s.phone || '').replace(/\D/g, '') === normPhone) ||
-      (normEmail.length > 3 && (s.email || '').toLowerCase().trim() === normEmail)
-    );
-    let updatedLead = { ...freshLead };
-
-    if (isMultiCourse) {
-      // Multi-course new booking
-      const validItems = leadPayDraft.courseItems.filter(item => item.courseId && item.amount);
-      if (validItems.length === 0) return;
-
-      const payEntries: PaymentHistoryEntry[] = [
-        ...validItems.map(item => {
-          const _isBndl = item.courseId.startsWith('bundle:');
-          const _bId = _isBndl ? item.courseId.replace('bundle:', '') : null;
-          const _bObj = _bId ? bundles.find(b => b.id === _bId) : null;
-          const _catalogPxL = _isBndl && _bObj
-            ? ((_bObj.price as unknown as Record<string,number>)?.[leadPayDraft.currency] || (_bObj.price as unknown as Record<string,number>)?.EGP || 0)
-            : (courses.find(c => c.id === item.courseId)?.price?.[leadPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === item.courseId)?.price?.EGP || 0);
-          const _customExpL = Number(item.customExpected) || 0;
-          const _discPctL = Number(item.discountPct) || 0;
-          const _itemExpectedL = _customExpL > 0 ? _customExpL : (_discPctL > 0 && _catalogPxL > 0 ? Math.round(_catalogPxL * (1 - _discPctL / 100)) : _catalogPxL);
-          const _discNoteL = _discPctL > 0 ? `خصم ${_discPctL}%` : (_customExpL > 0 && _catalogPxL > 0 ? `سعر نهائي: ${_customExpL}` : '');
-          return {
-            id: `pay-${Date.now()}-${item.courseId}`,
-            amount: Number(item.amount),
-            courseExpected: _itemExpectedL > 0 ? _itemExpectedL : Number(item.amount),
-            currency: leadPayDraft.currency,
-            paymentType: leadPayDraft.paymentType,
-            isInstallment: false,
-            courseId: item.courseId || undefined,
-            note: [noteParts.join(' | '), _discNoteL].filter(Boolean).join(' | ') || undefined,
-            paymentMethod: leadPayDraft.paymentMethod || undefined,
-            at: leadPayDraft.date,
-          } as PaymentHistoryEntry;
-        }),
-        ...(leadPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).map((i, ix) => ({
-          id: `pay-${Date.now()}-xtra-${ix}`,
-          amount: Number(i.amount),
-          currency: leadPayDraft.currency,
-          paymentType: i.type,
-          isInstallment: false,
-          note: [i.label, ...noteParts].filter(Boolean).join(' | ') || undefined,
-          paymentMethod: leadPayDraft.paymentMethod || undefined,
-          at: leadPayDraft.date,
-        } as PaymentHistoryEntry)),
-      ];
-      // Expand bundle IDs to individual course IDs so enrolledCourseIds never stores raw bundle:b-xxx
-      const enrollIds: string[] = [];
-      for (const item of validItems) {
-        if (item.courseId.startsWith('bundle:')) {
-          const bId = item.courseId.replace('bundle:', '');
-          const bObj = bundles.find(b => b.id === bId);
-          if (bObj) enrollIds.push(...bObj.courses.map((c: { id: string }) => c.id));
-          else enrollIds.push(item.courseId); // fallback if bundle not found
-        } else {
-          enrollIds.push(item.courseId);
-        }
-      }
-      const enrollIds_unique = [...new Set(enrollIds)];
-      const _leadDepositVids = Math.max(1, Number(content['access.videos_on_deposit'] || 20));
-      const courseAccessPatch = Object.fromEntries(enrollIds_unique.map(id => [id, { mode: 'limited' as const, lectureLimit: _leadDepositVids }]));
-
-      if (existingSub) {
-        const allCourseIds = [...new Set([...(existingSub.enrolledCourseIds || []), ...enrollIds_unique])];
-        updateSubscriber({
-          ...existingSub,
-          enrolledCourseIds: allCourseIds,
-          courseAccess: { ...(existingSub.courseAccess ?? {}), ...courseAccessPatch },
-          paymentHistory: [...(existingSub.paymentHistory || []), ...payEntries],
-          leadId: existingSub.leadId || freshLead.id,
-        });
-      } else {
-        const added = await addSubscriber({
-          id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(),
-          leadId: freshLead.id, name: freshLead.name, email: freshLead.email, phone: freshLead.phone,
-          enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
-          paymentHistory: payEntries, branch: (freshLead.branch as BranchType) || undefined,
-          status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
-          createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-        });
-      notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
-      }
-      updatedLead = { ...updatedLead, status: 'converted' };
-    } else {
-      // Single payment (installment or non-course type)
-      if (!leadPayDraft.amount) return;
-      const payHistEntry: PaymentHistoryEntry = {
-        id: `pay-${Date.now()}`, amount: Number(leadPayDraft.amount),
-        currency: leadPayDraft.currency, paymentType: leadPayDraft.paymentType,
-        isInstallment: leadPayDraft.bookingType === 'installment',
-        courseId: leadPayDraft.courseId || undefined,
-        note: noteParts.join(' | ') || undefined,
-        paymentMethod: leadPayDraft.paymentMethod || undefined,
-        at: leadPayDraft.date,
-      };
-      // Extra subscriber fields to save from booking draft
-      const _subExtra = {
-        ...(leadPayDraft.nationalId ? { nationalId: leadPayDraft.nationalId } : {}),
-        ...(leadPayDraft.email && leadPayDraft.email.includes('@') ? { email: leadPayDraft.email } : {}),
-      };
-      if (leadPayDraft.bookingType === 'new_booking' && leadPayDraft.paymentType === 'course' && leadPayDraft.courseId) {
-        const _singleDepVids = Math.max(1, Number(content['access.videos_on_deposit'] || 20));
-        const _initAccess = { mode: 'limited' as const, lectureLimit: _singleDepVids };
-        if (existingSub) {
-          const newCourseIds = (existingSub.enrolledCourseIds || []).includes(leadPayDraft.courseId)
-            ? (existingSub.enrolledCourseIds || [])
-            : [...(existingSub.enrolledCourseIds || []), leadPayDraft.courseId];
-          updateSubscriber({ ...existingSub, ..._subExtra, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), [leadPayDraft.courseId]: _initAccess }, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry], leadId: existingSub.leadId || freshLead.id });
-        } else {
-          const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [leadPayDraft.courseId], courseAccess: { [leadPayDraft.courseId]: _initAccess }, paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra });
-      notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
-        }
-        updatedLead = { ...updatedLead, status: 'converted' };
-      } else if (existingSub) {
-        updateSubscriber({ ...existingSub, ..._subExtra, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
-      } else {
-        await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra });
-      }
-    }
-
-    updateLead(updatedLead);
-    const _notifCourse = leadPayDraft.paymentType === 'course'
-      ? leadPayDraft.courseItems.filter(i => i.courseId && i.amount).map(i => {
-          if (i.courseId.startsWith('bundle:')) return bundles.find(b => b.id === i.courseId.replace('bundle:', ''))?.title || '';
-          return courses.find(c => c.id === i.courseId)?.title || '';
-        }).filter(Boolean).join(' + ')
-      : '';
-    const _notifAmt = leadPayDraft.paymentType === 'course'
-      ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
-      : Number(leadPayDraft.amount);
-    notify('success', `? ${updatedLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`);
-    // Fire welcome email if new_booking for a course and email is available
-    if (leadPayDraft.paymentType === 'course' && updatedLead.status === 'converted') {
-      const _welcomeEmail = leadPayDraft.email || freshLead.email;
-      if (_welcomeEmail && _welcomeEmail.includes('@')) {
-        const _courseTitles = leadPayDraft.courseItems
-          .filter(i => i.courseId)
-          .map(i => {
-            if (i.courseId.startsWith('bundle:')) return bundles.find(b => b.id === i.courseId.replace('bundle:', ''))?.title || i.courseId;
-            return courses.find(c => c.id === i.courseId)?.title || i.courseId;
-          })
-          .filter(Boolean);
-        void mysqlAdmin.enrollmentWelcome({
-          email: _welcomeEmail,
-          name: freshLead.name,
-          courseTitle: _courseTitles.join(' + ') || 'الكورس',
-          branch: leadPayDraft.branch || freshLead.branch || '',
-          courseIds: leadPayDraft.courseItems.filter(i => i.courseId).map(i => i.courseId),
-          phone: freshLead.phone || undefined,
-        }).catch(() => {});
-      }
-    }
-    // For sales/daqqi users: refresh salesOwnSubscribers so new subscriber appears immediately
-    if (isSalesOnly || isDaqqiManager || isReceptionDaqqi) void fetchSalesData();
-    // Auto-navigate: if booking was for DAQQI branch and user can see daqqi_clients, go there
-    if (normBranchId(leadPayDraft.branch || freshLead.branch || '') === 'DAQQI' && (isDaqqiManager || isReceptionDaqqi || isAdmin)) {
-      setActiveTab('daqqi_clients');
-    }
+    await handleLeadPaymentFn(draft, {
+      leadPayRow,
+      leads,
+      subscribers,
+      bundles,
+      courses,
+      content,
+      updateSubscriber,
+      updateLead,
+      addSubscriber,
+      issueClientCodeAsync,
+      branchLabelMap,
+      notify,
+      isAdmin,
+      isSalesOnly,
+      isDaqqiManager,
+      isReceptionDaqqi,
+      fetchSalesData,
+      setActiveTab,
+    });
   };
 
   const handleSaveCrmContact = () => {
@@ -2690,89 +2109,16 @@ const Dashboard: React.FC = () => {
 
   // -- Quick installment plan creator from Dashboard table ------------------
   const handleDashInstCreate = () => {
-    if (!subInstRow || !subInstDraft.courseId || !subInstDraft.numInstallments) return;
-    const row = subInstRow;
-    const payments = row.paymentHistory || [];
-    const isAllSel = subInstDraft.courseId === '__all__';
-    const isBundleSel = !isAllSel && subInstDraft.courseId.startsWith('bundle:');
-    let expectedAmount: number;
-    let paidAmount: number;
-    let resolvedCourseId: string | undefined;
-    let resolvedTitle: string | undefined;
-    if (isAllSel) {
-      const rowBundles = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => row.enrolledCourseIds.includes(co.id)));
-      const bundledCids = new Set(rowBundles.flatMap(b => b.courses.map(c => c.id)));
-      const partIds = (row.enrolledCourseIds || []).filter((cid: string) => !bundledCids.has(cid));
-      if (subInstDraft.overrideExpected) {
-        expectedAmount = Number(subInstDraft.overrideExpected);
-      } else {
-        expectedAmount = 0;
-        rowBundles.forEach(b => {
-          const bCids = b.courses.map(c => c.id);
-          const bPays = payments.filter(p => bCids.includes(p.courseId || '') || p.courseId === `bundle:${b.id}`);
-          const nb = bPays.find(p => !p.isInstallment);
-          expectedAmount += nb?.courseExpected || priceForCurrency(b.price, 'EGP') || b.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0;
-        });
-        partIds.forEach((cid: string) => {
-          const c = courses.find(x => x.id === cid);
-          const cPays = payments.filter(p => p.courseId === cid);
-          const nb = cPays.find(p => !p.isInstallment);
-          expectedAmount += nb?.courseExpected || c?.price?.EGP || 0;
-        });
-      }
-      paidAmount = payments.filter(p => !p.isInstallment).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-      resolvedCourseId = undefined;
-      resolvedTitle = 'كل الكورسات';
-    } else if (isBundleSel) {
-      const bid = subInstDraft.courseId.replace('bundle:', '');
-      const b = bundles.find(x => x.id === bid);
-      const bCids = b?.courses.map(c => c.id) || [];
-      const bPays = payments.filter(p => bCids.includes(p.courseId || '') || p.courseId === subInstDraft.courseId || (!p.courseId && !row.enrolledCourseIds.some((cid: string) => !bCids.includes(cid))));
-      expectedAmount = subInstDraft.overrideExpected
-        ? Number(subInstDraft.overrideExpected)
-        : (priceForCurrency(b?.price, 'EGP') || b?.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0);
-      paidAmount = bPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-      resolvedCourseId = undefined;
-      resolvedTitle = b?.title;
-    } else {
-      const cid = subInstDraft.courseId;
-      const cPays = payments.filter(p => p.courseId === cid || (!p.courseId && payments.length === 1));
-      const c = courses.find(x => x.id === cid);
-      const bookingEntry = cPays.find(p => !p.isInstallment);
-      expectedAmount = subInstDraft.overrideExpected
-        ? Number(subInstDraft.overrideExpected)
-        : (bookingEntry?.courseExpected || c?.price?.EGP || 0);
-      paidAmount = cPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-      resolvedCourseId = cid;
-      resolvedTitle = c?.title;
-    }
-    const remaining = Math.max(0, expectedAmount - paidAmount);
-    if (remaining <= 0) { notify('info', 'المبلغ المتبقي صفر — لا يوجد أقساط للإنشاء.'); return; }
-    const n = Math.max(1, Number(subInstDraft.numInstallments));
-    const perInstRaw = subInstDraft.inputMode === 'amount' && subInstDraft.amountPerInst
-      ? Number(subInstDraft.amountPerInst) : Math.floor(remaining / n);
-    const perInst = Math.max(1, perInstRaw);
-    const actualN = subInstDraft.inputMode === 'amount' && subInstDraft.amountPerInst
-      ? Math.ceil(remaining / perInst) : n;
-    const intervalDays = Number(subInstDraft.intervalDays || 30);
-    const startDate = new Date(subInstDraft.startDate);
-    const entries: InstallmentEntry[] = Array.from({ length: actualN }, (_, i) => {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i * intervalDays);
-      const isLast = i === actualN - 1;
-      return { id: `ie-${Date.now()}-${i}`, amount: isLast ? Math.max(1, remaining - perInst * (actualN - 1)) : perInst, currency: subInstDraft.currency, dueDate: d.toISOString().slice(0, 10) };
+    handleDashInstCreateFn({
+      subInstRow,
+      setSubInstRow,
+      subInstDraft,
+      setSubInstDraft,
+      bundles,
+      courses,
+      updateSubscriber,
+      notify,
     });
-    const plan: InstallmentPlan = {
-      id: `ip-${Date.now()}`, courseId: resolvedCourseId, courseTitle: resolvedTitle,
-      totalAmount: remaining, currency: subInstDraft.currency,
-      downPayment: paidAmount > 0 ? paidAmount : undefined,
-      entries, notes: subInstDraft.notes || undefined,
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-    updateSubscriber({ ...row, installmentPlans: [...(row.installmentPlans || []), plan] });
-    notify('success', `تم إنشاء خطة الأقساط (${actualN} قسط) بنجاح.`);
-    setSubInstRow(null);
-    setSubInstDraft({ courseId: '', currency: 'EGP', amountPerInst: '', numInstallments: '3', inputMode: 'count', startDate: new Date().toISOString().slice(0, 10), intervalDays: '30', notes: '', overrideExpected: '' });
   };
 
   const saveLeadDraft = async () => {
@@ -2909,201 +2255,56 @@ const Dashboard: React.FC = () => {
     e.target.value = '';
   };
 
-  // -- General CSV Import ----------------------------------------------------
-  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = (ev.target?.result as string) || '';
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) { notify('error', 'الملف فارغ أو لا يحتوي صفوف بيانات.'); return; }
-      // Parse CSV (simple — handles quoted values)
-      const parseLine = (line: string): string[] => {
-        const res: string[] = [];
-        let cur = '';
-        let inQ = false;
-        for (let i = 0; i < line.length; i++) {
-          if (line[i] === '"') { inQ = !inQ; continue; }
-          if (line[i] === ',' && !inQ) { res.push(cur.trim()); cur = ''; continue; }
-          cur += line[i];
-        }
-        res.push(cur.trim());
-        return res;
-      };
-      const headers = parseLine(lines[0]);
-      const rows = lines.slice(1).map(l => {
-        const vals = parseLine(l);
-        const obj: Record<string, string> = {};
-        headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
-        return obj;
-      }).filter(r => Object.values(r).some(v => v));
-      setCsvHeaders(headers);
-      setCsvRows(rows);
-      // Auto-detect column mapping
-      const autoMap: Record<string, string> = {};
-      headers.forEach(h => {
-        const hl = h.toLowerCase();
-        if (hl.includes('name') || hl.includes('اسم')) autoMap[h] = 'name';
-        else if (hl.includes('phone') || hl.includes('تليفون') || hl.includes('هاتف') || hl.includes('موبايل')) autoMap[h] = 'phone';
-        else if (hl.includes('email') || hl.includes('بريد') || hl.includes('ايميل')) autoMap[h] = 'email';
-        else if (hl.includes('source') || hl.includes('مصدر')) autoMap[h] = 'source';
-        else if (hl.includes('note') || hl.includes('ملاحظ')) autoMap[h] = 'notes';
-        else if (hl.includes('branch') || hl.includes('فرع')) autoMap[h] = 'branch';
-        else if (hl.includes('status') || hl.includes('حالة')) autoMap[h] = 'status';
-        else if (hl.includes('tag') || hl.includes('وسم')) autoMap[h] = 'tags';
-        else autoMap[h] = 'skip';
-      });
-      setCsvMapping(autoMap);
-      setCsvImportOpen(true);
-    };
-    reader.readAsText(file, 'UTF-8');
-    e.target.value = '';
+  // -- General CSV/Facebook lead handlers ------------------------------------
+  const handleCsvFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    handleCsvFileChangeFn(event, {
+      notify,
+      setCsvHeaders,
+      setCsvRows,
+      setCsvMapping,
+      setCsvImportOpen,
+    });
   };
+
   const handleCsvImport = () => {
-    if (!csvRows.length) return;
-    setCsvImporting(true);
-    let added = 0;
-    const now = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    for (const row of csvRows) {
-      const get = (field: string) => {
-        const col = Object.entries(csvMapping).find(([, v]) => v === field)?.[0];
-        return col ? (row[col] || '') : '';
-      };
-      const name = get('name') || '';
-      const phone = get('phone') || '';
-      const email = get('email') || '';
-      if (!name && !phone && !email) continue;
-      // Dedup
-      const isDup = leads.some(l =>
-        (phone && (l.phone || '').replace(/\D/g,'') === phone.replace(/\D/g,'')) ||
-        (email && email.length > 3 && (l.email || '').toLowerCase() === email.toLowerCase())
-      );
-      if (isDup) continue;
-      const rawTags = get('tags');
-      const tags = rawTags ? rawTags.split(/[,?|]/).map(t => t.trim()).filter(Boolean) : [];
-      addLead({
-        id: `csv-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-        name: name || 'عميل مستورد',
-        email, phone,
-        source: get('source') || 'استيراد CSV',
-        status: (['new','contacted','interested','not_interested','no_answer','closed','converted','lost'].includes(get('status')) ? get('status') : 'new') as LeadStatus,
-        leadType: 'course',
-        enrolledCourseId: '',
-        branch: 'other',
-        interestLevel: 'medium',
-        assignedSalesId: '',
-        assignedSalesName: '',
-        communications: [],
-        notes: get('notes') || '',
-        tags: tags.length ? tags : undefined,
-        createdAt: now,
-      });
-      added++;
-    }
-    setCsvImporting(false);
-    setCsvImportOpen(false);
-    setCsvRows([]);
-    setCsvHeaders([]);
-    setCsvMapping({});
-    notify('success', `تم استيراد ${added} عميل بنجاح.`);
+    handleCsvImportFn({
+      csvRows,
+      csvMapping,
+      leads,
+      addLead,
+      notify,
+      setCsvImporting,
+      setCsvImportOpen,
+      setCsvRows,
+      setCsvHeaders,
+      setCsvMapping,
+      dateLocale: 'ar-EG',
+      tagSeparator: /[,?|]/,
+    });
   };
 
-  // -- Facebook Lead Ads: Fetch available forms from Graph API ---------------
   const handleFetchFbForms = async () => {
-    const token = fbDraft.pageAccessToken.trim();
-    const pageId = fbDraft.pageId.trim();
-    if (!token || !pageId) { setFbSyncNotice('أدخل Page ID و Access Token أولاً.'); return; }
-    setFbFormsLoading(true);
-    setFbSyncNotice('');
-    try {
-      const url = `https://graph.facebook.com/v19.0/${pageId}/leadgen_forms?access_token=${encodeURIComponent(token)}&fields=id,name,status&limit=50`;
-      const res = await fetch(url);
-      const data = await res.json() as { data?: {id:string;name:string;status:string}[]; error?: {message:string} };
-      if (data.error) { setFbSyncNotice(`خطأ: ${data.error.message}`); return; }
-      setFbAvailableForms(data.data || []);
-      if ((data.data || []).length === 0) setFbSyncNotice('لا توجد نماذج. تأكد من صحة الـ Page ID والـ Access Token.');
-    } catch {
-      setFbSyncNotice('فشل الاتصال بـ Facebook Graph API. تأكد من الإعدادات والاتصال بالإنترنت.');
-    } finally {
-      setFbFormsLoading(false);
-    }
+    await handleFetchFbFormsFn({
+      fbDraft,
+      setFbSyncNotice,
+      setFbFormsLoading,
+      setFbAvailableForms,
+    });
   };
 
-  // -- Facebook Lead Ads: Sync leads from Graph API --------------------------
   const handleFbApiSync = async () => {
-    const token = fbDraft.pageAccessToken.trim();
-    if (!token) { setFbSyncNotice('أدخل Access Token أولاً.'); return; }
-    const enabledForms = fbDraft.adForms.filter(f => f.enabled);
-    if (enabledForms.length === 0) { setFbSyncNotice('اختر نموذجاً واحداً على الأقل.'); return; }
-    setFbSyncLoading(true);
-    setFbSyncNotice('');
-    let totalAdded = 0;
-    let totalSkipped = 0;
-    try {
-      for (const form of enabledForms) {
-        let nextUrl: string | null =
-          `https://graph.facebook.com/v19.0/${form.formId}/leads?fields=id,created_time,field_data&access_token=${encodeURIComponent(token)}&limit=100`;
-        while (nextUrl) {
-          const res = await fetch(nextUrl);
-          const data = await res.json() as {
-            data?: { id: string; created_time: string; field_data: { name: string; values: string[] }[] }[];
-            paging?: { next?: string };
-            error?: { message: string };
-          };
-          if (data.error) { setFbSyncNotice(`خطأ API: ${data.error.message}`); nextUrl = null; break; }
-          for (const entry of (data.data || [])) {
-            const fields = Object.fromEntries((entry.field_data || []).map(f => [f.name.toLowerCase(), f.values?.[0] || '']));
-            const name = fields['full_name'] || fields['name'] || fields['first_name'] + ' ' + (fields['last_name'] || '') || 'عميل فيسبوك';
-            const phone = fields['phone_number'] || fields['phone'] || '';
-            const email = fields['email'] || '';
-            // Dedup by fbLeadId or phone or email
-            const isDup = leads.some(l =>
-              l.fbLeadId === entry.id ||
-              (phone && l.phone === phone) ||
-              (email && email.length > 3 && l.email.toLowerCase() === email.toLowerCase())
-            );
-            if (isDup) { totalSkipped++; continue; }
-            addLead({
-              id: `fb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              name: name.trim() || 'عميل فيسبوك',
-              email: email || '',
-              phone: phone || '',
-              source: `Facebook Lead Ads — ${form.formName}`,
-              status: fbDraft.defaultStatus,
-              leadType: fbDraft.defaultLeadType,
-              enrolledCourseId: '',
-              interestedCourseIds: (form.courseId || fbDraft.defaultInterestedCourseId) ? [(form.courseId || fbDraft.defaultInterestedCourseId)!] : [],
-              branch: ((form.branch || fbDraft.defaultBranch) || undefined) as BranchType | undefined,
-              interestLevel: 'medium',
-              assignedSalesId: fbDraft.defaultAssignedSalesId || '',
-              assignedSalesName: staffMembers.find(s => s.id === fbDraft.defaultAssignedSalesId)?.name || '',
-              communications: [],
-              notes: `مصدر: Facebook Lead Form "${form.formName}"${fields['city'] ? `\nالمدينة: ${fields['city']}` : ''}${fields['job_title'] ? `\nالمهنة: ${fields['job_title']}` : ''}`,
-              fbLeadId: entry.id,
-              fbFormId: form.formId,
-              fbFormName: form.formName,
-              createdAt: new Date(entry.created_time).toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-            });
-            totalAdded++;
-          }
-          nextUrl = data.paging?.next || null;
-        }
-      }
-      const newConfig: FacebookLeadAdsConfig = {
-        ...fbDraft,
-        lastSyncAt: new Date().toISOString(),
-        totalImported: (fbLeadAdsConfig?.totalImported || 0) + totalAdded,
-        updatedAt: new Date().toISOString(),
-      };
-      setFbLeadAdsConfig(newConfig);
-      setFbDraft(newConfig);
-      setFbSyncNotice(`✅ تم: إضافة ${totalAdded} عميل جديد (تخطي ${totalSkipped} مكرر).`);
-    } catch {
-      setFbSyncNotice('فشل الاتصال. تحقق من الإنترنت والإعدادات.');
-    } finally {
-      setFbSyncLoading(false);
-    }
+    await handleFbApiSyncFn({
+      fbDraft,
+      leads,
+      addLead,
+      staffMembers,
+      fbLeadAdsConfig,
+      setFbLeadAdsConfig,
+      setFbDraft,
+      setFbSyncLoading,
+      setFbSyncNotice,
+      dateLocale: 'ar-EG',
+    });
   };
 
   const handleSaveFbConfig = () => {
@@ -3346,23 +2547,11 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {activeTab === 'kpi_dashboard' && (
-              <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>}>
-                <KpiDashboardTab notify={notify} />
-              </Suspense>
-            )}
-
-            {activeTab === 'cohort_analysis' && (
-              <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" /></div>}>
-                <CohortAnalysisTab notify={notify} />
-              </Suspense>
-            )}
-
-            {activeTab === 'daqqi_attendance' && (
-              <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" /></div>}>
-                <DaqqiAttendanceTab notify={(msg, type) => notify(type || 'info', msg)} />
-              </Suspense>
-            )}
+            <DashboardStandaloneTabs
+              activeTab={activeTab}
+              isSalesOnly={isSalesOnly}
+              notify={notify}
+            />
             {directContentTabs.has(activeTab) && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
                 <DashboardDirectContentRoutes
@@ -3546,7 +2735,7 @@ const Dashboard: React.FC = () => {
                     transferForm,
                     setTransferForm,
                     currentStaff,
-                    authUser,
+                    authUser: authUser ?? null,
                     content,
                     updateOrderStatus,
                     addOrder,
@@ -3557,7 +2746,6 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {activeTab === 'consultations' && (<Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"/></div>}><TabErrorBoundary><ConsultationCalendarTab notify={notify} /></TabErrorBoundary></Suspense>)}
             {/* -------------------------------------------------------------------
                 NOTIFICATIONS TAB — إشعارات المشتركين (broadcast)
             ------------------------------------------------------------------- */}
@@ -3592,12 +2780,6 @@ const Dashboard: React.FC = () => {
                 />
               </Suspense>
             )}
-            {activeTab === 'notifications' && (
-              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}>
-                <NotificationsAdminTab />
-              </Suspense>
-            )}
-
             {activeTab === 'community' && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" /></div>}>
                 <DashboardCommunityAdminPanel
@@ -3645,12 +2827,6 @@ const Dashboard: React.FC = () => {
                   updateCommunityEvent={updateCommunityEvent}
                   deleteCommunityEvent={deleteCommunityEvent}
                 />
-              </Suspense>
-            )}
-
-            {activeTab === 'activity' && (
-              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" /></div>}>
-                <ActivityTab isSalesOnly={isSalesOnly} />
               </Suspense>
             )}
 
@@ -3718,12 +2894,6 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {activeTab === 'quizzes' && (
-              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" /></div>}>
-                <QuizzesTab notify={notify} />
-              </Suspense>
-            )}
-
             {/* ---- LIVE STREAMS TAB ---- */}
             {activeTab === 'staff_settings' && (isSalesOnly || isCollectionRole || isReceptionDaqqi) && currentStaff && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
@@ -3761,12 +2931,6 @@ const Dashboard: React.FC = () => {
                   staffNewTagInput={staffNewTagInput}
                   setStaffNewTagInput={setStaffNewTagInput}
                 />
-              </Suspense>
-            )}
-
-            {activeTab === 'live_streams' && (
-              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" /></div>}>
-                <LiveStreamsTab notify={notify} />
               </Suspense>
             )}
 
@@ -3813,56 +2977,21 @@ const Dashboard: React.FC = () => {
         setOpen={setMonitorPanel}
       />
     </Suspense>
-    {/* --------------------------------------------------------------
-        GLOBAL LEAD PAYMENT MODAL — used by ClientDbTab + QuickBook
-    -------------------------------------------------------------- */}
-    {leadPayRow && (
-      <Suspense fallback={<div className="fixed inset-0 z-[60] bg-black/20" />}>
-        <PaymentModal
-          mode="lead"
-          subject={{
-            id: leadPayRow.id,
-            name: leadPayRow.name,
-            phone: leadPayRow.phone,
-            branch: leadPayRow.branch,
-            email: leadPayRow.email,
-          }}
-          draft={leadPayDraft}
-          setDraft={setLeadPayDraft}
-          onSubmit={(d) => { void handleLeadPayment(d); }}
-          onClose={() => setLeadPayRow(null)}
-          branchOptions={instituteBranches.map(b => ({ id: b.id, label: b.label }))}
-          instituteName={content['institute.name'] || 'مهاد نفسي'}
-        />
-      </Suspense>
-    )}
-
-    {/* --------------------------------------------------------------
-        GLOBAL SUBSCRIBER PAYMENT MODAL — used by ClientDbTab + QuickBook
-    -------------------------------------------------------------- */}
-    {subPayRow && (
-      <Suspense fallback={<div className="fixed inset-0 z-[60] bg-black/20" />}>
-        <PaymentModal
-          mode="subscriber"
-          subject={{
-            id: subPayRow.id,
-            name: subPayRow.name,
-            phone: subPayRow.phone,
-            enrolledCourseIds: subPayRow.enrolledCourseIds,
-            paymentHistory: subPayRow.paymentHistory,
-            extraCertificateRequests: subPayRow.extraCertificateRequests,
-            branch: subPayRow.branch,
-            email: subPayRow.email,
-          }}
-          draft={subPayDraft}
-          setDraft={setSubPayDraft}
-          onSubmit={(d) => { handleSubPayment(d); }}
-          onClose={() => setSubPayRow(null)}
-          instituteName={content['institute.name'] || 'مهاد نفسي'}
-          requirePaymentApproval={isReceptionDaqqi}
-        />
-      </Suspense>
-    )}
+    <DashboardPaymentOverlays
+      lead={leadPayRow}
+      leadDraft={leadPayDraft}
+      setLeadDraft={setLeadPayDraft}
+      submitLeadPayment={handleLeadPayment}
+      closeLeadPayment={() => setLeadPayRow(null)}
+      subscriber={subPayRow}
+      subscriberDraft={subPayDraft}
+      setSubscriberDraft={setSubPayDraft}
+      submitSubscriberPayment={handleSubPayment}
+      closeSubscriberPayment={() => setSubPayRow(null)}
+      branchOptions={instituteBranches.map(b => ({ id: b.id, label: b.label }))}
+      instituteName={content['institute.name'] || 'مهاد نفسي'}
+      requireSubscriberApproval={isReceptionDaqqi}
+    />
     </>
   );
 };

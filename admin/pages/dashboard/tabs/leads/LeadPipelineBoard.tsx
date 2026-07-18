@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Bundle, Course, LeadItem, LeadStatus, BranchType } from '../../../../types';
+import type { Bundle, CommunicationRecord, Course, LeadItem, LeadStatus } from '../../../../types';
 import { STATUS_CFG } from '../leadUtils';
 import { LeadCard } from './LeadSubcomponents';
 
@@ -21,14 +21,14 @@ type LeadPipelineBoardProps = {
   openLeadBook: (lead: LeadItem) => void;
   setCrmContactRow: React.Dispatch<React.SetStateAction<LeadItem | null>>;
   setCrmContactDraft: React.Dispatch<React.SetStateAction<{
-    type: 'call' | 'whatsapp' | 'email' | 'meeting' | 'note';
+    type: CommunicationRecord['type'];
     date: string;
     notes: string;
     outcome: string;
     nextFollowUp: string;
     newStatus: LeadStatus | '';
   }>>;
-  instituteBranches: BranchType[];
+  instituteBranches: { id: string; label: string }[];
   courses: Course[];
   bundles: Bundle[];
 };
@@ -123,7 +123,7 @@ export function LeadPipelineBoard({
                       )}
                       <LeadCard
                         lead={lead}
-                        score={lead._score}
+                        score={lead._score || 0}
                         onSelect={() => !bulkMode && setSelectedId(lead.id)}
                         onStatusChange={nextStatus => handleStatusChange(lead, nextStatus)}
                         onBook={openLeadBook}

@@ -28,17 +28,11 @@ export function useDashboardDerived(content: Record<string, string>, notificatio
 
     return {
       ...base,
-      ONLINE_EGYPT: base['ONLINE_EGYPT'] || 'أونلاين مصر',
-      ONLINE_SAUDI: base['ONLINE_SAUDI'] || 'أونلاين السعودية',
-      ONLINE_ABROAD: base['ONLINE_ABROAD'] || 'أونلاين خارج مصر',
-      DAQQI: base['DAQQI'] || 'الدقي',
-      TAGAMOA: base['TAGAMOA'] || 'التجمع',
-      OTHER: 'أخرى',
       'online-egypt': base['ONLINE_EGYPT'] || 'أونلاين مصر',
       'online-saudi': base['ONLINE_SAUDI'] || 'أونلاين السعودية',
       'online-abroad': base['ONLINE_ABROAD'] || 'أونلاين خارج مصر',
       'online-26': base['ONLINE_EGYPT'] || 'أونلاين مصر',
-      daqqi: base['DAQQI'] || 'الدقي',
+      daqqi: base['DAQQI'] || 'دقي',
       tagamoa: base['TAGAMOA'] || 'التجمع',
       other: 'أخرى',
       'اون_لاين_داخل_مصر': base['ONLINE_EGYPT'] || 'أونلاين مصر',

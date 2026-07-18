@@ -6,6 +6,7 @@ interface UnifiedClientConsultationsPanelProps {
 }
 
 const consultationStatusClass: Record<ConsultationItem['status'], string> = {
+  scheduled: 'bg-indigo-100 text-indigo-700',
   completed: 'bg-green-100 text-green-700',
   confirmed: 'bg-blue-100 text-blue-700',
   cancelled: 'bg-red-100 text-red-700',
@@ -13,6 +14,7 @@ const consultationStatusClass: Record<ConsultationItem['status'], string> = {
 };
 
 const consultationStatusLabel: Record<ConsultationItem['status'], string> = {
+  scheduled: 'Scheduled',
   completed: 'مكتملة',
   confirmed: 'مؤكدة',
   cancelled: 'ملغاة',

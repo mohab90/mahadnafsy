@@ -154,7 +154,7 @@ export function ClientsTable({
               ...completeBundles.map(b => {
                 const bCids = b.courses.map(co => co.id);
                 const bundleCid = `bundle:${b.id}`;
-                const bPay = payments.filter(p => ((p.courseId && bCids.includes(p.courseId)) || (p.bundleId === b.id) || (!p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))) && p.paymentType !== 'certificate' && p.paymentType !== 'book');
+                const bPay = payments.filter(p => (p.courseId && bCids.includes(p.courseId)) || (p.bundleId === b.id) || (!p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType)));
                 const cur = detCur(bPay[0]);
                 const nb = bPay.find(p => !p.isInstallment);
                 const bPrice = (b.price as unknown as Record<string,number>)[cur] || b.price.EGP || 0;
@@ -168,7 +168,7 @@ export function ClientsTable({
                 // Fallback: attribute payments with no courseId to first course when no bundles
                 // Exclude bundleId-tagged payments (they belong to a bundle, not first course)
                 const unattributed = (pidx === 0 && completeBundles.length === 0)
-                  ? payments.filter(p => !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType) && p.paymentType !== 'certificate' && p.paymentType !== 'book')
+                  ? payments.filter(p => !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))
                   : [];
                 const cPay = [...cPayBase, ...unattributed];
                 const nb = cPay.find(p => !p.isInstallment);

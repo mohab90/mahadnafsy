@@ -111,6 +111,16 @@ const AppShell: React.FC = () => {
             <Route path="/dashboard/:tab/:param" element={
               <StaffRoute><Dashboard /></StaffRoute>
             } />
+            {/* Backward-compatible URLs used by earlier admin deployments. */}
+            <Route path="/mahad/admin" element={
+              <StaffRoute><Dashboard /></StaffRoute>
+            } />
+            <Route path="/mahad/admin/:tab" element={
+              <StaffRoute><Dashboard /></StaffRoute>
+            } />
+            <Route path="/mahad/admin/:tab/:param" element={
+              <StaffRoute><Dashboard /></StaffRoute>
+            } />
             <Route path="/staff/:id" element={
               <StaffRoute><StaffProfile /></StaffRoute>
             } />

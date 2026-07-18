@@ -89,6 +89,8 @@ export interface Course {
   seo_title?: string;
   seo_description?: string;
   seo_keywords?: string;
+  isPublished?: boolean;
+  status?: string;
 }
 
 export interface Bundle {
@@ -104,6 +106,8 @@ export interface Bundle {
   originalPrice: Price;
   description: string;
   detailsContent?: Record<string, string>;
+  titleAr?: string;
+  isPublished?: boolean;
 }
 
 export interface Therapist {
@@ -138,7 +142,7 @@ export interface ConsultationItem {
   slotId?: string;
   slotLabel?: string;
   timezone?: string;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'scheduled' | 'completed' | 'cancelled';
   notes: string;
   amount?: number;
   currency?: Currency;
@@ -146,6 +150,12 @@ export interface ConsultationItem {
   meetingProvider?: MeetingProvider;
   meetingLink?: string;
   createdAt?: string;
+  scheduledAt?: string;
+  date?: string;
+  consultantId?: string;
+  staffId?: string;
+  name?: string;
+  phone?: string;
 }
 
 export type BranchType = string;
@@ -347,6 +357,8 @@ export interface StaffMember {
   nationalId?: string;
   address?: string;
   department?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface StaffAbsence {
@@ -387,7 +399,7 @@ export interface PaymentHistoryEntry {
   at: string;
   staffId?: string;             // Staff who recorded this payment
   staffName?: string;           // Display name of staff who recorded it
-  status?: 'pending' | 'paid' | 'failed'; // undefined/missing = paid (backward compat)
+  status?: 'pending' | 'paid' | 'failed' | 'refunded'; // undefined/missing = paid (backward compat)
 }
 
 export interface SubscriberItem {
@@ -426,6 +438,12 @@ export interface SubscriberItem {
   clientStatus?: string;  // Online client lifecycle: active | finished | paused | refunded
   transferAnswers?: Record<string, unknown>;  // Answers recorded at time of conversion
   transferDate?: string;  // Date of conversion
+  subscribedAt?: string;
+  totalValue?: number;
+  collectionStaffId?: string | null;
+  assignedStaffId?: string;
+  consultantId?: string;
+  enrolledCourseId?: string;
 }
 
 export type DaqqiDayOfWeek = 'الأحد' | 'الاثنين' | 'الثلاثاء' | 'الأربعاء' | 'الخميس' | 'الجمعة' | 'السبت';
@@ -470,7 +488,7 @@ export interface JoinUsApplication {
   type: 'instructor' | 'consultant' | 'staff' | 'INSTRUCTOR' | 'CONSULTANT' | 'STAFF' | string;
   linkedin?: string;
   message?: string;
-  status: 'new' | 'reviewed' | 'accepted' | 'rejected';
+  status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected';
   createdAt: string;
   adminNote?: string;
 }
@@ -505,9 +523,11 @@ export interface CourseLectureItem {
   order: number;
   thumbnail?: string;
   aiNotes?: string;        // AI-generated lecture notes (HTML)
+  sortOrder?: number;
 }
 
 export interface OrderItem {
+  [key: string]: unknown;
   id: string;
   subscriberId?: string;  // Subscriber who made this payment
   type: 'course' | 'bundle' | 'consultation' | 'transfer';
@@ -532,6 +552,7 @@ export interface OrderItem {
   courseName?: string;
   leadId?: string;
   source?: string;
+  clientEmail?: string;
 }
 
 export interface TestimonialItem {
@@ -618,7 +639,7 @@ export interface UserSessionData {
 
 export interface DiscountRule {
   id: string;
-  type: 'course' | 'bundle' | 'all_courses' | 'therapist_consultation' | 'all_consultations';
+  type: 'course' | 'bundle' | 'all_courses' | 'therapist_consultation' | 'all_consultations' | 'percent' | 'fixed';
   targetId?: string;
   discountPercent: number;
   label?: string;
@@ -626,6 +647,11 @@ export interface DiscountRule {
   active: boolean;
   expiresAt?: string;
   createdAt: string;
+  code?: string;
+  value?: number;
+  isActive?: boolean;
+  usageCount?: number;
+  usageLimit?: number;
 }
 
 export interface NotificationBroadcast {
@@ -635,6 +661,9 @@ export interface NotificationBroadcast {
   type: 'info' | 'offer' | 'update';
   createdAt: string;
   active: boolean;
+  isRead?: boolean;
+  message?: string;
+  sentAt?: string;
 }
 
 export type ExpenseCategory = 'رواتب' | 'تسويق' | 'إيجار' | 'برمجيات' | 'معدات' | 'أخرى';
@@ -650,6 +679,7 @@ export interface ExpenseItem {
   branchType?: BranchType;   // which branch this expense belongs to
   paymentMethod?: string;    // cash, bank transfer, etc.
   createdAt: string;
+  title?: string;
 }
 
 // ── Installment / Receivables types ─────────────────────────────────────────
@@ -674,7 +704,14 @@ export interface InstallmentPlan {
   entries: InstallmentEntry[];
   notes?: string;
   createdAt: string;
+  payments?: InstallmentEntry[];
+  nextDueDate?: string;
+  startDate?: string;
 }
+
+export type NotifyFn = (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
+export type CourseItem = Course;
+export type BundleItem = Bundle;
 
 // ── Sales Targets ────────────────────────────────────────────────────────────
 

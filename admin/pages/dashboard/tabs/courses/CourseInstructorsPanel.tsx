@@ -16,7 +16,7 @@ interface Props {
   setEditingTherapistId: (id: string) => void;
   therapistDraft: Therapist;
   setTherapistDraft: SetState<Therapist>;
-  therapistImageInputRef: React.RefObject<HTMLInputElement>;
+  therapistImageInputRef: React.RefObject<HTMLInputElement | null>;
   handleTherapistImageUpload: (files: FileList | null) => Promise<void>;
   blankTherapist: () => Therapist;
   blankTherapistSlot: () => TherapistAvailabilitySlot;

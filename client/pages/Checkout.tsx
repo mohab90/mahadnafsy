@@ -14,8 +14,8 @@ const Checkout: React.FC = () => {
   const id = searchParams.get('id');
   const subtype = searchParams.get('subtype'); // For consultations
 
-  // For course/bundle purchases, login is required
-  const requiresLogin = type === 'course' || type === 'bundle';
+  // Every payment proof must belong to an authenticated customer and order.
+  const requiresLogin = ['course', 'bundle', 'consultation', 'certificate'].includes(type || '');
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -23,6 +23,9 @@ const Checkout: React.FC = () => {
   const [orderSent, setOrderSent] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState('');
+  const [orderId, setOrderId] = useState('');
+  const [serverAmount, setServerAmount] = useState<number | null>(null);
+  const [serverCurrency, setServerCurrency] = useState<'EGP' | 'SAR' | 'USD' | null>(null);
   // Self-service receipt upload (after order is placed)
   const [proofImage, setProofImage] = useState('');
   const [proofMethod, setProofMethod] = useState('انستا باي');
@@ -43,19 +46,6 @@ const Checkout: React.FC = () => {
       if (phone) setCustomerPhone(phone);
     }
   }, [authUser, subscribers]);
-
-  // Abandoned checkout lead capture — fires once when a logged-in user lands on checkout
-  useEffect(() => {
-    if (!authUser || !id || !type) return;
-    const token = localStorage.getItem('mahad-token');
-    if (!token) return;
-    fetch('/api/public/checkout-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ itemId: id, itemType: type, itemTitle }),
-    }).catch(() => {/* best-effort — don't block UI */});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid, id, type]);
 
   // Determine Item details
   let itemTitle = '';
@@ -107,8 +97,11 @@ const Checkout: React.FC = () => {
       itemFound = true;
   }
 
-  const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-  const finalAmount = itemPrice;
+  // Manual transfers are settled and reconciled in EGP while Paymob is paused.
+  const settlementCurrency = serverCurrency || (type === 'certificate' && ['EGP', 'SAR', 'USD'].includes(searchParams.get('currency') || '')
+    ? searchParams.get('currency') as 'EGP' | 'SAR' | 'USD' : 'EGP');
+  const currencySymbol = settlementCurrency === 'SAR' ? 'ر.س' : settlementCurrency === 'USD' ? '$' : 'ج.م';
+  const finalAmount = serverAmount ?? itemEGPPrice;
   const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
 
   const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemEGPPrice > 0;
@@ -118,9 +111,9 @@ const Checkout: React.FC = () => {
     setPayLoading(true);
     setPayError('');
     try {
-      // Register lead/intent on server (best-effort — doesn't block UI)
       const token = localStorage.getItem('mahad-token');
-      await fetch('/api/public/checkout-intent', {
+      if (!token) throw new Error('سجّل الدخول أولاً لإتمام الطلب');
+      const response = await fetch('/api/public/checkout-intent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -139,7 +132,12 @@ const Checkout: React.FC = () => {
             subtype: subtype || 'regular',
           } : {}),
         }),
-      }).catch(() => {/* best-effort */});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.orderId) throw new Error(data.error || 'تعذّر إنشاء الطلب');
+      setOrderId(String(data.orderId));
+      setServerAmount(Number(data.amount));
+      setServerCurrency(data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP');
       setOrderSent(true);
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'حدث خطأ، حاول مرة أخرى.');
@@ -161,6 +159,7 @@ const Checkout: React.FC = () => {
   // the payment is recorded, access enrolled, and the lifecycle receipt fires.
   const submitProof = async () => {
     if (!proofImage) { setProofError('ارفع صورة الإيصال أولاً'); return; }
+    if (!orderId) { setProofError('الطلب غير مكتمل؛ أعد إنشاء الطلب'); return; }
     setProofSubmitting(true); setProofError('');
     try {
       const token = localStorage.getItem('mahad-token');
@@ -168,8 +167,7 @@ const Checkout: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
-          amount: itemEGPPrice, currency: 'EGP',
-          course_id: type === 'course' ? id : null,
+          order_id: orderId,
           payment_method: proofMethod, proof_image: proofImage,
           note: `طلب ذاتي: ${itemTitle}`,
         }),
@@ -181,7 +179,7 @@ const Checkout: React.FC = () => {
     finally { setProofSubmitting(false); }
   };
 
-  // Require login for course/bundle purchases
+  // Require login before any payable customer workflow.
   if (requiresLogin && authUser === null) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
@@ -250,7 +248,7 @@ const Checkout: React.FC = () => {
                       </div>
                       <h3 className="text-lg font-extrabold text-gray-900 mb-2">تم استلام إيصالك ✅</h3>
                       <p className="text-gray-500 text-sm mb-6">هنراجع الإيصال ونفعّل وصولك للكورس خلال وقت قصير — وهيوصلك تأكيد على بريدك وواتساب.</p>
-                      <Link to="/dashboard" className="inline-block w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition text-sm">الذهاب لحسابي</Link>
+                      <Link to="/my-account" className="inline-block w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition text-sm">الذهاب لحسابي</Link>
                     </div>
                     ) : (
                     <div className="py-2">
@@ -395,14 +393,14 @@ const Checkout: React.FC = () => {
                         }
                         <div>
                             <h3 className="font-bold text-sm text-gray-800 line-clamp-2">{itemTitle}</h3>
-                            <p className="text-primary-600 font-bold mt-1">{itemPrice} {currencySymbol}</p>
+                            <p className="text-primary-600 font-bold mt-1">{itemEGPPrice} {currencySymbol}</p>
                         </div>
                     </div>
                     
                     <div className="space-y-2 text-sm text-gray-600 mb-4">
                         <div className="flex justify-between">
                             <span>السعر الأساسي</span>
-                            <span>{itemPrice} {currencySymbol}</span>
+                            <span>{itemEGPPrice} {currencySymbol}</span>
                         </div>
                     </div>
 

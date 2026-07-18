@@ -57,7 +57,7 @@ export const GrowthOpsSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => 
     setBusy('classroom');
     try {
       const result = await mysqlAdmin.saveDokkiClassroom({ name: classroomName, capacity: 20, branch_id: 'branch-daqqi' });
-      setClassroomId(result.id);
+      setClassroomId(result.id || '');
       notify('success', 'تم حفظ القاعة');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل حفظ القاعة');

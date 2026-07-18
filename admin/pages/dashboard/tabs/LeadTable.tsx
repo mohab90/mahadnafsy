@@ -1,7 +1,7 @@
 import React from 'react';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
-import type { Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
+import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
 import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, calcLeadScore, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
 

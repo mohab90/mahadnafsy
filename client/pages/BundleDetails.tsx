@@ -56,7 +56,7 @@ const BundleDetails: React.FC = () => {
   const savePct = oldPrice > currentPrice ? ((oldPrice - currentPrice) / oldPrice * 100).toFixed(0) : '0';
   const embedUrl = bundle.videoUrl ? toEmbedUrl(bundle.videoUrl) : '';
 
-  const handleBundleLeadSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleBundleLeadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!bundleLeadName.trim() || !bundleLeadPhone.trim()) {
       setBundleLeadNotice('يرجى إدخال الاسم ورقم الهاتف.');
@@ -74,11 +74,15 @@ const BundleDetails: React.FC = () => {
       leadType: 'course' as const,
       createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
     };
-    addPublicLead(payload);
-    setBundleLeadName('');
-    setBundleLeadPhone('');
-    setBundleLeadBranch('');
-    setBundleLeadNotice('تم تسجيل بياناتك وسيتم التواصل معك خلال 48 ساعة من خدمة العملاء.');
+    try {
+      await addPublicLead(payload);
+      setBundleLeadName('');
+      setBundleLeadPhone('');
+      setBundleLeadBranch('');
+      setBundleLeadNotice('تم تسجيل بياناتك وسيتم التواصل معك خلال 48 ساعة من خدمة العملاء.');
+    } catch {
+      setBundleLeadNotice('تعذر تسجيل بياناتك حاليًا. حاول مرة أخرى أو تواصل معنا على واتساب.');
+    }
   };
 
   let galleryImgs: string[] = [];

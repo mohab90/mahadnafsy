@@ -124,7 +124,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
     setDirty(d => new Set([...d, key]));
   }, []);
   const mutateField = useCallback((key: SectionKey, field: string, value: unknown) => {
-    setData(d => ({ ...d, [key]: { ...(d[key] as EditableSectionData), [field]: value } as SectionData }));
+    setData(d => ({ ...d, [key]: { ...(d[key] as unknown as EditableSectionData), [field]: value } as unknown as SectionData }));
     setDirty(d => new Set([...d, key]));
   }, []);
 

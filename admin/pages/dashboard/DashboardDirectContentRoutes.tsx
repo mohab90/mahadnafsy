@@ -217,7 +217,7 @@ export function DashboardDirectContentRoutes({
             certSearch={certSearch}
             setCertSearch={setCertSearch}
             certTypeFilter={certTypeFilter}
-            setCertTypeFilter={setCertTypeFilter}
+            setCertTypeFilter={(value) => setCertTypeFilter(value as ExtraCertificateType | 'all')}
             certStatusFilter={certStatusFilter}
             setCertStatusFilter={setCertStatusFilter}
           />

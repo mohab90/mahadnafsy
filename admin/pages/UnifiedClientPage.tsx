@@ -19,7 +19,7 @@ import { mysqlAdmin } from '../lib/mysqlapi';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { SideRow } from './unified-client/SideRow';
-import { useUnifiedClientActiveTab } from './unified-client/useUnifiedClientActiveTab';
+import { useUnifiedClientActiveTab, type UnifiedClientTab } from './unified-client/useUnifiedClientActiveTab';
 import { buildUnifiedClientTabs, UnifiedClientTabs } from './unified-client/UnifiedClientTabs';
 import { UnifiedClientCertificatesPanel } from './unified-client/UnifiedClientCertificatesPanel';
 import { useUnifiedClientPaymentProofs } from './unified-client/useUnifiedClientPaymentProofs';
@@ -1022,9 +1022,9 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
                   leadPaidEGP={leadPaidEGP}
                   subCerts={subCerts}
                   bookingMap={bookingMap}
-                  enrolledCourse={enrolledCourse}
+                  enrolledCourse={enrolledCourse ?? undefined}
                   leadRemaining={leadRemaining}
-                  setActiveTab={setActiveTab}
+                  setActiveTab={(tab) => setActiveTab(tab as UnifiedClientTab)}
                   subConsults={subConsults}
                 />
               )}

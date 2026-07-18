@@ -78,7 +78,7 @@ const Auth: React.FC = () => {
 
     const handleResetPassword = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (newPassword.length < 6) { setNotice({ type: 'error', text: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' }); return; }
+        if (newPassword.length < 8) { setNotice({ type: 'error', text: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' }); return; }
         setLoading(true);
         setNotice(null);
         try {
@@ -123,8 +123,8 @@ const Auth: React.FC = () => {
                 setNotice({ type: 'error', text: 'يرجى إدخال الاسم الكامل.' });
                 return;
             }
-            if (password.length < 6) {
-                setNotice({ type: 'error', text: 'يجب أن تكون كلمة المرور 6 أحرف على الأقل.' });
+            if (password.length < 8) {
+                setNotice({ type: 'error', text: 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.' });
                 return;
             }
         }
@@ -155,7 +155,7 @@ const Auth: React.FC = () => {
                 'Email already registered': 'هذا البريد الإلكتروني مستخدم بالفعل، حاول تسجيل الدخول.',
                 'Invalid credentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
                 'Email and password required': 'يرجى إدخال البريد الإلكتروني وكلمة المرور.',
-                'Password must be at least 6 characters': 'يجب أن تكون كلمة المرور 6 أحرف على الأقل.',
+                'Password must be at least 8 characters': 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.',
                 'Login failed': 'حدث خطأ في الخادم، حاول مرة أخرى.',
             };
             const isRateLimit = msg.includes('محاولات كثيرة') || msg.includes('HTTP 429');
@@ -296,7 +296,7 @@ const Auth: React.FC = () => {
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
                       className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none pr-10"
-                      placeholder="6 أحرف على الأقل"
+                      placeholder="8 أحرف على الأقل"
                       required
                       minLength={6}
                     />

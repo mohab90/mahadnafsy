@@ -159,10 +159,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [dueTodayLoading, setDueTodayLoading] = useState(false);
 
   // Self staff — for role-based UI gating (SALES vs admin)
-  const [selfStaff, setSelfStaff] = useState<{ id: string; role: string; name: string } | null>(null);
+  const [selfStaff, setSelfStaff] = useState<{ id: string; role: StaffMember['role']; name: string } | null>(null);
   useEffect(() => {
     mysqlClient.getStaffSelf()
-      .then((s: StaffSelfSnapshot) => { if (s?.id) setSelfStaff({ id: s.id, role: s.role || '', name: s.name || '' }); })
+      .then((s: StaffSelfSnapshot) => { if (s?.id) setSelfStaff({ id: s.id, role: (s.role || 'other') as StaffMember['role'], name: s.name || '' }); })
       .catch(() => {});
   }, []);
   const isSalesOnly = selfStaff?.role === 'sales' || staffSelfProp?.role === 'sales';
@@ -1307,7 +1307,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             overdueFiltered={overdueFiltered}
             todayFiltered={todayFiltered}
             upcomingFiltered={upcomingFiltered}
-            todayStr={todayStr}
+            todayStr={commTodayStr}
             onSnooze={snooze1Day}
             onDone={markDone}
             onOpenLead={setSelectedId}

@@ -292,7 +292,7 @@ export function DaqqiPayModal({ modal, draft, setDraft, onClose, onSubmit, subsc
                           const isSelected = draft.courseId === opt.cid;
                           return (
                             <button key={opt.cid} type="button"
-                              onClick={() => setDraft({ ...draft, courseId: opt.cid, certReqId: undefined, customExpected: '', discountPct: '' } as DaqqiPayDraft)}
+                              onClick={() => setDraft({ ...draft, courseId: opt.cid, certReqId: '', customExpected: '', discountPct: '' })}
                               className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 border-2 text-right transition ${isSelected ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-white hover:border-red-300 hover:bg-red-50/30'}`}>
                               <div className="flex items-start gap-2 flex-1 min-w-0">
                                 <span className="text-base mt-0.5">{opt.isBnd ? '📌' : '🎓'}</span>

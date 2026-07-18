@@ -927,11 +927,10 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       leadsRef.current = [leadWithCode, ...leadsRef.current];
       setLeads(prev => [leadWithCode, ...prev.filter(l => l.id !== leadWithCode.id)]);
       track('create', 'lead', leadWithCode.name);
-    } catch {
-      // Fallback: local only
-      const code = item.clientCode || await issueClientCodeAsync();
-      const leadWithCode: LeadItem = { ...(item as LeadItem), clientCode: code };
-      await addLead(leadWithCode);
+    } catch (error) {
+      // Public forms must never report success for a lead that only exists in
+      // browser memory. Surface the server failure to the page instead.
+      throw error instanceof Error ? error : new Error('تعذر حفظ طلبك. حاول مرة أخرى.');
     }
   };
 
@@ -1513,5 +1512,4 @@ export const useSiteData = () => {
   }
   return ctx;
 };
-
 

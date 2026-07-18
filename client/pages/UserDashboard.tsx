@@ -417,6 +417,7 @@ const UserDashboard: React.FC = () => {
   };
 
   const handleChangePassword = async () => {
+    if (pwNew.length < 8) { setPwMsg('Password must be at least 8 characters'); return; }
     if (pwNew !== pwConfirm) { setPwMsg('كلمتا المرور غير متطابقتين'); return; }
     if (pwNew.length < 6) { setPwMsg('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
     setPwSaving(true);
@@ -458,10 +459,16 @@ const UserDashboard: React.FC = () => {
     setProofSubmitting(true);
     setProofError('');
     try {
+      const orders = await mysqlClient.getMyOrders();
+      const pendingOrder = orders.find(order =>
+        ['PENDING', 'PAYMENT_PENDING', 'AWAITING_PAYMENT'].includes(String(order.status).toUpperCase()) &&
+        (!proofCourseId || String(order.item_id) === String(proofCourseId)) &&
+        Number(order.amount) === Number(proofAmount) &&
+        String(order.currency).toUpperCase() === proofCurrency
+      );
+      if (!pendingOrder) throw new Error('لا يوجد طلب معلّق مطابق. ابدأ الطلب من صفحة الكورس أولاً.');
       await mysqlClient.submitPaymentProof({
-        amount: parseFloat(proofAmount),
-        currency: proofCurrency,
-        course_id: proofCourseId || null,
+        order_id: pendingOrder.id,
         payment_method: proofMethod,
         proof_image: proofImage,
         note: proofNote || undefined,
@@ -734,7 +741,7 @@ const UserDashboard: React.FC = () => {
                 <StudentEngagementHero
                   enrolledCourses={enrolledCourses}
                   lectureProgress={subscriber?.lectureProgress || {}}
-                  getCourseLectures={getCourseLectures}
+                  getCourseLectures={(id) => getCourseLectures(String(id))}
                   onResume={(cid) => { setActiveTab('learning'); setLearningSection('courses'); setPlayerCourseId(cid); }}
                   onBrowse={() => navigate('/courses')}
                 />
@@ -870,7 +877,7 @@ const UserDashboard: React.FC = () => {
               subscriber={subscriber}
               coursePayMap={coursePayMap}
               contentWhatsapp={content['footer.whatsapp'] || '201096203090'}
-              getCourseLectures={getCourseLectures}
+              getCourseLectures={(id) => getCourseLectures(String(id))}
               onOpenPlayer={(courseId) => setPlayerCourseId(courseId)}
               onOpenCertificates={() => { setLearningSection('certificates'); }}
               setInstallModal={setInstallModal}
@@ -887,7 +894,7 @@ const UserDashboard: React.FC = () => {
             <StudentCertificatesTab
               subscriber={subscriber}
               enrolledCourses={enrolledCourses}
-              getCourseLectures={getCourseLectures}
+              getCourseLectures={(id) => getCourseLectures(String(id))}
               setPlayerCourseId={setPlayerCourseId}
               setCertModal={setCertModal}
               content={content}

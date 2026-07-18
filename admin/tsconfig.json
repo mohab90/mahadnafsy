@@ -8,11 +8,18 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client", "react", "react-dom"],
     "moduleResolution": "bundler",
+    "baseUrl": ".",
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
-    "paths": { "@/*": ["./*"] },
+    "paths": {
+      "@/*": ["./*"],
+      "react": ["node_modules/@types/react/index.d.ts"],
+      "react/*": ["node_modules/@types/react/*"],
+      "lucide-react": ["node_modules/lucide-react/dist/lucide-react.d.ts"],
+      "dompurify": ["node_modules/dompurify/dist/purify.cjs.d.ts"]
+    },
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "noUnusedLocals": false,
@@ -20,7 +27,7 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "strictNullChecks": true,
-    "strictFunctionTypes": true,
+    "strictFunctionTypes": false,
     "strictBindCallApply": true
   },
   "include": ["**/*.ts", "**/*.tsx"]

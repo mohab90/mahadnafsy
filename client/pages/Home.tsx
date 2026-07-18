@@ -76,7 +76,7 @@ const Home: React.FC = () => {
       .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99))
       .slice(0, 4);
 
-    const handleOfferLeadSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    const handleOfferLeadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!offerLeadName.trim() || !offerLeadPhone.trim()) {
             setOfferLeadNotice('يرجى إدخال الاسم ورقم الهاتف.');
@@ -96,11 +96,15 @@ const Home: React.FC = () => {
             branch: offerLeadBranch as LeadItem['branch'],
             createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
         };
-        addPublicLead(payload);
-        setOfferLeadName('');
-        setOfferLeadPhone('');
-        setOfferLeadBranch('');
-        setOfferLeadNotice('تم تسجيل الطلب وسيظهر داخل العملاء المحتملين.');
+        try {
+            await addPublicLead(payload);
+            setOfferLeadName('');
+            setOfferLeadPhone('');
+            setOfferLeadBranch('');
+            setOfferLeadNotice('تم تسجيل الطلب وسيظهر داخل العملاء المحتملين.');
+        } catch {
+            setOfferLeadNotice('تعذر تسجيل الطلب حاليًا. من فضلك حاول مرة أخرى أو تواصل معنا على واتساب.');
+        }
     };
 
     return (

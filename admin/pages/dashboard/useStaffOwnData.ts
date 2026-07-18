@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { LeadItem, SubscriberItem, OrderItem, DaqqiRound, StaffMember, Bundle, Course } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { staffStatusFromWire, type StaffWire } from './dashboardHelpers';
 
 interface StaffOwnDataArgs {
   isAdmin: boolean;
@@ -119,7 +120,7 @@ export function useStaffOwnData({
           setOnlineTeamMembers(allStaffData.map(s => ({
             ...s,
             role: (s.role || '').toLowerCase() as StaffMember['role'],
-            status: (s.status === 'active' || (s as any).is_active === 1) ? 'active' as const : 'inactive' as const,
+            status: staffStatusFromWire(s as StaffWire),
           })));
         } catch { setOnlineTeamMembers([]); }
       }
@@ -131,8 +132,8 @@ export function useStaffOwnData({
           mergeContent(contentData);
         }
       } catch { /* non-fatal */ }
-    } catch (err) {
-      console.error('[StaffData] fetch error:', err);
+    } catch {
+      // Keep dashboard usable if optional staff/content bootstrap data is unavailable.
     } finally {
       setSalesDataLoading(false);
     }

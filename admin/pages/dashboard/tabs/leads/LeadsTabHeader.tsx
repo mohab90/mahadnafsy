@@ -18,7 +18,7 @@ interface LeadsTabHeaderProps {
   setSubTab: (tab: SubTabKey) => void;
   onAddLead: () => void;
   showActionsMenu: boolean;
-  actionsMenuRef: React.RefObject<HTMLDivElement>;
+  actionsMenuRef: React.RefObject<HTMLDivElement | null>;
   onToggleActionsMenu: () => void;
   onCloseActionsMenu: () => void;
   onOpenSettings: () => void;

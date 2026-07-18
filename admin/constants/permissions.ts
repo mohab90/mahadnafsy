@@ -209,8 +209,27 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
 export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = {
   admin:                    '*',
   manager:                  '*',
-  online_manager:           '*',
-  daqqi_manager:            '*',
+  online_manager: [
+    'view_dashboard',
+    'view_leads', 'manage_leads', 'export_leads',
+    'view_subscribers', 'manage_subscribers', 'export_subscribers',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
+    'view_financial', 'manage_financial', 'view_reports', 'view_activity',
+    'view_staff', 'view_client_db',
+    'view_courses', 'manage_courses', 'manage_lectures',
+    'view_consultations', 'manage_consultations',
+    'manage_inbox', 'manage_notifications', 'bulk_whatsapp', 'ask_ai',
+  ],
+  daqqi_manager: [
+    'view_dashboard',
+    'view_leads', 'manage_leads', 'export_leads',
+    'view_subscribers', 'manage_subscribers', 'export_subscribers',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
+    'view_financial', 'manage_financial', 'view_reports', 'view_activity',
+    'view_staff', 'view_client_db',
+    'view_consultations', 'manage_consultations',
+    'manage_inbox', 'manage_notifications', 'manage_daqqi', 'bulk_whatsapp',
+  ],
 
   sales_collection_manager: [
     'view_dashboard',
@@ -325,7 +344,7 @@ export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
 
 // ── 8. FULL-ACCESS ROLES ──────────────────────────────────────────────────────
 export const FULL_ACCESS_ROLES: RoleKey[] = [
-  'admin', 'manager', 'online_manager', 'daqqi_manager',
+  'admin', 'manager',
 ];
 
 // ── 8b. RUNTIME ROLE OVERRIDES (editable from Settings → RBAC) ─────────────────

@@ -41,7 +41,7 @@ const countAccessMode = (subscribers: SubscriberItem[], mode: keyof AccessStats)
     }).length
 );
 
-const normalizeAccessMode = (entry?: SubscriberItem['courseAccess'][string]) => {
+const normalizeAccessMode = (entry?: NonNullable<SubscriberItem['courseAccess']>[string]) => {
   if (entry === 'full') return 'full';
   if (entry === 'preview' || !entry) return 'preview';
   return entry.mode || 'preview';

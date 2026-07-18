@@ -78,14 +78,16 @@ interface HandleCsvImportDeps {
   setCsvRows: (r: Record<string, string>[]) => void;
   setCsvHeaders: (h: string[]) => void;
   setCsvMapping: (m: Record<string, string>) => void;
+  dateLocale?: string;
+  tagSeparator?: RegExp;
 }
 
 export function handleCsvImportFn(deps: HandleCsvImportDeps): void {
-  const { csvRows, csvMapping, leads, addLead, notify, setCsvImporting, setCsvImportOpen, setCsvRows, setCsvHeaders, setCsvMapping } = deps;
+  const { csvRows, csvMapping, leads, addLead, notify, setCsvImporting, setCsvImportOpen, setCsvRows, setCsvHeaders, setCsvMapping, dateLocale = 'ar-EG-u-nu-latn', tagSeparator = /[,،|]/ } = deps;
   if (!csvRows.length) return;
   setCsvImporting(true);
   let added = 0;
-  const now = new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const now = new Date().toLocaleString(dateLocale, { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   for (const row of csvRows) {
     const get = (field: string) => {
       const col = Object.entries(csvMapping).find(([, v]) => v === field)?.[0];
@@ -101,7 +103,7 @@ export function handleCsvImportFn(deps: HandleCsvImportDeps): void {
     );
     if (isDup) continue;
     const rawTags = get('tags');
-    const tags = rawTags ? rawTags.split(/[,،|]/).map(t => t.trim()).filter(Boolean) : [];
+    const tags = rawTags ? rawTags.split(tagSeparator).map(t => t.trim()).filter(Boolean) : [];
     addLead({
       id: `csv-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
       name: name || 'عميل مستورد',
@@ -171,10 +173,11 @@ interface HandleFbApiSyncDeps {
   setFbDraft: (cfg: FacebookLeadAdsConfig) => void;
   setFbSyncLoading: (b: boolean) => void;
   setFbSyncNotice: (n: string) => void;
+  dateLocale?: string;
 }
 
 export async function handleFbApiSyncFn(deps: HandleFbApiSyncDeps): Promise<void> {
-  const { fbDraft, leads, addLead, staffMembers, fbLeadAdsConfig, setFbLeadAdsConfig, setFbDraft, setFbSyncLoading, setFbSyncNotice } = deps;
+  const { fbDraft, leads, addLead, staffMembers, fbLeadAdsConfig, setFbLeadAdsConfig, setFbDraft, setFbSyncLoading, setFbSyncNotice, dateLocale = 'ar-EG-u-nu-latn' } = deps;
   const token = fbDraft.pageAccessToken.trim();
   if (!token) { setFbSyncNotice('أدخل Access Token أولاً.'); return; }
   const enabledForms = fbDraft.adForms.filter(f => f.enabled);
@@ -225,7 +228,7 @@ export async function handleFbApiSyncFn(deps: HandleFbApiSyncDeps): Promise<void
             fbLeadId: entry.id,
             fbFormId: form.formId,
             fbFormName: form.formName,
-            createdAt: new Date(entry.created_time).toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+            createdAt: new Date(entry.created_time).toLocaleString(dateLocale, { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
           } as LeadItem);
           totalAdded++;
         }

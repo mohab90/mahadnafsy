@@ -34,6 +34,8 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
   const [extraCertNameEn, setExtraCertNameEn] = useState('');
   const [extraCertNationality, setExtraCertNationality] = useState<'egyptian' | 'non_egyptian_egypt' | 'saudi_resident' | 'international'>('egyptian');
   const [extraCertIdNumber, setExtraCertIdNumber] = useState('');
+  const [extraCertSubmitting, setExtraCertSubmitting] = useState(false);
+  const [extraCertError, setExtraCertError] = useState('');
 
   // Pre-fill name fields
   useEffect(() => {
@@ -83,9 +85,8 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
   };
   const autoPrice = getPriceAndCurrency();
 
-  const handleRequestExtraCert = () => {
+  const handleRequestExtraCert = async () => {
     if (!extraCertType || !subscriber) return;
-    const priceData = getPriceAndCurrency();
     const req: ExtraCertificateRequest = {
       id: `ecr-${Date.now()}`,
       type: extraCertType as ExtraCertificateType,
@@ -95,40 +96,30 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
       nameEn: extraCertNameEn || undefined,
       nationality: extraCertNationality,
       idNumber: extraCertIdNumber.trim() || undefined,
-      status: priceData ? 'priced' : 'pending',
-      price: priceData?.price,
-      currency: priceData?.currency,
+      status: 'pending',
       requestedAt: new Date().toISOString().slice(0, 10),
       note: extraCertNote || undefined,
     };
 
-    void mysqlClient.createCertificateRequest({
-      type: req.type, courseId: req.courseId, customName: req.customName,
-      nameAr: req.nameAr, nameEn: req.nameEn, nationality: req.nationality,
-      idNumber: req.idNumber, price: req.price, currency: req.currency, note: req.note,
-    } as any as Record<string, unknown>)
-      .then(() => { refreshMySubscriber(); })
-      .catch(() => {});
-
-    setExtraCertType('');
-    setExtraCertCourseId('');
-    setExtraCertNote('');
-    setExtraCertCustomName('');
-    setExtraCertNameAr('');
-    setExtraCertNameEn('');
-    setExtraCertNationality('egyptian');
-    setExtraCertIdNumber('');
-    setExtraConfirm(false);
-
-    if (priceData && priceData.price > 0) {
+    setExtraCertSubmitting(true);
+    setExtraCertError('');
+    try {
+      const created = await mysqlClient.createCertificateRequest({
+        type: req.type, courseId: req.courseId, customName: req.customName,
+        nameAr: req.nameAr, nameEn: req.nameEn, nationality: req.nationality,
+        idNumber: req.idNumber, note: req.note,
+      } as any as Record<string, unknown>);
+      refreshMySubscriber();
+      setExtraConfirm(false);
+      if (created.price && created.currency) {
       const certLabel = EXTRA_TYPES.find(t => t.key === extraCertType)?.label || 'شهادة إضافية';
       sessionStorage.setItem('mahad-pending-order', JSON.stringify({
-        orderId: req.id,
+        orderId: created.id,
         type: 'certificate',
-        itemId: req.id,
+        itemId: created.id,
         itemTitle: certLabel,
-        amount: priceData.price,
-        currency: priceData.currency,
+        amount: created.price,
+        currency: created.currency,
         paymentMethod: 'card',
         customerName: extraCertNameAr || subscriber.name,
         customerEmail: subscriber.email || '',
@@ -136,7 +127,20 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
         extraCertRequestId: req.id,
         subscriberPhone: subscriber.phone,
       }));
-      navigate(`/checkout?type=certificate&id=${req.id}&amount=${priceData.price}&currency=${priceData.currency}&title=${encodeURIComponent(certLabel)}`);
+        navigate(`/checkout?type=certificate&id=${created.id}&amount=${created.price}&currency=${created.currency}&title=${encodeURIComponent(certLabel)}`);
+      }
+      setExtraCertType('');
+      setExtraCertCourseId('');
+      setExtraCertNote('');
+      setExtraCertCustomName('');
+      setExtraCertNameAr('');
+      setExtraCertNameEn('');
+      setExtraCertNationality('egyptian');
+      setExtraCertIdNumber('');
+    } catch (error) {
+      setExtraCertError(error instanceof Error ? error.message : 'تعذر إرسال طلب الشهادة');
+    } finally {
+      setExtraCertSubmitting(false);
     }
   };
 
@@ -328,7 +332,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
               </div>
             )}
             <button
-              disabled={!extraCertType || !extraCertNameAr.trim() || !extraCertNameEn.trim() || !extraCertIdNumber.trim() || (extraCertType === 'other' && !extraCertCustomName)}
+              disabled={!extraCertType || !extraCertCourseId || !extraCertNameAr.trim() || !extraCertNameEn.trim() || !extraCertIdNumber.trim() || (extraCertType === 'other' && !extraCertCustomName)}
               onClick={() => setExtraConfirm(true)}
               className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white font-bold rounded-xl transition text-sm"
             >
@@ -348,11 +352,13 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
               </p>
             )}
             <div className="flex gap-3">
+              {extraCertError && <p className="text-sm text-red-600 sm:col-span-2">{extraCertError}</p>}
               <button
-                onClick={() => { handleRequestExtraCert(); }}
+                disabled={extraCertSubmitting}
+                onClick={() => { void handleRequestExtraCert(); }}
                 className="flex-1 py-2.5 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 active:scale-95 transition text-sm"
               >
-                {autoPrice ? '💳 تأكيد والانتقال للدفع' : '✅ تأكيد الطلب'}
+                {extraCertSubmitting ? 'جارٍ إرسال الطلب...' : autoPrice ? '💳 تأكيد والانتقال للدفع' : '✅ تأكيد الطلب'}
               </button>
               <button onClick={() => setExtraConfirm(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition text-sm">
                 إلغاء

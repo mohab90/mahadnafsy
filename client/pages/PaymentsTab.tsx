@@ -76,9 +76,15 @@ export default function PaymentsTab({ subscriber, currency, onGoToCertificates, 
     if (!isCard && (!amt || amt <= 0)) { setError('أدخل المبلغ المدفوع'); return; }
     setSubmitting(true);
     try {
+      if (isCard) throw new Error('Membership card requests are not payment proofs');
+      const orders = await mysqlClient.getMyOrders();
+      const pendingOrder = orders.find(order =>
+        ['PENDING', 'PAYMENT_PENDING', 'AWAITING_PAYMENT'].includes(String(order.status).toUpperCase()) &&
+        Number(order.amount) === amt && String(order.currency).toUpperCase() === cur
+      );
+      if (!pendingOrder) throw new Error('No matching pending order');
       await mysqlClient.submitPaymentProof({
-        amount: isCard ? amt || 0 : amt,
-        currency: cur,
+        order_id: pendingOrder.id,
         payment_method: isCard ? 'card_request' : method,
         proof_image: image,
         note: isCard ? `طلب كارنيه (بطاقة عضوية)${note ? ' — ' + note : ''}` : note,

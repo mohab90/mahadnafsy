@@ -200,7 +200,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     const key = `${item.source}-${item.id}`;
     setUpdatingKey(key);
     try {
-      let originalStatus = target;
+      let originalStatus: string = target;
       if (item.source === 'ticket') {
         originalStatus = target === 'done' ? 'resolved' : target === 'closed' ? 'closed' : 'in_progress';
         await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}`, {

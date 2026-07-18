@@ -29,7 +29,7 @@ interface LeadModalsHostProps {
   isSalesOnly: boolean;
   currentStaff: StaffMember | null;
   setSalesNotifOpen: (open: boolean) => void;
-  setLeadsFollowupFilter: (filter: 'all' | 'today' | 'overdue' | 'none') => void;
+  setLeadsFollowupFilter: (filter: 'all' | 'today' | 'overdue') => void;
   setActiveDashboardTab?: (tab: string) => void;
   showSettings: boolean;
   setShowSettings: (open: boolean) => void;
@@ -40,7 +40,7 @@ interface LeadModalsHostProps {
   showAddLead: boolean;
   setShowAddLead: (open: boolean) => void;
   sources: string[];
-  handleAddLead: (lead: LeadItem) => void | Promise<void>;
+  handleAddLead: (...args: any[]) => Promise<void>;
   showBulkWA: boolean;
   selectedLeads: LeadItem[];
   closeBulkWhatsApp: () => void;

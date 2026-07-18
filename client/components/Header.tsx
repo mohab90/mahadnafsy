@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Menu, X, Globe, LogIn, LogOut, User } from 'lucide-react';
 import { Currency } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
+import GlobalSearch from './GlobalSearch';
 
 const FALLBACK_LOGO = 'https://h.top4top.io/p_3734xfq501.png';
 
@@ -60,6 +61,7 @@ const Header: React.FC = () => {
 
           {/* Actions */}
           <div className="hidden lg:flex items-center gap-4">
+            <GlobalSearch />
             {isAdmin && (
             <div className="relative" ref={currencyRef}>
               <button
@@ -107,6 +109,7 @@ const Header: React.FC = () => {
         {/* Mobile Nav */}
         {isMenuOpen && (
           <nav className="lg:hidden mt-4 pb-4 border-t pt-4 space-y-3">
+            <div className="px-2"><GlobalSearch /></div>
             <Link to="/" className="block py-2 px-2 hover:bg-gray-50 rounded" onClick={() => setIsMenuOpen(false)}>الرئيسية</Link>
             <Link to="/about" className="block py-2 px-2 hover:bg-gray-50 rounded" onClick={() => setIsMenuOpen(false)}>عن المعهد</Link>
             <Link to="/courses" className="block py-2 px-2 hover:bg-gray-50 rounded" onClick={() => setIsMenuOpen(false)}>الكورسات</Link>
