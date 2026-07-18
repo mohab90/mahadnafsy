@@ -24,11 +24,12 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     if (!payment.amount || Number(payment.amount) <= 0) return res.status(400).json({ error: 'payment.amount must be > 0' });
     // Validate subscriber exists — also fetch assigned_sales_id for commission lookup
     const [[subRow]] = await pool.query(
-      'SELECT id, email, assigned_sales_id, tenant_id, branch, branch_id FROM subscribers WHERE id = ? LIMIT 1',
-      [subscriber_id]
+      `SELECT id, email, assigned_sales_id, tenant_id, branch, branch_id
+       FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
+      [subscriber_id, req.tenantId]
     );
     if (!subRow) return res.status(404).json({ error: 'Subscriber not found' });
-    const paymentTenantId = subRow.tenant_id || 'tenant-default';
+    const paymentTenantId = req.tenantId;
     const paymentBranch = subRow.branch || 'ONLINE_EGYPT';
     const paymentBranchId = subRow.branch_id || branchIdForBranch(paymentBranch);
     const id = payment.id || uuidv4();
@@ -39,8 +40,12 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     let resolvedStaffName = payment.staffName || payment.staff_name || null;
     const resolvedStaffId = payment.staffId || payment.staff_id || null;
     if (!resolvedStaffName && resolvedStaffId) {
-      const [[su]] = await pool.query('SELECT name FROM staff WHERE id = ? LIMIT 1', [resolvedStaffId]).catch(() => [[null]]);
+      const [[su]] = await pool.query(
+        'SELECT name FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+        [resolvedStaffId, paymentTenantId]
+      ).catch(() => [[null]]);
       if (su) resolvedStaffName = su.name || null;
+      else return res.status(400).json({ error: 'Staff does not belong to tenant' });
     }
     const VALID_SOURCES_SP = new Set(['web','staff','reception','daqqi','paymob','system']);
     const resolvedSource = VALID_SOURCES_SP.has(payment.source) ? payment.source : null;
@@ -48,6 +53,20 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     const isPaid = (payment.status || 'paid') === 'paid';
     const courseId = payment.courseId || payment.course_id || null;
     const bundleId = payment.bundleId || payment.bundle_id || null;
+    if (courseId) {
+      const [[course]] = await pool.query(
+        'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+        [courseId, paymentTenantId]
+      );
+      if (!course) return res.status(400).json({ error: 'Course does not belong to tenant' });
+    }
+    if (bundleId) {
+      const [[bundle]] = await pool.query(
+        'SELECT id FROM bundles WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+        [bundleId, paymentTenantId]
+      );
+      if (!bundle) return res.status(400).json({ error: 'Bundle does not belong to tenant' });
+    }
 
     // ── Begin atomic transaction ──────────────────────────────────────────────
     conn = await pool.getConnection();
@@ -96,8 +115,8 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           const [[paidRow]] = await conn.query(
             `SELECT COALESCE(SUM(amount),0) AS total_paid
              FROM payments
-             WHERE subscriber_id=? AND (course_id=? OR bundle_id=?) AND status='paid'`,
-            [subscriber_id, courseId || null, bundleId || null]
+             WHERE tenant_id=? AND subscriber_id=? AND (course_id=? OR bundle_id=?) AND status='paid' AND deleted_at IS NULL`,
+            [paymentTenantId, subscriber_id, courseId || null, bundleId || null]
           );
           const totalPaid = Number(paidRow?.total_paid || 0) + Number(payment.amount || 0);
           enrollAccessType = totalPaid >= courseExpected ? 'full' : 'limited';
@@ -117,28 +136,26 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
            branch_id = VALUES(branch_id)`,
         [uuidv4(), subscriber_id, courseId, bundleId, enrollAccessType, paymentTenantId, paymentBranchId]
       );
-      // Also sync crm_json: add courseId/bundleId to enrolledCourseIds and set courseAccess
-      setImmediate(async () => {
-        try {
-          const [[subCrm2]] = await pool.query('SELECT crm_json FROM subscribers WHERE id=? LIMIT 1', [subscriber_id]);
-          if (!subCrm2) return;
-          const crm2 = tryJson(subCrm2.crm_json, {});
-          crm2.enrolledCourseIds = crm2.enrolledCourseIds || [];
-          if (courseId && !crm2.enrolledCourseIds.includes(courseId)) {
-            crm2.enrolledCourseIds.push(courseId);
-          }
-          if (bundleId && !crm2.enrolledCourseIds.includes(`bundle:${bundleId}`)) {
-            crm2.enrolledCourseIds.push(`bundle:${bundleId}`);
-          }
-          crm2.courseAccess = crm2.courseAccess || {};
-          if (courseId) {
-            crm2.courseAccess[courseId] = enrollAccessType === 'full'
-              ? 'full'
-              : { mode: 'limited', lectureLimit: 2 }; // default 2 preview lectures for partial pay
-          }
-          await pool.query('UPDATE subscribers SET crm_json=? WHERE id=?', [JSON.stringify(crm2), subscriber_id]);
-        } catch (crmSyncErr) { logger.error('[payment] crm enrolledCourseIds sync failed', crmSyncErr.message); }
-      });
+      // Keep the CRM access projection in the same transaction as payment and enrollment.
+      const [[subCrm2]] = await conn.query(
+        'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+        [subscriber_id, paymentTenantId]
+      );
+      if (!subCrm2) throw new Error('Subscriber disappeared during payment transaction');
+      const crm2 = tryJson(subCrm2.crm_json, {});
+      crm2.enrolledCourseIds = crm2.enrolledCourseIds || [];
+      if (courseId && !crm2.enrolledCourseIds.includes(courseId)) crm2.enrolledCourseIds.push(courseId);
+      if (bundleId && !crm2.enrolledCourseIds.includes(`bundle:${bundleId}`)) crm2.enrolledCourseIds.push(`bundle:${bundleId}`);
+      crm2.courseAccess = crm2.courseAccess || {};
+      if (courseId) {
+        crm2.courseAccess[courseId] = enrollAccessType === 'full'
+          ? 'full'
+          : { mode: 'limited', lectureLimit: 2 };
+      }
+      await conn.query(
+        'UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?',
+        [JSON.stringify(crm2), subscriber_id, paymentTenantId]
+      );
     }
 
     // Auto-calculate and record commission for the responsible staff member
@@ -148,21 +165,24 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       const [[rule]] = await conn.query(`
         SELECT id, percentage_value
         FROM commission_rules
-        WHERE is_active = 1
+        WHERE tenant_id=? AND is_active = 1
           AND calc_type = 'PERCENTAGE'
           AND (staff_id = ? OR (staff_id IS NULL AND JSON_CONTAINS(COALESCE(apply_to_roles,'[]'), JSON_QUOTE(
-            (SELECT role FROM staff WHERE id = ? LIMIT 1)
+            (SELECT role FROM staff WHERE id=? AND tenant_id=? LIMIT 1)
           ))))
           AND effective_from <= CURDATE()
           AND (effective_to IS NULL OR effective_to >= CURDATE())
           AND (min_payment IS NULL OR min_payment <= ?)
         ORDER BY staff_id DESC, priority ASC
         LIMIT 1
-      `, [commStaffId, commStaffId, Number(payment.amount)]).catch(() => [[null]]);
+      `, [paymentTenantId, commStaffId, commStaffId, paymentTenantId, Number(payment.amount)]).catch(() => [[null]]);
 
       let commRate = rule?.percentage_value || 0;
       if (!commRate) {
-        const [[stf]] = await conn.query('SELECT commission_rate FROM staff WHERE id = ? LIMIT 1', [commStaffId]).catch(() => [[null]]);
+        const [[stf]] = await conn.query(
+          'SELECT commission_rate FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+          [commStaffId, paymentTenantId]
+        ).catch(() => [[null]]);
         commRate = stf?.commission_rate || 0;
       }
 
@@ -174,12 +194,12 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         const commNote = payment.isInstallment ? `قسط — ${commRate}% من ${payment.amount}` : null;
         await conn.query(
           `INSERT INTO crm_commissions
-             (id, staff_id, payment_id, rule_id, client_id, client_type, payment_amount,
-              commission_amount, calc_details, month, year, status, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDING',NOW())
+             (id, tenant_id, staff_id, payment_id, rule_id, client_id, client_type, payment_amount,
+               commission_amount, calc_details, month, year, status, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'PENDING',NOW())
            ON DUPLICATE KEY UPDATE commission_amount=VALUES(commission_amount)`,
           [
-            uuidv4(), commStaffId, id, rule?.id || null, subscriber_id, 'subscriber',
+            uuidv4(), paymentTenantId, commStaffId, id, rule?.id || null, subscriber_id, 'subscriber',
             amtEgp, commAmount,
             JSON.stringify({ rate: commRate, calc_type: 'PERCENTAGE', rule_id: rule?.id || null, isInstallment: !!payment.isInstallment, note: commNote, originalAmount: Number(payment.amount), originalCurrency: payment.currency || 'EGP' }),
             now.getMonth() + 1, now.getFullYear()
@@ -191,17 +211,23 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // Auto-create instructor_fee when a COURSE payment is made and instructor has revenue_share_pct set
     if (isPaid && courseId && safeType === 'COURSE') {
       try {
-        const [[courseRow]] = await conn.query('SELECT instructor_id FROM courses WHERE id = ? LIMIT 1', [courseId]).catch(() => [[null]]);
+        const [[courseRow]] = await conn.query(
+          'SELECT instructor_id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+          [courseId, paymentTenantId]
+        ).catch(() => [[null]]);
         if (courseRow?.instructor_id) {
-          const [[iRates]] = await conn.query('SELECT revenue_share_pct, currency FROM instructor_rates WHERE staff_id = ? LIMIT 1', [courseRow.instructor_id]).catch(() => [[null]]);
+          const [[iRates]] = await conn.query(
+            'SELECT revenue_share_pct, currency FROM instructor_rates WHERE tenant_id=? AND staff_id=? LIMIT 1',
+            [paymentTenantId, courseRow.instructor_id]
+          ).catch(() => [[null]]);
           const sharePct = parseFloat(iRates?.revenue_share_pct || 0);
           if (sharePct > 0) {
             const feeAmount = parseFloat((Number(payment.amount) * sharePct / 100).toFixed(2));
             const feeNow = new Date();
             await conn.query(
-              `INSERT INTO instructor_fees (id, staff_id, course_id, fee_type, fixed_amount, total_amount, currency, period_month, period_year, note, created_by)
-               VALUES (?,?,?,'fixed',?,?,?,?,?,?,?)`,
-              [uuidv4(), courseRow.instructor_id, courseId, feeAmount, feeAmount,
+              `INSERT INTO instructor_fees (id, tenant_id, staff_id, course_id, fee_type, fixed_amount, total_amount, currency, period_month, period_year, note, created_by)
+               VALUES (?,?,?,?,'fixed',?,?,?,?,?,?,?)`,
+              [uuidv4(), paymentTenantId, courseRow.instructor_id, courseId, feeAmount, feeAmount,
                iRates?.currency || 'EGP', feeNow.getMonth() + 1, feeNow.getFullYear(),
                `حصة تلقائية ${sharePct}% من دفعة ${id}`, resolvedStaffId || 'system']
             );
@@ -227,42 +253,45 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       if (!journalId) throw new Error('Payment journal posting failed');
     }
 
+    // Persist the payment projection before commit so CRM cannot lag behind a paid record.
+    const [[subCrm]] = await conn.query(
+      'SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [subscriber_id, paymentTenantId]
+    );
+    if (!subCrm) throw new Error('Subscriber disappeared during payment transaction');
+    const crm = tryJson(subCrm.crm_json, {});
+    crm.paymentHistory = crm.paymentHistory || [];
+    if (!crm.paymentHistory.find(p => p.id === id)) {
+      crm.paymentHistory.push({
+        id, status: payment.status || 'paid', amount: Number(payment.amount) || 0,
+        currency: payment.currency || 'EGP', paymentType: safeType.toLowerCase(),
+        paymentMethod: payment.paymentMethod || payment.payment_method || null,
+        transactionId: payment.transactionId || payment.transaction_id || null,
+        isInstallment: !!payment.isInstallment, courseId, bundleId,
+        note: payment.note || payment.notes || null, at: resolvedDate,
+        staffId: resolvedStaffId, staffName: resolvedStaffName,
+        fromAccountNumber: payment.fromAccountNumber || payment.from_account || null,
+        source: resolvedSource, itemTitle: payment.itemTitle || payment.item_title || null,
+        certType: payment.certType || payment.cert_type || null,
+      });
+      await conn.query(
+        'UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?',
+        [JSON.stringify(crm), subscriber_id, paymentTenantId]
+      );
+    }
+    if (subRow.email) {
+      await conn.query(
+        "UPDATE leads SET status='converted' WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND LOWER(status) NOT IN ('converted','lost') LIMIT 5",
+        [paymentTenantId, subRow.email]
+      );
+    }
+    await syncLeadDealValue(subscriber_id, conn, paymentTenantId, true);
+
     await conn.commit();
     conn.release();
     conn = null;
     // End transaction
 
-    // Sync crm_json.paymentHistory
-    setImmediate(async () => {
-      try {
-        const [[subCrm]] = await pool.query('SELECT crm_json FROM subscribers WHERE id = ? LIMIT 1', [subscriber_id]);
-        if (subCrm) {
-          const crm = tryJson(subCrm.crm_json, {});
-          crm.paymentHistory = crm.paymentHistory || [];
-          if (!crm.paymentHistory.find(p => p.id === id)) {
-            crm.paymentHistory.push({
-              id, status: payment.status || 'paid',
-              amount: Number(payment.amount) || 0,
-              currency: payment.currency || 'EGP',
-              paymentType: safeType.toLowerCase(),
-              paymentMethod: payment.paymentMethod || payment.payment_method || null,
-              transactionId: payment.transactionId || payment.transaction_id || null,
-              isInstallment: !!payment.isInstallment,
-              courseId, bundleId,
-              note: payment.note || payment.notes || null,
-              at: resolvedDate,
-              staffId: resolvedStaffId,
-              staffName: resolvedStaffName,
-              fromAccountNumber: payment.fromAccountNumber || payment.from_account || null,
-              source: resolvedSource,
-              itemTitle: payment.itemTitle || payment.item_title || null,
-              certType: payment.certType || payment.cert_type || null,
-            });
-            await pool.query('UPDATE subscribers SET crm_json = ? WHERE id = ?', [JSON.stringify(crm), subscriber_id]);
-          }
-        }
-      } catch (crmErr) { logger.error('[subscriber-payments] crm_json sync failed', id, crmErr.message); }
-    });
     // Audit log
     logPaymentAudit(id, 'create', null, payment.status || 'paid', payment.amount || 0, subscriber_id, req.user?.email || req.user?.uid).catch(() => {});
     // Notify admins of new payment
@@ -272,10 +301,16 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       if (subRow.email) {
         let courseLabel = '';
         if (courseId) {
-          const [[ci]] = await pool.query('SELECT title FROM courses WHERE id=? LIMIT 1', [courseId]).catch(() => [[null]]);
+          const [[ci]] = await pool.query(
+            'SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1',
+            [courseId, paymentTenantId]
+          ).catch(() => [[null]]);
           courseLabel = ci?.title || '';
         } else if (bundleId) {
-          const [[bi]] = await pool.query('SELECT title FROM bundles WHERE id=? LIMIT 1', [bundleId]).catch(() => [[null]]);
+          const [[bi]] = await pool.query(
+            'SELECT title FROM bundles WHERE id=? AND tenant_id=? LIMIT 1',
+            [bundleId, paymentTenantId]
+          ).catch(() => [[null]]);
           courseLabel = bi?.title || '';
         }
         const paymentDate = new Date(payment.date || payment.at || Date.now()).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -292,7 +327,10 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
            <p style="color:#888;font-size:13px;">احتفظ بهذا الإيصال لسجلاتك. للاستفسار تواصل معنا عبر الموقع.</p>`
         ).catch(e => logger.error('[receipt-email]', e.message));
         // Send WhatsApp payment confirmation to subscriber
-        const subPhone = await pool.query('SELECT phone FROM subscribers WHERE id=? LIMIT 1', [subscriber_id])
+        const subPhone = await pool.query(
+          'SELECT phone FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+          [subscriber_id, paymentTenantId]
+        )
           .then(([[r]]) => r?.phone || null).catch(() => null);
         if (subPhone) {
           const waMsg = `✅ تم استلام دفعتك بنجاح!\nالمبلغ: ${payment.amount} ${payment.currency || 'EGP'}${courseLabel ? '\nالبرنامج: ' + courseLabel : ''}\nالتاريخ: ${paymentDate}\nشكراً لثقتك بمعهد الدراسات النفسية 💚`;
@@ -300,15 +338,6 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         }
       }
     }
-    // Auto-convert any matching lead to 'converted' status
-    if (subRow.email) {
-      pool.query(
-        "UPDATE leads SET status='converted' WHERE LOWER(email)=LOWER(?) AND LOWER(status) NOT IN ('converted','lost') LIMIT 5",
-        [subRow.email]
-      ).catch(() => {});
-    }
-    // Auto-sync lead deal_value from total payments
-    syncLeadDealValue(subscriber_id).catch(() => {});
     // Enqueue enrollment email sequence (best-effort)
     if (isPaid && subRow.email) {
       enqueueEmailSequence('enrollment', subRow.email, null, Date.now()).catch(() => {});

@@ -18,10 +18,14 @@ const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middlewar
 // POST /api/me/progress — mark a lecture complete (or update watch progress)
 router.post('/api/me/progress', requireAuth, async (req, res) => {
   try {
+    // Retired insecure v23 contract. The canonical PATCH route validates the
+    // tenant, enrollment and paid entitlement before completion/certification.
+    return res.status(410).json({ error: 'Use PATCH /api/me/progress' });
+    /* istanbul ignore next -- legacy implementation retained temporarily for rollback visibility */
     const { lecture_id, course_id, progress_pct, watch_seconds } = req.body;
     if (!lecture_id) return res.status(400).json({ error: 'lecture_id required' });
     const email = req.user.email?.toLowerCase().trim();
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
+    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const pct = Math.min(100, Math.max(0, Number(progress_pct) || 100));
     await pool.query(
@@ -98,8 +102,8 @@ router.get('/api/me/progress', requireAuth, async (req, res) => {
     const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
     if (!sub) return res.json([]);
     const { course_id } = req.query;
-    let sql = 'SELECT lecture_id, course_id, progress_pct, watch_seconds, completed_at FROM lecture_completions WHERE subscriber_id=?';
-    const params = [sub.id];
+    let sql = 'SELECT lecture_id, course_id, progress_pct, watch_seconds, completed_at FROM lecture_completions WHERE subscriber_id=? AND tenant_id=?';
+    const params = [sub.id, req.tenantId];
     if (course_id) { sql += ' AND course_id=?'; params.push(course_id); }
     const [rows] = await pool.query(sql, params);
     res.json(rows);
@@ -116,10 +120,10 @@ router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrS
              ROUND(AVG(lc.watch_seconds),0) AS avg_watch_sec
       FROM lecture_completions lc
       LEFT JOIN course_lectures l ON l.id=lc.lecture_id
-      WHERE lc.course_id=?
+       WHERE lc.course_id=? AND lc.tenant_id=?
       GROUP BY lc.lecture_id
       ORDER BY completions DESC
-    `, [req.params.courseId]);
+    `, [req.params.courseId, req.tenantId]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -136,20 +140,22 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
     // UserDashboardVideoPlayer) uses to unlock the "first N" lectures. The server
     // MUST read the same source, else it strands lectures the UI shows unlocked
     // ("جاري تحميل الفيديو..." forever). See memory: partial-access-video-truth.
-    const [[sub]] = await pool.query('SELECT id, crm_json FROM subscribers WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
+    const [[sub]] = await pool.query('SELECT id, crm_json FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
     if (!sub) return res.status(403).json({ accessible: false, reason: 'not_subscribed' });
     // Lecture + its chapter's sort order (for chapter-grouped positioning).
     const [[lecture]] = await pool.query(
       `SELECT cl.id, cl.course_id, cl.sort_order, cl.drip_unlock_days, cl.video_url,
               COALESCE(cc.sort_order, 999999) AS chapter_sort
-       FROM course_lectures cl LEFT JOIN course_chapters cc ON cc.id = cl.chapter_id
-       WHERE cl.id=? LIMIT 1`,
-      [req.params.lectureId]
+        FROM course_lectures cl
+        JOIN courses c ON c.id=cl.course_id
+        LEFT JOIN course_chapters cc ON cc.id = cl.chapter_id
+        WHERE cl.id=? AND c.tenant_id=? LIMIT 1`,
+      [req.params.lectureId, req.tenantId]
     );
     if (!lecture) return res.status(404).json({ accessible: false, reason: 'not_found' });
     const [[enrolled]] = await pool.query(
-      'SELECT enrolled_at, access_type, lecture_limit FROM enrollments WHERE subscriber_id=? AND course_id=? LIMIT 1',
-      [sub.id, lecture.course_id]
+       'SELECT enrolled_at, access_type, lecture_limit FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1',
+      [sub.id, lecture.course_id, req.tenantId]
     );
     // Resolve access mode + limit the SAME way the client does: crm_json.courseAccess
     // wins; enrollments is the fallback for older records.
@@ -206,7 +212,12 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
 router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, async (req, res) => {
   try {
     const days = Math.max(0, Number(req.body.drip_unlock_days) || 0);
-    await pool.query('UPDATE course_lectures SET drip_unlock_days=? WHERE id=?', [days, req.params.lectureId]);
+    const [result] = await pool.query(
+      `UPDATE course_lectures cl JOIN courses c ON c.id=cl.course_id
+       SET cl.drip_unlock_days=? WHERE cl.id=? AND c.tenant_id=?`,
+      [days, req.params.lectureId, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Lecture not found' });
     res.json({ ok: true, drip_unlock_days: days });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

@@ -120,20 +120,6 @@ router.get('/api/admin/sys-config/public', async (_req, res) => {
 // but commission/salary/target fields are only included for roles with view_staff (this
 // route had zero permission check at all, so e.g. a TRAINER could read every SALES rep's
 // commission rate).
-router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res) => {
-  try {
-    const canViewSensitive = hasPermission(req.staffRecord, 'view_staff');
-    const [rows] = await pool.query(
-      `SELECT id, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, created_at,
-              monthly_target AS monthlyTarget, monthly_target_type AS monthlyTargetType,
-              monthly_leads_target AS monthlyLeadsTarget, monthly_bonus AS monthlyBonus
-       FROM staff ORDER BY name ASC`
-    );
-    const sanitized = canViewSensitive ? rows : rows.map(({ commission_rate, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus, notes, ...rest }) => rest);
-    res.json(sanitized);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
 // POST /api/admin/staff/:id/set-password — admin sets password for staff member
 router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin, async (req, res) => {
   try {

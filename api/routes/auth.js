@@ -27,21 +27,34 @@ const { isString, isEmail, validateBody } = require('../middleware/validate');
 router.post('/api/auth/register', registerLimiter, requireDb,
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
-    password: v => isString(v, 200) && (v || '').length >= 6 || 'Password must be at least 6 characters',
+    password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
   const { email, password, name, phone, country, interest, ref } = req.body || {};
   let conn;
+  let transactionStarted = false;
   try {
     conn = await pool.getConnection();
     await ensureUsersTable(conn);
-    const [existing] = await conn.execute('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const normalizedEmail = email.toLowerCase().trim();
+    const tenantId = req.tenantId || 'tenant-default';
+    const branch = 'ONLINE_EGYPT';
+    const [[protectedStaff]] = await conn.execute(
+      'SELECT id FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+      [normalizedEmail]
+    );
+    if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
+      return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
+    }
+    const [existing] = await conn.execute('SELECT id FROM users WHERE email = ?', [normalizedEmail]);
     if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
+    await conn.beginTransaction();
+    transactionStarted = true;
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
     await conn.execute(
       'INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)',
-      [id, email.toLowerCase().trim(), hash, (name || '').trim(), 'user']
+      [id, normalizedEmail, hash, (name || '').trim(), 'user']
     );
     // Also write to registrations table (best-effort)
     try {
@@ -51,16 +64,6 @@ router.post('/api/auth/register', registerLimiter, requireDb,
         [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', country || '', interest || '']
       );
     } catch { /* registrations table may not exist — ignore */ }
-    // If this is a staff/admin email — skip creating CRM lead/subscriber records
-    const [[isStaffEmail]] = await conn.execute(
-      'SELECT id FROM staff WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
-      [email.toLowerCase().trim()]
-    ).catch(() => [[null]]);
-    if (isStaffEmail || ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase().trim())) {
-      const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-      res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
-      return res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
-    }
     // Generate ONE shared client code — same code on both lead and subscriber for this person
     let sharedClientCode = null;
     try { sharedClientCode = await getNextClientCode(conn); } catch (codeErr) { logger.warn('[register] Could not get client code:', codeErr.message); }
@@ -69,19 +72,18 @@ router.post('/api/auth/register', registerLimiter, requireDb,
     try {
       // Check for existing lead with same phone or email first
       const normalizedPhone = (phone || '').replace(/\D/g, '');
-      const normalizedEmail = email.toLowerCase().trim();
       let existingLeadId = null;
       if (normalizedPhone.length >= 7) {
         const [[byPhone]] = await conn.execute(
-          'SELECT id FROM leads WHERE REGEXP_REPLACE(phone, "[^0-9]", "") = ? AND hidden = 0 LIMIT 1',
-          [normalizedPhone]
+          'SELECT id FROM leads WHERE tenant_id=? AND REGEXP_REPLACE(phone, "[^0-9]", "") = ? AND hidden = 0 LIMIT 1',
+          [tenantId, normalizedPhone]
         );
         if (byPhone) existingLeadId = byPhone.id;
       }
       if (!existingLeadId) {
         const [[byEmail]] = await conn.execute(
-          'SELECT id FROM leads WHERE LOWER(TRIM(email)) = ? AND hidden = 0 LIMIT 1',
-          [normalizedEmail]
+          'SELECT id FROM leads WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND hidden = 0 LIMIT 1',
+          [tenantId, normalizedEmail]
         );
         if (byEmail) existingLeadId = byEmail.id;
       }
@@ -90,25 +92,40 @@ router.post('/api/auth/register', registerLimiter, requireDb,
         createdLeadId = existingLeadId;
         const newName = (name || '').trim();
         await conn.execute(
-          'UPDATE leads SET name = IF(LENGTH(?) > 0, ?, name), client_code = IF(client_code IS NULL, ?, client_code) WHERE id = ?',
-          [newName, newName, sharedClientCode, existingLeadId]
+          'UPDATE leads SET name=IF(LENGTH(?)>0,?,name), email=?, phone=COALESCE(NULLIF(?,\'\'),phone), client_code=COALESCE(client_code,?), branch=COALESCE(NULLIF(branch,\'\'),?), branch_id=COALESCE(branch_id,?) WHERE id=? AND tenant_id=?',
+          [newName, newName, normalizedEmail, phone || '', sharedClientCode, branch, branchIdForBranch(branch), existingLeadId, tenantId]
         );
         logger.info(`[register] Reused existing lead ${existingLeadId} for ${normalizedEmail}`);
       } else {
         const leadId = uuidv4();
         createdLeadId = leadId;
+        const [[salesRep]] = await conn.execute(
+          `SELECT s.id, s.name FROM staff s
+           LEFT JOIN leads l ON l.assigned_sales_id=s.id AND l.tenant_id=? AND l.hidden=0
+           WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
+           GROUP BY s.id, s.name ORDER BY COUNT(l.id) ASC, s.name ASC LIMIT 1`,
+          [tenantId, tenantId]
+        );
         await conn.execute(
-          `INSERT INTO leads (id, client_code, name, email, phone, source, status, hidden, created_at)
-           VALUES (?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, NOW())`,
-          [leadId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail, phone || '']
+          `INSERT INTO leads
+             (id, tenant_id, client_code, name, email, phone, source, status, hidden,
+              branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, ?, ?, ?, ?, NOW())`,
+          [leadId, tenantId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail,
+           phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
         );
         logger.info(`[register] Created lead ${leadId} code=${sharedClientCode} for ${normalizedEmail}`);
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }).catch(() => {});
       }
-    } catch (leadErr) { logger.error('[register] Could not create lead:', leadErr.message); }
+    } catch (leadErr) {
+      logger.error('[register] Could not create lead:', leadErr.message);
+      throw leadErr;
+    }
     // NOTE: No subscriber record created on register — client stays in عملاء محتملين until admin manually
     // converts them after payment (admin moves them to عملاء الأونلاين and assigns a course).
-    const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    await conn.commit();
+    transactionStarted = false;
+    const token = jwt.sign({ uid: id, email: normalizedEmail, tid: tenantId, jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
     res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
 
@@ -125,28 +142,42 @@ router.post('/api/auth/register', registerLimiter, requireDb,
     // Enqueue registration email sequence (best-effort)
     enqueueEmailSequence('registration', email.toLowerCase().trim(), (name || '').trim(), Date.now()).catch(() => {});
   } catch (err) {
+    if (transactionStarted && conn) await conn.rollback().catch(() => {});
     logger.error('[auth/register]', err);
     res.status(500).json({ error: 'Registration failed' });
-  } finally { conn.release(); }
+  } finally { if (conn) conn.release(); }
 });
 // Alias — WAF on shared hosting may block /api/auth/ paths; this exposes the same handler under /api/user/signup
-router.post('/api/user/signup', registerLimiter,
+router.post('/api/user/signup', registerLimiter, requireDb,
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
-    password: v => isString(v, 200) && (v || '').length >= 6 || 'Password must be at least 6 characters',
+    password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
   const { email, password, name, phone, country, interest, ref } = req.body || {};
   const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
     await ensureUsersTable(conn);
-    const [existing] = await conn.execute('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const normalizedEmail = email.toLowerCase().trim();
+    const tenantId = req.tenantId || 'tenant-default';
+    const branch = 'ONLINE_EGYPT';
+    const [[protectedStaff]] = await conn.execute(
+      'SELECT id FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+      [normalizedEmail]
+    );
+    if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
+      return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
+    }
+    const [existing] = await conn.execute('SELECT id FROM users WHERE email = ?', [normalizedEmail]);
     if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
+    await conn.beginTransaction();
+    transactionStarted = true;
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
     await conn.execute(
       'INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)',
-      [id, email.toLowerCase().trim(), hash, (name || '').trim(), 'user']
+      [id, normalizedEmail, hash, (name || '').trim(), 'user']
     );
     // Referral attribution (best-effort): credit the referrer + tag the new user.
     if (ref) {
@@ -160,43 +191,56 @@ router.post('/api/user/signup', registerLimiter,
         [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', country || '', interest || '']
       );
     } catch { /* ignore */ }
-    const [[isStaffEmail]] = await conn.execute(
-      'SELECT id FROM staff WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
-      [email.toLowerCase().trim()]
-    ).catch(() => [[null]]);
-    if (isStaffEmail || ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase().trim())) {
-      const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-      res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
-      return res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
-    }
     let sharedClientCode = null;
     try { sharedClientCode = await getNextClientCode(conn); } catch { }
     try {
       const normalizedPhone = (phone || '').replace(/\D/g, '');
-      const normalizedEmail = email.toLowerCase().trim();
       let existingLeadId = null;
       if (normalizedPhone.length >= 7) {
-        const [[byPhone]] = await conn.execute('SELECT id FROM leads WHERE REGEXP_REPLACE(phone, "[^0-9]", "") = ? AND hidden = 0 LIMIT 1', [normalizedPhone]);
+        const [[byPhone]] = await conn.execute('SELECT id FROM leads WHERE tenant_id=? AND REGEXP_REPLACE(phone, "[^0-9]", "") = ? AND hidden = 0 LIMIT 1', [tenantId, normalizedPhone]);
         if (byPhone) existingLeadId = byPhone.id;
       }
       if (!existingLeadId) {
-        const [[byEmail]] = await conn.execute('SELECT id FROM leads WHERE LOWER(TRIM(email)) = ? AND hidden = 0 LIMIT 1', [normalizedEmail]);
+        const [[byEmail]] = await conn.execute('SELECT id FROM leads WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND hidden = 0 LIMIT 1', [tenantId, normalizedEmail]);
         if (byEmail) existingLeadId = byEmail.id;
       }
       if (existingLeadId) {
         const newName = (name || '').trim();
-        await conn.execute('UPDATE leads SET name = IF(LENGTH(?) > 0, ?, name), client_code = IF(client_code IS NULL, ?, client_code) WHERE id = ?', [newName, newName, sharedClientCode, existingLeadId]);
+        await conn.execute(
+          'UPDATE leads SET name=IF(LENGTH(?)>0,?,name), email=?, phone=COALESCE(NULLIF(?,\'\'),phone), client_code=COALESCE(client_code,?), branch=COALESCE(NULLIF(branch,\'\'),?), branch_id=COALESCE(branch_id,?) WHERE id=? AND tenant_id=?',
+          [newName, newName, normalizedEmail, phone || '', sharedClientCode, branch, branchIdForBranch(branch), existingLeadId, tenantId]
+        );
       } else {
         const leadId = uuidv4();
-        await conn.execute(`INSERT INTO leads (id, client_code, name, email, phone, source, status, hidden, created_at) VALUES (?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, NOW())`, [leadId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail, phone || '']);
+        const [[salesRep]] = await conn.execute(
+          `SELECT s.id, s.name FROM staff s
+           LEFT JOIN leads l ON l.assigned_sales_id=s.id AND l.tenant_id=? AND l.hidden=0
+           WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
+           GROUP BY s.id, s.name ORDER BY COUNT(l.id) ASC, s.name ASC LIMIT 1`,
+          [tenantId, tenantId]
+        );
+        await conn.execute(
+          `INSERT INTO leads
+             (id, tenant_id, client_code, name, email, phone, source, status, hidden,
+              branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, ?, ?, ?, ?, NOW())`,
+          [leadId, tenantId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail,
+           phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
+        );
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }).catch(() => {});
       }
-    } catch (leadErr) { logger.error('[user/signup] Could not create lead:', leadErr.message); }
-    const token = jwt.sign({ uid: id, email: email.toLowerCase().trim(), jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    } catch (leadErr) {
+      logger.error('[user/signup] Could not create lead:', leadErr.message);
+      throw leadErr;
+    }
+    await conn.commit();
+    transactionStarted = false;
+    const token = jwt.sign({ uid: id, email: normalizedEmail, tid: tenantId, jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
     res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
     if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`).catch(() => {});
   } catch (err) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[user/signup]', err);
     res.status(500).json({ error: 'Registration failed' });
   } finally { conn.release(); }
@@ -207,7 +251,7 @@ router.post('/api/user/signup', registerLimiter,
 router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin,
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
-    password: v => isString(v, 200) && (v || '').length >= 6 || 'Password must be at least 6 characters',
+    password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
     name:     v => isString(v, 200)      || 'name is required',
   }),
   async (req, res) => {
@@ -294,6 +338,7 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     const displayName = (name || existing?.name || normEmail).trim();
     const phoneVal = (phone || '').trim() || null; // NULL not '' so UNIQUE constraint works
     let action = '';
+    const defaultBranch = 'ONLINE_EGYPT';
 
     // This handler writes across users/subscribers/enrollments/payments — wrap in a
     // transaction so a mid-way failure (e.g. the enrollments loop) can't leave a user
@@ -362,7 +407,6 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       let targetSubId;
       if (!subExists) {
         targetSubId = uuidv4();
-        const defaultBranch = 'ONLINE_EGYPT';
         await conn.execute(
           `INSERT INTO subscribers
              (id, email, name, phone, branch, branch_id, is_active, created_at, updated_at)
@@ -636,13 +680,13 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     if (staffWith2FA?.totp_enabled) {
       // Issue a short-lived "pending" token — full session not granted until TOTP verified
       const pendingToken = jwt.sign(
-        { uid: user.id, email: user.email, purpose: 'totp_pending', jti: uuidv4() },
+        { uid: user.id, email: user.email, tid: req.tenantId || 'tenant-default', purpose: 'totp_pending', jti: uuidv4() },
         JWT_SECRET,
         { expiresIn: '5m' }
       );
       return res.json({ ok: false, totpRequired: true, pendingToken });
     }
-    const token = jwt.sign({ uid: user.id, email: user.email, jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    const token = jwt.sign({ uid: user.id, email: user.email, tid: req.tenantId || 'tenant-default', jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     // Link subscriber record to this user account (best-effort)
     pool.query(
       `UPDATE subscribers SET firebase_uid = ? WHERE LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
@@ -811,7 +855,7 @@ router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
 router.post('/api/auth/reset-password', loginLimiter, async (req, res) => {
   const { resetToken, newPassword } = req.body || {};
   if (!resetToken || !newPassword) return res.status(400).json({ error: 'البيانات مطلوبة' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' });
   try {
     const payload = jwt.verify(resetToken, JWT_SECRET);
     if (payload.purpose !== 'reset') return res.status(400).json({ error: 'رمز غير صالح' });
@@ -835,7 +879,7 @@ router.post('/api/auth/verify-2fa', otpLimiter, async (req, res) => {
     if (!row) return res.status(400).json({ error: 'الرمز غير صحيح أو منتهي الصلاحية' });
     await pool.query('UPDATE otp_codes SET used=1 WHERE id=?', [row.id]);
     // Issue full JWT
-    const token = jwt.sign({ uid: payload.uid, email: payload.email, jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    const token = jwt.sign({ uid: payload.uid, email: payload.email, tid: payload.tid || req.tenantId || 'tenant-default', jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
     pool.query(`UPDATE subscribers SET firebase_uid=? WHERE LOWER(TRIM(email))=? AND firebase_uid IS NULL LIMIT 1`, [payload.uid, payload.email]).catch(() => {});
     const cookieOpts = 'HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure';
     res.setHeader('Set-Cookie', `authToken=${token}; ${cookieOpts}`);
@@ -869,7 +913,7 @@ router.put('/api/auth/update-profile', requireAuth, async (req, res) => {
 router.put('/api/auth/update-password', requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
   const conn = await pool.getConnection();
   try {
     const [rows] = await conn.execute('SELECT password_hash FROM users WHERE id = ?', [req.user.uid]);
@@ -911,7 +955,7 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
   const conn = await pool.getConnection();
   try {
     // Validate minimal password length
-    if (newPassword && newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (newPassword && newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     // Validate new email not already taken by another user
     if (newEmail && newEmail.toLowerCase().trim() !== currentEmail.toLowerCase().trim()) {
       const [[existing]] = await conn.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [newEmail.toLowerCase().trim()]);
@@ -1080,7 +1124,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
 
     // Issue full JWT
     const fullToken = jwt.sign(
-      { uid: payload.uid, email: payload.email, jti: uuidv4() },
+      { uid: payload.uid, email: payload.email, tid: payload.tid || req.tenantId || 'tenant-default', jti: uuidv4() },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY }
     );

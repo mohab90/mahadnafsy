@@ -35,11 +35,18 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res)
     const monthlyLeadsTarget = numOrNull(s.monthlyLeadsTarget ?? s.monthly_leads_target);
     const monthlyBonus       = numOrNull(s.monthlyBonus       ?? s.monthly_bonus);
 
+    const [[foreignId]] = await pool.query(
+      'SELECT tenant_id FROM staff WHERE id=? LIMIT 1', [id]
+    );
+    if (foreignId && foreignId.tenant_id !== req.tenantId) {
+      return res.status(403).json({ error: 'Staff id belongs to another tenant' });
+    }
+
     await pool.query(
-      `INSERT INTO staff (id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO staff (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
-      [id, firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
+      [id, req.tenantId, s.branch_id || 'branch-other', firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
     res.json({ ok: true, id });
   } catch (e) {
@@ -51,7 +58,8 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res
   try {
     const isAdminUser = req.isAdmin === true;
     const [rows] = await pool.query(
-      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff ORDER BY name ASC'
+      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? ORDER BY name ASC',
+      [req.tenantId]
     );
     res.json(rows.map(r => ({
       id: r.id,
@@ -78,8 +86,8 @@ router.get('/api/staff/me', requireAuth, async (req, res) => {
     const email = (req.user?.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'No email in token' });
     const [rows] = await pool.query(
-      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
-      [email]
+      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? AND LOWER(email) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+      [req.tenantId, email]
     );
     if (!rows.length) return res.json(null);
     const r = rows[0];
@@ -114,8 +122,9 @@ router.patch('/api/staff/me', requireAuth, async (req, res) => {
     if (phone !== undefined && typeof phone === 'string') { fields.push('phone = ?'); vals.push(phone.slice(0, 30)); }
     if (image !== undefined && (image === null || typeof image === 'string')) { fields.push('image = ?'); vals.push(image ? image.slice(0, 500) : null); }
     if (fields.length === 0) return res.status(400).json({ error: 'No updatable fields provided' });
-    vals.push(email);
-    await pool.query(`UPDATE staff SET ${fields.join(', ')} WHERE LOWER(email) COLLATE utf8mb4_unicode_ci = ?`, vals);
+    vals.push(req.tenantId, email);
+    const [result] = await pool.query(`UPDATE staff SET ${fields.join(', ')} WHERE tenant_id=? AND LOWER(email) COLLATE utf8mb4_unicode_ci = ?`, vals);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Staff not found' });
     res.json({ ok: true });
   } catch (e) {
     routeError(res, e);
@@ -124,7 +133,11 @@ router.patch('/api/staff/me', requireAuth, async (req, res) => {
 
 router.delete('/api/admin/staff/:id', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM staff WHERE id = ?', [req.params.id]);
+    const [result] = await pool.query(
+      'UPDATE staff SET is_active=0 WHERE id=? AND tenant_id=?',
+      [req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Staff not found' });
     res.json({ ok: true });
   } catch (e) {
     routeError(res, e);

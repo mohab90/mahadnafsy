@@ -338,7 +338,7 @@ CREATE TABLE IF NOT EXISTS `payments` (
   `bundle_id`       VARCHAR(36) DEFAULT NULL,
   `amount`          DECIMAL(12,2) NOT NULL,
   `currency`        ENUM('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
-  `payment_type`    ENUM('COURSE','CERTIFICATE','CONSULTATION','BOOK','CARNEH','OTHER') DEFAULT NULL,
+  `payment_type`   ENUM('COURSE','BUNDLE','CERTIFICATE','CONSULTATION','BOOK','CARNEH','OTHER') DEFAULT NULL,
   `payment_method`  VARCHAR(50) DEFAULT NULL,
   `transaction_id`  VARCHAR(255) DEFAULT NULL,
   `is_installment`  TINYINT(1) NOT NULL DEFAULT 0,
@@ -390,7 +390,7 @@ CREATE TABLE IF NOT EXISTS `consultations` (
   `client_name`             VARCHAR(255) NOT NULL,
   `client_email`            VARCHAR(255) DEFAULT NULL,
   `client_phone`            VARCHAR(50)  DEFAULT NULL,
-  `therapist_id`            VARCHAR(36)  NOT NULL,
+  `therapist_id`            VARCHAR(36)  DEFAULT NULL,
   `session_type`            ENUM('INDIVIDUAL','COUPLE','FAMILY') NOT NULL DEFAULT 'INDIVIDUAL',
   `session_date`            DATETIME NOT NULL,
   `slot_id`                 VARCHAR(36) DEFAULT NULL,
@@ -416,7 +416,7 @@ CREATE TABLE IF NOT EXISTS `consultations` (
 
 CREATE TABLE IF NOT EXISTS `orders` (
   `id`             VARCHAR(36)  NOT NULL DEFAULT (UUID()),
-  `type`           ENUM('COURSE','BUNDLE','CONSULTATION') NOT NULL,
+  `type`           ENUM('COURSE','BUNDLE','CONSULTATION','CERTIFICATE','OTHER') NOT NULL,
   `item_id`        VARCHAR(36)  NOT NULL,
   `item_title`     VARCHAR(500) NOT NULL,
   `amount`         DECIMAL(12,2) NOT NULL,
@@ -431,11 +431,15 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `subscriber_id`  VARCHAR(36)  DEFAULT NULL,
   `course_id`      VARCHAR(36)  DEFAULT NULL,
   `bundle_id`      VARCHAR(36)  DEFAULT NULL,
+  `notes`          TEXT DEFAULT NULL,
+  `tenant_id`      VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  `branch_id`      VARCHAR(36) NOT NULL DEFAULT 'branch-other',
   `created_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `paid_at`        DATETIME DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_orders_status`     (`status`),
-  KEY `idx_orders_created_at` (`created_at`)
+  KEY `idx_orders_created_at` (`created_at`),
+  KEY `idx_orders_tenant_branch` (`tenant_id`, `branch_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -665,8 +669,11 @@ CREATE TABLE IF NOT EXISTS `notification_broadcasts` (
 
 CREATE TABLE IF NOT EXISTS `payment_proofs` (
   `id`             VARCHAR(100)  NOT NULL,
+  `order_id`       VARCHAR(36)   DEFAULT NULL,
   `subscriber_id`  VARCHAR(100)  NOT NULL,
   `course_id`      VARCHAR(100)  DEFAULT NULL,
+  `bundle_id`      VARCHAR(100)  DEFAULT NULL,
+  `item_type`      ENUM('course','bundle','consultation','certificate','other') NOT NULL DEFAULT 'course',
   `amount`         DECIMAL(12,2) NOT NULL,
   `currency`       ENUM('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
   `payment_method` VARCHAR(50)   NOT NULL DEFAULT 'instapay',
@@ -677,9 +684,13 @@ CREATE TABLE IF NOT EXISTS `payment_proofs` (
   `reviewer_note`  TEXT          DEFAULT NULL,
   `submitted_at`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `reviewed_at`    DATETIME      DEFAULT NULL,
+  `tenant_id`      VARCHAR(64)   NOT NULL DEFAULT 'tenant-default',
+  `branch_id`      VARCHAR(36)   NOT NULL DEFAULT 'branch-other',
   PRIMARY KEY (`id`),
   KEY `idx_pp_subscriber` (`subscriber_id`),
   KEY `idx_pp_status` (`status`),
+  KEY `idx_pp_order` (`order_id`),
+  KEY `idx_pp_tenant_status` (`tenant_id`, `status`, `submitted_at`),
   CONSTRAINT `fk_pp_subscriber` FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

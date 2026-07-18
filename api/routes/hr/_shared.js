@@ -10,7 +10,10 @@ const { postJournalEntry, toEgp, getFxToEgp, logFinancialAudit } = require('../.
 async function _resolveStaffByUser(req) {
   const email = req.user?.email?.toLowerCase().trim();
   if (!email) return null;
-  const [[st]] = await pool.query('SELECT id, name FROM staff WHERE LOWER(TRIM(email))=? LIMIT 1', [email]);
+  const [[st]] = await pool.query(
+    'SELECT id, name FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
+    [req.tenantId, email]
+  );
   return st || null;
 }
 

@@ -1,6 +1,7 @@
 'use strict';
 const logger = require('../lib/logger');
 const { Router } = require('express');
+const QRCode = require('qrcode');
 const router = Router();
 
 const { uuidv4 } = require('../lib/id');
@@ -18,16 +19,83 @@ const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 // PUBLIC ROUTES (no auth required)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// GET /api/search?q=... — tenant-safe public catalogue search.
+// Community content is deliberately excluded until the legacy community tables
+// have explicit tenant ownership; returning it here would bypass SaaS isolation.
+router.get('/api/search', publicLimiter, async (req, res) => {
+  try {
+    const query = sanitize(String(req.query.q || '').trim(), 80);
+    if (query.length < 2) return res.json({ courses: [], bundles: [], articles: [] });
+
+    const escaped = query.replace(/=/g, '==').replace(/%/g, '=%').replace(/_/g, '=_');
+    const like = `%${escaped}%`;
+    const [courses, bundles] = await Promise.all([
+      pool.query(
+        `SELECT id, slug, title, short_description, thumbnail, category
+           FROM courses
+          WHERE tenant_id=? AND is_published=1
+            AND (title LIKE ? ESCAPE '=' OR short_description LIKE ? ESCAPE '=' OR category LIKE ? ESCAPE '=')
+          ORDER BY sort_order ASC, created_at DESC LIMIT 8`,
+        [req.tenantId, like, like, like]
+      ).then(([rows]) => rows),
+      pool.query(
+        `SELECT id, slug, title, short_description, thumbnail
+           FROM bundles
+          WHERE tenant_id=? AND is_published=1
+            AND (title LIKE ? ESCAPE '=' OR short_description LIKE ? ESCAPE '=')
+          ORDER BY sort_order ASC, created_at DESC LIMIT 6`,
+        [req.tenantId, like, like]
+      ).then(([rows]) => rows),
+    ]);
+
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
+    res.json({
+      courses: courses.map(row => ({
+        id: row.id, slug: row.slug, title: row.title,
+        shortDescription: row.short_description, thumbnail: row.thumbnail, category: row.category,
+      })),
+      bundles: bundles.map(row => ({
+        id: row.id, slug: row.slug, title: row.title,
+        shortDescription: row.short_description, thumbnail: row.thumbnail,
+      })),
+      articles: [],
+    });
+  } catch (e) {
+    logger.error('[public/search]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Local QR generation keeps certificates and payment links independent from
+// third-party image services and avoids leaking certificate payloads externally.
+router.get('/api/qr', publicLimiter, async (req, res) => {
+  try {
+    const data = String(req.query.data || '').slice(0, 1000);
+    if (!data) return res.status(400).json({ error: 'data required' });
+    const size = Math.min(300, Math.max(64, Number.parseInt(req.query.size, 10) || 90));
+    const svg = await QRCode.toString(data, {
+      type: 'svg', width: size, margin: 1,
+      color: { dark: '#8B0000', light: '#FFFFFF' },
+    });
+    res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
+    res.send(svg);
+  } catch (e) {
+    logger.error('[public/qr]', e.message);
+    res.status(500).json({ error: 'QR generation failed' });
+  }
+});
+
 // GET /api/courses?limit=100&offset=0
 router.get('/api/courses', publicLimiter, async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 100, 500);
     const offset = parseOffset(req.query.offset);
-    const data = await cached(`courses:${limit}:${offset}`, 5 * 60 * 1000, async () => {
+    const data = await cached(`courses:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1
+        `SELECT ${COURSE_LIST_COLS} FROM courses WHERE tenant_id=? AND is_published = 1
          ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
-        [limit, offset]
+        [req.tenantId, limit, offset]
       );
       return rows.map(mapCourse);
     });
@@ -70,7 +138,7 @@ const publicLecture = (r, positionInCourse, previewLimit) => {
 router.get('/api/courses/:id', async (req, res) => {
   try {
     const lookup = req.params.id;
-    const [[row]] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE id = ? OR slug = ? LIMIT 1`, [lookup, lookup]);
+    const [[row]] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`, [req.tenantId, lookup, lookup]);
     if (!row) return res.status(404).json({ error: 'Not found' });
     const [lectures] = await pool.query(
       'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE course_id = ? ORDER BY sort_order ASC', [row.id]);
@@ -89,17 +157,17 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
     const { rating, comment } = req.body;
     const ratingNum = parseInt(rating, 10);
     if (!ratingNum || ratingNum < 1 || ratingNum > 5) return res.status(400).json({ error: 'rating must be 1–5' });
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE email=? LIMIT 1', [req.user.email]);
+    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
     if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً للتقييم' });
-    const [[enroll]] = await pool.query('SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? LIMIT 1', [sub.id, courseId]);
+    const [[enroll]] = await pool.query('SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1', [sub.id, courseId, req.tenantId]);
     if (!enroll) return res.status(403).json({ error: 'يجب أن تكون مسجلاً في الدورة' });
     await pool.query(
-      `INSERT INTO course_ratings (id, course_id, subscriber_id, rating, comment, created_at)
-       VALUES (UUID(),?,?,?,?,NOW())
+      `INSERT INTO course_ratings (id, course_id, subscriber_id, rating, comment, tenant_id, created_at)
+       VALUES (UUID(),?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE rating=VALUES(rating), comment=VALUES(comment), created_at=NOW()`,
-      [courseId, sub.id, ratingNum, comment || null]
+      [courseId, sub.id, ratingNum, comment || null, req.tenantId]
     );
-    const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=?', [courseId]);
+    const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
     res.json({ ok: true, avg: parseFloat((+agg.avg || 0).toFixed(1)), count: agg.cnt });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -108,12 +176,12 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
 router.get('/api/courses/:id/ratings', optionalAuth, async (req, res) => {
   try {
     const courseId = req.params.id;
-    const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=?', [courseId]);
+    const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
     let myRating = null;
     if (req.user?.email) {
-      const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE email=? LIMIT 1', [req.user.email]);
+      const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email).toLowerCase().trim()]);
       if (sub) {
-        const [[mine]] = await pool.query('SELECT rating, comment FROM course_ratings WHERE course_id=? AND subscriber_id=? LIMIT 1', [courseId, sub.id]);
+        const [[mine]] = await pool.query('SELECT rating, comment FROM course_ratings WHERE course_id=? AND subscriber_id=? AND tenant_id=? LIMIT 1', [courseId, sub.id, req.tenantId]);
         if (mine) myRating = mine;
       }
     }
@@ -124,7 +192,11 @@ router.get('/api/courses/:id/ratings', optionalAuth, async (req, res) => {
 // ── Content Analytics: POST /api/lectures/:id/view ──────────────────────────
 router.post('/api/lectures/:id/view', optionalAuth, async (req, res) => {
   try {
-    await pool.query('UPDATE course_lectures SET view_count = view_count + 1 WHERE id = ?', [req.params.id]);
+    await pool.query(
+      `UPDATE course_lectures cl JOIN courses c ON c.id=cl.course_id
+       SET cl.view_count = cl.view_count + 1 WHERE cl.id = ? AND c.tenant_id = ?`,
+      [req.params.id, req.tenantId]
+    );
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -133,8 +205,10 @@ router.post('/api/lectures/:id/view', optionalAuth, async (req, res) => {
 router.get('/api/admin/lesson-analytics/:courseId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, title, sort_order, view_count FROM course_lectures WHERE course_id=? ORDER BY sort_order ASC',
-      [req.params.courseId]
+      `SELECT cl.id, cl.title, cl.sort_order, cl.view_count
+       FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
+       WHERE cl.course_id=? AND c.tenant_id=? ORDER BY cl.sort_order ASC`,
+      [req.params.courseId, req.tenantId]
     );
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -144,15 +218,15 @@ router.get('/api/admin/lesson-analytics/:courseId', requireAuth, requireAdmin, a
 // GET /api/me/completions — list digital certificates earned by the subscriber
 router.get('/api/me/completions', requireAuth, async (req, res) => {
   try {
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE email=? LIMIT 1', [req.user.email]);
+    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
     if (!sub) return res.json([]);
     const [rows] = await pool.query(
       `SELECT cc.*, c.title AS course_title, c.thumbnail_url AS course_thumbnail
        FROM course_completions cc
-       LEFT JOIN courses c ON c.id = cc.course_id
-       WHERE cc.subscriber_id = ?
+       LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
+       WHERE cc.subscriber_id = ? AND cc.tenant_id=?
        ORDER BY cc.completed_at DESC`,
-      [sub.id]
+      [sub.id, req.tenantId]
     );
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -211,7 +285,7 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
     const primaryColor = brand.primaryColor;
     const LOGO_URL = brand.logoUrl;
     const qrData   = encodeURIComponent(`CERT:${certCode}|${studentName}|${courseName}`);
-    const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&color=8B0000&bgcolor=fff&data=${qrData}`;
+    const qrUrl    = `/api/qr?size=90&data=${qrData}`;
     const verifyUrl = `https://mahadnafsy.com/verify/${certCode}`;
 
     const html = `<!DOCTYPE html>
@@ -378,19 +452,19 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
 // GET /api/referral/my-code — get (or create) referral code for the logged-in subscriber
 router.get('/api/referral/my-code', requireAuth, async (req, res) => {
   try {
-    const [[sub]] = await pool.query('SELECT id, name FROM subscribers WHERE email=? LIMIT 1', [req.user.email]);
+    const [[sub]] = await pool.query('SELECT id, name FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const _refCols = 'id, subscriber_id, code, uses, earnings, created_at';
-    let [[ref]] = await pool.query(`SELECT ${_refCols} FROM referral_codes WHERE subscriber_id=? LIMIT 1`, [sub.id]);
+    let [[ref]] = await pool.query(`SELECT ${_refCols} FROM referral_codes WHERE subscriber_id=? AND tenant_id=? LIMIT 1`, [sub.id, req.tenantId]);
     if (!ref) {
       // Generate a unique short code: first 4 chars of name (Arabic safe) + 6 random hex
       const prefix = (sub.name || 'REF').replace(/\s+/g,'').slice(0,3).toUpperCase().replace(/[^A-Z0-9]/g,'') || 'REF';
       const code = prefix + Math.random().toString(36).slice(2,8).toUpperCase();
       await pool.query(
-        'INSERT INTO referral_codes (id, subscriber_id, code) VALUES (UUID(),?,?)',
-        [sub.id, code]
+        'INSERT INTO referral_codes (id, subscriber_id, code, tenant_id) VALUES (UUID(),?,?,?)',
+        [sub.id, code, req.tenantId]
       );
-      [[ref]] = await pool.query(`SELECT ${_refCols} FROM referral_codes WHERE subscriber_id=? LIMIT 1`, [sub.id]);
+      [[ref]] = await pool.query(`SELECT ${_refCols} FROM referral_codes WHERE subscriber_id=? AND tenant_id=? LIMIT 1`, [sub.id, req.tenantId]);
     }
     res.json({ code: ref.code, uses: ref.uses, earnings: ref.earnings });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -402,9 +476,11 @@ router.get('/api/admin/referrals', requireAuth, requireAdmin, async (req, res) =
     const [rows] = await pool.query(
       `SELECT rc.*, s.name AS subscriber_name, s.email AS subscriber_email, s.phone AS subscriber_phone
        FROM referral_codes rc
-       JOIN subscribers s ON s.id = rc.subscriber_id
+       JOIN subscribers s ON s.id = rc.subscriber_id AND s.tenant_id=rc.tenant_id
+       WHERE rc.tenant_id=?
        ORDER BY rc.uses DESC, rc.created_at DESC
        LIMIT 500`
+      , [req.tenantId]
     );
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -414,16 +490,16 @@ router.get('/api/admin/referrals', requireAuth, requireAdmin, async (req, res) =
 router.get('/api/bundles', async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 50, 200);
-    const data = await cached(`bundles:${limit}`, 5 * 60 * 1000, async () => {
+    const data = await cached(`bundles:${req.tenantId}:${limit}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT b.*, GROUP_CONCAT(bc.course_id ORDER BY bc.sort_order) AS course_ids_csv
          FROM bundles b
          LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id
-         WHERE b.is_published = 1
+         WHERE b.is_published = 1 AND b.tenant_id=?
          GROUP BY b.id
-         ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [limit]
+         ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
       );
-      const [courses] = await pool.query(`SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1`);
+      const [courses] = await pool.query(`SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1 AND tenant_id=?`, [req.tenantId]);
       return rows.map(r => mapBundle(r, courses.map(mapCourse)));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
@@ -436,10 +512,14 @@ router.get('/api/lectures', async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 500, 5000);
     const offset = parseOffset(req.query.offset);
-    const data = await cached(`lectures:${limit}:${offset}`, 5 * 60 * 1000, async () => {
+    const data = await cached(`lectures:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE is_published = 1 ORDER BY course_id, sort_order ASC LIMIT ? OFFSET ?',
-        [limit, offset]
+        `SELECT cl.id, cl.course_id, cl.chapter_id, cl.title, cl.description, cl.video_url, cl.duration,
+                cl.is_preview, cl.sort_order, cl.is_published, cl.lecture_type, cl.drip_unlock_days
+         FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
+         WHERE cl.is_published=1 AND c.tenant_id=?
+         ORDER BY cl.course_id, cl.sort_order ASC LIMIT ? OFFSET ?`,
+        [req.tenantId, limit, offset]
       );
       const previewLimit = await getPreviewLimit();
       const posByCourse = {};
@@ -457,9 +537,11 @@ router.get('/api/lectures', async (req, res) => {
 router.get('/api/chapters', async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 500, 1000);
-    const data = await cached(`chapters:${limit}`, 5 * 60 * 1000, async () => {
+    const data = await cached(`chapters:${req.tenantId}:${limit}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        'SELECT id, course_id, title, sort_order FROM course_chapters ORDER BY course_id, sort_order ASC LIMIT ?', [limit]);
+        `SELECT ch.id, ch.course_id, ch.title, ch.sort_order
+         FROM course_chapters ch JOIN courses c ON c.id=ch.course_id
+         WHERE c.tenant_id=? ORDER BY ch.course_id, ch.sort_order ASC LIMIT ?`, [req.tenantId, limit]);
       return rows.map(mapChapter);
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
@@ -471,13 +553,13 @@ router.get('/api/chapters', async (req, res) => {
 router.get('/api/therapists', async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 50, 200);
-    const data = await cached(`therapists:${limit}`, 10 * 60 * 1000, async () => {
+    const data = await cached(`therapists:${req.tenantId}:${limit}`, 10 * 60 * 1000, async () => {
       const [therapists] = await pool.query(
         `SELECT id, name, specialty, image, experience, rating, title, bio,
          price_egp, price_sar, price_usd, is_consultation_enabled, session_duration_minutes,
          meeting_provider, provider_base_url, featured, sort_order, show_on_home, show_on_about,
          is_active, languages_json, focus_areas_json, qualifications_json, created_at
-         FROM therapists WHERE is_active = 1 ORDER BY sort_order ASC LIMIT ?`, [limit]);
+          FROM therapists WHERE is_active = 1 AND tenant_id=? ORDER BY sort_order ASC LIMIT ?`, [req.tenantId, limit]);
       if (therapists.length > 0) {
         const ids = therapists.map(t => t.id);
         const [slots] = await pool.query(
@@ -497,9 +579,9 @@ router.get('/api/therapists', async (req, res) => {
 // GET /api/testimonials
 router.get('/api/testimonials', async (req, res) => {
   try {
-    const data = await cached('testimonials', 10 * 60 * 1000, async () => {
+    const data = await cached(`testimonials:${req.tenantId}`, 10 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        'SELECT id, name, role, text, image, sort_order, is_active FROM testimonials WHERE is_active = 1 ORDER BY sort_order ASC LIMIT 100');
+        'SELECT id, name, role, text, image, sort_order, is_active FROM testimonials WHERE is_active = 1 AND tenant_id=? ORDER BY sort_order ASC LIMIT 100', [req.tenantId]);
       return rows;
     });
     res.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=60');
@@ -527,7 +609,7 @@ router.get('/api/quizzes', async (req, res) => {
     const limit = parseLimit(req.query.limit, 200, 500);
     const [rows] = await pool.query(
       `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, created_at
-       FROM course_quizzes ORDER BY created_at DESC LIMIT ?`, [limit]);
+       FROM course_quizzes WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -539,7 +621,7 @@ router.get('/api/live-streams', async (req, res) => {
       `SELECT id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
        stream_url, platform, visibility, target_course_ids_json, status, recording_url,
        description, created_at
-       FROM live_streams ORDER BY scheduled_at DESC LIMIT 200`);
+       FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT 200`, [req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -552,8 +634,8 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
     if (verr) return res.status(400).json({ error: verr });
     const id = uuidv4();
     await pool.query(
-      'INSERT INTO contact_messages (id, name, email, phone, subject, message) VALUES (?,?,?,?,?,?)',
-      [id, name, email || null, phone, subject || null, message]
+      'INSERT INTO contact_messages (id, tenant_id, branch_id, name, email, phone, subject, message) VALUES (?,?,?,?,?,?,?,?)',
+      [id, req.tenantId, req.tenantBranchId || null, name, email || null, phone, subject || null, message]
     );
     // Lifecycle: instant acknowledgment to the sender.
     require('../lib/lifecycle').trigger('contact_received', { name, email, phone });
@@ -571,8 +653,8 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     const safeType = ['INSTRUCTOR', 'CONSULTANT', 'EMPLOYEE'].includes(String(type || '').toUpperCase())
       ? String(type).toUpperCase() : 'INSTRUCTOR';
     await pool.query(
-      'INSERT INTO join_us_applications (id, name, email, phone, specialty, experience, type, linkedin, message) VALUES (?,?,?,?,?,?,?,?,?)',
-      [id, name, email, phone, specialty, experience || '', safeType, linkedin || null, message || null]
+      'INSERT INTO join_us_applications (id, tenant_id, branch_id, name, email, phone, specialty, experience, type, linkedin, message) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      [id, req.tenantId, req.tenantBranchId || null, name, email, phone, specialty, experience || '', safeType, linkedin || null, message || null]
     );
     // Lifecycle: instant acknowledgment to the applicant.
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
@@ -581,7 +663,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     // alert HR, so a website candidate is never a dead-end. See routes/hr/talent.js.
     (async () => {
       try {
-        await require('./hr/talent').convertJoinUs({ id, name, email, phone, specialty, experience, type: safeType, linkedin, message });
+        await require('./hr/talent').convertJoinUs({ id, tenant_id: req.tenantId, name, email, phone, specialty, experience, type: safeType, linkedin, message });
         await require('../lib/notification').createNotification('hr', 'متقدم جديد من الموقع', `${name} — ${roleLabel || safeType}`, { joinUsId: id });
       } catch (err) { logger.warn('[join-us→pipeline]', err.message); }
     })();
@@ -590,14 +672,14 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
 });
 
 // GET /api/jobs — public list of open job postings (careers / employee join page).
-router.get('/api/jobs', async (_req, res) => {
+router.get('/api/jobs', async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT j.id, j.title, j.branch, j.employment_type, j.description, j.requirements,
               j.salary_min, j.salary_max, j.created_at, d.name AS department
          FROM job_postings j LEFT JOIN hr_departments d ON d.id = j.department_id
-        WHERE j.status='open' AND j.id <> 'job-talent-pool'
-        ORDER BY j.created_at DESC LIMIT 50`).catch(() => [[]]);
+        WHERE j.status='open' AND j.id <> 'job-talent-pool' AND j.tenant_id=?
+        ORDER BY j.created_at DESC LIMIT 50`, [req.tenantId]).catch(() => [[]]);
     res.json(rows);
   } catch (e) { logger.error('[jobs]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -616,7 +698,7 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       `SELECT id, firebase_uid, client_code, lead_id, name, email, phone, branch,
        is_active, notes, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
        crm_json, created_at, updated_at
-       FROM subscribers WHERE LOWER(TRIM(email)) = ? LIMIT 1`, [email]);
+       FROM subscribers WHERE LOWER(TRIM(email)) = ? AND tenant_id=? LIMIT 1`, [email, req.tenantId]);
     if (!sub) return res.json(null);
 
     const [enrollments] = await pool.query(
@@ -624,24 +706,24 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
               c.thumbnail AS c_thumb, c.instructor AS c_instructor
        FROM enrollments e
        LEFT JOIN courses c ON c.id = e.course_id
-       WHERE e.subscriber_id = ?`, [sub.id]);
+       WHERE e.subscriber_id = ? AND e.tenant_id=?`, [sub.id, req.tenantId]);
     const [payments] = await pool.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
        payment_method, transaction_id, is_installment, \`date\`, note, status,
        staff_id, staff_name, from_account, source, item_title, cert_type, created_at
-       FROM payments WHERE subscriber_id = ? ORDER BY date DESC LIMIT 200`, [sub.id]);
+       FROM payments WHERE subscriber_id = ? AND tenant_id=? AND deleted_at IS NULL ORDER BY date DESC LIMIT 200`, [sub.id, req.tenantId]);
     const [certRequests] = await pool.query(
       `SELECT cr.*, c.id AS c_id, c.title AS c_title
        FROM certificate_requests cr
        LEFT JOIN courses c ON c.id = cr.course_id
-       WHERE cr.subscriber_id = ? ORDER BY cr.requested_at DESC`, [sub.id]);
+       WHERE cr.subscriber_id = ? AND cr.tenant_id=? ORDER BY cr.requested_at DESC`, [sub.id, req.tenantId]);
     // Lecture progress is tracked in the lecture_completions table (POST /api/me/progress),
     // but mapSubscriber historically read it from crm_json (never populated) → progress always 0.
     // Pull the real per-lecture progress here and merge it in so client progress actually computes.
     let lectureProgressMap = {};
     try {
       const [completions] = await pool.query(
-        'SELECT lecture_id, progress_pct FROM lecture_completions WHERE subscriber_id = ?', [sub.id]);
+        'SELECT lecture_id, progress_pct FROM lecture_completions WHERE subscriber_id = ? AND tenant_id=?', [sub.id, req.tenantId]);
       for (const c of completions) lectureProgressMap[c.lecture_id] = Number(c.progress_pct) || 0;
     } catch (_) { /* table may not exist on older schema — fall back to crm_json */ }
 
@@ -666,7 +748,7 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
     if (allEnrolledIds.length > 0) {
       const placeholders = allEnrolledIds.map(() => '?').join(',');
       const [courseRows] = await pool.query(
-        `SELECT ${COURSE_COLS} FROM courses WHERE id IN (${placeholders})`, allEnrolledIds);
+        `SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND id IN (${placeholders})`, [req.tenantId, ...allEnrolledIds]);
       enrolledCoursesData = courseRows.map(mapCourse);
     }
     res.json({ ...mapped, enrolledCoursesData });
@@ -682,8 +764,8 @@ router.get('/api/me/consultations', requireAuth, async (req, res) => {
       `SELECT c.*, t.name AS t_name, t.specialty AS t_specialty, t.image AS t_image
        FROM consultations c
        LEFT JOIN therapists t ON t.id = c.therapist_id
-       WHERE c.client_email = ?
-       ORDER BY c.session_date DESC LIMIT 100`, [email]);
+       WHERE c.client_email = ? AND c.tenant_id=?
+       ORDER BY c.session_date DESC LIMIT 100`, [email, req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -710,23 +792,23 @@ router.get('/api/me/quiz-attempts', requireAuth, async (req, res) => {
       let isStaff = false;
       try {
         const [[staffRow]] = await pool.query(
-          'SELECT id FROM staff WHERE email = ? AND is_active = 1 LIMIT 1',
-          [(req.user.email || '').toLowerCase().trim()]
+          'SELECT id FROM staff WHERE email = ? AND tenant_id=? AND is_active = 1 LIMIT 1',
+          [(req.user.email || '').toLowerCase().trim(), req.tenantId]
         );
         isStaff = !!staffRow;
       } catch (_) {}
       if (!isStaff) {
         const [[ownerCheck]] = await pool.query(
-          'SELECT id FROM subscribers WHERE id = ? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
-          [subscriberId, req.user.uid || '', (req.user.email || '').toLowerCase().trim()]
+          'SELECT id FROM subscribers WHERE id = ? AND tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
+          [subscriberId, req.tenantId, req.user.uid || '', (req.user.email || '').toLowerCase().trim()]
         );
         if (!ownerCheck) return res.status(403).json({ error: 'Access denied' });
       }
     }
     const [rows] = await pool.query(
       `SELECT id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at
-       FROM quiz_attempts WHERE subscriber_id = ? ORDER BY taken_at DESC LIMIT 200`,
-      [subscriberId]
+       FROM quiz_attempts WHERE subscriber_id = ? AND tenant_id=? ORDER BY taken_at DESC LIMIT 200`,
+      [subscriberId, req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Server error' }); }

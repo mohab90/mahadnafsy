@@ -10,11 +10,11 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
       SELECT l.*, s.name AS staff_name, s.role, s.image,
              a.name AS approved_by_name
       FROM leaves l
-      JOIN staff s ON s.id = l.staff_id
-      LEFT JOIN staff a ON a.id = l.approved_by
-      WHERE 1=1
+      JOIN staff s ON s.id=l.staff_id AND s.tenant_id=l.tenant_id
+      LEFT JOIN staff a ON a.id=l.approved_by AND a.tenant_id=l.tenant_id
+      WHERE l.tenant_id=?
     `;
-    const params = [];
+    const params = [req.tenantId];
     if (status)   { sql += ' AND l.status = ?';  params.push(status); }
     if (staff_id) { sql += ' AND l.staff_id = ?'; params.push(staff_id); }
     if (month)    { sql += ' AND MONTH(l.start_date) = ?'; params.push(month); }
@@ -26,7 +26,7 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
 });
 
 // POST /api/admin/hr/leaves — submit leave or permission request
-router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, type, start_date, end_date, reason } = req.body;
     if (!staff_id || !type || !start_date || !end_date) {
@@ -42,11 +42,13 @@ router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePer
     const totalDays = type === 'PERMISSION' ? 0.5 : Math.ceil((d2 - d1) / 86400000) + 1;
 
     const id = uuidv4();
-    await pool.query(
-      `INSERT INTO leaves (id, staff_id, type, start_date, end_date, total_days, reason, status)
-       VALUES (?,?,?,?,?,?,?,'PENDING')`,
-      [id, staff_id, type, start_date, end_date, totalDays, reason || null]
+    const [created] = await pool.query(
+      `INSERT INTO leaves (id, tenant_id, staff_id, type, start_date, end_date, total_days, reason, status)
+       SELECT ?,?,?,?,?,?,?,?,'PENDING'
+       WHERE EXISTS (SELECT 1 FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL)`,
+      [id, req.tenantId, staff_id, type, start_date, end_date, totalDays, reason || null, staff_id, req.tenantId]
     );
+    if (!created.affectedRows) return res.status(404).json({ error: 'Staff record not found' });
 
     // Notify admin
     await createNotification('info', 'طلب إجازة جديد',
@@ -60,6 +62,7 @@ router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePer
 
 // PUT /api/admin/hr/leaves/:id/status — approve or reject leave
 router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const { id } = req.params;
     const { status, admin_note } = req.body;
@@ -67,60 +70,83 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
       return res.status(400).json({ error: 'Invalid status' });
     }
     const approver = req.staffRecord?.id || req.user?.uid || null;
-    await pool.query(
-      `UPDATE leaves SET status=?, approved_by=?, approved_at=NOW(), admin_note=? WHERE id=?`,
-      [status, approver, admin_note || null, id]
+    await conn.beginTransaction();
+    const [updated] = await conn.query(
+      `UPDATE leaves SET status=?, approved_by=?, approved_at=NOW(), admin_note=? WHERE id=? AND tenant_id=?`,
+      [status, approver, admin_note || null, id, req.tenantId]
     );
+    if (!updated.affectedRows) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Leave not found' });
+    }
 
     // If approved, sync attendance record
     if (status === 'APPROVED') {
-      const [[leave]] = await pool.query(
+      const [[leave]] = await conn.query(
         `SELECT id, staff_id, type, start_date, end_date, total_days, reason, status,
                 approved_by, approved_at, admin_note, created_at
-         FROM leaves WHERE id = ?`, [id]
+         FROM leaves WHERE id=? AND tenant_id=?`, [id, req.tenantId]
       );
       if (leave) {
         const d1 = new Date(leave.start_date);
         const d2 = new Date(leave.end_date);
         for (let d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().slice(0, 10);
-          await pool.query(
-            `INSERT INTO attendance_logs (id, staff_id, date, status, notes, source)
-             VALUES (UUID(), ?, ?, 'LEAVE', ?, 'MANUAL_ENTRY')
+          await conn.query(
+            `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, status, notes, source)
+             VALUES (UUID(), ?, ?, ?, 'LEAVE', ?, 'MANUAL_ENTRY')
              ON DUPLICATE KEY UPDATE status='LEAVE', notes=VALUES(notes)`,
-            [leave.staff_id, dateStr, `إجازة معتمدة: ${leave.type}`]
-          ).catch(() => {});
+            [req.tenantId, leave.staff_id, dateStr, `إجازة معتمدة: ${leave.type}`]
+          );
         }
       }
     }
 
+    await conn.commit();
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 // POST /api/admin/hr/salary — save/update salary structure
 router.post('/api/admin/hr/salary', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const { staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed,
             deduction_social_insurance, deduction_tax, other_allowances_json, currency, effective_from } = req.body;
     if (!staff_id || base_salary === undefined) return res.status(400).json({ error: 'staff_id and base_salary required' });
+    await conn.beginTransaction();
+    const [[ownedStaff]] = await conn.query(
+      'SELECT id FROM staff WHERE tenant_id=? AND id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.tenantId, staff_id]
+    );
+    if (!ownedStaff) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Staff record not found' });
+    }
     // Close previous open salary
-    await pool.query(
-      `UPDATE salary_structures SET effective_to = DATE_SUB(?, INTERVAL 1 DAY) WHERE staff_id = ? AND effective_to IS NULL`,
-      [effective_from || new Date().toISOString().slice(0,10), staff_id]
+    await conn.query(
+      `UPDATE salary_structures SET effective_to=DATE_SUB(?, INTERVAL 1 DAY) WHERE staff_id=? AND tenant_id=? AND effective_to IS NULL`,
+      [effective_from || new Date().toISOString().slice(0,10), staff_id, req.tenantId]
     );
     const id = uuidv4();
     const createdBy = req.staffRecord?.id || null;
-    await pool.query(
-      `INSERT INTO salary_structures (id, staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed, deduction_social_insurance, deduction_tax, other_allowances_json, currency, effective_from, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, staff_id, base_salary, housing_allowance||0, transport_allowance||0,
+    await conn.query(
+      `INSERT INTO salary_structures (id, tenant_id, staff_id, base_salary, housing_allowance, transport_allowance, food_allowance, other_fixed, deduction_social_insurance, deduction_tax, other_allowances_json, currency, effective_from, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, staff_id, base_salary, housing_allowance||0, transport_allowance||0,
        food_allowance||0, other_fixed||0, deduction_social_insurance||0, deduction_tax||0,
        other_allowances_json ? JSON.stringify(other_allowances_json) : null,
        currency||'EGP', effective_from || new Date().toISOString().slice(0,10), createdBy]
     );
+    await conn.commit();
     res.json({ ok: true, id });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 // GET /api/admin/hr/attendance/:staffId — attendance logs for a staff member
@@ -133,8 +159,8 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
     const [rows] = await pool.query(
       `SELECT id, staff_id, branch, date, check_in, check_out, total_hours, late_minutes,
               status, notes, source, import_batch_id, created_at, updated_at
-       FROM attendance_logs WHERE staff_id = ? AND MONTH(date) = ? AND YEAR(date) = ? ORDER BY date`,
-      [staffId, m, y]
+       FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND MONTH(date)=? AND YEAR(date)=? ORDER BY date`,
+      [staffId, req.tenantId, m, y]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -161,13 +187,18 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
       const [ho,mo] = check_out.split(':').map(Number);
       totalHours = Math.round(((ho*60+mo) - (hi*60+mi)) / 60 * 100) / 100;
     }
+    const [[ownedStaff]] = await pool.query(
+      'SELECT id FROM staff WHERE tenant_id=? AND id=? AND deleted_at IS NULL LIMIT 1',
+      [req.tenantId, staff_id]
+    );
+    if (!ownedStaff) return res.status(404).json({ error: 'Staff record not found' });
     await pool.query(
-      `INSERT INTO attendance_logs (id, staff_id, date, check_in, check_out, total_hours, late_minutes, status, notes, source)
-       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL_ENTRY')
+      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, check_out, total_hours, late_minutes, status, notes, source)
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL_ENTRY')
        ON DUPLICATE KEY UPDATE check_in=VALUES(check_in), check_out=VALUES(check_out),
          total_hours=VALUES(total_hours), late_minutes=VALUES(late_minutes),
          status=VALUES(status), notes=VALUES(notes)`,
-      [staff_id, date, check_in||null, check_out||null, totalHours, lateMin, safeStatus, notes||null]
+      [req.tenantId, staff_id, date, check_in||null, check_out||null, totalHours, lateMin, safeStatus, notes||null]
     );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -182,7 +213,7 @@ router.get('/api/me/hr/attendance/today', requireAuth, async (req, res) => {
     const st = await _resolveStaffByUser(req);
     if (!st) return res.json({ isStaff: false });
     const [[row]] = await pool.query(
-      'SELECT check_in, check_out, status, total_hours, late_minutes FROM attendance_logs WHERE staff_id=? AND date=CURDATE() LIMIT 1', [st.id]);
+      'SELECT check_in, check_out, status, total_hours, late_minutes FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=CURDATE() LIMIT 1', [st.id, req.tenantId]);
     res.json({ isStaff: true, staffName: st.name, today: row || null });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -196,11 +227,11 @@ router.post('/api/me/hr/attendance/check-in', requireAuth, async (req, res) => {
     const lateMin = minutesIn > (9 * 60 + 15) ? minutesIn - (9 * 60 + 15) : 0;
     const status = lateMin > 0 ? 'LATE' : 'PRESENT';
     await pool.query(
-      `INSERT INTO attendance_logs (id, staff_id, date, check_in, late_minutes, status, source)
-       VALUES (UUID(), ?, CURDATE(), ?, ?, ?, 'APP')
+      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_in, late_minutes, status, source)
+       VALUES (UUID(), ?, ?, CURDATE(), ?, ?, ?, 'APP')
        ON DUPLICATE KEY UPDATE check_in=IF(check_in IS NULL, VALUES(check_in), check_in),
          late_minutes=VALUES(late_minutes), status=IF(status='ABSENT', VALUES(status), status), source='APP'`,
-      [st.id, checkIn, lateMin, status]);
+      [req.tenantId, st.id, checkIn, lateMin, status]);
     res.json({ ok: true, check_in: checkIn, status });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -210,17 +241,17 @@ router.post('/api/me/hr/attendance/check-out', requireAuth, async (req, res) => 
     if (!st) return res.status(403).json({ error: 'not_staff' });
     const now = new Date();
     const checkOut = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const [[row]] = await pool.query('SELECT check_in FROM attendance_logs WHERE staff_id=? AND date=CURDATE() LIMIT 1', [st.id]);
+    const [[row]] = await pool.query('SELECT check_in FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=CURDATE() LIMIT 1', [st.id, req.tenantId]);
     let totalHours = null;
     if (row?.check_in) {
       const [hi, mi] = String(row.check_in).split(':').map(Number);
       totalHours = Math.round(((now.getHours() * 60 + now.getMinutes()) - (hi * 60 + mi)) / 60 * 100) / 100;
     }
     await pool.query(
-      `INSERT INTO attendance_logs (id, staff_id, date, check_out, total_hours, status, source)
-       VALUES (UUID(), ?, CURDATE(), ?, ?, 'PRESENT', 'APP')
+      `INSERT INTO attendance_logs (id, tenant_id, staff_id, date, check_out, total_hours, status, source)
+       VALUES (UUID(), ?, ?, CURDATE(), ?, ?, 'PRESENT', 'APP')
        ON DUPLICATE KEY UPDATE check_out=VALUES(check_out), total_hours=VALUES(total_hours)`,
-      [st.id, checkOut, totalHours]);
+      [req.tenantId, st.id, checkOut, totalHours]);
     res.json({ ok: true, check_out: checkOut, total_hours: totalHours });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -236,19 +267,19 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
     // Auto-calculate actuals from CRM
     const [[actuals]] = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM leads WHERE assigned_sales_id = ? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS leads_assigned,
-        (SELECT COUNT(*) FROM leads WHERE assigned_sales_id = ? AND status IN ('closed','converted') AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_converted,
-        (SELECT COUNT(*) FROM leads WHERE assigned_sales_id = ? AND status = 'contacted' AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_contacted,
-        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated,
-        (SELECT COUNT(*) FROM payments WHERE staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS sales_count,
-        (SELECT COUNT(*) FROM subscribers WHERE assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS subscribers_enrolled
-    `, [staffId,m,y, staffId,m,y, staffId,m,y, staffId,m,y, staffId,m,y, staffId,m,y]);
+        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS leads_assigned,
+        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_converted,
+        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status='contacted' AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_contacted,
+        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated,
+        (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS sales_count,
+        (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS subscribers_enrolled
+    `, [req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y]);
 
     // KPI targets
     const [targets] = await pool.query(
       `SELECT id, staff_id, metric, target_value, period, from_date, to_date, notes, set_by, created_at
-       FROM kpi_targets WHERE staff_id=? AND from_date <= ? AND to_date >= ?`,
-      [staffId, `${y}-${String(m).padStart(2,'0')}-01`, `${y}-${String(m).padStart(2,'0')}-01`]
+       FROM kpi_targets WHERE staff_id=? AND tenant_id=? AND from_date <= ? AND to_date >= ?`,
+      [staffId, req.tenantId, `${y}-${String(m).padStart(2,'0')}-01`, `${y}-${String(m).padStart(2,'0')}-01`]
     );
 
     // Historical (last 6 months)
@@ -256,9 +287,9 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
       SELECT MONTH(date) AS month, YEAR(date) AS year,
              COUNT(*) AS sales_count, SUM(amount) AS revenue
       FROM payments
-      WHERE staff_id=? AND status='paid' AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
+      WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
       GROUP BY YEAR(date), MONTH(date) ORDER BY YEAR(date) DESC, MONTH(date) DESC
-    `, [staffId]);
+    `, [staffId, req.tenantId]);
 
     // Customer-service performance for this agent (interconnects CS ↔ HR): how
     // many tickets they handled, resolution rate, first-response speed + SLA.
@@ -271,7 +302,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
                SUM(first_response_at IS NOT NULL) AS responded,
                SUM(first_response_at IS NOT NULL AND (sla_due_at IS NULL OR first_response_at <= sla_due_at)) AS sla_met
           FROM support_tickets
-         WHERE assigned_to=? AND MONTH(created_at)=? AND YEAR(created_at)=?`, [staffId, m, y]);
+         WHERE tenant_id=? AND assigned_to=? AND MONTH(created_at)=? AND YEAR(created_at)=?`, [req.tenantId, staffId, m, y]);
       cs = {
         tickets_assigned: Number(row.tickets_assigned || 0),
         tickets_resolved: Number(row.tickets_resolved || 0),

@@ -490,20 +490,31 @@ setInterval(async () => {
 router.post('/api/me/refund-request', requireAuth, async (req, res) => {
   try {
     const uid = req.user?.uid;
+    const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
     // Match by email too — a normal email/password customer's JWT uid is their
     // users-table id, not the subscriber's firebase_uid/id, so uid-only lookup
     // failed for real customers (refund request returned "Subscriber not found").
     const email = (req.user?.email || '').toLowerCase().trim();
     const [[sub]] = await pool.query(
-      'SELECT id, name, email FROM subscribers WHERE firebase_uid=? OR id=? OR LOWER(TRIM(email))=? LIMIT 1',
-      [uid, uid, email]);
+      'SELECT id, name, email FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR id=? OR LOWER(TRIM(email))=?) LIMIT 1',
+      [tenantId, uid, uid, email]);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const { payment_id, amount, currency = 'EGP', reason } = req.body;
-    if (!reason || !amount) return res.status(400).json({ error: 'reason and amount are required' });
+    const requestedAmount = Number(amount);
+    if (!reason || !Number.isFinite(requestedAmount) || requestedAmount <= 0) return res.status(400).json({ error: 'reason and a positive amount are required' });
+    if (payment_id) {
+      const [[payment]] = await pool.query(
+        "SELECT id, amount, currency FROM payments WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' LIMIT 1",
+        [payment_id, sub.id, tenantId]
+      );
+      if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
+      if (requestedAmount > Number(payment.amount || 0)) return res.status(400).json({ error: 'Refund amount exceeds payment amount' });
+      if (currency !== payment.currency) return res.status(400).json({ error: 'Refund currency must match payment currency' });
+    }
     const id = uuidv4();
     await pool.query(
-      'INSERT INTO refund_requests (id, subscriber_id, payment_id, amount, currency, reason) VALUES (?,?,?,?,?,?)',
-      [id, sub.id, payment_id || null, parseFloat(amount), currency, String(reason).substring(0, 1000)]
+      'INSERT INTO refund_requests (id, tenant_id, subscriber_id, payment_id, amount, currency, reason) VALUES (?,?,?,?,?,?,?)',
+      [id, tenantId, sub.id, payment_id || null, requestedAmount, currency, String(reason).substring(0, 1000)]
     );
     // Notify admin via email
     sendEmail(
@@ -535,14 +546,14 @@ router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrSt
     if (!subInTenant) return res.status(404).json({ error: 'Subscriber not found' });
     // Skip if a PENDING refund request already exists for this subscriber
     const [[existing]] = await pool.query(
-      "SELECT id FROM refund_requests WHERE subscriber_id=? AND status='PENDING' LIMIT 1",
-      [subscriber_id]
+      "SELECT id FROM refund_requests WHERE tenant_id=? AND subscriber_id=? AND status='PENDING' LIMIT 1",
+      [tenantId, subscriber_id]
     );
     if (existing) return res.json({ ok: true, id: existing.id, skipped: true });
     const id = uuidv4();
     await pool.query(
-      'INSERT INTO refund_requests (id, subscriber_id, amount, currency, reason, refund_method, status) VALUES (?,?,?,?,?,?,?)',
-      [id, subscriber_id, parseFloat(amount) || 0, currency, String(reason).substring(0, 1000), refund_method || null, 'PENDING']
+      'INSERT INTO refund_requests (id, tenant_id, subscriber_id, amount, currency, reason, refund_method, status) VALUES (?,?,?,?,?,?,?,?)',
+      [id, tenantId, subscriber_id, parseFloat(amount) || 0, currency, String(reason).substring(0, 1000), refund_method || null, 'PENDING']
     );
     await pool.query(
       'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
@@ -562,8 +573,8 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
              p.payment_type, p.payment_method, p.date AS payment_date
       FROM refund_requests r
       JOIN subscribers s ON s.id = r.subscriber_id
-      LEFT JOIN payments p ON p.id = r.payment_id
-      WHERE (s.tenant_id = ? OR s.tenant_id IS NULL)
+      LEFT JOIN payments p ON p.id = r.payment_id AND p.tenant_id=r.tenant_id
+      WHERE r.tenant_id=? AND s.tenant_id=r.tenant_id
     `;
     const params = [tenantId];
     if (status && status !== 'all') { sql += ' AND r.status = ?'; params.push(status); }
@@ -584,24 +595,28 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
     const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
     await conn.beginTransaction();
-    await conn.query(
-      'UPDATE refund_requests SET status=?, admin_note=?, refund_method=?, resolved_at=NOW(), resolved_by=? WHERE id=?',
-      [status, admin_note || null, refund_method || null, actor, id]
-    );
-    // If APPROVED: mark linked payment as refunded and log audit
     const [[rr]] = await conn.query(
-      'SELECT r.*, s.name AS sname, s.email AS semail FROM refund_requests r JOIN subscribers s ON s.id=r.subscriber_id WHERE r.id=? AND (s.tenant_id=? OR s.tenant_id IS NULL) FOR UPDATE',
+      'SELECT r.*, s.name AS sname, s.email AS semail FROM refund_requests r JOIN subscribers s ON s.id=r.subscriber_id AND s.tenant_id=r.tenant_id WHERE r.id=? AND r.tenant_id=? FOR UPDATE',
       [id, tenantId]
     );
     if (!rr) {
       await conn.rollback();
       return res.status(404).json({ error: 'Refund request not found' });
     }
+    if (rr.status !== 'PENDING') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Refund request is already resolved' });
+    }
+    await conn.query(
+      'UPDATE refund_requests SET status=?, admin_note=?, refund_method=?, resolved_at=NOW(), resolved_by=? WHERE id=? AND tenant_id=?',
+      [status, admin_note || null, refund_method || null, actor, id, tenantId]
+    );
+    // If APPROVED: mark linked payment as refunded and log audit
     if (status === 'APPROVED' && rr?.payment_id) {
-      const [[oldPay]] = await conn.query('SELECT status, amount, currency, payment_type, subscriber_id, course_id, bundle_id FROM payments WHERE id=? LIMIT 1 FOR UPDATE', [rr.payment_id]).catch(() => [[null]]);
+      const [[oldPay]] = await conn.query('SELECT status, amount, currency, payment_type, subscriber_id, course_id, bundle_id FROM payments WHERE id=? AND tenant_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE', [rr.payment_id, tenantId, rr.subscriber_id]).catch(() => [[null]]);
       if (oldPay) {
-        await conn.query('UPDATE payments SET status=\'refunded\', note=CONCAT(COALESCE(note,\'\'), IF(note IS NOT NULL AND note!=\'\',\' | \',\'\'), \'Refunded by \', ?) WHERE id=?',
-          [actor, rr.payment_id]);
+        await conn.query('UPDATE payments SET status=\'refunded\', note=CONCAT(COALESCE(note,\'\'), IF(note IS NOT NULL AND note!=\'\',\' | \',\'\'), \'Refunded by \', ?) WHERE id=? AND tenant_id=?',
+          [actor, rr.payment_id, tenantId]);
         await conn.query(
           `INSERT INTO payment_audit_log (id, payment_id, action, old_status, new_status, amount, subscriber_id, actor)
            VALUES (?,?,?,?,?,?,?,?)`,
@@ -609,14 +624,14 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
         ).catch(e => logger.warn('[refund] audit insert:', e.message));
         // Cancel related commission (staff shouldn't earn on refunded payment)
         await conn.query(
-          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | ملغى بسبب الاسترداد') WHERE payment_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
-          [rr.payment_id]
+          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | ملغى بسبب الاسترداد') WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
+          [rr.payment_id, tenantId]
         ).catch(e => logger.warn('[refund] commission cancel:', e.message));
         // Remove enrollment if course/bundle payment was refunded
         if (oldPay.course_id || oldPay.bundle_id) {
           await conn.query(
-            'DELETE FROM enrollments WHERE subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
-            [oldPay.subscriber_id, oldPay.course_id || null, oldPay.bundle_id || null]
+            'DELETE FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
+            [tenantId, oldPay.subscriber_id, oldPay.course_id || null, oldPay.bundle_id || null]
           ).catch(e => logger.warn('[refund] enrollment remove:', e.message));
         }
         // Post reversal journal entry (normalised to EGP like all journal postings)
@@ -642,7 +657,7 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
     }
     await conn.commit();
     committed = true;
-    if (status === 'APPROVED' && rr?.subscriber_id) syncLeadDealValue(rr.subscriber_id).catch(() => {});
+    if (status === 'APPROVED' && rr?.subscriber_id) syncLeadDealValue(rr.subscriber_id, pool, tenantId).catch(() => {});
     if (rr && rr.semail) {
       const statusAr = status === 'APPROVED' ? '✅ تمت الموافقة' : '❌ تم الرفض';
       sendEmail(rr.semail, `طلب الاسترداد — ${statusAr}`,

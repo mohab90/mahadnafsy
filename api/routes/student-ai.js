@@ -30,14 +30,14 @@ function courseListText(courses = []) {
   return `الكورسات المرتبطة بحسابك حاليا: ${titles.join('، ')}.`;
 }
 
-async function loadSubscriberContext(email) {
-  if (!email) return null;
+async function loadSubscriberContext(email, tenantId) {
+  if (!email || !tenantId) return null;
   const [[subscriber]] = await pool.query(
     `SELECT id, name, email, enrolled_courses
      FROM subscribers
-     WHERE LOWER(TRIM(email)) = LOWER(TRIM(?))
+     WHERE tenant_id=? AND LOWER(TRIM(email)) = LOWER(TRIM(?))
      LIMIT 1`,
-    [email],
+    [tenantId, email],
   );
   if (!subscriber) return null;
 
@@ -54,8 +54,8 @@ async function loadSubscriberContext(email) {
   if (enrolledIds.length > 0) {
     const placeholders = enrolledIds.slice(0, 20).map(() => '?').join(',');
     const [rows] = await pool.query(
-      `SELECT id, title FROM courses WHERE id IN (${placeholders}) LIMIT 20`,
-      enrolledIds.slice(0, 20),
+      `SELECT id, title FROM courses WHERE tenant_id=? AND id IN (${placeholders}) LIMIT 20`,
+      [tenantId, ...enrolledIds.slice(0, 20)],
     );
     courses = rows;
   }
@@ -96,7 +96,7 @@ router.post('/chat', requireAuth, aiLimiter, async (req, res) => {
     const message = normalizeMessage(req.body?.message);
     if (!message) return res.status(400).json({ error: 'الرسالة مطلوبة.' });
 
-    const context = await loadSubscriberContext(req.user?.email).catch((error) => {
+    const context = await loadSubscriberContext(req.user?.email, req.tenantId).catch((error) => {
       logger.warn('failed to load subscriber context', { email: req.user?.email, error: error.message });
       return null;
     });

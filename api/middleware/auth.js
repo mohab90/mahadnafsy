@@ -5,6 +5,11 @@ const jwt  = require('jsonwebtoken');
 const { pool } = require('../lib/db');
 const { JWT_SECRET, tokenBlacklist } = require('../lib/token');
 const {
+  findActiveStaff: findTenantStaff,
+  getTrustedTenantId,
+  tenantIdFromPayload,
+} = require('../lib/authTenant');
+const {
   FULL_ACCESS_ROLES,
   ROLE_PERMS,
   resolvePermissions,
@@ -13,6 +18,13 @@ const {
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean);
 const ADMIN_UIDS   = (process.env.ADMIN_UIDS   || '').split(',').filter(Boolean);
+
+async function findActiveStaff(req, email, includePermissions = false) {
+  return findTenantStaff(req, email, {
+    includePermissions,
+    query: pool.query.bind(pool),
+  });
+}
 
 // Optional auth — populates req.user if a valid token is present, but never rejects
 async function optionalAuth(req, res, next) {
@@ -28,7 +40,14 @@ async function optionalAuth(req, res, next) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
       if (!payload.jti || !tokenBlacklist.has(payload.jti)) {
-        req.user = { uid: payload.uid, email: payload.email, jti: payload.jti };
+        const tenantId = getTrustedTenantId(req, tenantIdFromPayload(payload));
+        if (!tenantId) return next();
+        req.user = {
+          uid: payload.uid,
+          email: payload.email,
+          jti: payload.jti,
+          tenant_id: tenantId,
+        };
       }
     } catch { /* invalid token — proceed as unauthenticated */ }
   }
@@ -50,7 +69,16 @@ async function requireAuth(req, res, next) {
     if (payload.jti && tokenBlacklist.has(payload.jti)) {
       return res.status(401).json({ error: 'Token revoked' });
     }
-    req.user = { uid: payload.uid, email: payload.email, jti: payload.jti };
+    const tenantId = getTrustedTenantId(req, tenantIdFromPayload(payload));
+    if (!tenantId) {
+      return res.status(403).json({ error: 'Token tenant does not match request tenant', code: 'TENANT_MISMATCH' });
+    }
+    req.user = {
+      uid: payload.uid,
+      email: payload.email,
+      jti: payload.jti,
+      tenant_id: tenantId,
+    };
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
@@ -65,10 +93,7 @@ async function requireAdmin(req, res, next) {
   if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) return next();
   // Also allow staff members whose role grants full (*) permissions
   try {
-    const [[staff]] = await pool.query(
-      `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
-      [(email || '').toLowerCase().trim()]
-    );
+    const staff = await findActiveStaff(req, email);
     if (staff && FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase())) {
       req.staffRecord = staff;
       req.isSuperAdmin = true;
@@ -88,10 +113,7 @@ async function requireSuperAdmin(req, res, next) {
   const { email, uid } = req.user || {};
   if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) { req.isSuperAdmin = true; return next(); }
   try {
-    const [[staff]] = await pool.query(
-      `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
-      [(email || '').toLowerCase().trim()]
-    );
+    const staff = await findActiveStaff(req, email);
     if (staff && SUPER_ADMIN_ROLES.includes((staff.role || '').toLowerCase())) {
       req.staffRecord = staff;
       req.isSuperAdmin = true;
@@ -105,10 +127,7 @@ async function requireAdminOrOnlineManager(req, res, next) {
   const { email, uid } = req.user || {};
   if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) { req.isSuperAdmin = true; return next(); }
   try {
-    const [[staff]] = await pool.query(
-      `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
-      [(email || '').toLowerCase().trim()]
-    );
+    const staff = await findActiveStaff(req, email);
     if (staff && (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase()) || (staff.role || '').toLowerCase() === 'online_manager')) {
       req.staffRecord = staff;
       if (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase())) req.isSuperAdmin = true;
@@ -122,10 +141,7 @@ async function requireAdminOrOnlineManagerOrCollection(req, res, next) {
   const { email, uid } = req.user || {};
   if (ADMIN_EMAILS.includes(email) || ADMIN_UIDS.includes(uid)) { req.isSuperAdmin = true; return next(); }
   try {
-    const [[staff]] = await pool.query(
-      `SELECT id, role FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
-      [(email || '').toLowerCase().trim()]
-    );
+    const staff = await findActiveStaff(req, email);
     if (staff && (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase()) || ['online_manager', 'collection'].includes((staff.role || '').toLowerCase()))) {
       req.staffRecord = staff;
       if (FULL_ACCESS_ROLES.includes((staff.role || '').toLowerCase())) req.isSuperAdmin = true;
@@ -142,10 +158,7 @@ async function requireAdminOrStaff(req, res, next) {
     return next();
   }
   try {
-    const [[staff]] = await pool.query(
-      'SELECT id, role, permissions_json FROM staff WHERE email COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
-      [email]
-    );
+    const staff = await findActiveStaff(req, email, true);
     if (staff) {
       req.staffRecord = staff;
       if (staff.permissions_json && typeof staff.permissions_json === 'string') {

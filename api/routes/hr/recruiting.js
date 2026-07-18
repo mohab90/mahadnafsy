@@ -8,12 +8,13 @@ router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermis
     const [rows] = await pool.query(`
       SELECT j.*, d.name AS department_name,
         s.name AS posted_by_name,
-        (SELECT COUNT(*) FROM job_applicants a WHERE a.job_id=j.id) AS applicant_count
+        (SELECT COUNT(*) FROM job_applicants a WHERE a.job_id=j.id AND a.tenant_id=j.tenant_id) AS applicant_count
       FROM job_postings j
-      LEFT JOIN hr_departments d ON d.id=j.department_id
-      LEFT JOIN staff s ON s.id=j.posted_by
+      LEFT JOIN hr_departments d ON d.id=j.department_id AND d.tenant_id=j.tenant_id
+      LEFT JOIN staff s ON s.id=j.posted_by AND s.tenant_id=j.tenant_id
+      WHERE j.tenant_id=?
       ORDER BY j.created_at DESC
-    `);
+    `, [req.tenantId]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -25,15 +26,15 @@ router.post('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermi
     if (!title) return res.status(400).json({ error: 'title required' });
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO job_postings (id, title, department_id, branch, employment_type, description, requirements, salary_min, salary_max, status, posted_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, title, department_id||null, branch||null, employment_type||'full_time', description||null, requirements||null,
+      `INSERT INTO job_postings (id, tenant_id, title, department_id, branch, employment_type, description, requirements, salary_min, salary_max, status, posted_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, title, department_id||null, branch||null, employment_type||'full_time', description||null, requirements||null,
        salary_min||null, salary_max||null, status||'open', req.staffRecord?.id||null]
     );
     const [[row]] = await pool.query(
       `SELECT id, title, department_id, branch, employment_type, description, requirements,
               salary_min, salary_max, status, posted_by, created_at
-       FROM job_postings WHERE id=?`, [id]
+       FROM job_postings WHERE id=? AND tenant_id=?`, [id, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -47,12 +48,13 @@ router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requir
     const sets = []; const vals = [];
     for (const f of fields) { if (req.body[f] !== undefined) { sets.push(`${f}=?`); vals.push(req.body[f]); } }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
-    vals.push(jobId);
-    await pool.query(`UPDATE job_postings SET ${sets.join(',')} WHERE id=?`, vals);
+    vals.push(jobId, req.tenantId);
+    const [updated] = await pool.query(`UPDATE job_postings SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, vals);
+    if (!updated.affectedRows) return res.status(404).json({ error: 'Job not found' });
     const [[row]] = await pool.query(
       `SELECT id, title, department_id, branch, employment_type, description, requirements,
               salary_min, salary_max, status, posted_by, created_at
-       FROM job_postings WHERE id=?`, [jobId]
+       FROM job_postings WHERE id=? AND tenant_id=?`, [jobId, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -61,7 +63,8 @@ router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requir
 // Delete job posting
 router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM job_postings WHERE id=?', [req.params.jobId]);
+    const [deleted] = await pool.query('DELETE FROM job_postings WHERE id=? AND tenant_id=?', [req.params.jobId, req.tenantId]);
+    if (!deleted.affectedRows) return res.status(404).json({ error: 'Job not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -71,34 +74,37 @@ router.get('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrSt
   try {
     const [rows] = await pool.query(
       `SELECT a.*, s.name AS updated_by_name
-       FROM job_applicants a LEFT JOIN staff s ON s.id=a.updated_by
-       WHERE a.job_id=? ORDER BY a.created_at DESC`,
-      [req.params.jobId]
+       FROM job_applicants a LEFT JOIN staff s ON s.id=a.updated_by AND s.tenant_id=a.tenant_id
+       WHERE a.job_id=? AND a.tenant_id=? ORDER BY a.created_at DESC`,
+      [req.params.jobId, req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Add applicant
-router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { name, email, phone, cv_url, notes } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
     const id = uuidv4();
-    await pool.query(
-      `INSERT INTO job_applicants (id, job_id, name, email, phone, cv_url, notes, updated_by) VALUES (?,?,?,?,?,?,?,?)`,
-      [id, req.params.jobId, name, email||null, phone||null, cv_url||null, notes||null, req.staffRecord?.id||null]
+    const [created] = await pool.query(
+      `INSERT INTO job_applicants (id, tenant_id, job_id, name, email, phone, cv_url, notes, updated_by)
+       SELECT ?,?,?,?,?,?,?,?,?
+       WHERE EXISTS (SELECT 1 FROM job_postings WHERE id=? AND tenant_id=?)`,
+      [id, req.tenantId, req.params.jobId, name, email||null, phone||null, cv_url||null, notes||null, req.staffRecord?.id||null, req.params.jobId, req.tenantId]
     );
+    if (!created.affectedRows) return res.status(404).json({ error: 'Job not found' });
     const [[row]] = await pool.query(
       `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, updated_by, created_at, updated_at
-       FROM job_applicants WHERE id=?`, [id]
+       FROM job_applicants WHERE id=? AND tenant_id=?`, [id, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Update applicant (stage, notes, etc.)
-router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { appId } = req.params;
     const fields = ['name','email','phone','cv_url','notes','stage','stage_notes'];
@@ -106,11 +112,12 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
     for (const f of fields) { if (req.body[f] !== undefined) { sets.push(`${f}=?`); vals.push(req.body[f]); } }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     sets.push('updated_by=?'); vals.push(req.staffRecord?.id||null);
-    vals.push(appId);
-    await pool.query(`UPDATE job_applicants SET ${sets.join(',')} WHERE id=?`, vals);
+    vals.push(appId, req.tenantId);
+    const [updated] = await pool.query(`UPDATE job_applicants SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, vals);
+    if (!updated.affectedRows) return res.status(404).json({ error: 'Applicant not found' });
     const [[row]] = await pool.query(
       `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, updated_by, created_at, updated_at
-       FROM job_applicants WHERE id=?`, [appId]
+       FROM job_applicants WHERE id=? AND tenant_id=?`, [appId, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -119,7 +126,8 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
 // Delete applicant
 router.delete('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM job_applicants WHERE id=?', [req.params.appId]);
+    const [deleted] = await pool.query('DELETE FROM job_applicants WHERE id=? AND tenant_id=?', [req.params.appId, req.tenantId]);
+    if (!deleted.affectedRows) return res.status(404).json({ error: 'Applicant not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -133,9 +141,10 @@ router.get('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrStaf
   try {
     const [rows] = await pool.query(`
       SELECT t.*, COUNT(tk.id) AS task_count
-      FROM onboarding_templates t LEFT JOIN onboarding_tasks tk ON tk.template_id=t.id
+      FROM onboarding_templates t LEFT JOIN onboarding_tasks tk ON tk.template_id=t.id AND tk.tenant_id=t.tenant_id
+      WHERE t.tenant_id=?
       GROUP BY t.id ORDER BY t.name
-    `);
+    `, [req.tenantId]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -146,10 +155,10 @@ router.post('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrSta
     const { name, role, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
     const id = uuidv4();
-    await pool.query(`INSERT INTO onboarding_templates (id, name, role, description) VALUES (?,?,?,?)`,
-      [id, name, role||null, description||null]);
+    await pool.query(`INSERT INTO onboarding_templates (id, tenant_id, name, role, description) VALUES (?,?,?,?,?)`,
+      [id, req.tenantId, name, role||null, description||null]);
     const [[row]] = await pool.query(
-      'SELECT id, name, role, description, created_at FROM onboarding_templates WHERE id=?', [id]
+      'SELECT id, name, role, description, created_at FROM onboarding_templates WHERE id=? AND tenant_id=?', [id, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -159,11 +168,12 @@ router.post('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrSta
 router.put('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { name, role, description } = req.body;
-    await pool.query(`UPDATE onboarding_templates SET name=?, role=?, description=? WHERE id=?`,
-      [name, role||null, description||null, req.params.tplId]);
+    const [updated] = await pool.query(`UPDATE onboarding_templates SET name=?, role=?, description=? WHERE id=? AND tenant_id=?`,
+      [name, role||null, description||null, req.params.tplId, req.tenantId]);
+    if (!updated.affectedRows) return res.status(404).json({ error: 'Template not found' });
     const [[row]] = await pool.query(
-      'SELECT id, name, role, description, created_at FROM onboarding_templates WHERE id=?',
-      [req.params.tplId]
+      'SELECT id, name, role, description, created_at FROM onboarding_templates WHERE id=? AND tenant_id=?',
+      [req.params.tplId, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -172,8 +182,22 @@ router.put('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdmi
 // Delete template
 router.delete('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM onboarding_tasks WHERE template_id=?', [req.params.tplId]);
-    await pool.query('DELETE FROM onboarding_templates WHERE id=?', [req.params.tplId]);
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM onboarding_tasks WHERE template_id=? AND tenant_id=?', [req.params.tplId, req.tenantId]);
+      const [deleted] = await conn.query('DELETE FROM onboarding_templates WHERE id=? AND tenant_id=?', [req.params.tplId, req.tenantId]);
+      if (!deleted.affectedRows) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -183,8 +207,8 @@ router.get('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requi
   try {
     const [rows] = await pool.query(
       `SELECT id, template_id, title, description, due_days, category, sort_order
-       FROM onboarding_tasks WHERE template_id=? ORDER BY sort_order, id`,
-      [req.params.tplId]
+       FROM onboarding_tasks WHERE template_id=? AND tenant_id=? ORDER BY sort_order, id`,
+      [req.params.tplId, req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -196,13 +220,16 @@ router.post('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requ
     const { title, description, due_days, category, sort_order } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     const id = uuidv4();
-    await pool.query(
-      `INSERT INTO onboarding_tasks (id, template_id, title, description, due_days, category, sort_order) VALUES (?,?,?,?,?,?,?)`,
-      [id, req.params.tplId, title, description||null, due_days||7, category||'other', sort_order||0]
+    const [created] = await pool.query(
+      `INSERT INTO onboarding_tasks (id, tenant_id, template_id, title, description, due_days, category, sort_order)
+       SELECT ?,?,?,?,?,?,?,?
+       WHERE EXISTS (SELECT 1 FROM onboarding_templates WHERE id=? AND tenant_id=?)`,
+      [id, req.tenantId, req.params.tplId, title, description||null, due_days||7, category||'other', sort_order||0, req.params.tplId, req.tenantId]
     );
+    if (!created.affectedRows) return res.status(404).json({ error: 'Template not found' });
     const [[row]] = await pool.query(
-      'SELECT id, template_id, title, description, due_days, category, sort_order FROM onboarding_tasks WHERE id=?',
-      [id]
+      'SELECT id, template_id, title, description, due_days, category, sort_order FROM onboarding_tasks WHERE id=? AND tenant_id=?',
+      [id, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -212,13 +239,14 @@ router.post('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requ
 router.put('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { title, description, due_days, category, sort_order } = req.body;
-    await pool.query(
-      `UPDATE onboarding_tasks SET title=?, description=?, due_days=?, category=?, sort_order=? WHERE id=?`,
-      [title, description||null, due_days||7, category||'other', sort_order||0, req.params.taskId]
+    const [updated] = await pool.query(
+      `UPDATE onboarding_tasks SET title=?, description=?, due_days=?, category=?, sort_order=? WHERE id=? AND tenant_id=?`,
+      [title, description||null, due_days||7, category||'other', sort_order||0, req.params.taskId, req.tenantId]
     );
+    if (!updated.affectedRows) return res.status(404).json({ error: 'Task not found' });
     const [[row]] = await pool.query(
-      'SELECT id, template_id, title, description, due_days, category, sort_order FROM onboarding_tasks WHERE id=?',
-      [req.params.taskId]
+      'SELECT id, template_id, title, description, due_days, category, sort_order FROM onboarding_tasks WHERE id=? AND tenant_id=?',
+      [req.params.taskId, req.tenantId]
     );
     res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -226,7 +254,8 @@ router.put('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdminOr
 
 router.delete('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM onboarding_tasks WHERE id=?', [req.params.taskId]);
+    const [deleted] = await pool.query('DELETE FROM onboarding_tasks WHERE id=? AND tenant_id=?', [req.params.taskId, req.tenantId]);
+    if (!deleted.affectedRows) return res.status(404).json({ error: 'Task not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -241,12 +270,12 @@ router.get('/api/admin/hr/onboarding/employees', requireAuth, requireAdminOrStaf
         SUM(CASE WHEN eoi.completed_at IS NOT NULL THEN 1 ELSE 0 END) AS done_items,
         t.name AS template_name
       FROM staff s
-      LEFT JOIN employee_onboarding eo ON eo.staff_id=s.id AND eo.status IN ('in_progress','completed')
-      LEFT JOIN onboarding_templates t ON t.id=eo.template_id
-      LEFT JOIN employee_onboarding_items eoi ON eoi.onboarding_id=eo.id
-      WHERE s.is_active=1
+      LEFT JOIN employee_onboarding eo ON eo.staff_id=s.id AND eo.tenant_id=s.tenant_id AND eo.status IN ('in_progress','completed')
+      LEFT JOIN onboarding_templates t ON t.id=eo.template_id AND t.tenant_id=eo.tenant_id
+      LEFT JOIN employee_onboarding_items eoi ON eoi.onboarding_id=eo.id AND eoi.tenant_id=eo.tenant_id
+      WHERE s.is_active=1 AND s.tenant_id=? AND s.deleted_at IS NULL
       GROUP BY s.id, eo.id ORDER BY s.name
-    `);
+    `, [req.tenantId]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -256,9 +285,9 @@ router.get('/api/admin/hr/onboarding/:onboardingId/items', requireAuth, requireA
   try {
     const [rows] = await pool.query(
       `SELECT i.*, s.name AS completed_by_name
-       FROM employee_onboarding_items i LEFT JOIN staff s ON s.id=i.completed_by
-       WHERE i.onboarding_id=? ORDER BY i.sort_order, i.id`,
-      [req.params.onboardingId]
+       FROM employee_onboarding_items i LEFT JOIN staff s ON s.id=i.completed_by AND s.tenant_id=i.tenant_id
+       WHERE i.onboarding_id=? AND i.tenant_id=? ORDER BY i.sort_order, i.id`,
+      [req.params.onboardingId, req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -270,72 +299,115 @@ router.post('/api/admin/hr/onboarding/start', requireAuth, requireAdminOrStaff, 
     const { staff_id, template_id, tasks } = req.body; // tasks: [{title,category,due_days}]
     if (!staff_id) return res.status(400).json({ error: 'staff_id required' });
     const onboardingId = uuidv4();
-    const [[emp]] = await pool.query('SELECT hire_date FROM staff WHERE id=?', [staff_id]);
-    const hireDate = emp?.hire_date ? new Date(emp.hire_date) : new Date();
-
-    await pool.query(`INSERT INTO employee_onboarding (id, staff_id, template_id) VALUES (?,?,?)`,
-      [onboardingId, staff_id, template_id||null]);
-
-    let items = [];
-    if (template_id) {
-      const [tplTasks] = await pool.query(
-      `SELECT id, template_id, title, description, due_days, category, sort_order
-       FROM onboarding_tasks WHERE template_id=? ORDER BY sort_order`, [template_id]
-    );
-      items = tplTasks;
-    } else if (tasks && Array.isArray(tasks)) {
-      items = tasks;
-    }
-
-    if (items.length > 0) {
-      // Batch INSERT onboarding items (1 query instead of N)
-      const onbInsertRows = items.map(() => '(?,?,?,?,?,?)');
-      const onbInsertParams = items.flatMap(t => {
-        const dueDate = new Date(hireDate);
-        dueDate.setDate(dueDate.getDate() + (Number(t.due_days) || 7));
-        return [uuidv4(), onboardingId, t.title, t.category||'other', dueDate.toISOString().slice(0,10), t.sort_order||0];
-      });
-      await pool.query(
-        `INSERT INTO employee_onboarding_items (id, onboarding_id, task_title, category, due_date, sort_order) VALUES ${onbInsertRows.join(',')}`,
-        onbInsertParams
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [[emp]] = await conn.query(
+        'SELECT hire_date FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE',
+        [staff_id, req.tenantId]
       );
-    }
+      if (!emp) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+      const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
 
-    const [itemRows] = await pool.query(
-      `SELECT id, onboarding_id, task_title, category, due_date, completed_at, completed_by, notes, sort_order
-       FROM employee_onboarding_items WHERE onboarding_id=? ORDER BY sort_order`, [onboardingId]
-    );
-    res.json({ id: onboardingId, items: itemRows });
+      let items = [];
+      if (template_id) {
+        const [tplTasks] = await conn.query(
+          `SELECT id, template_id, title, description, due_days, category, sort_order
+             FROM onboarding_tasks WHERE template_id=? AND tenant_id=? ORDER BY sort_order`,
+          [template_id, req.tenantId]
+        );
+        if (!tplTasks.length) {
+          const [[template]] = await conn.query('SELECT id FROM onboarding_templates WHERE id=? AND tenant_id=?', [template_id, req.tenantId]);
+          if (!template) {
+            await conn.rollback();
+            return res.status(404).json({ error: 'Template not found' });
+          }
+        }
+        items = tplTasks;
+      } else if (tasks && Array.isArray(tasks)) {
+        items = tasks;
+      }
+
+      await conn.query(
+        `INSERT INTO employee_onboarding (id, tenant_id, staff_id, template_id) VALUES (?,?,?,?)`,
+        [onboardingId, req.tenantId, staff_id, template_id||null]
+      );
+
+      if (items.length > 0) {
+        const onbInsertRows = items.map(() => '(?,?,?,?,?,?,?)');
+        const onbInsertParams = items.flatMap(t => {
+          const dueDate = new Date(hireDate);
+          dueDate.setDate(dueDate.getDate() + (Number(t.due_days) || 7));
+          return [uuidv4(), req.tenantId, onboardingId, t.title, t.category||'other', dueDate.toISOString().slice(0,10), t.sort_order||0];
+        });
+        await conn.query(
+          `INSERT INTO employee_onboarding_items (id, tenant_id, onboarding_id, task_title, category, due_date, sort_order) VALUES ${onbInsertRows.join(',')}`,
+          onbInsertParams
+        );
+      }
+
+      const [itemRows] = await conn.query(
+        `SELECT id, onboarding_id, task_title, category, due_date, completed_at, completed_by, notes, sort_order
+           FROM employee_onboarding_items WHERE onboarding_id=? AND tenant_id=? ORDER BY sort_order`,
+        [onboardingId, req.tenantId]
+      );
+      await conn.commit();
+      res.json({ id: onboardingId, items: itemRows });
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Toggle onboarding item complete/incomplete
-router.put('/api/admin/hr/onboarding/items/:itemId', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+router.put('/api/admin/hr/onboarding/items/:itemId', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { done, notes } = req.body;
     const now = done ? new Date().toISOString().slice(0,19).replace('T',' ') : null;
-    await pool.query(
-      `UPDATE employee_onboarding_items SET completed_at=?, completed_by=?, notes=COALESCE(?,notes) WHERE id=?`,
-      [now, done ? (req.staffRecord?.id||null) : null, notes||null, req.params.itemId]
-    );
-    // auto-complete onboarding if all items done
-    const [[item]] = await pool.query('SELECT onboarding_id FROM employee_onboarding_items WHERE id=?', [req.params.itemId]);
-    if (item) {
-      const [[cnt]] = await pool.query(
-        `SELECT COUNT(*) AS total, SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM employee_onboarding_items WHERE onboarding_id=?`,
-        [item.onboarding_id]
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [updated] = await conn.query(
+        `UPDATE employee_onboarding_items SET completed_at=?, completed_by=?, notes=COALESCE(?,notes) WHERE id=? AND tenant_id=?`,
+        [now, done ? (req.staffRecord?.id||null) : null, notes||null, req.params.itemId, req.tenantId]
       );
-      if (cnt.total > 0 && cnt.total === cnt.done) {
-        await pool.query(`UPDATE employee_onboarding SET status='completed', completed_at=NOW() WHERE id=?`, [item.onboarding_id]);
-      } else {
-        await pool.query(`UPDATE employee_onboarding SET status='in_progress', completed_at=NULL WHERE id=?`, [item.onboarding_id]);
+      if (!updated.affectedRows) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Onboarding item not found' });
       }
+      const [[item]] = await conn.query(
+        'SELECT onboarding_id FROM employee_onboarding_items WHERE id=? AND tenant_id=? FOR UPDATE',
+        [req.params.itemId, req.tenantId]
+      );
+      const [[cnt]] = await conn.query(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS done
+           FROM employee_onboarding_items WHERE onboarding_id=? AND tenant_id=?`,
+        [item.onboarding_id, req.tenantId]
+      );
+      if (Number(cnt.total) > 0 && Number(cnt.total) === Number(cnt.done)) {
+        await conn.query(`UPDATE employee_onboarding SET status='completed', completed_at=NOW() WHERE id=? AND tenant_id=?`, [item.onboarding_id, req.tenantId]);
+      } else {
+        await conn.query(`UPDATE employee_onboarding SET status='in_progress', completed_at=NULL WHERE id=? AND tenant_id=?`, [item.onboarding_id, req.tenantId]);
+      }
+      const [[row]] = await conn.query(
+        `SELECT id, onboarding_id, task_title, category, due_date, completed_at, completed_by, notes, sort_order
+           FROM employee_onboarding_items WHERE id=? AND tenant_id=?`,
+        [req.params.itemId, req.tenantId]
+      );
+      await conn.commit();
+      res.json(row);
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
     }
-    const [[row]] = await pool.query(
-      `SELECT id, onboarding_id, task_title, category, due_date, completed_at, completed_by, notes, sort_order
-       FROM employee_onboarding_items WHERE id=?`, [req.params.itemId]
-    );
-    res.json(row);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

@@ -36,8 +36,9 @@ function tryJson(value, fallback) {
 }
 
 function resolveTenantId(req) {
-  const headerTenant = String(req.headers?.['x-tenant-id'] || '').trim();
-  return headerTenant || req.user?.tenant_id || DEFAULT_TENANT_ID;
+  // tenantContext validates header/sub-domain candidates and writes the
+  // canonical id to req.tenantId. Never consume x-tenant-id directly here.
+  return String(req.tenantId || req.user?.tenant_id || DEFAULT_TENANT_ID).trim() || DEFAULT_TENANT_ID;
 }
 
 async function loadTenantContext(tenantId = DEFAULT_TENANT_ID) {

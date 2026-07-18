@@ -10,9 +10,10 @@ const { tryJson } = require('../lib/helpers');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
 const { paymobLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch } = require('../lib/branches');
+const { sendWhatsApp } = require('../lib/whatsapp');
 const { awardPointsForPayment } = require('../lib/loyalty');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
-const { postPaymentJournal } = require('../lib/finance');
+const { postPaymentJournal, getFxToEgp } = require('../lib/finance');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -480,19 +481,28 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
 }
 // Finds the lead linked to this subscriber (by lead_id or phone/email match)
 // and sets deal_value = sum of all payments for that subscriber.
-async function syncLeadDealValue(subscriberId) {
+async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = null, strict = false) {
   try {
-    const [[sub]] = await pool.query('SELECT id, lead_id, phone, email, tenant_id FROM subscribers WHERE id = ? LIMIT 1', [subscriberId]);
+    const subParams = expectedTenantId ? [subscriberId, expectedTenantId] : [subscriberId];
+    const [[sub]] = await db.query(
+      `SELECT id, lead_id, phone, email, tenant_id FROM subscribers
+       WHERE id=?${expectedTenantId ? ' AND tenant_id=?' : ''} LIMIT 1`,
+      subParams
+    );
     if (!sub) return;
     const tenantId = sub.tenant_id || DEFAULT_TENANT_ID;
     // Sum all payments for this subscriber
     const totalParams = [subscriberId];
     const totalWhere = appendTenantScope('WHERE subscriber_id = ? AND amount > 0', '', tenantId, totalParams);
-    const [[totRow]] = await pool.query(
-      `SELECT COALESCE(SUM(amount),0) AS total FROM payments ${totalWhere}`,
+    const [totRows] = await db.query(
+      `SELECT currency, COALESCE(SUM(amount),0) AS total FROM payments ${totalWhere} GROUP BY currency`,
       totalParams
     );
-    const total = Number(totRow?.total || 0);
+    const fx = await getFxToEgp();
+    const total = Number(totRows.reduce((sum, row) => {
+      const currency = String(row.currency || 'EGP').toUpperCase();
+      return sum + (Number(row.total) || 0) * (Number(fx[currency]) || 1);
+    }, 0).toFixed(2));
     if (!total) return;
     // Find linked lead — first try direct lead_id link, then phone/email match
     let leadId = sub.lead_id;
@@ -504,7 +514,7 @@ async function syncLeadDealValue(subscriberId) {
         ? `WHERE (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0`
         : 'WHERE LOWER(email)=LOWER(?) AND hidden=0';
       const where = appendTenantScope(base, '', tenantId, params);
-      const [[found]] = await pool.query(`SELECT id FROM leads ${where} ORDER BY created_at DESC LIMIT 1`, params);
+      const [[found]] = await db.query(`SELECT id FROM leads ${where} ORDER BY created_at DESC LIMIT 1`, params);
       leadId = found?.id || null;
     }
     if (!leadId) return;
@@ -512,7 +522,7 @@ async function syncLeadDealValue(subscriberId) {
     try {
       const updateParams = [total, leadId];
       const updateWhere = appendTenantScope('id = ?', '', tenantId, updateParams);
-      await pool.query(`UPDATE leads SET deal_value = ? WHERE ${updateWhere}`, updateParams);
+      await db.query(`UPDATE leads SET deal_value = ? WHERE ${updateWhere}`, updateParams);
       logger.info(`[deal-value] lead ${leadId} deal_value set to ${total} EGP (sub ${subscriberId})`);
     } catch (e) {
       if (e.code === 'ER_BAD_FIELD_ERROR') {
@@ -521,6 +531,7 @@ async function syncLeadDealValue(subscriberId) {
     }
   } catch (e) {
     logger.warn('[deal-value] syncLeadDealValue error:', e.message);
+    if (strict) throw e;
   }
 }
 

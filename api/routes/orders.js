@@ -19,7 +19,7 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
       `SELECT id, type, item_id, item_title, amount, currency, payment_method, customer_name,
        customer_email, customer_phone, status, transaction_id, coupon_code, subscriber_id,
        course_id, bundle_id, notes, staff_id, staff_name, created_at, paid_at, linked_transfer_id
-       FROM orders WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
+       FROM orders WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
 
     const [payRows] = await pool.query(
       `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency,
@@ -30,7 +30,7 @@ router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
        FROM payments p
        LEFT JOIN subscribers s ON s.id = p.subscriber_id
        LEFT JOIN users u ON u.id = p.staff_id
-       WHERE p.tenant_id = ? AND p.amount > 0
+       WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND p.amount > 0
        ORDER BY p.date DESC LIMIT ?`,
       [req.tenantId, limit]
     );
@@ -90,12 +90,13 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
     }
     await pool.query(
       `INSERT INTO orders (id, subscriber_id, item_id, item_title, type, status, amount,
-         currency, payment_method, notes, staff_id, staff_name, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         currency, payment_method, notes, staff_id, staff_name, tenant_id, branch_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), staff_id=VALUES(staff_id), staff_name=VALUES(staff_name), updated_at=CURRENT_TIMESTAMP`,
       [id, o.subscriber_id || null, itemId, itemTitle, o.type || 'course',
        o.status || 'pending', amount, o.currency || 'EGP', o.payment_method || 'CARD',
-       o.notes || null, o.staff_id || null, staffName, o.created_at || new Date().toISOString()]
+       o.notes || null, o.staff_id || null, staffName, req.tenantId,
+       o.branch_id || 'branch-other', o.created_at || new Date().toISOString()]
     );
     res.json({ ok: true, id });
   } catch (e) {
@@ -108,16 +109,22 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
 router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const newStatus = req.body.status || 'pending';
-    const [[oldPay]] = await conn.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
+    const newStatus = String(req.body.status || 'pending').toLowerCase();
+    if (['paid', 'refunded'].includes(newStatus)) {
+      return res.status(409).json({ error: 'Use payment approval/refund workflow for financial statuses' });
+    }
+    if (!['pending', 'failed', 'cancelled', 'canceled'].includes(newStatus)) {
+      return res.status(400).json({ error: 'Invalid order status' });
+    }
     // order.status and payments.status must never diverge — one transaction, all or nothing.
     await conn.beginTransaction();
-    await conn.query('UPDATE orders SET status=? WHERE id=?', [newStatus, req.params.id]);
+    const [[oldPay]] = await conn.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]).catch(() => [[null]]);
+    await conn.query('UPDATE orders SET status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL', [newStatus, req.params.id, req.tenantId]);
     // Record the transfer↔payment reconciliation link when the accountant matches them.
     if (Object.prototype.hasOwnProperty.call(req.body, 'linked_transfer_id')) {
-      await conn.query('UPDATE orders SET linked_transfer_id=? WHERE id=?', [req.body.linked_transfer_id || null, req.params.id]);
+      await conn.query('UPDATE orders SET linked_transfer_id=? WHERE id=? AND tenant_id=?', [req.body.linked_transfer_id || null, req.params.id, req.tenantId]);
     }
-    await conn.query('UPDATE payments SET status=? WHERE id=?', [newStatus, req.params.id]);
+    await conn.query('UPDATE payments SET status=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL', [newStatus, req.params.id, req.tenantId]);
     await conn.commit();
     logPaymentAudit(req.params.id, 'update', oldPay?.status || null, newStatus, oldPay?.amount || null, oldPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
     if (newStatus === 'paid' || newStatus === 'failed') {
@@ -151,13 +158,26 @@ router.patch('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res
 router.delete('/api/admin/orders/:id', requireAuth, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const [[delPay]] = await conn.query('SELECT status, amount, subscriber_id FROM payments WHERE id=? LIMIT 1', [req.params.id]).catch(() => [[null]]);
-    // Hard-deletes a financial record — must stay in lockstep with the order delete.
     await conn.beginTransaction();
-    await conn.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
-    await conn.query('DELETE FROM payments WHERE id = ?', [req.params.id]);
+    const [[order]] = await conn.query(
+      'SELECT id, status FROM orders WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]
+    );
+    const [[delPay]] = await conn.query(
+      'SELECT id, status, amount, subscriber_id FROM payments WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]
+    ).catch(() => [[null]]);
+    if (!order && !delPay) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
+    const hasFinancialHistory = ['PAID', 'REFUNDED'].includes(String(order?.status || '').toUpperCase())
+      || ['paid', 'refunded'].includes(String(delPay?.status || '').toLowerCase());
+    if (hasFinancialHistory) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'لا يمكن حذف عملية مالية. استخدم الاسترداد أو قيد عكسي للحفاظ على الأثر المحاسبي.' });
+    }
+    await conn.query('UPDATE orders SET deleted_at=NOW() WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    if (delPay) await conn.query('UPDATE payments SET deleted_at=NOW() WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     await conn.commit();
-    logPaymentAudit(req.params.id, 'delete', delPay?.status || null, null, delPay?.amount || null, delPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
+    logPaymentAudit(req.params.id, 'archive', delPay?.status || order?.status || null, null, delPay?.amount || null, delPay?.subscriber_id || null, req.user?.email || req.user?.uid).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     await conn.rollback().catch(() => {});
@@ -178,17 +198,42 @@ router.get('/api/admin/abandoned-checkouts', requireAuth, requireAdmin, async (r
       `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency,
               o.customer_name, o.customer_email, o.customer_phone, o.subscriber_id, o.created_at
        FROM orders o
-       WHERE o.status = 'PENDING'
+       WHERE o.status = 'PENDING' AND o.tenant_id=? AND o.deleted_at IS NULL
          AND o.created_at <= DATE_SUB(NOW(), INTERVAL ? HOUR)
          AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
          AND NOT EXISTS (
            SELECT 1 FROM orders p
-           WHERE p.status = 'PAID' AND p.item_id = o.item_id
+           WHERE p.status = 'PAID' AND p.tenant_id=o.tenant_id AND p.deleted_at IS NULL AND p.item_id = o.item_id
              AND (p.customer_phone = o.customer_phone OR p.customer_email = o.customer_email)
          )
-       ORDER BY o.created_at DESC LIMIT 300`, [hours]);
+       ORDER BY o.created_at DESC LIMIT 300`, [req.tenantId, hours]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Customer-owned orders are the only valid source for manual payment proofs.
+router.get('/api/me/orders', requireAuth, async (req, res) => {
+  try {
+    const email = String(req.user?.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ error: 'No email in token' });
+    const [[subscriber]] = await pool.query(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
+      [req.tenantId, email]
+    );
+    const [rows] = await pool.query(
+      `SELECT o.id, o.item_id, o.item_title, o.type, o.status, o.amount, o.currency,
+              o.payment_method, o.created_at, o.paid_at
+       FROM orders o
+       WHERE o.tenant_id=? AND o.deleted_at IS NULL
+         AND (o.subscriber_id=? OR (o.subscriber_id IS NULL AND LOWER(TRIM(o.customer_email))=?))
+       ORDER BY o.created_at DESC LIMIT 100`,
+      [req.tenantId, subscriber?.id || '', email]
+    );
+    res.json(rows);
+  } catch (error) {
+    logger.error('[me/orders]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;

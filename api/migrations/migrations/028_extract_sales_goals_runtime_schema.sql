@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS sales_goals (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
+  revenue_target DECIMAL(12,2) DEFAULT 0,
+  leads_target INT DEFAULT 0,
+  conversions_target INT DEFAULT 0,
+  new_clients_target INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_period (period)
+);

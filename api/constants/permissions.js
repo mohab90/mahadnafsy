@@ -107,8 +107,27 @@ const PERMISSIONS = Object.freeze({
 const ROLE_PERMS = Object.freeze({
   [ROLES.ADMIN]:                    '*',
   [ROLES.MANAGER]:                  '*',
-  [ROLES.ONLINE_MANAGER]:           '*',
-  [ROLES.DAQQI_MANAGER]:            '*',
+  [ROLES.ONLINE_MANAGER]: [
+    'view_dashboard',
+    'view_leads', 'manage_leads', 'export_leads',
+    'view_subscribers', 'manage_subscribers', 'export_subscribers',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
+    'view_financial', 'manage_financial', 'view_reports', 'view_activity',
+    'view_staff', 'view_client_db',
+    'view_courses', 'manage_courses', 'manage_lectures',
+    'view_consultations', 'manage_consultations',
+    'manage_inbox', 'manage_notifications', 'bulk_whatsapp', 'ask_ai',
+  ],
+  [ROLES.DAQQI_MANAGER]: [
+    'view_dashboard',
+    'view_leads', 'manage_leads', 'export_leads',
+    'view_subscribers', 'manage_subscribers', 'export_subscribers',
+    'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
+    'view_financial', 'manage_financial', 'view_reports', 'view_activity',
+    'view_staff', 'view_client_db',
+    'view_consultations', 'manage_consultations',
+    'manage_inbox', 'manage_notifications', 'manage_daqqi', 'bulk_whatsapp',
+  ],
 
   [ROLES.SALES_COLLECTION_MANAGER]: [
     'view_dashboard',
@@ -205,8 +224,6 @@ const ROLE_PERMS = Object.freeze({
 const FULL_ACCESS_ROLES = Object.freeze([
   ROLES.ADMIN,
   ROLES.MANAGER,
-  ROLES.ONLINE_MANAGER,
-  ROLES.DAQQI_MANAGER,
 ]);
 
 // ── 5. DATA SCOPE PER ROLE ────────────────────────────────────────────────────
