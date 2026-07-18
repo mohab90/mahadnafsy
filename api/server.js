@@ -37,7 +37,6 @@ const { syncAllConfiguredSheets, DEFAULT_GSHEETS } = require('./lib/sheets');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('./constants/permissions');
 const gsheetsRouter = require('./routes/gsheets');
 const monitoringRouter = require('./routes/monitoring');
-const adminMaintenanceRouter = require('./routes/admin-maintenance');
 const funnelRouter = require('./routes/funnel');
 const automationRouter = require('./routes/automation');
 const abandonedCheckoutRouter = require('./routes/abandoned-checkout');
@@ -61,10 +60,7 @@ const dokkiOperationsRouter = require('./routes/dokki-operations');
 const publicOrdersRouter   = require('./routes/public-orders');
 const imageProxyRouter      = require('./routes/imageProxy');
 const certificatesRouter   = require('./routes/certificates');
-const progressRouter = require('./routes/progress');
 const clientMaintenanceRouter = require('./routes/client-maintenance');
-const waitlistRouter = require('./routes/waitlist');
-const accountingPeriodsRouter = require('./routes/accounting-periods');
 const serverMonitorRouter = require('./routes/server-monitor');
 const promoCodesRouter = require('./routes/promo-codes');
 const crmOpsRouter = require('./routes/crm-ops');
@@ -82,8 +78,6 @@ const paymentsRouter        = require('./routes/payments');
 const crmToolsRouter        = require('./routes/crm-tools');
 const subscriberPayRouter   = require('./routes/subscriber-payments');
 const paymentProofsRouter   = require('./routes/payment-proofs');
-const whatsappAdminRouter   = require('./routes/whatsapp-admin');
-const fbWebhooksRouter      = require('./routes/fb-webhooks');
 const accountingRouter      = require('./routes/accounting');
 const accountingErpRouter   = require('./routes/accounting-erp');
 const saasAdminRouter       = require('./routes/saas-admin');
@@ -95,6 +89,7 @@ const paymentsAdminRouter   = require('./routes/payments-admin');
 const { loadBlacklistFromDB } = require('./lib/token');
 const { registerStartupTasks } = require('./lib/startupTasks');
 const { adminFeatureGate } = require('./lib/adminFeatureGate');
+const { legacyTenantContainment } = require('./middleware/legacyTenantContainment');
 
 // ── Global error guards (registered before any I/O) ──────────────────────────
 process.on('uncaughtException', (err) => {
@@ -407,7 +402,7 @@ const corsOptions = {
     cb(null, false); // Reject silently — avoids unhandled error event crashing the process
   },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS', 'PUT'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Tenant-Id', 'Idempotency-Key'],
   credentials: true,
 };
 // Handle CORS preflight (OPTIONS) explicitly for all routes — defense in depth.
@@ -448,6 +443,7 @@ app.use((req, res, next) => {
 // Multi-tenancy seam (Phase 2): resolves req.tenantId from sub-domain/header/JWT.
 // Single-tenant today → always 'tenant-default'; no behavior change. See docs/MULTI-TENANCY.md.
 app.use(require('./middleware/tenantContext').resolveTenant);
+app.use(legacyTenantContainment);
 
 // Structured HTTP access log — one JSON line per request (method/path/status/ms).
 // Skips health probes to avoid flooding logs. Warn-level for 5xx so they stand out.
@@ -642,11 +638,8 @@ app.use('/', dokkiOperationsRouter);
 app.use('/', publicOrdersRouter);
 app.use('/', imageProxyRouter);
 app.use('/', certificatesRouter);
-app.use('/', progressRouter);
 app.use('/', clientMaintenanceRouter);
-app.use('/', waitlistRouter);
 app.use('/', accountingRouter);
-app.use('/', accountingPeriodsRouter);
 app.use('/', serverMonitorRouter);
 app.use('/', promoCodesRouter);
 app.use('/', crmOpsRouter);
@@ -664,12 +657,9 @@ app.use('/', paymentsRouter);
 app.use('/', crmToolsRouter);
 app.use('/', subscriberPayRouter);
 app.use('/', paymentProofsRouter);
-app.use('/', whatsappAdminRouter);
-app.use('/', fbWebhooksRouter);
 app.use('/', accountingErpRouter);
 app.use('/', saasAdminRouter);
 app.use('/', monitoringRouter);
-app.use('/', adminMaintenanceRouter);
 app.use('/', funnelRouter);
 app.use('/', lmsRouter);
 app.use('/api/v2/lms', require('./src/modules/lms/lms.routes'));
@@ -1172,4 +1162,3 @@ const server = app.listen(PORT, () => {
   }
   scheduleSelfPing();
 });
-

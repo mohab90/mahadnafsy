@@ -21,16 +21,6 @@ const { paymobLimiter, whatsappSendLimiter, publicLimiter, contactLimiter } = re
 const { safeDateOnly } = require('../../lib/dates');
 const { isString, validateBody } = require('../../middleware/validate');
 
-router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const limit  = parseLimit(req.query.limit, 200, 500);
-    const offset = parseOffset(req.query.offset);
-    const [rows] = await pool.query(
-      'SELECT id, action, entity, entity_id, label, actor, at FROM activity_logs ORDER BY at DESC LIMIT ? OFFSET ?', [limit, offset]);
-    res.json(rows);
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-
 // ── Initialize extra tables on startup ───────────────────────────────────────
 // ── Initialize extra tables on startup ───────────────────────────────────────
 // Schema for core/catalog tables is owned by numbered migrations.
@@ -40,39 +30,50 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
 router.delete('/api/admin/subscribers/:id', requireAuth, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    // Get subscriber data before deleting
-    const [[sub]] = await conn.query('SELECT id, email, phone FROM subscribers WHERE id = ? LIMIT 1', [req.params.id]);
-    if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
-
-    // Delete subscriber record completely
-    await conn.query('DELETE FROM subscribers WHERE id = ?', [req.params.id]);
-
-    // Fully delete users account (not just deactivate) so email can be reused
-    if (sub.email) {
-      const normEmail = sub.email.toLowerCase().trim();
-      await conn.query('DELETE FROM users WHERE LOWER(TRIM(email)) = ? AND role = ?', [normEmail, 'user']);
-      await conn.query('DELETE FROM otp_codes WHERE email = ?', [normEmail]);
+    await conn.beginTransaction();
+    const [[sub]] = await conn.query(
+      'SELECT id, email, phone FROM subscribers WHERE id=? AND tenant_id=? FOR UPDATE',
+      [req.params.id, req.tenantId]
+    );
+    if (!sub) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Subscriber not found' });
     }
 
-    logger.info(`[delete-subscriber] fully deleted id=${sub.id} email=${sub.email}`);
-    res.json({ ok: true });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+    // Preserve payments, orders, enrollments and audit history. "Delete" is an
+    // archive/deactivation operation; legal erasure remains a separate workflow.
+    await conn.query(
+      'UPDATE subscribers SET is_active=0, updated_at=NOW() WHERE id=? AND tenant_id=?',
+      [req.params.id, req.tenantId]
+    );
+
+    if (sub.email) {
+      const normEmail = sub.email.toLowerCase().trim();
+      await conn.query(
+        "UPDATE users SET is_active=0 WHERE tenant_id=? AND LOWER(TRIM(email))=? AND role='user'",
+        [req.tenantId, normEmail]
+      );
+    }
+
+    await conn.commit();
+    logger.info(`[delete-subscriber] archived id=${sub.id} tenant=${req.tenantId}`);
+    res.json({ ok: true, archived: true });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
   finally { conn.release(); }
 });
 router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('UPDATE leads SET hidden = 1 WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
-  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-router.delete('/api/admin/staff/:id', requireAuth, requireSuperAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM staff WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  try { await pool.query('UPDATE leads SET hidden=1 WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM course_lectures WHERE id = ?', [req.params.id]); cacheInvalidate('courses'); res.json({ ok: true }); }
+  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/chapters/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM course_chapters WHERE id = ?', [req.params.id]); cacheInvalidate('courses'); res.json({ ok: true }); }
+  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // GET /api/admin/therapists — all therapists (including inactive) with slots
