@@ -101,12 +101,6 @@ function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: str
   };
 }
 
-function workflowPriorityToTicketPriority(priority: InboxPriority) {
-  if (priority === 'urgent') return 'urgent';
-  if (priority === 'high') return 'high';
-  return 'medium';
-}
-
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
   const { contactMessages, joinUsApplications } = useSiteData();
@@ -202,10 +196,12 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     try {
       let originalStatus: string = target;
       if (item.source === 'ticket') {
+        // The plain PUT /admin/tickets/:id route does not exist (was a 404 —
+        // every ticket action from this unified inbox silently failed). The real
+        // route is /status and only accepts open|in_progress|resolved|closed.
         originalStatus = target === 'done' ? 'resolved' : target === 'closed' ? 'closed' : 'in_progress';
-        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}`, {
+        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, {
           status: originalStatus,
-          priority: target === 'pending' ? 'high' : workflowPriorityToTicketPriority(resolveWorkflow(item).priority),
         });
       } else if (item.source === 'contact') {
         originalStatus = target === 'done' ? 'replied' : 'read';
@@ -385,7 +381,14 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => navigate(`/dashboard/${meta.tab}`)}
+                    onClick={() => navigate(
+                      // Tickets deep-link straight to the conversation via ?focus=id;
+                      // other sources open their dedicated tab (there is no per-item
+                      // detail view for those yet).
+                      item.source === 'ticket'
+                        ? `/dashboard/tickets?focus=${encodeURIComponent(item.id)}`
+                        : `/dashboard/${meta.tab}`
+                    )}
                     className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-indigo-700"
                   >
                     فتح التفاصيل

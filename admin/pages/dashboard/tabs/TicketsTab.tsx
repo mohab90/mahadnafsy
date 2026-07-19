@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, User, Tag, ChevronDown, Flame, Star, ArrowRight, X, Send, TrendingUp, Zap } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -77,6 +78,8 @@ const CAT_LABELS: Record<TicketCategory, string> = {
 
 const TicketsTab: React.FC<Props> = ({ notify }) => {
   const { staffMembers } = useSiteData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusHandledRef = useRef(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const initialLoadDone = useRef(false);
@@ -394,6 +397,22 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
       notify('error', 'تعذر تحميل تفاصيل التذكرة');
     }
   };
+
+  // Deep-link: /dashboard/tickets?focus=<id> (e.g. from the unified CS inbox's
+  // "فتح التفاصيل") auto-opens that ticket's conversation once tickets load,
+  // then clears the param so closing it doesn't re-open on the next render.
+  useEffect(() => {
+    const focusId = searchParams.get('focus');
+    if (!focusId || focusHandledRef.current || tickets.length === 0) return;
+    const target = tickets.find(t => t.id === focusId);
+    if (!target) return;
+    focusHandledRef.current = true;
+    selectTicketApi(target, false);
+    const next = new URLSearchParams(searchParams);
+    next.delete('focus');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickets, searchParams]);
 
   return (
     <div className="space-y-5" dir="rtl">
