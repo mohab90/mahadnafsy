@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Briefcase,
   CheckCircle2,
@@ -10,7 +9,9 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Send,
   Ticket,
+  X,
   XCircle,
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ type InboxItem = {
   createdAt?: string;
   amount?: string;
   originalStatus?: string;
+  raw?: Record<string, unknown>;
 };
 
 type RefundRow = {
@@ -44,6 +46,8 @@ type RefundRow = {
   reason?: string;
   status?: string;
   created_at?: string;
+  refund_method?: string;
+  payment_id?: string | null;
 };
 
 const SOURCE_META: Record<InboxSource, { label: string; icon: React.ComponentType<{ size?: number }>; tab: string; tone: string }> = {
@@ -101,8 +105,9 @@ function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: str
   };
 }
 
+type TicketReply = { id: string; text: string; author: string; isStaff: boolean; at: string };
+
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
-  const navigate = useNavigate();
   const { contactMessages, joinUsApplications } = useSiteData();
   const [tickets, setTickets] = useState<any[]>([]);
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
@@ -112,6 +117,14 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [statusFilter, setStatusFilter] = useState<'all' | InboxStatus>('all');
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, { status: InboxStatus; originalStatus: string }>>({});
+
+  // Detail drawer state — opens the full item + all its actions inline (no navigation).
+  const [detailItem, setDetailItem] = useState<InboxItem | null>(null);
+  const [ticketReplies, setTicketReplies] = useState<TicketReply[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [refundNote, setRefundNote] = useState('');
 
   const loadRemote = useCallback(async () => {
     setLoading(true);
@@ -142,6 +155,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       status: mapStatus(row.status),
       originalStatus: row.status,
       createdAt: row.created_at || row.createdAt,
+      raw: row,
     }));
 
     const contactItems = contactMessages.map((row) => ({
@@ -154,6 +168,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       status: mapStatus(row.status),
       originalStatus: row.status,
       createdAt: row.createdAt,
+      raw: row as unknown as Record<string, unknown>,
     }));
 
     const refundItems = refunds.map((row) => ({
@@ -167,6 +182,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       originalStatus: row.status,
       createdAt: row.created_at,
       amount: `${Math.round(Number(row.amount || 0)).toLocaleString('ar-EG')} ${row.currency || 'EGP'}`,
+      raw: row as unknown as Record<string, unknown>,
     }));
 
     const joinItems = joinUsApplications.map((row) => ({
@@ -179,6 +195,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       status: mapStatus(row.status),
       originalStatus: row.status,
       createdAt: row.createdAt,
+      raw: row as unknown as Record<string, unknown>,
     }));
 
     return [...ticketItems, ...contactItems, ...refundItems, ...joinItems]
@@ -190,19 +207,43 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     return override ? { ...item, ...override } : item;
   }), [items, statusOverrides]);
 
+  // ── Open the detail drawer for an item (fetches ticket conversation on demand) ──
+  const openDetail = useCallback(async (item: InboxItem) => {
+    setDetailItem(item);
+    setReplyText('');
+    setRefundNote('');
+    setTicketReplies([]);
+    if (item.source === 'ticket') {
+      setDetailLoading(true);
+      try {
+        const row = await mysqlAdmin.adminGet<any>(`/admin/tickets/${encodeURIComponent(item.id)}`);
+        const replies = Array.isArray(row?.replies) ? row.replies : Array.isArray(row?.messages) ? row.messages : [];
+        setTicketReplies(replies.map((r: any) => ({
+          id: String(r.id),
+          text: r.body || r.text || '',
+          author: r.author_name || (r.author_type === 'subscriber' ? 'العميل' : 'الإدارة'),
+          isStaff: r.author_type !== 'subscriber',
+          at: r.created_at || r.at || '',
+        })));
+      } catch { /* keep drawer open with base info */ } finally {
+        setDetailLoading(false);
+      }
+    }
+  }, []);
+
+  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setReplyText(''); setRefundNote(''); };
+
+  // ── Status transitions (used by both the row quick-actions and the drawer) ──
   const updateItemStatus = useCallback(async (item: InboxItem, target: InboxStatus) => {
     const key = `${item.source}-${item.id}`;
     setUpdatingKey(key);
+    setActionBusy(true);
     try {
       let originalStatus: string = target;
       if (item.source === 'ticket') {
-        // The plain PUT /admin/tickets/:id route does not exist (was a 404 —
-        // every ticket action from this unified inbox silently failed). The real
-        // route is /status and only accepts open|in_progress|resolved|closed.
+        // Real route is /status; accepts open|in_progress|resolved|closed.
         originalStatus = target === 'done' ? 'resolved' : target === 'closed' ? 'closed' : 'in_progress';
-        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, {
-          status: originalStatus,
-        });
+        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, { status: originalStatus });
       } else if (item.source === 'contact') {
         originalStatus = target === 'done' ? 'replied' : 'read';
         await mysqlAdmin.updateContactMessage(item.id, originalStatus);
@@ -210,7 +251,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         originalStatus = target === 'rejected' ? 'REJECTED' : 'APPROVED';
         await mysqlAdmin.adminPut(`/admin/finance/refunds/${encodeURIComponent(item.id)}`, {
           status: originalStatus,
-          notes: target === 'rejected' ? 'Rejected from unified inbox' : 'Approved from unified inbox',
+          notes: refundNote || (target === 'rejected' ? 'مرفوض من صندوق خدمة العملاء' : 'مقبول من صندوق خدمة العملاء'),
         });
       } else {
         originalStatus = target === 'done' ? 'accepted' : target === 'rejected' ? 'rejected' : 'reviewed';
@@ -219,11 +260,49 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       setStatusOverrides((current) => ({ ...current, [key]: { status: target, originalStatus } }));
       notify('success', 'تم تحديث حالة العنصر');
       if (item.source === 'ticket' || item.source === 'refund') loadRemote();
+      closeDetail();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحديث الحالة');
     } finally {
       setUpdatingKey(null);
+      setActionBusy(false);
     }
+  }, [loadRemote, notify, refundNote]);
+
+  // ── Ticket-only actions available from the drawer ──
+  const sendTicketReply = useCallback(async (item: InboxItem) => {
+    if (!replyText.trim()) return;
+    setActionBusy(true);
+    try {
+      await mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(item.id)}/reply`, { body: replyText.trim() });
+      setTicketReplies((prev) => [...prev, { id: `local-${Date.now()}`, text: replyText.trim(), author: 'الإدارة', isStaff: true, at: new Date().toISOString() }]);
+      setReplyText('');
+      notify('success', 'تم إرسال الرد');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر إرسال الرد');
+    } finally { setActionBusy(false); }
+  }, [notify, replyText]);
+
+  const escalateTicket = useCallback(async (item: InboxItem) => {
+    setActionBusy(true);
+    try {
+      await mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(item.id)}/escalate`, {});
+      notify('success', 'تم تصعيد التذكرة للإدارة');
+      loadRemote();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر التصعيد');
+    } finally { setActionBusy(false); }
+  }, [loadRemote, notify]);
+
+  const routeTicketToRefund = useCallback(async (item: InboxItem) => {
+    setActionBusy(true);
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/route`, { category: 'refund' });
+      notify('success', 'تم تحويل التذكرة لقسم الاسترداد');
+      loadRemote();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر التحويل');
+    } finally { setActionBusy(false); }
   }, [loadRemote, notify]);
 
   const filtered = useMemo(() => {
@@ -254,7 +333,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
             <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-900">
               <Inbox size={20} className="text-indigo-600" /> Inbox خدمة العملاء الموحد
             </h2>
-            <p className="mt-1 text-sm text-slate-500">يجمع الدعم، التواصل، الاستردادات، وطلبات انضمام المحاضرين/الاستشاريين في شاشة تشغيل واحدة.</p>
+            <p className="mt-1 text-sm text-slate-500">اضغط أي عنصر لفتح تفاصيله وكل إجراءاته (رد · حالة · تصعيد · موافقة/رفض) في نفس الشاشة — بدون الانتقال لصفحة أخرى.</p>
           </div>
           <button
             onClick={loadRemote}
@@ -321,7 +400,14 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
               const Icon = meta.icon;
               const workflow = resolveWorkflow(item);
               return (
-                <div key={`${item.source}-${item.id}`} className="grid gap-3 p-4 transition hover:bg-slate-50 xl:grid-cols-[180px_1fr_260px_130px_150px] xl:items-center">
+                <div
+                  key={`${item.source}-${item.id}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetail(item)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') openDetail(item); }}
+                  className="grid cursor-pointer gap-3 p-4 transition hover:bg-indigo-50/40 xl:grid-cols-[180px_1fr_240px_120px_120px] xl:items-center"
+                >
                   <div className="flex items-center gap-2">
                     <span className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
                       <Icon size={16} />
@@ -342,53 +428,13 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   <div className="flex flex-wrap gap-1.5">
                     <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${workflow.slaClass}`}>{workflow.slaLabel}</span>
                     <span className="w-fit rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{workflow.owner}</span>
-                    <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${workflow.priority === 'urgent' ? 'bg-red-600 text-white' : workflow.priority === 'high' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'}`}>{workflow.priority}</span>
                   </div>
                   <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                    {STATUS_LABEL[item.status]}{item.originalStatus ? ` · ${item.originalStatus}` : ''}
+                    {STATUS_LABEL[item.status]}
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {!['done', 'closed', 'rejected'].includes(item.status) && item.source !== 'refund' && (
-                      <button
-                        type="button"
-                        disabled={updatingKey === `${item.source}-${item.id}`}
-                        onClick={() => updateItemStatus(item, 'pending')}
-                        className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
-                      >
-                        <RefreshCw size={12} /> قيد المراجعة
-                      </button>
-                    )}
-                    {!['done', 'closed'].includes(item.status) && (
-                      <button
-                        type="button"
-                        disabled={updatingKey === `${item.source}-${item.id}`}
-                        onClick={() => updateItemStatus(item, 'done')}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
-                      >
-                        <CheckCircle2 size={12} /> إنهاء
-                      </button>
-                    )}
-                    {!['done', 'closed', 'rejected'].includes(item.status) && (item.source === 'refund' || item.source.startsWith('join_')) && (
-                      <button
-                        type="button"
-                        disabled={updatingKey === `${item.source}-${item.id}`}
-                        onClick={() => updateItemStatus(item, 'rejected')}
-                        className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
-                      >
-                        <XCircle size={12} /> رفض
-                      </button>
-                    )}
-                  </div>
                   <button
                     type="button"
-                    onClick={() => navigate(
-                      // Tickets deep-link straight to the conversation via ?focus=id;
-                      // other sources open their dedicated tab (there is no per-item
-                      // detail view for those yet).
-                      item.source === 'ticket'
-                        ? `/dashboard/tickets?focus=${encodeURIComponent(item.id)}`
-                        : `/dashboard/${meta.tab}`
-                    )}
+                    onClick={(e) => { e.stopPropagation(); openDetail(item); }}
                     className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-indigo-700"
                   >
                     فتح التفاصيل
@@ -399,6 +445,146 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           </div>
         </div>
       )}
+
+      {/* ── Detail drawer: full item + every action, inline (no navigation) ── */}
+      {detailItem && (() => {
+        const item = detailItem;
+        const meta = SOURCE_META[item.source];
+        const Icon = meta.icon;
+        const workflow = resolveWorkflow(item);
+        const raw = (item.raw || {}) as Record<string, any>;
+        const isClosed = ['done', 'closed', 'rejected'].includes(item.status);
+        return (
+          <div className="fixed inset-0 z-50 flex justify-start bg-black/40" onClick={(e) => { if (e.target === e.currentTarget) closeDetail(); }}>
+            <div className="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl" dir="rtl">
+              {/* header */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><Icon size={18} /></span>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400">{meta.label} · {fmtDate(item.createdAt)}</p>
+                    <h3 className="text-lg font-extrabold text-slate-900">{item.title}</h3>
+                    <p className="mt-0.5 text-sm text-slate-600">{item.person}{item.contact ? ` · ${item.contact}` : ''}</p>
+                  </div>
+                </div>
+                <button onClick={closeDetail} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
+              </div>
+
+              {/* body */}
+              <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">الحالة: {STATUS_LABEL[item.status]}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${workflow.slaClass}`}>{workflow.slaLabel}</span>
+                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">المسؤول: {workflow.owner}</span>
+                  {item.amount && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">{item.amount}</span>}
+                </div>
+
+                {item.detail && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
+                    {item.detail}
+                  </div>
+                )}
+
+                {item.source === 'refund' && (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">المبلغ:</span> <b>{item.amount}</b></div>
+                    <div className="rounded-lg border border-slate-100 p-2"><span className="text-slate-400">طريقة الاسترداد:</span> {raw.refund_method || '—'}</div>
+                    <div className="col-span-2 rounded-lg border border-slate-100 p-2"><span className="text-slate-400">رقم الدفعة:</span> {raw.payment_id || '—'}</div>
+                  </div>
+                )}
+
+                {/* Ticket conversation */}
+                {item.source === 'ticket' && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-400">المحادثة</p>
+                    {detailLoading ? (
+                      <p className="text-center text-sm text-slate-400 py-4">جاري تحميل المحادثة...</p>
+                    ) : ticketReplies.length === 0 ? (
+                      <p className="text-xs text-slate-400">لا توجد ردود بعد.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {ticketReplies.map((r) => (
+                          <div key={r.id} className={`rounded-xl p-3 text-sm ${r.isStaff ? 'bg-indigo-50 text-indigo-900' : 'bg-slate-100 text-slate-800'}`}>
+                            <p className="mb-1 text-[10px] font-bold text-slate-400">{r.author} · {fmtDate(r.at)}</p>
+                            <p className="whitespace-pre-wrap">{r.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-end gap-2 pt-1">
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        rows={2}
+                        placeholder="اكتب ردًا للعميل..."
+                        className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                      <button
+                        onClick={() => sendTicketReply(item)}
+                        disabled={actionBusy || !replyText.trim()}
+                        className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        <Send size={14} /> إرسال
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {item.source === 'refund' && !isClosed && (
+                  <textarea
+                    value={refundNote}
+                    onChange={(e) => setRefundNote(e.target.value)}
+                    rows={2}
+                    placeholder="ملاحظة إدارية على قرار الاسترداد (اختياري)..."
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-200"
+                  />
+                )}
+              </div>
+
+              {/* actions footer — every action, by source */}
+              <div className="border-t border-slate-100 bg-slate-50 p-4">
+                <p className="mb-2 text-[11px] font-bold text-slate-400">الإجراءات</p>
+                <div className="flex flex-wrap gap-2">
+                  {item.source === 'refund' ? (
+                    isClosed ? (
+                      <span className="text-sm text-slate-400">تم حسم هذا الطلب — لا توجد إجراءات إضافية.</span>
+                    ) : (
+                      <>
+                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> موافقة على الاسترداد</button>
+                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'rejected')} className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"><XCircle size={15} /> رفض الطلب</button>
+                      </>
+                    )
+                  ) : item.source === 'ticket' ? (
+                    <>
+                      {!['pending'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'pending')} className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"><RefreshCw size={15} /> تحت المتابعة</button>}
+                      {!['done'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> تم الحل</button>}
+                      {!['closed'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={15} /> إغلاق</button>}
+                      <button disabled={actionBusy} onClick={() => escalateTicket(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50">⚠️ تصعيد للإدارة</button>
+                      <button disabled={actionBusy} onClick={() => routeTicketToRefund(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><RotateCcw size={15} /> تحويل لقسم الاسترداد</button>
+                    </>
+                  ) : item.source === 'contact' ? (
+                    <>
+                      {item.status !== 'pending' && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'pending')} className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"><RefreshCw size={15} /> تعليم كمقروء</button>}
+                      {item.status !== 'done' && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> تم الرد</button>}
+                    </>
+                  ) : (
+                    // join_* requests
+                    isClosed ? (
+                      <span className="text-sm text-slate-400">تم حسم هذا الطلب.</span>
+                    ) : (
+                      <>
+                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'pending')} className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"><RefreshCw size={15} /> قيد المراجعة</button>
+                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'done')} className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={15} /> قبول</button>
+                        <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'rejected')} className="inline-flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"><XCircle size={15} /> رفض</button>
+                      </>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
