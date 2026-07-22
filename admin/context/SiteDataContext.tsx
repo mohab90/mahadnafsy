@@ -152,7 +152,6 @@ interface SiteDataShape {
   isAdmin: boolean;
   remoteReady: boolean;
   mySubscriberLoaded: boolean;
-  refreshMySubscriber: () => void;
   reloadLectures: () => Promise<void>;
   reloadLeads: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;
@@ -2434,7 +2433,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isAdmin,
     remoteReady,
     mySubscriberLoaded,
-    refreshMySubscriber,
     reloadLectures,
     reloadLeads,
     reloadSubscribers,
