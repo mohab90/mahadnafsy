@@ -701,7 +701,6 @@ app.use('/', saasAdminRouter);
 app.use('/', monitoringRouter);
 app.use('/', funnelRouter);
 app.use('/', lmsRouter);
-app.use('/api/v2/lms', require('./src/modules/lms/lms.routes'));
 app.use('/api/student-ai', require('./routes/student-ai'));
 app.use('/', gsheetsRouter);
 app.use('/', hrRouter);

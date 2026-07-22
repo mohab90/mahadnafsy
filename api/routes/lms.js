@@ -791,9 +791,9 @@ router.get('/api/admin/referrals/:code/subscribers', requireAuth, requireAdmin, 
     const [rows] = await pool.query(
       `SELECT s.id, s.name, s.email, s.client_code, s.created_at
        FROM subscribers s
-       WHERE s.referral_code = ?
+       WHERE s.referral_code = ? AND s.tenant_id = ?
        ORDER BY s.created_at DESC`,
-      [req.params.code]
+      [req.params.code, req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -803,7 +803,8 @@ router.get('/api/admin/referrals/:code/subscribers', requireAuth, requireAdmin, 
 router.patch('/api/admin/referrals/:id/earnings', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { earnings, adjustment_note } = req.body;
-    await pool.query('UPDATE referral_codes SET earnings = ? WHERE id = ?', [parseFloat(earnings) || 0, req.params.id]);
+    const [r] = await pool.query('UPDATE referral_codes SET earnings = ? WHERE id = ? AND tenant_id = ?', [parseFloat(earnings) || 0, req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

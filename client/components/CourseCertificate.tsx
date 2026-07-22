@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Printer } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useSiteData } from '../context/SiteDataContext';
 
 interface CourseCertificateProps {
@@ -26,8 +27,16 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
   const certName  = (studentNameEn || studentName).toUpperCase();
   const certCourse = courseNameEn || courseName;
 
-  const qrData = encodeURIComponent(`CERT:${certNumber}|${certName}|${certCourse}`);
-  const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&color=8B0000&bgcolor=fff&data=${qrData}`;
+  // Generated entirely client-side (qrcode npm package) — no network call, so the
+  // student's name/course/certificate number is never sent to a third-party service.
+  const [qrUrl, setQrUrl] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(`CERT:${certNumber}|${certName}|${certCourse}`, {
+      width: 90, margin: 1, color: { dark: '#8B0000', light: '#ffffff' },
+    }).then(url => { if (!cancelled) setQrUrl(url); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [certNumber, certName, certCourse]);
 
   const handlePrint = () => {
     const el = document.getElementById('psy-cert-printable');

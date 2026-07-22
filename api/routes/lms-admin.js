@@ -13,6 +13,30 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
     // Support both camelCase (frontend) and snake_case field names
     const courseId      = l.courseId      || l.course_id      || null;
     const chapterId     = l.chapterId     || l.chapter_id     || null;
+    if (courseId) {
+      const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, req.tenantId]);
+      if (!course) return res.status(404).json({ error: 'Course not found' });
+    }
+    if (chapterId) {
+      const [[chapter]] = await pool.query(
+        'SELECT ch.id FROM course_chapters ch JOIN courses c ON c.id = ch.course_id WHERE ch.id=? AND c.tenant_id=? LIMIT 1',
+        [chapterId, req.tenantId]
+      );
+      if (!chapter) return res.status(404).json({ error: 'Chapter not found' });
+    }
+    if (l.id) {
+      // The ON DUPLICATE KEY UPDATE below matches by id alone. If this id already
+      // belongs to a lecture row, it must be owned by this tenant — otherwise a
+      // client-supplied id colliding with another tenant's row would silently
+      // overwrite it. A brand-new id (no existing row yet) is fine.
+      const [[anyLecture]] = await pool.query(
+        `SELECT cl.id, (c.tenant_id = ?) AS owned
+           FROM course_lectures cl JOIN courses c ON c.id = cl.course_id
+          WHERE cl.id=? LIMIT 1`,
+        [req.tenantId, l.id]
+      );
+      if (anyLecture && !anyLecture.owned) return res.status(404).json({ error: 'Lecture not found' });
+    }
     const videoUrl      = l.videoUrl      || l.video_url      || '';
     const sortOrder     = l.order         ?? l.sortOrder      ?? l.sort_order     ?? 0;
     const lectureType   = (l.lectureType  || l.lecture_type   || 'RECORDED').toUpperCase();
@@ -48,6 +72,19 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
     // Support both camelCase (frontend) and snake_case field names
     const courseId  = c.courseId  || c.course_id  || null;
     const sortOrder = c.order     ?? c.sortOrder  ?? c.sort_order ?? 0;
+    if (courseId) {
+      const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, req.tenantId]);
+      if (!course) return res.status(404).json({ error: 'Course not found' });
+    }
+    if (c.id) {
+      const [[anyChapter]] = await pool.query(
+        `SELECT ch.id, (co.tenant_id = ?) AS owned
+           FROM course_chapters ch JOIN courses co ON co.id = ch.course_id
+          WHERE ch.id=? LIMIT 1`,
+        [req.tenantId, c.id]
+      );
+      if (anyChapter && !anyChapter.owned) return res.status(404).json({ error: 'Chapter not found' });
+    }
     await pool.query(
       `INSERT INTO course_chapters (id, course_id, title, sort_order)
        VALUES (?,?,?,?)
@@ -82,15 +119,19 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
     const qualJson = Array.isArray(t.qualifications) ? JSON.stringify(t.qualifications) : (t.qualifications_json || null);
     const showHome = t.showOnHome !== undefined ? (t.showOnHome ? 1 : 0) : (t.show_on_home || 0);
     const showAbout = t.showOnAbout !== undefined ? (t.showOnAbout ? 1 : 0) : (t.show_on_about || 0);
+    if (t.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM therapists WHERE id=? LIMIT 1', [req.tenantId, t.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Therapist not found' });
+    }
     await pool.query(
       `INSERT INTO therapists
-         (id, name, specialty, image, experience, rating, title, bio,
+         (id, tenant_id, name, specialty, image, experience, rating, title, bio,
           price_egp, price_sar, price_usd,
           is_consultation_enabled, session_duration_minutes,
           meeting_provider, provider_base_url,
           featured, sort_order, show_on_home, show_on_about, is_active,
           languages_json, focus_areas_json, qualifications_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          name=VALUES(name), specialty=VALUES(specialty), image=VALUES(image),
          bio=VALUES(bio), title=VALUES(title),
@@ -104,7 +145,7 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
          languages_json=VALUES(languages_json), focus_areas_json=VALUES(focus_areas_json),
          qualifications_json=VALUES(qualifications_json)`,
       [
-        id, t.name||'', t.specialty||'', t.image||'', t.experience||0, t.rating||5,
+        id, req.tenantId, t.name||'', t.specialty||'', t.image||'', t.experience||0, t.rating||5,
         t.title||null, t.bio||null,
         priceEgp, priceSar, priceUsd,
         isConsult, sessionDur,
@@ -127,12 +168,16 @@ router.post('/api/admin/testimonials', requireAuth, requireAdmin, async (req, re
     const id = t.id || uuidv4();
     const isActive = t.isActive !== undefined ? (t.isActive ? 1 : 0) : (t.is_active !== undefined ? (t.is_active ? 1 : 0) : 1);
     const sortOrder = t.sortOrder ?? t.sort_order ?? 0;
+    if (t.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM testimonials WHERE id=? LIMIT 1', [req.tenantId, t.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Testimonial not found' });
+    }
     await pool.query(
-      `INSERT INTO testimonials (id, name, role, text, image, is_active, sort_order)
-       VALUES (?,?,?,?,?,?,?)
+      `INSERT INTO testimonials (id, tenant_id, name, role, text, image, is_active, sort_order)
+       VALUES (?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), role=VALUES(role), text=VALUES(text),
          image=VALUES(image), is_active=VALUES(is_active), sort_order=VALUES(sort_order)`,
-      [id, t.name||'', t.role||'', t.text||'', t.image||'', isActive, sortOrder]
+      [id, req.tenantId, t.name||'', t.role||'', t.text||'', t.image||'', isActive, sortOrder]
     );
     cacheInvalidate('testimonials');
     res.json({ ok: true, id });
