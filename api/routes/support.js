@@ -333,13 +333,16 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
     if (prev && nowResolved && !wasResolved && !prev.csat_requested_at && prev.subscriber_email) {
       await pool.query('UPDATE support_tickets SET csat_requested_at=NOW() WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]).catch(() => {});
       const link = `https://mahadnafsy.com/ticket-rating?id=${req.params.id}`;
-      sendEmail(prev.subscriber_email, `كيف كان تقييمك لحل تذكرتك؟ — ${prev.subject || 'دعم'}`,
-        `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
-           <h2 style="color:#7c3aed">مرحباً ${prev.subscriber_name || ''}</h2>
-           <p>تم حل تذكرة الدعم الخاصة بك: <strong>${prev.subject || ''}</strong></p>
+      await outbox.enqueue({
+        channel: 'email', recipient: prev.subscriber_email, subject: `كيف كان تقييمك لحل تذكرتك؟ — ${prev.subject || 'دعم'}`,
+        payload: { html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
+           <h2 style="color:#7c3aed">مرحباً ${escapeHtml(prev.subscriber_name || '')}</h2>
+           <p>تم حل تذكرة الدعم الخاصة بك: <strong>${escapeHtml(prev.subject || '')}</strong></p>
            <p>يسعدنا معرفة مدى رضاك عن الحل:</p>
            <div style="text-align:center;margin:20px 0"><a href="${link}" style="background:#7c3aed;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:bold;">قيّم الحل</a></div>
-         </div>`).catch(e => logger.warn('[cs/csat email]', e.message));
+         </div>` },
+        tenantId: req.tenantId, dedupeKey: `ticket-csat:${req.tenantId}:${req.params.id}`, refType: 'support_ticket', refId: req.params.id,
+      }).catch(e => logger.warn('[cs/csat email]', e.message));
     }
     res.json({ ok: true });
   } catch (e) { logger.error('[cs/status]', e.message); res.status(500).json({ error: 'Internal server error' }); }
