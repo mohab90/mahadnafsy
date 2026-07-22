@@ -32,7 +32,8 @@ const { createNotification } = require('./lib/notification');
 const { publishRealtimeEvent } = require('./lib/realtime');
 const { logPaymentAudit, postJournalEntry, _paymentAccountCode } = require('./lib/finance');
 const { logLeadEvent } = require('./lib/crm');
-const { enqueueEmailSequence } = require('./lib/emailSequence');
+const { transitionLead } = require('./lib/leadState');
+const { promoteLegacyEmailSequenceQueue } = require('./lib/emailSequence');
 const { syncAllConfiguredSheets, DEFAULT_GSHEETS } = require('./lib/sheets');
 const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('./constants/permissions');
 const gsheetsRouter = require('./routes/gsheets');
@@ -86,10 +87,15 @@ const hrRouter     = require('./routes/hr');
 const authRouter   = require('./routes/auth');
 const publicRouter = require('./routes/public');
 const paymentsAdminRouter   = require('./routes/payments-admin');
+const connectorDiagnosticsRouter = require('./routes/connector-diagnostics');
+const brandingAssetsRouter = require('./routes/branding-assets');
+const { ROOT: brandAssetRoot } = require('./lib/brandAssetStorage');
 const { loadBlacklistFromDB } = require('./lib/token');
 const { registerStartupTasks } = require('./lib/startupTasks');
 const { adminFeatureGate } = require('./lib/adminFeatureGate');
 const { legacyTenantContainment } = require('./middleware/legacyTenantContainment');
+const { getTenantSetting, setTenantSetting } = require('./lib/tenantSettings');
+const { invalidateFxCache } = require('./lib/finance');
 
 // ── Global error guards (registered before any I/O) ──────────────────────────
 process.on('uncaughtException', (err) => {
@@ -634,6 +640,16 @@ async function adminIpWhitelistGuard(req, res, next) {
 }
 app.use(adminIpWhitelistGuard);
 
+// Public, content-addressed brand assets. Files are validated before they ever
+// reach this directory and names contain only tenant/kind/hash components.
+app.use('/uploads/branding', express.static(brandAssetRoot, {
+  dotfiles: 'deny',
+  etag: true,
+  immutable: true,
+  maxAge: '365d',
+  fallthrough: true,
+}));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN ROUTES (admin only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -691,6 +707,8 @@ app.use('/', gsheetsRouter);
 app.use('/', hrRouter);
 app.use('/', require('./routes/docs')); // /api/docs (Swagger UI) + /api/openapi.json
 app.use('/', paymentsAdminRouter);
+app.use('/', connectorDiagnosticsRouter);
+app.use('/', brandingAssetsRouter);
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 // SPA catch-all — serve index.html with no-cache so browsers always get latest asset hashes
@@ -787,7 +805,7 @@ const server = app.listen(PORT, () => {
       // Filter at DB level — only subscribers who have installment data (crm_json LIKE check)
       // Avoids loading entire subscribers table into memory on large datasets.
       const [subs] = await pool.query(
-        "SELECT id, name, phone, crm_json FROM subscribers WHERE is_active=1 AND crm_json LIKE '%installmentPlans%' LIMIT 2000"
+        "SELECT id, tenant_id, name, phone, crm_json FROM subscribers WHERE is_active=1 AND crm_json LIKE '%installmentPlans%' LIMIT 2000"
       );
       let sentCount = 0;
       for (const sub of subs) {
@@ -800,12 +818,12 @@ const server = app.listen(PORT, () => {
             if (entry.paidAt) continue; // already paid
             if (!sub.phone) continue;
             // Dedup: skip if already sent today for this entry
-            const dedupeKey = `${sub.id}:${dueDate}:${plan.courseId || ''}`;
+            const dedupeKey = `${sub.tenant_id}:${sub.id}:${dueDate}:${plan.courseId || ''}`;
             if (_installmentReminderSentToday.has(dedupeKey)) continue;
             _installmentReminderSentToday.add(dedupeKey);
             const courseName = plan.courseTitle || 'قسط';
-            const msg = renderTemplate('installment_reminder', { amount: entry.amount, currency: plan.currency || 'EGP', dueDate, courseName });
-            try { await sendWhatsApp(sub.phone, msg); } catch (_) {}
+            const msg = renderTemplate('installment_reminder', { amount: entry.amount, currency: plan.currency || 'EGP', dueDate, courseName }, sub.tenant_id);
+            try { await sendWhatsApp(sub.phone, msg, { tenantId: sub.tenant_id }); } catch (_) {}
             sentCount++;
             // Rate-limit WA sends to avoid being flagged as spam (max 1 msg/2s)
             if (sentCount % 5 === 0) await new Promise(r => setTimeout(r, 2000));
@@ -826,21 +844,27 @@ const server = app.listen(PORT, () => {
     try {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const [pendingRows] = await pool.query(
-        `SELECT p.id, p.amount, p.currency, p.date, s.name, s.phone
-         FROM payments p JOIN subscribers s ON s.id = p.subscriber_id
+        `SELECT p.id, p.tenant_id, p.amount, p.currency, p.date, s.name, s.phone
+         FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
          WHERE p.status = 'pending' AND p.date <= ? AND s.phone IS NOT NULL AND s.phone != ''
          LIMIT 50`,
         [threeDaysAgo]
       );
       for (const row of pendingRows) {
-        const msg = renderTemplate('pending_payment_reminder', { amount: row.amount, currency: row.currency || 'EGP', date: String(row.date || '').slice(0,10) });
-        await sendWhatsApp(row.phone, msg);
+        const msg = renderTemplate('pending_payment_reminder', { amount: row.amount, currency: row.currency || 'EGP', date: String(row.date || '').slice(0,10) }, row.tenant_id);
+        await sendWhatsApp(row.phone, msg, { tenantId: row.tenant_id });
         // Avoid WhatsApp spam — short delay between messages
         await new Promise(r => setTimeout(r, 2000));
       }
       if (pendingRows.length) {
         logger.info(`[Cron] pendingPaymentReminder: sent ${pendingRows.length} reminders`);
-        await createNotification('reminder', 'تذكيرات دفع مُرسلة', `تم إرسال ${pendingRows.length} تذكير للمدفوعات المعلّقة تلقائياً`, { count: pendingRows.length });
+        const countsByTenant = pendingRows.reduce((acc, row) => {
+          acc[row.tenant_id] = (acc[row.tenant_id] || 0) + 1;
+          return acc;
+        }, {});
+        for (const [tenantId, count] of Object.entries(countsByTenant)) {
+          await createNotification('reminder', 'تذكيرات دفع مُرسلة', `تم إرسال ${count} تذكير للمدفوعات المعلّقة تلقائياً`, { count }, tenantId);
+        }
       }
     } catch (e) { logger.warn('[Cron] pendingPaymentReminderCron error:', e.message); }
   }
@@ -859,13 +883,13 @@ const server = app.listen(PORT, () => {
       if (!data.rates?.SAR || !data.rates?.USD) return;
       const sar_to_egp = parseFloat((1 / data.rates.SAR).toFixed(4));
       const usd_to_egp = parseFloat((1 / data.rates.USD).toFixed(4));
-      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content'");
-      const existing = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-      const merged = { ...existing, 'exchange.sar_to_egp': String(sar_to_egp), 'exchange.usd_to_egp': String(usd_to_egp) };
-      await pool.query(
-        "INSERT INTO site_config (`key`, `value`) VALUES ('content', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-        [JSON.stringify(merged)]
-      );
+      const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'");
+      for (const tenant of tenants) {
+        const existing = await getTenantSetting('content', { tenantId: tenant.id, fallback: {} });
+        const merged = { ...existing, 'exchange.sar_to_egp': String(sar_to_egp), 'exchange.usd_to_egp': String(usd_to_egp) };
+        await setTenantSetting('content', merged, { tenantId: tenant.id, actorId: 'fx-refresh' });
+        invalidateFxCache(tenant.id);
+      }
       cacheInvalidate('site_content');
       logger.info(`[FX] Auto-refreshed: SAR=${sar_to_egp}, USD=${usd_to_egp}`);
     } catch (e) { logger.warn('[FX] Auto-refresh failed:', e.message); }
@@ -883,7 +907,7 @@ const server = app.listen(PORT, () => {
   async function runAutomationEngine() {
     try {
       const [workflows] = await pool.query(
-        `SELECT id, name, \`trigger\`, action, enabled, conditions_json AS conditions, action_config_json AS action_config,
+        `SELECT id, tenant_id, name, \`trigger\`, action, enabled, conditions_json AS conditions, action_config_json AS action_config,
          last_triggered_at, trigger_count, created_at
          FROM automation_workflows WHERE enabled = 1 ORDER BY created_at ASC`
       );
@@ -895,44 +919,52 @@ const server = app.listen(PORT, () => {
         let matchedLeads = [];
         if (wf.trigger === 'no_contact_x_days') {
           const days = parseInt(actionCfg.days || '7');
-          const [rows] = await pool.query(`SELECT l.id,l.name,l.phone,l.assigned_sales_name FROM leads l LEFT JOIN (SELECT lead_id,MAX(date) AS last_date FROM communications GROUP BY lead_id) c ON c.lead_id=l.id WHERE l.hidden=0 AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number') AND DATEDIFF(NOW(),COALESCE(c.last_date,l.last_follow_up,l.created_at))>=?`, [days]);
+          const [rows] = await pool.query(`SELECT l.id,l.name,l.phone,l.assigned_sales_name FROM leads l LEFT JOIN (SELECT lead_id,MAX(date) AS last_date FROM communications GROUP BY lead_id) c ON c.lead_id=l.id WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number') AND DATEDIFF(NOW(),COALESCE(c.last_date,l.last_follow_up,l.created_at))>=?`, [wf.tenant_id, days]);
           matchedLeads = rows;
         } else if (wf.trigger === 'lead_score_threshold') {
           const threshold = parseInt(actionCfg.scoreThreshold || '70');
-          const [rows] = await pool.query(`SELECT l.id,l.name,l.phone,l.assigned_sales_name,(CASE l.status WHEN 'interested_booking' THEN 100 WHEN 'interested_followup' THEN 80 WHEN 'interested' THEN 60 WHEN 'contacted' THEN 40 WHEN 'new' THEN 20 ELSE 10 END+CASE l.interest_level WHEN 'high' THEN 30 WHEN 'medium' THEN 15 ELSE 5 END) AS score FROM leads l WHERE l.hidden=0 AND l.status NOT IN ('converted','lost') HAVING score>=?`, [threshold]);
+          const [rows] = await pool.query(`SELECT l.id,l.name,l.phone,l.assigned_sales_name,(CASE l.status WHEN 'interested_booking' THEN 100 WHEN 'interested_followup' THEN 80 WHEN 'interested' THEN 60 WHEN 'contacted' THEN 40 WHEN 'new' THEN 20 ELSE 10 END+CASE l.interest_level WHEN 'high' THEN 30 WHEN 'medium' THEN 15 ELSE 5 END) AS score FROM leads l WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost') HAVING score>=?`, [wf.tenant_id, threshold]);
           matchedLeads = rows;
         } else if (wf.trigger === 'new_lead') {
           const sinceDays = parseInt(actionCfg.days || '1');
-          const [rows] = await pool.query(`SELECT id,name,phone,assigned_sales_name FROM leads WHERE hidden=0 AND status='new' AND created_at>=DATE_SUB(NOW(),INTERVAL ? DAY)`, [sinceDays]);
+          const [rows] = await pool.query(`SELECT id,name,phone,assigned_sales_name FROM leads WHERE tenant_id=? AND hidden=0 AND status='new' AND created_at>=DATE_SUB(NOW(),INTERVAL ? DAY)`, [wf.tenant_id, sinceDays]);
           matchedLeads = rows;
         } else if (wf.trigger === 'subscription_expiring_soon') {
           const days = parseInt(actionCfg.days || '7');
-          const [rows] = await pool.query(`SELECT s.id,s.name,s.email,s.phone,srh.expires_at FROM subscribers s LEFT JOIN subscriber_role_history srh ON srh.subscriber_id=s.id WHERE s.status='active' AND srh.expires_at IS NOT NULL AND DATEDIFF(srh.expires_at,NOW()) BETWEEN 0 AND ? GROUP BY s.id`, [days]);
+          const [rows] = await pool.query(`SELECT s.id,s.name,s.email,s.phone,srh.expires_at FROM subscribers s LEFT JOIN subscriber_role_history srh ON srh.subscriber_id=s.id WHERE s.tenant_id=? AND s.status='active' AND srh.expires_at IS NOT NULL AND DATEDIFF(srh.expires_at,NOW()) BETWEEN 0 AND ? GROUP BY s.id`, [wf.tenant_id, days]);
           matchedLeads = rows;
         } else if (wf.trigger === 'subscriber_inactive_x_days') {
           const days = parseInt(actionCfg.days || '30');
-          const [rows] = await pool.query(`SELECT s.id,s.name,s.email,s.phone,MAX(lp.completed_at) AS last_progress FROM subscribers s LEFT JOIN lecture_progress lp ON lp.subscriber_id=s.id WHERE s.status='active' GROUP BY s.id HAVING last_progress IS NULL OR DATEDIFF(NOW(),last_progress)>=?`, [days]);
+          const [rows] = await pool.query(`SELECT s.id,s.name,s.email,s.phone,MAX(lp.completed_at) AS last_progress FROM subscribers s LEFT JOIN lecture_completions lp ON lp.subscriber_id=s.id AND lp.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.status='active' GROUP BY s.id HAVING last_progress IS NULL OR DATEDIFF(NOW(),last_progress)>=?`, [wf.tenant_id, days]);
           matchedLeads = rows;
         }
         let actionsRun = 0;
         for (const lead of matchedLeads) {
           if (wf.action === 'add_followup_reminder' && lead.id) {
             const newDate = new Date(); newDate.setDate(newDate.getDate() + parseInt(actionCfg.days || '3'));
-            await pool.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND (next_follow_up_date IS NULL OR next_follow_up_date<NOW())', [newDate.toISOString().slice(0,10), lead.id]);
+            await pool.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date<NOW())', [newDate.toISOString().slice(0,10), lead.id, wf.tenant_id]);
+            await pool.query(
+              `INSERT INTO lead_timeline (id,tenant_id,lead_id,event_type,description,meta_json,at) VALUES (?,?,?,'followup_set',?,?,NOW())`,
+              [uuidv4(), wf.tenant_id, lead.id, `Automation scheduled follow-up for ${newDate.toISOString().slice(0,10)}`, JSON.stringify({ workflowId: wf.id, automation: true })]
+            );
             actionsRun++;
           } else if (wf.action === 'update_lead_status' && actionCfg.status && lead.id) {
-            await pool.query('UPDATE leads SET status=? WHERE id=?', [actionCfg.status, lead.id]);
+            await transitionLead({
+              tenantId: wf.tenant_id, leadId: lead.id, toStatus: actionCfg.status,
+              actor: 'scheduled-automation', reason: `Automation changed status to ${actionCfg.status}`,
+              metadata: { workflowId: wf.id, automation: true },
+            });
             actionsRun++;
           } else if (wf.action === 'add_note' && lead.id) {
             const msg = (actionCfg.message || '').replace(/\{\{name\}\}/g, lead.name||'').replace(/\{\{phone\}\}/g, lead.phone||'');
             if (msg) { await pool.query(`INSERT IGNORE INTO communications (id,lead_id,type,date,notes,outcome) VALUES (?,?,'note',?,?,'auto')`, [`auto-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, lead.id, todayStr, `[أتوميشن: ${wf.name}] ${msg}`]); actionsRun++; }
           } else if (wf.action === 'notify_admin') {
-            try { await pool.query(`INSERT IGNORE INTO automation_log (id,workflow_id,lead_id,action,triggered_at) VALUES (?,?,?,?,NOW())`, [uuidv4(), wf.id, lead.id||null, wf.action]); } catch(_){}
+            try { await pool.query(`INSERT IGNORE INTO automation_log (id,tenant_id,workflow_id,lead_id,action,triggered_at) VALUES (?,?,?,?,?,NOW())`, [uuidv4(), wf.tenant_id, wf.id, lead.id||null, wf.action]); } catch(_){}
             actionsRun++;
           }
         }
         if (actionsRun > 0) {
-          await pool.query('UPDATE automation_workflows SET trigger_count=trigger_count+?,last_triggered_at=? WHERE id=?', [actionsRun, new Date().toISOString(), wf.id]);
+          await pool.query('UPDATE automation_workflows SET trigger_count=trigger_count+?,last_triggered_at=? WHERE id=? AND tenant_id=?', [actionsRun, new Date().toISOString(), wf.id, wf.tenant_id]);
         }
         totalActions += actionsRun;
       }
@@ -962,10 +994,10 @@ const server = app.listen(PORT, () => {
       // each postponement pushes the whole round one week (admin UI semantics:
       // lecture N happens at start_date + (N-1 + postponedCount) weeks).
       const [rounds] = await pool.query(`
-        SELECT dr.id, dr.code, dr.time_slot, dr.start_date, dr.current_lecture,
+        SELECT dr.id, dr.tenant_id, dr.code, dr.time_slot, dr.start_date, dr.current_lecture,
                dr.postponed_weeks_json, c.title AS course_title
         FROM daqqi_rounds dr
-        JOIN courses c ON c.id = dr.course_id
+        JOIN courses c ON c.id = dr.course_id AND c.tenant_id=dr.tenant_id
         WHERE dr.status = 'ACTIVE'
       `);
       const mondayOf = (d) => {
@@ -989,8 +1021,8 @@ const server = app.listen(PORT, () => {
         if (!dueRounds.length) continue;
 
         const [attendees] = await pool.query(`
-          SELECT da.round_id, s.phone, s.name
-          FROM daqqi_attendees da JOIN subscribers s ON s.id = da.subscriber_id
+          SELECT da.round_id, da.tenant_id, s.phone, s.name
+          FROM daqqi_attendees da JOIN subscribers s ON s.id = da.subscriber_id AND s.tenant_id=da.tenant_id
           WHERE da.round_id IN (?)
         `, [dueRounds.map(r => r.id)]);
 
@@ -1000,8 +1032,8 @@ const server = app.listen(PORT, () => {
           const timeLabel = r.time_slot === 'MORNING' ? 'الصباح' : r.time_slot === 'NOON' ? 'الظهيرة' : 'المساء';
           for (const a of attendees.filter(x => x.round_id === r.id)) {
             if (!a.phone) continue;
-            const msg = renderTemplate('daqqi_session_reminder', { name: a.name, courseTitle: r.course_title, sessionDate, timeLabel });
-            await sendWhatsApp(a.phone, msg).catch(() => {});
+            const msg = renderTemplate('daqqi_session_reminder', { name: a.name, courseTitle: r.course_title, sessionDate, timeLabel }, r.tenant_id);
+            await sendWhatsApp(a.phone, msg, { tenantId: r.tenant_id }).catch(() => {});
             sent++;
           }
         }
@@ -1019,7 +1051,7 @@ const server = app.listen(PORT, () => {
   async function leadRetargetingCron() {
     try {
       const [leads] = await pool.query(`
-        SELECT l.id, l.name, l.phone, l.email
+        SELECT l.id, l.tenant_id, l.name, l.phone, l.email
         FROM leads l
         WHERE l.hidden = 0
           AND l.status NOT IN ('converted','lost','not_interested','no_answer')
@@ -1031,12 +1063,12 @@ const server = app.listen(PORT, () => {
       if (!leads.length) return;
       let sent = 0;
       for (const lead of leads) {
-        const msg = renderTemplate('lead_retargeting', { name: lead.name });
-        const res = await sendWhatsApp(lead.phone, msg).catch(() => ({ ok: false }));
+        const msg = renderTemplate('lead_retargeting', { name: lead.name }, lead.tenant_id);
+        const res = await sendWhatsApp(lead.phone, msg, { tenantId: lead.tenant_id }).catch(() => ({ ok: false }));
         if (res.ok) {
           await pool.query(
-            'UPDATE leads SET retargeting_sent_at=NOW() WHERE id=?',
-            [lead.id]
+            'UPDATE leads SET retargeting_sent_at=NOW() WHERE id=? AND tenant_id=?',
+            [lead.id, lead.tenant_id]
           ).catch(() => {});
           await pool.query(
             `INSERT IGNORE INTO retargeting_log (id, lead_id, channel, template, status, sent_at)
@@ -1109,15 +1141,15 @@ const server = app.listen(PORT, () => {
     try {
       // Find courses where capacity > enrolled AND has waitlist entries with notify_sent=0
       const [waitlisted] = await pool.query(`
-        SELECT cw.id, cw.subscriber_id, cw.course_id, cw.position,
+        SELECT cw.id, cw.tenant_id, cw.subscriber_id, cw.course_id, cw.position,
                s.name, s.phone, c.title AS course_title
         FROM course_waitlist cw
-        JOIN subscribers s ON s.id = cw.subscriber_id
-        JOIN courses c ON c.id = cw.course_id
+        JOIN subscribers s ON s.id = cw.subscriber_id AND s.tenant_id=cw.tenant_id
+        JOIN courses c ON c.id = cw.course_id AND c.tenant_id=cw.tenant_id
         WHERE cw.notify_sent = 0
           AND cw.status = 'waiting'
           AND c.capacity IS NOT NULL
-          AND (SELECT COUNT(*) FROM enrollments e WHERE e.course_id = cw.course_id) < c.capacity
+          AND (SELECT COUNT(*) FROM enrollments e WHERE e.course_id = cw.course_id AND e.tenant_id=cw.tenant_id) < c.capacity
         ORDER BY cw.position ASC
         LIMIT 20
       `).catch(() => [[]]);
@@ -1125,8 +1157,8 @@ const server = app.listen(PORT, () => {
       for (const w of waitlisted) {
         if (!w.phone) continue;
         const msg = `أهلاً ${w.name} 🎉\nيسعدنا إبلاغك بأن مقعداً أصبح متاحاً في كورس:\n📚 ${w.course_title}\n\nيرجى التواصل معنا خلال 48 ساعة لتأكيد حجزك قبل انتقاله للتالي في القائمة ⏳\n— مهاد نفسي 💚`;
-        await sendWhatsApp(w.phone, msg).catch(() => {});
-        await pool.query('UPDATE course_waitlist SET notify_sent=1, notified_at=NOW() WHERE id=?', [w.id]).catch(() => {});
+        await sendWhatsApp(w.phone, msg, { tenantId: w.tenant_id }).catch(() => {});
+        await pool.query('UPDATE course_waitlist SET notify_sent=1, notified_at=NOW() WHERE id=? AND tenant_id=?', [w.id, w.tenant_id]).catch(() => {});
       }
       if (waitlisted.length) logger.info(`[Cron] waitlistNotify: notified ${waitlisted.length} subscribers`);
     } catch (e) { logger.warn('[Cron] waitlistNotifyCron error:', e.message); }
@@ -1143,6 +1175,10 @@ const server = app.listen(PORT, () => {
   const _outbox = require('./lib/outbox');
   const _jobQueue = require('./lib/jobQueue');
   const _email = require('./lib/email');
+  const _sms = require('./lib/otpProvider');
+  const _financeOutbox = require('./lib/financeOutbox');
+  const _leadDealValue = require('./lib/leadDealValue');
+  const _crmSla = require('./lib/crmSla');
   // Cron jobs migrated to the durable, retryable queue. Register handlers here.
   const _jobHandlers = {
     fx_refresh: async () => { await refreshFxRatesAuto(); },
@@ -1151,9 +1187,16 @@ const server = app.listen(PORT, () => {
   };
   async function backgroundWorkerTick() {
     try {
+      await _crmSla.enqueueOverdueLeadAlerts();
+      await promoteLegacyEmailSequenceQueue();
       await _outbox.drain({
-        email:    ({ recipient, subject, body, html }) => _email.sendEmail(recipient, subject, html || body || ''),
-        whatsapp: ({ recipient, message }) => sendWhatsApp(recipient, message || ''),
+        email:    ({ recipient, subject, body, html, tenantId }) => _email.sendEmail(recipient, subject, html || body || '', { tenantId }),
+        whatsapp: ({ recipient, message, tenantId }) => sendWhatsApp(recipient, message || '', { tenantId }),
+        sms:      ({ recipient, message, tenantId }) => _sms.sendSms({ phone: recipient, message: message || '', tenantId }),
+      });
+      await _financeOutbox.drainFinanceOutbox({
+        sync_lead_deal_value: ({ tenant_id: tenantId, payload }) =>
+          _leadDealValue.syncLeadDealValue(payload.subscriberId, tenantId, true),
       });
       await _jobQueue.processBatch(_jobHandlers, `srv-${process.pid}`);
     } catch (e) { logger.warn('[worker] tick error:', e.message); }

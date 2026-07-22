@@ -4,22 +4,23 @@ const { pool } = require('./db');
 const logger = require('./logger').child({ module: 'facebook-lead-ads' });
 const { tryJson } = require('./helpers');
 const { getLeadSourceConnectorSettings } = require('./saasSettings');
+const { getTenantSetting } = require('./tenantSettings');
 
-async function getFbLeadConfig() {
-  const [rows] = await pool.query("SELECT `key`, `value` FROM site_config WHERE `key` IN ('facebook_lead_ads', 'settings')");
-  let cfg = {};
-  for (const row of rows) {
-    const data = tryJson(row.value, {});
-    if (row.key === 'facebook_lead_ads') {
-      Object.assign(cfg, data);
-    } else if (row.key === 'settings' && data.fbLeadAdsConfig) {
-      const fb = data.fbLeadAdsConfig;
-      if (fb.defaultInterestedCourseId && !cfg.defaultInterestedCourseId) cfg.defaultInterestedCourseId = fb.defaultInterestedCourseId;
-      if (fb.defaultBranch && !cfg.defaultBranch) cfg.defaultBranch = fb.defaultBranch;
-      if (fb.defaultAssignedSalesId && !cfg.defaultAssignedSalesId) cfg.defaultAssignedSalesId = fb.defaultAssignedSalesId;
-    }
+async function getFbLeadConfig(tenantId) {
+  const [legacyConfig, generalSettings] = await Promise.all([
+    getTenantSetting('facebook_lead_ads', { tenantId, fallback: {} }),
+    getTenantSetting('settings', { tenantId, fallback: {} }),
+  ]);
+  const parsedLegacy = typeof legacyConfig === 'string' ? tryJson(legacyConfig, {}) : legacyConfig;
+  const parsedGeneral = typeof generalSettings === 'string' ? tryJson(generalSettings, {}) : generalSettings;
+  let cfg = { ...(parsedLegacy || {}) };
+  const legacyFb = (parsedGeneral || {}).fbLeadAdsConfig;
+  if (legacyFb) {
+    if (legacyFb.defaultInterestedCourseId && !cfg.defaultInterestedCourseId) cfg.defaultInterestedCourseId = legacyFb.defaultInterestedCourseId;
+    if (legacyFb.defaultBranch && !cfg.defaultBranch) cfg.defaultBranch = legacyFb.defaultBranch;
+    if (legacyFb.defaultAssignedSalesId && !cfg.defaultAssignedSalesId) cfg.defaultAssignedSalesId = legacyFb.defaultAssignedSalesId;
   }
-  const connectorSettings = await getLeadSourceConnectorSettings().catch(() => ({}));
+  const connectorSettings = await getLeadSourceConnectorSettings(tenantId).catch(() => ({}));
   const fb = connectorSettings.facebook || {};
   if (fb.enabled) {
     cfg = {
@@ -44,13 +45,15 @@ async function fetchFbLeadDetails(leadgenId, pageAccessToken) {
   return resp.json();
 }
 
-async function getNextSalesRep() {
+async function getNextSalesRep(tenantId = 'tenant-default') {
   const [reps] = await pool.execute(
-    `SELECT id, name FROM staff WHERE role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`
+    `SELECT id, name FROM staff WHERE tenant_id=? AND role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`,
+    [tenantId]
   );
   if (!reps.length) return null;
   const [counts] = await pool.execute(
-    `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`
+    `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
+    [tenantId]
   );
   const countMap = {};
   for (const c of counts) countMap[c.assigned_sales_id] = Number(c.cnt);

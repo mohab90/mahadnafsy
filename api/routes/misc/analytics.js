@@ -8,6 +8,7 @@ const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
 const express = require('express');
 const router = express.Router();
+const ROUTE_LOCAL_CRONS_ENABLED = false;
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, async (req, res) => {
@@ -18,8 +19,8 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
 
     const [byStatus] = await pool.query(`
       SELECT status, COUNT(*) AS cnt FROM leads
-      WHERE DATE(created_at) BETWEEN ? AND ?
-      GROUP BY status`, [from, to]);
+      WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
+      GROUP BY status`, [req.tenantId, from, to]);
 
     const statusMap = Object.fromEntries(byStatus.map(r => [r.status, parseInt(r.cnt)]));
 
@@ -33,8 +34,8 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
     const [bySource] = await pool.query(`
       SELECT source, COUNT(*) AS cnt,
              SUM(CASE WHEN status='converted' THEN 1 ELSE 0 END) AS conversions
-      FROM leads WHERE DATE(created_at) BETWEEN ? AND ?
-      GROUP BY source ORDER BY cnt DESC`, [from, to]);
+      FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
+      GROUP BY source ORDER BY cnt DESC`, [req.tenantId, from, to]);
 
     // Staff performance
     const [byStaff] = await pool.query(`
@@ -43,9 +44,9 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
              SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) AS conversions,
              ROUND(SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) / COUNT(l.id) * 100, 1) AS conv_rate
       FROM leads l
-      JOIN staff st ON st.id = l.assigned_sales_id
-      WHERE DATE(l.created_at) BETWEEN ? AND ?
-      GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [from, to]);
+      JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id=l.tenant_id
+      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?
+      GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [req.tenantId, from, to]);
 
     res.json({
       period: { from, to },
@@ -75,9 +76,9 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdmin, a
 
     // Get last 6 months of revenue for trend
     const [history] = await pool.query(`
-      SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, SUM(amount) AS revenue
-      FROM payments WHERE status='paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-      GROUP BY month ORDER BY month`);
+      SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, SUM(amount_egp) AS revenue
+      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY month ORDER BY month`, [req.tenantId]);
 
     if (history.length < 2) return res.json({ forecast: [], message: 'Insufficient data' });
 
@@ -120,8 +121,8 @@ router.get('/api/admin/security/login-history', requireAuth, requireAdmin, async
   try {
     const limit = Math.min(parseInt(req.query.limit || '100'), 500);
     const { email, status } = req.query;
-    let sql = 'SELECT id, user_id, email, ip, user_agent, status, failure_reason, created_at FROM login_history WHERE 1=1';
-    const params = [];
+    let sql = 'SELECT id, user_id, email, ip, user_agent, status, failure_reason, created_at FROM login_history WHERE tenant_id=?';
+    const params = [req.tenantId];
     if (email)  { sql += ' AND email = ?';  params.push(email);  }
     if (status) { sql += ' AND status = ?'; params.push(status); }
     sql += ' ORDER BY created_at DESC LIMIT ?';
@@ -134,22 +135,22 @@ router.get('/api/admin/security/login-history', requireAuth, requireAdmin, async
 // GET /api/admin/security/stats — summary of login activity
 router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM login_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)');
-    const [[{ failed }]] = await pool.query("SELECT COUNT(*) AS failed FROM login_history WHERE status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
-    const [[{ unique_ips }]] = await pool.query("SELECT COUNT(DISTINCT ip) AS unique_ips FROM login_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+    const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM login_history WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)', [req.tenantId]);
+    const [[{ failed }]] = await pool.query("SELECT COUNT(*) AS failed FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)", [req.tenantId]);
+    const [[{ unique_ips }]] = await pool.query("SELECT COUNT(DISTINCT ip) AS unique_ips FROM login_history WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)", [req.tenantId]);
     const [suspicious] = await pool.query(`
       SELECT ip, COUNT(*) AS attempts, MAX(created_at) AS last_attempt
-      FROM login_history WHERE status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-      GROUP BY ip HAVING attempts >= 5 ORDER BY attempts DESC LIMIT 20`);
+      FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+      GROUP BY ip HAVING attempts >= 5 ORDER BY attempts DESC LIMIT 20`, [req.tenantId]);
     const [recentLogins] = await pool.query(`
-      SELECT email, ip, status, created_at FROM login_history
-      ORDER BY created_at DESC LIMIT 20`);
+      SELECT email, ip, status, created_at FROM login_history WHERE tenant_id=?
+      ORDER BY created_at DESC LIMIT 20`, [req.tenantId]);
     const [dailyActivity] = await pool.query(`
       SELECT DATE(created_at) AS day,
              SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS successes,
              SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failures
-      FROM login_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      GROUP BY day ORDER BY day`);
+      FROM login_history WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      GROUP BY day ORDER BY day`, [req.tenantId]);
     res.json({ total: parseInt(total), failed: parseInt(failed), unique_ips: parseInt(unique_ips), suspicious, recentLogins, dailyActivity });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -174,12 +175,12 @@ router.use('/api/auth/login', (req, res, next) => {
 router.get('/api/admin/reports/daily-preview', requireAuth, requireAdmin, async (req, res) => {
   try {
     const today = req.query.date || new Date().toISOString().slice(0, 10);
-    const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS revenue FROM payments WHERE status='paid' AND DATE(created_at)=?`, [today]);
-    const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE DATE(created_at)=?`, [today]);
-    const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE DATE(created_at)=?`, [today]);
-    const [[{ pending_payments }]] = await pool.query(`SELECT COUNT(*) AS pending_payments FROM payments WHERE status='pending'`);
-    const [[{ failed_logins }]] = await pool.query(`SELECT COUNT(*) AS failed_logins FROM login_history WHERE status='failed' AND DATE(created_at)=?`, [today]).catch(() => [[{ failed_logins: 0 }]]);
-    const [[{ month_revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS month_revenue FROM payments WHERE status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`);
+    const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at)=?`, [req.tenantId, today]);
+    const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND DATE(created_at)=?`, [req.tenantId, today]);
+    const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND DATE(created_at)=?`, [req.tenantId, today]);
+    const [[{ pending_payments }]] = await pool.query(`SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending'`, [req.tenantId]);
+    const [[{ failed_logins }]] = await pool.query(`SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND DATE(created_at)=?`, [req.tenantId, today]).catch(() => [[{ failed_logins: 0 }]]);
+    const [[{ month_revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`, [req.tenantId]);
     res.json({ date: today, revenue: parseFloat(revenue), new_leads: parseInt(new_leads), new_clients: parseInt(new_clients), pending_payments: parseInt(pending_payments), failed_logins: parseInt(failed_logins), month_revenue: parseFloat(month_revenue) });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -187,7 +188,7 @@ router.get('/api/admin/reports/daily-preview', requireAuth, requireAdmin, async 
 // POST /api/admin/reports/send-now — manually trigger the daily report
 router.post('/api/admin/reports/send-now', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await sendDailyReport();
+    await sendDailyReport(req.tenantId);
     res.json({ ok: true, message: 'تم إرسال التقرير' });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -212,15 +213,15 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
              MAX(p.created_at) AS last_payment_date,
              DATEDIFF(NOW(), MAX(p.created_at)) AS days_since_payment
       FROM subscribers s
-      LEFT JOIN payments p ON p.subscriber_id = s.id AND p.status = 'paid'
-      WHERE s.status NOT IN ('inactive','cancelled')
+      LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.status = 'paid'
+      WHERE s.tenant_id=? AND s.status NOT IN ('inactive','cancelled')
       GROUP BY s.id
       HAVING (last_payment_date IS NULL OR last_payment_date < ?)
       ORDER BY days_since_payment DESC NULLS LAST
-      LIMIT 500`, [cutoffStr]);
+      LIMIT 500`, [req.tenantId, cutoffStr]);
 
     // Retention rate: active clients with recent payment / all active
-    const [[{ total_active }]] = await pool.query(`SELECT COUNT(*) AS total_active FROM subscribers WHERE status NOT IN ('inactive','cancelled')`);
+    const [[{ total_active }]] = await pool.query(`SELECT COUNT(*) AS total_active FROM subscribers WHERE tenant_id=? AND status NOT IN ('inactive','cancelled')`, [req.tenantId]);
     const atRisk = inactive.length;
     const retentionRate = total_active > 0 ? Math.round((1 - atRisk / parseInt(total_active)) * 100) : 100;
 
@@ -230,8 +231,8 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
              COUNT(*) AS total,
              SUM(CASE WHEN status NOT IN ('inactive','cancelled') THEN 1 ELSE 0 END) AS still_active
       FROM subscribers
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
-      GROUP BY cohort ORDER BY cohort`);
+      WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+      GROUP BY cohort ORDER BY cohort`, [req.tenantId]);
 
     res.json({
       months,
@@ -252,13 +253,13 @@ router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdmin, async (
       SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch,
              s.total_paid, s.remaining_amount, s.created_at,
              DATEDIFF(NOW(), s.created_at) AS days_old,
-             (SELECT MAX(p.created_at) FROM payments p WHERE p.subscriber_id = s.id AND p.status='paid') AS last_payment,
-             (SELECT COUNT(*) FROM payments p WHERE p.subscriber_id = s.id AND p.status='pending') AS pending_count
+             (SELECT MAX(p.created_at) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='paid') AS last_payment,
+             (SELECT COUNT(*) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='pending') AS pending_count
       FROM subscribers s
-      WHERE s.status NOT IN ('inactive','cancelled')
+      WHERE s.tenant_id=? AND s.status NOT IN ('inactive','cancelled')
       HAVING (last_payment IS NULL OR DATEDIFF(NOW(), last_payment) > 45) OR pending_count > 0
       ORDER BY pending_count DESC, last_payment ASC
-      LIMIT 200`);
+      LIMIT 200`, [req.tenantId]);
 
     // Score churn risk (0-100, higher = more at risk)
     const scored = clients.map(c => {
@@ -302,21 +303,21 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdmin, 
         COUNT(DISTINCT s.id) AS subscribers_managed,
         -- Revenue generated (payments on their clients)
         COALESCE((
-          SELECT SUM(p.amount) FROM payments p
-          JOIN subscribers sub ON sub.id = p.subscriber_id
-          WHERE sub.assigned_sales_id = st.id AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+          SELECT SUM(p.amount_egp) FROM payments p
+          JOIN subscribers sub ON sub.id = p.subscriber_id AND sub.tenant_id=p.tenant_id
+          WHERE p.tenant_id=st.tenant_id AND sub.assigned_sales_id = st.id AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
         ), 0) AS revenue_generated,
         -- Tasks completed
         COUNT(DISTINCT CASE WHEN t.status='done' THEN t.id END) AS tasks_done,
         COUNT(DISTINCT t.id) AS tasks_total
       FROM staff st
-      LEFT JOIN leads l ON l.assigned_sales_id = st.id AND DATE(l.created_at) BETWEEN ? AND ?
-      LEFT JOIN subscribers s ON s.assigned_sales_id = st.id AND DATE(s.created_at) BETWEEN ? AND ?
-      LEFT JOIN tasks t ON t.assigned_to = st.id AND DATE(t.created_at) BETWEEN ? AND ?
-      WHERE st.is_active = 1
+      LEFT JOIN leads l ON l.tenant_id=st.tenant_id AND l.assigned_sales_id = st.id AND DATE(l.created_at) BETWEEN ? AND ?
+      LEFT JOIN subscribers s ON s.tenant_id=st.tenant_id AND s.assigned_sales_id = st.id AND DATE(s.created_at) BETWEEN ? AND ?
+      LEFT JOIN tasks t ON t.tenant_id=st.tenant_id AND t.assigned_to = st.id AND DATE(t.created_at) BETWEEN ? AND ?
+      WHERE st.tenant_id=? AND st.is_active = 1
       GROUP BY st.id
       ORDER BY revenue_generated DESC`,
-      [from, to, from, to, from, to, from, to]
+      [from, to, from, to, from, to, from, to, req.tenantId]
     );
 
     const result = staff.map(s => ({
@@ -353,16 +354,16 @@ router.get('/api/admin/analytics/expenses', requireAuth, requireAdmin, async (re
     const to   = req.query.to   || now.toISOString().slice(0, 10);
 
     const [byCategory] = await pool.query(`
-      SELECT category, COUNT(*) AS count, SUM(amount) AS total
-      FROM expenses WHERE deleted_at IS NULL AND date BETWEEN ? AND ?
-      GROUP BY category ORDER BY total DESC`, [from, to]);
+      SELECT category, COUNT(*) AS count, SUM(amount_egp) AS total
+      FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date BETWEEN ? AND ?
+      GROUP BY category ORDER BY total DESC`, [req.tenantId, from, to]);
 
     const [monthly] = await pool.query(`
-      SELECT DATE_FORMAT(date,'%Y-%m') AS month, category, SUM(amount) AS total
-      FROM expenses WHERE deleted_at IS NULL AND date BETWEEN ? AND ?
-      GROUP BY month, category ORDER BY month, total DESC`, [from, to]);
+      SELECT DATE_FORMAT(date,'%Y-%m') AS month, category, SUM(amount_egp) AS total
+      FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date BETWEEN ? AND ?
+      GROUP BY month, category ORDER BY month, total DESC`, [req.tenantId, from, to]);
 
-    const [[{ grand_total }]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS grand_total FROM expenses WHERE deleted_at IS NULL AND date BETWEEN ? AND ?`, [from, to]);
+    const [[{ grand_total }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date BETWEEN ? AND ?`, [req.tenantId, from, to]);
 
     res.json({
       period: { from, to },
@@ -385,9 +386,10 @@ router.get('/api/admin/notifications/inbox', requireAuth, requireAdmin, async (r
     const unreadOnly = req.query.unread_only === '1';
     const [rows] = await pool.query(
       `SELECT id, type, title, message, link, is_read, created_at
-       FROM admin_notifications ${unreadOnly ? 'WHERE is_read=0' : ''} ORDER BY created_at DESC LIMIT 100`
+       FROM admin_notifications WHERE tenant_id=?${unreadOnly ? ' AND is_read=0' : ''} ORDER BY created_at DESC LIMIT 100`,
+      [req.tenantId]
     );
-    const [[{ unread_count }]] = await pool.query('SELECT COUNT(*) AS unread_count FROM admin_notifications WHERE is_read=0');
+    const [[{ unread_count }]] = await pool.query('SELECT COUNT(*) AS unread_count FROM admin_notifications WHERE tenant_id=? AND is_read=0', [req.tenantId]);
     res.json({ notifications: rows, unread_count: parseInt(unread_count) });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -395,7 +397,7 @@ router.get('/api/admin/notifications/inbox', requireAuth, requireAdmin, async (r
 // PUT /api/admin/notifications/read-all
 router.put('/api/admin/notifications/read-all', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('UPDATE admin_notifications SET is_read=1 WHERE is_read=0');
+    await pool.query('UPDATE admin_notifications SET is_read=1 WHERE tenant_id=? AND is_read=0', [req.tenantId]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -403,28 +405,32 @@ router.put('/api/admin/notifications/read-all', requireAuth, requireAdmin, async
 // DELETE /api/admin/notifications/:id
 router.delete('/api/admin/notifications/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM admin_notifications WHERE id=?', [req.params.id]);
+    const [result] = await pool.query('DELETE FROM admin_notifications WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Notification not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Auto-trigger notifications on important events via cron (daily check)
-setInterval(async () => {
+if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
-    // Check for pending payments > 3 days old
-    const [[{ old_pending }]] = await pool.query(
-      `SELECT COUNT(*) AS old_pending FROM payments WHERE status='pending' AND created_at < DATE_SUB(NOW(), INTERVAL 3 DAY)`
-    );
-    if (parseInt(old_pending) > 0) {
-      await pushAdminNotif('warning', 'مدفوعات معلقة', `يوجد ${old_pending} مدفوعة معلقة منذ أكثر من 3 أيام`, '/dashboard?tab=orders');
-    }
+    const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[{ id: 'tenant-default' }]]);
+    for (const { id: tenantId } of tenants) {
+      const [[{ old_pending }]] = await pool.query(
+        `SELECT COUNT(*) AS old_pending FROM payments WHERE tenant_id=? AND status='pending' AND created_at < DATE_SUB(NOW(), INTERVAL 3 DAY)`,
+        [tenantId]
+      );
+      if (parseInt(old_pending) > 0) {
+        await pushAdminNotif('warning', 'مدفوعات معلقة', `يوجد ${old_pending} مدفوعة معلقة منذ أكثر من 3 أيام`, '/dashboard?tab=orders', tenantId);
+      }
 
-    // Check for high churn risk clients
-    const [[{ at_risk }]] = await pool.query(
-      `SELECT COUNT(*) AS at_risk FROM subscribers s WHERE s.status NOT IN ('inactive','cancelled') AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.subscriber_id=s.id AND p.status='paid' AND p.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY))`
-    );
-    if (parseInt(at_risk) >= 5) {
-      await pushAdminNotif('alert', 'خطر انسحاب العملاء', `${at_risk} عميل لم يدفع منذ 60 يوماً`, '/dashboard?tab=retention');
+      const [[{ at_risk }]] = await pool.query(
+        `SELECT COUNT(*) AS at_risk FROM subscribers s WHERE s.tenant_id=? AND s.status NOT IN ('inactive','cancelled') AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id AND p.status='paid' AND p.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY))`,
+        [tenantId]
+      );
+      if (parseInt(at_risk) >= 5) {
+        await pushAdminNotif('alert', 'خطر انسحاب العملاء', `${at_risk} عميل لم يدفع منذ 60 يوماً`, '/dashboard?tab=retention', tenantId);
+      }
     }
 
     // Check for failed login spikes

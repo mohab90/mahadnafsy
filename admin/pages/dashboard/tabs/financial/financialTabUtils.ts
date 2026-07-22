@@ -12,6 +12,7 @@ export type FinancialSubTab =
   | 'proofs'
   | 'aging'
   | 'outstanding'
+  | 'reconciliation'
   | 'audit'
   | 'review'
   | 'period_closing'

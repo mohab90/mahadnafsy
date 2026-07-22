@@ -12,9 +12,11 @@
  * Events:  lead_created · payment_received · enrolled · certificate_ready
  * Scans :  learner_stalled · installment_due
  */
-const { pool, cached, cacheInvalidate } = require('./db');
+const { pool } = require('./db');
 const logger = require('./logger');
 const outbox = require('./outbox');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 const H = (n) => n * 3600 * 1000;
 const money = (a, c) => `${Number(a || 0).toLocaleString()} ${c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م'}`;
@@ -141,14 +143,17 @@ const JOURNEY = {
 };
 
 // ── Config (toggles) ──────────────────────────────────────────────────────────
-async function getConfig() {
-  return cached('lifecycle_config', 60 * 1000, async () => {
-    try {
-      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='lifecycle' LIMIT 1");
-      const saved = rows[0]?.value ? (typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value) : {};
-      return { enabled: saved.enabled !== false, steps: saved.steps || {} }; // steps[key]=false to disable
-    } catch { return { enabled: true, steps: {} }; }
-  });
+const configCache = new Map();
+async function getConfig(tenantId = DEFAULT_TENANT) {
+  const scopedTenant = String(tenantId || DEFAULT_TENANT);
+  const hit = configCache.get(scopedTenant);
+  if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  let saved = {};
+  try { saved = await getTenantSetting('lifecycle', { tenantId: scopedTenant, fallback: {} }) || {}; }
+  catch (_) { saved = {}; }
+  const value = { enabled: saved.enabled !== false, steps: saved.steps || {} };
+  configCache.set(scopedTenant, { value, at: Date.now() });
+  return value;
 }
 
 // Fire an event → enqueue its (enabled) messages. Never throws into the caller.
@@ -156,7 +161,8 @@ async function getConfig() {
 // already handles the rest (avoids duplicate sends).
 async function trigger(event, ctx = {}, opts = {}) {
   try {
-    const cfg = await getConfig();
+    const tenantId = String(ctx.tenantId || opts.tenantId || DEFAULT_TENANT);
+    const cfg = await getConfig(tenantId);
     if (!cfg.enabled) return;
     const steps = JOURNEY[event];
     if (!steps) return;
@@ -170,9 +176,9 @@ async function trigger(event, ctx = {}, opts = {}) {
       const payload = step.channel === 'email' ? { body: content } : { message: content };
       await outbox.enqueue({
         channel: step.channel, recipient, subject, payload,
-        tenantId: ctx.tenantId || 'mahad',
+        tenantId,
         sendAt: step.delayH ? Date.now() + H(step.delayH) : null,
-        dedupeKey: opts.dedupeKey ? `${opts.dedupeKey}:${step.key}` : null,
+        dedupeKey: opts.dedupeKey ? `${tenantId}:${opts.dedupeKey}:${step.key}` : null,
       });
     }
     logger.info('[lifecycle] triggered', { event, to: ctx.email || ctx.phone });
@@ -193,15 +199,13 @@ function weekStamp(d = new Date()) {
 // v1: re-engage learners who paid/enrolled 7+ days ago but never watched anything.
 // (Installment reminders are already handled by the server's installment cron.)
 async function scanScheduled() {
-  const cfg = await getConfig();
-  if (!cfg.enabled) return { stalled: 0 };
   let stalled = 0;
   try {
     const [rows] = await pool.query(`
-      SELECT DISTINCT s.id, s.name, s.email, s.phone
+      SELECT DISTINCT s.id, s.tenant_id, s.name, s.email, s.phone
       FROM subscribers s
-      JOIN enrollments e ON e.subscriber_id = s.id
-      LEFT JOIN lecture_progress lp ON lp.subscriber_id = s.id
+      JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id = s.tenant_id
+      LEFT JOIN lecture_completions lp ON lp.subscriber_id = s.id AND lp.tenant_id = s.tenant_id
       WHERE e.enrolled_at < (NOW() - INTERVAL 7 DAY)
         AND e.enrolled_at > (NOW() - INTERVAL 60 DAY)
         AND lp.id IS NULL
@@ -211,7 +215,7 @@ async function scanScheduled() {
     const wk = weekStamp();
     for (const s of rows) {
       await trigger('learner_stalled',
-        { name: s.name, email: s.email, phone: s.phone },
+        { name: s.name, email: s.email, phone: s.phone, tenantId: s.tenant_id },
         { dedupeKey: `stalled:${s.id}:${wk}` }); // once per subscriber per week
       stalled++;
     }
@@ -223,9 +227,9 @@ async function scanScheduled() {
   let abandoned = 0;
   try {
     const [rows] = await pool.query(`
-      SELECT l.id, l.name, l.email, l.phone, c.title AS course_title
+      SELECT l.id, l.tenant_id, l.name, l.email, l.phone, c.title AS course_title
       FROM leads l
-      LEFT JOIN courses c ON c.id = l.enrolled_course_id
+      LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
       WHERE l.hidden = 0
         AND LOWER(l.status) NOT IN ('converted','lost')
         AND l.created_at < (NOW() - INTERVAL 3 DAY)
@@ -238,7 +242,7 @@ async function scanScheduled() {
     const wk = weekStamp();
     for (const l of rows) {
       await trigger('abandoned_interest',
-        { name: l.name, email: l.email, phone: l.phone, courseTitle: l.course_title },
+        { name: l.name, email: l.email, phone: l.phone, courseTitle: l.course_title, tenantId: l.tenant_id },
         { dedupeKey: `abandoned:${l.id}:${wk}` });
       abandoned++;
     }
@@ -250,9 +254,9 @@ async function scanScheduled() {
   let checkout = 0;
   try {
     const [rows] = await pool.query(`
-      SELECT l.id, l.name, l.email, l.phone, c.title AS course_title
+      SELECT l.id, l.tenant_id, l.name, l.email, l.phone, c.title AS course_title
       FROM leads l
-      LEFT JOIN courses c ON c.id = l.enrolled_course_id
+      LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
       WHERE l.hidden = 0
         AND l.source = 'checkout_intent'
         AND LOWER(l.status) NOT IN ('converted','lost')
@@ -264,7 +268,7 @@ async function scanScheduled() {
     `);
     for (const l of rows) {
       await trigger('checkout_abandoned',
-        { name: l.name, email: l.email, phone: l.phone, courseTitle: l.course_title },
+        { name: l.name, email: l.email, phone: l.phone, courseTitle: l.course_title, tenantId: l.tenant_id },
         { channels: ['whatsapp'], dedupeKey: `checkout:${l.id}` }); // once per lead, ever
       checkout++;
     }
@@ -274,7 +278,10 @@ async function scanScheduled() {
   return { stalled, abandoned, checkout };
 }
 
-function invalidateConfig() { cacheInvalidate('lifecycle_config'); }
+function invalidateConfig(tenantId) {
+  if (tenantId) configCache.delete(String(tenantId));
+  else configCache.clear();
+}
 
 const EVENT_LABELS = {
   lead_created: 'عميل محتمل جديد (ترحيب فوري)',
@@ -290,8 +297,8 @@ const EVENT_LABELS = {
 const STEP_LABELS = { email: 'بريد', whatsapp: 'واتساب' };
 
 // Structure for the admin UI: events → steps (key/channel/label), enabled state.
-async function describe() {
-  const cfg = await getConfig();
+async function describe(tenantId = DEFAULT_TENANT) {
+  const cfg = await getConfig(tenantId);
   const events = Object.entries(JOURNEY).map(([event, steps]) => ({
     event,
     label: EVENT_LABELS[event] || event,

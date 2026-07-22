@@ -210,33 +210,38 @@ pool.getConnection = async () => {
 };
 
 // ── Staff ID resolver ─────────────────────────────────────────────────────────
-async function getStaffIdByEmail(email) {
-  if (!email) return null;
+async function getStaffIdByEmail(email, tenantId) {
+  if (!email || !tenantId) return null;
   const [[row]] = await pool.query(
-    'SELECT id FROM staff WHERE LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? LIMIT 1',
-    [(email || '').toLowerCase().trim()]
+    'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? LIMIT 1',
+    [tenantId, (email || '').toLowerCase().trim()]
   ).catch(() => [[null]]);
   return row?.id || null;
 }
 
 // ── Round-Robin staff auto-assignment ────────────────────────────────────────
-async function autoAssignStaff(role) {
+async function autoAssignStaff(role, tenantId = 'tenant-default') {
   try {
-    const rrKey = role === 'SALES' ? 'crm_rr_index' : `crm_rr_${role.toLowerCase()}_index`;
+    const normalizedRole = String(role || '').toUpperCase();
+    let workloadJoin = '';
+    if (normalizedRole === 'SALES') {
+      workloadJoin = `LEFT JOIN leads w ON w.tenant_id=s.tenant_id
+        AND w.assigned_sales_id=s.id AND w.hidden=0 AND LOWER(w.status) NOT IN ('converted','lost','closed')`;
+    } else if (normalizedRole === 'COLLECTION') {
+      workloadJoin = `LEFT JOIN subscribers w ON w.tenant_id=s.tenant_id
+        AND w.assigned_cs_id=s.id AND w.deleted_at IS NULL AND w.is_active=1`;
+    }
+    const countExpr = workloadJoin ? 'COUNT(w.id)' : '0';
     const [reps] = await pool.query(
-      `SELECT id, name FROM staff WHERE role = ? AND is_active = 1 ORDER BY name ASC`, [role]
+      `SELECT s.id, s.name, ${countExpr} AS active_workload
+       FROM staff s ${workloadJoin}
+       WHERE s.tenant_id=? AND s.role=? AND s.is_active=1 AND s.deleted_at IS NULL
+       GROUP BY s.id, s.name
+       ORDER BY active_workload ASC, s.name ASC, s.id ASC
+       LIMIT 1`,
+      [tenantId, normalizedRole]
     );
-    if (!reps.length) return null;
-    const [rrRows] = await pool.query(
-      "SELECT `value` FROM site_config WHERE `key` = ? LIMIT 1", [rrKey]
-    );
-    const idx = parseInt(rrRows[0]?.value || '0', 10) || 0;
-    const rep = reps[idx % reps.length];
-    await pool.query(
-      "INSERT INTO site_config (`key`,`value`) VALUES (?,?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [rrKey, String(idx + 1)]
-    );
-    return { id: rep.id, name: rep.name };
+    return reps[0] ? { id: reps[0].id, name: reps[0].name } : null;
   } catch (e) {
     logger.warn(`[autoAssignStaff] ${role} error: ${e.message}`);
     return null;
@@ -259,14 +264,16 @@ async function ensureUsersTable(conn) {
   await conn.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(100) PRIMARY KEY,
-      email VARCHAR(255) UNIQUE NOT NULL,
+      tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+      email VARCHAR(255) NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
       name VARCHAR(255),
       role VARCHAR(50) DEFAULT 'user',
       is_active TINYINT DEFAULT 1,
       login_count INT DEFAULT 0,
       last_login DATETIME DEFAULT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_users_tenant_email (tenant_id, email(191))
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
   `);
   _usersTableEnsured = true;

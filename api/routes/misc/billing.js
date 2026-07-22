@@ -5,10 +5,15 @@ const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { getTenantSetting } = require('../../lib/tenantSettings');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
+
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[ch]));
 
 router.get('/api/admin/subscription-plans', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -141,27 +146,34 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
     req.headers.authorization = `Bearer ${req.query.token}`;
   }
   next();
-}, requireAuth, requireAdmin, async (req, res) => {
+}, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [[payment]] = await pool.query(
       `SELECT p.*, s.name AS client_name, s.phone AS client_phone, s.email AS client_email,
               s.client_code, s.branch
        FROM payments p
-       LEFT JOIN subscribers s ON s.id = p.subscriber_id
-       WHERE p.id = ?`, [req.params.id]);
+       LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+       WHERE p.id = ? AND p.tenant_id = ?`, [req.params.id, req.tenantId]);
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
-    const [settingsRows] = await pool.query('SELECT site_name, phone, email FROM settings LIMIT 1').catch(() => [[]]);
-    const settings = settingsRows[0] || {};
-    const siteName = settings.site_name || 'المعهد النفسي';
-    const sitePhone = settings.phone || '';
-    const siteEmail = settings.email || '';
+    const settings = await getTenantSetting('sys_general', { tenantId: req.tenantId, fallback: {} });
+    const siteName = escapeHtml(settings.site_name || settings.siteName || 'المعهد النفسي');
+    const sitePhone = escapeHtml(settings.phone || '');
+    const siteEmail = escapeHtml(settings.email || '');
+    const invoiceId = escapeHtml(payment.id);
+    const clientName = escapeHtml(payment.client_name || 'عميل');
+    const clientCode = escapeHtml(payment.client_code || '-');
+    const clientPhone = escapeHtml(payment.client_phone || '');
+    const clientEmail = escapeHtml(payment.client_email || '');
+    const description = escapeHtml(payment.notes || payment.note || 'خدمات تعليمية');
+    const method = escapeHtml(payment.method || payment.payment_method || '-');
+    const status = escapeHtml(payment.status || 'pending');
 
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>فاتورة #${payment.id}</title>
+  <title>فاتورة #${invoiceId}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -200,7 +212,7 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
       </div>
       <div class="invoice-meta">
         <h2>فاتورة ضريبية</h2>
-        <p>رقم الفاتورة: #${payment.id}</p>
+        <p>رقم الفاتورة: #${invoiceId}</p>
         <p>التاريخ: ${new Date(payment.created_at).toLocaleDateString('ar-EG')}</p>
       </div>
     </div>
@@ -214,10 +226,10 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
       </div>
       <div class="party-box">
         <h3>صادر إلى</h3>
-        <p>${payment.client_name || 'عميل'}</p>
-        <span>كود: ${payment.client_code || '-'}</span>
-        <span>${payment.client_phone || ''}</span>
-        <span>${payment.client_email || ''}</span>
+        <p>${clientName}</p>
+        <span>كود: ${clientCode}</span>
+        <span>${clientPhone}</span>
+        <span>${clientEmail}</span>
       </div>
     </div>
 
@@ -232,11 +244,11 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
       </thead>
       <tbody>
         <tr>
-          <td>${payment.notes || 'خدمات تعليمية'}</td>
-          <td>${payment.method || '-'}</td>
+          <td>${description}</td>
+          <td>${method}</td>
           <td>
             <span class="status-badge ${payment.status === 'paid' ? 'status-paid' : 'status-pending'}">
-              ${payment.status === 'paid' ? 'مدفوع' : payment.status === 'pending' ? 'معلق' : payment.status}
+              ${payment.status === 'paid' ? 'مدفوع' : payment.status === 'pending' ? 'معلق' : status}
             </span>
           </td>
           <td><strong>${parseFloat(payment.amount || 0).toLocaleString('ar-EG')} ج.م</strong></td>

@@ -4,7 +4,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool } = require('../../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Sales Team Performance + Lead Conversion Funnel ──────────────
@@ -23,16 +23,16 @@ router.get('/api/admin/reports/sales-performance', requireAuth, requireAdmin, as
       LEFT JOIN (
         SELECT assigned_sales_id, COUNT(*) AS total_leads,
           SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted
-        FROM leads WHERE DATE(created_at) BETWEEN ? AND ? AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id
+        FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ? AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id
       ) ld ON ld.assigned_sales_id = st.id
       LEFT JOIN (
         SELECT staff_id,
-          SUM(CASE currency WHEN 'SAR' THEN amount*13 WHEN 'USD' THEN amount*50 ELSE amount END) AS revenue_egp,
+          SUM(amount_egp) AS revenue_egp,
           COUNT(*) AS payment_count
-        FROM payments WHERE status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? AND staff_id IS NOT NULL GROUP BY staff_id
+        FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed') AND DATE(\`date\`) BETWEEN ? AND ? AND staff_id IS NOT NULL GROUP BY staff_id
       ) rd ON rd.staff_id = st.id
-      WHERE UPPER(st.role) IN ('SALES','SALES_MANAGER','MANAGER') AND st.is_active=1
-      ORDER BY revenue_egp DESC`, [from, to, from, to]);
+      WHERE st.tenant_id=? AND UPPER(st.role) IN ('SALES','SALES_MANAGER','MANAGER') AND st.is_active=1
+      ORDER BY revenue_egp DESC`, [req.tenantId, from, to, req.tenantId, from, to, req.tenantId]);
 
     res.json({
       from, to,
@@ -50,9 +50,10 @@ router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdmin, async (r
   try {
     const from = req.query.from || `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
-    const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE DATE(created_at) BETWEEN ? AND ? GROUP BY status ORDER BY count DESC`, [from, to]);
-    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE DATE(created_at) BETWEEN ? AND ? GROUP BY source ORDER BY total DESC`, [from, to]);
-    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE DATE(created_at) BETWEEN ? AND ? GROUP BY branch ORDER BY total DESC`, [from, to]);
+    const args = [req.tenantId, from, to];
+    const [byStatus] = await pool.query(`SELECT status, COUNT(*) AS count FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ? GROUP BY status ORDER BY count DESC`, args);
+    const [bySource] = await pool.query(`SELECT source, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ? GROUP BY source ORDER BY total DESC`, args);
+    const [byBranch] = await pool.query(`SELECT branch, COUNT(*) AS total, SUM(CASE WHEN status IN ('converted','won') THEN 1 ELSE 0 END) AS converted FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ? GROUP BY branch ORDER BY total DESC`, args);
     const total     = byStatus.reduce((s, r) => s + Number(r.count), 0);
     const converted = byStatus.filter(r => ['converted','won'].includes(r.status)).reduce((s, r) => s + Number(r.count), 0);
     const lost      = byStatus.filter(r => r.status === 'lost').reduce((s, r) => s + Number(r.count), 0);
@@ -75,9 +76,9 @@ router.get('/api/admin/reports/lead-funnel', requireAuth, requireAdmin, async (r
 router.get('/api/admin/sales-goals', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { period } = req.query;
-    let sql = 'SELECT id, period, revenue_target, leads_target, conversions_target, new_clients_target, created_at, updated_at FROM sales_goals';
-    const params = [];
-    if (period) { sql += ' WHERE period = ?'; params.push(period); }
+    let sql = 'SELECT id, period, revenue_target, leads_target, conversions_target, new_clients_target, created_at, updated_at FROM sales_goals WHERE tenant_id=?';
+    const params = [req.tenantId];
+    if (period) { sql += ' AND period = ?'; params.push(period); }
     else sql += ' ORDER BY period DESC LIMIT 24';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
@@ -90,14 +91,14 @@ router.put('/api/admin/sales-goals/:period', requireAuth, requireAdmin, async (r
     const { period } = req.params;
     if (!/^\d{4}-\d{2}$/.test(period)) return res.status(400).json({ error: 'period must be YYYY-MM' });
     const { revenue_target = 0, leads_target = 0, conversions_target = 0, new_clients_target = 0 } = req.body;
-    await pool.query(`INSERT INTO sales_goals (period, revenue_target, leads_target, conversions_target, new_clients_target)
-                      VALUES (?, ?, ?, ?, ?)
+    await pool.query(`INSERT INTO sales_goals (tenant_id, period, revenue_target, leads_target, conversions_target, new_clients_target)
+                      VALUES (?, ?, ?, ?, ?, ?)
                       ON DUPLICATE KEY UPDATE
                         revenue_target=VALUES(revenue_target),
                         leads_target=VALUES(leads_target),
                         conversions_target=VALUES(conversions_target),
                         new_clients_target=VALUES(new_clients_target)`,
-      [period, revenue_target, leads_target, conversions_target, new_clients_target]);
+      [req.tenantId, period, revenue_target, leads_target, conversions_target, new_clients_target]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -107,12 +108,12 @@ router.put('/api/admin/sales-goals/:period', requireAuth, requireAdmin, async (r
 //    staff_id '__collection__' holds the org-wide collection monthly target. ──
 
 // GET /api/admin/sales-targets?period=YYYY-MM (omit period → recent across staff)
-router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const { period } = req.query;
-    let sql = 'SELECT staff_id AS staffId, period, revenue_target AS revenueTarget, leads_target AS leadsTarget, updated_at AS updatedAt FROM sales_targets';
-    const params = [];
-    if (period) { sql += ' WHERE period = ?'; params.push(period); }
+    let sql = 'SELECT staff_id AS staffId, period, revenue_target AS revenueTarget, leads_target AS leadsTarget, updated_at AS updatedAt FROM sales_targets WHERE tenant_id=?';
+    const params = [req.tenantId];
+    if (period) { sql += ' AND period = ?'; params.push(period); }
     else sql += ' ORDER BY period DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
@@ -120,20 +121,25 @@ router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, async (
 });
 
 // POST /api/admin/sales-targets  (upsert one {staffId, period, revenueTarget, leadsTarget})
-router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   try {
     const { staffId, period } = req.body || {};
     if (!staffId || !/^\d{4}-\d{2}$/.test(period || '')) return res.status(400).json({ error: 'staffId and period (YYYY-MM) required' });
     // Merge: only overwrite a field that was actually sent, so two tabs writing the
     // same (staff, month) row (one sets revenue, the other leads) don't clobber.
-    const [[existing]] = await pool.query('SELECT revenue_target, leads_target FROM sales_targets WHERE staff_id=? AND period=? LIMIT 1', [String(staffId).slice(0, 64), period]);
+    const scopedStaffId = String(staffId).slice(0, 64);
+    if (scopedStaffId !== '__collection__') {
+      const [[staff]] = await pool.query('SELECT id FROM staff WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1', [scopedStaffId, req.tenantId]);
+      if (!staff) return res.status(400).json({ error: 'Staff member not found in tenant' });
+    }
+    const [[existing]] = await pool.query('SELECT revenue_target, leads_target FROM sales_targets WHERE tenant_id=? AND staff_id=? AND period=? LIMIT 1', [req.tenantId, scopedStaffId, period]);
     const revenueTarget = req.body.revenueTarget !== undefined ? (Number(req.body.revenueTarget) || 0) : (existing ? Number(existing.revenue_target) : 0);
     const leadsTarget   = req.body.leadsTarget   !== undefined ? (Number(req.body.leadsTarget)   || 0) : (existing ? Number(existing.leads_target)   : 0);
     await pool.query(
-      `INSERT INTO sales_targets (staff_id, period, revenue_target, leads_target, updated_by)
-       VALUES (?,?,?,?,?)
+      `INSERT INTO sales_targets (tenant_id, staff_id, period, revenue_target, leads_target, updated_by)
+       VALUES (?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE revenue_target=VALUES(revenue_target), leads_target=VALUES(leads_target), updated_by=VALUES(updated_by)`,
-      [String(staffId).slice(0, 64), period, revenueTarget, leadsTarget, (req.user?.id || req.user?.email || null)]
+      [req.tenantId, scopedStaffId, period, revenueTarget, leadsTarget, (req.user?.id || req.user?.email || null)]
     );
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -147,19 +153,19 @@ router.get('/api/admin/sales-goals/vs-actual', requireAuth, requireAdmin, async 
     const to   = period + '-31';
 
     const [goalRows] = await pool.query(
-      'SELECT id, period, revenue_target, leads_target, conversions_target, new_clients_target, created_at, updated_at FROM sales_goals WHERE period = ?',
-      [period]
+      'SELECT id, period, revenue_target, leads_target, conversions_target, new_clients_target, created_at, updated_at FROM sales_goals WHERE tenant_id=? AND period = ?',
+      [req.tenantId, period]
     );
     const goal = goalRows[0] || {};
 
     const [[{ actual_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS actual_revenue FROM payments WHERE status='paid' AND DATE(created_at) BETWEEN ? AND ?`, [from, to]);
+      `SELECT COALESCE(SUM(amount_egp), 0) AS actual_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?`, [req.tenantId, from, to]);
     const [[{ actual_leads }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_leads FROM leads WHERE DATE(created_at) BETWEEN ? AND ?`, [from, to]);
+      `SELECT COUNT(*) AS actual_leads FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?`, [req.tenantId, from, to]);
     const [[{ actual_conversions }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_conversions FROM leads WHERE status='converted' AND DATE(updated_at) BETWEEN ? AND ?`, [from, to]);
+      `SELECT COUNT(*) AS actual_conversions FROM leads WHERE tenant_id=? AND status='converted' AND DATE(updated_at) BETWEEN ? AND ?`, [req.tenantId, from, to]);
     const [[{ actual_new_clients }]] = await pool.query(
-      `SELECT COUNT(*) AS actual_new_clients FROM subscribers WHERE DATE(created_at) BETWEEN ? AND ?`, [from, to]);
+      `SELECT COUNT(*) AS actual_new_clients FROM subscribers WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?`, [req.tenantId, from, to]);
 
     res.json({
       period,

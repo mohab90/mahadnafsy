@@ -7,15 +7,18 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { logLeadEvent } = require('../lib/crm');
+const { transitionLead } = require('../lib/leadState');
+const { assignLead } = require('../lib/leadAssignment');
+const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 
 // ── Automation Workflows ──────────────────────────────────────────────────────
-router.get('/api/admin/automation-workflows', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/automation-workflows', requireAuth, requireAdmin, requirePermission('manage_automation'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, name, \`trigger\`, action, enabled, conditions_json AS conditions, action_config_json AS action_config,
        last_triggered_at, trigger_count, created_at
-       FROM automation_workflows ORDER BY created_at DESC LIMIT 500`);
+       FROM automation_workflows WHERE tenant_id=? ORDER BY created_at DESC LIMIT 500`, [req.tenantId]);
     res.json(rows.map(r => ({
       ...r, enabled: !!r.enabled,
       conditions: tryJson(r.conditions, []),
@@ -23,37 +26,45 @@ router.get('/api/admin/automation-workflows', requireAuth, requireAdmin, async (
     })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.post('/api/admin/automation-workflows', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/automation-workflows', requireAuth, requireAdmin, requirePermission('manage_automation'), async (req, res) => {
   try {
     const w = req.body;
     const id = w.id || uuidv4();
-    await pool.query(
-      `INSERT INTO automation_workflows (id, name, \`trigger\`, action, enabled, conditions_json, action_config_json, last_triggered_at, trigger_count, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE name=VALUES(name), enabled=VALUES(enabled),
-         conditions_json=VALUES(conditions_json), action_config_json=VALUES(action_config_json),
-         last_triggered_at=VALUES(last_triggered_at), trigger_count=VALUES(trigger_count)`,
-      [id, w.name||'', w.trigger||'', w.action||'', w.enabled?1:0,
-       JSON.stringify(w.conditions||[]), JSON.stringify(w.actionConfig||w.action_config||{}),
-       w.lastTriggeredAt||null, w.triggerCount||0, w.createdAt||new Date().toISOString()]
-    );
+    const [[foreign]] = await pool.query('SELECT id FROM automation_workflows WHERE id=? AND tenant_id<>? LIMIT 1', [id, req.tenantId]);
+    if (foreign) return res.status(409).json({ error: 'Workflow id is unavailable' });
+    const [[existing]] = await pool.query('SELECT id FROM automation_workflows WHERE id=? AND tenant_id=? LIMIT 1', [id, req.tenantId]);
+    const values = [String(w.name||'').slice(0, 200), String(w.trigger||'').slice(0, 100), String(w.action||'').slice(0, 100), w.enabled?1:0,
+      JSON.stringify(w.conditions||[]), JSON.stringify(w.actionConfig||w.action_config||{}), w.lastTriggeredAt||null, Number(w.triggerCount)||0];
+    if (existing) {
+      await pool.query(
+        `UPDATE automation_workflows SET name=?, \`trigger\`=?, action=?, enabled=?, conditions_json=?, action_config_json=?, last_triggered_at=?, trigger_count=?
+         WHERE id=? AND tenant_id=?`, [...values, id, req.tenantId]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO automation_workflows (id, tenant_id, name, \`trigger\`, action, enabled, conditions_json, action_config_json, last_triggered_at, trigger_count, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, req.tenantId, ...values, w.createdAt||new Date().toISOString()]
+      );
+    }
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.delete('/api/admin/automation-workflows/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM automation_workflows WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+router.delete('/api/admin/automation-workflows/:id', requireAuth, requireAdmin, requirePermission('manage_automation'), async (req, res) => {
+  try { const [result] = await pool.query('DELETE FROM automation_workflows WHERE id = ? AND tenant_id=?', [req.params.id, req.tenantId]); if (!result.affectedRows) return res.status(404).json({ error: 'Workflow not found' }); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Automation Engine: Execute enabled workflows ──────────────────────────────
 // POST /api/admin/automation-workflows/run  — runs all enabled workflows against DB
 // Returns a summary of matched leads and actions taken
-router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, requirePermission('manage_automation'), async (req, res) => {
   try {
     const [workflows] = await pool.query(
       `SELECT id, name, \`trigger\`, action, enabled, conditions_json AS conditions, action_config_json AS action_config,
        last_triggered_at, trigger_count, created_at
-       FROM automation_workflows WHERE enabled = 1 ORDER BY created_at ASC`
+       FROM automation_workflows WHERE tenant_id=? AND enabled = 1 ORDER BY created_at ASC`,
+      [req.tenantId]
     );
     const results = [];
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -76,10 +87,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           LEFT JOIN (
             SELECT lead_id, MAX(date) AS last_date FROM communications GROUP BY lead_id
           ) c ON c.lead_id = l.id
-          WHERE l.hidden = 0
+          WHERE l.tenant_id=? AND l.hidden = 0
             AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number')
             AND DATEDIFF(NOW(), COALESCE(c.last_date, l.last_follow_up, l.created_at)) >= ?
-        `, [days]);
+        `, [req.tenantId, days]);
         matchedLeads = rows;
       }
 
@@ -95,9 +106,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
             + CASE l.interest_level WHEN 'high' THEN 30 WHEN 'medium' THEN 15 ELSE 5 END
             ) AS score
           FROM leads l
-          WHERE l.hidden = 0 AND l.status NOT IN ('converted','lost')
+          WHERE l.tenant_id=? AND l.hidden = 0 AND l.status NOT IN ('converted','lost')
           HAVING score >= ?
-        `, [threshold]);
+        `, [req.tenantId, threshold]);
         matchedLeads = rows;
       }
 
@@ -109,11 +120,11 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
             srh.expires_at
           FROM subscribers s
           LEFT JOIN subscriber_role_history srh ON srh.subscriber_id = s.id
-          WHERE s.status = 'active'
+          WHERE s.tenant_id=? AND s.status = 'active'
             AND srh.expires_at IS NOT NULL
             AND DATEDIFF(srh.expires_at, NOW()) BETWEEN 0 AND ?
           GROUP BY s.id
-        `, [days]);
+        `, [req.tenantId, days]);
         matchedLeads = rows;
       }
 
@@ -122,9 +133,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, phone, email, status, assigned_sales_name
           FROM leads
-          WHERE hidden = 0 AND status = 'new'
+          WHERE tenant_id=? AND hidden = 0 AND status = 'new'
             AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -133,9 +144,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, phone, email, status, assigned_sales_name
           FROM leads
-          WHERE hidden = 0 AND status = 'converted'
+          WHERE tenant_id=? AND hidden = 0 AND status = 'converted'
             AND updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -144,10 +155,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, phone, email, status, assigned_sales_name
           FROM leads
-          WHERE hidden = 0
+          WHERE tenant_id=? AND hidden = 0
             AND updated_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
             AND status NOT IN ('converted','lost')
-        `);
+        `, [req.tenantId]);
         matchedLeads = rows;
       }
 
@@ -158,11 +169,11 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           SELECT s.id, s.name, s.email, s.phone,
             MAX(lp.completed_at) AS last_progress
           FROM subscribers s
-          LEFT JOIN lecture_progress lp ON lp.subscriber_id = s.id
-          WHERE s.status = 'active'
+          LEFT JOIN lecture_completions lp ON lp.subscriber_id = s.id AND lp.tenant_id = s.tenant_id
+          WHERE s.tenant_id=? AND s.status = 'active'
           GROUP BY s.id
           HAVING last_progress IS NULL OR DATEDIFF(NOW(), last_progress) >= ?
-        `, [days]);
+        `, [req.tenantId, days]);
         matchedLeads = rows;
       }
 
@@ -172,8 +183,8 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, phone, email, course_title
           FROM subscribers
-          WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+          WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -182,11 +193,11 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const sinceHours = parseInt(actionCfg.hours || '24');
         const [rows] = await pool.query(`
           SELECT DISTINCT s.id, s.name, s.phone, s.email, s.course_title
-          FROM lecture_progress lp
-          INNER JOIN subscribers s ON s.id = lp.subscriber_id
-          WHERE lp.completed = 1
+          FROM course_completions lp
+          INNER JOIN subscribers s ON s.id = lp.subscriber_id AND s.tenant_id = lp.tenant_id
+          WHERE lp.tenant_id=?
             AND lp.completed_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
-        `, [sinceHours]);
+        `, [req.tenantId, sinceHours]);
         matchedLeads = rows;
       }
 
@@ -197,9 +208,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, email, phone, status, assigned_sales_name
           FROM leads
-          WHERE status = ?
+          WHERE tenant_id=? AND status = ?
             AND updated_at <= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [fromStatus, days]);
+        `, [req.tenantId, fromStatus, days]);
         matchedLeads = rows;
       }
 
@@ -208,9 +219,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, email, phone, status, assigned_sales_name
           FROM leads
-          WHERE (next_follow_up_date IS NULL OR next_follow_up_date < DATE_SUB(NOW(), INTERVAL 3 DAY))
+          WHERE tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date < DATE_SUB(NOW(), INTERVAL 3 DAY))
             AND status NOT IN ('won','lost','unqualified')
-        `);
+        `, [req.tenantId]);
         matchedLeads = rows;
       }
 
@@ -220,10 +231,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           SELECT DISTINCT l.id, l.name, l.email, l.phone, l.status, l.assigned_sales_name
           FROM leads l
           INNER JOIN quiz_attempts qa ON LOWER(TRIM(qa.subscriber_id)) IN (
-            SELECT id FROM subscribers WHERE LOWER(TRIM(email))=LOWER(TRIM(l.email))
+            SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=LOWER(TRIM(l.email))
           )
-          WHERE qa.passed=1 AND qa.taken_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
-        `, [parseInt(actionCfg.hours || '24')]);
+          WHERE l.tenant_id=? AND qa.passed=1 AND qa.taken_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
+        `, [req.tenantId, req.tenantId, parseInt(actionCfg.hours || '24')]);
         matchedLeads = rows;
       }
 
@@ -234,9 +245,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           SELECT c.id, c.client_name AS name, c.phone, c.email,
             t.display_name AS therapist_name
           FROM consultations c
-          LEFT JOIN therapists t ON t.id = c.therapist_id
-          WHERE c.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+          LEFT JOIN therapists t ON t.id = c.therapist_id AND t.tenant_id=c.tenant_id
+          WHERE c.tenant_id=? AND c.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -245,9 +256,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT c.id, c.client_name AS name, c.phone, c.email
           FROM consultations c
-          WHERE c.status IN ('cancelled','canceled')
+          WHERE c.tenant_id=? AND c.status IN ('cancelled','canceled')
             AND c.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -257,10 +268,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           SELECT c.id, c.client_name AS name, c.phone, c.email,
             t.display_name AS therapist_name
           FROM consultations c
-          LEFT JOIN therapists t ON t.id = c.therapist_id
-          WHERE c.status = 'confirmed'
+          LEFT JOIN therapists t ON t.id = c.therapist_id AND t.tenant_id=c.tenant_id
+          WHERE c.tenant_id=? AND c.status = 'confirmed'
             AND c.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -269,9 +280,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT c.id, c.client_name AS name, c.phone, c.email
           FROM consultations c
-          WHERE c.status = 'completed'
+          WHERE c.tenant_id=? AND c.status = 'completed'
             AND c.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -282,10 +293,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT DISTINCT s.id, s.name, s.phone, s.email, s.course_title
           FROM payments p
-          INNER JOIN subscribers s ON s.id = p.subscriber_id
-          WHERE (p.status = 'paid' OR p.status IS NULL)
+          INNER JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
+          WHERE p.tenant_id=? AND (p.status = 'paid' OR p.status IS NULL)
             AND p.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -295,8 +306,8 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
         const [rows] = await pool.query(`
           SELECT id, name, phone, email, specialty AS course_title
           FROM join_us_applications
-          WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        `, [sinceDays]);
+          WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        `, [req.tenantId, sinceDays]);
         matchedLeads = rows;
       }
 
@@ -309,10 +320,10 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           LEFT JOIN (
             SELECT lead_id, MAX(date) AS last_date FROM communications GROUP BY lead_id
           ) c ON c.lead_id = l.id
-          WHERE l.hidden = 0
+          WHERE l.tenant_id=? AND l.hidden = 0
             AND l.status NOT IN ('converted','lost')
             AND TIMESTAMPDIFF(HOUR, COALESCE(c.last_date, l.created_at), NOW()) >= ?
-        `, [hours]);
+        `, [req.tenantId, hours]);
         matchedLeads = rows;
       }
 
@@ -342,31 +353,38 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
             const newDate = new Date();
             newDate.setDate(newDate.getDate() + parseInt(cfg.days || actionCfg.days || '3'));
             await pool.query(
-              'UPDATE leads SET next_follow_up_date = ? WHERE id = ? AND (next_follow_up_date IS NULL OR next_follow_up_date < NOW())',
-              [newDate.toISOString().slice(0, 10), lead.id]
+              'UPDATE leads SET next_follow_up_date = ? WHERE id = ? AND tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date < NOW())',
+              [newDate.toISOString().slice(0, 10), lead.id, req.tenantId]
             );
+            await logLeadEvent(lead.id, 'followup_set', `Automation scheduled follow-up for ${newDate.toISOString().slice(0, 10)}`, { workflowId: wf.id, automation: true }, req.tenantId);
             actionsRun++;
           }
 
           else if (step.action === 'update_lead_status' && (cfg.status || actionCfg.status) && lead.id) {
-            await pool.query(
-              'UPDATE leads SET status = ? WHERE id = ?',
-              [cfg.status || actionCfg.status, lead.id]
-            );
+            const nextStatus = cfg.status || actionCfg.status;
+            await transitionLead({
+              tenantId: req.tenantId, leadId: lead.id, toStatus: nextStatus,
+              actor: 'automation', reason: `Automation changed status to ${nextStatus}`,
+              metadata: { workflowId: wf.id, automation: true },
+            });
             actionsRun++;
           }
 
           else if (step.action === 'auto_move_stage' && (cfg.targetStage || actionCfg.targetStage) && lead.id) {
-            await pool.query('UPDATE leads SET status=?, updated_at=NOW() WHERE id=?',
-              [cfg.targetStage || actionCfg.targetStage, lead.id]);
+            const nextStatus = cfg.targetStage || actionCfg.targetStage;
+            await transitionLead({
+              tenantId: req.tenantId, leadId: lead.id, toStatus: nextStatus,
+              actor: 'automation', reason: `Automation moved stage to ${nextStatus}`,
+              metadata: { workflowId: wf.id, automation: true },
+            });
             actionsRun++;
           }
 
           else if (step.action === 'create_task' && lead.id) {
             await pool.query(
-              `INSERT INTO tasks (id, title, description, related_lead_id, priority, status, due_date, created_by)
-               VALUES (UUID(),?,?,?,?,?,?,?)`,
-              [sub(cfg.task_title || actionCfg.task_title || `متابعة: ${lead.name}`),
+              `INSERT INTO tasks (id, tenant_id, title, description, related_lead_id, priority, status, due_date, created_by)
+               VALUES (UUID(),?,?,?,?,?,?,?,?)`,
+              [req.tenantId, sub(cfg.task_title || actionCfg.task_title || `متابعة: ${lead.name}`),
                msg || null, lead.id,
                cfg.priority || actionCfg.priority || 'medium', 'todo',
                (() => { const d = new Date(); d.setDate(d.getDate() + parseInt(cfg.due_days || actionCfg.due_days || '2')); return d.toISOString().slice(0,10); })(),
@@ -389,7 +407,7 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
             try {
               const cleanPhone = String(lead.phone).replace(/\D/g, '');
               if (cleanPhone.length >= 10) {
-                await sendWhatsApp(cleanPhone, msg);
+                await sendWhatsApp(cleanPhone, msg, { tenantId: req.tenantId });
                 actionsRun++;
               }
             } catch (_) { /* best-effort */ }
@@ -397,12 +415,12 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
 
           else if (step.action === 'assign_staff' && (cfg.staffId || actionCfg.staffId) && lead.id && !isSubscriberTrigger) {
             const staffId = cfg.staffId || actionCfg.staffId;
-            const [staffRow] = await pool.query('SELECT name FROM staff WHERE id = ? LIMIT 1', [staffId]);
-            const staffName = staffRow[0]?.name || '';
-            await pool.query(
-              'UPDATE leads SET assigned_sales_id=?, assigned_sales_name=? WHERE id=?',
-              [staffId, staffName, lead.id]
-            );
+            const assignment = await assignLead({
+              tenantId: req.tenantId, leadId: lead.id, salesId: staffId,
+              actor: req.user?.email || 'automation', reason: `Automation assigned lead to ${staffId}`,
+              metadata: { workflowId: wf.id, automation: true },
+            });
+            if (!assignment.changed) continue;
             actionsRun++;
           }
 
@@ -410,9 +428,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
             // Store in-app notification (best-effort)
             try {
               await pool.query(
-                `INSERT IGNORE INTO notifications (id, subscriber_id, message, type, created_at)
-                 VALUES (UUID(), ?, ?, 'automation', NOW())`,
-                [lead.id || null, msg]
+                `INSERT IGNORE INTO notifications (id, tenant_id, subscriber_id, message, type, created_at)
+                 VALUES (UUID(), ?, ?, ?, 'automation', NOW())`,
+                [req.tenantId, lead.id || null, msg]
               );
             } catch (_) { /* table may not exist */ }
             actionsRun++;
@@ -421,9 +439,9 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
           else if (step.action === 'notify_admin') {
             try {
               await pool.query(
-                `INSERT IGNORE INTO automation_log (id, workflow_id, lead_id, action, triggered_at)
-                 VALUES (?, ?, ?, ?, NOW())`,
-                [uuidv4(), wf.id, lead.id || null, wf.action]
+                `INSERT IGNORE INTO automation_log (id, tenant_id, workflow_id, lead_id, action, triggered_at)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [uuidv4(), req.tenantId, wf.id, lead.id || null, wf.action]
               );
             } catch (_) { /* table may not exist */ }
             actionsRun++;
@@ -434,8 +452,8 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
       // ── Update workflow stats ─────────────────────────
       if (actionsRun > 0) {
         await pool.query(
-          'UPDATE automation_workflows SET trigger_count = trigger_count + ?, last_triggered_at = ? WHERE id = ?',
-          [actionsRun, new Date().toISOString(), wf.id]
+          'UPDATE automation_workflows SET trigger_count = trigger_count + ?, last_triggered_at = ? WHERE id = ? AND tenant_id=?',
+          [actionsRun, new Date().toISOString(), wf.id, req.tenantId]
         );
       }
 
@@ -461,12 +479,12 @@ router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, as
 });
 
 // POST /api/admin/automation-workflows/run-single  — test run one workflow
-router.post('/api/admin/automation-workflows/run-single/:id', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/automation-workflows/run-single/:id', requireAuth, requireAdmin, requirePermission('manage_automation'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, name, \`trigger\`, action, enabled, conditions_json AS conditions, action_config_json AS action_config,
        last_triggered_at, trigger_count, created_at
-       FROM automation_workflows WHERE id = ?`, [req.params.id]);
+       FROM automation_workflows WHERE id = ? AND tenant_id=?`, [req.params.id, req.tenantId]);
     if (!rows.length) return res.status(404).json({ error: 'workflow not found' });
     // Delegate to run logic by temporarily enabling
     const wf = rows[0];
@@ -478,12 +496,12 @@ router.post('/api/admin/automation-workflows/run-single/:id', requireAuth, requi
       const [[{ cnt }]] = await pool.query(`
         SELECT COUNT(*) AS cnt FROM leads l
         LEFT JOIN (SELECT lead_id, MAX(date) AS last_date FROM communications GROUP BY lead_id) c ON c.lead_id = l.id
-        WHERE l.hidden = 0 AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number')
+        WHERE l.tenant_id=? AND l.hidden = 0 AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number')
           AND DATEDIFF(NOW(), COALESCE(c.last_date, l.last_follow_up, l.created_at)) >= ?
-      `, [days]);
+      `, [req.tenantId, days]);
       matchedLeads = cnt;
     } else if (wf.trigger === 'new_lead') {
-      const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) AS cnt FROM leads WHERE hidden=0 AND status='new' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`, [parseInt(actionCfg.days||'1')]);
+      const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) AS cnt FROM leads WHERE tenant_id=? AND hidden=0 AND status='new' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`, [req.tenantId, parseInt(actionCfg.days||'1')]);
       matchedLeads = cnt;
     }
     res.json({ ok: true, dryRun: true, workflowId: wf.id, trigger: wf.trigger, action: wf.action, matchedLeads });

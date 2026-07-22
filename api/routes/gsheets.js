@@ -6,13 +6,17 @@ const router  = express.Router();
 
 const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
+const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
 
+const validSheetId = (value) => /^[A-Za-z0-9_-]{20,120}$/.test(String(value || ''));
+const validGid = (value) => value == null || value === '' || /^\d{1,20}$/.test(String(value));
+
 // POST /api/admin/leads/gsheet-test — test if a sheet is accessible and return column headers
-router.post('/api/admin/leads/gsheet-test', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/leads/gsheet-test', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   const { sheetId, gid } = req.body || {};
-  if (!sheetId) return res.status(400).json({ error: 'sheetId is required' });
+  if (!validSheetId(sheetId) || !validGid(gid)) return res.status(400).json({ error: 'Invalid sheetId or gid' });
   try {
     const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
     const csvText = await fetchCsvFollowRedirects(csvUrl).catch(e => { throw new Error(e.message); });
@@ -32,9 +36,10 @@ router.post('/api/admin/leads/gsheet-test', requireAuth, requireAdmin, async (re
 
 // POST /api/admin/leads/gsheet-sync
 // body: { sheetId, gid, autoAssign: 'rr'|'least'|'none' }
-router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   const { sheetId, gid, autoAssign = 'rr' } = req.body || {};
-  if (!sheetId) return res.status(400).json({ error: 'sheetId is required' });
+  if (!validSheetId(sheetId) || !validGid(gid)) return res.status(400).json({ error: 'Invalid sheetId or gid' });
+  if (!['rr', 'least', 'none'].includes(autoAssign)) return res.status(400).json({ error: 'Invalid autoAssign mode' });
   try {
     // Fetch CSV export from Google Sheets (follows 307 redirect)
     const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
@@ -69,7 +74,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
     }
 
     // Load courses for name→id matching
-    const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE is_active=1');
+    const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_active=1', [req.tenantId]);
     const findCourseId = (courseName) => {
       if (!courseName) return null;
       const norm = courseName.trim().toLowerCase();
@@ -81,13 +86,13 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
 
     // Get sales reps for auto-assign
     const [reps] = await pool.execute(
-      `SELECT id, name FROM staff WHERE role IN ('SALES','MANAGER','COLLECTION') AND is_active=1 ORDER BY name ASC`
+      `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
+      [req.tenantId]
     );
     // RR index stored in site_config
     let rrRaw = 0;
     if (autoAssign === 'rr' && reps.length > 0) {
-      const [rrRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_rr_index'");
-      rrRaw = parseInt(rrRows[0]?.value || '0') || 0;
+      rrRaw = parseInt(await getTenantSetting('crm_rr_index', { tenantId: req.tenantId, fallback: 0 }), 10) || 0;
     }
 
     let imported = 0, skipped = 0;
@@ -107,7 +112,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
 
       // Skip if phone already exists in leads
       if (phone) {
-        const [dup] = await pool.execute('SELECT id FROM leads WHERE phone=? AND hidden=0 LIMIT 1', [phone]);
+        const [dup] = await pool.execute('SELECT id FROM leads WHERE tenant_id=? AND phone=? AND hidden=0 LIMIT 1', [req.tenantId, phone]);
         if (dup.length) { skipped++; continue; }
       }
 
@@ -120,7 +125,8 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
           rrRaw++;
         } else if (autoAssign === 'least') {
           const [counts] = await pool.execute(
-            `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`
+            `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
+            [req.tenantId]
           );
           const cm = {}; for (const c of counts) cm[c.assigned_sales_id] = Number(c.cnt);
           const sorted = [...reps].sort((a, b) => (cm[a.id] || 0) - (cm[b.id] || 0));
@@ -142,20 +148,20 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
         ...(courseNameRaw && !courseId ? { courseNameRaw } : {}),
       });
       const leadId = `lead-gs-${Date.now()}-${i}`;
-      await pool.execute(
-        `INSERT IGNORE INTO leads (id, client_code, name, email, phone, source, status, notes, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, 0, NOW())`,
-        [leadId, code, name || phone, email || '', phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
+      const [insertResult] = await pool.execute(
+        `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, 0, NOW())`,
+        [leadId, req.tenantId, code, name || phone, email || '', phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
       );
-      imported++;
+      if (insertResult.affectedRows) imported++; else skipped++;
     }
 
     // Persist updated RR index
     if (autoAssign === 'rr' && reps.length > 0) {
-      await pool.query(
-        "INSERT INTO site_config (`key`,`value`) VALUES ('crm_rr_index',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-        [String(rrRaw)]
-      );
+      await setTenantSetting('crm_rr_index', rrRaw, {
+        tenantId: req.tenantId,
+        actorId: req.user?.uid || req.user?.email || null,
+      });
     }
 
     res.json({ ok: true, imported, skipped, total: dataLines.length });
@@ -166,9 +172,9 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, async (re
 });
 
 // POST /api/admin/leads/gsheet-sync-all  — syncs all sheets from CRM settings
-router.post('/api/admin/leads/gsheet-sync-all', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/leads/gsheet-sync-all', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   try {
-    const result = await syncAllConfiguredSheets();
+    const result = await syncAllConfiguredSheets(req.tenantId);
     res.json({ ok: true, ...result });
   } catch(e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -186,12 +192,14 @@ setInterval(async () => {
   if (_gsheetAutoRunning) return;
   _gsheetAutoRunning = true;
   try {
-    const [cfgRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_settings'");
-    const settings = cfgRows[0]?.value ? JSON.parse(cfgRows[0].value) : {};
-    const sheets = Array.isArray(settings.sheets) ? settings.sheets : [];
-    if (sheets.some(s => s.autoSync)) {
-      const r = await syncAllConfiguredSheets();
-      if (r.imported > 0) logger.info(`[gsheet-auto] imported ${r.imported} leads from admin-configured sheets`);
+    const [tenants] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[{ id: 'tenant-default' }]]);
+    for (const { id: tenantId } of tenants) {
+      const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
+      const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
+      if (sheets.some(s => s.autoSync)) {
+        const r = await syncAllConfiguredSheets(tenantId);
+        if (r.imported > 0) logger.info(`[gsheet-auto] tenant=${tenantId} imported ${r.imported} leads`);
+      }
     }
   } catch(e) { logger.error('[gsheet-auto]', e.message); }
   finally { _gsheetAutoRunning = false; }

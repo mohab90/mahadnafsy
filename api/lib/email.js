@@ -5,9 +5,10 @@
 // falling back to env vars then to sane defaults. So the owner can swap the
 // sending mailbox or restyle customer emails without touching code.
 const nodemailer = require('nodemailer');
-const { pool, cached, cacheInvalidate } = require('./db');
 const logger = require('./logger');
 const { getBrandSettings } = require('./brandSettings');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 const DEFAULTS = {
   smtpHost: process.env.SMTP_HOST || 'smtp.hostinger.com',
@@ -23,19 +24,24 @@ const DEFAULTS = {
   footerText: 'هذا البريد أُرسل تلقائياً — يُرجى عدم الرد عليه',
 };
 
-// Loads + caches the email config from site_config (60s), merged over defaults.
-async function getEmailConfig() {
-  return cached('email_config', 60 * 1000, async () => {
+const configCache = new Map();
+const CONFIG_TTL_MS = 60 * 1000;
+
+// Loads + caches the tenant email config (60s), merged over defaults.
+async function getEmailConfig(tenantId = DEFAULT_TENANT) {
+  const scopedTenant = String(tenantId || DEFAULT_TENANT);
+  const hit = configCache.get(scopedTenant);
+  if (hit && Date.now() - hit.at < CONFIG_TTL_MS) return hit.value;
+  const value = await (async () => {
     let saved = {};
     try {
-      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='email_config' LIMIT 1");
-      if (rows[0]?.value) saved = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
+      saved = await getTenantSetting('email_config', { tenantId: scopedTenant, fallback: {} }) || {};
     } catch (e) { logger.warn('[email] config read failed', { err: e.message }); }
     // Pull the institute identity the owner set in Settings → الهوية so emails are
     // branded automatically. Precedence: explicit email_config > brand settings > defaults.
     let brandDefaults = {};
     try {
-      const b = await getBrandSettings();
+      const b = await getBrandSettings(scopedTenant);
       brandDefaults = {
         senderName: b.instituteName,
         brandColor: b.primaryColor,
@@ -48,13 +54,18 @@ async function getEmailConfig() {
     cfg.smtpPass = saved.smtpPass || DEFAULTS.smtpPass; // password may live in env only
     if (!cfg.senderAddress) cfg.senderAddress = cfg.smtpUser;
     return cfg;
-  });
+  })();
+  configCache.set(scopedTenant, { value, at: Date.now() });
+  return value;
 }
 
-function invalidateEmailConfig() { cacheInvalidate('email_config'); }
+function invalidateEmailConfig(tenantId) {
+  if (tenantId) configCache.delete(String(tenantId));
+  else configCache.clear();
+}
 
-async function getTransport() {
-  const c = await getEmailConfig();
+async function getTransport(tenantId = DEFAULT_TENANT) {
+  const c = await getEmailConfig(tenantId);
   return nodemailer.createTransport({
     host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465,
     auth: { user: c.smtpUser, pass: c.smtpPass },
@@ -106,9 +117,16 @@ function htmlEmail(title, bodyHtml, cfg) {
 }
 
 // Sends a templated email using the configured sender/transport. Throws on failure.
-async function sendEmail(to, subject, bodyHtml) {
-  const c = await getEmailConfig();
-  const transport = await getTransport();
+async function sendEmail(to, subject, bodyHtml, options = {}) {
+  if (to && typeof to === 'object') {
+    options = { ...to };
+    subject = to.subject;
+    bodyHtml = to.html || to.body || '';
+    to = to.to;
+  }
+  const tenantId = options.tenantId || DEFAULT_TENANT;
+  const c = await getEmailConfig(tenantId);
+  const transport = await getTransport(tenantId);
   await transport.sendMail({
     from: `"${c.senderName}" <${c.senderAddress}>`,
     to, subject,
@@ -121,11 +139,13 @@ async function sendEmail(to, subject, bodyHtml) {
 // default `from`. If a caller passes raw `html`, it is sent as-is.
 const mailer = {
   async sendMail(opts) {
-    const c = await getEmailConfig();
-    const transport = await getTransport();
-    return transport.sendMail({ from: `"${c.senderName}" <${c.senderAddress}>`, ...opts });
+    const tenantId = opts?.tenantId || DEFAULT_TENANT;
+    const c = await getEmailConfig(tenantId);
+    const transport = await getTransport(tenantId);
+    const { tenantId: _tenantId, ...mailOptions } = opts || {};
+    return transport.sendMail({ from: `"${c.senderName}" <${c.senderAddress}>`, ...mailOptions });
   },
-  async verify() { return (await getTransport()).verify(); },
+  async verify(tenantId = DEFAULT_TENANT) { return (await getTransport(tenantId)).verify(); },
 };
 
 module.exports = { mailer, sendEmail, htmlEmail, getEmailConfig, invalidateEmailConfig };

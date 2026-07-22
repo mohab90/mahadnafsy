@@ -5,12 +5,12 @@ const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
-router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const [leads] = await pool.query(`
@@ -18,18 +18,19 @@ router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, async
              l.next_follow_up_date, l.assigned_sales_id AS assigned_to,
              st.name AS staff_name
       FROM leads l
-      LEFT JOIN staff st ON st.id = l.assigned_sales_id
-      WHERE DATE(l.next_follow_up_date) = ?
+      LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
+      WHERE l.tenant_id = ? AND DATE(l.next_follow_up_date) = ?
         AND l.status NOT IN ('converted','disqualified','archived')
-      ORDER BY l.name`, [today]);
+        ${req.staffRecord?.role === 'SALES' ? 'AND l.assigned_sales_id = ?' : ''}
+      ORDER BY l.name`, [req.tenantId, today, ...(req.staffRecord?.role === 'SALES' ? [req.staffRecord.id] : [])]);
     res.json({ date: today, count: leads.length, leads });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/leads/reminders/send-now — manually trigger follow-up reminders
-router.post('/api/admin/leads/reminders/send-now', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/leads/reminders/send-now', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   try {
-    await runFollowUpReminders();
+    await runFollowUpReminders(req.tenantId);
     res.json({ ok: true, message: 'تم إرسال تذكيرات المتابعة' });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -39,9 +40,9 @@ router.post('/api/admin/leads/reminders/send-now', requireAuth, requireAdmin, as
 // ═══════════════════════════════════════════════════════════════════════════
 
 
-router.get('/api/admin/payments/due-upcoming', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/payments/due-upcoming', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const days = parseInt(req.query.days || '7');
+    const days = Math.min(90, Math.max(1, parseInt(req.query.days || '7', 10) || 7));
     const today = new Date().toISOString().slice(0, 10);
     const future = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
     const [rows] = await pool.query(`
@@ -49,19 +50,19 @@ router.get('/api/admin/payments/due-upcoming', requireAuth, requireAdmin, async 
              DATEDIFF(p.date, CURDATE()) AS days_left,
              s.id AS subscriber_id, s.name, s.phone, s.client_code, s.branch
       FROM payments p
-      JOIN subscribers s ON s.id = p.subscriber_id
-      WHERE p.status = 'pending'
+      JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+      WHERE p.tenant_id = ? AND p.status = 'pending'
         AND DATE(p.date) BETWEEN ? AND ?
       ORDER BY p.date ASC
-      LIMIT 200`, [today, future]);
+      LIMIT 200`, [req.tenantId, today, future]);
     res.json({ from: today, to: future, count: rows.length, payments: rows });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/payments/reminders/send-now — manually trigger payment reminders
-router.post('/api/admin/payments/reminders/send-now', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/payments/reminders/send-now', requireAuth, requireAdmin, requirePermission('view_financial'), async (req, res) => {
   try {
-    await runPaymentDueReminders();
+    await runPaymentDueReminders(req.tenantId);
     res.json({ ok: true, message: 'تم إرسال تذكيرات الدفع' });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -71,7 +72,7 @@ router.post('/api/admin/payments/reminders/send-now', requireAuth, requireAdmin,
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/analytics/revenue-sources?from=&to=
-router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const now = new Date();
     const from = req.query.from || new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
@@ -80,37 +81,37 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdmin, as
     // By payment_type
     const [byType] = await pool.query(`
       SELECT COALESCE(payment_type, 'other') AS source,
-             COUNT(*) AS transactions, SUM(amount) AS total
-      FROM payments WHERE status='paid' AND DATE(created_at) BETWEEN ? AND ?
-      GROUP BY source ORDER BY total DESC`, [from, to]);
+             COUNT(*) AS transactions, SUM(amount_egp) AS total
+      FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?
+      GROUP BY source ORDER BY total DESC`, [req.tenantId, from, to]);
 
     // Monthly breakdown by source
     const [monthly] = await pool.query(`
       SELECT DATE_FORMAT(created_at,'%Y-%m') AS month,
              COALESCE(payment_type, 'other') AS source,
-             SUM(amount) AS total
-      FROM payments WHERE status='paid' AND DATE(created_at) BETWEEN ? AND ?
-      GROUP BY month, source ORDER BY month, total DESC`, [from, to]);
+             SUM(amount_egp) AS total
+      FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?
+      GROUP BY month, source ORDER BY month, total DESC`, [req.tenantId, from, to]);
 
     // Top paying clients
     const [topClients] = await pool.query(`
       SELECT s.id, s.name, s.phone, s.branch, s.client_code,
-             SUM(p.amount) AS total_paid, COUNT(p.id) AS payment_count
-      FROM payments p JOIN subscribers s ON s.id = p.subscriber_id
-      WHERE p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
-      GROUP BY s.id ORDER BY total_paid DESC LIMIT 20`, [from, to]);
+             SUM(p.amount_egp) AS total_paid, COUNT(p.id) AS payment_count
+      FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+      WHERE p.tenant_id=? AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+      GROUP BY s.id ORDER BY total_paid DESC LIMIT 20`, [req.tenantId, from, to]);
 
     // By branch
     const [byBranch] = await pool.query(`
       SELECT COALESCE(s.branch,'غير محدد') AS branch,
-             SUM(p.amount) AS total, COUNT(p.id) AS count
-      FROM payments p JOIN subscribers s ON s.id = p.subscriber_id
-      WHERE p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
-      GROUP BY branch ORDER BY total DESC`, [from, to]);
+             SUM(p.amount_egp) AS total, COUNT(p.id) AS count
+      FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+      WHERE p.tenant_id=? AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+      GROUP BY branch ORDER BY total DESC`, [req.tenantId, from, to]);
 
     const [[{ grand_total }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount),0) AS grand_total FROM payments WHERE status='paid' AND DATE(created_at) BETWEEN ? AND ?`,
-      [from, to]
+      `SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?`,
+      [req.tenantId, from, to]
     );
 
     const sourceLabel = {
@@ -145,19 +146,19 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const today = new Date().toISOString().slice(0, 10);
 
     const [[{ followup_due }]] = await pool.query(
-      `SELECT COUNT(*) AS followup_due FROM leads WHERE DATE(next_follow_up_date) = ? AND status NOT IN ('converted','disqualified','archived')`, [today]);
+      `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND DATE(next_follow_up_date) = ? AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today]);
     const [[{ followup_overdue }]] = await pool.query(
-      `SELECT COUNT(*) AS followup_overdue FROM leads WHERE next_follow_up_date < ? AND status NOT IN ('converted','disqualified','archived')`, [today]);
+      `SELECT COUNT(*) AS followup_overdue FROM leads WHERE tenant_id=? AND next_follow_up_date < ? AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today]);
     const [[{ payment_due_3d }]] = await pool.query(
-      `SELECT COUNT(*) AS payment_due_3d FROM payments WHERE status='pending' AND is_installment=1 AND DATE(date) BETWEEN ? AND DATE_ADD(?, INTERVAL 3 DAY)`, [today, today]);
+      `SELECT COUNT(*) AS payment_due_3d FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND DATE(date) BETWEEN ? AND DATE_ADD(?, INTERVAL 3 DAY)`, [req.tenantId, today, today]);
     const [[{ payment_overdue }]] = await pool.query(
-      `SELECT COUNT(*) AS payment_overdue FROM payments WHERE status='pending' AND is_installment=1 AND DATE(date) < ?`, [today]);
+      `SELECT COUNT(*) AS payment_overdue FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND DATE(date) < ?`, [req.tenantId, today]);
     const [[{ reminders_sent_today }]] = await pool.query(
-      `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE DATE(sent_at) = ?`, [today]).catch(() => [[{ reminders_sent_today: 0 }]]);
+      `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND DATE(sent_at) = ?`, [req.tenantId, today]).catch(() => [[{ reminders_sent_today: 0 }]]);
     const [[{ drip_active }]] = await pool.query(
-      `SELECT COUNT(*) AS drip_active FROM drip_campaigns WHERE is_active=1`).catch(() => [[{ drip_active: 0 }]]);
+      `SELECT COUNT(*) AS drip_active FROM drip_campaigns WHERE tenant_id=? AND is_active=1`, [req.tenantId]).catch(() => [[{ drip_active: 0 }]]);
     const [[{ workflows_active }]] = await pool.query(
-      `SELECT COUNT(*) AS workflows_active FROM automation_workflows WHERE enabled=1`).catch(() => [[{ workflows_active: 0 }]]);
+      `SELECT COUNT(*) AS workflows_active FROM automation_workflows WHERE tenant_id=? AND enabled=1`, [req.tenantId]).catch(() => [[{ workflows_active: 0 }]]);
 
     res.json({
       followup_due: parseInt(followup_due),
@@ -289,7 +290,8 @@ router.post('/api/admin/nps/send-bulk', requireAuth, requireAdmin, async (req, r
               <a href="${link}" style="background:#7c3aed;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:bold">قيّم الآن ⭐</a>
             </div>
             <p style="color:#9ca3af;font-size:12px;text-align:center">معهد الدراسات النفسية — mahadnafsy.com</p>
-          </div>`
+          </div>`,
+          { tenantId: req.tenantId }
         ).catch(() => {});
         sent++;
       }

@@ -2,6 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 
 const logger = require('../lib/logger').child({ module: 'lead-capture-crm-route' });
 const { pool } = require('../lib/db');
@@ -12,6 +13,8 @@ const { branchIdForBranch, defaultDigitalBranch, normalizeBranch } = require('..
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
+const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
+const { logLeadEvent } = require('../lib/crm');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -25,16 +28,22 @@ function scopedTenantId(req) {
 router.post('/api/registrations', publicLimiter, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
+  let registrationLock = null;
   try {
     const item = req.body || {};
     const name = String(item.name || '').trim().slice(0, 120);
     const phone = String(item.phone || '').trim().slice(0, 30);
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
     const tenantId = scopedTenantId(req);
+    const normPhone = normalizePhone(item.phone);
+    registrationLock = `registration:${crypto.createHash('sha256').update(`${tenantId}:${normPhone || phone}`).digest('hex').slice(0, 40)}`;
+    const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [registrationLock]);
+    if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Registration is already being processed' });
     await conn.beginTransaction();
     transactionStarted = true;
-    const normPhone = normalizePhone(item.phone);
-    let id = item.id || uuidv4();
+    // Public callers cannot choose a database primary key. Reuse only a row
+    // found by the tenant-bound identity lookup below.
+    let id = uuidv4();
     let existing = null;
     if (normPhone) {
       [[existing]] = await conn.query(
@@ -88,16 +97,24 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
       [id, tenantId, code, name, email || null, phone, source || 'تسجيل اهتمام',
        'new', notes || null, branchVal, branchIdForBranch(branchVal), salesId, salesName, JSON.stringify(crmPayload)]
     );
+    await logLeadEvent(id, existing ? 'updated' : 'created', existing ? 'Public registration refreshed' : 'Public registration captured', { source: source || 'registration', assignedSalesId: salesId }, tenantId, conn);
     await conn.commit();
     transactionStarted = false;
+    if (!existing) await require('../lib/lifecycle').trigger('lead_created', { name, email, phone, tenantId });
     res.json({ ok: true, id, clientCode: code });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     routeError(res, e);
-  } finally { conn.release(); }
+  } finally {
+    if (registrationLock) await conn.query('SELECT RELEASE_LOCK(?)', [registrationLock]).catch(() => {});
+    conn.release();
+  }
 });
 
 router.post('/api/leads-public', publicLimiter, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
+  let leadLock = null;
   try {
     const { name, phone, notes, source, branch } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
@@ -106,67 +123,101 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     // second lead row — match by the last 10 phone digits and append the note instead.
     // (owner requirement: no duplicate data)
     const normPhone = normalizePhone(phone);
+    leadLock = `lead-public:${crypto.createHash('sha256').update(`${tenantId}:${normPhone || phone}`).digest('hex').slice(0, 40)}`;
+    const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [leadLock]);
+    if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead submission is already being processed' });
+    await conn.beginTransaction();
+    transactionStarted = true;
     if (normPhone) {
-      const [[existing]] = await pool.query(
-        `SELECT id FROM leads WHERE RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = RIGHT(?, 10) AND hidden = 0 LIMIT 1`,
-        [normPhone]
+      const [[existing]] = await conn.query(
+        `SELECT id FROM leads WHERE tenant_id=? AND RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = RIGHT(?, 10) AND hidden = 0 LIMIT 1 FOR UPDATE`,
+        [tenantId, normPhone]
       );
       if (existing) {
-        await pool.query(
-          `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END, updated_at = NOW() WHERE id = ?`,
-          [(notes || '').trim().slice(0, 500), (notes || '').trim().slice(0, 500), existing.id]
+        await conn.query(
+          `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END, updated_at = NOW() WHERE id = ? AND tenant_id=?`,
+          [(notes || '').trim().slice(0, 500), (notes || '').trim().slice(0, 500), existing.id, tenantId]
         );
+        await logLeadEvent(existing.id, 'note_added', 'Public form submitted again', { source: source || 'chatbot' }, tenantId, conn);
+        await conn.commit();
+        transactionStarted = false;
         return res.json({ ok: true, id: existing.id, existing: true });
       }
     }
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     let code = null;
-    const conn = await pool.getConnection();
-    try { code = await getNextClientCode(conn); } catch (_) {} finally { conn.release(); }
-    await pool.execute(
-      `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, created_at, hidden)
-       VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, NOW(), 0)`,
-      [id, tenantId, code, name.trim().slice(0, 120), phone.trim().slice(0, 30), (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50), normalizeBranch(branch, 'OTHER'), branchIdForBranch(branch)]
+    try { code = await getNextClientCode(conn); } catch (_) {}
+    const [[rep]] = await conn.query(
+      `SELECT s.id,s.name FROM staff s
+       LEFT JOIN leads l ON l.tenant_id=s.tenant_id AND l.assigned_sales_id=s.id AND l.hidden=0
+       WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
+       GROUP BY s.id,s.name ORDER BY COUNT(l.id),s.name LIMIT 1`, [tenantId]
     );
+    const normalizedBranch = normalizeBranch(branch, 'OTHER');
+    await conn.execute(
+      `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)
+       VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, NOW(), 0)`,
+      [id, tenantId, code, name.trim().slice(0, 120), phone.trim().slice(0, 30), (notes || '').trim().slice(0, 500), (source || 'chatbot').slice(0, 50), normalizedBranch, branchIdForBranch(normalizedBranch), rep?.id || null, rep?.name || null]
+    );
+    await logLeadEvent(id, 'created', 'Public lead captured', { source: source || 'chatbot', assignedSalesId: rep?.id || null }, tenantId, conn);
+    await conn.commit();
+    transactionStarted = false;
+    await require('../lib/lifecycle').trigger('lead_created', { name, phone, tenantId });
     res.json({ ok: true, id });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    routeError(res, e);
+  } finally {
+    if (leadLock) await conn.query('SELECT RELEASE_LOCK(?)', [leadLock]).catch(() => {});
+    conn.release();
+  }
 });
 
-router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, async (_req, res) => {
+router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'crm_settings'");
-    res.json(rows[0]?.value ? JSON.parse(rows[0].value) : {});
+    res.json(await getTenantSetting('crm_settings', { tenantId: req.tenantId, fallback: {} }));
   } catch (e) { routeError(res, e); }
 });
 
 router.put('/api/admin/crm-settings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query(
-      "INSERT INTO site_config (`key`, `value`) VALUES ('crm_settings', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [JSON.stringify(req.body)]
-    );
+    await setTenantSetting('crm_settings', req.body || {}, { tenantId: req.tenantId, actorId: req.user?.uid });
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
 
 router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req, res) => {
   const { mode = 'unassigned' } = req.body || {};
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
+  let distributionLock = null;
   try {
     const tenantId = scopedTenantId(req);
+    distributionLock = `crm-distribute:${tenantId}`;
+    const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [distributionLock]);
+    if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead distribution is already running' });
+    await conn.beginTransaction();
+    transactionStarted = true;
     const whereClause = mode === 'all'
       ? `WHERE hidden=0 AND tenant_id=? AND status NOT IN ('converted','lost')`
       : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status NOT IN ('converted','lost')`;
-    const [targets] = await pool.execute(
-      `SELECT id FROM leads ${whereClause} ORDER BY created_at ASC`,
+    const [targets] = await conn.execute(
+      `SELECT id FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
       [tenantId]
     );
-    const [reps] = await pool.execute(
-      `SELECT id, name FROM staff WHERE role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`
+    const [reps] = await conn.execute(
+      `SELECT id, name FROM staff WHERE tenant_id=? AND role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`,
+      [tenantId]
     );
-    if (!reps.length) return res.json({ ok: false, assigned: 0, reason: 'No sales reps found' });
-    if (!targets.length) return res.json({ ok: true, assigned: 0 });
-    const [rrRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_rr_index'");
-    let rrIdx = parseInt(rrRows[0]?.value || '0') || 0;
+    if (!reps.length) {
+      await conn.rollback(); transactionStarted = false;
+      return res.json({ ok: false, assigned: 0, reason: 'No sales reps found' });
+    }
+    if (!targets.length) {
+      await conn.rollback(); transactionStarted = false;
+      return res.json({ ok: true, assigned: 0 });
+    }
+    let rrIdx = Number(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0, db: conn })) || 0;
     // One extra virtual "no rep" slot in the cycle alongside the real reps, so roughly
     // 1 in (reps+1) leads is deliberately left unassigned instead of force-distributing
     // every lead — those land in the "محلي جديد" tab for manual placement. (owner request)
@@ -177,23 +228,29 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
       rrIdx++;
       if (slot === reps.length) continue;
       const rep = reps[slot];
-      await pool.execute(
+      await conn.execute(
         `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=? WHERE id=? AND tenant_id=?`,
         [rep.id, rep.name, targets[i].id, tenantId]
       );
       count++;
     }
-    await pool.query(
-      "INSERT INTO site_config (`key`,`value`) VALUES ('crm_rr_index',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [String(rrIdx)]
-    );
+    await setTenantSetting('crm_rr_index', rrIdx, { tenantId, actorId: req.user?.uid, db: conn });
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true, assigned: count, reps: reps.length });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    routeError(res, e);
+  } finally {
+    if (distributionLock) await conn.query('SELECT RELEASE_LOCK(?)', [distributionLock]).catch(() => {});
+    conn.release();
+  }
 });
 
 router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
+  let checkoutLock = null;
   try {
     const { itemId, itemType, itemTitle, customerName, customerEmail, customerPhone } = req.body || {};
     const { uid, email } = req.user;
@@ -244,16 +301,15 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       const therapistId = String(req.body?.therapistId || '').trim();
       if (therapistId) {
         const [[therapist]] = await conn.query(
-          'SELECT id, name, price_egp FROM therapists WHERE id=? AND is_active=1 AND is_consultation_enabled=1 LIMIT 1',
-          [therapistId]
+          'SELECT id, name, price_egp FROM therapists WHERE id=? AND tenant_id=? AND is_active=1 AND is_consultation_enabled=1 LIMIT 1',
+          [therapistId, tenantId]
         );
         if (!therapist) return res.status(404).json({ error: 'Therapist not available' });
         expectedAmount = Number(therapist.price_egp) || 0;
         canonicalTitle = `Consultation - ${therapist.name}`;
       } else if (String(req.body?.subtype || '').toLowerCase() === 'express') {
-        const [[row]] = await conn.query("SELECT `value` FROM site_config WHERE `key`='content' LIMIT 1");
-        let configured = 0;
-        try { configured = Number(JSON.parse(row?.value || '{}')['express.price.EGP']) || 0; } catch { configured = 0; }
+        const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
+        const configured = Number(content['express.price.EGP']) || 0;
         expectedAmount = configured;
         canonicalTitle = 'Express consultation';
       } else {
@@ -261,6 +317,11 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       }
     }
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) return res.status(400).json({ error: 'A positive server-verifiable amount is required' });
+
+    const checkoutDiscriminator = [tenantId, uid, normalizedEmail, normalizedType, itemId || '', req.body?.therapistId || '', req.body?.sessionDate || '', req.body?.subtype || ''].join(':');
+    checkoutLock = `checkout:${crypto.createHash('sha256').update(checkoutDiscriminator).digest('hex').slice(0, 48)}`;
+    const [[lockResult]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [checkoutLock]);
+    if (Number(lockResult?.acquired) !== 1) return res.status(409).json({ error: 'Checkout is already being processed' });
 
     await conn.beginTransaction();
     transactionStarted = true;
@@ -319,7 +380,10 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[checkout-intent]', e.message);
     res.status(500).json({ error: 'Could not create checkout order' });
-  } finally { conn.release(); }
+  } finally {
+    if (checkoutLock) await conn.query('SELECT RELEASE_LOCK(?)', [checkoutLock]).catch(() => {});
+    conn.release();
+  }
 });
 
 module.exports = router;

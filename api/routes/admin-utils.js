@@ -12,6 +12,11 @@ const { postJournalEntry, toEgp, _paymentAccountCode } = require('../lib/finance
 const { syncLeadDealValue } = require('./public-orders');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
+const { writeAuditEvent } = require('../lib/auditTrail');
+
+// Timers belong to the central worker. Starting them from a route module made
+// every clustered API process send the same reminders and summaries again.
+const ROUTE_LOCAL_CRONS_ENABLED = false;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NOTE: IP Whitelist routes moved to misc.js (uses dedicated ip_whitelist table)
@@ -22,14 +27,15 @@ const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, async (req, res) => {
   try {
     const subId = req.params.id;
-    const [[sub]] = await pool.query('SELECT id, name, email, phone, firebase_uid, is_active, source, notes, crm_json, client_code, created_at FROM subscribers WHERE id=? LIMIT 1', [subId]);
+    const tenantId = req.tenantId;
+    const [[sub]] = await pool.query('SELECT id,name,email,phone,firebase_uid,is_active,source,notes,crm_json,client_code,created_at FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subId, tenantId]);
     if (!sub) return res.status(404).json({ error: 'Not found' });
-    const [[user]] = await pool.query('SELECT id, email, name, role, created_at FROM users WHERE LOWER(TRIM(email))=? LIMIT 1', [sub.email?.toLowerCase().trim() || '']);
-    const [payments] = await pool.query('SELECT id, subscriber_id, amount, currency, payment_type, payment_method, transaction_id, is_installment, course_id, bundle_id, note, status, staff_id, staff_name, from_account, source, item_title, created_at FROM payments WHERE subscriber_id=?', [subId]);
-    const [enrollments] = await pool.query('SELECT id, subscriber_id, course_id, access_level, enrolled_at FROM enrollments WHERE subscriber_id=?', [subId]);
-    const [completions] = await pool.query('SELECT id, subscriber_id, course_id, completed_at FROM course_completions WHERE subscriber_id=?', [subId]);
-    const [tickets] = await pool.query('SELECT id, subscriber_id, subject, status, created_at FROM support_tickets WHERE subscriber_id=?', [subId]);
-    const [nps] = await pool.query('SELECT id, subscriber_id, score, feedback, created_at FROM nps_responses WHERE subscriber_id=?', [subId]);
+    const [[user]] = await pool.query('SELECT id, email, name, role, created_at FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, sub.email?.toLowerCase().trim() || '']);
+    const [payments] = await pool.query('SELECT id,subscriber_id,amount,currency,payment_type,payment_method,transaction_id,is_installment,course_id,bundle_id,note,status,staff_id,staff_name,from_account,source,item_title,created_at FROM payments WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    const [enrollments] = await pool.query('SELECT id,subscriber_id,course_id,access_level,enrolled_at FROM enrollments WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    const [completions] = await pool.query('SELECT id,subscriber_id,course_id,completed_at FROM course_completions WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    const [tickets] = await pool.query('SELECT id,subscriber_id,subject,status,created_at FROM support_tickets WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    const [nps] = await pool.query('SELECT id,subscriber_id,score,comment,created_at FROM nps_responses WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
     const crm = tryJson(sub.crm_json, {});
     const exportData = {
       exportedAt: new Date().toISOString(),
@@ -38,6 +44,7 @@ router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, 
       userAccount: user || null,
       payments, enrollments, completions, tickets, nps,
     };
+    await writeAuditEvent({ action: 'subscriber_data_exported', entityType: 'subscriber', entityId: subId, severity: 'warning', req });
     res.setHeader('Content-Disposition', `attachment; filename="subscriber-${subId}-export.json"`);
     res.setHeader('Content-Type', 'application/json');
     res.json(exportData);
@@ -45,22 +52,33 @@ router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, 
 });
 
 router.delete('/api/admin/subscribers/:id/delete-data', requireAuth, requireAdmin, async (req, res) => {
+  let conn = null;
+  let transactionStarted = false;
   try {
     const subId = req.params.id;
-    const [[sub]] = await pool.query('SELECT email FROM subscribers WHERE id=? LIMIT 1', [subId]);
-    if (!sub) return res.status(404).json({ error: 'Not found' });
+    const tenantId = req.tenantId;
+    conn = await pool.getConnection();
+    await conn.beginTransaction(); transactionStarted = true;
+    const [[sub]] = await conn.query('SELECT email,firebase_uid FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subId, tenantId]);
+    if (!sub) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Not found' }); }
     // Anonymize rather than delete (GDPR soft-delete)
     const anonEmail = `deleted-${subId}@anon.mahad`;
-    await pool.query(
-      "UPDATE subscribers SET name='[محذوف]', email=?, phone=NULL, crm_json='{}', is_active=0 WHERE id=?",
-      [anonEmail, subId]
+    await conn.query(
+      "UPDATE subscribers SET name='[محذوف]',email=?,phone=NULL,crm_json='{}',notes=NULL,is_active=0,deleted_at=NOW() WHERE id=? AND tenant_id=?",
+      [anonEmail, subId, tenantId]
     );
-    await pool.query("UPDATE users SET name='[محذوف]', email=?, is_active=0 WHERE LOWER(TRIM(email))=?", [anonEmail, sub.email?.toLowerCase().trim() || '']);
-    await pool.query('DELETE FROM support_tickets WHERE subscriber_id=?', [subId]);
-    await pool.query('DELETE FROM nps_responses WHERE subscriber_id=?', [subId]);
-    await pool.query('DELETE FROM lecture_progress WHERE subscriber_id=?', [subId]);
+    await conn.query("UPDATE users SET name='[محذوف]',email=?,is_active=0 WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?)", [anonEmail, tenantId, sub.firebase_uid || '', sub.email?.toLowerCase().trim() || '']);
+    await conn.query('DELETE FROM support_tickets WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    await conn.query('DELETE FROM nps_responses WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    await conn.query('DELETE FROM lecture_progress WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
+    await conn.query("DELETE FROM marketing_suppressions WHERE tenant_id=? AND subject_type='subscriber' AND subject_id=?", [tenantId, subId]);
+    await writeAuditEvent({ action: 'subscriber_data_anonymized', entityType: 'subscriber', entityId: subId, severity: 'critical', req, db: conn });
+    await conn.commit(); transactionStarted = false;
     res.json({ ok: true, message: 'Subscriber data anonymized per GDPR' });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+  } finally { conn?.release(); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -139,10 +157,10 @@ router.get('/api/admin/forecast', requireAuth, requireAdmin, async (req, res) =>
   try {
     // Last 12 months actuals
     const [monthly] = await pool.query(`
-      SELECT DATE_FORMAT(date, '%Y-%m') AS month, SUM(amount) AS revenue, COUNT(*) AS count
-      FROM payments WHERE date >= DATE_SUB(NOW(), INTERVAL 12 MONTH) AND amount > 0
+      SELECT DATE_FORMAT(date, '%Y-%m') AS month, SUM(amount_egp) AS revenue, COUNT(*) AS count
+      FROM payments WHERE tenant_id=? AND date >= DATE_SUB(NOW(), INTERVAL 12 MONTH) AND amount_egp > 0
       GROUP BY month ORDER BY month ASC
-    `);
+    `, [req.tenantId]);
     // Simple linear regression on last 6 months to forecast next 3
     const recent = monthly.slice(-6);
     let forecast = [];
@@ -190,11 +208,12 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, async (re
     const [rows] = await pool.query(
       `SELECT s.id, s.name, s.email, s.phone, s.status, s.source, s.created_at,
               COUNT(DISTINCT e.course_id) AS courses_count,
-              COALESCE(SUM(p.amount),0) AS total_paid
+              COALESCE(SUM(p.amount_egp),0) AS total_paid
        FROM subscribers s
-       LEFT JOIN enrollments e ON e.subscriber_id = s.id
-       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.status='paid'
-       GROUP BY s.id ORDER BY s.created_at DESC LIMIT 10000`
+       LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id
+       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.status='paid'
+       WHERE s.tenant_id=?
+       GROUP BY s.id ORDER BY s.created_at DESC LIMIT 10000`, [req.tenantId]
     );
     const cols = [
       { key: 'id', label: 'ID' },
@@ -219,7 +238,7 @@ router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requireP
   try {
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, status, source, assigned_sales_name AS assigned_to_name, deal_value, next_follow_up_date AS follow_up_date, created_at
-       FROM leads WHERE hidden=0 ORDER BY created_at DESC LIMIT 10000`
+       FROM leads WHERE tenant_id=? AND hidden=0 ORDER BY created_at DESC LIMIT 10000`, [req.tenantId]
     );
     const cols = [
       { key: 'id', label: 'ID' },
@@ -244,8 +263,8 @@ router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requireP
 router.get('/api/admin/export/payments', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { dateFrom, dateTo } = req.query;
-    let where = '1=1';
-    const params = [];
+    let where = 'p.tenant_id=?';
+    const params = [req.tenantId];
     if (dateFrom) { where += ' AND p.date >= ?'; params.push(dateFrom); }
     if (dateTo)   { where += ' AND p.date <= ?'; params.push(dateTo); }
     const [rows] = await pool.query(
@@ -253,7 +272,7 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, async (req, 
               p.amount, p.currency, p.payment_type, p.payment_method, p.status,
               p.date, p.transaction_id, p.staff_name, p.note
        FROM payments p
-       LEFT JOIN subscribers s ON s.id = p.subscriber_id
+       LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
        WHERE ${where} ORDER BY p.date DESC LIMIT 20000`,
       params
     );
@@ -282,7 +301,7 @@ router.get('/api/admin/export/payments', requireAuth, requireAdmin, async (req, 
 // ── FEATURE: Daily Follow-up Reminder (runs at 9:00 AM Cairo time) ──────
 // ═══════════════════════════════════════════════════════════════════════════
 let _lastFollowUpReminderDay = '';
-setInterval(async () => {
+if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
     const now = new Date();
     const cairoHour = (now.getUTCHours() + 2) % 24;
@@ -353,7 +372,7 @@ setInterval(async () => {
 // ── sends WhatsApp to subscriber + email summary to admin.               ──
 // ═══════════════════════════════════════════════════════════════════════════
 let _lastInstallmentReminderDay = '';
-setInterval(async () => {
+if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
     const now       = new Date();
     const cairoHour = (now.getUTCHours() + 2) % 24;
@@ -422,7 +441,7 @@ setInterval(async () => {
         `${lines}\n\n` +
         `يُرجى التواصل مع الفريق لترتيب السداد.\nشكراً لتعاونكم 🙏`;
 
-      const result = await sendWhatsApp(item.subPhone, msg);
+      const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId || DEFAULT_TENANT_ID });
       if (result.ok) waSent++;
     }
 
@@ -526,7 +545,8 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
         <p><strong>المبلغ:</strong> ${amount} ${currency}</p>
         <p><strong>السبب:</strong> ${reason}</p>
         <p style="color:#718096;font-size:13px">تسجيل الدخول للنظام لمراجعة الطلب</p>
-      </div>`
+      </div>`,
+      { tenantId }
     ).catch(() => {});
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -613,7 +633,7 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
     );
     // If APPROVED: mark linked payment as refunded and log audit
     if (status === 'APPROVED' && rr?.payment_id) {
-      const [[oldPay]] = await conn.query('SELECT status, amount, currency, payment_type, subscriber_id, course_id, bundle_id FROM payments WHERE id=? AND tenant_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE', [rr.payment_id, tenantId, rr.subscriber_id]).catch(() => [[null]]);
+      const [[oldPay]] = await conn.query('SELECT status, amount, amount_egp, currency, payment_type, subscriber_id, course_id, bundle_id FROM payments WHERE id=? AND tenant_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE', [rr.payment_id, tenantId, rr.subscriber_id]).catch(() => [[null]]);
       if (oldPay) {
         await conn.query('UPDATE payments SET status=\'refunded\', note=CONCAT(COALESCE(note,\'\'), IF(note IS NOT NULL AND note!=\'\',\' | \',\'\'), \'Refunded by \', ?) WHERE id=? AND tenant_id=?',
           [actor, rr.payment_id, tenantId]);
@@ -641,7 +661,7 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
           // (e.g. a refunded COURSE sale debits 4100, not a generic 4900) so the
           // reversal is symmetric and revenue per category nets to zero.
           const [revCode, revName] = _paymentAccountCode((oldPay.payment_type || 'OTHER').toUpperCase());
-          const amtEgp = await toEgp(amt, oldPay.currency);
+          const amtEgp = Number(oldPay.amount_egp) > 0 ? Number(oldPay.amount_egp) : await toEgp(amt, oldPay.currency, tenantId);
           const refundJournalId = await postJournalEntry('refund', rr.payment_id, new Date().toISOString().slice(0,10),
               `استرداد مبلغ ${amt} ${oldPay.currency || 'EGP'} (= ${amtEgp} EGP) — موافقة بواسطة ${actor}`,
               [
@@ -649,7 +669,8 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
                 { account_code: '1100',  account_name: 'نقدية وبنوك',   debit: 0,      credit: amtEgp },
               ],
               actor,
-              conn
+              conn,
+              tenantId
           );
           if (!refundJournalId) throw new Error('Refund journal posting failed');
         }
@@ -667,7 +688,8 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
           ${admin_note ? `<p style="background:#f7fafc;padding:12px;border-right:3px solid #4299e1;color:#2d3748"><strong>ملاحظة الإدارة:</strong> ${admin_note}</p>` : ''}
           ${status==='APPROVED' && refund_method ? `<p><strong>طريقة الاسترداد:</strong> ${refund_method}</p>` : ''}
           <p style="color:#718096;font-size:13px">معهد الدراسات النفسية — info@mahadnafsy.com</p>
-        </div>`
+        </div>`,
+        { tenantId }
       ).catch(() => {});
     }
     await pool.query(
@@ -692,7 +714,7 @@ router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff,
 // Covers the last 7 days: revenue, new leads, new subscribers, top staff.
 // ═══════════════════════════════════════════════════════════════════════════
 let _lastWeeklySummaryDate = '';
-setInterval(async () => {
+if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
   try {
     const now = new Date();
     const cairoHour = (now.getUTCHours() + 2) % 24;

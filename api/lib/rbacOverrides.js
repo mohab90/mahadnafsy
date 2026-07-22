@@ -10,22 +10,21 @@ const logger = require('./logger');
  * a content save for immediate effect.
  */
 const { pool } = require('./db');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { setRoleOverrides } = require('../constants/permissions');
 
 let _timer = null;
 
-async function loadRoleOverrides() {
+async function loadRoleOverrides(tenantId = DEFAULT_TENANT) {
   try {
-    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
-    if (!rows.length) { setRoleOverrides({}); return {}; }
-    let content = rows[0].value;
-    if (typeof content === 'string') { try { content = JSON.parse(content); } catch { content = {}; } }
+    const content = await getTenantSetting('content', { tenantId, fallback: {} }) || {};
     const raw = content && content['rbac.roleOverrides'];
     let overrides = {};
     if (raw) {
       try { overrides = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { overrides = {}; }
     }
-    const applied = setRoleOverrides(overrides);
+    const applied = setRoleOverrides(overrides, tenantId);
     return applied;
   } catch (e) {
     logger.error('[rbacOverrides] load failed:', e.message);
@@ -35,11 +34,14 @@ async function loadRoleOverrides() {
 
 /** Load once now, then refresh every `intervalMs` (default 60s). */
 function startRbacRefresh(intervalMs = 60 * 1000) {
-  loadRoleOverrides()
-    .then(o => { if (o) logger.info(`[rbacOverrides] loaded overrides for ${Object.keys(o).length} role(s)`); })
-    .catch(() => {});
+  const refresh = async () => {
+    const [rows] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[]]);
+    const tenantIds = rows.length ? rows.map(row => row.id) : [DEFAULT_TENANT];
+    await Promise.all(tenantIds.map(tenantId => loadRoleOverrides(tenantId)));
+  };
+  refresh().catch(() => {});
   if (_timer) clearInterval(_timer);
-  _timer = setInterval(() => { loadRoleOverrides().catch(() => {}); }, intervalMs);
+  _timer = setInterval(() => { refresh().catch(() => {}); }, intervalMs);
   if (_timer.unref) _timer.unref();
   return _timer;
 }

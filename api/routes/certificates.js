@@ -6,6 +6,7 @@ const router  = express.Router();
 const { pool } = require('../lib/db');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
+const { getTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 
@@ -68,7 +69,7 @@ router.patch('/api/admin/certificate-requests/:id',
           if (row?.email || row?.phone) {
             require('../lib/lifecycle').trigger(
               'certificate_ready',
-              { name: row.name, email: row.email, phone: row.phone, courseTitle: row.course_title },
+              { name: row.name, email: row.email, phone: row.phone, courseTitle: row.course_title, tenantId: req.tenantId },
               { dedupeKey: `cert_ready:${req.params.id}` }
             );
             if (row.email) {
@@ -126,8 +127,8 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
     );
     if (!eligible) return res.status(409).json({ error: 'certificate_not_eligible', message: 'يجب دفع وإتمام الكورس أولاً' });
 
-    const [[contentRow]] = await pool.query("SELECT `value` FROM site_config WHERE `key`='content' LIMIT 1");
-    const pricing = (() => { try { return JSON.parse(JSON.parse(contentRow?.value || '{}').extra_cert_pricing || '{}'); } catch { return {}; } })();
+    const content = await getTenantSetting('content', { tenantId, fallback: {} });
+    const pricing = (() => { try { return JSON.parse(content.extra_cert_pricing || '{}'); } catch { return {}; } })();
     const typeKey = type.toLowerCase();
     const priceRow = pricing[typeKey] || {};
     const priceKey = nationality === 'EGYPTIAN' ? 'egyptianEGP'

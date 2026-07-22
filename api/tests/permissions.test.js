@@ -93,3 +93,10 @@ test('setRoleOverrides ignores malformed input safely', () => {
   setRoleOverrides({ sales: 'not-an-array' });
   assert.equal(hasPermission({ role: 'sales' }, 'manage_leads'), true); // default restored
 });
+
+test('role overrides are isolated between tenants', () => {
+  setRoleOverrides({ sales: ['view_dashboard'] }, 'tenant-a');
+  setRoleOverrides({ sales: ['view_dashboard', 'manage_leads'] }, 'tenant-b');
+  assert.equal(hasPermission({ role: 'sales', tenant_id: 'tenant-a' }, 'manage_leads'), false);
+  assert.equal(hasPermission({ role: 'sales', tenant_id: 'tenant-b' }, 'manage_leads'), true);
+});

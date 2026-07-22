@@ -1766,7 +1766,8 @@ function registerStartupTasks({ pool, tryJson, VALID_PAY_TYPES, VALID_SOURCES, s
   // all subscribers with outstanding balances (course_expected > paid).
   // Fires every hour and checks if it is the right day+hour to run once per week.
   let _lastPaymentReminderWeek = -1;
-  setInterval(async () => {
+  const LEGACY_STARTUP_REMINDERS_ENABLED = false;
+  if (LEGACY_STARTUP_REMINDERS_ENABLED) setInterval(async () => {
     try {
       const now = new Date();
       const cairoHour = (now.getUTCHours() + 2) % 24;

@@ -113,10 +113,14 @@ const Checkout: React.FC = () => {
     try {
       const token = localStorage.getItem('mahad-token');
       if (!token) throw new Error('سجّل الدخول أولاً لإتمام الطلب');
+      const idempotencyStorageKey = `checkout-idempotency:${type}:${id || subtype || 'item'}`;
+      const idempotencyKey = sessionStorage.getItem(idempotencyStorageKey) || crypto.randomUUID();
+      sessionStorage.setItem(idempotencyStorageKey, idempotencyKey);
       const response = await fetch('/api/public/checkout-intent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
@@ -139,6 +143,7 @@ const Checkout: React.FC = () => {
       setServerAmount(Number(data.amount));
       setServerCurrency(data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP');
       setOrderSent(true);
+      sessionStorage.removeItem(idempotencyStorageKey);
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'حدث خطأ، حاول مرة أخرى.');
     } finally {

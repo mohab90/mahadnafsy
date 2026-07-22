@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { getTenantSetting } = require('./tenantSettings');
 
 const DEFAULT_PAYMENT_GATEWAY = {
   active_provider: 'manual',
@@ -99,35 +100,35 @@ function normalizeOtpProvider(config) {
   return config;
 }
 
-async function getSysConfig(section, defaults) {
-  const [[row]] = await pool.query('SELECT `value` FROM site_config WHERE `key`=? LIMIT 1', [`sys_${section}`]);
-  return mergeObject(defaults, tryParseJson(row?.value, defaults));
+async function getSysConfig(section, defaults, tenantId) {
+  const saved = await getTenantSetting(`sys_${section}`, { tenantId, fallback: defaults });
+  return mergeObject(defaults, saved);
 }
 
 function isPaymobActive(config) {
   return config?.active_provider === 'paymob' && !!config?.paymob?.enabled;
 }
 
-async function getPaymentGatewaySettings() {
-  return getSysConfig('payment_gateway', DEFAULT_PAYMENT_GATEWAY);
+async function getPaymentGatewaySettings(tenantId) {
+  return getSysConfig('payment_gateway', DEFAULT_PAYMENT_GATEWAY, tenantId);
 }
 
-async function getLeadSourceConnectorSettings() {
-  return normalizeLeadSourceConnectors(await getSysConfig('lead_source_connectors', DEFAULT_LEAD_SOURCE_CONNECTORS));
+async function getLeadSourceConnectorSettings(tenantId) {
+  return normalizeLeadSourceConnectors(await getSysConfig('lead_source_connectors', DEFAULT_LEAD_SOURCE_CONNECTORS, tenantId));
 }
 
-async function getOtpProviderSettings() {
-  return normalizeOtpProvider(await getSysConfig('otp_provider', DEFAULT_OTP_PROVIDER));
+async function getOtpProviderSettings(tenantId) {
+  return normalizeOtpProvider(await getSysConfig('otp_provider', DEFAULT_OTP_PROVIDER, tenantId));
 }
 
-async function getBranchWorkspaces() {
+async function getBranchWorkspaces(tenantId) {
   try {
     const [rows] = await pool.query(`
       SELECT branch_key, slug, label, branch_type, timezone, currency, modules_json, tabs_json, is_active
       FROM branches
-      WHERE is_active = 1
+      WHERE tenant_id = ? AND is_active = 1
       ORDER BY FIELD(branch_key, 'online_egypt', 'daqqi'), label
-    `);
+    `, [tenantId || 'tenant-default']);
     if (rows.length) {
       return rows.map(row => ({
         key: row.branch_key,
@@ -144,7 +145,7 @@ async function getBranchWorkspaces() {
   } catch (_) {
     // Older databases may not have the normalized branches table yet.
   }
-  return getSysConfig('branch_workspaces', DEFAULT_BRANCH_WORKSPACES);
+  return getSysConfig('branch_workspaces', DEFAULT_BRANCH_WORKSPACES, tenantId);
 }
 
 module.exports = {

@@ -9,14 +9,14 @@ function renderTemplate(template, code) {
   return String(template || 'رمز التحقق الخاص بك: {{code}}').replace(/\{\{code\}\}/g, code);
 }
 
-async function findPhoneByEmail(email) {
+async function findPhoneByEmail(email, tenantId = 'tenant-default') {
   const safeEmail = String(email || '').toLowerCase().trim();
   if (!safeEmail) return '';
-  const [[sub]] = await pool.query('SELECT phone FROM subscribers WHERE LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [safeEmail]).catch(() => [[null]]);
+  const [[sub]] = await pool.query('SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [tenantId, safeEmail]).catch(() => [[null]]);
   if (sub?.phone) return sub.phone;
-  const [[staff]] = await pool.query('SELECT phone FROM staff WHERE LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [safeEmail]).catch(() => [[null]]);
+  const [[staff]] = await pool.query('SELECT phone FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [tenantId, safeEmail]).catch(() => [[null]]);
   if (staff?.phone) return staff.phone;
-  const [[user]] = await pool.query('SELECT phone FROM users WHERE LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [safeEmail]).catch(() => [[null]]);
+  const [[user]] = await pool.query('SELECT phone FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>"" LIMIT 1', [tenantId, safeEmail]).catch(() => [[null]]);
   return user?.phone || '';
 }
 
@@ -84,12 +84,19 @@ async function sendSmsOtp({ phone, message, settings }) {
   return { ok: false, reason: 'unsupported_sms_provider', provider };
 }
 
-async function sendOtp({ email, phone, code, subject, html }) {
-  const settings = await getOtpProviderSettings().catch(() => ({}));
+async function sendSms({ phone, message, tenantId = 'tenant-default' }) {
+  const settings = await getOtpProviderSettings(tenantId);
+  const result = await sendSmsOtp({ phone, message, settings });
+  if (!result.ok) throw new Error(`SMS delivery failed: ${typeof result.reason === 'string' ? result.reason : 'provider_error'}`);
+  return result;
+}
+
+async function sendOtp({ email, phone, code, subject, html, tenantId = 'tenant-default' }) {
+  const settings = await getOtpProviderSettings(tenantId).catch(() => ({}));
   const channel = settings.active_channel || 'email';
 
   if (channel === 'whatsapp' && settings.whatsapp?.enabled) {
-    const targetPhone = phone || await findPhoneByEmail(email);
+    const targetPhone = phone || await findPhoneByEmail(email, tenantId);
     const result = await sendGreenApiWhatsApp({
       phone: targetPhone,
       message: renderTemplate(settings.whatsapp.template, code),
@@ -102,7 +109,7 @@ async function sendOtp({ email, phone, code, subject, html }) {
 
   if (channel === 'sms' && settings.sms?.enabled) {
     const result = await sendSmsOtp({
-      phone: phone || await findPhoneByEmail(email),
+      phone: phone || await findPhoneByEmail(email, tenantId),
       message: renderTemplate(settings.sms.template, code),
       settings,
     }).catch(error => ({ ok: false, reason: error.message }));
@@ -111,11 +118,11 @@ async function sendOtp({ email, phone, code, subject, html }) {
   }
 
   if (!settings.email || settings.email.enabled !== false) {
-    await sendEmail(email, subject, html);
+    await sendEmail(email, subject, html, { tenantId });
     return { ok: true, channel: 'email' };
   }
 
   return { ok: false, channel, reason: 'no_enabled_otp_channel' };
 }
 
-module.exports = { findPhoneByEmail, renderTemplate, sendGreenApiWhatsApp, sendOtp, sendSmsOtp };
+module.exports = { findPhoneByEmail, renderTemplate, sendGreenApiWhatsApp, sendOtp, sendSms, sendSmsOtp };

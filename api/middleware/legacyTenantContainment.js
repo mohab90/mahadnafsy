@@ -5,14 +5,12 @@ const { DEFAULT_TENANT } = require('./tenantContext');
 // Route families backed by legacy SQL without explicit tenant_id predicates.
 // Keep this list centralized and shrink it as each module is migrated.
 const LEGACY_UNSCOPED_PATHS = [
-  /^\/api\/admin\/(?:automation|automation-workflows|drip-|reports|sales-|analytics|dashboard\/kpi|kpi\/|sms|subscription|notifications|security|consultations|nps|search)(?:\/|$)/,
-  /^\/api\/admin\/(?:ip-whitelist|kv|sys-config|community|inbox|daqqi|accounting|waitlist|ai|server-|promo-codes|crm|upload|content|discounts|fx-rates|lifecycle|notification-settings|settings)(?:\/|$)/,
+  /^\/api\/admin\/(?:automation|drip-|reports|sales-|analytics|dashboard\/kpi|kpi\/|sms|subscription|security|consultations|nps|search)(?:\/|$)/,
+  /^\/api\/admin\/(?:ip-whitelist|kv|sys-config|inbox|daqqi|waitlist|ai|server-|promo-codes|upload|content|discounts|fx-rates|lifecycle|notification-settings|settings)(?:\/|$)/,
   /^\/api\/admin\/(?:chapters|lectures|testimonials|therapists|courses|online-users|commissions\/monthly|export\/orders)(?:\/|$)/,
-  /^\/api\/admin\/leads\/(?:[^/]+\/utm|scoring|due-today|reminders|gsheet)(?:\/|$)/,
-  /^\/api\/admin\/payments\/(?:[^/]+\/invoice-html|due-upcoming|reminders)(?:\/|$)/,
   /^\/api\/admin\/staff\/[^/]+\/(?:set-password|toggle-active)(?:\/|$)/,
   /^\/api\/admin\/subscribers\/[^/]+\/(?:loyalty|qr)(?:\/|$)/,
-  /^\/api\/(?:community|waitlist|promo)(?:\/|$)/,
+  /^\/api\/(?:waitlist|promo)(?:\/|$)/,
   /^\/api\/me\/(?:loyalty|is-staff|register-interest)(?:\/|$)/,
   /^\/chat(?:\/|$)/,
   /^\/api\/content(?:\/|$)/,

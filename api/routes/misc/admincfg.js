@@ -5,15 +5,13 @@ const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { hasPermission } = require('../../constants/permissions');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
-
-function isPlainJsonObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
+const { isPlainJsonObject, preserveStoredSecrets, redactSecrets } = require('../../lib/configSecrets');
+const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 
 function validateConfigSection(section, value) {
   if (!Object.prototype.hasOwnProperty.call(SYS_DEFAULTS, section)) return `Unknown section: ${section}`;
@@ -51,23 +49,23 @@ async function publishConfigEvent(req, section) {
   } catch (_) {}
 }
 
-router.get('/api/admin/sys-config', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/sys-config', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
   try {
     const section = req.query.section;
     if (section) {
-      const saved = await getSysConfig(section);
-      return res.json(saved ?? SYS_DEFAULTS[section] ?? null);
+      const saved = await getSysConfig(section, req.tenantId);
+      return res.json(redactSecrets(saved ?? SYS_DEFAULTS[section] ?? null));
     }
     // Return all sections
     const keys = Object.keys(SYS_DEFAULTS);
-    const vals = await Promise.all(keys.map(k => getSysConfig(k)));
+    const vals = await Promise.all(keys.map(k => getSysConfig(k, req.tenantId)));
     const result = {};
     keys.forEach((k, i) => { result[k] = vals[i] ?? SYS_DEFAULTS[k]; });
-    res.json(result);
+    res.json(redactSecrets(result));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/api/admin/sys-config/meta', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/sys-config/meta', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (_req, res) => {
   try {
     res.json({
       sections: Object.keys(SYS_DEFAULTS).map(sectionMeta),
@@ -77,33 +75,35 @@ router.get('/api/admin/sys-config/meta', requireAuth, requireAdmin, async (_req,
 });
 
 // PUT /api/admin/sys-config/:section — save a section
-router.put('/api/admin/sys-config/:section', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/sys-config/:section', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
   try {
     const { section } = req.params;
     const validationError = validateConfigSection(section, req.body);
     if (validationError) return res.status(400).json({ error: validationError });
-    await setSysConfig(section, req.body);
+    const stored = await getSysConfig(section, req.tenantId);
+    const safeValue = preserveStoredSecrets(stored, req.body);
+    await setSysConfig(section, safeValue, req.tenantId, req.user?.uid || req.user?.email);
     await publishConfigEvent(req, section);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/sys-config/:section/reset — reset section to defaults
-router.post('/api/admin/sys-config/:section/reset', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/sys-config/:section/reset', requireAuth, requireAdminOrStaff, requirePermission('manage_settings'), async (req, res) => {
   try {
     const { section } = req.params;
     if (!SYS_DEFAULTS[section]) return res.status(400).json({ error: 'Unknown section' });
-    await setSysConfig(section, SYS_DEFAULTS[section]);
+    await setSysConfig(section, SYS_DEFAULTS[section], req.tenantId, req.user?.uid || req.user?.email);
     await publishConfigEvent(req, section);
     res.json({ ok: true, data: SYS_DEFAULTS[section] });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/admin/sys-config/public — for client-side use (branches, currencies, etc.)
-router.get('/api/admin/sys-config/public', async (_req, res) => {
+router.get('/api/admin/sys-config/public', async (req, res) => {
   try {
     const sections = ['branches', 'currencies', 'countries', 'payment_methods', 'session_types', 'general'];
-    const values = await Promise.all(sections.map(k => getSysConfig(k)));
+    const values = await Promise.all(sections.map(k => getSysConfig(k, req.tenantId)));
     const result = {};
     sections.forEach((k, i) => { result[k] = values[i] ?? SYS_DEFAULTS[k]; });
     res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
@@ -128,14 +128,14 @@ router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin,
     const hash = await bcrypt.hash(password, 10);
 
     // Check if staff already has a login in users table
-    const [[staff]] = await pool.query('SELECT id, email FROM staff WHERE id=? LIMIT 1', [req.params.id]);
+    const [[staff]] = await pool.query('SELECT id, email, name FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
     if (!staff) return res.status(404).json({ error: 'Staff not found' });
 
     // Upsert into users table (staff use email as username)
     await pool.query(
-      `INSERT INTO users (id, email, password_hash, role, name) VALUES (UUID(),?,?,'staff',?)
+      `INSERT INTO users (id, tenant_id, email, password_hash, role, name) VALUES (UUID(),?,?,?,'staff',?)
        ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash)`,
-      [staff.email, hash, staff.name || staff.email]
+      [req.tenantId, staff.email, hash, staff.name || staff.email]
     );
     res.json({ ok: true, message: 'تم تعيين كلمة المرور بنجاح' });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -144,25 +144,25 @@ router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin,
 // POST /api/admin/staff/:id/toggle-active — enable/disable staff login
 router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const [[staff]] = await pool.query('SELECT id, is_active, email FROM staff WHERE id=? LIMIT 1', [req.params.id]);
+    const [[staff]] = await pool.query('SELECT id, is_active, email FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
     if (!staff) return res.status(404).json({ error: 'Not found' });
     const newActive = staff.is_active ? 0 : 1;
-    await pool.query('UPDATE staff SET is_active=? WHERE id=?', [newActive, req.params.id]);
+    await pool.query('UPDATE staff SET is_active=? WHERE id=? AND tenant_id=?', [newActive, req.params.id, req.tenantId]);
     // Also update users table
-    await pool.query('UPDATE users SET is_active=? WHERE email=?', [newActive, staff.email]).catch(() => {});
+    await pool.query('UPDATE users SET is_active=? WHERE tenant_id=? AND email=?', [newActive, req.tenantId, staff.email]).catch(() => {});
     // When deactivating: un-assign all leads and subscribers so they go to the pool
     if (!newActive) {
       await pool.query(
-        'UPDATE leads SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE assigned_sales_id=?',
-        [staff.id]
+        'UPDATE leads SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE tenant_id=? AND assigned_sales_id=?',
+        [req.tenantId, staff.id]
       ).catch(() => {});
       await pool.query(
-        'UPDATE subscribers SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE assigned_sales_id=?',
-        [staff.id]
+        'UPDATE subscribers SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE tenant_id=? AND assigned_sales_id=?',
+        [req.tenantId, staff.id]
       ).catch(() => {});
       await pool.query(
-        'UPDATE subscribers SET assigned_cs_id=NULL, assigned_cs_name=NULL WHERE assigned_cs_id=?',
-        [staff.id]
+        'UPDATE subscribers SET assigned_cs_id=NULL, assigned_cs_name=NULL WHERE tenant_id=? AND assigned_cs_id=?',
+        [req.tenantId, staff.id]
       ).catch(() => {});
       logger.info(`[staff] deactivated ${staff.id} — leads and subscribers unassigned`);
     }
@@ -215,8 +215,7 @@ router.get('/api/admin/kv/:key', requireAuth, requireAdmin, async (req, res) => 
   try {
     const { key } = req.params;
     if (!KV_ALLOWED_KEYS.includes(key)) return res.status(400).json({ error: 'Unknown key' });
-    const [[row]] = await pool.query("SELECT `value` FROM site_config WHERE `key`=? LIMIT 1", [`kv_${key}`]);
-    const data = row?.value ? JSON.parse(row.value) : null;
+    const data = await getTenantSetting(`kv_${key}`, { tenantId: req.tenantId, fallback: null });
     res.json({ ok: true, key, data });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -227,10 +226,7 @@ router.put('/api/admin/kv/:key', requireAuth, requireAdmin, async (req, res) => 
     const { key } = req.params;
     if (!KV_ALLOWED_KEYS.includes(key)) return res.status(400).json({ error: 'Unknown key' });
     const value = req.body;
-    await pool.query(
-      "INSERT INTO site_config (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [`kv_${key}`, JSON.stringify(value)]
-    );
+    await setTenantSetting(`kv_${key}`, value, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

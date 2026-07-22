@@ -8,12 +8,13 @@ const { ensureNotificationsTable } = require('../lib/notification');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // GET /api/admin/notifications
-router.get('/api/admin/notifications', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureNotificationsTable();
     const [rows] = await pool.query(
       `SELECT id, type, title, message, data_json, read_at, created_at
-       FROM notifications ORDER BY created_at DESC LIMIT 100`
+       FROM notifications WHERE tenant_id=? ORDER BY created_at DESC LIMIT 100`,
+      [req.tenantId]
     );
     const unread = rows.filter(r => !r.read_at).length;
     res.json({ rows, unread });
@@ -28,30 +29,45 @@ router.get('/api/admin/notifications', requireAuth, requireAdmin, async (_req, r
 // handler existed → broadcasts were lost on reload (the .catch() hid the 404).
 // Upserts into the SAME table the GET above reads from, so they round-trip.
 router.put('/api/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const items = Array.isArray(req.body) ? req.body : (req.body && Array.isArray(req.body.notifications) ? req.body.notifications : []);
+    if (items.length > 200) return res.status(400).json({ error: 'Too many notifications' });
     await ensureNotificationsTable();
     const { uuidv4 } = require('../lib/id');
     let saved = 0;
+    await conn.beginTransaction();
     for (const n of items) {
       if (!n || typeof n !== 'object') continue;
-      await pool.query(
-        `INSERT INTO notifications (id, type, title, message, data_json, created_at)
-         VALUES (?,?,?,?,?, NOW())
-         ON DUPLICATE KEY UPDATE type=VALUES(type), title=VALUES(title), message=VALUES(message), data_json=VALUES(data_json)`,
-        [n.id || uuidv4(), String(n.type || 'broadcast'), String(n.title || ''),
-         String(n.message || n.body || ''), JSON.stringify(n.data || n.meta || {})]
-      ).then(() => { saved++; }).catch(e => logger.warn('[notif upsert]', e.message));
+      const id = n.id || uuidv4();
+      const values = [String(n.type || 'broadcast').slice(0, 50), String(n.title || '').slice(0, 255),
+        String(n.message || n.body || '').slice(0, 10000), JSON.stringify(n.data || n.meta || {})];
+      const [[existing]] = await conn.query('SELECT id FROM notifications WHERE id=? AND tenant_id=? LIMIT 1', [id, req.tenantId]);
+      if (existing) {
+        await conn.query(
+          'UPDATE notifications SET type=?, title=?, message=?, data_json=? WHERE id=? AND tenant_id=?',
+          [...values, id, req.tenantId]
+        );
+      } else {
+        await conn.query(
+          `INSERT INTO notifications (id, tenant_id, type, title, message, data_json, created_at)
+           VALUES (?,?,?,?,?,?, NOW())`,
+          [id, req.tenantId, ...values]
+        );
+      }
+      saved++;
     }
+    await conn.commit();
     res.json({ ok: true, saved });
-  } catch (e) { logger.error('[notifications save]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { try { await conn.rollback(); } catch (_) {} logger.error('[notifications save]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  finally { conn.release(); }
 });
 
 // PATCH /api/admin/notifications/read-all
-router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, async (_req, res) => {
+router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureNotificationsTable();
-    await pool.query('UPDATE notifications SET read_at=NOW() WHERE read_at IS NULL');
+    await pool.query('UPDATE notifications SET read_at=NOW() WHERE tenant_id=? AND read_at IS NULL', [req.tenantId]);
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -63,7 +79,8 @@ router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, asy
 router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureNotificationsTable();
-    await pool.query('UPDATE notifications SET read_at=NOW() WHERE id=?', [req.params.id]);
+    const [result] = await pool.query('UPDATE notifications SET read_at=NOW() WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Notification not found' });
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);

@@ -313,9 +313,9 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     const [rounds] = await pool.query(
       `SELECT id, reception_name, instructor_name, start_date, status, current_lecture
        FROM daqqi_rounds
-       WHERE start_date >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+       WHERE tenant_id=? AND start_date >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
        ORDER BY start_date DESC LIMIT 1000`,
-      [months]
+      [req.tenantId, months]
     );
 
     if (!rounds.length) return res.json({ months: [], totals: null });
@@ -329,15 +329,15 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     const [attendees] = await pool.query(
       `SELECT da.round_id, da.attended_lectures,
               COALESCE((
-                SELECT SUM(p.amount) FROM payments p
-                WHERE p.subscriber_id = da.subscriber_id
-                  AND p.status = 'paid' AND p.currency = 'EGP'
+                SELECT SUM(p.amount_egp) FROM payments p
+                WHERE p.tenant_id=da.tenant_id AND p.subscriber_id = da.subscriber_id
+                  AND p.status = 'paid'
                   AND (p.course_id = dr.course_id OR p.course_id IS NULL)
               ), da.amount_paid, 0) AS amount_paid
        FROM daqqi_attendees da
-       JOIN daqqi_rounds dr ON dr.id = da.round_id
-       WHERE da.round_id IN (${roundIds.map(() => '?').join(',')})`,
-      roundIds
+       JOIN daqqi_rounds dr ON dr.id = da.round_id AND dr.tenant_id=da.tenant_id
+       WHERE da.tenant_id=? AND da.round_id IN (${roundIds.map(() => '?').join(',')})`,
+      [req.tenantId, ...roundIds]
     );
 
     const attByRound = {};

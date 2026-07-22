@@ -252,6 +252,11 @@ export const mysqlAdmin = {
 
   // ── Leads ──
   saveLead:   (o: AR) => post('/admin/leads', o),
+  convertLead: (id: string, body: { courseId?: string; accessMode?: 'preview' | 'full' | 'limited' }) =>
+    apiFetch<{ ok: boolean; subscriber_id: string; client_code?: string; already_existed?: boolean }>(
+      `/admin/leads/${encodeURIComponent(id)}/convert`,
+      { method: 'POST', body: JSON.stringify(body) }, A
+    ),
   deleteLead: (id: string) => del(`/admin/leads/${id}`),
   getLeadTimeline: (id: string) => apiFetch<AR[]>(`/admin/leads/${id}/timeline`, {}, A),
 

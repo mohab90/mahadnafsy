@@ -6,10 +6,11 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'communication-admin-route' });
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
-const { sendWhatsApp } = require('../lib/whatsapp');
+const { getWaCfg, invalidateWaCfg, sendWhatsApp } = require('../lib/whatsapp');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
+const { setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { whatsappSendLimiter } = require('../middleware/rateLimits');
 
@@ -24,8 +25,7 @@ function scopedTenantId(req) {
 
 router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'whatsapp_config'");
-    const cfg = rows[0]?.value ? JSON.parse(rows[0].value) : {};
+    const cfg = await getWaCfg(scopedTenantId(req));
     // Never return the token to frontend
     res.json({ instanceId: cfg.instanceId || '', hasToken: !!(cfg.apiToken) });
   } catch (e) { routeError(res, e); }
@@ -34,7 +34,7 @@ router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
 // GET /api/admin/facebook-lead-ads-config
 router.get('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const cfg = await getFbLeadConfig();
+    const cfg = await getFbLeadConfig(scopedTenantId(req));
     // Mask token for security
     res.json({ ...cfg, pageAccessToken: cfg.pageAccessToken ? '••••••••' : '', hasToken: !!(cfg.pageAccessToken) });
   } catch (e) { routeError(res, e); }
@@ -45,15 +45,15 @@ router.put('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, asy
   try {
     const incoming = req.body;
     // Merge with existing (don't overwrite token if masked placeholder sent)
-    const existing = await getFbLeadConfig();
+    const existing = await getFbLeadConfig(scopedTenantId(req));
     const pageAccessToken = (incoming.pageAccessToken && !incoming.pageAccessToken.startsWith('•'))
       ? incoming.pageAccessToken.trim()
       : existing.pageAccessToken;
     const merged = { ...existing, ...incoming, pageAccessToken, updatedAt: new Date().toISOString() };
-    await pool.query(
-      "INSERT INTO site_config (`key`, `value`) VALUES ('facebook_lead_ads', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [JSON.stringify(merged)]
-    );
+    await setTenantSetting('facebook_lead_ads', merged, {
+      tenantId: scopedTenantId(req),
+      actorId: req.user?.uid || req.user?.email,
+    });
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
@@ -63,10 +63,11 @@ router.put('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
   try {
     const { instanceId, apiToken } = req.body;
     if (!instanceId || !apiToken) return res.status(400).json({ error: 'instanceId and apiToken required' });
-    await pool.query(
-      "INSERT INTO site_config (`key`, `value`) VALUES ('whatsapp_config', ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-      [JSON.stringify({ instanceId: instanceId.trim(), apiToken: apiToken.trim() })]
-    );
+    const tenantId = scopedTenantId(req);
+    await setTenantSetting('whatsapp_config', { instanceId: instanceId.trim(), apiToken: apiToken.trim() }, {
+      tenantId, actorId: req.user?.uid || req.user?.email,
+    });
+    invalidateWaCfg(tenantId);
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
@@ -76,7 +77,7 @@ router.post('/api/admin/whatsapp-send', requireAuth, requireAdmin, async (req, r
   try {
     const { phone, message } = req.body;
     if (!phone || !message) return res.status(400).json({ error: 'phone and message required' });
-    const result = await sendWhatsApp(phone, message);
+    const result = await sendWhatsApp(phone, message, { tenantId: scopedTenantId(req) });
     if (!result.ok) return res.status(400).json({ error: 'WhatsApp send failed', detail: result.reason });
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
@@ -94,7 +95,7 @@ router.post('/api/admin/whatsapp-bulk', requireAuth, requireAdmin, async (req, r
     for (const phone of phones) {
       // Small delay between each send to avoid API throttling
       await new Promise(r => setTimeout(r, 300));
-      const r = await sendWhatsApp(phone, message);
+      const r = await sendWhatsApp(phone, message, { tenantId: scopedTenantId(req) });
       if (r.ok) results.sent++;
       else { results.failed++; results.errors.push({ phone, reason: String(r.reason) }); }
     }

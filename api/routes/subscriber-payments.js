@@ -4,19 +4,22 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
-const { mailer, sendEmail, htmlEmail } = require('../lib/email');
+const { mailer, sendEmail: sendEmailBase, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { tryJson, sanitize } = require('../lib/helpers');
 const { createNotification } = require('../lib/notification');
-const { logPaymentAudit, postJournalEntry, _paymentAccountCode, toEgp } = require('../lib/finance');
+const { logPaymentAudit, postPaymentJournal, toEgp } = require('../lib/finance');
 const { logLeadEvent } = require('../lib/crm');
-const { syncLeadDealValue } = require('./public-orders');
+const { transitionLead } = require('../lib/leadState');
+const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
 const { branchIdForBranch } = require('../lib/branches');
+const { assertWritable } = require('../lib/periodLock');
 
 router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_orders'), async (req, res) => {
+  const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId: req.tenantId });
   let conn;
   try {
     const { subscriber_id, payment } = req.body;
@@ -24,7 +27,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     if (!payment.amount || Number(payment.amount) <= 0) return res.status(400).json({ error: 'payment.amount must be > 0' });
     // Validate subscriber exists — also fetch assigned_sales_id for commission lookup
     const [[subRow]] = await pool.query(
-      `SELECT id, email, assigned_sales_id, tenant_id, branch, branch_id
+      `SELECT id, name, email, lead_id, assigned_sales_id, tenant_id, branch, branch_id
        FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
       [subscriber_id, req.tenantId]
     );
@@ -71,6 +74,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // ── Begin atomic transaction ──────────────────────────────────────────────
     conn = await pool.getConnection();
     await conn.beginTransaction();
+    await assertWritable(resolvedDate, conn, paymentTenantId);
 
     await conn.query(
       `INSERT INTO payments
@@ -188,7 +192,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
 
       if (commRate > 0) {
         // Commission stored in EGP so payroll sums stay single-currency
-        const amtEgp = await toEgp(Number(payment.amount), payment.currency);
+        const amtEgp = await toEgp(Number(payment.amount), payment.currency, paymentTenantId);
         const commAmount = parseFloat((amtEgp * commRate / 100).toFixed(2));
         const now = new Date();
         const commNote = payment.isInstallment ? `قسط — ${commRate}% من ${payment.amount}` : null;
@@ -222,13 +226,14 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           ).catch(() => [[null]]);
           const sharePct = parseFloat(iRates?.revenue_share_pct || 0);
           if (sharePct > 0) {
-            const feeAmount = parseFloat((Number(payment.amount) * sharePct / 100).toFixed(2));
+            const paymentAmountEgp = await toEgp(Number(payment.amount), payment.currency, paymentTenantId);
+            const feeAmount = parseFloat((paymentAmountEgp * sharePct / 100).toFixed(2));
             const feeNow = new Date();
             await conn.query(
               `INSERT INTO instructor_fees (id, tenant_id, staff_id, course_id, fee_type, fixed_amount, total_amount, currency, period_month, period_year, note, created_by)
                VALUES (?,?,?,?,'fixed',?,?,?,?,?,?,?)`,
               [uuidv4(), paymentTenantId, courseRow.instructor_id, courseId, feeAmount, feeAmount,
-               iRates?.currency || 'EGP', feeNow.getMonth() + 1, feeNow.getFullYear(),
+                'EGP', feeNow.getMonth() + 1, feeNow.getFullYear(),
                `حصة تلقائية ${sharePct}% من دفعة ${id}`, resolvedStaffId || 'system']
             );
           }
@@ -238,18 +243,11 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // Post double-entry journal inside the same transaction. A paid payment is
     // not financially complete unless the accounting entry is persisted too.
     if (isPaid) {
-      const [accCode, accName] = _paymentAccountCode(safeType);
       const rawAmt = Number(payment.amount) || 0;
-      const amtEgp = await toEgp(rawAmt, payment.currency);
-      const journalId = await postJournalEntry('payment', id, resolvedDate,
-        `Payment ${rawAmt} ${payment.currency || 'EGP'} (= ${amtEgp} EGP) - ${safeType}`,
-        [
-          { account_code: '1100', account_name: 'Cash and banks', debit: amtEgp, credit: 0 },
-          { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
-        ],
-        req.user?.email || 'system',
-        conn
-      );
+      const journalId = await postPaymentJournal({
+        paymentId: id, amount: rawAmt, currency: payment.currency, payType: safeType,
+        date: resolvedDate, actor: req.user?.email || 'system', tenantId: paymentTenantId,
+      }, conn);
       if (!journalId) throw new Error('Payment journal posting failed');
     }
 
@@ -259,13 +257,28 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // table, and the crm_json fallback was proven dead (0 subscribers relied on
     // it). Legacy front-paths that still PATCH crm_json with payment entries are
     // converged INTO payments by the auto-sync in admin/subscribers.js.
-    if (subRow.email) {
-      await conn.query(
-        "UPDATE leads SET status='converted' WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND LOWER(status) NOT IN ('converted','lost') LIMIT 5",
+    let linkedLeadId = subRow.lead_id || null;
+    if (!linkedLeadId && subRow.email) {
+      const [[matchingLead]] = await conn.query(
+        'SELECT id FROM leads WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
         [paymentTenantId, subRow.email]
       );
+      linkedLeadId = matchingLead?.id || null;
+      if (linkedLeadId) {
+        await conn.query('UPDATE subscribers SET lead_id=? WHERE id=? AND tenant_id=? AND lead_id IS NULL', [linkedLeadId, subscriber_id, paymentTenantId]);
+      }
     }
-    await syncLeadDealValue(subscriber_id, conn, paymentTenantId, true);
+    if (linkedLeadId) {
+      await transitionLead({
+        tenantId: paymentTenantId, leadId: linkedLeadId, toStatus: 'converted', db: conn,
+        actor: req.user?.email || req.staffRecord?.name || 'payment',
+        reason: 'Lead converted after paid subscriber payment', metadata: { subscriberId: subscriber_id, paymentId: id },
+      });
+    }
+    await enqueueFinanceEvent({
+      tenantId: paymentTenantId, eventType: 'sync_lead_deal_value', refType: 'payment', refId: id,
+      payload: { subscriberId: subscriber_id },
+    }, conn);
 
     await conn.commit();
     conn.release();
@@ -276,7 +289,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     logPaymentAudit(id, 'create', null, payment.status || 'paid', payment.amount || 0, subscriber_id, req.user?.email || req.user?.uid).catch(() => {});
     // Notify admins of new payment
     if (isPaid) {
-      createNotification('payment', '💰 دفعة جديدة', `دفعة ${payment.amount} ${payment.currency || 'EGP'} من مشترك`, { subscriberId: subscriber_id, paymentId: id, amount: payment.amount }).catch(() => {});
+      createNotification('payment', '💰 دفعة جديدة', `دفعة ${payment.amount} ${payment.currency || 'EGP'} من مشترك`, { subscriberId: subscriber_id, paymentId: id, amount: payment.amount }, req.tenantId).catch(() => {});
       // Send receipt email to subscriber
       if (subRow.email) {
         let courseLabel = '';
@@ -314,16 +327,16 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           .then(([[r]]) => r?.phone || null).catch(() => null);
         if (subPhone) {
           const waMsg = `✅ تم استلام دفعتك بنجاح!\nالمبلغ: ${payment.amount} ${payment.currency || 'EGP'}${courseLabel ? '\nالبرنامج: ' + courseLabel : ''}\nالتاريخ: ${paymentDate}\nشكراً لثقتك بمعهد الدراسات النفسية 💚`;
-          sendWhatsApp(subPhone.replace(/\D/g, ''), waMsg).catch(() => {});
+          sendWhatsApp(subPhone.replace(/\D/g, ''), waMsg, { tenantId: paymentTenantId }).catch(() => {});
         }
       }
     }
     // Enqueue enrollment email sequence (best-effort)
     if (isPaid && subRow.email) {
-      enqueueEmailSequence('enrollment', subRow.email, null, Date.now()).catch(() => {});
+      enqueueEmailSequence({ tenantId: paymentTenantId, triggerEvent: 'enrollment', recipientEmail: subRow.email, recipientName: subRow.name || '' }).catch(error => logger.warn('[subscriber-payment] sequence enqueue failed', { error: error.message }));
       // Lifecycle: instant payment receipt (email; whatsapp handled above).
       require('../lib/lifecycle').trigger('payment_received',
-        { name: subRow.name, email: subRow.email, amount: payment.amount, currency: payment.currency },
+        { name: subRow.name, email: subRow.email, amount: payment.amount, currency: payment.currency, tenantId: paymentTenantId },
         { channels: ['email'] });
     }
     res.json({ ok: true, id });

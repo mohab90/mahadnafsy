@@ -69,7 +69,7 @@ async function sendAbandonedCheckoutReminders(options = {}) {
         continue;
       }
 
-      await sendWhatsApp(phone, buildMessage(order));
+      await sendWhatsApp(phone, buildMessage(order), { tenantId: order.tenant_id });
       await markReminder(order, 'sent', null);
       stats.sent += 1;
       if (options.delayMs !== 0) {

@@ -38,16 +38,16 @@ function getQueueState() {
 
       if (job.name === 'send-whatsapp') {
         const { sendWhatsApp } = require('./whatsapp');
-        const { phone, message } = job.data || {};
+        const { phone, message, tenantId } = job.data || {};
         if (!phone || !message) throw new Error('Missing WhatsApp job payload');
-        return sendWhatsApp(phone, message);
+        return sendWhatsApp(phone, message, { tenantId });
       }
 
       if (job.name === 'send-email') {
         const { sendEmail } = require('./email');
-        const { to, subject, html } = job.data || {};
+        const { to, subject, html, tenantId } = job.data || {};
         if (!to || !subject) throw new Error('Missing email job payload');
-        return sendEmail(to, subject, html);
+        return sendEmail(to, subject, html, { tenantId });
       }
 
       if (job.name === 'check-abandoned-carts') {

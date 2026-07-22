@@ -24,7 +24,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
-    return `${email || 'anonymous'}:${ipKeyGenerator(req.ip)}`;
+    return `${req.tenantId || 'tenant-default'}:${email || 'anonymous'}:${ipKeyGenerator(req.ip)}`;
   },
   validate: { ip: false },
   handler: tooMany('محاولات كثيرة، انتظر 15 دقيقة وحاول مرة أخرى'),
@@ -100,6 +100,18 @@ const whatsappSendLimiter = rateLimit({
   handler: tooMany('رسائل واتساب كثيرة، الحد الأقصى 30 رسالة في الدقيقة'),
 });
 
+// Connector tests can trigger paid/external provider calls. Keep this much
+// tighter than the general admin limiter and bind it to tenant + authenticated user.
+const connectorDiagnosticLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.tenantId || 'tenant-default'}:${req.user?.uid || req.user?.email || ipKeyGenerator(req.ip)}`,
+  validate: { ip: false },
+  handler: tooMany('تم تجاوز حد اختبارات الربط. انتظر 10 دقائق وحاول مرة أخرى.'),
+});
+
 module.exports = {
   adminLimiter,
   loginLimiter,
@@ -110,4 +122,5 @@ module.exports = {
   publicLimiter,
   contactLimiter,
   whatsappSendLimiter,
+  connectorDiagnosticLimiter,
 };

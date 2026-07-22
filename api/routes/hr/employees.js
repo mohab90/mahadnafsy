@@ -77,7 +77,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       const effectiveRate = activeRule?.percentage_value || null;
 
       const [[fb]] = await pool.query(`
-        SELECT COALESCE(SUM(p.amount * COALESCE(?, COALESCE(s.commission_rate,0)) / 100), 0) AS total,
+        SELECT COALESCE(SUM(p.amount_egp * COALESCE(?, COALESCE(s.commission_rate,0)) / 100), 0) AS total,
                COUNT(*) AS count
         FROM payments p
         JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
@@ -101,8 +101,8 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     const histRate = ruleForHistory?.percentage_value || null;
     const [commHistory] = await pool.query(`
       SELECT MONTH(p.date) AS month, YEAR(p.date) AS year,
-             SUM(p.amount) AS total_sales,
-             SUM(p.amount * COALESCE(?, COALESCE(s.commission_rate,0)) / 100) AS commission,
+             SUM(p.amount_egp) AS total_sales,
+             SUM(p.amount_egp * COALESCE(?, COALESCE(s.commission_rate,0)) / 100) AS commission,
              COUNT(*) AS sales_count
       FROM payments p
       JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
@@ -154,7 +154,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       SELECT
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS leads_assigned,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_converted,
-        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated
+        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated
     `, [req.tenantId, id, curMonth, curYear, req.tenantId, id, curMonth, curYear, req.tenantId, id, curMonth, curYear]);
 
     res.json({

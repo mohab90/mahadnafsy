@@ -6,7 +6,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { postPaymentJournal, postJournalEntry } = require('../lib/finance');
+const { postPaymentJournal, postExpenseJournal, postJournalEntry } = require('../lib/finance');
 
 // Mock pool that records every INSERT (sql + params).
 function recordingDb() {
@@ -14,9 +14,9 @@ function recordingDb() {
   return { inserts, async query(sql, params) { inserts.push({ sql, params }); return [{}]; } };
 }
 
-test('postPaymentJournal posts a balanced double entry (cash debit = revenue credit)', async () => {
+test('postPaymentJournal posts a tenant-scoped balanced double entry (cash debit = revenue credit)', async () => {
   const db = recordingDb();
-  const journalId = await postPaymentJournal({ paymentId: 'PAY1', amount: 1500, currency: 'EGP', payType: 'COURSE', date: '2026-06-01', actor: 'tester' }, db);
+  const journalId = await postPaymentJournal({ paymentId: 'PAY1', amount: 1500, currency: 'EGP', payType: 'COURSE', date: '2026-06-01', actor: 'tester', tenantId: 'tenant-a' }, db);
   assert.ok(journalId, 'returns the posted journal id so callers can make commit/rollback decisions');
 
   const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
@@ -24,14 +24,15 @@ test('postPaymentJournal posts a balanced double entry (cash debit = revenue cre
   assert.ok(header, 'posts a journal_entries header');
   assert.equal(lines.length, 2, 'posts exactly two lines');
 
-  // header params: [id, ref_type, ref_id, date, desc, total_debit, total_credit, posted_by]
-  const totalDebit = header.params[5];
-  const totalCredit = header.params[6];
+  // header params: [id, tenant_id, ref_type, ref_id, date, desc, total_debit, total_credit, posted_by]
+  const totalDebit = header.params[6];
+  const totalCredit = header.params[7];
   assert.equal(totalDebit, 1500);
   assert.equal(totalCredit, 1500);
   assert.equal(totalDebit, totalCredit, 'debits must equal credits');
-  assert.equal(header.params[1], 'payment');
-  assert.equal(header.params[2], 'PAY1');
+  assert.equal(header.params[1], 'tenant-a');
+  assert.equal(header.params[2], 'payment');
+  assert.equal(header.params[3], 'PAY1');
 
   // line params: [id, entry_id, account_code, account_name, debit, credit]
   const cash = lines.find(l => l.params[2] === '1100');
@@ -94,6 +95,19 @@ test('postJournalEntry sums arbitrary lines into the header totals', async () =>
     { account_code: '1100', account_name: 'نقدية', debit: 300, credit: 0 },
   ], 'tester', db);
   const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
-  assert.equal(header.params[5], 300); // total debit
-  assert.equal(header.params[6], 300); // total credit
+  assert.equal(header.params[6], 300); // total debit
+  assert.equal(header.params[7], 300); // total credit
+});
+
+test('expense reversal uses the original EGP snapshot instead of revaluing history', async () => {
+  const db = recordingDb();
+  const journalId = await postExpenseJournal({
+    id: 'EXP-FX-1', tenant_id: 'tenant-a', amount: 10, currency: 'EGP',
+    amount_egp: 650, category: 'OTHER', date: '2026-06-01',
+  }, -1, 'tester', db, 'tenant-a');
+  assert.ok(journalId);
+  const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
+  assert.equal(header.params[6], 650);
+  assert.equal(header.params[7], 650);
+  assert.equal(db.inserts.some(i => i.sql.includes('UPDATE expenses SET fx_rate_to_egp')), false);
 });

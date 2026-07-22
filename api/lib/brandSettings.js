@@ -6,7 +6,8 @@
 // every branded output — emails, invoices/receipts, public pages. Cached 60s.
 //
 // Ported (adapted to 25's content-key scheme) from the 26 line's brandSettings.
-const { pool } = require('./db');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 const DEFAULT_BRAND = {
   instituteName: 'معهد مهاد للدراسات النفسية',
@@ -21,8 +22,7 @@ const DEFAULT_BRAND = {
   accentColor: '#f59e0b',
 };
 
-let _cache = null;
-let _cachedAt = 0;
+const _cache = new Map();
 const TTL_MS = 60_000;
 
 const str = (v, d) => (typeof v === 'string' && v.trim() ? v.trim() : d);
@@ -44,19 +44,23 @@ function fromContent(c = {}) {
   };
 }
 
-async function getBrandSettings() {
-  if (_cache && Date.now() - _cachedAt < TTL_MS) return _cache;
+async function getBrandSettings(tenantId = DEFAULT_TENANT) {
+  const cached = _cache.get(tenantId);
+  if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
+  let value;
   try {
-    const [[row]] = await pool.query("SELECT `value` FROM site_config WHERE `key`='content' LIMIT 1");
-    const content = row?.value ? (typeof row.value === 'string' ? JSON.parse(row.value) : row.value) : {};
-    _cache = fromContent(content);
+    const content = await getTenantSetting('content', { tenantId, fallback: {} });
+    value = fromContent(content || {});
   } catch (_) {
-    _cache = { ...DEFAULT_BRAND };
+    value = { ...DEFAULT_BRAND };
   }
-  _cachedAt = Date.now();
-  return _cache;
+  _cache.set(tenantId, { value, at: Date.now() });
+  return value;
 }
 
-function invalidateBrandSettings() { _cache = null; _cachedAt = 0; }
+function invalidateBrandSettings(tenantId) {
+  if (tenantId) _cache.delete(tenantId);
+  else _cache.clear();
+}
 
 module.exports = { DEFAULT_BRAND, getBrandSettings, invalidateBrandSettings };

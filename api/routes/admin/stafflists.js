@@ -45,7 +45,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
     } else if (scope === 'assigned_sales') {
       const staffId = req.staffRecord?.id;
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      scopeClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.assigned_sales_id = ?)))`;
+      scopeClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
       scopeParams.push(staffId, staffId, staffId);
     } else if (scope === 'assigned_cs') {
       const staffId = req.staffRecord?.id;
@@ -77,10 +77,10 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
               COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
               COALESCE(cs.name, s.assigned_cs_name)    AS assigned_cs_name
        FROM subscribers s
-       LEFT JOIN staff ss ON ss.id = s.assigned_sales_id
-       LEFT JOIN staff cs ON cs.id = s.assigned_cs_id
+       LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
+       LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
        WHERE s.tenant_id = ? AND (${scopeClause}) AND NOT EXISTS (
-         SELECT 1 FROM staff st WHERE LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
+         SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
        ) ${adminExclusions}${searchClause}
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
       [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), ...searchParams, limit, offset]
@@ -94,8 +94,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
               status, staff_id, staff_name, from_account, source, item_title, cert_type
-       FROM payments WHERE subscriber_id IN (${placeholders}) ORDER BY \`date\` ASC`,
-      ids
+       FROM payments WHERE tenant_id=? AND subscriber_id IN (${placeholders}) ORDER BY \`date\` ASC`,
+      [req.tenantId, ...ids]
     );
     const payBySubId = {};
     payRows.forEach(p => {
@@ -126,8 +126,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (re
 
     // Batch-load enrollments from the enrollments table (authoritative source)
     const [enrollRows] = await pool.query(
-      `SELECT subscriber_id, course_id, bundle_id FROM enrollments WHERE subscriber_id IN (${placeholders})`,
-      ids
+      `SELECT subscriber_id, course_id, bundle_id FROM enrollments WHERE tenant_id=? AND subscriber_id IN (${placeholders})`,
+      [req.tenantId, ...ids]
     );
     const enrollBySub = {};
     enrollRows.forEach(e => {
@@ -191,12 +191,12 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
         ? ` AND (s.email IS NULL OR LOWER(s.email) NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
         : '';
       whereClause = `NOT EXISTS (
-        SELECT 1 FROM staff st WHERE LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
+        SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
       )${adminExclusions}`;
       params.push(...ADMIN_EMAILS.map(e => e.toLowerCase()));
     } else if (scope === 'assigned_sales') {
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      whereClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.assigned_sales_id = ?)))`;
+      whereClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
       params.push(staffId, staffId, staffId);
     } else if (scope === 'assigned_cs') {
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
@@ -217,8 +217,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
               COALESCE(ss.name, s.assigned_sales_name) AS assigned_sales_name,
               COALESCE(cs.name, s.assigned_cs_name)    AS assigned_cs_name
        FROM subscribers s
-       LEFT JOIN staff ss ON ss.id = s.assigned_sales_id
-       LEFT JOIN staff cs ON cs.id = s.assigned_cs_id
+       LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
+       LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
        WHERE s.tenant_id = ? AND (${whereClause})
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
       params
@@ -230,8 +230,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
               status, staff_id, staff_name, from_account, source, item_title
-       FROM payments WHERE subscriber_id IN (${ids.map(() => '?').join(',')}) ORDER BY \`date\` ASC`,
-      ids
+       FROM payments WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) ORDER BY \`date\` ASC`,
+      [req.tenantId, ...ids]
     );
     const payBySubId = {};
     payRows.forEach(p => {
@@ -249,8 +249,8 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, async (re
 
     // Batch-load enrollments from the enrollments table (authoritative source)
     const [staffEnrollRows] = await pool.query(
-      `SELECT subscriber_id, course_id, bundle_id FROM enrollments WHERE subscriber_id IN (${ids.map(() => '?').join(',')})`,
-      ids
+      `SELECT subscriber_id, course_id, bundle_id FROM enrollments WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')})`,
+      [req.tenantId, ...ids]
     );
     const staffEnrollBySub = {};
     staffEnrollRows.forEach(e => {
@@ -357,7 +357,7 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, async 
 
     const [rows] = await pool.query(
       `SELECT DISTINCT s.* FROM subscribers s
-       LEFT JOIN leads l ON l.id = s.lead_id
+       LEFT JOIN leads l ON l.id = s.lead_id AND l.tenant_id=s.tenant_id
        WHERE s.tenant_id = ? AND (
              s.assigned_sales_id = ?
           OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?)
@@ -379,8 +379,8 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, async 
         const normB = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
         const branchVal = (normB && VALID_BRANCHES.has(normB)) ? normB : null;
         return pool.query(
-          'UPDATE subscribers SET assigned_sales_id=?, assigned_sales_name=COALESCE(assigned_sales_name,?), branch=COALESCE(branch,?) WHERE id=?',
-          [staffId, salesName, branchVal, r.id]
+          'UPDATE subscribers SET assigned_sales_id=?, assigned_sales_name=COALESCE(assigned_sales_name,?), branch=COALESCE(branch,?) WHERE id=? AND tenant_id=?',
+          [staffId, salesName, branchVal, r.id, req.tenantId]
         ).catch(() => {});
       })).catch(() => {});
     }
@@ -390,8 +390,8 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, async 
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
               status, staff_id, staff_name, from_account, source, item_title
-       FROM payments WHERE subscriber_id IN (${ids.map(() => '?').join(',')}) ORDER BY \`date\` ASC`,
-      ids
+       FROM payments WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')}) ORDER BY \`date\` ASC`,
+      [req.tenantId, ...ids]
     );
     const payBySubId = {};
     payRows.forEach(p => {
@@ -438,11 +438,11 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
       `SELECT DISTINCT s.* FROM subscribers s
        WHERE s.tenant_id = ? AND (
              s.assigned_cs_id = ?
-          OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.assigned_cs_name = (SELECT name FROM staff WHERE id=? LIMIT 1))
+           OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.assigned_cs_name = (SELECT name FROM staff WHERE id=? AND tenant_id=? LIMIT 1))
           OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?)
-          OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionName')) = (SELECT name FROM staff WHERE id=? LIMIT 1)))
+           OR ((s.assigned_cs_id IS NULL OR s.assigned_cs_id = '') AND s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionName')) = (SELECT name FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))
        ORDER BY s.created_at DESC LIMIT 5000`,
-      [req.tenantId, staffId, staffId, staffId, staffId]
+      [req.tenantId, staffId, staffId, req.tenantId, staffId, staffId, req.tenantId]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -453,9 +453,9 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
               status, staff_id, staff_name, from_account, source, item_title
        FROM payments
-       WHERE subscriber_id IN (${ids.map(() => '?').join(',')})
+       WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')})
        ORDER BY \`date\` ASC`,
-      ids
+      [req.tenantId, ...ids]
     );
     const payBySubId = {};
     payRows.forEach(p => {
@@ -506,8 +506,9 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, asyn
   try {
     const [rows] = await pool.query(
       `SELECT s.* FROM subscribers s
-       WHERE s.branch = 'DAQQI'
+       WHERE s.tenant_id=? AND s.branch = 'DAQQI'
        ORDER BY s.created_at DESC LIMIT 5000`
+      , [req.tenantId]
     );
     if (rows.length === 0) return res.json([]);
 
@@ -517,9 +518,9 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, asyn
               payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
               status, staff_id, staff_name, from_account, source, item_title
        FROM payments
-       WHERE subscriber_id IN (${ids.map(() => '?').join(',')})
+       WHERE tenant_id=? AND subscriber_id IN (${ids.map(() => '?').join(',')})
        ORDER BY \`date\` ASC`,
-      ids
+      [req.tenantId, ...ids]
     );
     const payBySubId = {};
     payRows.forEach(p => {
@@ -558,41 +559,48 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, asyn
 });
 
 // PUT /api/admin/subscribers/:id/assign-collection — assign a subscriber to a collection staff
-router.put('/api/admin/subscribers/:id/assign-collection', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/subscribers/:id/assign-collection', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  let conn;
   try {
     const subId = req.params.id;
-    const { collectionId, collectionName } = req.body || {};
+    const { collectionId } = req.body || {};
     if (!subId) return res.status(400).json({ error: 'Missing subscriber id' });
-    await pool.query(
-      'UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=? WHERE id=?',
-      [collectionId || null, collectionName || null, subId]
-    );
-    // Also update crm_json to keep in sync
-    const [[row]] = await pool.query('SELECT crm_json FROM subscribers WHERE id=? LIMIT 1', [subId]);
-    if (row) {
-      const crm = tryJson(row.crm_json, {});
-      crm.assignedCollectionId   = collectionId   || null;
-      crm.assignedCollectionName = collectionName || null;
-      await pool.query('UPDATE subscribers SET crm_json=? WHERE id=?', [JSON.stringify(crm), subId]);
+    conn = await pool.getConnection(); await conn.beginTransaction();
+    const [[row]] = await conn.query('SELECT crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subId, req.tenantId]);
+    if (!row) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Subscriber not found' }); }
+    let collection = null;
+    if (collectionId) {
+      [[collection]] = await conn.query("SELECT id,name FROM staff WHERE id=? AND tenant_id=? AND UPPER(role)='COLLECTION' AND is_active=1 LIMIT 1", [collectionId, req.tenantId]);
+      if (!collection) { await conn.rollback(); conn.release(); conn = null; return res.status(400).json({ error: 'Invalid collection staff' }); }
     }
+    const crm = tryJson(row.crm_json, {});
+    crm.assignedCollectionId = collection?.id || null;
+    crm.assignedCollectionName = collection?.name || null;
+    await conn.query(
+      'UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=?, crm_json=? WHERE id=? AND tenant_id=?',
+      [collection?.id || null, collection?.name || null, JSON.stringify(crm), subId, req.tenantId]
+    );
+    await conn.commit(); conn.release(); conn = null;
     res.json({ ok: true });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/bulk-assign-collection — round-robin assign all unassigned subscribers to collection staff
 router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, async (req, res) => {
+  let conn;
   try {
+    conn = await pool.getConnection(); await conn.beginTransaction();
     // Get all active collection staff
-    const [csRows] = await pool.query(
-      "SELECT id, name FROM staff WHERE role='COLLECTION' AND is_active=1 ORDER BY name"
+    const [csRows] = await conn.query(
+      "SELECT id, name FROM staff WHERE tenant_id=? AND UPPER(role)='COLLECTION' AND is_active=1 ORDER BY name FOR UPDATE", [req.tenantId]
     );
-    if (csRows.length === 0) return res.status(400).json({ error: 'لا يوجد موظفو تحصيل نشطون' });
+    if (csRows.length === 0) { await conn.rollback(); conn.release(); conn = null; return res.status(400).json({ error: 'لا يوجد موظفو تحصيل نشطون' }); }
 
     // Get all subscribers with no assigned_cs_id (and not daqqi branch)
-    const [unassigned] = await pool.query(
-      "SELECT id FROM subscribers WHERE (assigned_cs_id IS NULL OR assigned_cs_id='') AND (branch IS NULL OR branch NOT LIKE '%DAQQI%') ORDER BY created_at ASC"
+    const [unassigned] = await conn.query(
+      "SELECT id FROM subscribers WHERE tenant_id=? AND (assigned_cs_id IS NULL OR assigned_cs_id='') AND (branch IS NULL OR branch NOT LIKE '%DAQQI%') ORDER BY created_at ASC FOR UPDATE", [req.tenantId]
     );
-    if (unassigned.length === 0) return res.json({ ok: true, assigned: 0, message: 'لا يوجد مشتركون غير معيّنون' });
+    if (unassigned.length === 0) { await conn.commit(); conn.release(); conn = null; return res.json({ ok: true, assigned: 0, message: 'لا يوجد مشتركون غير معيّنين' }); }
 
     let idx = 0;
     let assigned = 0;
@@ -600,18 +608,19 @@ router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, asyn
     const CHUNK = 100;
     for (let i = 0; i < unassigned.length; i += CHUNK) {
       const chunk = unassigned.slice(i, i + CHUNK);
-      await Promise.all(chunk.map(row => {
+      for (const row of chunk) {
         const cs = csRows[idx % csRows.length];
         idx++;
-        return pool.query(
-          'UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=? WHERE id=?',
-          [cs.id, cs.name, row.id]
+        await conn.query(
+          'UPDATE subscribers SET assigned_cs_id=?, assigned_cs_name=? WHERE id=? AND tenant_id=?',
+          [cs.id, cs.name, row.id, req.tenantId]
         );
-      }));
+      }
       assigned += chunk.length;
     }
+    await conn.commit(); conn.release(); conn = null;
     res.json({ ok: true, assigned, staffCount: csRows.length, staff: csRows.map(s => s.name) });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/staff/client/:code — fetch ONE subscriber or lead by clientCode/id (staff-accessible)

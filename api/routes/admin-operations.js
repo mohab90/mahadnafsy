@@ -7,7 +7,8 @@ const logger = require('../lib/logger').child({ module: 'admin-operations-route'
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { parseLimit, parseOffset } = require('../lib/helpers');
-const { sendEmail, htmlEmail } = require('../lib/email');
+const { completeCourse } = require('../lib/courseCompletion');
+const { sendEmail: sendEmailBase, htmlEmail } = require('../lib/email');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { postExpenseJournal } = require('../lib/finance');
@@ -38,7 +39,8 @@ router.get('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =>
     const params = [];
     const where = appendTenantScope('WHERE 1=1', '', scopedTenantId(req), params);
     const [rows] = await pool.query(
-      `SELECT id, description, amount, currency, category, date, receipt_url, note, staff_id,
+      `SELECT id, description, amount, currency, fx_rate_to_egp, amount_egp, fx_source,
+       category, date, receipt_url, note, staff_id,
        vat_rate, vat_amount, amount_before_vat, created_at
        FROM expenses ${where} ORDER BY date DESC LIMIT 500`,
       params);
@@ -47,66 +49,92 @@ router.get('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =>
 });
 
 router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
     const e2 = req.body;
-    const id = e2.id || uuidv4();
+    const id = uuidv4();
     const tenantId = scopedTenantId(req);
     const branchCode = defaultDigitalBranch(e2.branch);
     const expDate = e2.date || new Date().toISOString().slice(0, 10);
-    await assertWritable(expDate); // reject writes into a closed accounting period
+    const amount = Number(e2.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Expense amount must be positive' });
+    await conn.beginTransaction();
+    transactionStarted = true;
+    await assertWritable(expDate, conn, tenantId);
     // Column is `note` (singular) in the real schema — inserting into `notes`
     // threw "Unknown column 'notes'" and silently broke ALL expense creation
     // (confirmed: expenses table was empty in prod). Accept either field name.
-    const [result] = await pool.query(
+    await conn.query(
       `INSERT INTO expenses (id, tenant_id, branch_id, date, description, amount, currency, category, note, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE description=VALUES(description), amount=VALUES(amount),
-         category=VALUES(category), note=VALUES(note)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [id, tenantId, branchIdForBranch(branchCode), expDate, e2.description || '',
-       e2.amount || 0, e2.currency || 'EGP', e2.category || 'other', e2.note ?? e2.notes ?? null,
+       amount, e2.currency || 'EGP', e2.category || 'other', e2.note ?? e2.notes ?? null,
        e2.created_at || new Date().toISOString()]
     );
-    // affectedRows: 1 = fresh insert -> post the expense to the double-entry ledger.
-    // 2 = duplicate-key update -> skip (a PATCH re-posts its own journal).
-    if (result.affectedRows === 1) {
-      postExpenseJournal({ id, date: expDate, description: e2.description, amount: e2.amount, currency: e2.currency, category: e2.category }, +1, req.user?.email).catch(() => {});
-    }
+    const journalId = await postExpenseJournal(
+      { id, tenant_id: tenantId, date: expDate, description: e2.description, amount, currency: e2.currency, category: e2.category },
+      +1, req.user?.email, conn, tenantId
+    );
+    if (!journalId) throw new Error('Expense journal posting failed');
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true, id });
   } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
     if (e.status === 409) return res.status(409).json({ error: e.message });
     routeError(res, e);
-  }
+  } finally { conn.release(); }
 });
 
 router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
     const e2 = req.body;
     const tenantId = scopedTenantId(req);
+    const amount = Number(e2.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Expense amount must be positive' });
+    await conn.beginTransaction();
+    transactionStarted = true;
     // Fetch the old row (in tenant scope) so its ledger entry can be reversed.
     const selParams = [req.params.id];
     const selWhere = appendTenantScope('id=?', '', tenantId, selParams);
-    const [[oldExp]] = await pool.query(
-      `SELECT id, date, description, amount, currency, category FROM expenses WHERE ${selWhere} LIMIT 1`,
+    const [[oldExp]] = await conn.query(
+      `SELECT id, tenant_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category FROM expenses WHERE ${selWhere} AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       selParams
     );
+    if (!oldExp) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    await assertWritable(oldExp.date, conn, tenantId);
     // `note` (singular) is the real column — `notes` does not exist.
     const params = [e2.description || '', e2.amount || 0, e2.category || 'other', e2.note ?? e2.notes ?? null, req.params.id];
     const where = appendTenantScope('id=?', '', tenantId, params);
-    await pool.query(
+    await conn.query(
       `UPDATE expenses SET description=?, amount=?, category=?, note=? WHERE ${where}`,
       params
     );
-    // Journal: reverse the old amount then post the new one (keeps ledger == expenses table).
-    if (oldExp) {
-      postExpenseJournal(oldExp, -1, req.user?.email)
-        .then(() => postExpenseJournal({ ...oldExp, ...e2, id: req.params.id }, +1, req.user?.email))
-        .catch(() => {});
-    }
+    const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
+    const journalId = await postExpenseJournal(
+      { ...oldExp, ...e2, amount, id: req.params.id, tenant_id: tenantId },
+      +1, req.user?.email, conn, tenantId
+    );
+    if (!reversalId || !journalId) throw new Error('Expense ledger update failed');
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    routeError(res, e);
+  } finally { conn.release(); }
 });
 
 router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
     // Soft delete (recoverable + auditable), NOT a hard DELETE. Every financial
     // report already filters `WHERE deleted_at IS NULL` (finance.js, analytics/
@@ -115,20 +143,35 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, 
     // behavior — but the row survives for recovery and audit instead of destroyed.
     // The `deleted_at` column is owned by migration 017.
     const tenantId = scopedTenantId(req);
+    await conn.beginTransaction();
+    transactionStarted = true;
     const selParams = [req.params.id];
     const selWhere = appendTenantScope('id=?', '', tenantId, selParams);
-    const [[oldExp]] = await pool.query(
-      `SELECT id, date, description, amount, currency, category FROM expenses WHERE ${selWhere} AND deleted_at IS NULL LIMIT 1`,
+    const [[oldExp]] = await conn.query(
+      `SELECT id, tenant_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category FROM expenses WHERE ${selWhere} AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       selParams
     );
+    if (!oldExp) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+    await assertWritable(oldExp.date, conn, tenantId);
     const params = [req.params.id];
     const where = appendTenantScope('id=?', '', tenantId, params);
-    const [del] = await pool.query(`UPDATE expenses SET deleted_at=NOW() WHERE ${where} AND deleted_at IS NULL`, params);
+    const [del] = await conn.query(`UPDATE expenses SET deleted_at=NOW() WHERE ${where} AND deleted_at IS NULL`, params);
     // Reverse the ledger entry only on a real live->deleted transition, so a
     // double-delete can't post two reversals.
-    if (oldExp && del.affectedRows > 0) postExpenseJournal(oldExp, -1, req.user?.email).catch(() => {});
+    if (!del.affectedRows) throw new Error('Expense deletion failed');
+    const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
+    if (!reversalId) throw new Error('Expense reversal posting failed');
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    if (e.status === 409) return res.status(409).json({ error: e.message });
+    routeError(res, e);
+  } finally { conn.release(); }
 });
 
 router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, res) => {
@@ -231,8 +274,8 @@ router.get('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, re
   try {
     const limit = parseLimit(req.query.limit, 500, 2000);
     const [rows] = await pool.query(
-      'SELECT id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at FROM quiz_attempts ORDER BY taken_at DESC LIMIT ?',
-      [limit]
+      'SELECT id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at FROM quiz_attempts WHERE tenant_id=? ORDER BY taken_at DESC LIMIT ?',
+      [scopedTenantId(req), limit]
     );
     res.json(rows);
   } catch (e) { routeError(res, e); }
@@ -242,22 +285,33 @@ router.post('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, r
   try {
     const a = req.body;
     const id = a.id || uuidv4();
+    const tenantId = scopedTenantId(req);
+    const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId });
+    if (a.subscriberId) {
+      const [[owner]] = await pool.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [a.subscriberId, tenantId]);
+      if (!owner) return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    if (a.courseId) {
+      const [[ownedCourse]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [a.courseId, tenantId]);
+      if (!ownedCourse) return res.status(404).json({ error: 'Course not found' });
+    }
     await pool.query(
-      `INSERT INTO quiz_attempts (id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at)
-       VALUES (?,?,?,?,?,?,?,?)
+      `INSERT INTO quiz_attempts (id, tenant_id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at)
+       VALUES (?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE score=VALUES(score), passed=VALUES(passed)`,
-      [id, a.subscriberId || null, a.quizId || null, a.courseId || null,
+      [id, tenantId, a.subscriberId || null, a.quizId || null, a.courseId || null,
        a.score || 0, a.passed ? 1 : 0, JSON.stringify(a.answers || []),
        a.takenAt || new Date().toISOString()]
     );
     if (a.passed && a.courseId && a.subscriberId) {
       try {
-        const [[alreadyDone]] = await pool.query('SELECT id FROM course_completions WHERE subscriber_id=? AND course_id=? LIMIT 1', [a.subscriberId, a.courseId]);
+        await completeCourse({ tenantId, subscriberId: a.subscriberId, courseId: a.courseId, actor: req.user?.uid || req.user?.email || 'admin-quiz' });
+        const [[alreadyDone]] = await pool.query('SELECT id FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1', [a.subscriberId, a.courseId, tenantId]);
         if (!alreadyDone) {
           const certCode = 'MHAD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-          await pool.query('INSERT IGNORE INTO course_completions (id, subscriber_id, course_id, certificate_code) VALUES (UUID(),?,?,?)', [a.subscriberId, a.courseId, certCode]);
-          const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? LIMIT 1', [a.courseId]);
-          const [[sub]] = await pool.query('SELECT name, email FROM subscribers WHERE id=? LIMIT 1', [a.subscriberId]);
+          await pool.query('INSERT IGNORE INTO course_completions (id, subscriber_id, course_id, certificate_code, tenant_id) VALUES (UUID(),?,?,?,?)', [a.subscriberId, a.courseId, certCode, tenantId]);
+          const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [a.courseId, tenantId]);
+          const [[sub]] = await pool.query('SELECT name, email FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [a.subscriberId, tenantId]);
           if (sub?.email) {
             sendEmail(sub.email, `🎓 مبروك! اجتزت اختبار "${course?.title || ''}"`,
               htmlEmail('شهادة إتمام', `
@@ -276,7 +330,7 @@ router.post('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, r
 });
 
 router.delete('/api/admin/quiz-attempts/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM quiz_attempts WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  try { await pool.query('DELETE FROM quiz_attempts WHERE id = ? AND tenant_id=?', [req.params.id, scopedTenantId(req)]); res.json({ ok: true }); }
   catch (e) { routeError(res, e); }
 });
 

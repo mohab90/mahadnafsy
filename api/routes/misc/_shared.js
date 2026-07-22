@@ -6,40 +6,44 @@ const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { DEFAULT_TENANT } = require('../../middleware/tenantContext');
+const { logLoginAttempt } = require('../../lib/loginAudit');
+
+async function forEachActiveTenant(task) {
+  let tenantIds = [DEFAULT_TENANT];
+  try {
+    const [rows] = await pool.query("SELECT id FROM tenants WHERE status='active'");
+    if (rows.length) tenantIds = rows.map((row) => row.id);
+  } catch (_) { /* SaaS schema may not be installed during early bootstrap. */ }
+  for (const tenantId of tenantIds) await task(tenantId);
+}
 
 async function logLogin(userId, email, req, status, failureReason = null) {
-  const ip = (req.headers['x-forwarded-for'] || req.connection?.remoteAddress || '').split(',')[0].trim();
-  const ua = (req.headers['user-agent'] || '').slice(0, 512);
-  try {
-    await pool.query(
-      'INSERT INTO login_history (user_id, email, ip, user_agent, status, failure_reason) VALUES (?,?,?,?,?,?)',
-      [userId || null, email || null, ip, ua, status, failureReason]
-    );
-  } catch (e) { /* non-critical */ }
+  return logLoginAttempt({ userId, email, req, status, failureReason });
 }
 
 // GET /api/admin/security/login-history?limit=50&email=&status=
 
-async function sendDailyReport() {
+async function sendDailyReport(tenantId = DEFAULT_TENANT) {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const [[{ revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount),0) AS revenue FROM payments WHERE status='paid' AND DATE(created_at)=?`, [today]);
+      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at)=?`, [tenantId, today]);
     const [[{ new_leads }]] = await pool.query(
-      `SELECT COUNT(*) AS new_leads FROM leads WHERE DATE(created_at)=?`, [today]);
+      `SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND DATE(created_at)=?`, [tenantId, today]);
     const [[{ new_clients }]] = await pool.query(
-      `SELECT COUNT(*) AS new_clients FROM subscribers WHERE DATE(created_at)=?`, [today]);
+      `SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND DATE(created_at)=?`, [tenantId, today]);
     const [[{ pending_payments }]] = await pool.query(
-      `SELECT COUNT(*) AS pending_payments FROM payments WHERE status='pending'`);
+      `SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending'`, [tenantId]);
     const [[{ failed_logins }]] = await pool.query(
-      `SELECT COUNT(*) AS failed_logins FROM login_history WHERE status='failed' AND DATE(created_at)=?`, [today]).catch(() => [[{ failed_logins: 0 }]]);
+      `SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND DATE(created_at)=?`, [tenantId, today]).catch(() => [[{ failed_logins: 0 }]]);
     const [[{ month_revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount),0) AS month_revenue FROM payments WHERE status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`);
+      `SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`, [tenantId]);
 
     // Get admin emails from DB settings
-    const [adminStaff] = await pool.query(`SELECT email FROM staff WHERE UPPER(role)='ADMIN' AND email IS NOT NULL LIMIT 5`).catch(() => [[]]);
+    const [adminStaff] = await pool.query(`SELECT email FROM staff WHERE tenant_id=? AND UPPER(role)='ADMIN' AND email IS NOT NULL LIMIT 5`, [tenantId]).catch(() => [[]]);
 
     if (!adminStaff.length) return;
 
@@ -101,8 +105,8 @@ function scheduleDailyReport() {
   if (next7am <= now) next7am.setDate(next7am.getDate() + 1);
   const msUntil = next7am - now;
   setTimeout(() => {
-    sendDailyReport();
-    setInterval(sendDailyReport, 24 * 60 * 60 * 1000);
+    forEachActiveTenant(sendDailyReport);
+    setInterval(() => forEachActiveTenant(sendDailyReport), 24 * 60 * 60 * 1000);
   }, msUntil);
   logger.info(`[daily-report] scheduled — next run in ${Math.round(msUntil / 3600000)}h`);
 }
@@ -110,15 +114,15 @@ scheduleDailyReport();
 
 // GET /api/admin/reports/daily-preview — preview what the daily report would look like
 
-async function pushAdminNotif(type, title, message, link = null) {
+async function pushAdminNotif(type, title, message, link = null, tenantId = DEFAULT_TENANT) {
   try {
-    await pool.query('INSERT INTO admin_notifications (type, title, message, link) VALUES (?,?,?,?)', [type, title, message, link]);
+    await pool.query('INSERT INTO admin_notifications (type, title, message, link, tenant_id) VALUES (?,?,?,?,?)', [type, title, message, link, tenantId]);
   } catch (e) { /* non-critical */ }
 }
 
 // GET /api/admin/notifications/inbox?unread_only=1
 
-async function runFollowUpReminders() {
+async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   try {
     const today = new Date().toISOString().slice(0, 10);
     // Leads due for follow-up today
@@ -127,17 +131,17 @@ async function runFollowUpReminders() {
              l.next_follow_up_date, l.status, l.source,
              st.name AS staff_name, st.phone AS staff_phone, st.email AS staff_email
       FROM leads l
-      LEFT JOIN staff st ON st.id = l.assigned_sales_id
-      WHERE DATE(l.next_follow_up_date) = ?
+      LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
+      WHERE l.tenant_id = ? AND DATE(l.next_follow_up_date) = ?
         AND l.status NOT IN ('converted','disqualified','archived')
-      LIMIT 100`, [today]);
+      LIMIT 100`, [tenantId, today]);
 
     let sent = 0;
     // Batch-check which leads were already reminded today (1 query instead of N)
     const _fuKeys = leads.map(l => `followup_${l.id}_${today}`);
     const [_fuSentRows] = leads.length ? await pool.query(
-      `SELECT ref_id FROM reminder_log WHERE type='followup' AND ref_id IN (${_fuKeys.map(() => '?').join(',')}) AND DATE(sent_at)=?`,
-      [..._fuKeys, today]
+      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='followup' AND ref_id IN (${_fuKeys.map(() => '?').join(',')}) AND DATE(sent_at)=?`,
+      [tenantId, ..._fuKeys, today]
     ).catch(() => [[]]) : [[]];
     const _fuDone = new Set(_fuSentRows.map(r => r.ref_id));
     for (const lead of leads) {
@@ -147,12 +151,13 @@ async function runFollowUpReminders() {
       // WhatsApp to assigned staff
       if (lead.staff_phone) {
         const msg = `🔔 تذكير متابعة\nالعميل المحتمل: ${lead.name}\nالهاتف: ${lead.phone || '—'}\nالمصدر: ${lead.source || '—'}\nالحالة: ${lead.status || '—'}\n\nيرجى التواصل اليوم 📞`;
-        sendWhatsApp(lead.staff_phone.replace(/\D/g, ''), msg).catch(() => {});
+        sendWhatsApp(lead.staff_phone.replace(/\D/g, ''), msg, { tenantId }).catch(() => {});
       }
 
       // Email to assigned staff
       if (lead.staff_email) {
         mailer.sendMail({
+          tenantId,
           from: process.env.SMTP_FROM || process.env.SMTP_USER,
           to: lead.staff_email,
           subject: `🔔 تذكير متابعة — ${lead.name}`,
@@ -172,11 +177,11 @@ async function runFollowUpReminders() {
       // Push admin notification
       pushAdminNotif('info', `تذكير متابعة: ${lead.name}`,
         `موعد متابعة ${lead.name} (${lead.staff_name || 'غير محدد'}) — اليوم`,
-        '/dashboard?tab=leads'
+        '/dashboard?tab=leads', tenantId
       ).catch(() => {});
 
       // Log to avoid re-send
-      pool.query(`INSERT IGNORE INTO reminder_log (type, ref_id) VALUES ('followup', ?)`, [logKey]).catch(() => {});
+      pool.query(`INSERT IGNORE INTO reminder_log (type, ref_id, tenant_id) VALUES ('followup', ?, ?)`, [logKey, tenantId]).catch(() => {});
       sent++;
     }
     if (sent > 0) logger.info(`[followup-reminders] sent ${sent} reminder(s) for ${today}`);
@@ -191,8 +196,8 @@ function scheduleFollowUpReminders() {
   if (next8am <= now) next8am.setDate(next8am.getDate() + 1);
   const ms = next8am - now;
   setTimeout(() => {
-    runFollowUpReminders();
-    setInterval(runFollowUpReminders, 24 * 60 * 60 * 1000);
+    forEachActiveTenant(runFollowUpReminders);
+    setInterval(() => forEachActiveTenant(runFollowUpReminders), 24 * 60 * 60 * 1000);
   }, ms);
   logger.info(`[followup-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
 }
@@ -200,7 +205,7 @@ scheduleFollowUpReminders();
 
 // GET /api/admin/leads/due-today — list leads due for follow-up today
 
-async function runPaymentDueReminders() {
+async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const in3days = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
@@ -211,18 +216,18 @@ async function runPaymentDueReminders() {
       SELECT p.id, p.subscriber_id, p.amount, p.currency, p.date AS due_date,
              s.name, s.phone, s.email, s.client_code
       FROM payments p
-      JOIN subscribers s ON s.id = p.subscriber_id
-      WHERE p.status = 'pending'
+      JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+      WHERE p.tenant_id = ? AND p.status = 'pending'
         AND p.is_installment = 1
         AND DATE(p.date) IN (?, ?)
-      LIMIT 200`, [in3days, in1day]);
+      LIMIT 200`, [tenantId, in3days, in1day]);
 
     let sent = 0;
     // Batch-check which payments were already reminded today (1 query instead of N)
     const _pdKeys = pending.map(p => `payment_due_${p.id}_${today}`);
     const [_pdSentRows] = pending.length ? await pool.query(
-      `SELECT ref_id FROM reminder_log WHERE type='payment_due' AND ref_id IN (${_pdKeys.map(() => '?').join(',')}) AND DATE(sent_at)=?`,
-      [..._pdKeys, today]
+      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='payment_due' AND ref_id IN (${_pdKeys.map(() => '?').join(',')}) AND DATE(sent_at)=?`,
+      [tenantId, ..._pdKeys, today]
     ).catch(() => [[]]) : [[]];
     const _pdDone = new Set(_pdSentRows.map(r => r.ref_id));
     for (const p of pending) {
@@ -235,12 +240,13 @@ async function runPaymentDueReminders() {
       // WhatsApp to client
       if (p.phone) {
         const msg = `مرحباً ${p.name} 👋\nهذا تذكير بموعد دفعتك القادمة:\n💰 المبلغ: ${amountFmt}\n📅 الموعد: ${p.due_date} (خلال ${daysLeft} يوم${daysLeft === 1 ? '' : 'أ'})\n\nشكراً لثقتك في معهد مهاد 💚`;
-        sendWhatsApp(p.phone.replace(/\D/g, ''), msg).catch(() => {});
+        sendWhatsApp(p.phone.replace(/\D/g, ''), msg, { tenantId }).catch(() => {});
       }
 
       // Email to client
       if (p.email) {
         mailer.sendMail({
+          tenantId,
           from: process.env.SMTP_FROM || process.env.SMTP_USER,
           to: p.email,
           subject: `تذكير بموعد الدفع — ${p.due_date}`,
@@ -259,7 +265,7 @@ async function runPaymentDueReminders() {
         }).catch(() => {});
       }
 
-      pool.query(`INSERT IGNORE INTO reminder_log (type, ref_id) VALUES ('payment_due', ?)`, [logKey]).catch(() => {});
+      pool.query(`INSERT IGNORE INTO reminder_log (type, ref_id, tenant_id) VALUES ('payment_due', ?, ?)`, [logKey, tenantId]).catch(() => {});
       sent++;
     }
     if (sent > 0) logger.info(`[payment-reminders] sent ${sent} reminder(s)`);
@@ -274,8 +280,8 @@ function schedulePaymentReminders() {
   if (next9am <= now) next9am.setDate(next9am.getDate() + 1);
   const ms = next9am - now;
   setTimeout(() => {
-    runPaymentDueReminders();
-    setInterval(runPaymentDueReminders, 24 * 60 * 60 * 1000);
+    forEachActiveTenant(runPaymentDueReminders);
+    setInterval(() => forEachActiveTenant(runPaymentDueReminders), 24 * 60 * 60 * 1000);
   }, ms);
   logger.info(`[payment-reminders] scheduled — next run in ${Math.round(ms / 3600000)}h`);
 }
@@ -283,16 +289,14 @@ schedulePaymentReminders();
 
 // GET /api/admin/payments/due-upcoming?days=7 — payments due soon
 
-async function getSysConfig(section) {
-  const [[row]] = await pool.query("SELECT `value` FROM site_config WHERE `key`=? LIMIT 1", [`sys_${section}`]);
-  return row?.value ? JSON.parse(row.value) : null;
+async function getSysConfig(section, tenantId) {
+  const { getTenantSetting } = require('../../lib/tenantSettings');
+  return getTenantSetting(`sys_${section}`, { tenantId, fallback: null });
 }
 // Helper to save system config section
-async function setSysConfig(section, value) {
-  await pool.query(
-    "INSERT INTO site_config (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
-    [`sys_${section}`, JSON.stringify(value)]
-  );
+async function setSysConfig(section, value, tenantId, actorId = null) {
+  const { setTenantSetting } = require('../../lib/tenantSettings');
+  await setTenantSetting(`sys_${section}`, value, { tenantId, actorId });
 }
 
 // Default system config (used when nothing saved yet)

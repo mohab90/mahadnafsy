@@ -9,6 +9,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
+const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber } = require('../lib/mappers');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
@@ -115,12 +116,10 @@ router.get('/api/branches', publicLimiter, async (req, res) => {
 
 // How many lectures per course are watchable for free (positional preview) — matches the
 // client's courseDetails.previewLectureLimit. Cached with the rest of site content.
-async function getPreviewLimit() {
+async function getPreviewLimit(tenantId) {
   try {
-    const content = await cached('site_content', 5 * 60 * 1000, async () => {
-      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
-      return rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    });
+    const content = await cached(`site_content:${tenantId}`, 5 * 60 * 1000, () =>
+      getTenantSetting('content', { tenantId, fallback: {} }));
     const n = Number(content['courseDetails.previewLectureLimit']);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
   } catch { return 2; }
@@ -141,10 +140,10 @@ router.get('/api/courses/:id', async (req, res) => {
     const [[row]] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`, [req.tenantId, lookup, lookup]);
     if (!row) return res.status(404).json({ error: 'Not found' });
     const [lectures] = await pool.query(
-      'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE course_id = ? ORDER BY sort_order ASC', [row.id]);
+      'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE course_id = ? AND tenant_id=? ORDER BY sort_order ASC', [row.id, req.tenantId]);
     const [chapters] = await pool.query(
-      'SELECT id, course_id, title, sort_order FROM course_chapters WHERE course_id = ? ORDER BY sort_order ASC', [row.id]);
-    const previewLimit = await getPreviewLimit();
+      'SELECT id, course_id, title, sort_order FROM course_chapters WHERE course_id = ? AND tenant_id=? ORDER BY sort_order ASC', [row.id, req.tenantId]);
+    const previewLimit = await getPreviewLimit(req.tenantId);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json({ ...mapCourse(row), lectures: lectures.map((r, i) => publicLecture(r, i, previewLimit)), chapters: chapters.map(mapChapter) });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -255,17 +254,13 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
       `SELECT cc.certificate_code, cc.completed_at,
               s.name AS subscriber_name, s.client_code,
               c.title AS course_title, c.hours_count,
-              u.name AS instructor_name,
-              sc_name.value AS institute_name,
-              sc_mgr.value AS training_manager
+              u.name AS instructor_name
        FROM course_completions cc
-       JOIN subscribers s ON s.id = cc.subscriber_id
-       JOIN courses c ON c.id = cc.course_id
-       LEFT JOIN users u ON u.id = c.instructor_id
-       LEFT JOIN site_config sc_name ON sc_name.\`key\` = 'site_name'
-       LEFT JOIN site_config sc_mgr  ON sc_mgr.\`key\`  = 'training_manager_name'
-       WHERE cc.certificate_code = ?`,
-      [req.params.code]
+       JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id=cc.tenant_id
+       JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
+       LEFT JOIN users u ON u.id = c.instructor_id AND u.tenant_id=cc.tenant_id
+       WHERE cc.certificate_code = ? AND cc.tenant_id=?`,
+      [req.params.code, req.tenantId]
     );
     if (!row) return res.status(404).send('<h3>الشهادة غير موجودة</h3>');
 
@@ -276,9 +271,12 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
       ? new Date(row.completed_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
     // Identity from the central brand (Settings → الهوية): logo, colour, name.
-    const brand = await getBrandSettings();
-    const instituteName = brand.instituteName || row.institute_name || 'Psychology Institute';
-    const trainingMgr   = row.training_manager || 'WALID ABDRAHMAN';
+    const [brand, content] = await Promise.all([
+      getBrandSettings(req.tenantId),
+      getTenantSetting('content', { tenantId: req.tenantId, fallback: {} }),
+    ]);
+    const instituteName = brand.instituteName || 'Psychology Institute';
+    const trainingMgr   = content['training_manager_name'] || content['institute.trainingManager'] || 'WALID ABDRAHMAN';
     const instructorName = row.instructor_name || 'Trainer';
     const serialNo = row.client_code || certCode.slice(-8).toUpperCase();
 
@@ -521,7 +519,7 @@ router.get('/api/lectures', async (req, res) => {
          ORDER BY cl.course_id, cl.sort_order ASC LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
-      const previewLimit = await getPreviewLimit();
+      const previewLimit = await getPreviewLimit(req.tenantId);
       const posByCourse = {};
       return rows.map(r => {
         const pos = (posByCourse[r.course_id] = (posByCourse[r.course_id] ?? -1) + 1);
@@ -592,10 +590,8 @@ router.get('/api/testimonials', async (req, res) => {
 // GET /api/content  (public site content key-value store)
 router.get('/api/content', async (req, res) => {
   try {
-    const data = await cached('site_content', 5 * 60 * 1000, async () => {
-      const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
-      return rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    });
+    const data = await cached(`site_content:${req.tenantId}`, 5 * 60 * 1000, () =>
+      getTenantSetting('content', { tenantId: req.tenantId, fallback: {} }));
     // Short browser cache so admin content edits reflect on the site within ~30s
     // (the server-side 'site_content' cache is invalidated on save, so this is cheap).
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
@@ -638,7 +634,7 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
       [id, req.tenantId, req.tenantBranchId || null, name, email || null, phone, subject || null, message]
     );
     // Lifecycle: instant acknowledgment to the sender.
-    require('../lib/lifecycle').trigger('contact_received', { name, email, phone });
+    require('../lib/lifecycle').trigger('contact_received', { name, email, phone, tenantId: req.tenantId });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -658,7 +654,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     );
     // Lifecycle: instant acknowledgment to the applicant.
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
-    require('../lib/lifecycle').trigger('join_us_received', { name, email, phone, roleLabel });
+    require('../lib/lifecycle').trigger('join_us_received', { name, email, phone, roleLabel, tenantId: req.tenantId });
     // Flow the applicant straight into the HR recruiting funnel (best-effort) +
     // alert HR, so a website candidate is never a dead-end. See routes/hr/talent.js.
     (async () => {

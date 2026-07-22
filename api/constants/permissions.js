@@ -266,9 +266,10 @@ const DATA_SCOPE = Object.freeze({
 // (saved to site_config content['rbac.roleOverrides']); the API loads them at
 // startup + on change (see lib/rbacOverrides.js) and enforces them here.
 // Full-access roles are NEVER restricted (prevents locking out admins).
-let _roleOverrides = Object.create(null);
+const DEFAULT_TENANT = 'tenant-default';
+const _roleOverridesByTenant = new Map();
 
-function setRoleOverrides(obj) {
+function setRoleOverrides(obj, tenantId = DEFAULT_TENANT) {
   const next = Object.create(null);
   if (obj && typeof obj === 'object') {
     for (const [role, perms] of Object.entries(obj)) {
@@ -277,20 +278,20 @@ function setRoleOverrides(obj) {
       if (Array.isArray(perms)) next[r] = perms.map(String);
     }
   }
-  _roleOverrides = next;
-  return _roleOverrides;
+  _roleOverridesByTenant.set(String(tenantId || DEFAULT_TENANT), next);
+  return next;
 }
 
-function getRoleOverrides() {
-  return _roleOverrides;
+function getRoleOverrides(tenantId = DEFAULT_TENANT) {
+  return _roleOverridesByTenant.get(String(tenantId || DEFAULT_TENANT)) || Object.create(null);
 }
 
 // Effective default permissions for a role: an admin-defined override (if any)
 // wins over the hard-coded ROLE_PERMS default; full-access roles are untouched.
-function getEffectiveRoleDefaults(role) {
+function getEffectiveRoleDefaults(role, tenantId = DEFAULT_TENANT) {
   const r = (role || '').toLowerCase();
   if (FULL_ACCESS_ROLES.includes(r)) return ROLE_PERMS[r];
-  const override = _roleOverrides[r];
+  const override = getRoleOverrides(tenantId)[r];
   if (Array.isArray(override)) return override;
   return ROLE_PERMS[r];
 }
@@ -310,7 +311,7 @@ function resolvePermissions(staffRecord) {
   }
 
   // Role default (with admin-defined override applied)
-  const def = getEffectiveRoleDefaults(role);
+  const def = getEffectiveRoleDefaults(role, staffRecord.tenant_id || staffRecord.tenantId || DEFAULT_TENANT);
   if (def === '*') return '*';
   return Array.isArray(def) ? def : [];
 }

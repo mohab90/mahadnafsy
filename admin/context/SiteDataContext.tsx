@@ -155,6 +155,7 @@ interface SiteDataShape {
   refreshMySubscriber: () => void;
   reloadLectures: () => Promise<void>;
   reloadLeads: () => Promise<void>;
+  reloadSubscribers: () => Promise<void>;
   logout: () => void;
   refreshAuth: () => void;
   triggerAutomation: (trigger: AutomationTrigger, data?: Record<string, unknown>) => void;
@@ -510,6 +511,18 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLeads(normalized);
       }
     } catch { /* silent */ }
+  }, []);
+
+  const reloadSubscribers = React.useCallback(async () => {
+    try {
+      const fresh = await mysqlAdmin.listAllSubscribers();
+      const normalized = (fresh as unknown as SubscriberItem[]).map(s => ({
+        ...s,
+        enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [],
+      }));
+      subscribersRef.current = normalized;
+      setSubscribers(normalized);
+    } catch { /* caller keeps current state on a transient refresh failure */ }
   }, []);
 
   useEffect(() => {
@@ -2424,6 +2437,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshMySubscriber,
     reloadLectures,
     reloadLeads,
+    reloadSubscribers,
     logout,
     refreshAuth,
     triggerAutomation,

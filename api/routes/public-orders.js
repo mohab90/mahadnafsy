@@ -13,7 +13,9 @@ const { branchIdForBranch } = require('../lib/branches');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { awardPointsForPayment } = require('../lib/loyalty');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
-const { postPaymentJournal, getFxToEgp } = require('../lib/finance');
+const { postPaymentJournal } = require('../lib/finance');
+const { assertWritable } = require('../lib/periodLock');
+const { transitionLead } = require('../lib/leadState');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -135,7 +137,7 @@ function buildBillingData(input = {}) {
 
 router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
   try {
-    const config = await getPaymentGatewaySettings();
+    const config = await getPaymentGatewaySettings(req.tenantId);
     if (!paymobReady(config)) return gatewayUnavailable(res, 'paymob_not_configured');
 
     const { orderId, amount, currency = 'EGP', itemTitle } = req.body || {};
@@ -291,24 +293,28 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    await assertWritable(new Date().toISOString().slice(0, 10), conn, tenantId);
 
     // 1. Mark order paid
-    await conn.query("UPDATE orders SET status='PAID', transaction_id=? WHERE id=?", [transactionId, merchantOrderId]);
+    await conn.query("UPDATE orders SET status='PAID', transaction_id=? WHERE id=? AND tenant_id=?", [transactionId, merchantOrderId, tenantId]);
 
     // 2. Auto-enroll subscriber for course or bundle payments
     if ((orderType === 'course' || orderType === 'bundle') && sub) {
       // SECURITY: always fetch bundle courses from DB — never trust client-supplied bundleCourseIds
       let courseIds;
       if (orderType === 'bundle') {
-        const [[bundleRow]] = await conn.query(
-          'SELECT course_ids_json FROM bundles WHERE id = ? LIMIT 1',
-          [order.item_id]
+        const [bundleRows] = await conn.query(
+          `SELECT bc.course_id FROM bundle_courses bc
+           JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=?
+           JOIN courses c ON c.id=bc.course_id AND c.tenant_id=? AND c.deleted_at IS NULL
+           WHERE bc.bundle_id=?`,
+          [tenantId, tenantId, order.item_id]
         );
-        const dbCourseIds = bundleRow ? tryJson(bundleRow.course_ids_json, []) : [];
-        // Fall back to client-supplied list only if bundle row not found (data integrity fallback)
-        courseIds = dbCourseIds.length ? dbCourseIds
-          : (Array.isArray(extra.bundleCourseIds) ? extra.bundleCourseIds : [order.item_id]);
+        courseIds = bundleRows.map(row => row.course_id);
+        if (!courseIds.length) throw new Error('Paid bundle has no tenant-owned courses');
       } else {
+        const [[course]] = await conn.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [order.item_id, tenantId]);
+        if (!course) throw new Error('Paid course does not belong to tenant');
         courseIds = [order.item_id];
       }
       for (const cid of courseIds) {
@@ -326,10 +332,10 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       const cd = extra.consultationData;
       await conn.query(
         `INSERT IGNORE INTO consultations
-           (id, client_name, client_email, client_phone, therapist_id, therapist_name,
+           (id, tenant_id, client_name, client_email, client_phone, therapist_id, therapist_name,
             session_type, session_date, status, amount, currency, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())`,
-        [cd.id||uuidv4(), cd.clientName||'', cd.clientEmail||'', cd.clientPhone||'',
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+        [cd.id||uuidv4(), tenantId, cd.clientName||'', cd.clientEmail||'', cd.clientPhone||'',
          cd.therapistId||'', cd.therapistName||'', cd.sessionType||'individual',
          cd.sessionDate||'', 'pending', order.amount, order.currency]
       );
@@ -340,8 +346,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
           transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,0,?,?,?,?,?,NOW(),'paid',NOW())
-       ON DUPLICATE KEY UPDATE transaction_id=COALESCE(transaction_id, VALUES(transaction_id)), status='paid', branch=COALESCE(branch, VALUES(branch)), branch_id=COALESCE(branch_id, VALUES(branch_id)), tenant_id=VALUES(tenant_id)`,
+       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,0,?,?,?,?,?,NOW(),'paid',NOW())`,
       [
         payId,
         sub?.id || null,
@@ -363,6 +368,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       currency: order.currency || 'EGP',
       payType: 'COURSE',
       actor: 'paymob',
+      tenantId,
     }, conn);
     if (!journalId) throw new Error('Paymob payment journal posting failed');
 
@@ -423,15 +429,15 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
   const adminPhone = process.env.ADMIN_WHATSAPP_PHONE;
   if (adminPhone) {
     const msg = `💳 دفعة أونلاين جديدة!\nالعميل: ${order.customer_name || order.customer_email || '—'}\nالمبلغ: ${order.amount} ${order.currency || 'EGP'}\nالطلب: ${merchantOrderId}`;
-    sendWhatsApp(adminPhone.replace(/\D/g, ''), msg).catch(() => {});
+    sendWhatsApp(adminPhone.replace(/\D/g, ''), msg, { tenantId }).catch(() => {});
   }
   // Auto-update lead deal_value and convert lead on successful payment
   if (sub?.id && order.amount > 0) {
-    syncLeadDealValue(sub.id).catch(() => {});
+    syncLeadDealValue(sub.id, pool, tenantId).catch(() => {});
     // Auto-convert matched lead to 'converted' on successful payment
     setImmediate(async () => {
       try {
-        const [[subRow]] = await pool.query('SELECT lead_id, phone, email, tenant_id FROM subscribers WHERE id = ? LIMIT 1', [sub.id]);
+        const [[subRow]] = await pool.query('SELECT lead_id, phone, email, tenant_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [sub.id, tenantId]);
         if (!subRow) return;
         const subTenantId = subRow.tenant_id || tenantId || DEFAULT_TENANT_ID;
         let leadId = subRow.lead_id;
@@ -446,9 +452,10 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
           leadId = found?.id || null;
         }
         if (leadId) {
-          const updateParams = [leadId];
-          const updateWhere = appendTenantScope("WHERE id=? AND LOWER(status) NOT IN ('converted','lost')", '', subTenantId, updateParams);
-          await pool.query(`UPDATE leads SET status='converted' ${updateWhere}`, updateParams);
+          await transitionLead({
+            tenantId: subTenantId, leadId, toStatus: 'converted', actor: 'paymob-callback',
+            reason: 'Lead converted after confirmed provider payment', metadata: { subscriberId: sub.id },
+          });
           logger.info(`[paymob] Lead ${leadId} auto-converted after payment`);
         }
       } catch (e) { logger.warn('[paymob] lead auto-convert error:', e.message); }
@@ -473,7 +480,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         </table>
         <p>يمكنك البدء في التعلم الآن من خلال <a href="https://mahadnafsy.com/my-account" style="color:#7c3aed">لوحة التحكم</a>.</p>
         <p style="color:#9ca3af;font-size:12px">معهد الدراسات النفسية — mahadnafsy.com</p>
-      </div>`
+      </div>`,
+      { tenantId }
     ).catch(e => logger.warn('[email] payment confirmation failed:', e.message));
   }
 
@@ -494,15 +502,11 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
     // Sum all payments for this subscriber
     const totalParams = [subscriberId];
     const totalWhere = appendTenantScope('WHERE subscriber_id = ? AND amount > 0', '', tenantId, totalParams);
-    const [totRows] = await db.query(
-      `SELECT currency, COALESCE(SUM(amount),0) AS total FROM payments ${totalWhere} GROUP BY currency`,
+    const [[totals]] = await db.query(
+      `SELECT COALESCE(SUM(amount_egp),0) AS total FROM payments ${totalWhere}`,
       totalParams
     );
-    const fx = await getFxToEgp();
-    const total = Number(totRows.reduce((sum, row) => {
-      const currency = String(row.currency || 'EGP').toUpperCase();
-      return sum + (Number(row.total) || 0) * (Number(fx[currency]) || 1);
-    }, 0).toFixed(2));
+    const total = Number(Number(totals?.total || 0).toFixed(2));
     if (!total) return;
     // Find linked lead — first try direct lead_id link, then phone/email match
     let leadId = sub.lead_id;
@@ -541,7 +545,7 @@ function paymobSuccess(params) {
 
 router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
   try {
-    const config = await getPaymentGatewaySettings();
+    const config = await getPaymentGatewaySettings(req.tenantId);
     if (!isPaymobActive(config)) return gatewayUnavailable(res, 'paymob_disabled');
     const hmacSecret = config.paymob?.hmac_secret || process.env.PAYMOB_HMAC_SECRET || '';
     const params = req.body || {};
@@ -562,7 +566,7 @@ router.post('/api/paymob/verify', paymobLimiter, async (req, res) => {
 
 router.post('/api/webhooks/paymob', paymobLimiter, async (req, res) => {
   try {
-    const config = await getPaymentGatewaySettings();
+    const config = await getPaymentGatewaySettings(req.tenantId);
     if (!isPaymobActive(config)) return res.status(200).json({ ok: false, reason: 'paymob_disabled' });
     const hmacSecret = config.paymob?.hmac_secret || process.env.PAYMOB_HMAC_SECRET || '';
     const params = req.body?.obj ? { ...req.body.obj, hmac: req.query.hmac || req.body.hmac } : (req.body || {});

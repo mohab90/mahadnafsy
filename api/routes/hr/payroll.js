@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 
 router.get('/api/admin/hr/payroll', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -35,22 +35,37 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     }
     const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
     const branchId = req.body?.branch_id || 'branch-other';
+    const allowedBranchIds = new Set(['branch-other', 'branch-daqqi', 'branch-tagamoa', 'branch-online-egypt', 'branch-online-saudi', 'branch-online-abroad']);
+    if (!allowedBranchIds.has(branchId)) return res.status(400).json({ error: 'فرع غير صالح' });
     const [[admin]] = await conn.query('SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, String(req.user?.email || '').toLowerCase().trim()]);
     const adminId = admin?.id || null;
     await conn.beginTransaction();
     transactionStarted = true;
 
-    // Upsert run
+    // Create-or-lock the scoped run without mutating an approved/paid run. The
+    // unique (tenant,branch,month,year) key serializes concurrent calculations.
     await conn.query(`
-      INSERT INTO payroll_runs (month, year, status, notes, calculated_by, tenant_id, branch_id, calculated_at)
+      INSERT IGNORE INTO payroll_runs (month, year, status, notes, calculated_by, tenant_id, branch_id, calculated_at)
       VALUES (?, ?, 'CALCULATED', ?, ?, ?, ?, NOW())
-      ON DUPLICATE KEY UPDATE
-        status = 'CALCULATED', notes = VALUES(notes),
-        calculated_by = VALUES(calculated_by), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id), calculated_at = NOW()
     `, [m, y, notes || null, adminId, tenantId, branchId]);
 
-    const [[run]] = await conn.query(`SELECT id FROM payroll_runs WHERE month=? AND year=? AND tenant_id=? AND branch_id=? FOR UPDATE`, [m, y, tenantId, branchId]);
+    const [[run]] = await conn.query(`SELECT id,status FROM payroll_runs WHERE month=? AND year=? AND tenant_id=? AND branch_id=? FOR UPDATE`, [m, y, tenantId, branchId]);
+    if (!run || !['DRAFT', 'CALCULATED'].includes(run.status)) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({ error: 'لا يمكن إعادة احتساب مسير معتمد أو مدفوع أو ملغي' });
+    }
     const runId = run.id;
+    await conn.query(
+      "UPDATE payroll_runs SET status='CALCULATED',notes=?,calculated_by=?,calculated_at=NOW() WHERE id=? AND tenant_id=?",
+      [notes || null, adminId, runId, tenantId]
+    );
+    // A recalculation is a full deterministic rebuild. Release only commissions
+    // previously reserved by this run, then remove stale staff items.
+    await conn.query(
+      "UPDATE crm_commissions SET status='PENDING',payroll_run_id=NULL WHERE payroll_run_id=? AND tenant_id=? AND status='INCLUDED_IN_PAYROLL'",
+      [runId, tenantId]
+    );
+    await conn.query('DELETE FROM payroll_items WHERE payroll_run_id=? AND tenant_id=?', [runId, tenantId]);
 
     // Get all active staff with salary structures
     const [employees] = await conn.query(`
@@ -60,8 +75,9 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         ss.other_allowances_json
       FROM staff s
       LEFT JOIN salary_structures ss ON ss.staff_id=s.id AND ss.tenant_id=s.tenant_id AND ss.effective_to IS NULL
-      WHERE s.is_active=1 AND s.deleted_at IS NULL AND s.tenant_id=?
-    `, [tenantId]);
+       WHERE s.is_active=1 AND s.deleted_at IS NULL AND s.tenant_id=?
+         AND (?='branch-other' OR s.branch_id=?)
+    `, [tenantId, branchId, branchId]);
 
     // ── Batch-fetch all payroll metrics (avoid N+1 — one query per metric for ALL staff) ──
     const empIds = employees.map(e => e.staff_id);
@@ -93,17 +109,12 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     // Fallback sales sums — grouped per currency and converted to EGP so SAR/USD
     // payments don't get added as if they were EGP.
     const [commBatch] = empIds.length ? await conn.query(`
-      SELECT staff_id, currency, COALESCE(SUM(amount),0) AS total_sales
+      SELECT staff_id, COALESCE(SUM(amount_egp),0) AS total_sales
       FROM payments
       WHERE staff_id IN (?) AND status='paid' AND tenant_id=? AND deleted_at IS NULL AND MONTH(date)=? AND YEAR(date)=?
-      GROUP BY staff_id, currency
+      GROUP BY staff_id
     `, [empIds, tenantId, m, y]) : [[]];
-    const _fx = await getFxToEgp();
-    const commMap = {};
-    for (const r of commBatch) {
-      const egp = (parseFloat(r.total_sales) || 0) * (_fx[String(r.currency || 'EGP').toUpperCase()] || 1);
-      commMap[r.staff_id] = (commMap[r.staff_id] || 0) + egp;
-    }
+    const commMap = Object.fromEntries(commBatch.map(r => [r.staff_id, parseFloat(r.total_sales) || 0]));
 
     // Batch advance deductions
     const [advBatch] = empIds.length ? await conn.query(`
@@ -303,7 +314,7 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
   try {
     const { runId } = req.params;
     const { status } = req.body;
-    const allowed = ['APPROVED','PAID','CANCELLED'];
+    const allowed = ['APPROVED','PAID','CANCELLED','CALCULATED'];
     if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
     await conn.beginTransaction();
@@ -318,23 +329,25 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
       APPROVED:  ['DRAFT', 'CALCULATED'],
       PAID:      ['APPROVED'],
       CANCELLED: ['DRAFT', 'CALCULATED', 'APPROVED'],
+      CALCULATED: ['CANCELLED'],
     };
     if (!transitions[status].includes(prevRun.status)) {
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: `انتقال غير مسموح: ${prevRun.status} → ${status}. لا يمكن صرف الرواتب قبل اعتمادها.` });
     }
-    const colMap = { APPROVED: 'approved_by', PAID: 'paid_by', CANCELLED: null };
-    const timeMap = { APPROVED: 'approved_at', PAID: 'paid_at', CANCELLED: null };
+    const colMap = { APPROVED: 'approved_by', PAID: 'paid_by', CANCELLED: null, CALCULATED: 'calculated_by' };
+    const timeMap = { APPROVED: 'approved_at', PAID: 'paid_at', CANCELLED: null, CALCULATED: 'calculated_at' };
     let sql = `UPDATE payroll_runs SET status=?`;
     const params = [status];
     if (colMap[status]) { sql += `, ${colMap[status]}=?, ${timeMap[status]}=NOW()`; params.push(req.user.id); }
+    if (status === 'CALCULATED') sql += ', approved_by=NULL, approved_at=NULL';
     sql += ` WHERE id=? AND tenant_id=?`; params.push(runId, tenantId);
     await conn.query(sql, params);
 
     // First transition to PAID: post salaries to the journal (5100/1100, EGP)
     // and settle the commissions consumed by this run.
     if (status === 'PAID' && prevRun.status !== 'PAID') {
-      const totalEgp = await toEgp(Number(prevRun.total_amount) || 0, prevRun.currency);
+      const totalEgp = await toEgp(Number(prevRun.total_amount) || 0, prevRun.currency, tenantId);
       if (totalEgp > 0) {
         const journalId = await postJournalEntry('payroll', runId, new Date().toISOString().slice(0, 10),
           `رواتب شهر ${prevRun.month}/${prevRun.year} (= ${totalEgp} EGP)`,
@@ -342,12 +355,18 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
             { account_code: '5100', account_name: 'رواتب موظفين', debit: totalEgp, credit: 0 },
             { account_code: '1100', account_name: 'نقدية وبنوك',  debit: 0,        credit: totalEgp },
           ],
-          req.user?.email || 'system', conn
+          req.user?.email || 'system', conn, tenantId
         );
         if (!journalId) throw new Error('Payroll journal posting failed');
       }
       await conn.query(
         "UPDATE crm_commissions SET status='PAID' WHERE payroll_run_id=? AND tenant_id=? AND status='INCLUDED_IN_PAYROLL'",
+        [runId, tenantId]
+      );
+    }
+    if (status === 'CANCELLED') {
+      await conn.query(
+        "UPDATE crm_commissions SET status='PENDING',payroll_run_id=NULL WHERE payroll_run_id=? AND tenant_id=? AND status='INCLUDED_IN_PAYROLL'",
         [runId, tenantId]
       );
     }
@@ -357,7 +376,7 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
       entityType: 'payroll', entityId: runId, action: status.toLowerCase(),
       oldData: { status: prevRun.status }, newData: { status },
       amount: Number(prevRun.total_amount) || null,
-      actor: req.user?.email || req.user?.name || 'admin',
+      actor: req.user?.email || req.user?.name || 'admin', tenantId,
     });
     res.json({ ok: true });
   } catch (e) {

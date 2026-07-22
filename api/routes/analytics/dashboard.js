@@ -32,38 +32,38 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, async (
       [openLeaves],
       [forumPosts],
       [waitlistTotal],
-    ] = await cached('dashboard_kpi_' + curM, 30000, () => Promise.all([
+    ] = await cached(`dashboard_kpi_${req.tenantId}_${curM}`, 30000, () => Promise.all([
       pool.query(`
         SELECT
-          COALESCE(SUM(CASE WHEN DATE_FORMAT(date,'%Y-%m')=? THEN amount END),0) AS this_month,
-          COALESCE(SUM(CASE WHEN DATE_FORMAT(date,'%Y-%m')=? THEN amount END),0) AS last_month,
-          COALESCE(SUM(amount),0) AS all_time
-        FROM payments WHERE status IN ('paid','confirmed')`, [curM, prevM]),
+          COALESCE(SUM(CASE WHEN DATE_FORMAT(date,'%Y-%m')=? THEN amount_egp END),0) AS this_month,
+          COALESCE(SUM(CASE WHEN DATE_FORMAT(date,'%Y-%m')=? THEN amount_egp END),0) AS last_month,
+          COALESCE(SUM(amount_egp),0) AS all_time
+        FROM payments WHERE tenant_id=? AND status IN ('paid','confirmed')`, [curM, prevM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month,
           SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS last_month,
           SUM(CASE WHEN status NOT IN ('lost','junk','converted') THEN 1 ELSE 0 END) AS active
-        FROM leads WHERE hidden=0`, [curM, prevM]),
+        FROM leads WHERE tenant_id=? AND hidden=0`, [curM, prevM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN DATE_FORMAT(created_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
-        FROM subscribers`, [curM]),
+        FROM subscribers WHERE tenant_id=?`, [curM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN DATE_FORMAT(enrolled_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
-        FROM enrollments WHERE status NOT IN ('cancelled','refunded')`, [curM]),
+        FROM enrollments WHERE tenant_id=? AND status NOT IN ('cancelled','refunded')`, [curM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
-        FROM consultations`),
-      pool.query('SELECT COUNT(*) AS total FROM course_completions'),
-      pool.query("SELECT COUNT(*) AS n FROM leads WHERE DATE(created_at)=CURDATE() AND hidden=0"),
-      pool.query("SELECT COUNT(*) AS n FROM subscribers WHERE DATE(created_at)=CURDATE()"),
-      pool.query("SELECT COUNT(*) AS n FROM payments WHERE status='pending'"),
-      pool.query("SELECT COUNT(*) AS n FROM leave_requests WHERE status='pending'").catch(() => [[{n:0}]]),
-      pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE is_hidden=0").catch(() => [[{n:0}]]),
-      pool.query("SELECT COUNT(*) AS n FROM course_waitlist WHERE status='waiting'").catch(() => [[{n:0}]]),
+        FROM consultations WHERE tenant_id=?`, [req.tenantId]),
+      pool.query('SELECT COUNT(*) AS total FROM course_completions WHERE tenant_id=?', [req.tenantId]),
+      pool.query("SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND DATE(created_at)=CURDATE() AND hidden=0", [req.tenantId]),
+      pool.query("SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND DATE(created_at)=CURDATE()", [req.tenantId]),
+      pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'", [req.tenantId]),
+      pool.query("SELECT COUNT(*) AS n FROM leave_requests WHERE tenant_id=? AND status='pending'", [req.tenantId]).catch(() => [[{n:0}]]),
+      pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE tenant_id=? AND is_hidden=0", [req.tenantId]).catch(() => [[{n:0}]]),
+      pool.query("SELECT COUNT(*) AS n FROM course_waitlist WHERE tenant_id=? AND status='waiting'", [req.tenantId]).catch(() => [[{n:0}]]),
     ]));
 
     const rev = revenue[0];
@@ -136,22 +136,22 @@ router.get('/api/admin/analytics/cohorts', requireAuth, requireAdmin, async (req
              MIN(DATE_FORMAT(p.date,   '%Y-%m'))  AS first_pay_month
       FROM subscribers s
       LEFT JOIN payments p
-        ON p.subscriber_id = s.id
+        ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id
         AND p.status IN ('paid','confirmed')
-      WHERE YEAR(s.created_at) = ?
+      WHERE s.tenant_id=? AND YEAR(s.created_at) = ?
       GROUP BY s.id, cohort_month
       ORDER BY cohort_month ASC
-    `, [year]);
+    `, [req.tenantId, year]);
 
     // Step 2: All (subscriber, pay_month) pairs relevant to this year + next
     const [payMonths] = await pool.query(`
       SELECT p.subscriber_id,
              DATE_FORMAT(p.date, '%Y-%m') AS pay_month
       FROM payments p
-      WHERE p.status IN ('paid','confirmed')
+      WHERE p.tenant_id=? AND p.status IN ('paid','confirmed')
         AND YEAR(p.date) BETWEEN ? AND ?
       GROUP BY p.subscriber_id, pay_month
-    `, [year, year + 1]);
+    `, [req.tenantId, year, year + 1]);
 
     const paySet = new Map(); // subId → Set<pay_month>
     for (const row of payMonths) {
@@ -209,36 +209,36 @@ router.get('/api/admin/kpi/summary', requireAuth, requireAdmin, async (req, res)
       return d.toISOString().slice(0, 10);
     })();
 
-    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE DATE(date)=? AND status='paid'`, [today]);
-    const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND status='paid'`, [weekAgo]);
-    const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND status='paid'`, [monthStart]);
-    const [[prevMonRev]]= await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND date<? AND status='paid'`, [prevMonthStart, monthStart]);
-    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE DATE(created_at)=?`, [today]);
-    const [[weekLeads]] = await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE created_at>=?`, [weekAgo]);
-    const [[totalSubs]] = await pool.query(`SELECT COUNT(*) AS v FROM subscribers`);
-    const [[newSubs7]]  = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE created_at>=?`, [weekAgo]);
-    const [[activeSubs]]= await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE is_active=1`);
-    const [[openTickets]]= await pool.query(`SELECT COUNT(*) AS v FROM support_tickets WHERE status IN ('open','in_progress')`).catch(() => [[{ v: 0 }]]);
-    const [[pendingRefunds]]= await pool.query(`SELECT COUNT(*) AS v FROM refund_requests WHERE status='PENDING'`).catch(() => [[{ v: 0 }]]);
+    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND DATE(date)=? AND status='paid'`, [req.tenantId, today]);
+    const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, weekAgo]);
+    const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, monthStart]);
+    const [[prevMonRev]]= await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND date<? AND status='paid'`, [req.tenantId, prevMonthStart, monthStart]);
+    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND DATE(created_at)=?`, [req.tenantId, today]);
+    const [[weekLeads]] = await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at>=?`, [req.tenantId, weekAgo]);
+    const [[totalSubs]] = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=?`, [req.tenantId]);
+    const [[newSubs7]]  = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND created_at>=?`, [req.tenantId, weekAgo]);
+    const [[activeSubs]]= await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND is_active=1`, [req.tenantId]);
+    const [[openTickets]]= await pool.query(`SELECT COUNT(*) AS v FROM support_tickets WHERE tenant_id=? AND status IN ('open','in_progress')`, [req.tenantId]).catch(() => [[{ v: 0 }]]);
+    const [[pendingRefunds]]= await pool.query(`SELECT COUNT(*) AS v FROM refund_requests WHERE tenant_id=? AND status='PENDING'`, [req.tenantId]).catch(() => [[{ v: 0 }]]);
 
     const [topStaff] = await pool.query(
       `SELECT s.name, s.role, COALESCE(SUM(c.commission_amount),0) AS earned, COUNT(*) AS deals
        FROM crm_commissions c
-       LEFT JOIN staff s ON s.id=c.staff_id
-       WHERE c.created_at>=?
-       GROUP BY c.staff_id ORDER BY earned DESC LIMIT 5`, [monAgo]
+       LEFT JOIN staff s ON s.id=c.staff_id AND s.tenant_id=c.tenant_id
+       WHERE c.tenant_id=? AND c.created_at>=?
+       GROUP BY c.staff_id ORDER BY earned DESC LIMIT 5`, [req.tenantId, monAgo]
     ).catch(() => [[]]);
 
     const [revenueByDay] = await pool.query(
-      `SELECT DATE(date) AS day, COALESCE(SUM(amount),0) AS revenue
-       FROM payments WHERE date>=? AND status='paid'
-       GROUP BY day ORDER BY day ASC`, [weekAgo]
+      `SELECT DATE(date) AS day, COALESCE(SUM(amount_egp),0) AS revenue
+       FROM payments WHERE tenant_id=? AND date>=? AND status='paid'
+       GROUP BY day ORDER BY day ASC`, [req.tenantId, weekAgo]
     ).catch(() => [[]]);
 
     const [leadsByDay] = await pool.query(
       `SELECT DATE(created_at) AS day, COUNT(*) AS count
-       FROM leads WHERE created_at>=?
-       GROUP BY day ORDER BY day ASC`, [weekAgo]
+       FROM leads WHERE tenant_id=? AND created_at>=?
+       GROUP BY day ORDER BY day ASC`, [req.tenantId, weekAgo]
     ).catch(() => [[]]);
 
     const monthChange = prevMonRev.v > 0

@@ -4,6 +4,8 @@ const https = require('https');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
 const { getNextClientCode } = require('./mappers');
+const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 // Convenience seed sheets — offered as a starting point in the admin CRM settings
 // UI ONLY. They are NEVER auto-synced on their own: autoSync is false here and the
@@ -26,10 +28,14 @@ function isHtmlResponse(text) {
 function fetchCsvFollowRedirects(url, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
     const attempt = (u, remaining) => {
-      https.get(u, res => {
+      let parsed;
+      try { parsed = new URL(u); } catch (_) { return reject(new Error('INVALID_SHEET_URL')); }
+      const allowedHost = parsed.hostname === 'docs.google.com' || parsed.hostname.endsWith('.googleusercontent.com');
+      if (parsed.protocol !== 'https:' || !allowedHost) return reject(new Error('UNSAFE_SHEET_REDIRECT'));
+      https.get(parsed, res => {
         if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location && remaining > 0) {
           res.resume();
-          return attempt(res.headers.location, remaining - 1);
+          return attempt(new URL(res.headers.location, parsed).toString(), remaining - 1);
         }
         let d = '';
         res.on('data', c => d += c);
@@ -40,25 +46,21 @@ function fetchCsvFollowRedirects(url, maxRedirects = 5) {
   });
 }
 
-async function syncAllConfiguredSheets() {
+async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
   try {
-    const [cfgRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_settings'");
-    const settings = cfgRows[0]?.value ? JSON.parse(cfgRows[0].value) : {};
-    // Use ONLY the admin-configured sheets. Fall back to the seed defaults just so a
-    // MANUAL "sync now" on a never-configured install has something to pull — but do
-    // NOT force-merge the defaults on top of a real configuration (that used to pull
-    // the hardcoded sheets even after the admin had set up their own).
-    const sheets = (Array.isArray(settings.sheets) && settings.sheets.length > 0)
-      ? settings.sheets
-      : DEFAULT_GSHEETS;
-    const autoAssign = settings.autoAssign || 'rr';
+    const settings = await getTenantSetting('crm_settings', { tenantId, fallback: {} });
+    // Use only sheets explicitly stored for this tenant. Seed sheets are UI hints,
+    // never implicit import sources.
+    const sheets = Array.isArray(settings?.sheets) ? settings.sheets : [];
+    const autoAssign = ['rr', 'least', 'none'].includes(settings?.autoAssign) ? settings.autoAssign : 'rr';
     let totalImported = 0, totalSkipped = 0;
     for (const sheet of sheets) {
-      if (!sheet.sheetId) continue;
+      if (!/^[A-Za-z0-9_-]{20,120}$/.test(String(sheet.sheetId || ''))) continue;
       try {
         // Support multiple GIDs per sheet (comma-separated string or array)
         const rawGids = Array.isArray(sheet.gids) ? sheet.gids
           : (sheet.gid || '').split(',').map(g => g.trim()).filter(Boolean);
+        if (rawGids.some((gid) => !/^\d{1,20}$/.test(String(gid)))) continue;
         // If no GIDs configured, sync the default tab (no gid param)
         const gidList = rawGids.length > 0 ? rawGids : [''];
         for (const gid of gidList) {
@@ -94,7 +96,7 @@ async function syncAllConfiguredSheets() {
         // Normalize branch string → DB ENUM value
         const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
         // Load courses for fuzzy matching (use is_published not is_active)
-        const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE is_published=1');
+        const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1', [tenantId]);
         const normStr = (s) => s.toLowerCase().replace(/[\u064B-\u065F]/g,'').replace(/\s+/g,' ').trim();
         const findCourseId = (raw) => {
           if(!raw) return null;
@@ -115,14 +117,16 @@ async function syncAllConfiguredSheets() {
           const minOverlap = Math.max(2, Math.ceil(qw.length * 0.5));
           return bestScore>=minOverlap?bestId:null;
         };
-        const [reps] = await pool.execute(`SELECT id, name FROM staff WHERE role = 'SALES' AND is_active=1 ORDER BY name ASC`);
+        const [reps] = await pool.execute(
+          `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
+          [tenantId]
+        );
         let rrRaw = 0;
         if (autoAssign === 'rr' && reps.length > 0) {
-          const [rrRows] = await pool.query("SELECT `value` FROM site_config WHERE `key`='crm_rr_index'");
-          rrRaw = parseInt(rrRows[0]?.value || '0') || 0;
+          rrRaw = parseInt(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0 }), 10) || 0;
         }
         // Pre-load existing phones AND names for fast dedup
-        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE hidden=0');
+        const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=? AND hidden=0', [tenantId]);
         const phSet   = new Set(existingPh.map(r=>(r.phone||'').replace(/[\s-]/g,'')).filter(Boolean));
         const nameSet = new Set(existingPh.map(r=>(r.name||'').trim().toLowerCase()).filter(Boolean));
         const dataLines = lines.slice(1);
@@ -157,16 +161,17 @@ async function syncAllConfiguredSheets() {
           let salesId = null, salesName = null;
           if (reps.length > 0) {
             if (autoAssign === 'rr') { const rep = reps[rrRaw % reps.length]; salesId = rep.id; salesName = rep.name; rrRaw++; }
-            else if (autoAssign === 'least') { const [counts] = await pool.execute(`SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`); const cm = {}; for (const c of counts) cm[c.assigned_sales_id]=Number(c.cnt); const sorted=[...reps].sort((a,b)=>(cm[a.id]||0)-(cm[b.id]||0)); salesId=sorted[0].id; salesName=sorted[0].name; }
+            else if (autoAssign === 'least') { const [counts] = await pool.execute(`SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`, [tenantId]); const cm = {}; for (const c of counts) cm[c.assigned_sales_id]=Number(c.cnt); const sorted=[...reps].sort((a,b)=>(cm[a.id]||0)-(cm[b.id]||0)); salesId=sorted[0].id; salesName=sorted[0].name; }
           }
           let code = null;
           try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
           const crmJson = JSON.stringify({ assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null });
           const leadId = `lead-gs-${Date.now()}-${i}`;
-          await pool.execute(
-            `INSERT IGNORE INTO leads (id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,'new',?,?,?,?,?,?,0,NOW())`,
-            [leadId, code, name, email||'', phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, crmJson]
+          const [insertResult] = await pool.execute(
+            `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,?,0,NOW())`,
+            [leadId, tenantId, code, name, email||'', phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, crmJson]
           );
+          if (!insertResult.affectedRows) { totalSkipped++; continue; }
           // Insert notes as a communication record so it appears in the lead timeline
           if (notes) {
             await pool.execute(
@@ -177,7 +182,7 @@ async function syncAllConfiguredSheets() {
           totalImported++;
         }
         if (autoAssign === 'rr' && reps.length > 0) {
-          await pool.query("INSERT INTO site_config (`key`,`value`) VALUES ('crm_rr_index',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", [String(rrRaw)]);
+          await setTenantSetting('crm_rr_index', rrRaw, { tenantId });
         }
         } // end gidList loop
       } catch(sheetErr) { logger.error('[gsheet-sync-all] sheet error:', sheetErr.message); }

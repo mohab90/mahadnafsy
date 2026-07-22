@@ -8,6 +8,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
+const { getTenantSetting } = require('../lib/tenantSettings');
 const { postJournalEntry, _paymentAccountCode, toEgp } = require('../lib/finance');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
@@ -16,36 +17,43 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ── Shared data loader for invoice/receipt ────────────────────────────────
-async function _loadPaymentForPrint(paymentId) {
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[ch]));
+
+async function _loadPaymentForPrint(paymentId, tenantId) {
   const [[p]] = await pool.query(`
     SELECT p.*, s.name AS client_name, s.email AS client_email, s.phone AS client_phone,
            s.national_id, s.client_code,
            c.title AS course_title, b.title AS bundle_title
     FROM payments p
-    LEFT JOIN subscribers s ON s.id = p.subscriber_id
-    LEFT JOIN courses c ON c.id = p.course_id
-    LEFT JOIN bundles b ON b.id = p.bundle_id
-    WHERE p.id = ?
-  `, [paymentId]);
+    LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+    LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
+    LEFT JOIN bundles b ON b.id = p.bundle_id AND b.tenant_id = p.tenant_id
+    WHERE p.id = ? AND p.tenant_id = ?
+  `, [paymentId, tenantId]);
   if (!p) return null;
   // Identity comes from the central brand (what the owner set in Settings → الهوية),
   // so receipts/invoices carry the institute name, logo, colour and contacts.
-  const brand = await getBrandSettings();
-  const [[sv]] = await pool.query("SELECT value FROM site_config WHERE `key`='vat_pct'").catch(() => [[null]]);
-  p._instituteName = brand.instituteName;
-  p._sitePhone = brand.supportPhone || brand.supportWhatsapp || '';
-  p._siteEmail = brand.supportEmail;
-  p._logoUrl = brand.logoUrl;
+  const brand = await getBrandSettings(tenantId);
+  const vatSetting = await getTenantSetting('vat_pct', { tenantId, fallback: 0 });
+  p._instituteName = escapeHtml(brand.instituteName);
+  p._sitePhone = escapeHtml(brand.supportPhone || brand.supportWhatsapp || '');
+  p._siteEmail = escapeHtml(brand.supportEmail);
+  p._logoUrl = /^https?:\/\//i.test(brand.logoUrl || '') ? escapeHtml(brand.logoUrl) : '';
   p._primaryColor = brand.primaryColor;
-  p._websiteUrl = brand.websiteUrl;
+  p._websiteUrl = escapeHtml(brand.websiteUrl);
   p._invoiceNum = `INV-${p.id.slice(-8).toUpperCase()}`;
   p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
   p._amount = parseFloat(p.amount) || 0;
   const cur = p.currency || 'EGP';
   p._currencyLabel = cur === 'SAR' ? 'ريال' : cur === 'USD' ? 'USD' : 'ج.م';
-  p._itemName = p.course_title || p.bundle_title || p.item_title || p.payment_type || 'خدمة تعليمية';
+  p._itemName = escapeHtml(p.course_title || p.bundle_title || p.item_title || p.payment_type || 'خدمة تعليمية');
+  for (const key of ['client_name', 'client_email', 'client_phone', 'national_id', 'client_code', 'payment_type', 'payment_method', 'transaction_id', 'note', 'status']) {
+    if (p[key] != null) p[key] = escapeHtml(p[key]);
+  }
   // VAT
-  const vatPct = parseFloat(sv?.value || '0') || 0;
+  const vatPct = parseFloat(vatSetting || '0') || 0;
   p._vatPct     = vatPct;
   p._vatAmount  = vatPct > 0 ? parseFloat((p._amount * vatPct / 100).toFixed(2)) : 0;
   p._totalWithVat = parseFloat((p._amount + p._vatAmount).toFixed(2));
@@ -61,9 +69,9 @@ function _tokenFromQuery(req, res, next) {
 }
 
 // GET /api/admin/payments/:id/receipt — 70mm thermal receipt (printable)
-router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const p = await _loadPaymentForPrint(req.params.id);
+    const p = await _loadPaymentForPrint(req.params.id, req.tenantId);
     if (!p) return res.status(404).json({ error: 'Payment not found' });
 
     const statusLabel = p.status === 'paid' ? 'مدفوع ✓' : p.status === 'pending' ? 'معلق' : p.status === 'refunded' ? 'مسترد' : p.status === 'failed' ? 'ملغى' : p.status || '—';
@@ -229,7 +237,7 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
 // GET /api/admin/invoice/:paymentId — returns printable HTML invoice (A4)
 router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const p = await _loadPaymentForPrint(req.params.paymentId);
+    const p = await _loadPaymentForPrint(req.params.paymentId, req.tenantId);
     if (!p) return res.status(404).json({ error: 'Payment not found' });
 
     const instituteName = p._instituteName;
@@ -369,27 +377,27 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdminO
   try {
     const [[cur]] = await pool.query(`
       SELECT
-        COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END), 0) AS revenue,
+        COALESCE(SUM(CASE WHEN status='paid' THEN amount_egp ELSE 0 END), 0) AS revenue,
         COUNT(CASE WHEN status='paid' THEN 1 END) AS payment_count,
         COUNT(DISTINCT subscriber_id) AS active_clients
       FROM payments
-      WHERE YEAR(date) = YEAR(CURDATE()) AND MONTH(date) = MONTH(CURDATE())
-    `);
+      WHERE tenant_id=? AND YEAR(date) = YEAR(CURDATE()) AND MONTH(date) = MONTH(CURDATE())
+    `, [req.tenantId]);
     const [[prev]] = await pool.query(`
       SELECT
-        COALESCE(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END), 0) AS revenue,
+        COALESCE(SUM(CASE WHEN status='paid' THEN amount_egp ELSE 0 END), 0) AS revenue,
         COUNT(CASE WHEN status='paid' THEN 1 END) AS payment_count,
         COUNT(DISTINCT subscriber_id) AS active_clients
       FROM payments
-      WHERE YEAR(date) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
+      WHERE tenant_id=? AND YEAR(date) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
         AND MONTH(date) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-    `);
-    const [[curExp]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS expenses FROM expenses WHERE deleted_at IS NULL AND YEAR(date)=YEAR(CURDATE()) AND MONTH(date)=MONTH(CURDATE())`);
-    const [[prevExp]] = await pool.query(`SELECT COALESCE(SUM(amount),0) AS expenses FROM expenses WHERE deleted_at IS NULL AND YEAR(date)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(date)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`);
-    const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`);
-    const [[prevLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`);
-    const [[newSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`);
-    const [[prevSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`);
+    `, [req.tenantId]);
+    const [[curExp]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS expenses FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND YEAR(date)=YEAR(CURDATE()) AND MONTH(date)=MONTH(CURDATE())`, [req.tenantId]);
+    const [[prevExp]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS expenses FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND YEAR(date)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(date)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`, [req.tenantId]);
+    const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`, [req.tenantId]);
+    const [[prevLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`, [req.tenantId]);
+    const [[newSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`, [req.tenantId]);
+    const [[prevSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`, [req.tenantId]);
 
     const diff = (a, b) => b > 0 ? Math.round(((a - b) / b) * 100) : (a > 0 ? 100 : 0);
     const curRev = parseFloat(cur.revenue) || 0;
@@ -457,11 +465,11 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePer
         SUM(jel.credit) - SUM(jel.debit) AS net_amount
       FROM journal_entry_lines jel
       JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE jel.account_code LIKE '4%'
+      WHERE je.tenant_id=? AND jel.account_code LIKE '4%'
         AND je.entry_date BETWEEN ? AND ?
       GROUP BY jel.account_code, jel.account_name, month
       ORDER BY jel.account_code, month
-    `, [from, to]);
+    `, [req.tenantId, from, to]);
 
     // Expense lines (debit-normal): debit - credit = net debit
     const [expRows] = await pool.query(`
@@ -472,11 +480,11 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePer
         SUM(jel.debit) - SUM(jel.credit) AS net_amount
       FROM journal_entry_lines jel
       JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE jel.account_code LIKE '5%'
+      WHERE je.tenant_id=? AND jel.account_code LIKE '5%'
         AND je.entry_date BETWEEN ? AND ?
       GROUP BY jel.account_code, jel.account_name, month
       ORDER BY jel.account_code, month
-    `, [from, to]);
+    `, [req.tenantId, from, to]);
 
     // Totals
     const totalRevenue  = revRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
@@ -531,10 +539,10 @@ router.get('/api/admin/reports/trial-balance', requireAuth, requireAdminOrStaff,
         SUM(jel.debit) - SUM(jel.credit) AS balance
       FROM journal_entry_lines jel
       JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE je.entry_date BETWEEN ? AND ?
+      WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ?
       GROUP BY jel.account_code, jel.account_name
       ORDER BY jel.account_code
-    `, [from, to]);
+    `, [req.tenantId, from, to]);
 
     const totalDebit  = rows.reduce((s, r) => s + parseFloat(r.total_debit  || 0), 0);
     const totalCredit = rows.reduce((s, r) => s + parseFloat(r.total_credit || 0), 0);
@@ -573,8 +581,8 @@ router.get('/api/admin/reports/journal', requireAuth, requireAdminOrStaff, requi
     const limit   = Math.min(200, parseInt(req.query.limit) || 50);
     const offset  = (page - 1) * limit;
 
-    let where = 'WHERE je.entry_date BETWEEN ? AND ?';
-    const params = [from, to];
+    let where = 'WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ?';
+    const params = [req.tenantId, from, to];
     if (refType) { where += ' AND je.ref_type = ?'; params.push(refType); }
 
     let entryFilter = '';
@@ -631,18 +639,18 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
     const [revRows] = await pool.query(`
       SELECT jel.account_code, jel.account_name, SUM(jel.credit) - SUM(jel.debit) AS net_amount
       FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE jel.account_code LIKE '4%' AND je.entry_date BETWEEN ? AND ?
+      WHERE je.tenant_id=? AND jel.account_code LIKE '4%' AND je.entry_date BETWEEN ? AND ?
       GROUP BY jel.account_code, jel.account_name ORDER BY jel.account_code
-    `, [from, to]);
+    `, [req.tenantId, from, to]);
 
     const [expRows] = await pool.query(`
       SELECT jel.account_code, jel.account_name, SUM(jel.debit) - SUM(jel.credit) AS net_amount
       FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE jel.account_code LIKE '5%' AND je.entry_date BETWEEN ? AND ?
+      WHERE je.tenant_id=? AND jel.account_code LIKE '5%' AND je.entry_date BETWEEN ? AND ?
       GROUP BY jel.account_code, jel.account_name ORDER BY jel.account_code
-    `, [from, to]);
+    `, [req.tenantId, from, to]);
 
-    const instituteName = (await getBrandSettings()).instituteName;
+    const instituteName = escapeHtml((await getBrandSettings(req.tenantId)).instituteName);
 
     const totalRevenue  = revRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
     const totalExpenses = expRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
@@ -742,13 +750,25 @@ router.post('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requir
   try {
     const { item_type, item_id, amount, currency = 'EGP', subscriber_id, description, expires_days = 7 } = req.body;
     if (!item_type || !item_id || !amount) return res.status(400).json({ error: 'item_type, item_id, and amount are required' });
+    if (!['course', 'bundle', 'consultation'].includes(item_type)) return res.status(400).json({ error: 'Invalid item type' });
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > 10000000) return res.status(400).json({ error: 'Invalid amount' });
+    if (!['EGP', 'SAR', 'USD'].includes(String(currency).toUpperCase())) return res.status(400).json({ error: 'Invalid currency' });
+    const itemTable = item_type === 'course' ? 'courses' : item_type === 'bundle' ? 'bundles' : 'consultations';
+    const [[itemExists]] = await pool.query(`SELECT id FROM ${itemTable} WHERE id=? AND tenant_id=? LIMIT 1`, [item_id, req.tenantId]);
+    if (!itemExists) return res.status(404).json({ error: 'Item not found' });
+    if (subscriber_id) {
+      const [[subscriber]] = await pool.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriber_id, req.tenantId]);
+      if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
+    }
     const id = uuidv4();
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + (parseInt(expires_days) || 7) * 24 * 60 * 60 * 1000);
+    const safeExpiresDays = Math.min(90, Math.max(1, parseInt(expires_days, 10) || 7));
+    const expiresAt = new Date(Date.now() + safeExpiresDays * 24 * 60 * 60 * 1000);
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
     await pool.query(
-      'INSERT INTO payment_links (id, token, item_type, item_id, amount, currency, subscriber_id, description, expires_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      [id, token, item_type, item_id, parseFloat(amount), currency, subscriber_id || null, description || null, expiresAt, actor]
+      'INSERT INTO payment_links (id, tenant_id, token, item_type, item_id, amount, currency, subscriber_id, description, expires_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      [id, req.tenantId, token, item_type, item_id, numericAmount, String(currency).toUpperCase(), subscriber_id || null, description || null, expiresAt, actor]
     );
     const baseUrl = 'https://mahadnafsy.com';
     const link = `${baseUrl}/#/pay/${token}`;
@@ -762,9 +782,10 @@ router.get('/api/admin/payment-links', requireAuth, requireAdminOrStaff, require
     const [rows] = await pool.query(`
       SELECT pl.*, s.name AS subscriber_name
       FROM payment_links pl
-      LEFT JOIN subscribers s ON s.id = pl.subscriber_id
+      LEFT JOIN subscribers s ON s.id = pl.subscriber_id AND s.tenant_id = pl.tenant_id
+      WHERE pl.tenant_id=?
       ORDER BY pl.created_at DESC LIMIT 200
-    `);
+    `, [req.tenantId]);
     const baseUrl = 'https://mahadnafsy.com';
     const result = rows.map(r => ({ ...r, link: `${baseUrl}/#/pay/${r.token}` }));
     res.json(result);
@@ -776,8 +797,8 @@ router.get('/api/payment-links/:token', async (req, res) => {
   try {
     const { token } = req.params;
     const [[pl]] = await pool.query(
-      'SELECT pl.*, s.name AS subscriber_name, s.email AS subscriber_email FROM payment_links pl LEFT JOIN subscribers s ON s.id=pl.subscriber_id WHERE pl.token=?',
-      [token]
+      'SELECT pl.*, s.name AS subscriber_name, s.email AS subscriber_email FROM payment_links pl LEFT JOIN subscribers s ON s.id=pl.subscriber_id AND s.tenant_id=pl.tenant_id WHERE pl.token=? AND pl.tenant_id=?',
+      [token, req.tenantId]
     );
     if (!pl) return res.status(404).json({ error: 'Link not found' });
     if (new Date(pl.expires_at) < new Date()) return res.status(410).json({ error: 'Link expired' });
@@ -785,10 +806,10 @@ router.get('/api/payment-links/:token', async (req, res) => {
     // Get item details
     let item = null;
     if (pl.item_type === 'course') {
-      const [[c]] = await pool.query('SELECT id, title, title_ar, price_egp, price_sar, price_usd FROM courses WHERE id=?', [pl.item_id]);
+      const [[c]] = await pool.query('SELECT id, title, title_ar, price_egp, price_sar, price_usd FROM courses WHERE id=? AND tenant_id=?', [pl.item_id, pl.tenant_id]);
       item = c;
     } else if (pl.item_type === 'bundle') {
-      const [[b]] = await pool.query('SELECT id, title, price_egp, price_sar, price_usd FROM bundles WHERE id=?', [pl.item_id]);
+      const [[b]] = await pool.query('SELECT id, title, price_egp, price_sar, price_usd FROM bundles WHERE id=? AND tenant_id=?', [pl.item_id, pl.tenant_id]);
       item = b;
     }
     res.json({ ok: true, pl: { ...pl, token: undefined }, item });
@@ -817,13 +838,13 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
     const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 
     // ── Revenue snapshots ──────────────────────────────────────────────
-    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE DATE(date)=? AND status='paid'`, [today]);
-    const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND status='paid'`, [weekStart]);
-    const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND status='paid'`, [monthStart]);
-    const [[prevRev]]   = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM payments WHERE date>=? AND date<? AND status='paid'`, [prevMonthStart, prevMonthEnd]);
+    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND DATE(date)=? AND status='paid'`, [req.tenantId, today]);
+    const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, weekStart]);
+    const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, monthStart]);
+    const [[prevRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND date<? AND status='paid'`, [req.tenantId, prevMonthStart, prevMonthEnd]);
 
     // ── Expense this month ─────────────────────────────────────────────
-    const [[monthExp]]  = await pool.query(`SELECT COALESCE(SUM(amount),0) AS v FROM expenses WHERE deleted_at IS NULL AND date>=?`, [monthStart]);
+    const [[monthExp]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date>=?`, [req.tenantId, monthStart]);
 
     // ── Revenue forecast: project month based on days elapsed ──────────
     const dayOfMonth = now.getDate();
@@ -833,84 +854,84 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
     // ── 12-month trend ─────────────────────────────────────────────────
     const [trend12] = await pool.query(`
       SELECT DATE_FORMAT(date,'%Y-%m') AS month,
-             COALESCE(SUM(amount),0) AS revenue,
+             COALESCE(SUM(amount_egp),0) AS revenue,
              COUNT(*) AS txn_count
       FROM payments
-      WHERE date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+      WHERE tenant_id=? AND date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
         AND status='paid'
       GROUP BY month ORDER BY month ASC
-    `);
+    `, [req.tenantId]);
 
     // ── Top 5 courses by revenue this month ───────────────────────────
     const [topCourses] = await pool.query(`
       SELECT COALESCE(c.title_ar, c.title, p.item_title, p.payment_type, 'غير محدد') AS name,
-             SUM(p.amount) AS revenue, COUNT(*) AS cnt
+             SUM(p.amount_egp) AS revenue, COUNT(*) AS cnt
       FROM payments p
-      LEFT JOIN courses c ON c.id = p.course_id
-      WHERE p.date >= ? AND p.status='paid'
+      LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid'
       GROUP BY p.course_id ORDER BY revenue DESC LIMIT 5
-    `, [monthStart]);
+    `, [req.tenantId, monthStart]);
 
     // ── Top 5 staff by revenue collected this month ────────────────────
     const [topStaff] = await pool.query(`
       SELECT COALESCE(s.name, p.staff_name, 'غير محدد') AS name,
-             SUM(p.amount) AS collected, COUNT(*) AS deals
+             SUM(p.amount_egp) AS collected, COUNT(*) AS deals
       FROM payments p
-      LEFT JOIN staff s ON s.id = p.staff_id
-      WHERE p.date >= ? AND p.status='paid' AND p.staff_id IS NOT NULL
+      LEFT JOIN staff s ON s.id = p.staff_id AND s.tenant_id = p.tenant_id
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.staff_id IS NOT NULL
       GROUP BY p.staff_id ORDER BY collected DESC LIMIT 5
-    `, [monthStart]);
+    `, [req.tenantId, monthStart]);
 
     // ── Revenue by payment method this month ───────────────────────────
     const [byMethod] = await pool.query(`
       SELECT COALESCE(payment_method,'غير محدد') AS method,
-             SUM(amount) AS revenue
+             SUM(amount_egp) AS revenue
       FROM payments
-      WHERE date >= ? AND status='paid'
+      WHERE tenant_id=? AND date >= ? AND status='paid'
       GROUP BY payment_method ORDER BY revenue DESC
-    `, [monthStart]);
+    `, [req.tenantId, monthStart]);
 
     // ── Expense by category this month ────────────────────────────────
     const [byCategory] = await pool.query(`
-      SELECT category, SUM(amount) AS total FROM expenses WHERE deleted_at IS NULL AND date >= ? GROUP BY category ORDER BY total DESC
-    `, [monthStart]);
+      SELECT category, SUM(amount_egp) AS total FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date >= ? GROUP BY category ORDER BY total DESC
+    `, [req.tenantId, monthStart]);
 
     // ── Budget utilization ─────────────────────────────────────────────
     const curMonthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const [budgets] = await pool.query(`
-      SELECT category, budgeted_amount AS limit_amount FROM budgets WHERE month = ?
-    `, [curMonthLabel]).catch(() => [[]]);
+      SELECT category, budgeted_amount AS limit_amount FROM budgets WHERE tenant_id=? AND month = ?
+    `, [req.tenantId, curMonthLabel]).catch(() => [[]]);
 
     // ── Cross-section: Leads ───────────────────────────────────────────
     const [[leadsConverted]] = await pool.query(`
-      SELECT COUNT(*) AS n FROM leads WHERE status='converted' AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())
-    `).catch(() => [[{ n: 0 }]]);
+      SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND status='converted' AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())
+    `, [req.tenantId]).catch(() => [[{ n: 0 }]]);
     const [[leadsTotal]] = await pool.query(`
-      SELECT COUNT(*) AS n FROM leads WHERE YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())
-    `).catch(() => [[{ n: 0 }]]);
+      SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())
+    `, [req.tenantId]).catch(() => [[{ n: 0 }]]);
 
     // ── Cross-section: HR payroll cost this month ──────────────────────
     const [[payrollCost]] = await pool.query(`
       SELECT COALESCE(SUM(pi.net_salary), 0) AS v
       FROM payroll_items pi
-      JOIN payroll_runs pr ON pr.id = pi.payroll_run_id
-      WHERE CONCAT(pr.year, '-', LPAD(pr.month, 2, '0')) = ?
-    `, [curMonthLabel]).catch(() => [[{ v: 0 }]]);
+       JOIN payroll_runs pr ON pr.id = pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
+      WHERE pr.tenant_id=? AND CONCAT(pr.year, '-', LPAD(pr.month, 2, '0')) = ?
+    `, [req.tenantId, curMonthLabel]).catch(() => [[{ v: 0 }]]);
 
     // ── Cross-section: Daqqi revenue this month ────────────────────────
     const [[daqqiRev]] = await pool.query(`
-      SELECT COALESCE(SUM(p.amount),0) AS v
+      SELECT COALESCE(SUM(p.amount_egp),0) AS v
       FROM payments p
-      WHERE p.date >= ? AND p.status='paid' AND p.source='daqqi'
-    `, [monthStart]).catch(() => [[{ v: 0 }]]);
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.source='daqqi'
+    `, [req.tenantId, monthStart]).catch(() => [[{ v: 0 }]]);
 
     // ── Alerts ─────────────────────────────────────────────────────────
-    const [[pendingProofs]] = await pool.query(`SELECT COUNT(*) AS n FROM payment_proofs WHERE status='pending'`).catch(() => [[{ n: 0 }]]);
-    const [[pendingReviews]] = await pool.query(`SELECT COUNT(*) AS n FROM payments WHERE status='pending'`).catch(() => [[{ n: 0 }]]);
+    const [[pendingProofs]] = await pool.query(`SELECT COUNT(*) AS n FROM payment_proofs WHERE tenant_id=? AND status='pending'`, [req.tenantId]).catch(() => [[{ n: 0 }]]);
+    const [[pendingReviews]] = await pool.query(`SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'`, [req.tenantId]).catch(() => [[{ n: 0 }]]);
     const [[overdueInst]] = await pool.query(`
-      SELECT COUNT(*) AS n FROM installment_plans WHERE status='active' AND next_due_date < CURDATE()
-    `).catch(() => [[{ n: 0 }]]);
-    const [[openTickets]] = await pool.query(`SELECT COUNT(*) AS n FROM support_tickets WHERE status='open'`).catch(() => [[{ n: 0 }]]);
+      SELECT COUNT(*) AS n FROM installment_plans WHERE tenant_id=? AND status='active' AND next_due_date < CURDATE()
+    `, [req.tenantId]).catch(() => [[{ n: 0 }]]);
+    const [[openTickets]] = await pool.query(`SELECT COUNT(*) AS n FROM support_tickets WHERE tenant_id=? AND status='open'`, [req.tenantId]).catch(() => [[{ n: 0 }]]);
 
     // ── Financial health score (0-100) ─────────────────────────────────
     const mRev = parseFloat(monthRev.v) || 0;
@@ -976,16 +997,16 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
     const [rows] = await pool.query(
-      `SELECT id, category, budgeted_amount AS limit_amount, month AS period_label, notes FROM budgets WHERE month=? ORDER BY category`,
-      [month]
+      `SELECT id, category, budgeted_amount AS limit_amount, month AS period_label, notes FROM budgets WHERE tenant_id=? AND month=? ORDER BY category`,
+      [req.tenantId, month]
     ).catch(() => [[]]);
 
     // Also get current month spending per category
     const monthStart = `${month}-01`;
     const monthEnd   = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 1).toISOString().slice(0, 10);
     const [spending] = await pool.query(
-      `SELECT category, COALESCE(SUM(amount),0) AS spent FROM expenses WHERE deleted_at IS NULL AND date >= ? AND date < ? GROUP BY category`,
-      [monthStart, monthEnd]
+      `SELECT category, COALESCE(SUM(amount_egp),0) AS spent FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date >= ? AND date < ? GROUP BY category`,
+      [req.tenantId, monthStart, monthEnd]
     );
     const spendMap = {};
     for (const s of spending) spendMap[s.category] = parseFloat(s.spent) || 0;
@@ -1006,25 +1027,37 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
 });
 
 router.put('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const { month, budgets } = req.body;
-    if (!month || !Array.isArray(budgets)) return res.status(400).json({ error: 'month and budgets[] required' });
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || '')) || !Array.isArray(budgets)) return res.status(400).json({ error: 'Valid month and budgets[] required' });
     const { uuidv4: uid } = require('../lib/id');
+    const normalized = [];
     for (const b of budgets) {
       const limitAmount = b.limit ?? b.limit_amount ?? b.budgeted_amount;
-      if (!b.category || limitAmount == null) continue;
-      await pool.query(
-        `INSERT INTO budgets (id, month, category, budgeted_amount, currency, notes)
-         VALUES (?,?,?,?,?,?)
+      const numericLimit = Number(limitAmount);
+      const category = String(b.category || '').trim().slice(0, 255);
+      if (!category || !Number.isFinite(numericLimit) || numericLimit < 0 || numericLimit > 100000000) {
+        return res.status(400).json({ error: 'Invalid budget row' });
+      }
+      normalized.push({ ...b, category, numericLimit });
+    }
+    await conn.beginTransaction();
+    for (const b of normalized) {
+      await conn.query(
+        `INSERT INTO budgets (id, tenant_id, month, category, budgeted_amount, currency, notes)
+         VALUES (?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE budgeted_amount=VALUES(budgeted_amount), currency=VALUES(currency), notes=VALUES(notes)`,
-        [uid(), month, b.category, parseFloat(limitAmount) || 0, b.currency || 'EGP', b.notes || null]
+        [uid(), req.tenantId, month, b.category, b.numericLimit, b.currency || 'EGP', b.notes || null]
       );
     }
+    await conn.commit();
     res.json({ ok: true });
   } catch (e) {
+    try { await conn.rollback(); } catch (_) {}
     logger.error('[finance/budgets PUT]', e.message);
     res.status(500).json({ error: 'Internal server error' });
-  }
+  } finally { conn.release(); }
 });
 
 // ── Refund requests list & status update ──────────────────────────────────
@@ -1035,10 +1068,11 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
              rr.resolved_at AS handled_at, s.name AS subscriber_name, s.email AS subscriber_email,
              st.name AS handler_name
       FROM refund_requests rr
-      LEFT JOIN subscribers s ON s.id = rr.subscriber_id
-      LEFT JOIN staff st ON st.id = rr.resolved_by
+      LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id
+      LEFT JOIN staff st ON st.id = rr.resolved_by AND st.tenant_id=rr.tenant_id
+      WHERE rr.tenant_id=?
       ORDER BY rr.created_at DESC LIMIT 200
-    `).catch(() => [[]]);
+    `, [req.tenantId]).catch(() => [[]]);
     res.json(rows);
   } catch (e) {
     logger.error('[finance/refunds]', e.message);
@@ -1054,14 +1088,15 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     if (!['APPROVED', 'REJECTED'].includes(normalizedStatus))
       return res.status(400).json({ error: 'invalid status' });
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
+    const tenantId = req.tenantId;
     await conn.beginTransaction();
 
     const [[rr]] = await conn.query(
       `SELECT rr.*, s.name AS subscriber_name, s.email AS subscriber_email
        FROM refund_requests rr
-       LEFT JOIN subscribers s ON s.id = rr.subscriber_id
-       WHERE rr.id = ? FOR UPDATE`,
-      [req.params.id]
+       LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id
+       WHERE rr.id = ? AND rr.tenant_id=? FOR UPDATE`,
+      [req.params.id, tenantId]
     );
     if (!rr) {
       await conn.rollback();
@@ -1069,23 +1104,23 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     }
 
     await conn.query(
-      `UPDATE refund_requests SET status=?, admin_note=?, resolved_by=?, resolved_at=NOW() WHERE id=?`,
-      [normalizedStatus, notes || null, req.staffRecord?.id || req.user?.email || null, req.params.id]
+      `UPDATE refund_requests SET status=?, admin_note=?, resolved_by=?, resolved_at=NOW() WHERE id=? AND tenant_id=?`,
+      [normalizedStatus, notes || null, req.staffRecord?.id || req.user?.email || null, req.params.id, tenantId]
     );
 
     if (normalizedStatus === 'APPROVED' && rr.payment_id) {
       const [[pay]] = await conn.query(
-        `SELECT id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, status
-         FROM payments WHERE id = ? LIMIT 1 FOR UPDATE`,
-        [rr.payment_id]
+        `SELECT id, subscriber_id, course_id, bundle_id, amount, amount_egp, currency, payment_type, status
+         FROM payments WHERE id = ? AND tenant_id=? LIMIT 1 FOR UPDATE`,
+        [rr.payment_id, tenantId]
       );
       if (pay) {
         await conn.query(
           `UPDATE payments
            SET status='refunded',
                note=CONCAT(COALESCE(note,''), IF(note IS NOT NULL AND note!='',' | ',''), 'Refunded by ', ?)
-           WHERE id=?`,
-          [actor, pay.id]
+           WHERE id=? AND tenant_id=?`,
+          [actor, pay.id, tenantId]
         );
         await conn.query(
           `INSERT INTO payment_audit_log (id, payment_id, action, old_status, new_status, amount, subscriber_id, actor)
@@ -1093,19 +1128,19 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
           [uuidv4(), pay.id, 'update', pay.status || null, 'refunded', pay.amount || null, pay.subscriber_id || null, actor]
         ).catch((e) => logger.warn('[finance/refunds] audit insert:', e.message));
         await conn.query(
-          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | Cancelled because payment was refunded') WHERE payment_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
-          [pay.id]
+          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | Cancelled because payment was refunded') WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
+          [pay.id, tenantId]
         ).catch((e) => logger.warn('[finance/refunds] commission cancel:', e.message));
         if (pay.course_id || pay.bundle_id) {
           await conn.query(
-            'DELETE FROM enrollments WHERE subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
-            [pay.subscriber_id, pay.course_id || null, pay.bundle_id || null]
+            'DELETE FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
+            [tenantId, pay.subscriber_id, pay.course_id || null, pay.bundle_id || null]
           ).catch((e) => logger.warn('[finance/refunds] enrollment remove:', e.message));
         }
         const amt = Number(pay.amount) || 0;
         if (amt > 0) {
           const [revCode, revName] = _paymentAccountCode(String(pay.payment_type || 'OTHER').toUpperCase());
-          const amtEgp = await toEgp(amt, pay.currency);
+          const amtEgp = Number(pay.amount_egp) > 0 ? Number(pay.amount_egp) : await toEgp(amt, pay.currency, tenantId);
           const journalId = await postJournalEntry(
             'refund',
             pay.id,
@@ -1116,7 +1151,8 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
               { account_code: '1100', account_name: 'Cash and banks', debit: 0, credit: amtEgp },
             ],
             actor,
-            conn
+            conn,
+            tenantId
           );
           if (!journalId) throw new Error('Refund journal posting failed');
         }

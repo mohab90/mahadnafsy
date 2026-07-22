@@ -6,42 +6,29 @@
 const express = require('express');
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { assertWritable } = require('../lib/periodLock');
 const logger = require('../lib/logger').child({ route: 'accounting-erp' });
 
 const router = express.Router();
 
-// Bootstrap from the live ledger the first time.
-(async () => {
-  try {
-    const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM chart_of_accounts');
-    if (n === 0) {
-      // Type inferred from the code prefix (1=asset, 2=liability, 3=equity,
-      // 4=revenue, else expense) — standard accounting convention.
-      await pool.query(`INSERT IGNORE INTO chart_of_accounts (code, name, type)
-        SELECT account_code, MAX(account_name),
-          CASE LEFT(account_code, 1)
-            WHEN '1' THEN 'asset' WHEN '2' THEN 'liability'
-            WHEN '3' THEN 'equity' WHEN '4' THEN 'revenue' ELSE 'expense' END
-        FROM journal_entry_lines WHERE account_code <> '' GROUP BY account_code`);
-    }
-  } catch (e) { logger.warn('[accounting-erp] ensure chart_of_accounts failed', { err: e.message }); }
-})();
-
 const VALID_TYPES = new Set(['asset', 'liability', 'equity', 'revenue', 'expense']);
 
-router.get('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (_req, res) => {
+router.get('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [accounts] = await pool.query(`
       SELECT code, name, type, is_active, created_at, updated_at
-      FROM chart_of_accounts
+      FROM tenant_chart_of_accounts
+      WHERE tenant_id=?
       ORDER BY code ASC
-    `);
+    `, [req.tenantId]);
     const [balances] = await pool.query(`
       SELECT account_code, COALESCE(SUM(debit),0) AS total_debit, COALESCE(SUM(credit),0) AS total_credit
-      FROM journal_entry_lines
+      FROM journal_entry_lines jel
+      INNER JOIN journal_entries je ON je.id=jel.entry_id
+      WHERE je.tenant_id=?
       GROUP BY account_code
-    `);
+    `, [req.tenantId]);
     const byCode = new Map(balances.map((row) => [row.account_code, row]));
     res.json(accounts.map((account) => {
       const row = byCode.get(account.code) || { total_debit: 0, total_credit: 0 };
@@ -70,8 +57,8 @@ router.post('/api/admin/accounting/chart-of-accounts', requireAuth, requireAdmin
     if (!code || !name || !VALID_TYPES.has(type)) return res.status(400).json({ error: 'بيانات الحساب غير مكتملة' });
 
     await pool.query(
-      `INSERT INTO chart_of_accounts (code, name, type, is_active) VALUES (?,?,?,1)`,
-      [code, name, type]
+      `INSERT INTO tenant_chart_of_accounts (tenant_id, code, name, type, is_active) VALUES (?,?,?,?,1)`,
+      [req.tenantId, code, name, type]
     );
     res.json({ ok: true, account: { code, name, type, is_active: true } });
   } catch (error) {
@@ -94,8 +81,8 @@ router.put('/api/admin/accounting/chart-of-accounts/:code', requireAuth, require
       params.push(req.body.is_active ? 1 : 0);
     }
     if (!updates.length) return res.status(400).json({ error: 'لا توجد بيانات للتحديث' });
-    params.push(req.params.code);
-    const [result] = await pool.query(`UPDATE chart_of_accounts SET ${updates.join(', ')}, updated_at=NOW() WHERE code=?`, params);
+    params.push(req.tenantId, req.params.code);
+    const [result] = await pool.query(`UPDATE tenant_chart_of_accounts SET ${updates.join(', ')}, updated_at=NOW() WHERE tenant_id=? AND code=?`, params);
     if (!result.affectedRows) return res.status(404).json({ error: 'الحساب غير موجود' });
     res.json({ ok: true });
   } catch (error) {
@@ -128,10 +115,13 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
       return res.status(400).json({ error: 'القيد غير متوازن' });
     }
 
+    await assertWritable(date, conn, req.tenantId);
+
     const codes = [...new Set(cleanLines.map((line) => line.account_code))];
-    const [existingAccounts] = await pool.query(
-      `SELECT code, name, is_active FROM chart_of_accounts WHERE code IN (${codes.map(() => '?').join(',')})`,
-      codes
+    const [existingAccounts] = await conn.query(
+      `SELECT code, name, is_active FROM tenant_chart_of_accounts
+       WHERE tenant_id=? AND code IN (${codes.map(() => '?').join(',')})`,
+      [req.tenantId, ...codes]
     );
     const byCode = new Map(existingAccounts.map((account) => [account.code, account]));
     const missing = codes.filter((code) => !byCode.has(code));
@@ -149,9 +139,9 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
     const entryId = uuidv4();
     await conn.beginTransaction();
     await conn.query(
-      `INSERT INTO journal_entries (id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by)
-       VALUES (?, 'manual', NULL, ?, ?, ?, ?, ?)`,
-      [entryId, date, description, totalDebit, totalCredit, req.user?.email || req.user?.id || 'admin']
+      `INSERT INTO journal_entries (id, tenant_id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by)
+       VALUES (?, ?, 'manual', NULL, ?, ?, ?, ?, ?)`,
+      [entryId, req.tenantId, date, description, totalDebit, totalCredit, req.user?.email || req.user?.id || 'admin']
     );
     for (const line of cleanLines) {
       await conn.query(
@@ -165,7 +155,7 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
   } catch (error) {
     try { await conn.rollback(); } catch (_) {}
     logger.error('journal-entry create failed', { error: error.message });
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Internal server error' });
   } finally {
     conn.release();
   }

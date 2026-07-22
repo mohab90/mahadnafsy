@@ -1,5 +1,7 @@
 'use strict';
 const logger = require('./logger');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
 
@@ -16,7 +18,7 @@ async function logPaymentAudit(paymentId, action, oldStatus, newStatus, amount, 
 
 // Generalised financial audit (Top20 #6): any money-moving action across
 // payments / expenses / refunds / payroll / accounting periods.
-async function logFinancialAudit({ entityType, entityId, action, oldData, newData, amount, actor, tenantId = 'mahad' }) {
+async function logFinancialAudit({ entityType, entityId, action, oldData, newData, amount, actor, tenantId = 'tenant-default' }) {
   try {
     await pool.query(
       `INSERT INTO financial_audit_log (id, tenant_id, entity_type, entity_id, action, old_json, new_json, amount, actor)
@@ -36,7 +38,7 @@ async function logFinancialAudit({ entityType, entityId, action, oldData, newDat
 //  4900 = إيرادات أخرى    (Other Revenue)
 //  5100 = رواتب موظفين    (Staff Salaries)
 //  2100 = مستحقات الرواتب  (Accrued Salaries Payable)
-async function postJournalEntry(refType, refId, entryDate, description, lines, postedBy, db = pool) {
+async function postJournalEntry(refType, refId, entryDate, description, lines, postedBy, db = pool, tenantId = 'tenant-default') {
   const entryId = uuidv4();
   const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
@@ -49,11 +51,19 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
   try {
     if (ownTx) { conn = await pool.getConnection(); await conn.beginTransaction(); }
     await conn.query(
-      `INSERT INTO journal_entries (id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [entryId, refType, refId || null, entryDate, description || null, totalDebit, totalCredit, postedBy || 'system']
+      `INSERT INTO journal_entries (id, tenant_id, ref_type, ref_id, entry_date, description, total_debit, total_credit, posted_by)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [entryId, tenantId, refType, refId || null, entryDate, description || null, totalDebit, totalCredit, postedBy || 'system']
     );
     for (const line of lines) {
+      const prefix = String(line.account_code || '').slice(0, 1);
+      const accountType = prefix === '1' ? 'asset' : prefix === '2' ? 'liability'
+        : prefix === '3' ? 'equity' : prefix === '4' ? 'revenue' : 'expense';
+      await conn.query(
+        `INSERT IGNORE INTO tenant_chart_of_accounts (tenant_id, code, name, type)
+         VALUES (?,?,?,?)`,
+        [tenantId, line.account_code, line.account_name, accountType]
+      );
       await conn.query(
         `INSERT INTO journal_entry_lines (id, entry_id, account_code, account_name, debit, credit)
          VALUES (?,?,?,?,?,?)`,
@@ -100,31 +110,33 @@ function _expenseAccountCode(category) {
 
 // ── Currency normalisation for the journal ───────────────────────────────────
 // The journal (and every report built on it: P&L, trial balance) must be in a
-// single currency. Rates come from site_config content keys
+// single currency. Rates come from the tenant-scoped content setting keys
 // 'exchange.sar_to_egp' / 'exchange.usd_to_egp' (auto-refreshed daily in
 // server.js). Falls back to static defaults if config is missing so a posting
 // never silently mixes currencies again.
 const _FX_FALLBACK = { SAR: 13, USD: 48 };
-let _fxCache = { rates: null, ts: 0 };
-async function getFxToEgp() {
-  if (_fxCache.rates && Date.now() - _fxCache.ts < 10 * 60 * 1000) return _fxCache.rates;
+const _fxCache = new Map();
+function invalidateFxCache(tenantId = null) { if (tenantId) _fxCache.delete(tenantId); else _fxCache.clear(); }
+async function getFxToEgp(tenantId = DEFAULT_TENANT) {
+  const cached = _fxCache.get(tenantId);
+  if (cached?.rates && Date.now() - cached.ts < 10 * 60 * 1000) return cached.rates;
   let sar = _FX_FALLBACK.SAR, usd = _FX_FALLBACK.USD;
   try {
-    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content'");
-    const content = rows[0]?.value ? JSON.parse(rows[0].value) : {};
+    const content = await getTenantSetting('content', { tenantId, fallback: {} });
     sar = parseFloat(content['exchange.sar_to_egp']) || sar;
     usd = parseFloat(content['exchange.usd_to_egp']) || usd;
   } catch (_) { /* keep fallbacks */ }
-  _fxCache = { rates: { EGP: 1, SAR: sar, USD: usd }, ts: Date.now() };
-  return _fxCache.rates;
+  const rates = { EGP: 1, SAR: sar, USD: usd };
+  _fxCache.set(tenantId, { rates, ts: Date.now() });
+  return rates;
 }
 
 // Converts an amount to EGP for journal posting. Returns a 2dp number.
-async function toEgp(amount, currency) {
+async function toEgp(amount, currency, tenantId = DEFAULT_TENANT) {
   const amt = Number(amount) || 0;
   const cur = String(currency || 'EGP').toUpperCase();
   if (cur === 'EGP') return amt;
-  const rates = await getFxToEgp();
+  const rates = await getFxToEgp(tenantId);
   return parseFloat((amt * (rates[cur] || 1)).toFixed(2));
 }
 
@@ -132,19 +144,28 @@ async function toEgp(amount, currency) {
 // journal (cash 1100 debit / revenue credit), normalised to EGP. Returns the
 // journal id on success or null on failure so transaction-owning callers can
 // rollback money-moving writes instead of committing an unposted payment.
-async function postPaymentJournal({ paymentId, amount, currency, payType, date, actor }, db = pool) {
+async function postPaymentJournal({ paymentId, amount, currency, payType, date, actor, tenantId = 'tenant-default' }, db = pool) {
   try {
     const [accCode, accName] = _paymentAccountCode((payType || 'OTHER').toUpperCase());
-    const amtEgp = await toEgp(Number(amount) || 0, currency);
+    const rates = await getFxToEgp(tenantId);
+    const normalizedCurrency = String(currency || 'EGP').toUpperCase();
+    const appliedRate = rates[normalizedCurrency] || 1;
+    const amtEgp = parseFloat(((Number(amount) || 0) * appliedRate).toFixed(2));
     if (amtEgp <= 0) return null;
-    return await postJournalEntry('payment', paymentId, date || new Date().toISOString().slice(0, 10),
+    const journalId = await postJournalEntry('payment', paymentId, date || new Date().toISOString().slice(0, 10),
       `دفعة ${amount} ${currency || 'EGP'} (= ${amtEgp} EGP) — ${payType || 'OTHER'}`,
       [
         { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
         { account_code: accCode, account_name: accName, debit: 0, credit: amtEgp },
       ],
-      actor || 'system', db
+      actor || 'system', db, tenantId
     );
+    if (!journalId) return null;
+    await db.query(
+      'UPDATE payments SET fx_rate_to_egp=?,amount_egp=?,fx_source=?,fx_applied_at=COALESCE(fx_applied_at,NOW()) WHERE id=? AND tenant_id=?',
+      [appliedRate, amtEgp, 'configured-or-fallback', paymentId, tenantId]
+    );
+    return journalId;
   } catch (e) { logger.warn('[finance] postPaymentJournal error:', e.message); return null; }
 }
 
@@ -153,9 +174,18 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
 // on edit and on soft-delete so the ledger stays == the expenses table).
 // Amount is normalised to EGP. Lifted out of the (dead, shadowed) core/content.js
 // into the shared finance lib so the LIVE expense handlers can post to the ledger.
-async function postExpenseJournal(expense, sign, actor, db = pool) {
+async function postExpenseJournal(expense, sign, actor, db = pool, tenantId = expense.tenant_id || 'tenant-default') {
   try {
-    const amt = await toEgp(Number(expense.amount) || 0, expense.currency);
+    const rates = await getFxToEgp(tenantId);
+    const normalizedCurrency = String(expense.currency || 'EGP').toUpperCase();
+    const appliedRate = rates[normalizedCurrency] || 1;
+    // A reversal must use the exact EGP snapshot from the original posting.
+    // Revaluing it with today's FX rate would leave an artificial balance in
+    // the ledger after editing or deleting a foreign-currency expense.
+    const snapshottedEgp = Number(expense.amount_egp);
+    const amt = sign < 0 && Number.isFinite(snapshottedEgp) && snapshottedEgp > 0
+      ? snapshottedEgp
+      : parseFloat(((Number(expense.amount) || 0) * appliedRate).toFixed(2));
     if (!amt) return null;
     const [accCode, accName] = _expenseAccountCode(expense.category);
     const dateStr = String(expense.date || new Date().toISOString()).slice(0, 10);
@@ -171,8 +201,13 @@ async function postExpenseJournal(expense, sign, actor, db = pool) {
           { account_code: '1100', account_name: 'نقدية وبنوك', debit: amt, credit: 0 },
           { account_code: accCode, account_name: accName, debit: 0, credit: amt },
         ];
-    return await postJournalEntry(sign > 0 ? 'expense' : 'expense_reversal', expense.id, dateStr, label, lines, actor || 'system', db);
+    const journalId = await postJournalEntry(sign > 0 ? 'expense' : 'expense_reversal', expense.id, dateStr, label, lines, actor || 'system', db, tenantId);
+    if (journalId && sign > 0) await db.query(
+      'UPDATE expenses SET fx_rate_to_egp=?,amount_egp=?,fx_source=?,fx_applied_at=COALESCE(fx_applied_at,NOW()) WHERE id=? AND tenant_id=?',
+      [appliedRate, amt, 'configured-or-fallback', expense.id, tenantId]
+    );
+    return journalId;
   } catch (e) { logger.warn('[finance] postExpenseJournal error:', e.message); return null; }
 }
 
-module.exports = { logPaymentAudit, logFinancialAudit, postJournalEntry, postPaymentJournal, postExpenseJournal, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp };
+module.exports = { logPaymentAudit, logFinancialAudit, postJournalEntry, postPaymentJournal, postExpenseJournal, _paymentAccountCode, _expenseAccountCode, toEgp, getFxToEgp, invalidateFxCache };

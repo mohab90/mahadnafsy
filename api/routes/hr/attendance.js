@@ -270,7 +270,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS leads_assigned,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_converted,
         (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status='contacted' AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_contacted,
-        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated,
+        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated,
         (SELECT COUNT(*) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS sales_count,
         (SELECT COUNT(*) FROM subscribers WHERE tenant_id=? AND assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS subscribers_enrolled
     `, [req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y, req.tenantId,staffId,m,y]);
@@ -285,7 +285,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
     // Historical (last 6 months)
     const [history] = await pool.query(`
       SELECT MONTH(date) AS month, YEAR(date) AS year,
-             COUNT(*) AS sales_count, SUM(amount) AS revenue
+             COUNT(*) AS sales_count, SUM(amount_egp) AS revenue
       FROM payments
       WHERE staff_id=? AND tenant_id=? AND status='paid' AND date >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
       GROUP BY YEAR(date), MONTH(date) ORDER BY YEAR(date) DESC, MONTH(date) DESC

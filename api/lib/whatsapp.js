@@ -5,20 +5,27 @@ const logger = require('./logger');
 //   • 'green-api' → Green-API gateway                        — instanceId + apiToken
 // All creds come from site_config.whatsapp_config (entered in the admin), with
 // env vars as fallback so nothing has to be edited on the server.
-const { pool } = require('./db');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 // Config cached in memory — refreshes every 5min. Avoids one DB query per notification.
-let _waCfgCache = null;
-let _waCfgCacheTs = 0;
-async function getWaCfg() {
+const waCfgCache = new Map();
+async function getWaCfg(tenantId = DEFAULT_TENANT) {
+  const scopedTenant = String(tenantId || DEFAULT_TENANT);
   const now = Date.now();
-  if (_waCfgCache && now - _waCfgCacheTs < 5 * 60 * 1000) return _waCfgCache;
+  const hit = waCfgCache.get(scopedTenant);
+  if (hit && now - hit.at < 5 * 60 * 1000) return hit.value;
+  let value = {};
   try {
-    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'whatsapp_config'");
-    _waCfgCache = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    _waCfgCacheTs = now;
-  } catch (_) { _waCfgCache = _waCfgCache || {}; }
-  return _waCfgCache;
+    value = await getTenantSetting('whatsapp_config', { tenantId: scopedTenant, fallback: {} }) || {};
+  } catch (_) { value = hit?.value || {}; }
+  waCfgCache.set(scopedTenant, { value, at: now });
+  return value;
+}
+
+function invalidateWaCfg(tenantId) {
+  if (tenantId) waCfgCache.delete(String(tenantId));
+  else waCfgCache.clear();
 }
 
 // Resolve which provider to use: explicit config wins, else infer from whatever
@@ -70,9 +77,10 @@ async function _sendGreenApi(normalized, message, cfg) {
   return { ok: true, idMessage: data.idMessage };
 }
 
-async function sendWhatsApp(phone, message) {
+async function sendWhatsApp(phone, message, options = {}) {
   try {
-    const cfg = await getWaCfg();
+    const tenantId = typeof options === 'string' ? options : options.tenantId;
+    const cfg = await getWaCfg(tenantId || DEFAULT_TENANT);
     const normalized = phone.replace(/\D/g, '').replace(/^0+/, '');
     const provider = resolveProvider(cfg);
     return provider === 'meta'
@@ -84,4 +92,4 @@ async function sendWhatsApp(phone, message) {
   }
 }
 
-module.exports = { getWaCfg, sendWhatsApp, resolveProvider };
+module.exports = { getWaCfg, invalidateWaCfg, sendWhatsApp, resolveProvider };

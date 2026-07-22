@@ -21,7 +21,7 @@ router.get('/api/webhooks/facebook-leads', async (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  const fbConfig = await getFbLeadConfig().catch(() => ({}));
+  const fbConfig = await getFbLeadConfig(scopedTenantId(req)).catch(() => ({}));
   const verifyToken = fbConfig.verifyToken || FB_VERIFY_TOKEN;
   if (mode === 'subscribe' && token === verifyToken) {
     logger.info('✅ Facebook webhook verified');
@@ -32,7 +32,8 @@ router.get('/api/webhooks/facebook-leads', async (req, res) => {
 });
 
 router.post('/api/webhooks/facebook-leads', async (req, res) => {
-  const fbConfig = await getFbLeadConfig().catch(() => ({}));
+  const tenantId = scopedTenantId(req);
+  const fbConfig = await getFbLeadConfig(tenantId).catch(() => ({}));
   const FB_APP_SECRET = fbConfig.appSecret || process.env.FB_APP_SECRET;
   if (FB_APP_SECRET) {
     const sigHeader = (req.headers['x-hub-signature-256'] || '').toString();
@@ -68,7 +69,7 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
         if (!leadgenId || !pageId) continue;
 
         const id = `lead-fb-${leadgenId}`;
-        const [existing] = await pool.execute(`SELECT id FROM leads WHERE id=?`, [id]);
+        const [existing] = await pool.execute('SELECT id FROM leads WHERE tenant_id=? AND id=?', [tenantId, id]);
         if (existing.length > 0) continue;
 
         let name = `Facebook Lead #${leadgenId}`;
@@ -92,10 +93,10 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
 
         let rep = null;
         if (fbConfig.defaultAssignedSalesId) {
-          const [repRows] = await pool.execute(`SELECT id, name FROM staff WHERE id=? AND is_active=1`, [fbConfig.defaultAssignedSalesId]);
+          const [repRows] = await pool.execute('SELECT id, name FROM staff WHERE tenant_id=? AND id=? AND is_active=1', [tenantId, fbConfig.defaultAssignedSalesId]);
           if (repRows.length) rep = repRows[0];
         }
-        if (!rep) rep = await getNextSalesRep();
+        if (!rep) rep = await getNextSalesRep(tenantId);
 
         const branchVal = fbConfig.defaultBranch ? fbConfig.defaultBranch.toUpperCase() : null;
         const interestCourseIds = fbConfig.defaultInterestedCourseId ? JSON.stringify([fbConfig.defaultInterestedCourseId]) : null;
@@ -108,7 +109,7 @@ router.post('/api/webhooks/facebook-leads', async (req, res) => {
           `INSERT INTO leads (id, tenant_id, client_code, name, email, phone, source, status, interest_level, lead_type, branch, branch_id, interested_course_ids_json, notes, assigned_sales_id, assigned_sales_name, hidden, created_at)
            VALUES (?, ?, ?, ?, ?, ?, 'facebook', ?, 'high', ?, ?, ?, ?, '', ?, ?, 0, NOW())`,
           [
-            id, scopedTenantId(req), fbCode, name, email || null, phone,
+            id, tenantId, fbCode, name, email || null, phone,
             (fbConfig.defaultStatus || 'new').toLowerCase(),
             fbConfig.defaultLeadType || 'general',
             branchVal,

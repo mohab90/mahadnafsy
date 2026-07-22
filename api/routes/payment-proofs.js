@@ -9,9 +9,11 @@ const { tryJson } = require('../lib/helpers');
 const { getNextClientCode } = require('../lib/mappers');
 const { branchIdForBranch } = require('../lib/branches');
 const { postPaymentJournal } = require('../lib/finance');
+const { assertWritable } = require('../lib/periodLock');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { syncLeadDealValue } = require('./public-orders');
+const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { createNotification } = require('../lib/notification');
+const { transitionLead } = require('../lib/leadState');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
@@ -143,10 +145,10 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
        JOIN courses c ON c.id=cl.course_id AND c.tenant_id=?
        JOIN enrollments e ON e.course_id=cl.course_id AND e.subscriber_id=? AND e.tenant_id=?
        WHERE cl.id=? AND (
-         COALESCE(c.price,0)<=0 OR
-         COALESCE((SELECT SUM(p.amount) FROM payments p
+         COALESCE(c.price_egp,c.price,0)<=0 OR
+         COALESCE((SELECT SUM(p.amount_egp) FROM payments p
                    WHERE p.subscriber_id=? AND p.course_id=c.id AND p.tenant_id=?
-                     AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL),0) >= COALESCE(c.price,0)
+                     AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL),0) >= COALESCE(c.price_egp,c.price,0)
          OR EXISTS (
            SELECT 1 FROM payments bp
            JOIN bundle_courses bc ON bc.bundle_id=bp.bundle_id AND bc.course_id=c.id
@@ -216,10 +218,11 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
                       <p>كود الشهادة الرقمية الخاص بك:</p>
                       <div class="otp-box">${certCode}</div>
                       <p>يمكنك التحقق من الشهادة على موقعنا باستخدام هذا الكود.</p>
-                    `)
+                    `),
+                    { tenantId }
                   ).catch(() => {});
                 }
-                await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId, certCode });
+                await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId, certCode }, req.tenantId);
                 completionData = { completed: true, certCode };
               }
             }
@@ -349,6 +352,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       const normalizedType = String(proof.item_type || 'other').toUpperCase();
       const paymentType = ['COURSE', 'BUNDLE', 'CONSULTATION', 'CERTIFICATE'].includes(normalizedType) ? normalizedType : 'OTHER';
       const payId = `proof-${proof.id}`;
+      await assertWritable(new Date().toISOString().slice(0, 10), conn, tenantId);
       await conn.query(
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
@@ -368,6 +372,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         currency: proof.currency || 'EGP',
         payType: paymentType,
         actor: req.user?.email || 'system',
+        tenantId,
       }, conn);
       if (!journalId) throw new Error('Payment proof journal posting failed');
 
@@ -422,21 +427,25 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
 
       await conn.query('UPDATE subscribers SET is_active=1 WHERE id=? AND tenant_id=?', [proof.subscriber_id, tenantId]);
       if (proof.lead_id) {
-        await conn.query("UPDATE leads SET status='converted' WHERE id=? AND tenant_id=?", [proof.lead_id, tenantId]);
+        await transitionLead({
+          tenantId, leadId: proof.lead_id, toStatus: 'converted', db: conn,
+          actor: req.user?.email || req.staffRecord?.name || 'payment-proof',
+          reason: 'Lead converted after payment proof approval',
+          metadata: { paymentProofId: proof.id, subscriberId: proof.subscriber_id },
+        });
       }
       await conn.query(
         "UPDATE orders SET status='PAID', transaction_id=?, paid_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=?",
         [proof.id, proof.order_id, tenantId]
       );
+      await enqueueFinanceEvent({
+        tenantId, eventType: 'sync_lead_deal_value', refType: 'payment-proof', refId: proof.id,
+        payload: { subscriberId: proof.subscriber_id },
+      }, conn);
     }
 
     await conn.commit();
     transactionStarted = false;
-
-    // Auto-sync lead deal_value after payment approval
-    if (action === 'approve' && proof.subscriber_id) {
-      syncLeadDealValue(proof.subscriber_id).catch(() => {});
-    }
 
     // Send WhatsApp notification to subscriber (best-effort, after commit)
     try {
@@ -444,7 +453,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       // Lifecycle: email receipt on approval (whatsapp handled just below to avoid dup).
       if (action === 'approve' && sub?.email) {
         require('../lib/lifecycle').trigger('payment_received',
-          { name: sub.name, email: sub.email, amount: proof.amount, currency: proof.currency || 'EGP', itemTitle: proof.course_title },
+          { name: sub.name, email: sub.email, amount: proof.amount, currency: proof.currency || 'EGP', itemTitle: proof.course_title, tenantId: req.tenantId },
           { channels: ['email'] });
       }
       if (sub?.phone) {
@@ -452,7 +461,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         const msg = action === 'approve'
           ? `✅ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}. شكراً لك! 🎓`
           : `❌ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}.${reviewer_note ? '\nالسبب: ' + reviewer_note : ''} يرجى التواصل معنا للمساعدة.`;
-        await sendWhatsApp(sub.phone, msg);
+        await sendWhatsApp(sub.phone, msg, { tenantId: req.tenantId });
       }
       if (sub?.email) {
         publishRealtimeEvent('client:payment-updated', {

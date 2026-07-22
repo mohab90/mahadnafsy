@@ -13,9 +13,11 @@ const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServe
 const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
+const { transitionLead } = require('../../lib/leadState');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
+const { getTenantSetting } = require('../../lib/tenantSettings');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
+const { DATA_SCOPE, VALID_BRANCHES } = require('../../constants/permissions');
 const { onlineMap } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
@@ -39,7 +41,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
       `SELECT id, firebase_uid, client_code, lead_id, name, email, phone, branch,
        is_active, notes, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
        crm_json, created_at, updated_at
-       FROM subscribers WHERE id=? OR client_code=? LIMIT 1`, [code, code]
+       FROM subscribers WHERE tenant_id=? AND (id=? OR client_code=?) LIMIT 1`, [req.tenantId, code, code]
     );
     if (subRows.length > 0) {
       const r = subRows[0];
@@ -64,7 +66,10 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
           if (assignedId !== staffId && assignedCsId !== staffId) {
             // Also check via lead linkage
             if (r.lead_id) {
-              const [[leadRow]] = await pool.query('SELECT assigned_sales_id, assigned_cs_id FROM leads WHERE id=? LIMIT 1', [r.lead_id]);
+              const [[leadRow]] = await pool.query(
+                'SELECT assigned_sales_id, assigned_cs_id FROM leads WHERE id=? AND tenant_id=? LIMIT 1',
+                [r.lead_id, req.tenantId]
+              );
               if (!leadRow || (leadRow.assigned_sales_id !== staffId && leadRow.assigned_cs_id !== staffId)) {
                 return res.status(403).json({ error: 'ليس لديك صلاحية الوصول لهذا العميل' });
               }
@@ -78,7 +83,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
         `SELECT id, subscriber_id, course_id, bundle_id, amount, currency,
                 payment_type, payment_method, transaction_id, is_installment, \`date\`, note,
                 status, staff_id
-         FROM payments WHERE subscriber_id=? ORDER BY \`date\` ASC`, [r.id]
+         FROM payments WHERE tenant_id=? AND subscriber_id=? ORDER BY \`date\` ASC`, [req.tenantId, r.id]
       );
       const paymentHistory = payRows.map(p => {
         const dateStr = safeDateOnly(p.date);
@@ -114,7 +119,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, async (r
        interest_level, interested_course_ids_json, enrolled_course_id, deal_value,
        assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
        notes, last_follow_up, next_follow_up_date, crm_json, hidden, score, created_at, updated_at
-       FROM leads WHERE (id=? OR client_code=?) AND hidden=0 LIMIT 1`, [code, code]
+       FROM leads WHERE tenant_id=? AND (id=? OR client_code=?) AND hidden=0 LIMIT 1`, [req.tenantId, code, code]
     );
     if (leadRows.length > 0) {
       const r = leadRows[0];
@@ -152,7 +157,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
 
   const conn = await pool.getConnection();
   try {
-    const [[existing]] = await conn.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [normEmail]);
+    const [[existing]] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ? LIMIT 1', [req.tenantId, normEmail]);
 
     let isNew = false;
     let tempPass = '';
@@ -161,8 +166,8 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
       for (let i = 0; i < 8; i++) tempPass += chars[Math.floor(Math.random() * chars.length)];
       const hash = await bcrypt.hash(tempPass, 12);
       await conn.execute(
-        'INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)',
-        [uuidv4(), normEmail, hash, (name || '').trim(), 'user']
+        'INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?)',
+        [uuidv4(), req.tenantId, normEmail, hash, (name || '').trim(), 'user']
       );
       isNew = true;
     }
@@ -195,6 +200,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
          </div>`;
 
     await mailer.sendMail({
+      tenantId: req.tenantId,
       from: `"معهد الدراسات النفسية" <${process.env.SMTP_USER || 'info@mahadnafsy.com'}>`,
       to: normEmail,
       subject: `تم تسجيلك في ${safeTitle} — معهد الدراسات النفسية`,
@@ -230,7 +236,7 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
       const waMsg = isOnline
         ? `مرحباً ${safeName} 🎉\nتم تسجيلك بنجاح في: ${safeTitle}\n✅ تم فتح أول 20 درس تلقائياً — يمكنك البدء الآن!\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`
         : `مرحباً ${safeName} 🎉\nتم تسجيلك بنجاح في: ${safeTitle}\n📅 سيتم إضافة المحتوى خلال الموعد المحدد مع فريقنا.\n🌐 ${siteUrl}${isNew ? `\n\nبيانات دخولك:\nالإيميل: ${normEmail}\nكلمة المرور: ${tempPass}` : ''}`;
-      try { await sendWhatsApp(phone, waMsg); logger.info(`[enrollment-welcome] WA sent to ${phone}`); }
+      try { await sendWhatsApp(phone, waMsg, { tenantId: req.tenantId }); logger.info(`[enrollment-welcome] WA sent to ${phone}`); }
       catch (waErr) { logger.warn('[enrollment-welcome] WA failed:', waErr.message); }
     }
 
@@ -242,8 +248,11 @@ router.post('/api/staff/enrollment-welcome', requireAuth, requireAdminOrStaff, a
 });
 
 // POST /api/admin/subscribers
-router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePermission('manage_subscribers'), async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
+    const tenantId = req.tenantId;
     const s = req.body;
     const id = s.id || uuidv4();
     // Extract base columns; store everything else in crm_json
@@ -256,10 +265,16 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
       Object.assign(crmData, { ..._nested_crm, ...crmData });
     }
 
+    await conn.beginTransaction();
+    transactionStarted = true;
+
+    const [[foreignId]] = await conn.query('SELECT id FROM subscribers WHERE id=? AND tenant_id<>? LIMIT 1', [id, tenantId]);
+    if (foreignId) return res.status(409).json({ error: 'Subscriber id is not available in this tenant' });
+
     // Optimistic Concurrency Check — if client sent updatedAt, verify it matches DB before overwriting
     if (clientUpdatedAt && id) {
       try {
-        const [[current]] = await pool.query('SELECT updated_at FROM subscribers WHERE id = ? LIMIT 1', [id]);
+        const [[current]] = await conn.query('SELECT updated_at FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1 FOR UPDATE', [id, tenantId]);
         if (current) {
           const dbTs = safeIsoString(current.updated_at);
           const clientTs = String(clientUpdatedAt);
@@ -285,14 +300,13 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     // Auto-generate client_code if not provided — never allow a subscriber to be saved without one
     let code = clientCode || client_code || null;
     if (!code) {
-      const conn2 = await pool.getConnection();
-      try { code = await getNextClientCode(conn2); } catch { /* ignore */ } finally { conn2.release(); }
+      try { code = await getNextClientCode(conn); } catch { /* handled by uniqueness validation below */ }
     }
     // ── Uniqueness checks ──────────────────────────────────────────────────────
     // Email uniqueness (subscribers table, excluding current record)
     if (safeEmail) {
-      const [[emailRow]] = await pool.query(
-        'SELECT id FROM subscribers WHERE LOWER(TRIM(email))=? AND id != ? LIMIT 1', [safeEmail, id]
+      const [[emailRow]] = await conn.query(
+        'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND id != ? LIMIT 1', [tenantId, safeEmail, id]
       );
       if (emailRow) return res.status(409).json({
         error: `البريد الإلكتروني ${safeEmail} مسجل بالفعل لعميل آخر`,
@@ -301,9 +315,9 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     }
     // Phone uniqueness (excluding current record) — normalize digits before comparing
     if (safePhone) {
-      const [[phoneRow]] = await pool.query(
-        `SELECT id FROM subscribers WHERE phone=? AND id != ? LIMIT 1`,
-        [safePhone, id]
+      const [[phoneRow]] = await conn.query(
+        `SELECT id FROM subscribers WHERE tenant_id=? AND phone=? AND id != ? LIMIT 1`,
+        [tenantId, safePhone, id]
       );
       if (phoneRow) return res.status(409).json({
         error: `رقم الهاتف ${safePhone} مسجل بالفعل لعميل آخر`,
@@ -312,24 +326,23 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
     }
     // client_code uniqueness (excluding current record)
     if (code) {
-      const [[codeRow]] = await pool.query(
-        'SELECT id FROM subscribers WHERE client_code=? AND id != ? LIMIT 1', [code, id]
+      const [[codeRow]] = await conn.query(
+        'SELECT id FROM subscribers WHERE tenant_id=? AND client_code=? AND id != ? LIMIT 1', [tenantId, code, id]
       );
       if (codeRow) {
         // Auto-generate a new unique code instead of rejecting
-        const conn3 = await pool.getConnection();
-        try { code = await getNextClientCode(conn3); } catch { /* ignore */ } finally { conn3.release(); }
+        try { code = await getNextClientCode(conn); } catch { /* duplicate key will fail closed */ }
       }
     }
     // ───────────────────────────────────────────────────────────────────────────
     // Detect if this is a new insert (for auto-assign)
-    const [[existingSub]] = await pool.query('SELECT id, assigned_cs_id FROM subscribers WHERE id = ? LIMIT 1', [id]);
+    const [[existingSub]] = await conn.query('SELECT id, assigned_cs_id FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1 FOR UPDATE', [id, tenantId]);
     const isNewSub = !existingSub;
     // Auto-assign to COLLECTION staff on new subscriber if not already assigned
     let csId   = crmData.assignedCollectionId   || null;
     let csName = crmData.assignedCollectionName || null;
     if (isNewSub && !csId) {
-      const rep = await autoAssignStaff('COLLECTION');
+      const rep = await autoAssignStaff('COLLECTION', req.tenantId);
       if (rep) { csId = rep.id; csName = rep.name; }
     }
     // Extract sales assignment and branch for dedicated DB columns
@@ -346,37 +359,49 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
       'LEAD_LOCAL_NEW','LEAD_LOCAL_OLD','LEAD_INTL_NEW','LEAD_INTL_OLD']);
     const rawClientType = crmData.clientType || s.client_type || null;
     const clientTypeVal = (rawClientType && VALID_CLIENT_TYPES.has(rawClientType.toUpperCase())) ? rawClientType.toUpperCase() : (rawClientType || null);
-    await pool.query(
-      `INSERT INTO subscribers (id, firebase_uid, client_code, name, email, phone, is_active, notes,
-         assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, branch_id, client_type, crm_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE name=VALUES(name), phone=COALESCE(VALUES(phone), phone), firebase_uid=COALESCE(VALUES(firebase_uid),firebase_uid),
-         client_code=COALESCE(client_code, VALUES(client_code)),
-         is_active=VALUES(is_active), notes=COALESCE(VALUES(notes),notes),
-         assigned_cs_id=COALESCE(VALUES(assigned_cs_id), assigned_cs_id),
-         assigned_cs_name=COALESCE(VALUES(assigned_cs_name), assigned_cs_name),
-         assigned_sales_id=COALESCE(VALUES(assigned_sales_id), assigned_sales_id),
-         assigned_sales_name=COALESCE(VALUES(assigned_sales_name), assigned_sales_name),
-         branch=COALESCE(VALUES(branch), branch),
-         branch_id=COALESCE(NULLIF(VALUES(branch_id),''), branch_id),
-         client_type=COALESCE(VALUES(client_type), client_type),
-         crm_json=VALUES(crm_json)`,
-      [id, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, active?1:0,
-       safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, JSON.stringify(crmData)]
-    );
+    if (existingSub) {
+      await conn.query(
+        `UPDATE subscribers SET name=?, email=?, phone=?, firebase_uid=COALESCE(?,firebase_uid),
+           client_code=COALESCE(client_code, ?), is_active=?, notes=COALESCE(?,notes),
+           assigned_cs_id=COALESCE(?,assigned_cs_id), assigned_cs_name=COALESCE(?,assigned_cs_name),
+           assigned_sales_id=COALESCE(?,assigned_sales_id), assigned_sales_name=COALESCE(?,assigned_sales_name),
+           branch=COALESCE(?,branch), branch_id=COALESCE(NULLIF(?,''),branch_id),
+           client_type=COALESCE(?,client_type), crm_json=?
+         WHERE id=? AND tenant_id=?`,
+        [safeName||'', safeEmail, safePhone, firebaseUid || firebase_uid || null, code, active?1:0,
+         safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal,
+         JSON.stringify(crmData), id, tenantId]
+      );
+    } else {
+      await conn.query(
+        `INSERT INTO subscribers (id, tenant_id, firebase_uid, client_code, name, email, phone, is_active, notes,
+           assigned_cs_id, assigned_cs_name, assigned_sales_id, assigned_sales_name, branch, branch_id, client_type, crm_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, tenantId, firebaseUid || firebase_uid || null, code, safeName||'', safeEmail, safePhone, active?1:0,
+         safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal, JSON.stringify(crmData)]
+      );
+    }
     // Full bi-directional sync: enrolledCourseIds in crm_json ↔ enrollments table
     // This is the authoritative sync — always runs, handles add/remove/update access
     {
       const newEnrolledIds = new Set((Array.isArray(crmData.enrolledCourseIds) ? crmData.enrolledCourseIds : []).map(String));
-      const [existingRows] = await pool.query(
-        'SELECT id, course_id, access_type, lecture_limit FROM enrollments WHERE subscriber_id = ?', [id]);
+      if (newEnrolledIds.size > 0) {
+        const courseIds = [...newEnrolledIds];
+        const [ownedCourses] = await conn.query(
+          `SELECT id FROM courses WHERE tenant_id=? AND deleted_at IS NULL AND id IN (${courseIds.map(() => '?').join(',')})`,
+          [tenantId, ...courseIds]
+        );
+        if (ownedCourses.length !== courseIds.length) return res.status(400).json({ error: 'One or more courses are unavailable in this tenant' });
+      }
+      const [existingRows] = await conn.query(
+        'SELECT id, course_id, access_type, lecture_limit FROM enrollments WHERE tenant_id=? AND subscriber_id = ?', [tenantId, id]);
       const existingMap = new Map(existingRows.map(r => [String(r.course_id), r]));
 
       // 1. DELETE rows for courses that were removed
       const toDelete = existingRows.filter(r => !newEnrolledIds.has(String(r.course_id)));
       if (toDelete.length > 0) {
         const deleteIds = toDelete.map(r => r.id);
-        await pool.query('DELETE FROM enrollments WHERE id IN (?)', [deleteIds]).catch(() => {});
+        await conn.query(`DELETE FROM enrollments WHERE tenant_id=? AND id IN (${deleteIds.map(() => '?').join(',')})`, [tenantId, ...deleteIds]);
       }
 
       // 2. INSERT new courses / UPDATE changed access for existing ones (batched)
@@ -387,139 +412,80 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (r
         const newLectureLimit = (typeof rawAccess === 'object' ? rawAccess?.lectureLimit : null) || null;
         const existing = existingMap.get(courseId);
         if (!existing) {
-          enrollInsertRows.push('(?, ?, ?, NOW(), ?, ?, ?)');
-          enrollInsertParams.push(uuidv4(), id, courseId, newAccessMode, newLectureLimit, branchIdVal);
+          enrollInsertRows.push('(?, ?, ?, ?, NOW(), ?, ?, ?)');
+          enrollInsertParams.push(uuidv4(), tenantId, id, courseId, newAccessMode, newLectureLimit, branchIdVal);
         } else if (existing.access_type !== newAccessMode || String(existing.lecture_limit ?? '') !== String(newLectureLimit ?? '')) {
-          enrollUpdates.push(pool.query(
-            'UPDATE enrollments SET access_type=?, lecture_limit=? WHERE id=?',
-            [newAccessMode, newLectureLimit, existing.id]
-          ).catch(() => {}));
+          enrollUpdates.push(conn.query(
+            'UPDATE enrollments SET access_type=?, lecture_limit=? WHERE id=? AND tenant_id=?',
+            [newAccessMode, newLectureLimit, existing.id, tenantId]
+          ));
         }
       }
       if (enrollInsertRows.length > 0) {
-        await pool.query(
-          `INSERT IGNORE INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, lecture_limit, branch_id) VALUES ${enrollInsertRows.join(',')}`,
+        await conn.query(
+          `INSERT IGNORE INTO enrollments (id, tenant_id, subscriber_id, course_id, enrolled_at, access_type, lecture_limit, branch_id) VALUES ${enrollInsertRows.join(',')}`,
           enrollInsertParams
-        ).catch(() => {});
+        );
       }
       if (enrollUpdates.length > 0) await Promise.all(enrollUpdates);
     }
     // Automation #3: Auto-link this subscriber to their matching lead (by phone or email)
     // Runs on both new AND existing subscribers without a lead_id — closes the "update" gap
     {
-      const [[subCheck]] = await pool.query('SELECT lead_id FROM subscribers WHERE id = ? LIMIT 1', [id]).catch(() => [[null]]);
+      const [[subCheck]] = await conn.query('SELECT lead_id FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1', [id, tenantId]);
       const needsLink = !subCheck?.lead_id;
       if (needsLink && (safePhone || safeEmail)) {
         const normPhone = safePhone ? safePhone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
         const matchQ = normPhone
-          ? `SELECT id FROM leads WHERE (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0 ORDER BY created_at DESC LIMIT 1`
-          : 'SELECT id FROM leads WHERE LOWER(email)=LOWER(?) AND hidden=0 ORDER BY created_at DESC LIMIT 1';
-        const matchParams = normPhone ? [`%${normPhone.slice(-9)}`, safeEmail || ''] : [safeEmail];
-        try {
-          const [[matchedLead]] = await pool.query(matchQ, matchParams);
-          if (matchedLead) {
-            await pool.query(
-              "UPDATE subscribers SET lead_id=? WHERE id=? AND lead_id IS NULL",
-              [matchedLead.id, id]
-            );
-            // Mark the lead as converted (if not already)
-            await pool.query(
-              "UPDATE leads SET status='converted' WHERE id=? AND LOWER(status) NOT IN ('converted','lost')",
-              [matchedLead.id]
-            );
-          }
-        } catch (_) {}
+          ? `SELECT id, status FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0 ORDER BY created_at DESC LIMIT 1`
+          : 'SELECT id, status FROM leads WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND hidden=0 ORDER BY created_at DESC LIMIT 1';
+        const matchParams = normPhone ? [tenantId, `%${normPhone.slice(-9)}`, safeEmail || ''] : [tenantId, safeEmail];
+        const [[matchedLead]] = await conn.query(matchQ, matchParams);
+        if (matchedLead) {
+          await conn.query(
+            "UPDATE subscribers SET lead_id=? WHERE id=? AND tenant_id=? AND lead_id IS NULL",
+            [matchedLead.id, id, tenantId]
+          );
+          await transitionLead({
+            tenantId, leadId: matchedLead.id, toStatus: 'converted', db: conn,
+            actor: req.user?.email || req.staffRecord?.name || 'subscriber-save',
+            reason: 'Subscriber linked and lead converted', metadata: { subscriberId: id },
+          });
+        }
       }
     }
-    // Automation #5: Send WhatsApp welcome message to new subscriber
+    // Payments are never accepted through subscriber CRM JSON. Money moves only
+    // through the transactional payment endpoints, which also post the journal,
+    // enforce period locks and create entitlements atomically.
+    // Return the server-side updatedAt so the frontend can update OCC state
+    const [[savedRow]] = await conn.query('SELECT updated_at FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1', [id, tenantId]);
+    const savedUpdatedAt = safeIsoString(savedRow?.updated_at) || new Date().toISOString();
+    await conn.commit();
+    transactionStarted = false;
+    res.json({ ok: true, id, updatedAt: savedUpdatedAt, assignedCs: csId ? { id: csId, name: csName } : null });
+    // External notifications only start after the subscriber/enrollment transaction commits.
     if (isNewSub && safePhone) {
       setImmediate(async () => {
         try {
-          const [[cfg]] = await pool.query("SELECT `value` FROM site_config WHERE `key`='settings' LIMIT 1");
-          const settings = cfg?.value ? JSON.parse(cfg.value) : {};
+          const settings = await getTenantSetting('settings', { tenantId, fallback: {} });
           const welcomeMsg = settings.subscriberWelcomeMsg
             || `أهلاً ${safeName || ''} 🎉\nيسعدنا انضمامك لأسرة مهد نفسي. سيتواصل معك فريقنا قريباً لتجهيز اشتراكك.`;
-          await sendWhatsApp(safePhone.replace(/\D/g, ''), welcomeMsg);
+          await sendWhatsApp(safePhone.replace(/\D/g, ''), welcomeMsg, { tenantId: req.tenantId });
         } catch (_) { /* welcome msg is best-effort */ }
       });
     }
-    // ── AUTO-SYNC: write any new paymentHistory entries → payments table ──────
-    // This is the single source of truth guarantee: every time a subscriber is saved,
-    // we reconcile their paymentHistory into the payments table (INSERT IGNORE = idempotent).
-    if (Array.isArray(crmData.paymentHistory) && crmData.paymentHistory.length > 0) {
-
-
-      setImmediate(async () => {
-        try {
-          const payBatchRows = [], payBatchParams = [];
-          for (const p of crmData.paymentHistory) {
-            if (!p.id || !p.amount || Number(p.amount) <= 0) continue;
-            const pType = (p.paymentType || 'OTHER').toUpperCase();
-            const safePayType = VALID_PAY_TYPES.has(pType) ? pType : 'OTHER';
-            const dateVal = safeDateOnly(p.at || p.date || new Date()) || new Date().toISOString().slice(0, 10);
-            const payStatus = p.status || 'paid';
-            const safeSource = VALID_SOURCES.has(p.source) ? p.source : null;
-            payBatchRows.push('(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-            payBatchParams.push(
-              p.id, id,
-              p.courseId || null, p.bundleId || null,
-              Number(p.amount) || 0,
-              p.currency || 'EGP',
-              safePayType,
-              p.paymentMethod || null,
-              p.transactionId || null,
-              p.isInstallment ? 1 : 0,
-              p.courseExpected != null ? Number(p.courseExpected) : null,
-              dateVal,
-              p.note || null,
-              p.staffId || null,
-              payStatus,
-              p.staffName || null,
-              p.fromAccountNumber || null,
-              safeSource,
-              p.itemTitle || null,
-              p.certType || null,
-              'tenant-default',
-              branchVal || 'ONLINE_EGYPT',
-              branchIdVal,
-            );
-          }
-          if (payBatchRows.length > 0) {
-            await pool.query(
-              `INSERT INTO payments
-                 (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
-                  payment_method, transaction_id, is_installment, course_expected, date, note, staff_id, status,
-                  staff_name, from_account, source, item_title, cert_type, tenant_id, branch, branch_id)
-               VALUES ${payBatchRows.join(',')}
-               ON DUPLICATE KEY UPDATE status=VALUES(status), note=COALESCE(VALUES(note),note),
-                 staff_name=COALESCE(VALUES(staff_name),staff_name),
-                 from_account=COALESCE(VALUES(from_account),from_account),
-                 source=COALESCE(VALUES(source),source),
-                 item_title=COALESCE(VALUES(item_title),item_title),
-                 cert_type=COALESCE(VALUES(cert_type),cert_type),
-                 tenant_id=COALESCE(tenant_id,VALUES(tenant_id)),
-                 branch=COALESCE(branch,VALUES(branch)),
-                 branch_id=COALESCE(NULLIF(branch_id,''),VALUES(branch_id)),
-                 course_expected=COALESCE(course_expected,VALUES(course_expected))`,
-              payBatchParams
-            ).catch(e => logger.error('[payment-sync] batch', e.message));
-          }
-        } catch (syncErr) { logger.error('[payment-sync] subscriber', id, syncErr.message); }
-      });
-    }
-    // Return the server-side updatedAt so the frontend can update OCC state
-    const [[savedRow]] = await pool.query('SELECT updated_at FROM subscribers WHERE id = ? LIMIT 1', [id]).catch(() => [[null]]);
-    const savedUpdatedAt = safeIsoString(savedRow?.updated_at) || new Date().toISOString();
-    res.json({ ok: true, id, updatedAt: savedUpdatedAt, assignedCs: csId ? { id: csId, name: csName } : null });
     // Notify admins of new subscriber registration
     if (isNewSub) {
-      createNotification('subscriber', '🎉 مشترك جديد', `${safeName || 'مشترك جديد'} انضم للمنصة`, { subscriberId: id, phone: safePhone }).catch(() => {});
+      createNotification('subscriber', '🎉 مشترك جديد', `${safeName || 'مشترك جديد'} انضم للمنصة`, { subscriberId: id, phone: safePhone }, tenantId).catch(() => {});
     }
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY' && e.message.includes('email')) {
       return res.status(409).json({ error: `البريد الإلكتروني ${req.body.email} مسجل بالفعل` });
     }
     logger.error('[route]', e.message); sendRouteError(res, e);
+  } finally {
+    if (transactionStarted) { try { await conn.rollback(); } catch (_) {} }
+    conn.release();
   }
 });
 

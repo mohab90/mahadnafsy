@@ -103,13 +103,15 @@ function installCoreStartupSchema({ pool, logger }) {
       // ── users table (JWT auth) ─────────────────────────────────────────────────
       await pool.query(`CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(100) PRIMARY KEY,
+        tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
         firebase_uid VARCHAR(128) DEFAULT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         name VARCHAR(255),
         role VARCHAR(50) DEFAULT 'user',
         is_active TINYINT DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_users_tenant_email (tenant_id, email(191))
       ) CHARACTER SET utf8mb4`);
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(128) DEFAULT NULL AFTER id').catch(() => {});
       await pool.query('ALTER TABLE users ADD INDEX IF NOT EXISTS idx_users_firebase (firebase_uid)').catch(() => {});
@@ -180,8 +182,8 @@ function installCoreStartupSchema({ pool, logger }) {
       await pool.query(`ALTER TABLE subscribers ADD CONSTRAINT uq_subs_code UNIQUE (client_code(50))`).catch(() => {});
       // subscribers: phone unique (NULL-safe: multiple NULLs allowed, only non-null values enforced)
       await pool.query(`ALTER TABLE subscribers ADD CONSTRAINT uq_subs_phone UNIQUE (phone(50))`).catch(() => {});
-      // users: email unique
-      await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON users (email(191))`).catch(() => {});
+      // users: identity is unique inside a tenant, never globally.
+      await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_tenant_email ON users (tenant_id, email(191))`).catch(() => {});
       // plain_password column removed — never store plaintext passwords
       logger.info('[startup] Unique indexes ensured');
     } catch (e) { logger.error('Table init error:', e.message); }

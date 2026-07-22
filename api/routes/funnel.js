@@ -21,12 +21,14 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
     const br = branch && branch !== 'all' ? String(branch).toUpperCase() : null;
     // Build per-table WHERE fragments honouring date range (+ branch where present).
     const range = (col) => { const c = [], p = []; if (from) { c.push(`${col} >= ?`); p.push(from); } if (to) { c.push(`${col} < DATE_ADD(?, INTERVAL 1 DAY)`); p.push(to); } return { c, p }; };
-    const lr = range('created_at'); const lw = ['hidden=0', ...lr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const lp = [...lr.p, ...(br ? [br] : [])];
-    const pr = range('date');       const pw = ["status='paid'", ...pr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const pp = [...pr.p, ...(br ? [br] : [])];
-    const sr = range('created_at'); const sw = ['1=1', ...sr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const sp = [...sr.p, ...(br ? [br] : [])];
-    const brJoin = br ? 'JOIN subscribers s ON s.id=t.subscriber_id WHERE s.branch=?' : 'WHERE 1=1';
-    const brP = br ? [br] : [];
-    const data = await cached(`funnel:${from || ''}:${to || ''}:${br || 'all'}`, 5 * 60 * 1000, async () => {
+    const lr = range('created_at'); const lw = ['tenant_id=?', 'hidden=0', ...lr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const lp = [req.tenantId, ...lr.p, ...(br ? [br] : [])];
+    const pr = range('date');       const pw = ['tenant_id=?', "status='paid'", ...pr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const pp = [req.tenantId, ...pr.p, ...(br ? [br] : [])];
+    const sr = range('created_at'); const sw = ['tenant_id=?', ...sr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const sp = [req.tenantId, ...sr.p, ...(br ? [br] : [])];
+    const learnerJoin = `JOIN subscribers s ON s.id=t.subscriber_id AND s.tenant_id=?${br ? ' WHERE s.branch=?' : ''}`;
+    const learnerParams = [req.tenantId, ...(br ? [br] : [])];
+    const certificateWhere = `WHERE t.tenant_id=?${br ? ' AND s.branch=?' : ''}`;
+    const certificateParams = [req.tenantId, ...(br ? [br] : [])];
+    const data = await cached(`funnel:${req.tenantId}:${from || ''}:${to || ''}:${br || 'all'}`, 5 * 60 * 1000, async () => {
       const [leads, contacted, interested, converted, subscribers, paying, learners, certified, revenue] = await Promise.all([
         n(`SELECT COUNT(*) FROM leads WHERE ${lw}`, lp),
         n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND LOWER(status) <> 'new'`, lp),
@@ -34,9 +36,9 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
         n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND LOWER(status)='converted'`, lp),
         n(`SELECT COUNT(*) FROM subscribers WHERE ${sw}`, sp),
         n(`SELECT COUNT(DISTINCT subscriber_id) FROM payments WHERE ${pw}`, pp),
-        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM lecture_progress t ${brJoin}`, brP),
-        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM certificate_requests t ${brJoin} AND t.status IN ('ISSUED','AT_BRANCH','DELIVERED')`, brP),
-        n(`SELECT COALESCE(SUM(amount),0) FROM payments WHERE ${pw} AND (currency IS NULL OR currency='EGP')`, pp),
+        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM lecture_completions t ${learnerJoin} AND t.tenant_id=s.tenant_id`, learnerParams),
+        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM certificate_requests t JOIN subscribers s ON s.id=t.subscriber_id AND s.tenant_id=t.tenant_id ${certificateWhere} AND t.status IN ('ISSUED','AT_BRANCH','DELIVERED')`, certificateParams),
+        n(`SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE ${pw}`, pp),
       ]);
       const stages = [
         { key: 'leads', label: 'عملاء محتملون', value: leads },
@@ -76,23 +78,23 @@ router.get('/api/admin/funnel/attribution', requireAuth, requireAdmin, async (re
   try {
     const by = req.query.by === 'sales' ? 'sales' : 'source';
     const { from, to } = req.query;
-    const c = ['l.hidden=0']; const p = [];
+    const c = ['l.tenant_id=?', 'l.hidden=0']; const p = [req.tenantId];
     if (from) { c.push('l.created_at >= ?'); p.push(from); }
     if (to) { c.push('l.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); p.push(to); }
     const where = c.join(' AND ');
     const groupCol = by === 'sales' ? 'st.name' : "COALESCE(NULLIF(TRIM(l.source),''),'(غير محدد)')";
-    const salesJoin = by === 'sales' ? 'LEFT JOIN staff st ON st.id = l.assigned_sales_id' : '';
-    const data = await cached(`attribution:${by}:${from || ''}:${to || ''}`, 5 * 60 * 1000, async () => {
+    const salesJoin = by === 'sales' ? 'LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id=l.tenant_id' : '';
+    const data = await cached(`attribution:${req.tenantId}:${by}:${from || ''}:${to || ''}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT ${groupCol} AS label,
                 COUNT(DISTINCT l.id) AS leads,
                 COUNT(DISTINCT CASE WHEN LOWER(l.status)='converted' THEN l.id END) AS converted,
                 COUNT(DISTINCT s.id) AS subscribers,
-                COALESCE(SUM(CASE WHEN p.status='paid' AND (p.currency IS NULL OR p.currency='EGP') THEN p.amount END),0) AS revenue
+                COALESCE(SUM(CASE WHEN p.status='paid' THEN p.amount_egp END),0) AS revenue
            FROM leads l
            ${salesJoin}
-           LEFT JOIN subscribers s ON s.lead_id = l.id
-           LEFT JOIN payments p ON p.subscriber_id = s.id
+           LEFT JOIN subscribers s ON s.lead_id = l.id AND s.tenant_id=l.tenant_id
+           LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=l.tenant_id
           WHERE ${where}
           GROUP BY label
           ORDER BY revenue DESC, leads DESC
@@ -113,23 +115,23 @@ router.get('/api/admin/funnel/attribution', requireAuth, requireAdmin, async (re
 });
 
 // ── Action Center (mission control) — what the team must act on NOW ──────────
-router.get('/api/admin/action-center', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/action-center', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [pendingProofs, overdueFollowups, uncontacted, pendingCerts, newJoinUs, newContact, failedMsgs] = await Promise.all([
-      n("SELECT COUNT(*) FROM payment_proofs WHERE status='PENDING'"),
-      n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND LOWER(status) NOT IN ('converted','lost')"),
-      n("SELECT COUNT(*) FROM leads WHERE hidden=0 AND LOWER(status)='new' AND created_at < (NOW() - INTERVAL 1 DAY)"),
-      n("SELECT COUNT(*) FROM certificate_requests WHERE status='PENDING'"),
-      n("SELECT COUNT(*) FROM join_us_applications WHERE LOWER(COALESCE(status,'new')) IN ('new','pending')"),
-      n("SELECT COUNT(*) FROM contact_messages WHERE LOWER(COALESCE(status,'new')) IN ('new','pending','unread')"),
-      n("SELECT COUNT(*) FROM message_outbox WHERE status IN ('failed','dead')"),
+      n("SELECT COUNT(*) FROM payment_proofs WHERE tenant_id=? AND status='PENDING'", [req.tenantId]),
+      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND LOWER(status) NOT IN ('converted','lost')", [req.tenantId]),
+      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND LOWER(status)='new' AND created_at < (NOW() - INTERVAL 1 DAY)", [req.tenantId]),
+      n("SELECT COUNT(*) FROM certificate_requests WHERE tenant_id=? AND status='PENDING'", [req.tenantId]),
+      n("SELECT COUNT(*) FROM join_us_applications WHERE tenant_id=? AND LOWER(COALESCE(status,'new')) IN ('new','pending')", [req.tenantId]),
+      n("SELECT COUNT(*) FROM contact_messages WHERE tenant_id=? AND LOWER(COALESCE(status,'new')) IN ('new','pending','unread')", [req.tenantId]),
+      n("SELECT COUNT(*) FROM message_outbox WHERE tenant_id=? AND status IN ('failed','dead')", [req.tenantId]),
     ]);
     let proofList = [];
     try {
       const [rows] = await pool.query(
         `SELECT pp.id, pp.amount, pp.currency, pp.submitted_at, s.name AS subscriber_name
-         FROM payment_proofs pp LEFT JOIN subscribers s ON s.id=pp.subscriber_id
-         WHERE pp.status='PENDING' ORDER BY pp.submitted_at ASC LIMIT 8`);
+         FROM payment_proofs pp LEFT JOIN subscribers s ON s.id=pp.subscriber_id AND s.tenant_id=pp.tenant_id
+         WHERE pp.tenant_id=? AND pp.status='PENDING' ORDER BY pp.submitted_at ASC LIMIT 8`, [req.tenantId]);
       proofList = rows;
     } catch { /* table shape差 */ }
     const items = [
@@ -172,8 +174,8 @@ router.get('/api/admin/support-inbox', requireAuth, requireAdmin, async (req, re
       try {
         const [rows] = await pool.query(
           `SELECT rr.id, s.name, s.email, s.phone, rr.amount, rr.currency, rr.reason, rr.status, rr.created_at
-           FROM refund_requests rr LEFT JOIN subscribers s ON s.id = rr.subscriber_id
-           ORDER BY rr.created_at DESC LIMIT 100`);
+           FROM refund_requests rr LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id
+           WHERE rr.tenant_id=? ORDER BY rr.created_at DESC LIMIT 100`, [req.tenantId]);
         refunds = rows.map(r => ({ source: 'refund', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: `طلب استرداد ${Number(r.amount || 0).toLocaleString()} ${r.currency || ''}`, preview: r.reason || null, status: String(r.status || 'pending').toLowerCase(), open: isOpen(r.status, ['refunded', 'rejected', 'closed', 'done']), at: r.created_at }));
       } catch { /* table shape */ }
     }
@@ -181,8 +183,8 @@ router.get('/api/admin/support-inbox', requireAuth, requireAdmin, async (req, re
       try {
         const [rows] = await pool.query(
           `SELECT cr.id, s.name, s.email, s.phone, cr.type, cr.status, cr.requested_at
-           FROM certificate_requests cr LEFT JOIN subscribers s ON s.id = cr.subscriber_id
-           ORDER BY cr.requested_at DESC LIMIT 100`);
+           FROM certificate_requests cr LEFT JOIN subscribers s ON s.id = cr.subscriber_id AND s.tenant_id=cr.tenant_id
+           WHERE cr.tenant_id=? ORDER BY cr.requested_at DESC LIMIT 100`, [req.tenantId]);
         certs = rows.map(r => ({ source: 'cert', id: r.id, name: r.name, email: r.email, phone: r.phone, subject: 'طلب شهادة', preview: r.type || null, status: String(r.status || 'pending').toLowerCase(), open: isOpen(r.status, ['issued', 'delivered', 'rejected']), at: r.requested_at }));
       } catch { /* table shape */ }
     }

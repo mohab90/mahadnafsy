@@ -26,6 +26,7 @@ const subTabs: [FinancialSubTab, string, React.ElementType][] = [
   ['installments', 'الأقساط والمديونيات', CalendarDays],
   ['aging', 'تقرير التقادم', AlertCircle],
   ['outstanding', 'أرصدة مستحقة', TrendingDown],
+  ['reconciliation', 'المطابقة', CheckCircle2],
   ['monthly', 'التقرير الشهري', BarChart3],
   ['commissions', 'عمولات الفريق', Percent],
   ['proofs', 'إيصالات التحويل', Receipt],

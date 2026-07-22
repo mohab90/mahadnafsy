@@ -7,22 +7,9 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const logger = require('../lib/logger').child({ module: 'crm-advanced-route' });
 const { sanitize, tryJson } = require('../lib/helpers');
-const { logLeadEvent } = require('../lib/crm');
-const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
-
-const LEAD_STATUSES = new Set([
-  'new',
-  'contacted',
-  'interested',
-  'not_interested',
-  'no_answer',
-  'closed',
-  'converted',
-  'lost',
-  'disqualified',
-  'archived',
-]);
+const { logLeadEvent, logLeadEventStrict } = require('../lib/crm');
+const { normalizeLeadStatus, transitionLead } = require('../lib/leadState');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'crm advanced route failed') {
   logger.error(message, error);
@@ -30,13 +17,10 @@ function routeError(res, error, message = 'crm advanced route failed') {
 }
 
 function scopedTenantId(req) {
-  return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
+  return req.tenantId;
 }
 
-function leadTenantWhere(tenantId) {
-  if (tenantId === DEFAULT_TENANT_ID) {
-    return '(tenant_id = ? OR tenant_id IS NULL OR tenant_id = \'\')';
-  }
+function leadTenantWhere() {
   return 'tenant_id = ?';
 }
 
@@ -62,7 +46,7 @@ async function loadAccessibleLead(req, leadId) {
   if (!lead) return { status: 404, error: 'Lead not found' };
 
   const role = String(req.staffRecord?.role || '').toUpperCase();
-  if (role === 'SALES' && lead.assigned_sales_id && lead.assigned_sales_id !== req.staffRecord.id) {
+  if (role === 'SALES' && lead.assigned_sales_id !== req.staffRecord.id) {
     return { status: 403, error: 'Lead is assigned to another sales user' };
   }
 
@@ -70,40 +54,26 @@ async function loadAccessibleLead(req, leadId) {
 }
 
 // PUT /api/admin/crm/leads/:id/status
-router.put('/api/admin/crm/leads/:id/status', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/crm/leads/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   try {
-    const status = String(req.body?.status || '').trim().toLowerCase();
-    if (!LEAD_STATUSES.has(status)) {
-      return res.status(400).json({ error: 'Invalid lead status' });
-    }
+    const status = normalizeLeadStatus(req.body?.status);
 
     const loaded = await loadAccessibleLead(req, req.params.id);
     if (!loaded.lead) return res.status(loaded.status).json({ error: loaded.error });
     const { lead, tenantId } = loaded;
     const previousStatus = String(lead.status || '').toLowerCase();
 
-    await pool.query(
-      `UPDATE leads SET status = ?, updated_at = NOW()
-       WHERE id = ? AND ${leadTenantWhere(tenantId)}`,
-      [status, lead.id, tenantId]
-    );
-
-    if (previousStatus !== status) {
-      await logLeadEvent(lead.id, 'status_changed', `Status changed: ${previousStatus || 'unknown'} -> ${status}`, {
-        from: previousStatus || null,
-        to: status,
-        actor: actor(req),
-      });
-    }
+    await transitionLead({ tenantId, leadId: lead.id, toStatus: status, actor: actor(req) });
 
     res.json({ ok: true, id: lead.id, previousStatus, status });
   } catch (e) {
+    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
     routeError(res, e, 'crm status update failed');
   }
 });
 
 // POST /api/admin/crm/leads/:id/interactions
-router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   try {
     const type = sanitize(String(req.body?.type || 'note').trim().toLowerCase(), 80) || 'note';
     const notes = sanitize(String(req.body?.notes || req.body?.description || '').trim(), 2000);
@@ -116,9 +86,9 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
     const meta = { type, outcome: outcome || null, actor: actor(req) };
 
     await pool.query(
-      `INSERT INTO lead_timeline (id, lead_id, event_type, description, meta_json, at)
-       VALUES (?, ?, ?, ?, ?, NOW())`,
-      [eventId, loaded.lead.id, 'interaction', notes, JSON.stringify(meta)]
+      `INSERT INTO lead_timeline (id, tenant_id, lead_id, event_type, description, meta_json, at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [eventId, loaded.tenantId, loaded.lead.id, 'interaction', notes, JSON.stringify(meta)]
     );
 
     res.json({ ok: true, id: eventId, leadId: loaded.lead.id });
@@ -128,7 +98,7 @@ router.post('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOr
 });
 
 // GET /api/admin/crm/leads/:id/interactions
-router.get('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   try {
     const loaded = await loadAccessibleLead(req, req.params.id);
     if (!loaded.lead) return res.status(loaded.status).json({ error: loaded.error });
@@ -137,10 +107,10 @@ router.get('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrS
     const [rows] = await pool.query(
       `SELECT id, lead_id, event_type, description, meta_json, at
        FROM lead_timeline
-       WHERE lead_id = ?
+       WHERE tenant_id=? AND lead_id = ?
        ORDER BY at DESC
        LIMIT ?`,
-      [loaded.lead.id, limit]
+      [loaded.tenantId, loaded.lead.id, limit]
     );
 
     res.json({
@@ -168,7 +138,7 @@ router.get('/api/admin/crm/leads/:id/interactions', requireAuth, requireAdminOrS
 });
 
 // POST /api/admin/crm/leads/smart-route
-router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, requirePermission('manage_leads'), async (req, res) => {
   const tenantId = scopedTenantId(req);
   const limit = Math.min(Math.max(parseInt(req.body?.limit || '100', 10) || 100, 1), 500);
   const mode = req.body?.mode === 'all' ? 'all' : 'unassigned';
@@ -176,14 +146,12 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, async
 
   try {
     await conn.beginTransaction();
-    const assignmentEvents = [];
-
     const targetWhere = mode === 'all'
       ? `hidden = 0 AND ${leadTenantWhere(tenantId)} AND status NOT IN ('converted','lost','archived','disqualified')`
       : `hidden = 0 AND ${leadTenantWhere(tenantId)} AND assigned_sales_id IS NULL AND status NOT IN ('converted','lost','archived','disqualified')`;
 
     const [targets] = await conn.query(
-      `SELECT id FROM leads WHERE ${targetWhere} ORDER BY score DESC, created_at ASC LIMIT ?`,
+      `SELECT id,assigned_sales_id,assigned_sales_name FROM leads WHERE ${targetWhere} ORDER BY score DESC, created_at ASC LIMIT ? FOR UPDATE`,
       [tenantId, limit]
     );
 
@@ -200,10 +168,10 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, async
        AND l.hidden = 0
        AND l.status NOT IN ('converted','lost','archived','disqualified')
        AND ${leadTenantWhere(tenantId).replace(/tenant_id/g, 'l.tenant_id')}
-      WHERE UPPER(s.role) IN ('SALES','MANAGER') AND COALESCE(s.is_active, 1) = 1
+      WHERE s.tenant_id=? AND UPPER(s.role)='SALES' AND COALESCE(s.is_active, 1) = 1 AND s.deleted_at IS NULL
       GROUP BY s.id, s.name, s.role
       ORDER BY active_leads ASC, s.name ASC
-    `, [tenantId]);
+    `, [tenantId, tenantId]);
 
     if (!reps.length) {
       await conn.commit();
@@ -221,22 +189,17 @@ router.post('/api/admin/crm/leads/smart-route', requireAuth, requireAdmin, async
       );
       rep.active_leads = Number(rep.active_leads || 0) + 1;
       assigned += 1;
-      assignmentEvents.push({
-        leadId: target.id,
-        description: `Smart route assigned to ${rep.name || rep.id}`,
-        meta: {
+      await logLeadEventStrict(target.id, 'assigned', `Smart route assigned to ${rep.name || rep.id}`, {
+        fromSalesId: target.assigned_sales_id || null,
+        fromSalesName: target.assigned_sales_name || null,
         salesId: rep.id,
         salesName: rep.name,
         mode,
         actor: actor(req),
-        },
-      });
+      }, tenantId, conn);
     }
 
     await conn.commit();
-    await Promise.allSettled(assignmentEvents.map(event =>
-      logLeadEvent(event.leadId, 'assigned', event.description, event.meta)
-    ));
     res.json({ ok: true, assigned, reps: reps.length, mode });
   } catch (e) {
     await conn.rollback().catch(() => {});

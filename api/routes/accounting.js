@@ -73,9 +73,9 @@ router.patch('/api/admin/waitlist/:id', requireAuth, requireAdminOrStaff, async 
 // ── Accounting Periods (Period Closing) ──────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.get('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM accounting_periods ORDER BY opened_at DESC LIMIT 100');
+    const [rows] = await pool.query('SELECT * FROM accounting_periods WHERE tenant_id=? ORDER BY opened_at DESC LIMIT 100', [req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -83,63 +83,88 @@ router.get('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, as
 router.post('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     // Ensure no other open period exists
-    const [[existing]] = await pool.query("SELECT id FROM accounting_periods WHERE status='open' LIMIT 1");
+    const [[existing]] = await pool.query("SELECT id FROM accounting_periods WHERE tenant_id=? AND status='open' LIMIT 1", [req.tenantId]);
     if (existing) return res.status(409).json({ error: 'يوجد فترة مفتوحة بالفعل. أغلقها أولاً.' });
     const label = req.body.label || new Date().toISOString().slice(0, 7); // YYYY-MM
     const { uuidv4 } = require('../lib/id');
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO accounting_periods (id, period_label, status) VALUES (?, ?, 'open')`,
-      [id, label]
+      `INSERT INTO accounting_periods (id, tenant_id, period_label, status) VALUES (?, ?, ?, 'open')`,
+      [id, req.tenantId, label]
     );
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'يوجد تعارض مع فترة مفتوحة أو مكررة' });
+    logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
     const { id } = req.params;
     const actor = req.user?.email || req.user?.name || 'admin';
+    await conn.beginTransaction();
+    transactionStarted = true;
     // Build a revenue snapshot from payments table
-    const [[period]] = await pool.query('SELECT * FROM accounting_periods WHERE id=? LIMIT 1', [id]);
-    if (!period) return res.status(404).json({ error: 'Period not found' });
-    if (period.status === 'closed') return res.status(409).json({ error: 'Already closed' });
+    const [[period]] = await conn.query('SELECT * FROM accounting_periods WHERE tenant_id=? AND id=? LIMIT 1 FOR UPDATE', [req.tenantId, id]);
+    if (!period) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(404).json({ error: 'Period not found' });
+    }
+    if (period.status === 'closed') {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({ error: 'Already closed' });
+    }
     // Pure, tested half-open range [startDate, endDate) — no DB round-trip.
     const range = monthRange(period.period_label);
-    if (!range) return res.status(400).json({ error: 'تنسيق الفترة غير صالح (متوقع YYYY-MM)' });
+    if (!range) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(400).json({ error: 'تنسيق الفترة غير صالح (متوقع YYYY-MM)' });
+    }
     const { startDate, endDate } = range;
     // Snapshot revenue by the payment's BUSINESS date (`date`), not `created_at`.
     // A payment collected in month M but entered later must fall in M's period.
     // `date` is also indexed (idx_payments_date) whereas created_at is not.
-    const [pmts] = await pool.query(
+    const [pmts] = await conn.query(
       `SELECT SUM(amount) AS total, currency, COUNT(*) AS count
-       FROM payments WHERE status='paid'
+       FROM payments WHERE tenant_id=? AND status='paid'
          AND \`date\` >= ? AND \`date\` < ?
        GROUP BY currency`,
-      [startDate, endDate]
+      [req.tenantId, startDate, endDate]
     );
-    const [exps] = await pool.query(
+    const [exps] = await conn.query(
       `SELECT SUM(amount) AS total, currency FROM expenses
-       WHERE deleted_at IS NULL AND date >= ? AND date < ?
+       WHERE tenant_id=? AND deleted_at IS NULL AND date >= ? AND date < ?
        GROUP BY currency`,
-      [startDate, endDate]
+      [req.tenantId, startDate, endDate]
     ).catch(() => [[]]);
     const summary = { revenues: pmts, expenses: exps, closedBy: actor, closedAt: new Date().toISOString() };
-    await pool.query(
-      `UPDATE accounting_periods SET status='closed', closed_at=NOW(), closed_by=?, summary_json=? WHERE id=?`,
-      [actor, JSON.stringify(summary), id]
+    await conn.query(
+      `UPDATE accounting_periods SET status='closed', closed_at=NOW(), closed_by=?, summary_json=? WHERE tenant_id=? AND id=?`,
+      [actor, JSON.stringify(summary), req.tenantId, id]
     );
-    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'close', newData: { period_label: period.period_label }, actor });
+    await conn.commit();
+    transactionStarted = false;
+    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'close', newData: { period_label: period.period_label }, actor, tenantId: req.tenantId });
     res.json({ ok: true, summary });
-  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const { id } = req.params;
     const actor = req.user?.email || req.user?.name || 'admin';
-    await pool.query(`UPDATE accounting_periods SET status='open', closed_at=NULL, closed_by=NULL WHERE id=?`, [id]);
-    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'reopen', actor });
+    const [result] = await pool.query(
+      `UPDATE accounting_periods SET status='open', closed_at=NULL, closed_by=NULL WHERE tenant_id=? AND id=?`,
+      [req.tenantId, id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Period not found' });
+    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'reopen', actor, tenantId: req.tenantId });
     res.json({ ok: true });
   } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

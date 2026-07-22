@@ -6,7 +6,10 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+
+const cacheKey = (req, resource) => `community:${req.tenantId || 'tenant-default'}:${resource}:public`;
+const invalidate = (req, resource) => cacheInvalidate(`community:${req.tenantId || 'tenant-default'}:${resource}`);
 
 // Community Posts
 // Map a DB row to the client-facing shape (camelCase author* + status), keeping snake-case too.
@@ -21,12 +24,13 @@ const mapPost = (r) => ({
 });
 
 // Admin moderation list — returns ALL posts incl. pending/rejected so they can be reviewed.
-router.get('/api/admin/community/posts', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requirePermission('view_community'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, title, category, body, author, author_role, subscriber_id, image_url, tags,
               featured, pinned, likes, status, created_at
-       FROM community_posts ORDER BY (status='pending') DESC, created_at DESC LIMIT 500`
+       FROM community_posts WHERE tenant_id=? ORDER BY (status='pending') DESC, created_at DESC LIMIT 500`,
+      [req.tenantId]
     );
     res.json(rows.map(mapPost));
   } catch (e) {
@@ -36,12 +40,13 @@ router.get('/api/admin/community/posts', requireAuth, requireAdmin, async (_req,
 });
 
 // Public feed — only APPROVED posts are visible to everyone.
-router.get('/api/community/posts', async (_req, res) => {
+router.get('/api/community/posts', async (req, res) => {
   try {
-    const data = await cached('community:posts:public', 5 * 60 * 1000, async () => {
+    const data = await cached(cacheKey(req, 'posts'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at
-         FROM community_posts WHERE status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`
+         FROM community_posts WHERE tenant_id=? AND status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`,
+        [req.tenantId]
       );
       return rows.map(mapPost);
     });
@@ -58,19 +63,24 @@ router.post('/api/community/posts', requireAuth, async (req, res) => {
   try {
     const p = req.body || {};
     if (!p.title?.trim() || !p.body?.trim()) return res.status(400).json({ error: 'title and body are required' });
-    const id = p.id || uuidv4();
-    const subId = (req.user && (req.user.uid || req.user.email)) || null;
+    const id = uuidv4();
+    const [[subscriber]] = await pool.query(
+      `SELECT id, name FROM subscribers
+       WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?))) LIMIT 1`,
+      [req.tenantId, req.user?.uid || '', req.user?.email || '']
+    );
+    if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
     await pool.query(
-      `INSERT INTO community_posts (id, title, category, body, author, author_role, subscriber_id, image_url, tags, featured, pinned, likes, status, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)`,
+      `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, subscriber_id, image_url, tags, featured, pinned, likes, status, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)`,
       [
-        id, p.title.trim().slice(0, 200), p.tag || p.category || 'general', p.body.trim().slice(0, 5000),
-        (p.authorName || p.author || 'عضو').slice(0, 120), (p.authorRole || 'عضو').slice(0, 80),
-        subId, p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
+        id, req.tenantId, p.title.trim().slice(0, 200), p.tag || p.category || 'general', p.body.trim().slice(0, 5000),
+        String(subscriber.name || 'عضو').slice(0, 120), 'عضو',
+        subscriber.id, p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
         0, 0, 0, p.createdAt || new Date().toISOString(),
       ]
     );
-    cacheInvalidate('community:posts');
+    invalidate(req, 'posts');
     res.json({ ok: true, id, status: 'pending' });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -79,25 +89,28 @@ router.post('/api/community/posts', requireAuth, async (req, res) => {
 });
 
 // Admin create/update — persists moderation status (admin posts default to approved).
-router.post('/api/admin/community/posts', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
     const p = req.body;
     const id = p.id || uuidv4();
     const status = p.status || 'approved';
-    await pool.query(
-      `INSERT INTO community_posts (id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE title=VALUES(title), body=VALUES(body), category=VALUES(category),
-         author=VALUES(author), author_role=VALUES(author_role), image_url=VALUES(image_url), tags=VALUES(tags),
-         featured=VALUES(featured), pinned=VALUES(pinned), status=VALUES(status)`,
-      [
-        id, p.title || '', p.tag || p.category || 'general', p.body || '',
-        p.authorName || p.author || '', p.authorRole || '', p.authorImage || p.imageUrl || null,
-        JSON.stringify(p.tags || []), p.featured ? 1 : 0, p.pinned ? 1 : 0, p.likes || 0,
-        status, p.createdAt || new Date().toISOString(),
-      ]
+    const values = [
+      p.title || '', p.tag || p.category || 'general', p.body || '', p.authorName || p.author || '',
+      p.authorRole || '', p.authorImage || p.imageUrl || null, JSON.stringify(p.tags || []),
+      p.featured ? 1 : 0, p.pinned ? 1 : 0, status,
+    ];
+    const [updated] = p.id ? await pool.query(
+      `UPDATE community_posts SET title=?, category=?, body=?, author=?, author_role=?, image_url=?, tags=?, featured=?, pinned=?, status=?
+       WHERE tenant_id=? AND id=?`,
+      [...values, req.tenantId, id]
+    ) : [{ affectedRows: 0 }];
+    if (p.id && !updated.affectedRows) return res.status(404).json({ error: 'Post not found' });
+    if (!p.id) await pool.query(
+      `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, ...values.slice(0, 9), p.likes || 0, status, p.createdAt || new Date().toISOString()]
     );
-    cacheInvalidate('community:posts');
+    invalidate(req, 'posts');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -105,10 +118,11 @@ router.post('/api/admin/community/posts', requireAuth, requireAdmin, async (req,
   }
 });
 
-router.delete('/api/admin/community/posts/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/community/posts/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM community_posts WHERE id = ?', [req.params.id]);
-    cacheInvalidate('community:posts');
+    const [result] = await pool.query('DELETE FROM community_posts WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Post not found' });
+    invalidate(req, 'posts');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -117,12 +131,13 @@ router.delete('/api/admin/community/posts/:id', requireAuth, requireAdmin, async
 });
 
 // Community Library
-router.get('/api/community/library', async (_req, res) => {
+router.get('/api/community/library', async (req, res) => {
   try {
-    const data = await cached('community:library:public', 5 * 60 * 1000, async () => {
+    const data = await cached(cacheKey(req, 'library'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT id, title, category, description, file_url, thumbnail, file_type, tags, created_at
-         FROM community_library ORDER BY created_at DESC LIMIT 200`
+         FROM community_library WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
+        [req.tenantId]
       );
       return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
     });
@@ -134,21 +149,22 @@ router.get('/api/community/library', async (_req, res) => {
   }
 });
 
-router.post('/api/admin/community/library', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/community/library', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
     const l = req.body;
     const id = l.id || uuidv4();
-    await pool.query(
-      `INSERT INTO community_library (id, title, category, description, file_url, thumbnail, file_type, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), file_url=VALUES(file_url)`,
-      [
-        id, l.title || '', l.category || 'general', l.description || '', l.fileUrl || l.file_url || '',
-        l.thumbnail || null, l.fileType || l.file_type || 'pdf', JSON.stringify(l.tags || []),
-        l.createdAt || new Date().toISOString(),
-      ]
+    const values = [l.title || '', l.category || 'general', l.description || '', l.fileUrl || l.file_url || '', l.thumbnail || null, l.fileType || l.file_type || 'pdf', JSON.stringify(l.tags || [])];
+    const [updated] = l.id ? await pool.query(
+      'UPDATE community_library SET title=?, category=?, description=?, file_url=?, thumbnail=?, file_type=?, tags=? WHERE tenant_id=? AND id=?',
+      [...values, req.tenantId, id]
+    ) : [{ affectedRows: 0 }];
+    if (l.id && !updated.affectedRows) return res.status(404).json({ error: 'Library item not found' });
+    if (!l.id) await pool.query(
+      `INSERT INTO community_library (id, tenant_id, title, category, description, file_url, thumbnail, file_type, tags, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, ...values, l.createdAt || new Date().toISOString()]
     );
-    cacheInvalidate('community:library');
+    invalidate(req, 'library');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -156,10 +172,11 @@ router.post('/api/admin/community/library', requireAuth, requireAdmin, async (re
   }
 });
 
-router.delete('/api/admin/community/library/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/community/library/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM community_library WHERE id = ?', [req.params.id]);
-    cacheInvalidate('community:library');
+    const [result] = await pool.query('DELETE FROM community_library WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Library item not found' });
+    invalidate(req, 'library');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -168,12 +185,13 @@ router.delete('/api/admin/community/library/:id', requireAuth, requireAdmin, asy
 });
 
 // Community Videos
-router.get('/api/community/videos', async (_req, res) => {
+router.get('/api/community/videos', async (req, res) => {
   try {
-    const data = await cached('community:videos:public', 5 * 60 * 1000, async () => {
+    const data = await cached(cacheKey(req, 'videos'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT id, title, category, description, video_url, thumbnail, duration, tags, created_at
-         FROM community_videos ORDER BY created_at DESC LIMIT 200`
+         FROM community_videos WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
+        [req.tenantId]
       );
       return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
     });
@@ -185,21 +203,22 @@ router.get('/api/community/videos', async (_req, res) => {
   }
 });
 
-router.post('/api/admin/community/videos', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/community/videos', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
     const v = req.body;
     const id = v.id || uuidv4();
-    await pool.query(
-      `INSERT INTO community_videos (id, title, category, description, video_url, thumbnail, duration, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), video_url=VALUES(video_url)`,
-      [
-        id, v.title || '', v.category || 'general', v.description || '',
-        v.videoUrl || v.video_url || '', v.thumbnail || null, v.duration || '', JSON.stringify(v.tags || []),
-        v.createdAt || new Date().toISOString(),
-      ]
+    const values = [v.title || '', v.category || 'general', v.description || '', v.videoUrl || v.video_url || '', v.thumbnail || null, v.duration || '', JSON.stringify(v.tags || [])];
+    const [updated] = v.id ? await pool.query(
+      'UPDATE community_videos SET title=?, category=?, description=?, video_url=?, thumbnail=?, duration=?, tags=? WHERE tenant_id=? AND id=?',
+      [...values, req.tenantId, id]
+    ) : [{ affectedRows: 0 }];
+    if (v.id && !updated.affectedRows) return res.status(404).json({ error: 'Video not found' });
+    if (!v.id) await pool.query(
+      `INSERT INTO community_videos (id, tenant_id, title, category, description, video_url, thumbnail, duration, tags, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, ...values, v.createdAt || new Date().toISOString()]
     );
-    cacheInvalidate('community:videos');
+    invalidate(req, 'videos');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -207,10 +226,11 @@ router.post('/api/admin/community/videos', requireAuth, requireAdmin, async (req
   }
 });
 
-router.delete('/api/admin/community/videos/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/community/videos/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM community_videos WHERE id = ?', [req.params.id]);
-    cacheInvalidate('community:videos');
+    const [result] = await pool.query('DELETE FROM community_videos WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Video not found' });
+    invalidate(req, 'videos');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -219,13 +239,14 @@ router.delete('/api/admin/community/videos/:id', requireAuth, requireAdmin, asyn
 });
 
 // Community Events
-router.get('/api/community/events', async (_req, res) => {
+router.get('/api/community/events', async (req, res) => {
   try {
-    const data = await cached('community:events:public', 5 * 60 * 1000, async () => {
+    const data = await cached(cacheKey(req, 'events'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT id, title, category, description, image_url, event_date, date_label,
          location_name, registration_url, is_online, tags, created_at
-         FROM community_events ORDER BY created_at DESC LIMIT 200`
+         FROM community_events WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
+        [req.tenantId]
       );
       return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
     });
@@ -237,25 +258,29 @@ router.get('/api/community/events', async (_req, res) => {
   }
 });
 
-router.post('/api/admin/community/events', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/community/events', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
     const ev = req.body;
     const id = ev.id || uuidv4();
-    await pool.query(
-      `INSERT INTO community_events (id, title, category, description, image_url,
+    const values = [
+      ev.title || '', ev.category || 'general', ev.description || '', ev.imageUrl || ev.image_url || null,
+      ev.eventDate || ev.event_date || null, ev.dateLabel || ev.date_label || null,
+      ev.location || ev.location_name || null, ev.registrationUrl || ev.registration_url || null,
+      ev.isOnline ? 1 : 0, JSON.stringify(ev.tags || []),
+    ];
+    const [updated] = ev.id ? await pool.query(
+      `UPDATE community_events SET title=?, category=?, description=?, image_url=?, event_date=?, date_label=?,
+       location_name=?, registration_url=?, is_online=?, tags=? WHERE tenant_id=? AND id=?`,
+      [...values, req.tenantId, id]
+    ) : [{ affectedRows: 0 }];
+    if (ev.id && !updated.affectedRows) return res.status(404).json({ error: 'Event not found' });
+    if (!ev.id) await pool.query(
+      `INSERT INTO community_events (id, tenant_id, title, category, description, image_url,
          event_date, date_label, location_name, registration_url, is_online, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description),
-         event_date=VALUES(event_date), date_label=VALUES(date_label)`,
-      [
-        id, ev.title || '', ev.category || 'general', ev.description || '',
-        ev.imageUrl || ev.image_url || null, ev.eventDate || ev.event_date || null,
-        ev.dateLabel || ev.date_label || null, ev.location || ev.location_name || null,
-        ev.registrationUrl || ev.registration_url || null, ev.isOnline ? 1 : 0,
-        JSON.stringify(ev.tags || []), ev.createdAt || new Date().toISOString(),
-      ]
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, req.tenantId, ...values, ev.createdAt || new Date().toISOString()]
     );
-    cacheInvalidate('community:events');
+    invalidate(req, 'events');
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -263,10 +288,11 @@ router.post('/api/admin/community/events', requireAuth, requireAdmin, async (req
   }
 });
 
-router.delete('/api/admin/community/events/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/community/events/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM community_events WHERE id = ?', [req.params.id]);
-    cacheInvalidate('community:events');
+    const [result] = await pool.query('DELETE FROM community_events WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Event not found' });
+    invalidate(req, 'events');
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);

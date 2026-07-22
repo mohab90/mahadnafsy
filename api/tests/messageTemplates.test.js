@@ -37,3 +37,10 @@ test('all four templates have defaults', () => {
     assert.equal(typeof TEMPLATE_DEFAULTS[key], 'string');
   }
 });
+
+test('custom templates are isolated between tenants', () => {
+  setTemplates({ lead_retargeting: 'A {{name}}' }, 'tenant-a');
+  setTemplates({ lead_retargeting: 'B {{name}}' }, 'tenant-b');
+  assert.equal(renderTemplate('lead_retargeting', { name: 'X' }, 'tenant-a'), 'A X');
+  assert.equal(renderTemplate('lead_retargeting', { name: 'X' }, 'tenant-b'), 'B X');
+});

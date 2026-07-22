@@ -9,6 +9,8 @@ const logger = require('./logger');
  * Keys + variables MUST stay in sync with admin/pages/dashboard/messageTemplates.ts.
  */
 const { pool } = require('./db');
+const { getTenantSetting } = require('./tenantSettings');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 // Built-in defaults (the original hardcoded texts). {{var}} placeholders are filled
 // by renderTemplate. Keep var names identical to the frontend defs.
@@ -23,10 +25,10 @@ const TEMPLATE_DEFAULTS = Object.freeze({
     'أهلاً {{name}} 💜\nمهاد نفسي — المعهد المتخصص في الصحة النفسية 🌱\n\nنحن هنا لدعمك في رحلتك نحو التطور المهني.\nتواصل معنا الآن لمعرفة أحدث البرامج المتاحة 📚\n\nللاستفسار تواصل معنا عبر الواتساب 💚',
 });
 
-let _custom = Object.create(null);
+const customByTenant = new Map();
 let _timer = null;
 
-function setTemplates(obj) {
+function setTemplates(obj, tenantId = DEFAULT_TENANT) {
   const next = Object.create(null);
   if (obj && typeof obj === 'object') {
     for (const [k, v] of Object.entries(obj)) {
@@ -35,29 +37,27 @@ function setTemplates(obj) {
       }
     }
   }
-  _custom = next;
-  return _custom;
+  customByTenant.set(String(tenantId || DEFAULT_TENANT), next);
+  return next;
 }
 
 /** Fill {{var}} (whitespace-tolerant) from `vars`; unknown placeholders become ''. */
-function renderTemplate(key, vars = {}) {
-  const tpl = _custom[key] || TEMPLATE_DEFAULTS[key] || '';
+function renderTemplate(key, vars = {}, tenantId = DEFAULT_TENANT) {
+  const custom = customByTenant.get(String(tenantId || DEFAULT_TENANT)) || Object.create(null);
+  const tpl = custom[key] || TEMPLATE_DEFAULTS[key] || '';
   return tpl.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, name) => {
     const val = vars[name];
     return val === undefined || val === null ? '' : String(val);
   });
 }
 
-async function loadTemplates() {
+async function loadTemplates(tenantId = DEFAULT_TENANT) {
   try {
-    const [rows] = await pool.query("SELECT `value` FROM site_config WHERE `key` = 'content' LIMIT 1");
-    if (!rows.length) { setTemplates({}); return {}; }
-    let content = rows[0].value;
-    if (typeof content === 'string') { try { content = JSON.parse(content); } catch { content = {}; } }
+    const content = await getTenantSetting('content', { tenantId, fallback: {} }) || {};
     const raw = content && content['msg.templates'];
     let tpls = {};
     if (raw) { try { tpls = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { tpls = {}; } }
-    return setTemplates(tpls);
+    return setTemplates(tpls, tenantId);
   } catch (e) {
     logger.error('[messageTemplates] load failed:', e.message);
     return null;
@@ -65,11 +65,14 @@ async function loadTemplates() {
 }
 
 function startTemplatesRefresh(intervalMs = 60 * 1000) {
-  loadTemplates()
-    .then(t => { if (t) logger.info(`[messageTemplates] loaded ${Object.keys(t).length} custom template(s)`); })
-    .catch(() => {});
+  const refresh = async () => {
+    const [rows] = await pool.query("SELECT id FROM tenants WHERE status='active'").catch(() => [[]]);
+    const tenantIds = rows.length ? rows.map(row => row.id) : [DEFAULT_TENANT];
+    await Promise.all(tenantIds.map(tenantId => loadTemplates(tenantId)));
+  };
+  refresh().catch(() => {});
   if (_timer) clearInterval(_timer);
-  _timer = setInterval(() => { loadTemplates().catch(() => {}); }, intervalMs);
+  _timer = setInterval(() => { refresh().catch(() => {}); }, intervalMs);
   if (_timer.unref) _timer.unref();
   return _timer;
 }

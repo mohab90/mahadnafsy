@@ -30,6 +30,7 @@ const FinancialRefundsPanel = React.lazy(() => import('./financial/FinancialRefu
 const IncomeModal = React.lazy(() => import('./financial/IncomeModal').then(module => ({ default: module.IncomeModal })));
 const MonthlyRevenuePanel = React.lazy(() => import('./financial/MonthlyRevenuePanel').then(module => ({ default: module.MonthlyRevenuePanel })));
 const OutstandingPanel = React.lazy(() => import('./financial/OutstandingPanel').then(module => ({ default: module.OutstandingPanel })));
+const ReconciliationPanel = React.lazy(() => import('./financial/ReconciliationPanel'));
 const PaymentProofsPanel = React.lazy(() => import('./financial/PaymentProofsPanel').then(module => ({ default: module.PaymentProofsPanel })));
 const PaymentReviewPanel = React.lazy(() => import('./financial/PaymentReviewPanel').then(module => ({ default: module.PaymentReviewPanel })));
 const PeriodClosingPanel = React.lazy(() => import('./FinancialPanels').then(module => ({ default: module.PeriodClosingPanel })));
@@ -742,6 +743,8 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
       {/* ─── Outstanding Balances Tab ─── */}
       {financialSubTab === 'outstanding' && <OutstandingPanel notify={notify} />}
+
+      {financialSubTab === 'reconciliation' && <ReconciliationPanel />}
 
       {/* ── Audit Log ─────────────────────────────────────────────────── */}
       {financialSubTab === 'audit' && <AuditLogPanel />}

@@ -94,7 +94,7 @@ const LeadSectionFallback = () => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
-  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, deleteLead, addSubscriber, updateSubscriber, authUser, isAdmin, fbLeadAdsConfig, setFbLeadAdsConfig, issueClientCodeAsync, content } = useSiteData();
+  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber, authUser, isAdmin, fbLeadAdsConfig, setFbLeadAdsConfig, issueClientCodeAsync, content } = useSiteData();
   const instituteBranches = useBranches();
   const navigate = useNavigate();
   const currentStaff = useMemo(() =>
@@ -944,40 +944,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const convertLeadToSubscriber = async () => {
     const { lead, courseId, accessMode } = convertLeadModal;
     if (!lead || !courseId) return;
-    // Check for existing subscriber to avoid duplicates
-    const existingSub = subscribers.find((s) =>
-      (lead.phone && lead.phone.length > 5 && s.phone === lead.phone) ||
-      (lead.email && lead.email.length > 3 && s.email === lead.email)
-    );
-    if (existingSub) {
-      const newCourseIds = (existingSub.enrolledCourseIds || []).includes(courseId)
-        ? (existingSub.enrolledCourseIds || [])
-        : [...(existingSub.enrolledCourseIds || []), courseId];
-      updateSubscriber({
-        ...existingSub,
-        enrolledCourseIds: newCourseIds,
-        courseAccess: { ...(existingSub.courseAccess ?? {}), [courseId]: { mode: accessMode } },
-        paymentHistory: [...(existingSub.paymentHistory ?? []), ...(lead.paymentRecords ?? []).map((p) => ({ id: p.id, amount: p.amount, currency: p.currency, note: [p.note, p.paymentMethod, p.transactionId].filter(Boolean).join(' | ') || undefined, paymentType: p.paymentType, courseId: p.courseId || undefined, isInstallment: false, at: p.date }))],
-        leadId: existingSub.leadId || lead.id,
-      });
-    } else {
-      void addSubscriber({
-        id: `sub-${Date.now()}`,
-        leadId: lead.id,
-        clientCode: lead.clientCode || await issueClientCodeAsync(),
-        name: lead.name,
-        email: lead.email,
-        phone: lead.phone,
-        enrolledCourseIds: [courseId],
-        courseAccess: { [courseId]: { mode: accessMode } },
-        branch: lead.branch,
-        status: 'active',
-        paymentHistory: (lead.paymentRecords ?? []).map((p) => ({ id: p.id, amount: p.amount, currency: p.currency, note: [p.note, p.paymentMethod, p.transactionId].filter(Boolean).join(' | ') || undefined, paymentType: p.paymentType, courseId: p.courseId || undefined, isInstallment: false, at: p.date })),
-        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-      });
+    try {
+      await mysqlAdmin.convertLead(lead.id, { courseId, accessMode });
+      await Promise.all([reloadLeads(), reloadSubscribers()]);
+      notify('success', 'تم تحويل العميل وربط الكورس داخل النظام بنجاح');
+      setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' });
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحويل العميل');
     }
-    updateLead({ ...lead, status: 'converted' });
-    setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' });
   };
   const handleBulkFbUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

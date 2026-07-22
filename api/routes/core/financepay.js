@@ -6,7 +6,7 @@ const logger = require('../../lib/logger');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { logPaymentAudit, postJournalEntry, _paymentAccountCode, toEgp } = require('../../lib/finance');
+const { logPaymentAudit, postPaymentJournal, toEgp } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
@@ -38,7 +38,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Payment not found' });
     }
-    await assertWritable(payment.date, conn);
+    await assertWritable(payment.date, conn, tenantId);
     const oldStatus = payment.status || 'pending';
     if (oldStatus === 'refunded') {
       await conn.rollback(); transactionStarted = false;
@@ -57,18 +57,10 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     if (becomingPaid) {
       const rawAmount = Number(payment.amount) || 0;
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
-      const amountEgp = await toEgp(rawAmount, payment.currency);
-      const [revenueCode, revenueName] = _paymentAccountCode(payment.payment_type || 'OTHER');
-      const journalId = await postJournalEntry(
-        'payment', id, String(payment.date || new Date().toISOString()).slice(0, 10),
-        `Payment ${rawAmount} ${payment.currency || 'EGP'} (= ${amountEgp} EGP)`,
-        [
-          { account_code: '1100', account_name: 'Cash and banks', debit: amountEgp, credit: 0 },
-          { account_code: revenueCode, account_name: revenueName, debit: 0, credit: amountEgp },
-        ],
-        actor,
-        conn
-      );
+      const journalId = await postPaymentJournal({
+        paymentId: id, amount: rawAmount, currency: payment.currency, payType: payment.payment_type,
+        date: String(payment.date || new Date().toISOString()).slice(0, 10), actor, tenantId,
+      }, conn);
       if (!journalId) throw new Error('Payment journal posting failed');
     }
 
@@ -132,7 +124,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
         );
         const commissionRate = Number(staff?.commission_rate) || 0;
         if (commissionRate > 0) {
-          const amountEgp = await toEgp(Number(payment.amount), payment.currency);
+          const amountEgp = await toEgp(Number(payment.amount), payment.currency, tenantId);
           const commissionAmount = Number((amountEgp * commissionRate / 100).toFixed(2));
           const now = new Date();
           await conn.query(
@@ -168,7 +160,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
           );
           if (subscriber?.phone) {
             await sendWhatsApp(subscriber.phone.replace(/\D/g, ''),
-              `Payment confirmed: ${payment.amount} ${payment.currency || 'EGP'}`);
+              `Payment confirmed: ${payment.amount} ${payment.currency || 'EGP'}`, { tenantId });
           }
         } catch (error) {
           logger.warn('[patch-payment] confirmation notification failed:', error.message);

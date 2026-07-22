@@ -2,6 +2,7 @@
 const logger = require('./logger');
 const { uuidv4 } = require('./id');
 const { pool } = require('./db');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 let notificationsTableReady = false;
 
@@ -12,12 +13,12 @@ async function ensureNotificationsTable() {
 }
 
 // Non-fatal: notification failure must not break the business action that triggered it.
-async function createNotification(type, title, message, data = {}) {
+async function createNotification(type, title, message, data = {}, tenantId = DEFAULT_TENANT) {
   try {
     await ensureNotificationsTable();
     await pool.query(
-      `INSERT INTO notifications (id, type, title, message, data_json) VALUES (?,?,?,?,?)`,
-      [uuidv4(), type || 'info', title || null, message || null, JSON.stringify(data)]
+      `INSERT INTO notifications (id, tenant_id, type, title, message, data_json) VALUES (?,?,?,?,?,?)`,
+      [uuidv4(), tenantId, type || 'info', title || null, message || null, JSON.stringify(data)]
     );
   } catch (e) {
     logger.warn('[notify] createNotification error:', e.message);
