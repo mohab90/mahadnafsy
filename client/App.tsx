@@ -21,6 +21,8 @@ const AboutUs = React.lazy(() => import('./pages/AboutUs'));
 const Policies = React.lazy(() => import('./pages/Policies'));
 const InstituteGallery = React.lazy(() => import('./pages/InstituteGallery'));
 const Contact = React.lazy(() => import('./pages/Contact'));
+const Faq = React.lazy(() => import('./pages/Faq'));
+const TicketRating = React.lazy(() => import('./pages/TicketRating'));
 const JoinUs = React.lazy(() => import('./pages/JoinUs'));
 const Enrollment = React.lazy(() => import('./pages/Enrollment'));
 const Courses = React.lazy(() => import('./pages/Courses'));
@@ -316,6 +318,8 @@ const AppShell: React.FC = () => {
               <Route path="/privacy" element={<Navigate to="/policies" replace />} />
               <Route path="/terms" element={<Navigate to="/policies" replace />} />
               <Route path="/contact" element={lazyPage(<Contact />)} />
+              <Route path="/faq" element={lazyPage(<Faq />)} />
+              <Route path="/ticket-rating" element={lazyPage(<TicketRating />)} />
               <Route path="/join" element={lazyPage(<JoinUs />)} />
               <Route path="/join-us" element={lazyPage(<JoinUs />)} />
               <Route path="/enroll" element={lazyPage(<Enrollment />)} />

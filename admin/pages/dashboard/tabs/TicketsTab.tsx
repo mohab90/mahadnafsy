@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, User, Tag, ChevronDown, Flame, Star, ArrowRight, X, Send, TrendingUp, Zap } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, User, Tag, ChevronDown, Flame, Star, ArrowRight, X, Send, TrendingUp, Zap, ExternalLink } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -37,14 +37,7 @@ interface SupportTicket {
 // Default SLA hours per priority
 const SLA_BY_PRIORITY: Record<TicketPriority, number> = { urgent: 4, high: 12, medium: 24, low: 72 };
 
-// Built-in canned responses
-const CANNED_RESPONSES = [
-  { id: '1', title: 'تأكيد استلام', body: 'شكراً لتواصلك معنا. تم استلام طلبك وسيتم الرد عليك في أقرب وقت.' },
-  { id: '2', title: 'طلب بيانات إضافية', body: 'لنتمكن من مساعدتك، نرجو منك تزويدنا ببيانات إضافية: [أذكر المطلوب]' },
-  { id: '3', title: 'تأكيد الحل', body: 'تم حل مشكلتك بنجاح. إذا كنت لا تزال تواجه أي صعوبة، لا تتردد في التواصل معنا.' },
-  { id: '4', title: 'تحويل للدعم الفني', body: 'تم تحويل طلبك إلى فريق الدعم الفني المختص وسيتواصل معك في أقرب وقت.' },
-  { id: '5', title: 'اعتذار عن التأخير', body: 'نعتذر عن التأخير في الرد. نحن نعمل حالياً على حل مشكلتك وسنعود إليك قريباً.' },
-];
+type CannedResponse = { id: string; title: string; body: string; category: string };
 
 interface TicketMessage {
   id: string;
@@ -77,7 +70,8 @@ const CAT_LABELS: Record<TicketCategory, string> = {
 };
 
 const TicketsTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers } = useSiteData();
+  const { staffMembers, subscribers } = useSiteData();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const focusHandledRef = useRef(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -92,6 +86,10 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const [replyText, setReplyText] = useState('');
   const [draft, setDraft] = useState<Partial<SupportTicket>>({});
   const [showCanned, setShowCanned] = useState(false);
+  const [canned, setCanned] = useState<CannedResponse[]>([]);
+  useEffect(() => {
+    mysqlAdmin.adminGet<CannedResponse[]>('/admin/support/canned-responses').then(rows => setCanned(Array.isArray(rows) ? rows : [])).catch(() => {});
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -651,6 +649,19 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-600 bg-white">
                 {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+              <button onClick={() => {
+                  const em = (selectedTicket.clientEmail || '').toLowerCase().trim();
+                  const ph = (selectedTicket.clientPhone || '').replace(/\D/g, '');
+                  const sub = subscribers.find(s =>
+                    (em && (s.email || '').toLowerCase().trim() === em) ||
+                    (ph.length >= 6 && (s.phone || '').replace(/\D/g, '').includes(ph))
+                  );
+                  if (sub) navigate(`/client/${sub.clientCode || sub.id}`);
+                  else notify('info', 'لا يوجد عميل مسجّل بنفس البريد أو الهاتف');
+                }}
+                className="text-xs px-2 py-1 rounded-lg border border-emerald-200 text-emerald-600 hover:bg-emerald-50 flex items-center gap-1">
+                <ExternalLink size={11} /> ملف العميل
+              </button>
               <button onClick={() => deleteTicketApi(selectedTicket.id)}
                 className="text-xs px-2 py-1 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mr-auto">حذف</button>
             </div>
@@ -677,7 +688,9 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
               <div className="px-4 pb-2 border-t border-gray-100">
                 <p className="text-xs text-gray-400 my-1.5">ردود جاهزة:</p>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {CANNED_RESPONSES.map(c => (
+                  {canned.length === 0 ? (
+                    <p className="text-center text-gray-400 text-xs py-2">لا توجد ردود جاهزة محفوظة (أضِفها من قسم Inbox خدمة العملاء)</p>
+                  ) : canned.map(c => (
                     <button key={c.id} onClick={() => { setReplyText(c.body); setShowCanned(false); }}
                       className="w-full text-right text-xs px-3 py-1.5 bg-gray-50 hover:bg-blue-50 rounded-lg text-gray-700 hover:text-blue-700 transition-colors">
                       <span className="font-bold">{c.title}</span> — <span className="opacity-70">{c.body.slice(0, 50)}…</span>

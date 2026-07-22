@@ -50,6 +50,31 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
   const { staffMembers, activityLogs, leads, orders, authUser, staffScopedLeads, staffScopedSubscribers } = useSiteData();
   const [activeSection, setActiveSection] = useState<MyHrSection>('overview');
 
+  // ── eNPS (staff satisfaction — anonymous, one response per month) ────────
+  const [enpsResponded, setEnpsResponded] = useState<boolean | null>(null);
+  const [enpsScore, setEnpsScore] = useState<number | null>(null);
+  const [enpsComment, setEnpsComment] = useState('');
+  const [enpsSubmitting, setEnpsSubmitting] = useState(false);
+  useEffect(() => {
+    fetch('/api/staff/me/enps', { credentials: 'include', headers: adminAuthHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) { setEnpsResponded(!!d.responded); if (d.responded) setEnpsScore(d.score); } })
+      .catch(() => {});
+  }, []);
+  const submitEnps = useCallback(async () => {
+    if (enpsScore === null) { notify('error', 'اختر درجة من 0 إلى 10'); return; }
+    setEnpsSubmitting(true);
+    try {
+      const r = await fetch('/api/staff/me/enps', {
+        method: 'POST', credentials: 'include', headers: adminAuthHeaders(true),
+        body: JSON.stringify({ score: enpsScore, comment: enpsComment }),
+      });
+      if (r.ok) { setEnpsResponded(true); notify('success', 'شكراً لمشاركتك رأيك 💚'); }
+      else notify('error', 'تعذر إرسال التقييم');
+    } catch { notify('error', 'تعذر إرسال التقييم'); }
+    finally { setEnpsSubmitting(false); }
+  }, [enpsScore, enpsComment, notify]);
+
   // Use scoped data for non-admin staff; fall back to full context for admins
   const effectiveLeads = (staffScopedLeads.length > 0 ? staffScopedLeads : leads) || [];
   const effectiveOrders = useMemo(() => {
@@ -238,6 +263,36 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* eNPS — staff satisfaction (anonymous) */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5">
+            <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2"><Star size={16} className="text-amber-400" />رضاك عن العمل</h3>
+            {enpsResponded ? (
+              <div className="text-sm text-emerald-600 bg-emerald-50 rounded-xl px-4 py-3 mt-2">
+                شكراً — تم تسجيل تقييمك لهذا الشهر{enpsScore !== null ? ` (${enpsScore}/10)` : ''}. يمكنك تحديثه في أي وقت.
+                <button onClick={() => setEnpsResponded(false)} className="text-emerald-700 underline mr-2 text-xs">تعديل</button>
+              </div>
+            ) : (
+              <div className="mt-2 space-y-3">
+                <p className="text-xs text-gray-500">ما مدى احتمال أن ترشّح العمل هنا لصديق؟ (0 = مطلقاً، 10 = بالتأكيد) — استبيان مجهول</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: 11 }, (_, i) => i).map(n => (
+                    <button key={n} onClick={() => setEnpsScore(n)}
+                      className={`w-9 h-9 rounded-lg text-sm font-bold transition ${enpsScore === n
+                        ? (n >= 9 ? 'bg-emerald-600 text-white' : n >= 7 ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{n}</button>
+                  ))}
+                </div>
+                <textarea value={enpsComment} onChange={e => setEnpsComment(e.target.value)}
+                  placeholder="ملاحظة (اختياري)..." rows={2}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" />
+                <button onClick={submitEnps} disabled={enpsSubmitting || enpsScore === null}
+                  className="bg-gray-800 text-white px-5 py-2 rounded-xl text-sm hover:bg-gray-900 disabled:opacity-50 transition">
+                  {enpsSubmitting ? 'جارٍ الإرسال...' : 'إرسال التقييم'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

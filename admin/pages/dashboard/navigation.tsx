@@ -8,6 +8,8 @@ import {
   Briefcase,
   CalendarCheck2,
   CalendarDays,
+  Smile,
+  UserMinus,
   Clock,
   CreditCard,
   Database,
@@ -108,6 +110,7 @@ export type TabKey =
   | 'subscriptions'
   | 'installment_plans'
   | 'tickets'
+  | 'faq_manager'
   | 'lead_scoring'
   | 'nps_dashboard'
   | 'consultation_calendar'
@@ -121,6 +124,8 @@ export type TabKey =
   | 'revenue_sources'
   | 'hr'
   | 'my_hr'
+  | 'enps_dashboard'
+  | 'offboarding'
   | 'staff_applications'
   | 'lecturer_applications'
   | 'settings_hub'
@@ -220,6 +225,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'customer_inbox', label: 'Inbox خدمة العملاء', icon: Headphones },
       { key: 'tickets', label: 'تذاكر الدعم', icon: Mail },
+      { key: 'faq_manager', label: 'قاعدة المعرفة (FAQ)', icon: BookOpen },
       { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
       { key: 'cert_requests', label: 'طلبات الشهادات', icon: Star },
       { key: 'contacts', label: 'رسائل التواصل', icon: Mail },
@@ -251,6 +257,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'hr', label: 'نظام HR', icon: Briefcase },
       { key: 'staff_management', label: 'الموظفون', icon: Users },
+      { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },
+      { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },
       { key: 'instructors', label: 'المحاضرون والخبراء', icon: GraduationCap },
       { key: 'join_us', label: 'طلبات الانضمام', icon: GraduationCap },
     ],
