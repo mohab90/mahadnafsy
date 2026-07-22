@@ -201,7 +201,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const [payModalDraft, setPayModalDraft] = useState<PaymentDraft>(createClientPaymentDraft());
 
   // ── grant (subscriber) ─────────────────────────────────────────────────────
-  const [showGrantForm, setShowGrantForm] = useState(false);
   const [grantDraft, setGrantDraft] = useState({
     courseId: '', note: '',
   });
@@ -610,7 +609,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     if (!alreadyEnrolled) {
       mysqlAdmin.addEnrollment(subscriber.id, grantDraft.courseId, null, 'full').catch(() => {});
     }
-    setShowGrantForm(false);
     setGrantDraft({ courseId: '', note: '' });
   };
 
