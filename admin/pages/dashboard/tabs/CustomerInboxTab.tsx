@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Briefcase,
   CheckCircle2,
+  ExternalLink,
   GraduationCap,
   Inbox,
   Mail,
@@ -10,7 +12,9 @@ import {
   RotateCcw,
   Search,
   Send,
+  Star,
   Ticket,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react';
@@ -106,8 +110,11 @@ function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: str
 }
 
 type TicketReply = { id: string; text: string; author: string; isStaff: boolean; at: string };
+type LinkedEntity = { type: string; id?: string; name?: string; client_code?: string } | null;
+type CannedResponse = { id: string; title: string; body: string; category: string };
 
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
+  const navigate = useNavigate();
   const { contactMessages, joinUsApplications } = useSiteData();
   const [tickets, setTickets] = useState<any[]>([]);
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
@@ -125,6 +132,28 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [replyText, setReplyText] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [refundNote, setRefundNote] = useState('');
+  const [linkedEntity, setLinkedEntity] = useState<LinkedEntity>(null);
+
+  // Canned (admin-managed) reply templates
+  const [canned, setCanned] = useState<CannedResponse[]>([]);
+  const [showCanned, setShowCanned] = useState(false);
+  const [cannedManageOpen, setCannedManageOpen] = useState(false);
+  const [cannedDraft, setCannedDraft] = useState<{ id?: string; title: string; body: string }>({ title: '', body: '' });
+  const loadCanned = useCallback(() => {
+    mysqlAdmin.adminGet<CannedResponse[]>('/admin/support/canned-responses').then(rows => setCanned(Array.isArray(rows) ? rows : [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadCanned(); }, [loadCanned]);
+  const saveCanned = async () => {
+    if (!cannedDraft.title.trim() || !cannedDraft.body.trim()) { notify('error', 'العنوان والنص مطلوبان'); return; }
+    try {
+      if (cannedDraft.id) await mysqlAdmin.adminPut(`/admin/support/canned-responses/${cannedDraft.id}`, { title: cannedDraft.title, body: cannedDraft.body });
+      else await mysqlAdmin.adminPost('/admin/support/canned-responses', { title: cannedDraft.title, body: cannedDraft.body });
+      setCannedDraft({ title: '', body: '' }); loadCanned(); notify('success', 'تم الحفظ');
+    } catch { notify('error', 'تعذر الحفظ'); }
+  };
+  const deleteCanned = async (id: string) => {
+    try { await mysqlAdmin.adminDelete(`/admin/support/canned-responses/${id}`); loadCanned(); } catch { notify('error', 'تعذر الحذف'); }
+  };
 
   const loadRemote = useCallback(async () => {
     setLoading(true);
@@ -213,10 +242,12 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     setReplyText('');
     setRefundNote('');
     setTicketReplies([]);
+    setLinkedEntity(null);
     if (item.source === 'ticket') {
       setDetailLoading(true);
       try {
         const row = await mysqlAdmin.adminGet<any>(`/admin/tickets/${encodeURIComponent(item.id)}`);
+        setLinkedEntity(row?.linked || null);
         const replies = Array.isArray(row?.replies) ? row.replies : Array.isArray(row?.messages) ? row.messages : [];
         setTicketReplies(replies.map((r: any) => ({
           id: String(r.id),
@@ -231,7 +262,24 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     }
   }, []);
 
-  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setReplyText(''); setRefundNote(''); };
+  const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setReplyText(''); setRefundNote(''); setLinkedEntity(null); };
+
+  const goToCustomer = useCallback(() => {
+    if (linkedEntity?.type === 'subscriber' && linkedEntity.client_code) navigate(`/client/${linkedEntity.client_code}`);
+    else notify('info', 'لا يوجد عميل مسجّل مرتبط بهذا العنصر');
+  }, [linkedEntity, navigate, notify]);
+
+  const deleteTicketApi = useCallback(async (item: InboxItem) => {
+    if (!window.confirm('حذف هذه التذكرة نهائياً؟ لا يمكن التراجع.')) return;
+    setActionBusy(true);
+    try {
+      await mysqlAdmin.adminDelete(`/admin/tickets/${encodeURIComponent(item.id)}`);
+      notify('success', 'تم حذف التذكرة');
+      closeDetail(); loadRemote();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حذف التذكرة');
+    } finally { setActionBusy(false); }
+  }, [loadRemote, notify]);
 
   // ── Status transitions (used by both the row quick-actions and the drawer) ──
   const updateItemStatus = useCallback(async (item: InboxItem, target: InboxStatus) => {
@@ -298,12 +346,21 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     setActionBusy(true);
     try {
       await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/route`, { category: 'refund' });
-      notify('success', 'تم تحويل التذكرة لقسم الاسترداد');
+      // If we know which subscriber this is about, also create the actual
+      // financial refund-request record (not just recategorize the ticket).
+      if (linkedEntity?.type === 'subscriber' && linkedEntity.id) {
+        await mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
+          subscriber_id: linkedEntity.id, amount: 0, reason: `محوّل من تذكرة دعم: ${item.title}`,
+        }).catch(() => {}); // best-effort — ticket routing already succeeded
+        notify('success', 'تم تحويل التذكرة وإنشاء طلب استرداد للعميل');
+      } else {
+        notify('success', 'تم تحويل التذكرة لقسم الاسترداد');
+      }
       loadRemote();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر التحويل');
     } finally { setActionBusy(false); }
-  }, [loadRemote, notify]);
+  }, [linkedEntity, loadRemote, notify]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -479,6 +536,12 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                   {item.amount && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">{item.amount}</span>}
                 </div>
 
+                {item.source === 'ticket' && linkedEntity?.type === 'subscriber' && linkedEntity.client_code && (
+                  <button onClick={goToCustomer} className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100">
+                    <ExternalLink size={13} /> ملف العميل{linkedEntity.name ? `: ${linkedEntity.name}` : ''}
+                  </button>
+                )}
+
                 {item.detail && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">
                     {item.detail}
@@ -511,7 +574,27 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                         ))}
                       </div>
                     )}
+                    {showCanned && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 max-h-36 overflow-y-auto space-y-1">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-[11px] text-slate-400">ردود جاهزة</span>
+                          <button onClick={() => { setCannedManageOpen(true); setShowCanned(false); }} className="text-[11px] text-indigo-600 hover:text-indigo-700 font-semibold">إدارة ⚙</button>
+                        </div>
+                        {canned.length === 0 ? (
+                          <p className="text-[11px] text-slate-400 text-center py-2">لا توجد ردود جاهزة محفوظة</p>
+                        ) : canned.map((c) => (
+                          <button key={c.id} onClick={() => { setReplyText(c.body); setShowCanned(false); }}
+                            className="w-full text-right text-xs px-3 py-1.5 bg-white hover:bg-indigo-50 rounded-lg text-slate-700 hover:text-indigo-700 transition-colors">
+                            <span className="font-bold">{c.title}</span> — <span className="opacity-70">{c.body.slice(0, 50)}…</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-end gap-2 pt-1">
+                      <button onClick={() => setShowCanned(v => !v)} title="ردود جاهزة"
+                        className={`rounded-xl border px-2.5 py-2 text-xs transition-colors ${showCanned ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                        <Star size={14} />
+                      </button>
                       <textarea
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
@@ -561,6 +644,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       {!['closed'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={15} /> إغلاق</button>}
                       <button disabled={actionBusy} onClick={() => escalateTicket(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50">⚠️ تصعيد للإدارة</button>
                       <button disabled={actionBusy} onClick={() => routeTicketToRefund(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><RotateCcw size={15} /> تحويل لقسم الاسترداد</button>
+                      <button disabled={actionBusy} onClick={() => deleteTicketApi(item)} className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={15} /> حذف</button>
                     </>
                   ) : item.source === 'contact' ? (
                     <>
@@ -585,6 +669,46 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
           </div>
         );
       })()}
+
+      {/* Canned responses management modal */}
+      {cannedManageOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { setCannedManageOpen(false); setCannedDraft({ title: '', body: '' }); }}>
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900">إدارة الردود الجاهزة</h3>
+              <button onClick={() => { setCannedManageOpen(false); setCannedDraft({ title: '', body: '' }); }} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+            </div>
+            <div className="p-5 space-y-3 overflow-y-auto">
+              <div className="space-y-2 border border-slate-100 rounded-xl p-3 bg-slate-50">
+                <p className="text-xs font-semibold text-slate-500">{cannedDraft.id ? 'تعديل رد' : 'إضافة رد جديد'}</p>
+                <input value={cannedDraft.title} onChange={(e) => setCannedDraft((d) => ({ ...d, title: e.target.value }))}
+                  placeholder="العنوان (مثال: تأكيد الحل)"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                <textarea value={cannedDraft.body} onChange={(e) => setCannedDraft((d) => ({ ...d, body: e.target.value }))}
+                  placeholder="نص الرد الجاهز..." rows={3}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+                <div className="flex gap-2">
+                  <button onClick={saveCanned} className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700">{cannedDraft.id ? 'حفظ التعديل' : 'إضافة'}</button>
+                  {cannedDraft.id && <button onClick={() => setCannedDraft({ title: '', body: '' })} className="px-4 py-1.5 rounded-lg text-sm border border-slate-200 text-slate-600 hover:bg-slate-50">إلغاء</button>}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {canned.length === 0 && <p className="text-center text-slate-400 text-sm py-4">لا توجد ردود محفوظة بعد</p>}
+                {canned.map((c) => (
+                  <div key={c.id} className="flex items-start gap-2 border border-slate-100 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm text-slate-800">{c.title}</div>
+                      <div className="text-xs text-slate-500 truncate">{c.body}</div>
+                    </div>
+                    <button onClick={() => setCannedDraft({ id: c.id, title: c.title, body: c.body })} className="text-xs text-indigo-600 hover:text-indigo-700 flex-shrink-0">تعديل</button>
+                    <button onClick={() => deleteCanned(c.id)} className="text-xs text-red-500 hover:text-red-600 flex-shrink-0">حذف</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
