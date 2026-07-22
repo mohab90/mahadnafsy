@@ -338,6 +338,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     ),
     [staffMembers]
   );
+  // "محلي جديد" pool — same filter as the sub-tab badge count.
+  const unassignedLeads = useMemo(() =>
+    leads.filter(l => !l.hidden && !l.assignedSalesId && !['converted', 'lost'].includes(l.status)),
+    [leads]
+  );
   const {
     todayStr: commTodayStr,
     allComms,
@@ -1228,6 +1233,41 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
           onSalesClick={!isSalesOnly ? (staffId: string) => navigate(`/staff/${staffId}`) : undefined}
         />
+      )}
+
+      {subTab === 'localNew' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">محلي جديد — بانتظار التوزيع</h3>
+              <p className="text-xs text-gray-500 mt-0.5">ليدات بدون مندوب مبيعات — وزّعها يدوياً من الجدول (عمود "المندوب") أو تلقائياً بالتساوي</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">غير موزّع: <strong className="text-amber-600">{unassignedLeads.length}</strong></span>
+              <button onClick={handleDistribute} disabled={distributing || unassignedLeads.length === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-emerald-700 disabled:opacity-40 transition whitespace-nowrap">
+                {distributing ? 'جارٍ التوزيع...' : 'توزيع تلقائي'}
+              </button>
+            </div>
+          </div>
+          <LeadTable
+            rows={unassignedLeads}
+            showCourseCol={true}
+            courses={courses}
+            bundles={bundles}
+            navigate={navigate}
+            updateLead={updateLead}
+            deleteLead={deleteLead ?? (() => Promise.resolve())}
+            addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
+            updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
+            subscribers={effectiveSubs}
+            salesStaff={salesReps}
+            isSalesOnly={isSalesOnly}
+            onBook={openLeadBook}
+            branchOptions={instituteBranches}
+            sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
+          />
+        </div>
       )}
 
       {subTab === 'communications' && (

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
   ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
-  LogOut, Monitor, Moon, RotateCcw, Shield, Sun, Tag, TrendingUp,
+  LogOut, Monitor, RotateCcw, Shield, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, X, MessageSquareText,
   type LucideIcon,
 } from 'lucide-react';
@@ -40,8 +40,6 @@ type Props = {
   subscribers: SubscriberItem[];
   monitorPanel: boolean;
   setMonitorPanel: React.Dispatch<React.SetStateAction<boolean>>;
-  darkMode: boolean;
-  toggleDarkMode: () => void;
   notifRef: React.RefObject<HTMLDivElement | null>;
   notifOpen: boolean;
   setNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -68,7 +66,7 @@ export function DashboardNavigation(props: Props) {
     isSalesOnly, isCollectionRole, isReceptionDaqqi, isOnlineManager, isDaqqiManager,
     isSalesCollectionManager, isAdmin, visibleMenuGroups, activeTab, setActiveTab,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, leads,
-    subscribers, monitorPanel, setMonitorPanel, darkMode, toggleDarkMode, notifRef,
+    subscribers, monitorPanel, setMonitorPanel, notifRef,
     notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread,
     pendingProofsCount, inboxUnreadCount, currentStaff, salesDataLoading, staffNotifBadge,
     setSalesNotifOpen, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen, setOnlineMgrFollowupOpen,
@@ -151,10 +149,6 @@ export function DashboardNavigation(props: Props) {
 
               {/* Controls */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button onClick={toggleDarkMode} title={darkMode ? 'وضع النهار' : 'الوضع الليلي'}
-                  className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 grid place-items-center transition">
-                  {darkMode ? <Sun size={14} /> : <Moon size={14} />}
-                </button>
                 <button
                   onClick={() => setActiveTab(currentStaff ? 'staff_home' : 'my_hr')}
                   className={`w-8 h-8 rounded-xl grid place-items-center transition ${

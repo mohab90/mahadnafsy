@@ -665,8 +665,6 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
-  const [darkMode, setDarkMode] = useState<boolean>(() => localStorage.getItem('dashboard-dark') === '1');
-  const toggleDarkMode = () => setDarkMode(v => { const n = !v; localStorage.setItem('dashboard-dark', n ? '1' : '0'); return n; });
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['main', 'clients']));
   const toggleGroup = (key: string) => setOpenGroups(prev => {
     const next = new Set(prev);
@@ -2463,7 +2461,7 @@ const Dashboard: React.FC = () => {
   return (
     <>
     <SiteDataStoreBridge />
-    <div className={`min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 py-6 md:py-8${darkMode ? ' dark-dash' : ''}`}>
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 py-6 md:py-8">
       <div className="container mx-auto px-4">
         <DashboardNavigation
           isSalesOnly={isSalesOnly}
@@ -2484,8 +2482,6 @@ const Dashboard: React.FC = () => {
           subscribers={subscribers}
           monitorPanel={monitorPanel}
           setMonitorPanel={setMonitorPanel}
-          darkMode={darkMode}
-          toggleDarkMode={toggleDarkMode}
           notifRef={notifRef}
           notifOpen={notifOpen}
           setNotifOpen={setNotifOpen}

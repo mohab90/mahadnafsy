@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Target, Edit3, Save, X, Plus, Trash2, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Target, Edit3, Save, X, Plus, Trash2, Wallet, ExternalLink } from 'lucide-react';
 import type { StaffMember, StaffRole, StaffAbsence } from '../../../../types';
 import { ROLE_LABELS, ABSENCE_LABELS, ABSENCE_COLORS, getMonthsOfService, fmtMoney } from './shared';
 
 export default function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
   member: StaffMember; orders: any[]; leads: any[]; onClose: () => void; onSave: (u: StaffMember) => void;
 }) {
+  const navigate = useNavigate();
   const [draft, setDraft] = useState<StaffMember>({ ...member });
   const [subTab, setSubTab] = useState<'info' | 'performance' | 'salary' | 'absences'>('info');
   const [editing, setEditing] = useState(false);
@@ -62,6 +64,8 @@ export default function EmployeeProfileModal({ member, orders, leads, onClose, o
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={() => navigate(`/staff/${member.id}`)} title="فتح صفحة الموظف الكاملة"
+                className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"><ExternalLink size={13}/> الملف الكامل</button>
               {editing ? (
                 <>
                   <button onClick={save} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-sm font-bold transition"><Save size={13}/> حفظ</button>
