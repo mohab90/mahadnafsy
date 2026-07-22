@@ -482,28 +482,11 @@ const Dashboard: React.FC = () => {
 
   const [editingSubscriberId, setEditingSubscriberId] = useState('');
   const [subscriberSubTab, setSubscriberSubTab] = useState<'local' | 'abroad' | 'all' | 'online25'>('all');
-  const [salesSubscriberSubTab, setSalesSubscriberSubTab] = useState<'all' | 'daqqi' | 'local' | 'abroad' | 'qatameya'>('all');
-  const [salesSubSearch, setSalesSubSearch] = useState('');
   // Reception Daqqi role — daqqi clients tab state
   const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
-  const [daqqiSubPage, setDaqqiSubPage] = useState(1);
-  const [daqqiStatusFilter, setDaqqiStatusFilter] = useState('');
-  const [daqqiDateFrom, setDaqqiDateFrom] = useState('');
-  const [daqqiDateTo, setDaqqiDateTo] = useState('');
-  const [daqqiRemainingFilter, setDaqqiRemainingFilter] = useState<'all'|'has_remaining'|'paid'>('all');
-  const [daqqiCourseFilter, setDaqqiCourseFilter] = useState('');
-  const [daqqiSubTab, setDaqqiSubTab] = useState<'all'|'assigned'|'unassigned'>('all');
   const [daqqiAccDateFrom, setDaqqiAccDateFrom] = useState('');
   const [daqqiAccDateTo, setDaqqiAccDateTo] = useState('');
-  const [daqqiAccView, setDaqqiAccView] = useState<'daily'|'by_course'|'by_method'|'by_staff'|'payments'>('daily');
-  const [daqqiTaskinSub, setDaqqiTaskinSub] = useState<SubscriberItem | null>(null);
   const daqqiCreateRoundRef = React.useRef<(() => void) | null>(null);
-  const [daqqiAddClientOpen, setDaqqiAddClientOpen] = useState(false);
-  const [daqqiAddClientDraft, setDaqqiAddClientDraft] = useState({ name: '', phone: '', email: '', courseId: '', nationalId: '', gender: '', notes: '' });
-  const [salesSubDateFrom, setSalesSubDateFrom] = useState('');
-  const [salesSubDateTo, setSalesSubDateTo] = useState('');
-  const [salesSubContactRow, setSalesSubContactRow] = useState<SubscriberItem | null>(null);
-  const [salesSubContactNote, setSalesSubContactNote] = useState('');
   const [staffWaTemplates, setStaffWaTemplates] = useState<{ id: string; title: string; body: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('sales.waTemplates') || '[]'); } catch { return []; }
   });
@@ -532,30 +515,18 @@ const Dashboard: React.FC = () => {
   const [showMyLeaveFormProfile, setShowMyLeaveFormProfile] = useState(false);
   const [myLeaveFormProfile, setMyLeaveFormProfile] = useState({ type: 'ANNUAL', start_date: '', end_date: '', reason: '' });
   const [submittingMyLeaveProfile, setSubmittingMyLeaveProfile] = useState(false);
-  const [o25Search, setO25Search] = useState('');
-  const [o25Page, setO25Page] = useState(1);
-  const [o25Distributing, setO25Distributing] = useState(false);
   const [subCsDistributing, setSubCsDistributing] = useState(false);
   // Daqqi old-data distribution
   const [daqqiOldDistribPlan, setDaqqiOldDistribPlan] = useState<{staffId:string;count:string}[]>([{staffId:'',count:''}]);
   const [daqqiOldDistributing, setDaqqiOldDistributing] = useState(false);
-  const [missingAccountsCount, setMissingAccountsCount] = useState<number | null>(null);
-  const [bulkCreateLoading, setBulkCreateLoading] = useState(false);
-  const [bulkCreateResult, setBulkCreateResult] = useState<{ created: number; failed: number; emailsSent: number } | null>(null);
-  const [o25ClassFilter, setO25ClassFilter] = useState<'all' | 'paid' | 'partial' | 'none'>('all');
   const [subscriberCourseFilter, setSubscriberCourseFilter] = useState('');
   const [subscriberSearch, setSubscriberSearch] = useState('');
-  const [subscriberBranchFilter, setSubscriberBranchFilter] = useState('all');
   const [subscriberSalesFilter, setSubscriberSalesFilter] = useState('all');
   const [subscriberCsFilter, setSubscriberCsFilter] = useState('all');
   const [subscriberInstFilter, setSubscriberInstFilter] = useState(''); // '' | 'overdue' | 'soon'
   const [subscriberRemainingFilter, setSubscriberRemainingFilter] = useState(''); // '' | '1000' | '2000' | '3000' | '5000' | '8000'
   const [subscriberCertFilter, setSubscriberCertFilter] = useState(''); // '' | 'has' | 'pending' | 'issued'
   const [subscriberPayFilter, setSubscriberPayFilter] = useState(''); // '' | 'pending'
-  const [subscriberPage, setSubscriberPage] = useState(1);
-  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
-  const [bulkSubStatus, setBulkSubStatus] = useState<SubStatus | ''>('');
-  const [isSubscriberFormOpen, setIsSubscriberFormOpen] = useState(false);
   const {
     grantSubscriberId, setGrantSubscriberId,
     grantEnrolledCourseIds, setGrantEnrolledCourseIds,
@@ -573,7 +544,6 @@ const Dashboard: React.FC = () => {
   const [subPayDraft, setSubPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
 
   // Per-course pay detail popup
-  const [payDetailSub, setPayDetailSub] = useState<SubscriberItem | null>(null);
   // Extra certificate request action
   const [certActionSub, setCertActionSub] = useState<SubscriberItem | null>(null);
   const [certActionDraft, setCertActionDraft] = useState<{ courseId: string; type: ExtraCertificateType | ''; certExpected: string; certPaid: string }>({ courseId: '', type: '', certExpected: '', certPaid: '' });
@@ -588,7 +558,6 @@ const Dashboard: React.FC = () => {
     intervalDays: '30', notes: '', overrideExpected: '',
   });
   // WhatsApp templates for subscribers
-  const [subWaRow, setSubWaRow] = useState<SubscriberItem | null>(null);
 
   // Subscriber quick-contact modal
   const [subContactRow, setSubContactRow] = useState<SubscriberItem | null>(null);
@@ -620,15 +589,11 @@ const Dashboard: React.FC = () => {
   const [newSubscriberPassword, setNewSubscriberPassword] = useState('');
 
   const [editingLeadId, setEditingLeadId] = useState('');
-  const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
-  const [migratingBranches, setMigratingBranches] = useState(false);
   const [salesNotifOpen, setSalesNotifOpen] = useState(false);
   const [onlineMgrFollowupOpen, setOnlineMgrFollowupOpen] = useState(false);
   const [onlineMgrNewEventsOpen, setOnlineMgrNewEventsOpen] = useState(false);
-  const [activeLeadsTab, setActiveLeadsTab] = useState<'courses' | 'settings'>('courses');
   const [leadDraft, setLeadDraft] = useState<LeadItem>(blankLead());
   const [convertLeadModal, setConvertLeadModal] = useState<{ lead: LeadItem | null; courseId: string; accessMode: AccessMode }>({ lead: null, courseId: '', accessMode: 'full' });
-  const [bulkUploadNotice, setBulkUploadNotice] = useState('');
   const bulkUploadRef = React.useRef<HTMLInputElement>(null);
 
   // -- Global Quick Booking FAB ---------------------------------------------
@@ -639,15 +604,9 @@ const Dashboard: React.FC = () => {
   const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
   const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
   const [fbDraft, setFbDraft] = useState<FacebookLeadAdsConfig>(() => fbLeadAdsConfig || defaultFacebookLeadAdsConfig());
-  const [fbIntegOpen, setFbIntegOpen] = useState(false);
-  const [fbSyncLoading, setFbSyncLoading] = useState(false);
-  const [fbSyncNotice, setFbSyncNotice] = useState('');
-  const [fbFormsLoading, setFbFormsLoading] = useState(false);
-  const [fbAvailableForms, setFbAvailableForms] = useState<{id: string; name: string; status: string}[]>([]);
 
   const [leadsSearch, setLeadsSearch] = useState('');
   const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]); // empty = hide converted+hidden
-  const [leadsStatusDropOpen, setLeadsStatusDropOpen] = useState(false);
   const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue'>('all');
   const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
   const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
@@ -656,24 +615,31 @@ const Dashboard: React.FC = () => {
   const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'instructor' | 'trainer' | 'expert' | 'sales' | 'manager' | 'admin' | 'support' | 'reception_daqqi' | 'daqqi_manager' | 'online_manager' | 'sales_collection_manager' | 'collection' | 'accountant' | 'consultant' | 'hr' | 'other'>('all');
 
   const [editingStaffId, setEditingStaffId] = useState('');
-  const [isStaffFormOpen, setIsStaffFormOpen] = useState(false);
   const [staffDraft, setStaffDraft] = useState<StaffMember>(blankStaffMember());
   const [staffPassword, setStaffPassword] = useState('');
-  const [staffShowPassword, setStaffShowPassword] = useState(false);
-  const [staffAuthLoading, setStaffAuthLoading] = useState(false);
-  const [subscriberAuthPanelId, setSubscriberAuthPanelId] = useState('');
   const navigate = useNavigate();
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['main', 'clients']));
+  const [showSaveSegment, setShowSaveSegment] = useState(false);
+  const [subscriberPage, setSubscriberPage] = useState(1);
+  const [bulkUploadNotice, setBulkUploadNotice] = useState('');
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [fbSyncLoading, setFbSyncLoading] = useState(false);
+  const [fbSyncNotice, setFbSyncNotice] = useState('');
+  const [fbFormsLoading, setFbFormsLoading] = useState(false);
+  const [fbAvailableForms, setFbAvailableForms] = useState<{id: string; name: string; status: string}[]>([]);
+  const [staffShowPassword, setStaffShowPassword] = useState(false);
+  const [subWaRow, setSubWaRow] = useState<SubscriberItem | null>(null);
+  const [staffProfileModalId, setStaffProfileModalId] = useState<string | null>(null);
   const toggleGroup = (key: string) => setOpenGroups(prev => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [pendingProofsCount, setPendingProofsCount] = useState(0);
-  const [openFloatGroup, setOpenFloatGroup] = useState<string | null>(null);
   const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);
   const [monitorPanel, setMonitorPanel] = useState<boolean>(false);
   // -- Horizontal dropdown nav state --
@@ -724,8 +690,6 @@ const Dashboard: React.FC = () => {
   const activeTab = activeTabState;
 
   const [editingConsultationId, setEditingConsultationId] = useState('');
-  const [isConsultationFormOpen, setIsConsultationFormOpen] = useState(false);
-  const [consultationStatusFilter, setConsultationStatusFilter] = useState<string>('all');
   const [consultationDraft, setConsultationDraft] = useState<ConsultationItem>({
     id: '',
     clientName: '',
@@ -823,31 +787,20 @@ const Dashboard: React.FC = () => {
   });
 
   // Discount management state
-  const [featuredCourseId, setFeaturedCourseId] = useState(() => content['home.featured.courseId'] || '');
-  const [featuredDiscountPct, setFeaturedDiscountPct] = useState(() => content['home.featured.discountPercent'] || '');
 
   // Notification state moved to NotificationsAdminTab.tsx
 
   // Quiz + LiveStream state moved to their own tab components
 
   const [clientDbSearch, setClientDbSearch] = useState('');
-  const [clientDbPage, setClientDbPage] = useState(1);
-  const [clientDbMainTab, setClientDbMainTab] = useState<'courses' | 'consultations'>('courses');
   const [clientDbTypeFilter, setClientDbTypeFilter] = useState<'all' | 'subscriber' | 'lead' | 'consultation'>('all');
-  const [clientDbSourceFilter, setClientDbSourceFilter] = useState('');
   const [clientDbCourseFilter, setClientDbCourseFilter] = useState('');
   const [clientDbSalesFilter, setClientDbSalesFilter] = useState('');
   const [clientDbCollectionFilter, setClientDbCollectionFilter] = useState('');
   const [clientDbBranchFilter, setClientDbBranchFilter] = useState('');
-  const [clientDbBundleFilter, setClientDbBundleFilter] = useState('');
   const [clientDbSort, setClientDbSort] = useState('date_desc');
   const [crmContactRow, setCrmContactRow] = useState<LeadItem | null>(null);
   const [crmContactDraft, setCrmContactDraft] = useState<{ type: CommunicationRecord['type']; date: string; notes: string; outcome: string; nextFollowUp: string; newStatus: LeadStatus | ''; }>({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
-  const [codeMigrating, setCodeMigrating] = useState(false);
-  const [recodeMigrating, setRecodeMigrating] = useState(false);
-  const [deduping, setDeduping] = useState(false);
-  const [autoConverting, setAutoConverting] = useState(false);
-  const [staffCleanupRunning, setStaffCleanupRunning] = useState(false);
 
   // Auto-dedup on first load (silent — keeps oldest lead when duplicates found)
   const _dedupedRef = React.useRef(false);
@@ -900,8 +853,6 @@ const Dashboard: React.FC = () => {
   // Activity log filters moved to ActivityTab.tsx
 
   // Leads view mode: table or kanban
-  const [leadsView, setLeadsView] = useState<'table' | 'kanban' | 'performance' | 'proposals' | 'funnel'>('table');
-  const [kanbanDragId, setKanbanDragId] = useState<string | null>(null);
 
   // -- Saved Segments --------------------------------------------------------
   type LeadSegment = { id: string; name: string; search: string; statuses: string[]; branch: string; sales: string; course: string; followup: string };
@@ -909,7 +860,6 @@ const Dashboard: React.FC = () => {
     try { return JSON.parse(localStorage.getItem('crm.savedSegments') || '[]'); } catch { return []; }
   });
   const [segmentNameInput, setSegmentNameInput] = useState('');
-  const [showSaveSegment, setShowSaveSegment] = useState(false);
   const saveCurrentSegment = () => {
     if (!segmentNameInput.trim()) return;
     const seg: LeadSegment = { id: `seg-${Date.now()}`, name: segmentNameInput.trim(), search: leadsSearch, statuses: leadsStatusFilter, branch: leadsBranchFilter, sales: leadsSalesFilter, course: leadsCourseFilter, followup: leadsFollowupFilter };
@@ -938,13 +888,8 @@ const Dashboard: React.FC = () => {
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>(() => {
     try { return JSON.parse(localStorage.getItem('crm.waTemplates') || '[]'); } catch { return []; }
   });
-  const [showWaTemplateModal, setShowWaTemplateModal] = useState(false);
-  const [waBulkLeads, setWaBulkLeads] = useState<typeof leads>([]);
-  const [waSelectedTemplate, setWaSelectedTemplate] = useState('');
-  const [waCustomMessage, setWaCustomMessage] = useState('');
   const [waTemplateEditId, setWaTemplateEditId] = useState('');
   const [waTemplateDraft, setWaTemplateDraft] = useState({ name: '', body: '' });
-  const [waSendMode, setWaSendMode] = useState<'template' | 'custom'>('template');
   const applyWaTemplate = (template: string, lead: typeof leads[0]) => {
     const courseIds = [...(lead.interestedCourseIds || []), ...(lead.enrolledCourseId ? [lead.enrolledCourseId] : [])];
     const courseName = courseIds.map(id => id.startsWith('bundle:') ? bundles.find(b => b.id === id.replace('bundle:', ''))?.title : (courses.find(c => c.id === id)?.title || bundles.find(b => b.id === id)?.title)).filter(Boolean)[0] || '';
@@ -974,9 +919,6 @@ const Dashboard: React.FC = () => {
     setWaTemplates(next);
     localStorage.setItem('crm.waTemplates', JSON.stringify(next));
   };
-  const [quickEditLeadId, setQuickEditLeadId] = useState<string | null>(null);
-  const [qeCommNote, setQeCommNote] = useState('');
-  const [qeCommType, setQeCommType] = useState<CommunicationRecord['type']>('call');
   const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>(() => {
     try {
       // Try content first (Firebase-persisted), fallback to localStorage for migration
@@ -985,15 +927,10 @@ const Dashboard: React.FC = () => {
       return JSON.parse(localStorage.getItem('crm.salesTargets') || '[]');
     } catch { return []; }
   });
-  const [leadTargetMonth, setLeadTargetMonth] = useState(new Date().toISOString().slice(0, 7));
   // CSV general import state
-  const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvMapping, setCsvMapping] = useState<Record<string, string>>({});
-  const [csvImporting, setCsvImporting] = useState(false);
   // Tag input (keyed by lead id being edited)
-  const [tagInputVal, setTagInputVal] = useState('');
 
   // Community sub-tab
   const [communityAdminTab, setCommunityAdminTab] = useState<'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments'>('pending');
@@ -1024,28 +961,9 @@ const Dashboard: React.FC = () => {
   });
 
   // -- Z.AI Dev Assistant ------------------------------------------------
-  const [zaiDraft, setZaiDraft] = useState<{
-    apiKey: string; model: string; baseUrl: string; systemPrompt: string; autoContext: boolean;
-  }>(() => {
-    try {
-      const raw = localStorage.getItem('mahad-zai-config');
-      if (raw) {
-        const saved = JSON.parse(raw) as { apiKey: string; model: string; baseUrl: string; systemPrompt: string; autoContext: boolean };
-        // Migrate old model names (z1-mini, z1, z1-reasoning-mini, z1-reasoning)
-        const oldModels = ['z1-mini', 'z1', 'z1-reasoning-mini', 'z1-reasoning'];
-        if (oldModels.includes(saved.model)) saved.model = 'GLM-4.7';
-        // Migrate old base URL
-        if (!saved.baseUrl || saved.baseUrl.includes('api.z.ai')) saved.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
-        return saved;
-      }
-    } catch {}
-    return { apiKey: '', model: 'GLM-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', systemPrompt: '', autoContext: false };
-  });
   const [aiDevMessages, setAiDevMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('mahad-ai-dev-messages') || '[]') as { role: 'user' | 'assistant'; text: string }[]; } catch { return []; }
   });
-  const [aiDevInput, setAiDevInput] = useState('');
-  const [aiDevLoading, setAiDevLoading] = useState(false);
   const aiDevChatEndRef = React.useRef<HTMLDivElement>(null);
   useEffect(() => {
     try { localStorage.setItem('mahad-ai-dev-messages', JSON.stringify(aiDevMessages.slice(-80))); } catch { /* quota exceeded — trim further */ try { localStorage.setItem('mahad-ai-dev-messages', JSON.stringify(aiDevMessages.slice(-30))); } catch { /* silent */ } }
@@ -1859,7 +1777,6 @@ const Dashboard: React.FC = () => {
   const [contentHubSubTab, setContentHubSubTab] = useState<TabKey>('home_offer');
 
   // -- Staff Profile Modal ----------------------------------------------------
-  const [staffProfileModalId, setStaffProfileModalId] = useState<string | null>(null);
 
   // -- Cert Requests filter state --------------------------------------------
   const [certSearch, setCertSearch] = useState('');
@@ -1880,7 +1797,6 @@ const Dashboard: React.FC = () => {
 
   const startEditSubscriber = (row: typeof subscribers[number]) => {
     setEditingSubscriberId(row.id);
-    setIsSubscriberFormOpen(true);
     setSubscriberDraft({
       ...row,
       enrolledCourseIds: [...row.enrolledCourseIds],
@@ -1936,7 +1852,6 @@ const Dashboard: React.FC = () => {
       }
     }
     setEditingSubscriberId('');
-    setIsSubscriberFormOpen(false);
     setNewSubscriberPassword('');
     setSubscriberDraft({ id: '', name: '', email: '', phone: '', enrolledCourseIds: [], courseAccess: {}, lectureProgress: {}, paymentHistory: [], status: 'active', createdAt: '' });
   };
@@ -2158,7 +2073,6 @@ const Dashboard: React.FC = () => {
     };
     if (editingLeadId) updateLead(payload); else await addLead(payload);
     setEditingLeadId('');
-    setIsLeadFormOpen(false);
     setLeadDraft(blankLead());
     // For sales users: refresh salesOwnLeads so new lead appears immediately in عملائي المحتملين
     if (!editingLeadId && isSalesOnly) void fetchSalesData();
@@ -2246,8 +2160,6 @@ const Dashboard: React.FC = () => {
         });
         added++;
       }
-      setBulkUploadNotice(`تم إضافة ${added} عميل من فيسبوك.`);
-      setTimeout(() => setBulkUploadNotice(''), 4000);
     };
     reader.readAsText(file, 'UTF-8');
     e.target.value = '';
@@ -2307,19 +2219,15 @@ const Dashboard: React.FC = () => {
 
   const handleSaveFbConfig = () => {
     setFbLeadAdsConfig({ ...fbDraft, updatedAt: new Date().toISOString() });
-    setFbSyncNotice('✅ تم حفظ الإعدادات.');
-    setTimeout(() => setFbSyncNotice(''), 3000);
   };
 
   const startEditLead = (row: LeadItem) => {
     setEditingLeadId(row.id);
     setLeadDraft({ ...row });
-    setIsLeadFormOpen(true);
   };
 
   const saveStaffMember = async () => {
     if (!staffDraft.name || !staffDraft.email) { notify('error', 'الاسم والبريد الإلكتروني مطلوبان.'); return; }
-    setStaffAuthLoading(true);
     let accountCreated = false;
     try {
       if (!editingStaffId && staffPassword.trim()) {
@@ -2359,11 +2267,9 @@ const Dashboard: React.FC = () => {
     };
     if (editingStaffId) updateStaffMember(payload); else addStaffMember(payload);
     setEditingStaffId('');
-    setIsStaffFormOpen(false);
     setStaffDraft(blankStaffMember());
     setStaffPassword('');
     setStaffShowPassword(false);
-    setStaffAuthLoading(false);
     notify('success', editingStaffId ? 'تم تحديث بيانات الموظف.' : accountCreated ? 'تم إضافة الموظف وإنشاء حسابه بنجاح.' : 'تم إضافة الموظف.');
   };
 
@@ -2381,13 +2287,11 @@ const Dashboard: React.FC = () => {
   const startEditStaffMember = (row: StaffMember) => {
     setEditingStaffId(row.id);
     setStaffDraft({ ...row });
-    setIsStaffFormOpen(true);
   };
 
   const startEditConsultation = (row: typeof consultations[number]) => {
     const linkedTherapist = therapists.find((item) => item.id === row.therapistId || item.name === row.therapistName);
     setEditingConsultationId(row.id);
-    setIsConsultationFormOpen(true);
     setConsultationDraft({
       ...row,
       therapistId: row.therapistId || linkedTherapist?.id || '',
@@ -2424,7 +2328,6 @@ const Dashboard: React.FC = () => {
     };
     if (editingConsultationId) updateConsultation(payload); else addConsultation(payload);
     setEditingConsultationId('');
-    setIsConsultationFormOpen(false);
     setConsultationDraft({
       id: '',
       clientName: '',
