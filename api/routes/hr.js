@@ -11,5 +11,7 @@ router.use(require('./hr/recruiting'));
 router.use(require('./hr/reports'));
 router.use(require('./hr/records'));
 router.use(require('./hr/compensation'));
+router.use(require('./hr/offboarding'));
+router.use(require('./hr/enps'));
 router.use(require('./hr/talent').router); // website join-us → recruiting bridge
 module.exports = router;

@@ -318,7 +318,7 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
     const { status, closed_reason } = req.body;
     const valid = ['open', 'in_progress', 'resolved', 'closed'];
     if (!valid.includes(status)) return res.status(400).json({ error: 'invalid status' });
-    const [[prev]] = await pool.query('SELECT status FROM support_tickets WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
+    const [[prev]] = await pool.query('SELECT status, subject, subscriber_email, subscriber_name, csat_requested_at FROM support_tickets WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
     if (!prev) return res.status(404).json({ error: 'Not found' });
     await pool.query(
       `UPDATE support_tickets SET status=?, closed_reason=?,
@@ -327,8 +327,124 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
       [status, closed_reason || null, status, req.params.id, req.tenantId]);
     const actor = await actorOf(req);
     await logTicketEvent(pool, { tenantId: req.tenantId, ticketId: req.params.id, type: 'status_changed', actorId: actor.id, actorName: actor.name, from: prev?.status, to: status, detail: closed_reason || null });
+    // On the first resolution, ask the customer to rate it (CSAT).
+    const nowResolved = status === 'resolved' || status === 'closed';
+    const wasResolved = prev && CLOSED_STATUSES.includes(String(prev.status || '').toLowerCase());
+    if (prev && nowResolved && !wasResolved && !prev.csat_requested_at && prev.subscriber_email) {
+      await pool.query('UPDATE support_tickets SET csat_requested_at=NOW() WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]).catch(() => {});
+      const link = `https://mahadnafsy.com/ticket-rating?id=${req.params.id}`;
+      sendEmail(prev.subscriber_email, `كيف كان تقييمك لحل تذكرتك؟ — ${prev.subject || 'دعم'}`,
+        `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
+           <h2 style="color:#7c3aed">مرحباً ${prev.subscriber_name || ''}</h2>
+           <p>تم حل تذكرة الدعم الخاصة بك: <strong>${prev.subject || ''}</strong></p>
+           <p>يسعدنا معرفة مدى رضاك عن الحل:</p>
+           <div style="text-align:center;margin:20px 0"><a href="${link}" style="background:#7c3aed;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:bold;">قيّم الحل</a></div>
+         </div>`).catch(e => logger.warn('[cs/csat email]', e.message));
+    }
     res.json({ ok: true });
   } catch (e) { logger.error('[cs/status]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── CSAT — public rating page data + submission (unauthenticated, id-gated) ─
+router.get('/api/ticket-csat/:id', async (req, res) => {
+  try {
+    const [[t]] = await pool.query('SELECT subject, csat_score FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    res.json({ subject: t.subject, rated: t.csat_score != null });
+  } catch (e) { logger.error('[cs/csat]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.post('/api/ticket-csat/:id', async (req, res) => {
+  try {
+    const { score, comment } = req.body;
+    if (score === undefined || score === null) return res.status(400).json({ error: 'score required' });
+    const numScore = Math.min(5, Math.max(1, parseInt(score, 10)));
+    await pool.query(
+      'UPDATE support_tickets SET csat_score=?, csat_comment=?, csat_responded_at=NOW() WHERE id=?',
+      [numScore, comment ? String(comment).slice(0, 2000) : null, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/csat]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Canned reply templates (admin-managed) ───────────────────────────────────
+router.get('/api/admin/support/canned-responses', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, title, body, category FROM support_canned_responses WHERE tenant_id=? ORDER BY category, title',
+      [req.tenantId]
+    );
+    res.json(rows);
+  } catch (e) { logger.error('[cs/canned]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.post('/api/admin/support/canned-responses', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const { title, body, category } = req.body;
+    if (!title || !body) return res.status(400).json({ error: 'title and body required' });
+    const actor = await actorOf(req);
+    const id = uuidv4();
+    await pool.query(
+      'INSERT INTO support_canned_responses (id, tenant_id, title, body, category, created_by) VALUES (?,?,?,?,?,?)',
+      [id, req.tenantId, String(title).slice(0, 200), String(body).slice(0, 4000), category ? String(category).slice(0, 100) : 'عام', actor.id]
+    );
+    res.json({ ok: true, id });
+  } catch (e) { logger.error('[cs/canned]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.put('/api/admin/support/canned-responses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const { title, body, category } = req.body;
+    if (!title || !body) return res.status(400).json({ error: 'title and body required' });
+    await pool.query(
+      'UPDATE support_canned_responses SET title=?, body=?, category=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
+      [String(title).slice(0, 200), String(body).slice(0, 4000), category ? String(category).slice(0, 100) : 'عام', req.params.id, req.tenantId]
+    );
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/canned]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.delete('/api/admin/support/canned-responses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM support_canned_responses WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/canned]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── FAQ knowledge base (admin-managed; public read lives in public.js) ──────
+router.get('/api/admin/faq', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, question, answer, category, sort_order, is_published, created_at FROM faq_entries WHERE tenant_id=? ORDER BY category, sort_order, created_at',
+      [req.tenantId]
+    );
+    res.json(rows);
+  } catch (e) { logger.error('[cs/faq]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.post('/api/admin/faq', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const { question, answer, category, sort_order, is_published } = req.body;
+    if (!question || !answer) return res.status(400).json({ error: 'question and answer required' });
+    const id = uuidv4();
+    await pool.query(
+      'INSERT INTO faq_entries (id, tenant_id, question, answer, category, sort_order, is_published, created_by) VALUES (?,?,?,?,?,?,?,?)',
+      [id, req.tenantId, String(question).slice(0, 500), String(answer).slice(0, 5000), category ? String(category).slice(0, 100) : 'عام', Number(sort_order) || 0, is_published === false ? 0 : 1, (await actorOf(req)).id]
+    );
+    res.json({ ok: true, id });
+  } catch (e) { logger.error('[cs/faq]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.put('/api/admin/faq/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    const { question, answer, category, sort_order, is_published } = req.body;
+    if (!question || !answer) return res.status(400).json({ error: 'question and answer required' });
+    await pool.query(
+      'UPDATE faq_entries SET question=?, answer=?, category=?, sort_order=?, is_published=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
+      [String(question).slice(0, 500), String(answer).slice(0, 5000), category ? String(category).slice(0, 100) : 'عام', Number(sort_order) || 0, is_published === false ? 0 : 1, req.params.id, req.tenantId]
+    );
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/faq]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+router.delete('/api/admin/faq/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM faq_entries WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('[cs/faq]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── ESCALATE to management ───────────────────────────────────────────────────

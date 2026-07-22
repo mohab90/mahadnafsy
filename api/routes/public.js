@@ -810,4 +810,15 @@ router.get('/api/me/quiz-attempts', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 
+// Public FAQ knowledge base — self-service, reduces support ticket volume.
+router.get('/api/faq', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, question, answer, category FROM faq_entries WHERE tenant_id=? AND is_published=1 ORDER BY category, sort_order, created_at LIMIT 500',
+      [req.tenantId]
+    );
+    res.json(rows);
+  } catch (e) { logger.error('[public/faq]', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 module.exports = router;
