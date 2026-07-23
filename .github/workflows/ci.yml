@@ -20,18 +20,55 @@ jobs:
   static-checks:
     name: API lint + quality gate
     runs-on: ubuntu-latest
+    # Ephemeral test database (TEST-04) — separate from smoke.yml's self-hosted
+    # job, which SSH-tunnels into the real production DB for a live smoke test.
+    # This one is a throwaway MySQL container: migrated fresh on every run, never
+    # holds real data, exists only so tests/integration/*.test.js (schema/ledger
+    # invariant checks) run in CI instead of skipping silently everywhere.
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: mahad_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ''
+      DB_NAME: mahad_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies
+        run: npm --prefix api ci
+      - name: Load reference schema (api/schema.sql — structure-only baseline)
+        run: mysql -h127.0.0.1 -P3306 -uroot mahad_ci < api/schema.sql
+      # runMigrations() baselines 001-033 (pre-runner era) as already-applied
+      # without re-executing, then runs every migration schema.sql's dump date
+      # hadn't caught up to yet. Those are written idempotently (IF [NOT]
+      # EXISTS guards), so this is safe even if some of them already landed
+      # in the dump.
+      - name: Apply migrations newer than the schema.sql snapshot
+        run: npm run migrate
       - name: ESLint (api — no-undef)
         run: npm run lint:api
       - name: Unit tests (finance / RBAC / templates / helpers / tenant / pagination)
         run: npm --prefix api run test:unit
-      - name: Integration tests (skip cleanly without TEST_DB_*)
+      - name: Integration tests (real MySQL — schema/ledger invariants)
         run: npm --prefix api run test:integration
-      - name: Quality gate (48 checks)
+      - name: Quality gate (54 checks)
         run: node tools/mahad-quality-check.mjs
       - name: Dependency audit (api / admin / client)
         run: |

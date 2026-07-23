@@ -10,6 +10,8 @@
     "lint:admin": "npm --prefix admin run typecheck",
     "lint:client": "npm --prefix client run typecheck",
     "test:unit": "npm --prefix api run test:unit",
+    "test:integration": "npm --prefix api run test:integration",
+    "migrate": "npm --prefix api run migrate",
     "test:e2e": "npm --prefix e2e test",
     "test:e2e:install": "npm --prefix e2e install && npm --prefix e2e run install:browsers",
     "test": "npm run lint:api && npm run test:unit && npm run smoke",
