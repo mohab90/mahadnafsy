@@ -182,6 +182,7 @@ import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts
 import { useCsvFbImportState } from './dashboard/hooks/useCsvFbImportState';
 import { useLeadFilters } from './dashboard/useLeadFilters';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
+import { useSubscriberModals } from './dashboard/hooks/useSubscriberModals';
 import { exportOrdersCsv, exportSubscribersCsv as exportSubscribersCsvHelper, exportLeadsCsv as exportLeadsCsvHelper } from './dashboard/dashboardExports';
 import {
   DashboardClientTabs,
@@ -490,7 +491,6 @@ const Dashboard: React.FC = () => {
 
   const [lectureCourseId, setLectureCourseId] = useState('');
 
-  const [editingSubscriberId, setEditingSubscriberId] = useState('');
   const {
     subscriberSubTab, setSubscriberSubTab,
     subscriberCourseFilter, setSubscriberCourseFilter,
@@ -550,56 +550,21 @@ const Dashboard: React.FC = () => {
   } = useSubscriberGrant();
 
   // Refund requests section state (shared with refund_requests tab)
-  const [refundActionSaving, setRefundActionSaving] = useState<string|null>(null);
-
-  // Subscriber payment modal (separate from grant)
-  const [subPayRow, setSubPayRow] = useState<SubscriberItem | null>(null);
-  const [subPayDraft, setSubPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
-
-  // Per-course pay detail popup
-  // Extra certificate request action
-  const [certActionSub, setCertActionSub] = useState<SubscriberItem | null>(null);
-  const [certActionDraft, setCertActionDraft] = useState<{ courseId: string; type: ExtraCertificateType | ''; certExpected: string; certPaid: string }>({ courseId: '', type: '', certExpected: '', certPaid: '' });
-
-  // Quick installment plan popup (from Dashboard table)
-  const [subInstRow, setSubInstRow] = useState<SubscriberItem | null>(null);
-  const [subInstDraft, setSubInstDraft] = useState({
-    courseId: '', currency: 'EGP' as 'EGP'|'SAR'|'USD',
-    amountPerInst: '', numInstallments: '3',
-    inputMode: 'count' as 'count'|'amount',
-    startDate: new Date().toISOString().slice(0, 10),
-    intervalDays: '30', notes: '', overrideExpected: '',
-  });
-  // WhatsApp templates for subscribers
-
-  // Subscriber quick-contact modal
-  const [subContactRow, setSubContactRow] = useState<SubscriberItem | null>(null);
-  const [subContactDraft, setSubContactDraft] = useState<{
-    type: CommunicationRecord['type'];
-    date: string;
-    notes: string;
-    outcome: string;
-    nextFollowUp: string;
-  }>({
-    type: 'call',
-    date: new Date().toISOString().slice(0, 16),
-    notes: '',
-    outcome: '',
-    nextFollowUp: '',
-  });
-  const [subscriberDraft, setSubscriberDraft] = useState({
-    id: '',
-    name: '',
-    email: '',
-    phone: '',
-    enrolledCourseIds: [] as string[],
-    courseAccess: {} as Record<string, CourseAccessSetting>,
-    lectureProgress: {} as Record<string, number>,
-    paymentHistory: [] as PaymentHistoryEntry[],
-    status: 'active_new' as SubStatus,
-    createdAt: '',
-  });
-  const [newSubscriberPassword, setNewSubscriberPassword] = useState('');
+  const {
+    editingSubscriberId, setEditingSubscriberId,
+    refundActionSaving, setRefundActionSaving,
+    subPayRow, setSubPayRow,
+    subPayDraft, setSubPayDraft,
+    certActionSub, setCertActionSub,
+    certActionDraft, setCertActionDraft,
+    subInstRow, setSubInstRow,
+    subInstDraft, setSubInstDraft,
+    subContactRow, setSubContactRow,
+    subContactDraft, setSubContactDraft,
+    subscriberDraft, setSubscriberDraft,
+    newSubscriberPassword, setNewSubscriberPassword,
+    subWaRow, setSubWaRow,
+  } = useSubscriberModals();
 
   const [editingLeadId, setEditingLeadId] = useState('');
   const [salesNotifOpen, setSalesNotifOpen] = useState(false);
@@ -650,7 +615,6 @@ const Dashboard: React.FC = () => {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['main', 'clients']));
   const [showSaveSegment, setShowSaveSegment] = useState(false);
   const [staffShowPassword, setStaffShowPassword] = useState(false);
-  const [subWaRow, setSubWaRow] = useState<SubscriberItem | null>(null);
   const [staffProfileModalId, setStaffProfileModalId] = useState<string | null>(null);
   const toggleGroup = (key: string) => setOpenGroups(prev => {
     const next = new Set(prev);
