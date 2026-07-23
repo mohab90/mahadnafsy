@@ -9,7 +9,7 @@ const { pool, cacheInvalidate } = require('../../lib/db');
 const { mailer, sendEmail, htmlEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, validate } = require('../../lib/helpers');
-const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode } = require('../../lib/mappers');
+const { COURSE_COLS, mapCourse, mapBundle, mapTherapist, getNextClientCode, mapQuiz } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logPaymentAudit, logFinancialAudit, postJournalEntry, _paymentAccountCode, _expenseAccountCode, toEgp } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
@@ -195,6 +195,18 @@ router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, r
 });
 
 // ── Quizzes CRUD ──────────────────────────────────────────────────────────────
+// Authenticated counterpart to the public GET /api/quizzes — returns the full
+// question set including correctIndex so the admin editor can display/edit
+// answers. The public route strips correctIndex entirely (LMS-05).
+router.get('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit = parseLimit(req.query.limit, 200, 500);
+    const [rows] = await pool.query(
+      `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, source_material, created_at, updated_at
+       FROM course_quizzes WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
+    res.json(rows.map(r => mapQuiz(r, { includeAnswers: true })));
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
 router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) => {
   try {
     const q = req.body;

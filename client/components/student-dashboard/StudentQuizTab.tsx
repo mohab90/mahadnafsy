@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CheckCircle, X } from 'lucide-react';
 
 import type { Course, CourseQuiz, QuizAttempt, SubscriberItem } from '../../types';
@@ -20,7 +21,7 @@ type Props = {
   setQuizAnswers: (value: number[]) => void;
   setQuizSubmitted: (value: boolean) => void;
   setQuizScore: (value: number) => void;
-  addQuizAttempt: (attempt: QuizAttempt) => void;
+  submitQuizAttempt: (quiz: CourseQuiz, subscriberId: string, answers: number[]) => Promise<{ score: number; passed: boolean }>;
 };
 
 export function StudentQuizTab({
@@ -36,8 +37,10 @@ export function StudentQuizTab({
   setQuizAnswers,
   setQuizSubmitted,
   setQuizScore,
-  addQuizAttempt,
+  submitQuizAttempt,
 }: Props) {
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   if (!subscriber) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-gray-100 bg-white p-12 text-center shadow-sm">
@@ -49,26 +52,22 @@ export function StudentQuizTab({
 
   const activeQuizData = quizModal ? courseQuizzes.find(quiz => quiz.id === quizModal.quizId) : null;
 
-  const handleSubmitQuiz = () => {
+  const handleSubmitQuiz = async () => {
     if (!activeQuizData || !subscriber) return;
-    let correct = 0;
-    activeQuizData.questions.forEach((question, index) => {
-      if (quizAnswers[index] === question.correctIndex) correct++;
-    });
-    const score = Math.round((correct / activeQuizData.questions.length) * 100);
-    const passed = score >= activeQuizData.passingScore;
-    setQuizScore(score);
-    setQuizSubmitted(true);
-    addQuizAttempt({
-      id: `qa-${Date.now()}`,
-      subscriberId: subscriber.id,
-      courseId: activeQuizData.courseId,
-      quizId: activeQuizData.id,
-      answers: quizAnswers,
-      score,
-      passed,
-      takenAt: new Date().toISOString(),
-    });
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      // Grading happens on the server against its own copy of correctIndex
+      // (LMS-06) — the quiz data here never carries it (LMS-05), so there is
+      // nothing to compute or trust client-side.
+      const result = await submitQuizAttempt(activeQuizData, subscriber.id, quizAnswers);
+      setQuizScore(result.score);
+      setQuizSubmitted(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'تعذر إرسال الإجابات');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -181,14 +180,17 @@ export function StudentQuizTab({
                   ))}
 
                   <button
-                    onClick={handleSubmitQuiz}
-                    disabled={quizAnswers.some(answer => answer === -1)}
+                    onClick={() => { void handleSubmitQuiz(); }}
+                    disabled={submitting || quizAnswers.some(answer => answer === -1)}
                     className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary-600 py-3.5 text-base font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
                   >
-                    <CheckCircle size={18} /> إرسال الإجابات
+                    <CheckCircle size={18} /> {submitting ? 'جارٍ الإرسال...' : 'إرسال الإجابات'}
                   </button>
                   {quizAnswers.some(answer => answer === -1) && (
                     <p className="text-center text-xs text-gray-400">أجب على جميع الأسئلة قبل الإرسال</p>
+                  )}
+                  {submitError && (
+                    <p className="text-center text-xs text-red-500">{submitError}</p>
                   )}
                 </div>
               )}

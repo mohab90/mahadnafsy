@@ -60,7 +60,9 @@ export const mysqlCatalog = {
   listChapters: (limit = 1000) => apiFetch<AR[]>(`/chapters?limit=${limit}`),
   listTherapists: (limit = 100) => apiFetch<AR[]>(`/therapists?limit=${limit}`),
   listTestimonials: () => apiFetch<AR[]>('/testimonials'),
-  listQuizzes: (limit = 200) => apiFetch<AR[]>(`/quizzes?limit=${limit}`),
+  // Authenticated admin endpoint (not the public /quizzes listing) — the public
+  // one strips correctIndex (LMS-05), which the editor needs to display/edit.
+  listQuizzes: (limit = 200) => apiFetch<AR[]>(`/admin/quizzes?limit=${limit}`, {}, true),
   listLiveStreams: (limit = 200) => apiFetch<AR[]>(`/live-streams?limit=${limit}`),
   // Admin loads ALL posts (incl. pending/rejected) from the moderation endpoint so they can be reviewed.
   listCommunityPosts: () => apiFetch<AR[]>('/admin/community/posts', {}, true),

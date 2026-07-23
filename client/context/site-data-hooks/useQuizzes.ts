@@ -51,10 +51,25 @@ export function useQuizzes(
     track('delete', 'courseQuiz', id);
   };
 
-  const addQuizAttempt = (item: QuizAttempt) => {
-    setQuizAttempts((prev) => [item, ...prev]);
-    persistQuizAttemptToCollection(item);
-    track('create', 'quizAttempt', `${item.subscriberId} score ${item.score}%`);
+  // Grades server-side (LMS-06) — the server holds the only copy of correctIndex
+  // that's ever sent over the wire (the public quiz listing strips it, LMS-05),
+  // so a tampered client can no longer submit a fabricated score/passed.
+  const submitQuizAttempt = async (quiz: CourseQuiz, subscriberId: string, answers: number[]) => {
+    const result = await mysqlClient.submitQuizAttempt(quiz.id, answers);
+    const attempt: QuizAttempt = {
+      id: result.id,
+      subscriberId,
+      courseId: quiz.courseId,
+      quizId: quiz.id,
+      answers,
+      score: result.score,
+      passed: result.passed,
+      takenAt: new Date().toISOString(),
+    };
+    setQuizAttempts((prev) => [attempt, ...prev]);
+    persistQuizAttemptToCollection(attempt);
+    track('create', 'quizAttempt', `${subscriberId} score ${result.score}%`);
+    return result;
   };
 
   const deleteQuizAttempt = (id: string) => {
@@ -69,7 +84,7 @@ export function useQuizzes(
 
   return {
     courseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
-    quizAttempts, addQuizAttempt, deleteQuizAttempt,
+    quizAttempts, submitQuizAttempt, deleteQuizAttempt,
     resetQuizzes,
   };
 }

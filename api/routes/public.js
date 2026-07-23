@@ -10,7 +10,8 @@ const { pool, cached } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber } = require('../lib/mappers');
+const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz } = require('../lib/mappers');
+const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { ADMIN_EMAILS, ADMIN_UIDS, optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
@@ -599,14 +600,18 @@ router.get('/api/content', async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/quizzes
+// GET /api/quizzes — public listing so students can see a quiz exists and take it.
+// correctIndex/explanation are stripped (LMS-05): this endpoint has no auth, so
+// anyone could otherwise read the answer key straight out of the network tab.
+// Grading happens server-side in POST /api/me/quiz-attempts, against the full
+// (unstripped) row read directly from the DB.
 router.get('/api/quizzes', async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const [rows] = await pool.query(
-      `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, created_at
+      `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, source_material, created_at, updated_at
        FROM course_quizzes WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
-    res.json(rows);
+    res.json(rows.map(r => mapQuiz(r, { includeAnswers: false })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -808,6 +813,41 @@ router.get('/api/me/quiz-attempts', requireAuth, async (req, res) => {
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/me/quiz-attempts — student submits their own quiz attempt (LMS-06).
+// Before this route existed, StudentQuizTab.tsx graded entirely client-side and
+// never sent the result anywhere — a real passing attempt only ever reached
+// quiz_attempts if an admin manually re-typed it via POST /api/admin/quiz-attempts.
+// Grading here reloads the quiz's own questions_json (which still carries
+// correctIndex — the public GET /api/quizzes response never does, LMS-05) so a
+// tampered client-side score/passed can't be trusted or submitted.
+router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
+  try {
+    const { quizId, answers } = req.body || {};
+    if (!quizId || !Array.isArray(answers)) return res.status(400).json({ error: 'quizId and answers[] are required' });
+    const emailNorm = (req.user.email || '').toLowerCase().trim();
+    const [[sub]] = await pool.query(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
+      [req.tenantId, req.user.uid || '', emailNorm]
+    );
+    if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
+
+    const [[quiz]] = await pool.query(
+      'SELECT id, course_id, questions_json, passing_score FROM course_quizzes WHERE id=? AND tenant_id=? LIMIT 1',
+      [quizId, req.tenantId]
+    );
+    if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+
+    const [[enrolled]] = await pool.query(
+      'SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1',
+      [sub.id, quiz.course_id, req.tenantId]
+    );
+    if (!enrolled) return res.status(403).json({ error: 'Active enrollment is required' });
+
+    const result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor: emailNorm }, pool);
+    res.json({ ok: true, ...result });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Public FAQ knowledge base — self-service, reduces support ticket volume.

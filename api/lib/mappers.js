@@ -269,4 +269,29 @@ async function getNextClientCode(conn) {
   return `C${row.next_value - 1}`;
 }
 
-module.exports = { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode };
+// includeAnswers=false strips correctIndex (and explanation, which can imply it)
+// from every question — the shape served to the public GET /api/quizzes so a
+// visitor with no session can't just read the answer key out of the network
+// tab (LMS-05). The authenticated admin listing and the server-side grader in
+// lib/quizGrading.js are the only callers that pass includeAnswers=true.
+function mapQuiz(r, { includeAnswers = false } = {}) {
+  const rawQuestions = tryJson(r.questions_json, []);
+  const questions = Array.isArray(rawQuestions) ? rawQuestions.map(q => {
+    if (includeAnswers) return q;
+    const { correctIndex: _correctIndex, explanation: _explanation, ...safe } = q;
+    return safe;
+  }) : [];
+  return {
+    id: r.id,
+    courseId: r.course_id,
+    title: r.title,
+    questions,
+    passingScore: Number(r.passing_score) || 70,
+    generatedByAI: !!r.generated_by_ai,
+    sourceMaterial: r.source_material || undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at || r.created_at,
+  };
+}
+
+module.exports = { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz };

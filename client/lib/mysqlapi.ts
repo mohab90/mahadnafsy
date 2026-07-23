@@ -77,6 +77,11 @@ export const mysqlClient = {
   getMySubscriber: () => apiFetch<AR | null>('/me/subscriber', {}, true),
   getMyConsultations: () => apiFetch<AR[]>('/me/consultations', {}, true),
   getMyQuizAttempts: (sid: string) => apiFetch<AR[]>(`/me/quiz-attempts?subscriberId=${sid}`, {}, true),
+  // Server grades against its own copy of correctIndex (never trusts a client score) — LMS-06.
+  submitQuizAttempt: (quizId: string, answers: number[]) =>
+    apiFetch<{ ok: boolean; id: string; score: number; passed: boolean; correctCount: number; total: number }>(
+      '/me/quiz-attempts', { method: 'POST', body: JSON.stringify({ quizId, answers }) }, true
+    ),
   checkIsStaff: () => apiFetch<{ isStaff: boolean; isAdmin: boolean; role?: string; staffId?: string }>('/me/is-staff', {}, true),
   getStaffSelf: () => apiFetch<AR>('/staff/me', {}, true),
   saveLectureProgress: (lectureId: string, pct: number) =>

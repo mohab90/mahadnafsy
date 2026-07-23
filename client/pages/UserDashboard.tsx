@@ -53,7 +53,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
   useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
-  const { courses, subscribers, notifications, communityPosts, consultations, getCourseLectures, updateSubscriber, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, currency, courseQuizzes, quizAttempts, addQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
+  const { courses, subscribers, notifications, communityPosts, consultations, getCourseLectures, updateSubscriber, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, currency, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const navigate = useNavigate();
 
   // ── Direct staff check (for non-admin staff whose staffMembers won't be loaded) ──
@@ -1060,7 +1060,7 @@ const UserDashboard: React.FC = () => {
               setQuizAnswers={setQuizAnswers}
               setQuizSubmitted={setQuizSubmitted}
               setQuizScore={setQuizScore}
-              addQuizAttempt={addQuizAttempt}
+              submitQuizAttempt={submitQuizAttempt}
             />
           )}
 

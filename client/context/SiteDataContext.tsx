@@ -95,7 +95,7 @@ interface SiteDataShape {
   updateCourseQuiz: (item: CourseQuiz) => void;
   deleteCourseQuiz: (id: string) => void;
   quizAttempts: QuizAttempt[];
-  addQuizAttempt: (item: QuizAttempt) => void;
+  submitQuizAttempt: (quiz: CourseQuiz, subscriberId: string, answers: number[]) => Promise<{ score: number; passed: boolean }>;
   deleteQuizAttempt: (id: string) => void;
   liveStreams: LiveStream[];
   addLiveStream: (item: LiveStream) => void;
@@ -554,7 +554,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const {
     courseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
-    quizAttempts, addQuizAttempt, deleteQuizAttempt, resetQuizzes,
+    quizAttempts, submitQuizAttempt, deleteQuizAttempt, resetQuizzes,
   } = useQuizzes(
     (initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || [],
     (initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || [],
@@ -1466,7 +1466,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateCourseQuiz,
     deleteCourseQuiz,
     quizAttempts,
-    addQuizAttempt,
+    submitQuizAttempt,
     deleteQuizAttempt,
     liveStreams,
     addLiveStream,
