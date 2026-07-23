@@ -155,11 +155,11 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
       `SELECT COUNT(*) AS payment_overdue FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND DATE(date) < ?`, [req.tenantId, today]);
     const [[{ reminders_sent_today }]] = await pool.query(
       `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND DATE(sent_at) = ?`, [req.tenantId, today]).catch(() => [[{ reminders_sent_today: 0 }]]);
-    // drip_campaigns has no is_active column (it's an enum `status`, values
-    // active|paused|draft) — the query always threw and the .catch() below
-    // silently turned it into 0, so this stat was permanently wrong (MKT-08).
+    // Was drip_campaigns.is_active — a column that table never had (MKT-08),
+    // and drip_campaigns itself is the dead parallel system removed for
+    // MKT-05/07 in favor of drip_sequences (the one with a real send worker).
     const [[{ drip_active }]] = await pool.query(
-      `SELECT COUNT(*) AS drip_active FROM drip_campaigns WHERE tenant_id=? AND status='active'`, [req.tenantId]).catch(() => [[{ drip_active: 0 }]]);
+      `SELECT COUNT(*) AS drip_active FROM drip_sequences WHERE tenant_id=? AND is_active=1`, [req.tenantId]).catch(() => [[{ drip_active: 0 }]]);
     const [[{ workflows_active }]] = await pool.query(
       `SELECT COUNT(*) AS workflows_active FROM automation_workflows WHERE tenant_id=? AND enabled=1`, [req.tenantId]).catch(() => [[{ workflows_active: 0 }]]);
 

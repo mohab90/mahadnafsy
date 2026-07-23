@@ -576,50 +576,11 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
   } finally { conn?.release(); }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Drip Campaigns ────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
-
-
-router.get('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT id, name, trigger_event, audience, status, enrolled_count, completed_count, steps, created_at FROM drip_campaigns WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 200'
-    , [req.tenantId]);
-    res.json(rows.map(r => ({ ...r, steps: tryJson(r.steps, []) })));
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-router.post('/api/admin/drip-campaigns', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { name, trigger_event, audience, steps } = req.body;
-    if (!name) return res.status(400).json({ error: 'name required' });
-    const id = uuidv4();
-    await pool.query(
-      "INSERT INTO drip_campaigns (id,tenant_id,name,trigger_event,audience,status,steps,created_by) VALUES (?,?,?,?,?,'draft',?,?)",
-      [id, req.tenantId, name, trigger_event || 'subscription_created', audience || 'subscribers', JSON.stringify(steps || []), req.user.uid || null]
-    );
-    res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-router.put('/api/admin/drip-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { name, trigger_event, audience, status, steps } = req.body;
-    await pool.query(
-      'UPDATE drip_campaigns SET name=?,trigger_event=?,audience=?,status=?,steps=? WHERE id=? AND tenant_id=?',
-      [name, trigger_event || 'subscription_created', audience || 'subscribers', status || 'draft', JSON.stringify(steps || []), req.params.id, req.tenantId]
-    );
-    res.json({ ok: true });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-router.delete('/api/admin/drip-campaigns/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const [result] = await pool.query('DELETE FROM drip_campaigns WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
-    if (!result.affectedRows) return res.status(404).json({ error: 'Drip campaign not found' });
-    res.json({ ok: true });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+// Drip Campaigns (drip_campaigns table) used to live here — CRUD only, no
+// send worker at all, so creating one here never actually sent anything
+// (MKT-05). The real, working drip system — drip_sequences +
+// drip_enrollments, with a genuine 15-minute cron worker (see
+// routes/analytics/campaigns.js) — already existed under a confusingly
+// similar name (MKT-07); DripCampaignsTab.tsx now talks to that one instead.
 
 module.exports = router;
