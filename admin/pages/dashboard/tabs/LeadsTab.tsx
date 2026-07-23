@@ -14,7 +14,7 @@ import { mysqlAdmin, mysqlClient } from '../../../lib/mysqlapi';
 import { useResizableCols } from '../../../components/useResizableCols';
 import type {
   LeadItem, LeadStatus, CommunicationRecord, SalesTarget, Course, Bundle,
-  BranchType, FacebookLeadAdsConfig, PaymentHistoryEntry, PaymentItemType,
+  BranchType, PaymentHistoryEntry, PaymentItemType,
   SubscriberItem, StaffMember, CourseAccessSetting,
 } from '../../../types';
 import { DEFAULT_CRM_SETTINGS } from './CrmSettingsModal';
@@ -23,7 +23,6 @@ import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import type { CrmSettings, NotifyFn } from './CrmSettingsModal';
 import { DEFAULT_SOURCES, ONLINE_EXCLUDED_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from './crmConstants';
 import { LeadTable } from './LeadTable';
-import { blankLead } from './leads/leadDrafts';
 import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
 import { useLeadCommunicationsData, type LeadCommunicationFilter } from './leads/useLeadCommunicationsData';
@@ -75,8 +74,7 @@ import { LeadFilterBar } from './leads/LeadFilterBar';
 import { LeadSalesKpiStrip } from './leads/LeadSalesKpiStrip';
 import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import type { StaleLeadRow } from './leads/LeadStaleLeadsPanel';
-import { buildCsv, leadFromCsvRow, parseCsvText, parseFacebookCsvLeads } from './leads/leadCsvUtils';
-import { fetchFacebookLeadForms, syncFacebookLeadAds } from './leads/leadFacebookGraphApi';
+import { buildCsv } from './leads/leadCsvUtils';
 
 const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
 const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));
@@ -94,7 +92,7 @@ const LeadSectionFallback = () => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
-  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber, authUser, isAdmin, fbLeadAdsConfig, setFbLeadAdsConfig, issueClientCodeAsync, content } = useSiteData();
+  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber, authUser, isAdmin, issueClientCodeAsync, content } = useSiteData();
   const instituteBranches = useBranches();
   const navigate = useNavigate();
   const currentStaff = useMemo(() =>
@@ -113,7 +111,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
   const { subTab, setSubTab } = useLeadSubTab();
-  const [lostReasonRow, setLostReasonRow] = useState<{ lead: LeadItem; newStatus: LeadStatus } | null>(null);
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
   const [waRepId, setWaRepId] = useState<string | null>(null);
@@ -250,48 +247,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   // ── Extra state (payment / convert / FB / CRM contact) ──────────────────
   const [salesNotifOpen, setSalesNotifOpen] = useState(false);
-  const [editingLeadId, setEditingLeadId] = useState('');
-  const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
-  const [leadDraft, setLeadDraft] = useState<LeadItem>(blankLead());
-  const [bulkUploadNotice, setBulkUploadNotice] = useState('');
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
-  const [csvMapping, setCsvMapping] = useState<Record<string, string>>({});
-  const [csvImportOpen, setCsvImportOpen] = useState(false);
-  const [csvImporting, setCsvImporting] = useState(false);
   const [convertLeadModal, setConvertLeadModal] = useState<ConvertLeadModalState>({ lead: null, courseId: '', accessMode: 'full' });
   const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
   const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
-  const [showDiscountSection, setShowDiscountSection] = useState(false);
-  const [leadPayPrintData, setLeadPayPrintData] = useState<null | {
-    subName: string; phone: string; courseName: string;
-    items: { label: string; amount: number; currency: string }[];
-    total: number; currency: string; method: string; date: string;
-    note?: string; bookingType: string; courseExpected: number;
-    prevPaid: number; remaining: number; staffName: string; transactionId?: string;
-  }>(null);
-  const [fbDraft, setFbDraft] = useState<FacebookLeadAdsConfig>(() => fbLeadAdsConfig ?? ({
-    enabled: false, pageId: '', pageAccessToken: '', appId: '', webhookVerifyToken: '',
-    adForms: [], defaultLeadType: 'course' as LeadItem['leadType'],
-    defaultStatus: 'new' as LeadStatus,
-    defaultInterestedCourseId: '', defaultAssignedSalesId: '',
-    autoSyncEnabled: false, totalImported: 0, updatedAt: '',
-  }));
-  const [fbIntegOpen, setFbIntegOpen] = useState(false);
-  const [fbSyncLoading, setFbSyncLoading] = useState(false);
-  const [fbSyncNotice, setFbSyncNotice] = useState('');
-  const [fbFormsLoading, setFbFormsLoading] = useState(false);
-  const [fbAvailableForms, setFbAvailableForms] = useState<{ id: string; name: string; status: string }[]>([]);
   const [crmContactRow, setCrmContactRow] = useState<LeadItem | null>(null);
   const [crmContactDraft, setCrmContactDraft] = useState<{
     type: CommunicationRecord['type']; date: string; notes: string;
     outcome: string; nextFollowUp: string; newStatus: LeadStatus | '';
   }>({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
-  const [leadsSearch, setLeadsSearch] = useState('');
-  const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]);
-  const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
-  const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
-  const [leadsCourseFilter, setLeadsCourseFilter] = useState<string>('all');
   const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue' | 'past3d' | 'past7d' | 'past30d' | 'next3d' | 'next7d' | 'no_followup'>('all');
   const [salesSourceFilter, setSalesSourceFilter] = useState<string>('');
 
@@ -908,44 +871,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   };
 
 
-  const saveLeadDraft = () => {
-    if (!leadDraft.name || !leadDraft.email) return;
-    if (!leadDraft.branch) { notify('error', 'الفرع مطلوب — اختر الفرع أولاً'); return; }
-
-    // Auto-assign to least-loaded sales rep for new leads (round-robin)
-
-    let assignedSalesId = leadDraft.assignedSalesId || '';
-    let assignedSalesName = leadDraft.assignedSalesName || '';
-    if (!editingLeadId && !assignedSalesId && salesStaff.length > 0) {
-      const counts = leads.reduce((acc: Record<string, number>, l) => {
-        if (l.assignedSalesId) acc[l.assignedSalesId] = (acc[l.assignedSalesId] || 0) + 1;
-        return acc;
-      }, {});
-      const sorted = [...salesStaff].sort((a, b) => (counts[a.id] || 0) - (counts[b.id] || 0));
-      assignedSalesId = sorted[0].id;
-      assignedSalesName = sorted[0].name;
-    }
-
-    const payload = {
-      ...leadDraft,
-      id: leadDraft.id || `l-${Date.now()}`,
-      assignedSalesId,
-      assignedSalesName,
-      createdAt: leadDraft.createdAt || new Date().toLocaleString('ar-EG', {
-        hour12: false,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    };
-    if (editingLeadId) updateLead(payload); else addLead(payload);
-    setEditingLeadId('');
-    setIsLeadFormOpen(false);
-    setLeadDraft(blankLead());
-  };
-
   const convertLeadToSubscriber = async () => {
     const { lead, courseId, accessMode } = convertLeadModal;
     if (!lead || !courseId) return;
@@ -958,116 +883,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       notify('error', error instanceof Error ? error.message : 'تعذر تحويل العميل');
     }
   };
-  const handleBulkFbUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const createdAt = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-      const importedLeads = parseFacebookCsvLeads(text, leads, createdAt);
-      if (!importedLeads) { setBulkUploadNotice('الملف فارغ أو غير صحيح.'); return; }
-      importedLeads.forEach(addLead);
-      const added = importedLeads.length;
-      setBulkUploadNotice(`تم إضافة ${added} عميل من فيسبوك.`);
-      setTimeout(() => setBulkUploadNotice(''), 4000);
-    };
-    reader.readAsText(file, 'UTF-8');
-    e.target.value = '';
-  };
-
-  // ── General CSV Import ────────────────────────────────────────────────────
-  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = (ev.target?.result as string) || '';
-      const parsed = parseCsvText(text);
-      if (!parsed) { notify('error', 'الملف فارغ أو لا يحتوي صفوف بيانات.'); return; }
-      setCsvHeaders(parsed.headers);
-      setCsvRows(parsed.rows);
-      setCsvMapping(parsed.autoMap);
-      setCsvImportOpen(true);
-    };
-    reader.readAsText(file, 'UTF-8');
-    e.target.value = '';
-  };
-  const handleCsvImport = () => {
-    if (!csvRows.length) return;
-    setCsvImporting(true);
-    let added = 0;
-    const now = new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    for (const row of csvRows) {
-      const importedLead = leadFromCsvRow(row, csvMapping, leads, now);
-      if (!importedLead) continue;
-      addLead(importedLead);
-      added++;
-    }
-    setCsvImporting(false);
-    setCsvImportOpen(false);
-    setCsvRows([]);
-    setCsvHeaders([]);
-    setCsvMapping({});
-    notify('success', `تم استيراد ${added} عميل بنجاح.`);
-  };
-
-  // ── Facebook Lead Ads: Fetch available forms from Graph API ───────────────
-
-  const handleFetchFbForms = async () => {
-    const token = fbDraft.pageAccessToken.trim();
-    const pageId = fbDraft.pageId.trim();
-    if (!token || !pageId) { setFbSyncNotice('أدخل Page ID و Access Token أولاً.'); return; }
-    setFbFormsLoading(true);
-    setFbSyncNotice('');
-    try {
-      const forms = await fetchFacebookLeadForms(pageId, token);
-      setFbAvailableForms(forms);
-      if (forms.length === 0) setFbSyncNotice('لا توجد نماذج. تأكد من صحة الـ Page ID والـ Access Token.');
-    } catch (error) {
-      setFbSyncNotice(`فشل الاتصال بـ Facebook Graph API: ${error instanceof Error ? error.message : 'تأكد من الإعدادات والاتصال بالإنترنت.'}`);
-    } finally {
-      setFbFormsLoading(false);
-    }
-  };
-
-  // ── Facebook Lead Ads: Sync leads from Graph API ──────────────────────────
-  const handleFbApiSync = async () => {
-    const token = fbDraft.pageAccessToken.trim();
-    if (!token) { setFbSyncNotice('أدخل Access Token أولاً.'); return; }
-    const enabledForms = fbDraft.adForms.filter(f => f.enabled);
-    if (enabledForms.length === 0) { setFbSyncNotice('اختر نموذجاً واحداً على الأقل.'); return; }
-    setFbSyncLoading(true);
-    setFbSyncNotice('');
-    try {
-      const result = await syncFacebookLeadAds({
-        config: { ...fbDraft, totalImported: fbLeadAdsConfig?.totalImported || fbDraft.totalImported || 0 },
-        leads,
-        staffMembers,
-        addLead,
-      });
-      setFbLeadAdsConfig(result.updatedConfig);
-      setFbDraft(result.updatedConfig);
-      setFbSyncNotice(`✅ تم: إضافة ${result.added} عميل جديد (تخطي ${result.skipped} مكرر).`);
-    } catch (error) {
-      setFbSyncNotice(`فشل الاتصال: ${error instanceof Error ? error.message : 'تحقق من الإنترنت والإعدادات.'}`);
-    } finally {
-      setFbSyncLoading(false);
-    }
-  };
-
-  const handleSaveFbConfig = () => {
-    setFbLeadAdsConfig({ ...fbDraft, updatedAt: new Date().toISOString() });
-    setFbSyncNotice('✅ تم حفظ الإعدادات.');
-    setTimeout(() => setFbSyncNotice(''), 3000);
-  };
-
-  const startEditLead = (row: LeadItem) => {
-    setEditingLeadId(row.id);
-    setLeadDraft({ ...row });
-    setIsLeadFormOpen(true);
-  };
-
   const handleExportVisibleLeadsCsv = () => {
     const headers = ['الاسم', 'الهاتف', 'البريد', 'المصدر', 'الحالة', 'مستوى الاهتمام', 'المندوب', 'تاريخ الإنشاء'];
     const rows = visibleLeads.map(l => [

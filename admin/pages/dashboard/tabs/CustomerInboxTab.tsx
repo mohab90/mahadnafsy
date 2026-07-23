@@ -122,7 +122,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | InboxSource>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | InboxStatus>('all');
-  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, { status: InboxStatus; originalStatus: string }>>({});
 
   // Detail drawer state — opens the full item + all its actions inline (no navigation).
@@ -284,7 +283,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   // ── Status transitions (used by both the row quick-actions and the drawer) ──
   const updateItemStatus = useCallback(async (item: InboxItem, target: InboxStatus) => {
     const key = `${item.source}-${item.id}`;
-    setUpdatingKey(key);
     setActionBusy(true);
     try {
       let originalStatus: string = target;
@@ -312,7 +310,6 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحديث الحالة');
     } finally {
-      setUpdatingKey(null);
       setActionBusy(false);
     }
   }, [loadRemote, notify, refundNote]);

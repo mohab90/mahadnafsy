@@ -145,7 +145,6 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
 
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
-  const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [automationToggles, setAutomationToggles] = useState<Record<string, boolean>>({
     welcome_lead: true, converted_msg: true, followup_reminder: true,
     sms_drip: false, cart_recovery: false, review_request: true,
