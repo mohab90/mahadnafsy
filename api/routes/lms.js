@@ -735,12 +735,15 @@ router.patch('/api/admin/courses/:courseId/capacity', requireAuth, requireAdmin,
 // ═══════════════════════════════════════════════════════════════════════════
 
 // POST /api/admin/completions — admin marks a subscriber as completing a course
-// Idempotent: if already completed, returns existing certificate
+// Idempotent: if already completed, returns existing certificate. requireFullProgress
+// is explicitly off here — this route's whole purpose is a manual staff override for
+// students who finished offline/outside the tracked-progress flow (LMS-07 made
+// completeCourse() strict by default; this is the deliberate, audited exception).
 router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
     const completionResult = await completeCourse({
       tenantId: req.tenantId, subscriberId: req.body?.subscriber_id, courseId: req.body?.course_id,
-      actor: req.user?.email || req.staffRecord?.name || 'admin',
+      actor: req.user?.email || req.staffRecord?.name || 'admin', requireFullProgress: false,
     });
     res.status(completionResult.alreadyCompleted ? 200 : 201).json(completionResult);
   } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
@@ -751,7 +754,7 @@ router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, requirePer
   try {
     const completionResults = await completeCourses({
       tenantId: req.tenantId, subscriberIds: req.body?.subscriber_ids, courseId: req.body?.course_id,
-      actor: req.user?.email || 'admin',
+      actor: req.user?.email || 'admin', requireFullProgress: false,
     });
     res.json({ results: completionResults, created: completionResults.filter(item => !item.alreadyCompleted).length, skipped: completionResults.filter(item => item.alreadyCompleted).length, total: completionResults.length });
   } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }

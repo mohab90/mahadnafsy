@@ -4,7 +4,6 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
-const { mailer, htmlEmail, sendEmail } = require('../lib/email');
 const { tryJson } = require('../lib/helpers');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { postPaymentJournal } = require('../lib/finance');
@@ -14,6 +13,7 @@ const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { createNotification } = require('../lib/notification');
 const { transitionLead } = require('../lib/leadState');
 const { publishRealtimeEvent } = require('../lib/realtime');
+const { completeCourse } = require('../lib/courseCompletion');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function tenantIdFor(req) {
@@ -147,64 +147,37 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
       [sub.id, lectureId, entitledLecture.course_id, progress, progress, tenantId]
     );
     await pool.query('UPDATE subscribers SET crm_json = ? WHERE id = ? AND tenant_id=?', [JSON.stringify(crm), sub.id, tenantId]);
-    // ── Auto-complete: check if all lectures in this lecture's course are done ──
+    // ── Auto-complete: delegate to the shared completeCourse() (LMS-07) instead
+    // of reimplementing eligibility/cert-issuing here — this used to duplicate
+    // (and drift from) lib/courseCompletion.js's own entitlement + progress
+    // checks and email template, the same class of bug the refund logic had
+    // before it was unified (PAY-04/05/14).
     let completionData = null;
     if (progress >= 100) {
       try {
         const [[lec]] = await pool.query(
-          `SELECT cl.course_id
-             FROM course_lectures cl
-             JOIN enrollments e ON e.course_id=cl.course_id AND e.subscriber_id=? AND e.tenant_id=?
-            WHERE cl.id=? AND EXISTS (
-              SELECT 1 FROM payments p
-               WHERE p.subscriber_id=e.subscriber_id AND p.tenant_id=e.tenant_id
-                 AND p.status='paid' AND p.deleted_at IS NULL
-                 AND (p.course_id=e.course_id OR EXISTS (
-                   SELECT 1 FROM bundle_courses bc WHERE bc.bundle_id=p.bundle_id AND bc.course_id=e.course_id
-                 ))
-            ) LIMIT 1`,
+          `SELECT cl.course_id FROM course_lectures cl
+           JOIN enrollments e ON e.course_id=cl.course_id AND e.subscriber_id=? AND e.tenant_id=?
+          WHERE cl.id=? LIMIT 1`,
           [sub.id, tenantId, lectureId]
         );
         if (lec?.course_id) {
-          const courseId = lec.course_id;
-          const [[alreadyDone]] = await pool.query('SELECT id FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1', [sub.id, courseId, tenantId]);
-          if (!alreadyDone) {
-            const [allLecs] = await pool.query(
-              `SELECT cl.id FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
-               WHERE cl.course_id=? AND cl.is_published=1 AND c.tenant_id=?`,
-              [courseId, tenantId]
-            );
-            if (allLecs.length > 0) {
-              const lp = crm.lectureProgress || {};
-              const allWatched = allLecs.every(l => (lp[l.id] || 0) >= 100);
-              if (allWatched) {
-                const certCode = 'MHAD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
-                await pool.query(
-                  'INSERT IGNORE INTO course_completions (id, subscriber_id, course_id, certificate_code, tenant_id) VALUES (UUID(),?,?,?,?)',
-                  [sub.id, courseId, certCode, tenantId]
-                );
-                const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, tenantId]);
-                const subEmail = emailNorm;
-                const [[subInfo]] = await pool.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [sub.id, tenantId]);
-                if (subEmail) {
-                  sendEmail(subEmail, `🎓 مبروك! أتممت كورس "${course?.title || ''}"`,
-                    htmlEmail('شهادة إتمام', `
-                      <p>مبروك <strong>${subInfo?.name || ''}</strong>!</p>
-                      <p>لقد أتممت بنجاح كورس <strong>${course?.title || ''}</strong>.</p>
-                      <p>كود الشهادة الرقمية الخاص بك:</p>
-                      <div class="otp-box">${certCode}</div>
-                      <p>يمكنك التحقق من الشهادة على موقعنا باستخدام هذا الكود.</p>
-                    `),
-                    { tenantId }
-                  ).catch(() => {});
-                }
-                await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId, certCode }, req.tenantId);
-                completionData = { completed: true, certCode };
-              }
-            }
+          const completion = await completeCourse({
+            tenantId, subscriberId: sub.id, courseId: lec.course_id, actor: emailNorm || uid, requireFullProgress: true,
+          });
+          if (!completion.alreadyCompleted) {
+            const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [lec.course_id, tenantId]);
+            const [[subInfo]] = await pool.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [sub.id, tenantId]);
+            await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId: lec.course_id, certCode: completion.certificate_code }, req.tenantId);
+            completionData = { completed: true, certCode: completion.certificate_code };
           }
         }
-      } catch (cerr) { logger.warn('[progress] completion check error:', cerr.message); }
+      } catch (cerr) {
+        // completeCourse() throws 409 whenever this lecture reached 100% but the
+        // course as a whole isn't done yet (other lectures still pending) — an
+        // expected, frequent outcome here, not a real error worth logging.
+        if (cerr.statusCode !== 409) logger.warn('[progress] completion check error:', cerr.message);
+      }
     }
     res.json({ ok: true, ...(completionData || {}) });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

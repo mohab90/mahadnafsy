@@ -12,7 +12,7 @@ function certificateCode() {
   return `MHAD-${Date.now().toString(36).toUpperCase()}-${uuidv4().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }
 
-async function completeCourse({ tenantId, subscriberId, courseId, actor = 'system', requireFullProgress = false }, db = null) {
+async function completeCourse({ tenantId, subscriberId, courseId, actor = 'system', requireFullProgress = true }, db = null) {
   if (!tenantId || !subscriberId || !courseId) {
     const error = new Error('tenantId, subscriberId and courseId are required'); error.statusCode = 400; throw error;
   }
@@ -78,7 +78,7 @@ async function completeCourse({ tenantId, subscriberId, courseId, actor = 'syste
   } finally { if (ownsConnection) conn.release(); }
 }
 
-async function completeCourses({ tenantId, subscriberIds, courseId, actor }) {
+async function completeCourses({ tenantId, subscriberIds, courseId, actor, requireFullProgress = true }) {
   const ids = [...new Set((subscriberIds || []).map(String).filter(Boolean))];
   if (!ids.length || ids.length > 500) {
     const error = new Error('subscriberIds must contain 1-500 unique ids'); error.statusCode = 400; throw error;
@@ -87,7 +87,7 @@ async function completeCourses({ tenantId, subscriberIds, courseId, actor }) {
   try {
     await conn.beginTransaction();
     const results = [];
-    for (const subscriberId of ids) results.push({ subscriberId, ...(await completeCourse({ tenantId, subscriberId, courseId, actor }, conn)) });
+    for (const subscriberId of ids) results.push({ subscriberId, ...(await completeCourse({ tenantId, subscriberId, courseId, actor, requireFullProgress }, conn)) });
     await conn.commit();
     return results;
   } catch (error) {

@@ -48,6 +48,17 @@ test('completeCourse: rejects with 409 when there is no paid tenant enrollment',
   assert.equal(conn.calls.length, 1);
 });
 
+test('completeCourse: requireFullProgress defaults to true (LMS-07) — rejects incomplete lectures even when the caller omits the flag', async () => {
+  const conn = mockConn([
+    { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
+    { match: 'FROM course_lectures', rows: [{ total: 5, completed: 3 }] },
+  ]);
+  await assert.rejects(
+    () => completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1' }, conn),
+    (err) => { assert.equal(err.statusCode, 409); assert.match(err.message, /All published lectures must be completed/); return true; }
+  );
+});
+
 test('completeCourse: requireFullProgress=true rejects when lectures are incomplete', async () => {
   const conn = mockConn([
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
@@ -86,7 +97,7 @@ test('completeCourse: already-completed is idempotent — returns the existing c
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 0, enrollment_id: 'e1' }] },
     { match: 'FROM course_completions', rows: [{ id: 'cc1', certificate_code: 'MHAD-EXISTING', completed_at: '2026-01-01' }] },
   ]);
-  const result = await completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1' }, conn);
+  const result = await completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1', requireFullProgress: false }, conn);
   assert.equal(result.alreadyCompleted, true);
   assert.equal(result.certificate_code, 'MHAD-EXISTING');
   assert.ok(!conn.calls.some(c => c.sql.includes('INSERT INTO course_completions')), 'must not write a second completion row');

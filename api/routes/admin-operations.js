@@ -305,7 +305,10 @@ router.post('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, r
     );
     if (a.passed && a.courseId && a.subscriberId) {
       try {
-        await completeCourse({ tenantId, subscriberId: a.subscriberId, courseId: a.courseId, actor: req.user?.uid || req.user?.email || 'admin-quiz' });
+        // requireFullProgress off: this endpoint is a staff manual entry (e.g. an
+        // offline/legacy quiz result), same trusted-override reasoning as
+        // POST /api/admin/completions — not the automatic self-service path.
+        await completeCourse({ tenantId, subscriberId: a.subscriberId, courseId: a.courseId, actor: req.user?.uid || req.user?.email || 'admin-quiz', requireFullProgress: false });
         const [[alreadyDone]] = await pool.query('SELECT id FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1', [a.subscriberId, a.courseId, tenantId]);
         if (!alreadyDone) {
           const certCode = 'MHAD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
