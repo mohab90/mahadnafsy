@@ -7,6 +7,7 @@ const { pool } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { postExpenseJournal } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
+const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: P&L (Profit & Loss) Report ───────────────────────────────────
@@ -190,7 +191,7 @@ function toCsv(rows, cols) {
 // (removed dead duplicate GET /api/admin/export/leads — live in an earlier-mounted router)
 
 // GET /api/admin/export/expenses
-router.get('/api/admin/export/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/export/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), bulkOperationLimiter, async (req, res) => {
   try {
     const { from, to } = req.query;
     // Real expenses columns are description/note (not title/notes), and there is

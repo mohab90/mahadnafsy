@@ -112,6 +112,20 @@ const connectorDiagnosticLimiter = rateLimit({
   handler: tooMany('تم تجاوز حد اختبارات الربط. انتظر 10 دقائق وحاول مرة أخرى.'),
 });
 
+// Bulk actions (mass assign/create/send) and data exports are far more expensive per
+// request than an ordinary admin GET/POST, but previously shared the same generic
+// 400/min-per-IP adminLimiter as everything else under /api/admin (NOT-04) — a single
+// admin session could fire dozens of exports or bulk sends well within that ceiling.
+const bulkOperationLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.tenantId || 'tenant-default'}:${req.user?.uid || req.user?.email || ipKeyGenerator(req.ip)}`,
+  validate: { ip: false },
+  handler: tooMany('عدد كبير من العمليات الجماعية/التصدير، انتظر قليلاً وحاول مرة أخرى'),
+});
+
 const communityPostLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
@@ -134,4 +148,5 @@ module.exports = {
   whatsappSendLimiter,
   connectorDiagnosticLimiter,
   communityPostLimiter,
+  bulkOperationLimiter,
 };

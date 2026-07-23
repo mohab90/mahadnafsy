@@ -18,6 +18,7 @@ const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePer
 const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
 const { onlineMap } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
+const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
 
 router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, async (req, res) => {
@@ -586,7 +587,7 @@ router.put('/api/admin/subscribers/:id/assign-collection', requireAuth, requireA
 });
 
 // POST /api/admin/bulk-assign-collection — round-robin assign all unassigned subscribers to collection staff
-router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/bulk-assign-collection', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection(); await conn.beginTransaction();

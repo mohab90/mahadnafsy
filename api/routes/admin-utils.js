@@ -11,6 +11,7 @@ const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { writeAuditEvent } = require('../lib/auditTrail');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
 // Timers belong to the central worker. Starting them from a route module made
 // every clustered API process send the same reminders and summaries again.
@@ -22,7 +23,7 @@ const ROUTE_LOCAL_CRONS_ENABLED = false;
 // ── FEATURE: GDPR — Export & Delete subscriber data ───────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const subId = req.params.id;
     const tenantId = req.tenantId;
@@ -201,7 +202,7 @@ function toCSV(rows, columns) {
 }
 
 // GET /api/admin/export/subscribers — export subscribers as CSV
-router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT s.id, s.name, s.email, s.phone, s.status, s.source, s.created_at,
@@ -232,7 +233,7 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, async (re
 });
 
 // GET /api/admin/export/leads — export leads as CSV
-router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requirePermission('export_leads'), async (req, res) => {
+router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requirePermission('export_leads'), bulkOperationLimiter, async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, status, source, assigned_sales_name AS assigned_to_name, deal_value, next_follow_up_date AS follow_up_date, created_at
@@ -258,7 +259,7 @@ router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requireP
 });
 
 // GET /api/admin/export/payments — export payments as CSV
-router.get('/api/admin/export/payments', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/export/payments', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const { dateFrom, dateTo } = req.query;
     let where = 'p.tenant_id=?';

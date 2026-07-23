@@ -17,7 +17,7 @@ const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { branchIdForBranch } = require('../lib/branches');
 const { JWT_SECRET, JWT_EXPIRY, revokeToken } = require('../lib/token');
 const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrOnlineManager } = require('../middleware/auth');
-const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter } = require('../middleware/rateLimits');
+const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../middleware/validate');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
@@ -601,7 +601,7 @@ router.get('/api/admin/missing-accounts', requireAuth, requireAdmin, async (req,
 });
 
 // POST /api/admin/bulk-create-accounts — create accounts for subscribers without one
-router.post('/api/admin/bulk-create-accounts', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/bulk-create-accounts', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   const limit = Math.min(parseInt(req.body?.limit) || 50, 200);
   const conn = await pool.getConnection();
   try {

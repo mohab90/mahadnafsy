@@ -9,6 +9,7 @@ import { join, extname } from 'path';
 import { scanTenantViolations } from './tenant-scope-scan.mjs';
 import { scanMigrationDrift } from './migration-drift-scan.mjs';
 import { scanNotificationTenantViolations } from './notification-tenant-scan.mjs';
+import { scanBulkRateLimitViolations } from './bulk-rate-limit-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -329,6 +330,18 @@ if (notificationTenantViolations.length === 0) {
   pass('notification tenant guard: 0 createNotification() calls missing tenantId');
 } else {
   fail(`notification tenant guard: ${notificationTenantViolations.length} createNotification() call(s) missing tenantId — silently defaults to the default tenant. Run: node tools/notification-tenant-scan.mjs --list`);
+}
+
+// ── 17. Bulk/export rate-limit guard ─────────────────────────────────────────
+// Catches NOT-04: bulk actions and data exports are far more expensive per
+// request than an ordinary admin GET/POST, but only had the generic
+// adminLimiter (400 req/min per IP) — no dedicated, per-user-keyed limit.
+console.log('\n17. Bulk/export rate-limit guard');
+const bulkRateLimitViolations = scanBulkRateLimitViolations();
+if (bulkRateLimitViolations.length === 0) {
+  pass('bulk/export rate-limit guard: 0 bulk/export routes missing a dedicated limiter');
+} else {
+  fail(`bulk/export rate-limit guard: ${bulkRateLimitViolations.length} bulk/export route(s) missing a dedicated rate limiter. Run: node tools/bulk-rate-limit-scan.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────

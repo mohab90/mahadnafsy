@@ -15,6 +15,7 @@ const { syncLeadDealValue } = require('../lib/leadDealValue');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
 // PATCH /api/admin/payments/:id/status — approve or reject a payment (admin/manager)
 // (removed dead duplicate PATCH /api/admin/payments/:id/status — live in an earlier-mounted router)
@@ -118,7 +119,7 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
 // Returns a CSV file compatible with Excel (UTF-8 BOM so Arabic displays correctly).
 // Falls back gracefully — no external dependency needed.
 // ══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/export/orders', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/export/orders', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const from = req.query.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);

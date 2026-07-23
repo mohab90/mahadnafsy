@@ -7,6 +7,7 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
 async function loadOutstandingBalances(tenantId, subscriberIds = null) {
   const params = [tenantId, tenantId];
@@ -81,7 +82,7 @@ router.post('/api/admin/payments/send-reminder', requireAuth, requireAdminOrStaf
   }
 });
 
-router.post('/api/admin/payments/bulk-stub', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+router.post('/api/admin/payments/bulk-stub', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), bulkOperationLimiter, async (req, res) => {
   try {
     const tenantId = req.tenantId;
     const [rows] = await pool.query(

@@ -6,6 +6,7 @@ const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
@@ -261,7 +262,7 @@ router.put('/api/admin/consultations/:id/notes', requireAuth, requireAdminOrStaf
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Bulk NPS send ────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-router.post('/api/admin/nps/send-bulk', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/nps/send-bulk', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     // Send NPS to all active subscribers who haven't received one in 30 days
     const [subs] = await pool.query(

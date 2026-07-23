@@ -9,6 +9,7 @@ const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { completeCourse, completeCourses } = require('../lib/courseCompletion');
 const outbox = require('../lib/outbox');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -750,7 +751,7 @@ router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, requireP
 });
 
 // POST /api/admin/completions/bulk — bulk mark multiple subscribers as completed
-router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, requirePermission('manage_courses'), async (req, res) => {
+router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, requirePermission('manage_courses'), bulkOperationLimiter, async (req, res) => {
   try {
     const completionResults = await completeCourses({
       tenantId: req.tenantId, subscriberIds: req.body?.subscriber_ids, courseId: req.body?.course_id,

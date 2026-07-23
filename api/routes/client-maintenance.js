@@ -7,6 +7,7 @@ const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { ADMIN_EMAILS, requireAuth, requireAdmin } = require('../middleware/auth');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const logger = require('../lib/logger').child({ route: 'client-maintenance' });
 
 function scopedTenantId(req) {
@@ -194,7 +195,7 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
 // ── Bulk assign client codes (server-authoritative, atomic) ───────────────────
 // Finds ALL leads+subscribers with null/invalid client_code and assigns them
 // codes from the counter in a single transaction.
-router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/bulk-assign-client-codes', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();

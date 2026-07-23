@@ -23,6 +23,7 @@ const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal } = require('../../lib/finance');
+const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { assertWritable } = require('../../lib/periodLock');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
@@ -395,7 +396,7 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
 });
 
 // POST /api/admin/leads/bulk-assign — assign all unassigned NEW/INTERESTED leads to sales round-robin
-router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), bulkOperationLimiter, async (req, res) => {
   let conn = null;
   let transactionStarted = false;
   try {
@@ -467,7 +468,7 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
 
 // POST /api/admin/leads/bulk-whatsapp — send WhatsApp message to multiple leads
 // Body: { lead_ids: string[], message: string }
-router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, requirePermission('bulk_whatsapp'), async (req, res) => {
+router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, requirePermission('bulk_whatsapp'), bulkOperationLimiter, async (req, res) => {
   try {
     const { lead_ids, message } = req.body || {};
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) return res.status(400).json({ error: 'lead_ids required' });

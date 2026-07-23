@@ -12,7 +12,7 @@ const { getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { whatsappSendLimiter } = require('../middleware/rateLimits');
+const { whatsappSendLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
 
 function routeError(res, error, message = 'communication admin route failed') {
   logger.error(message, error);
@@ -84,7 +84,7 @@ router.post('/api/admin/whatsapp-send', requireAuth, requireAdmin, async (req, r
 });
 
 // POST /api/admin/whatsapp-bulk  — send WhatsApp to multiple leads/subscribers
-router.post('/api/admin/whatsapp-bulk', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/whatsapp-bulk', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const { phones, message } = req.body;
     if (!Array.isArray(phones) || phones.length === 0) return res.status(400).json({ error: 'phones array required' });

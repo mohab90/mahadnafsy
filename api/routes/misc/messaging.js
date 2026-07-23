@@ -6,6 +6,7 @@ const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
@@ -86,7 +87,7 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
 });
 
 // POST /api/admin/sms/bulk  — bulk SMS to subscribers or leads
-router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const { audience, message, filter } = req.body;
     if (!message) return res.status(400).json({ error: 'message required' });

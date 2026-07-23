@@ -6,6 +6,7 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
@@ -244,7 +245,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
 });
 
 // ── Attendance CSV export ──
-router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaff, requireDaqqiAccess, bulkOperationLimiter, async (req, res) => {
   try {
     const { status } = req.query;
     const statusFilter = status && ['NEW','ACTIVE','FINISHED'].includes(String(status).toUpperCase())
