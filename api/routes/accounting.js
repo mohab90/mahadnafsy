@@ -28,9 +28,9 @@ router.post('/api/waitlist', publicLimiter, async (req, res) => {
     const { uuidv4 } = require('../lib/id');
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO daqqi_waitlist (id, name, phone, email, course_id, course_name, notes, branch)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, safeName, safePhone, safeEmail, courseId || null, safeCourse, safeNotes, branchVal]
+      `INSERT INTO daqqi_waitlist (id, tenant_id, name, phone, email, course_id, course_name, notes, branch)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, req.tenantId, safeName, safePhone, safeEmail, courseId || null, safeCourse, safeNotes, branchVal]
     );
     res.json({ ok: true, id });
   } catch (e) { logger.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -41,8 +41,8 @@ router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, async (req, 
   try {
     const branch = req.query.branch || '';
     const status = req.query.status || '';
-    let sql = 'SELECT * FROM daqqi_waitlist WHERE 1=1';
-    const params = [];
+    let sql = 'SELECT * FROM daqqi_waitlist WHERE tenant_id=?';
+    const params = [req.tenantId];
     if (branch) { sql += ' AND branch=?'; params.push(branch); }
     if (status) { sql += ' AND status=?'; params.push(status); }
     sql += ' ORDER BY created_at DESC LIMIT 500';
@@ -63,8 +63,9 @@ router.patch('/api/admin/waitlist/:id', requireAuth, requireAdminOrStaff, async 
     if (status) { sets.push('status=?'); params.push(status); }
     if (notes !== undefined) { sets.push('notes=?'); params.push(notes); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
-    params.push(id);
-    await pool.query(`UPDATE daqqi_waitlist SET ${sets.join(', ')} WHERE id=?`, params);
+    params.push(id, req.tenantId);
+    const [r] = await pool.query(`UPDATE daqqi_waitlist SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`, params);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Waitlist entry not found' });
     res.json({ ok: true });
   } catch (e) { logger.error('[waitlist]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

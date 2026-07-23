@@ -177,7 +177,7 @@ router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin
 
 router.get('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, ip, label, created_at FROM ip_whitelist ORDER BY created_at DESC');
+    const [rows] = await pool.query('SELECT id, ip, label, created_at FROM ip_whitelist WHERE tenant_id=? ORDER BY created_at DESC', [req.tenantId]);
     res.json({ whitelist: rows });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -191,17 +191,18 @@ router.post('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, re
       return res.status(400).json({ error: 'Invalid IP format' });
     }
     await pool.query(
-      'INSERT INTO ip_whitelist (ip, label, added_by) VALUES (?,?,?) ON DUPLICATE KEY UPDATE label=VALUES(label)',
-      [ip.trim(), label || null, req.user?.uid || null]
+      'INSERT INTO ip_whitelist (tenant_id, ip, label, added_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE label=VALUES(label)',
+      [req.tenantId, ip.trim(), label || null, req.user?.uid || null]
     );
-    const [[row]] = await pool.query('SELECT id, ip, label, created_at FROM ip_whitelist WHERE ip=?', [ip.trim()]);
+    const [[row]] = await pool.query('SELECT id, ip, label, created_at FROM ip_whitelist WHERE tenant_id=? AND ip=?', [req.tenantId, ip.trim()]);
     res.json({ ok: true, entry: row });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/api/admin/ip-whitelist/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM ip_whitelist WHERE id=?', [req.params.id]);
+    const [r] = await pool.query('DELETE FROM ip_whitelist WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Entry not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

@@ -183,25 +183,25 @@ router.get('/api/admin/search', requireAuth, requireAdminOrStaff, async (req, re
 
     const [subscribers] = await pool.query(
       `SELECT id, client_code, name, email, phone, branch, is_active, created_at
-       FROM subscribers WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?
+       FROM subscribers WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?)
        ORDER BY created_at DESC LIMIT 10`,
-      [like, like, like, like]
+      [req.tenantId, like, like, like, like]
     );
 
     const [leads] = await pool.query(
       `SELECT id, client_code, name, email, phone, status, source, created_at
-       FROM leads WHERE (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?) AND hidden=0
+       FROM leads WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?) AND hidden=0
        ORDER BY created_at DESC LIMIT 10`,
-      [like, like, like, like]
+      [req.tenantId, like, like, like, like]
     );
 
     const [consultations] = await pool.query(
       `SELECT c.id, c.client_name, c.client_email, c.client_phone, c.session_date, c.status,
               t.name AS therapist_name
        FROM consultations c LEFT JOIN therapists t ON t.id=c.therapist_id
-       WHERE c.client_name LIKE ? OR c.client_email LIKE ? OR c.client_phone LIKE ?
+       WHERE c.tenant_id = ? AND (c.client_name LIKE ? OR c.client_email LIKE ? OR c.client_phone LIKE ?)
        ORDER BY c.session_date DESC LIMIT 5`,
-      [like, like, like]
+      [req.tenantId, like, like, like]
     );
 
     res.json({ subscribers, leads, consultations });
@@ -220,9 +220,9 @@ router.get('/api/admin/consultations/calendar', requireAuth, requireAdminOrStaff
               t.name AS therapist_name, t.image AS therapist_image
        FROM consultations c
        LEFT JOIN therapists t ON t.id = c.therapist_id
-       WHERE DATE_FORMAT(c.session_date, '%Y-%m') = ?
+       WHERE c.tenant_id = ? AND DATE_FORMAT(c.session_date, '%Y-%m') = ?
        ORDER BY c.session_date ASC`,
-      [month]
+      [req.tenantId, month]
     );
     // Group by date
     const grouped = {};
@@ -248,8 +248,9 @@ router.put('/api/admin/consultations/:id/notes', requireAuth, requireAdminOrStaf
     if (notes !== undefined) { sets.push('notes=?'); vals.push(notes); }
     if (status) { sets.push('status=?'); vals.push(status); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
-    vals.push(req.params.id);
-    await pool.query(`UPDATE consultations SET ${sets.join(',')} WHERE id=?`, vals);
+    vals.push(req.params.id, req.tenantId);
+    const [r] = await pool.query(`UPDATE consultations SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, vals);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -262,12 +263,13 @@ router.post('/api/admin/nps/send-bulk', requireAuth, requireAdmin, async (req, r
     // Send NPS to all active subscribers who haven't received one in 30 days
     const [subs] = await pool.query(
       `SELECT s.id, s.email, s.name FROM subscribers s
-       WHERE s.is_active=1 AND s.email IS NOT NULL AND s.email != ''
+       WHERE s.tenant_id = ? AND s.is_active=1 AND s.email IS NOT NULL AND s.email != ''
          AND NOT EXISTS (
            SELECT 1 FROM nps_responses n
            WHERE n.subscriber_id = s.id AND n.sent_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
          )
-       LIMIT 100`
+       LIMIT 100`,
+      [req.tenantId]
     );
     let sent = 0;
     if (subs.length > 0) {

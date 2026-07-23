@@ -6,6 +6,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
+import { scanTenantViolations } from './tenant-scope-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -272,6 +273,22 @@ for (const r of routeDefs) seen.set(r, (seen.get(r) || 0) + 1);
 const dupCount = [...seen.values()].filter(n => n > 1).length;
 if (dupCount <= DUP_BASELINE) pass(`duplicate routes: ${dupCount} (≤ baseline ${DUP_BASELINE}; lower the baseline as you clean them)`);
 else fail(`duplicate routes increased to ${dupCount} (baseline ${DUP_BASELINE}) — a new endpoint shadows an existing one`);
+
+// ── 14. Tenant isolation guard (regression lock) ─────────────────────────────
+// Every table with a tenant_id column (list derived automatically from the
+// migrations, see tools/tenant-scope-scan.mjs) must be touched with tenant_id
+// in the same query. This class of bug is how 4+ real cross-tenant data
+// leaks made it into the codebase (payments/review, admin/search,
+// migrate-branches, and tables that had no tenant_id column at all). Locks
+// the count so it can only DECREASE — lower BASELINE as violations are fixed.
+console.log('\n14. Tenant isolation guard');
+const TENANT_VIOLATION_BASELINE = 68; // was 98 before the 2026-07-23 hardening pass — keep lowering this
+const { tenantTableCount, violations: tenantViolations } = scanTenantViolations();
+if (tenantViolations.length <= TENANT_VIOLATION_BASELINE) {
+  pass(`tenant-scope violations: ${tenantViolations.length} across ${tenantTableCount} tracked tables (≤ baseline ${TENANT_VIOLATION_BASELINE}; lower the baseline as you clean them)`);
+} else {
+  fail(`tenant-scope violations increased to ${tenantViolations.length} (baseline ${TENANT_VIOLATION_BASELINE}) — a new query on a tenant-scoped table is missing tenant_id. Run: node tools/tenant-scope-scan.mjs --list`);
+}
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);

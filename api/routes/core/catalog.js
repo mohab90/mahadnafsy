@@ -84,7 +84,7 @@ router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) 
        price_egp, price_sar, price_usd, is_consultation_enabled, session_duration_minutes,
        meeting_provider, provider_base_url, featured, sort_order, show_on_home, show_on_about,
        is_active, languages_json, focus_areas_json, qualifications_json, created_at
-       FROM therapists ORDER BY sort_order ASC, name ASC`);
+       FROM therapists WHERE tenant_id = ? ORDER BY sort_order ASC, name ASC`, [req.tenantId]);
     if (therapists.length > 0) {
       const ids = therapists.map(t => t.id);
       const [slots] = await pool.query(
@@ -98,11 +98,19 @@ router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) 
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/therapists/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM therapists WHERE id = ?', [req.params.id]); cacheInvalidate('therapists'); res.json({ ok: true }); }
+  try {
+    const [r] = await pool.query('DELETE FROM therapists WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Therapist not found' });
+    cacheInvalidate('therapists'); res.json({ ok: true });
+  }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/testimonials/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM testimonials WHERE id = ?', [req.params.id]); cacheInvalidate('testimonials'); res.json({ ok: true }); }
+  try {
+    const [r] = await pool.query('DELETE FROM testimonials WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Testimonial not found' });
+    cacheInvalidate('testimonials'); res.json({ ok: true });
+  }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -114,10 +122,11 @@ router.get('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => 
       `SELECT b.*, GROUP_CONCAT(bc.course_id ORDER BY bc.sort_order) AS course_ids_csv
        FROM bundles b
        LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id
+       WHERE b.tenant_id = ?
        GROUP BY b.id
-       ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [limit]
+       ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
     );
-    const [courses] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE is_published = 1`);
+    const [courses] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE is_published = 1 AND tenant_id = ?`, [req.tenantId]);
     const mappedCourses = courses.map(mapCourse);
     res.json(rows.map(r => mapBundle(r, mappedCourses)));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -140,11 +149,15 @@ router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) =>
     const isPublished  = b.is_published != null ? (b.is_published ? 1 : 0) : (b.isPublished != null ? (b.isPublished ? 1 : 0) : 0);
     const sortOrder    = b.sort_order    ?? b.sortOrder    ?? 0;
     const courseIds    = b.course_ids    ?? b.courseIds    ?? null;
+    if (b.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM bundles WHERE id=? LIMIT 1', [req.tenantId, b.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Bundle not found' });
+    }
     await pool.query(
-      `INSERT INTO bundles (id, title, title_en, slug, short_description, description, thumbnail, video_url,
+      `INSERT INTO bundles (id, tenant_id, title, title_en, slug, short_description, description, thumbnail, video_url,
          price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
          details_content_json, is_published, sort_order)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), title_en=VALUES(title_en), short_description=VALUES(short_description),
          description=VALUES(description), thumbnail=VALUES(thumbnail), video_url=VALUES(video_url),
@@ -152,7 +165,7 @@ router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) =>
          orig_price_egp=VALUES(orig_price_egp), orig_price_sar=VALUES(orig_price_sar), orig_price_usd=VALUES(orig_price_usd),
          details_content_json=VALUES(details_content_json), is_published=VALUES(is_published),
          sort_order=VALUES(sort_order), updated_at=CURRENT_TIMESTAMP`,
-      [id, b.title||'', titleEn, b.slug||null, shortDesc, b.description||'',
+      [id, req.tenantId, b.title||'', titleEn, b.slug||null, shortDesc, b.description||'',
        b.thumbnail||'', videoUrl,
        priceEGP, priceSAR, priceUSD, origEGP, origSAR, origUSD,
        detailsJson, isPublished, sortOrder]
@@ -173,8 +186,9 @@ router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) =>
 });
 router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const [r] = await pool.query('DELETE FROM bundles WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Bundle not found' });
     await pool.query('DELETE FROM bundle_courses WHERE bundle_id = ?', [req.params.id]);
-    await pool.query('DELETE FROM bundles WHERE id = ?', [req.params.id]);
     cacheInvalidate('bundles');
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -190,20 +204,30 @@ router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) =>
     const questions    = q.questions || [];
     // course_id has FK constraint — only insert if a valid course_id is provided
     if (!courseId) return res.status(400).json({ error: 'course_id is required' });
+    const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, req.tenantId]);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    if (q.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM course_quizzes WHERE id=? LIMIT 1', [req.tenantId, q.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Quiz not found' });
+    }
     await pool.query(
-      `INSERT INTO course_quizzes (id, course_id, title, questions_json, passing_score, created_at)
-       VALUES (?,?,?,?,?,?)
+      `INSERT INTO course_quizzes (id, tenant_id, course_id, title, questions_json, passing_score, created_at)
+       VALUES (?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), questions_json=VALUES(questions_json),
          passing_score=VALUES(passing_score), updated_at=CURRENT_TIMESTAMP`,
-      [id, courseId, q.title||'', JSON.stringify(questions), passingScore,
+      [id, req.tenantId, courseId, q.title||'', JSON.stringify(questions), passingScore,
        q.created_at||new Date().toISOString()]
     );
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/quizzes/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM course_quizzes WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  try {
+    const [r] = await pool.query('DELETE FROM course_quizzes WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Quiz not found' });
+    res.json({ ok: true });
+  }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -221,10 +245,14 @@ router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, re
     const platform  = (s.platform  || 'ZOOM').toUpperCase().replace('-','_');
     const visibility= (s.visibility|| 'ALL_SUBSCRIBERS').toUpperCase().replace(/-/g,'_');
     const status    = (s.status    || 'UPCOMING').toUpperCase();
+    if (s.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM live_streams WHERE id=? LIMIT 1', [req.tenantId, s.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Live stream not found' });
+    }
     await pool.query(
-      `INSERT INTO live_streams (id, title, instructor_name, scheduled_at, duration_minutes,
+      `INSERT INTO live_streams (id, tenant_id, title, instructor_name, scheduled_at, duration_minutes,
          stream_url, platform, visibility, target_course_ids_json, status, description, recording_url, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), instructor_name=VALUES(instructor_name),
          scheduled_at=VALUES(scheduled_at), stream_url=VALUES(stream_url),
@@ -232,7 +260,7 @@ router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, re
          target_course_ids_json=VALUES(target_course_ids_json),
          status=VALUES(status), description=VALUES(description),
          recording_url=VALUES(recording_url)`,
-      [id, s.title||'', instructorName||'', scheduledAt, durationMins,
+      [id, req.tenantId, s.title||'', instructorName||'', scheduledAt, durationMins,
        streamUrl, platform, visibility, targetIds, status,
        s.description||null, s.recording_url||s.recordingUrl||null,
        s.created_at||new Date().toISOString()]
@@ -241,7 +269,11 @@ router.post('/api/admin/live-streams', requireAuth, requireAdmin, async (req, re
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/live-streams/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM live_streams WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  try {
+    const [r] = await pool.query('DELETE FROM live_streams WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Live stream not found' });
+    res.json({ ok: true });
+  }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -250,14 +282,22 @@ router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, r
   try {
     const c = req.body;
     const id = c.id || uuidv4();
+    if (c.therapist_id) {
+      const [[therapist]] = await pool.query('SELECT id FROM therapists WHERE id=? AND tenant_id=? LIMIT 1', [c.therapist_id, req.tenantId]);
+      if (!therapist) return res.status(404).json({ error: 'Therapist not found' });
+    }
+    if (c.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM consultations WHERE id=? LIMIT 1', [req.tenantId, c.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Consultation not found' });
+    }
     await pool.query(
-      `INSERT INTO consultations (id, therapist_id, client_name, client_email, client_phone,
+      `INSERT INTO consultations (id, tenant_id, therapist_id, client_name, client_email, client_phone,
          session_date, session_type, status, notes, meeting_link, amount, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          status=VALUES(status), notes=VALUES(notes), meeting_link=VALUES(meeting_link),
          session_date=VALUES(session_date), updated_at=CURRENT_TIMESTAMP`,
-      [id, c.therapist_id||null, c.client_name||'', c.client_email||null,
+      [id, req.tenantId, c.therapist_id||null, c.client_name||'', c.client_email||null,
        c.client_phone||null, c.session_date||null, c.session_type||'online',
        c.status||'pending', c.notes||null, c.meeting_link||null, c.amount||0,
        c.created_at||new Date().toISOString()]
@@ -268,15 +308,20 @@ router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, r
 router.patch('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status, notes, meeting_link } = req.body;
-    await pool.query(
-      'UPDATE consultations SET status=?, notes=?, meeting_link=? WHERE id=?',
-      [status||'pending', notes||null, meeting_link||null, req.params.id]
+    const [r] = await pool.query(
+      'UPDATE consultations SET status=?, notes=?, meeting_link=? WHERE id=? AND tenant_id=?',
+      [status||'pending', notes||null, meeting_link||null, req.params.id, req.tenantId]
     );
+    if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM consultations WHERE id = ?', [req.params.id]); res.json({ ok: true }); }
+  try {
+    const [r] = await pool.query('DELETE FROM consultations WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Consultation not found' });
+    res.json({ ok: true });
+  }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

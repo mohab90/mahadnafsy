@@ -3,7 +3,7 @@ const logger = require('../lib/logger');
 const express = require('express');
 const router  = express.Router();
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { safeDateOnly } = require('../lib/dates');
 const { BRANCHES, normalizeBranch } = require('../constants/branches');
 
@@ -14,7 +14,8 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
 
     // 1. Get leads with NULL/empty branch but crm_data has a branch value
     const [rows] = await pool.query(
-      `SELECT id, crm_data FROM leads WHERE (branch IS NULL OR branch = '') AND crm_data IS NOT NULL`
+      `SELECT id, crm_data FROM leads WHERE tenant_id = ? AND (branch IS NULL OR branch = '') AND crm_data IS NOT NULL`,
+      [req.tenantId]
     );
 
     let fixed = 0;
@@ -34,14 +35,14 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
       const caseWhen = fix1Ids.map(() => 'WHEN ? THEN ?').join(' ');
       const caseParams = fix1Ids.flatMap((rowId, i) => [rowId, fix1Vals[i]]);
       await pool.query(
-        `UPDATE leads SET branch = CASE id ${caseWhen} END WHERE id IN (${fix1Ids.map(() => '?').join(',')})`,
-        [...caseParams, ...fix1Ids]
+        `UPDATE leads SET branch = CASE id ${caseWhen} END WHERE id IN (${fix1Ids.map(() => '?').join(',')}) AND tenant_id = ?`,
+        [...caseParams, ...fix1Ids, req.tenantId]
       );
     }
 
     // 2. Also fix leads where branch column has lowercase/hyphen value stored as '' by checking crm_data
     // Additionally fix crm_data.branch to match the column
-    const [all] = await pool.query(`SELECT id, branch, crm_data FROM leads WHERE branch IS NOT NULL AND branch != ''`);
+    const [all] = await pool.query(`SELECT id, branch, crm_data FROM leads WHERE tenant_id = ? AND branch IS NOT NULL AND branch != ''`, [req.tenantId]);
     let crmFixed = 0;
     const fix2Ids = [], fix2Vals = [];
     for (const row of all) {
@@ -58,8 +59,8 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
       const caseWhen = fix2Ids.map(() => 'WHEN ? THEN ?').join(' ');
       const caseParams = fix2Ids.flatMap((rowId, i) => [rowId, fix2Vals[i]]);
       await pool.query(
-        `UPDATE leads SET branch = CASE id ${caseWhen} END WHERE id IN (${fix2Ids.map(() => '?').join(',')})`,
-        [...caseParams, ...fix2Ids]
+        `UPDATE leads SET branch = CASE id ${caseWhen} END WHERE id IN (${fix2Ids.map(() => '?').join(',')}) AND tenant_id = ?`,
+        [...caseParams, ...fix2Ids, req.tenantId]
       );
     }
 
@@ -67,7 +68,7 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const { startDate, endDate, channel, paymentType } = req.query;
     // Non-super-admin staff who are not managers/accountants can only see their own payments
@@ -124,15 +125,15 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, async (req, 
 
 // GET /api/admin/payments/review — Central payment review: all payments with full details
 // Supports: status=pending|paid|failed|all, paymentType, staffId, source, dateFrom, dateTo, search, page
-router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const { status, paymentType, staffId, source, branch, dateFrom, dateTo, search, page = 1, limit: qLimit = 100 } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(200, parseInt(qLimit) || 100);
     const offset = (pageNum - 1) * pageSize;
 
-    let where = '1=1';
-    const params = [];
+    let where = 'p.tenant_id = ?';
+    const params = [req.tenantId];
 
     if (status && status !== 'all') {
       if (status === 'paid') {
@@ -225,7 +226,8 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async
     // Only when not filtering by staffId (those are online/automatic)
     let onlineOrders = [];
     if ((!staffId || source === 'paymob') && (!branch || branch === 'all')) {
-      let oWhere = `status = 'paid'`;
+      let oWhere = `tenant_id = ? AND status = 'paid'`;
+      const oParams = [req.tenantId];
       // Dedupe: a successful paymob order is ALSO written into `payments`
       // (id = 'paymob-' + order.id, same transaction_id). Without this guard the
       // same online sale appears twice in the unified list (once as a payment,
@@ -237,7 +239,6 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, async
            OR (orders.transaction_id IS NOT NULL AND orders.transaction_id <> ''
                AND pp.transaction_id = orders.transaction_id)
       )`;
-      const oParams = [];
       if (dateFrom) { oWhere += ` AND DATE(created_at) >= ?`; oParams.push(dateFrom); }
       if (dateTo)   { oWhere += ` AND DATE(created_at) <= ?`; oParams.push(dateTo); }
       if (search)   { oWhere += ` AND (customer_name LIKE ? OR customer_email LIKE ?)`; oParams.push(`%${search}%`, `%${search}%`); }

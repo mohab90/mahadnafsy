@@ -85,7 +85,7 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
     const id = o.id || uuidv4();
     let staffName = o.staff_name || null;
     if (!staffName && o.staff_id) {
-      const [[u]] = await pool.query('SELECT name FROM staff WHERE id = ? LIMIT 1', [o.staff_id]).catch(() => [[null]]);
+      const [[u]] = await pool.query('SELECT name FROM staff WHERE id = ? AND tenant_id = ? LIMIT 1', [o.staff_id, req.tenantId]).catch(() => [[null]]);
       if (u) staffName = u.name || null;
     }
     await pool.query(

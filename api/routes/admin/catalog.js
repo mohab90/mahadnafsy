@@ -39,8 +39,8 @@ router.get('/api/admin/courses', requireAuth, requireAdmin, async (req, res) => 
     const limit  = parseLimit(req.query.limit, 500, 1000);
     const offset = parseOffset(req.query.offset);
     const [rows] = await pool.query(
-      `SELECT ${COURSE_COLS} FROM courses ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
-      [limit, offset]
+      `SELECT ${COURSE_COLS} FROM courses WHERE tenant_id = ? ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
+      [req.tenantId, limit, offset]
     );
     res.json(rows.map(mapCourse));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -79,9 +79,14 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
     const detailsJson     = c.details_content_json ?? (c.detailsContent != null ? JSON.stringify(c.detailsContent) : null);
     const courseModJson   = c.course_modules_json  ?? (c.courseModules  != null ? JSON.stringify(c.courseModules)  : null);
 
+    if (c.id) {
+      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM courses WHERE id=? LIMIT 1', [req.tenantId, c.id]);
+      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Course not found' });
+    }
+
     await pool.query(
       `INSERT INTO courses
-         (id, course_code, slug, title, title_en, title_ar,
+         (id, tenant_id, course_code, slug, title, title_en, title_ar,
           description, short_description, instructor, thumbnail,
           category, type,
           price_egp, price_sar, price_usd,
@@ -92,7 +97,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
           is_published, sort_order,
           modules_json, gallery_images_json, details_content_json, course_modules_json,
           seo_title, seo_description, seo_keywords)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), title_en=VALUES(title_en), title_ar=VALUES(title_ar),
          description=VALUES(description), short_description=VALUES(short_description),
@@ -112,7 +117,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
          seo_title=VALUES(seo_title), seo_description=VALUES(seo_description), seo_keywords=VALUES(seo_keywords),
          updated_at=CURRENT_TIMESTAMP`,
       [
-        id, courseCode, slug, c.title, titleEn, titleAr,
+        id, req.tenantId, courseCode, slug, c.title, titleEn, titleAr,
         c.description||'', shortDesc, c.instructor||'', c.thumbnail||'',
         category, courseType,
         priceEGP, priceSAR, priceUSD,
@@ -132,7 +137,8 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
 // DELETE /api/admin/courses/:id
 router.delete('/api/admin/courses/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM courses WHERE id = ?', [req.params.id]);
+    const [r] = await pool.query('DELETE FROM courses WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Course not found' });
     cacheInvalidate('courses', 'bundles');
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

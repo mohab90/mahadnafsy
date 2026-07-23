@@ -18,7 +18,7 @@ const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollo
 // GET /api/admin/sms-settings
 router.get('/api/admin/sms-settings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, provider, sender_id, is_active, updated_at FROM sms_settings LIMIT 1');
+    const [rows] = await pool.query('SELECT id, provider, sender_id, is_active, updated_at FROM sms_settings WHERE tenant_id=? LIMIT 1', [req.tenantId]);
     res.json(rows[0] || { provider: 'vonage', sender_id: 'MAHAD', is_active: 0 });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -27,13 +27,13 @@ router.get('/api/admin/sms-settings', requireAuth, requireAdmin, async (req, res
 router.put('/api/admin/sms-settings', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { provider, api_key, api_secret, sender_id, is_active } = req.body;
-    const [exist] = await pool.query('SELECT id FROM sms_settings LIMIT 1');
+    const [exist] = await pool.query('SELECT id FROM sms_settings WHERE tenant_id=? LIMIT 1', [req.tenantId]);
     if (exist.length > 0) {
-      await pool.query('UPDATE sms_settings SET provider=?, api_key=?, api_secret=?, sender_id=?, is_active=? WHERE id=?',
-        [provider, api_key, api_secret, sender_id, is_active ? 1 : 0, exist[0].id]);
+      await pool.query('UPDATE sms_settings SET provider=?, api_key=?, api_secret=?, sender_id=?, is_active=? WHERE id=? AND tenant_id=?',
+        [provider, api_key, api_secret, sender_id, is_active ? 1 : 0, exist[0].id, req.tenantId]);
     } else {
-      await pool.query('INSERT INTO sms_settings (provider, api_key, api_secret, sender_id, is_active) VALUES (?,?,?,?,?)',
-        [provider, api_key, api_secret, sender_id, is_active ? 1 : 0]);
+      await pool.query('INSERT INTO sms_settings (tenant_id, provider, api_key, api_secret, sender_id, is_active) VALUES (?,?,?,?,?,?)',
+        [req.tenantId, provider, api_key, api_secret, sender_id, is_active ? 1 : 0]);
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -46,7 +46,8 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
     if (!to || !message) return res.status(400).json({ error: 'to and message required' });
 
     const [rows] = await pool.query(
-      'SELECT id, provider, api_key, api_secret, sender_id, is_active, updated_at FROM sms_settings WHERE is_active=1 LIMIT 1'
+      'SELECT id, provider, api_key, api_secret, sender_id, is_active, updated_at FROM sms_settings WHERE tenant_id=? AND is_active=1 LIMIT 1',
+      [req.tenantId]
     );
     if (!rows.length) return res.status(400).json({ error: 'SMS not configured' });
     const cfg = rows[0];
@@ -92,12 +93,12 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, async (req, res) =
 
     let phones = [];
     if (audience === 'subscribers') {
-      const [rows] = await pool.query(`SELECT phone FROM subscribers WHERE phone IS NOT NULL AND phone != '' ${filter?.status ? 'AND status=?' : ''} LIMIT 5000`,
-        filter?.status ? [filter.status] : []);
+      const [rows] = await pool.query(`SELECT phone FROM subscribers WHERE tenant_id=? AND phone IS NOT NULL AND phone != '' ${filter?.status ? 'AND status=?' : ''} LIMIT 5000`,
+        filter?.status ? [req.tenantId, filter.status] : [req.tenantId]);
       phones = rows.map(r => r.phone);
     } else if (audience === 'leads') {
-      const [rows] = await pool.query(`SELECT phone FROM leads WHERE phone IS NOT NULL AND phone != '' ${filter?.status ? 'AND status=?' : ''} LIMIT 5000`,
-        filter?.status ? [filter.status] : []);
+      const [rows] = await pool.query(`SELECT phone FROM leads WHERE tenant_id=? AND phone IS NOT NULL AND phone != '' ${filter?.status ? 'AND status=?' : ''} LIMIT 5000`,
+        filter?.status ? [req.tenantId, filter.status] : [req.tenantId]);
       phones = rows.map(r => r.phone);
     } else if (Array.isArray(req.body.phones)) {
       phones = req.body.phones;
@@ -109,9 +110,11 @@ router.post('/api/admin/sms/bulk', requireAuth, requireAdmin, async (req, res) =
     res.json({ ok: true, queued: phones.length });
 
     // Background send
+    const tenantId = req.tenantId;
     setImmediate(async () => {
       const [rows] = await pool.query(
-        'SELECT id, provider, api_key, api_secret, sender_id, is_active, updated_at FROM sms_settings WHERE is_active=1 LIMIT 1'
+        'SELECT id, provider, api_key, api_secret, sender_id, is_active, updated_at FROM sms_settings WHERE tenant_id=? AND is_active=1 LIMIT 1',
+        [tenantId]
       ).catch(() => [[]]);
       if (!rows.length) return;
       const cfg = rows[0];
