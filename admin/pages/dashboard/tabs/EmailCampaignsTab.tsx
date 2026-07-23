@@ -34,6 +34,10 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<'list' | 'new'>('list');
   const [newCampaign, setNewCampaign] = useState({ title: '', subject: '', body_html: '', audience: 'all' });
+  // MKT-11: the backend already accepts audience='manual' + audience_filter:
+  // {emails:[...]} (routes/campaigns.js's send handler), this form just never
+  // exposed it — "all/subscribers/leads" were the only choices.
+  const [manualEmails, setManualEmails] = useState('');
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
 
@@ -59,21 +63,31 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
     { value: 'all', label: `كل المشتركين والليدات (${subscribers.length + leads.length})` },
     { value: 'subscribers', label: `المشتركون (${subscribers.length})` },
     { value: 'leads', label: `الليدات (${leads.length})` },
+    { value: 'manual', label: 'قائمة بريد محددة' },
   ];
 
   async function saveDraft() {
     if (!newCampaign.title.trim()) { notify('error', 'أدخل اسم الحملة'); return; }
     if (!newCampaign.subject.trim()) { notify('error', 'أدخل موضوع الرسالة'); return; }
+    let audience_filter: { emails: string[] } | undefined;
+    if (newCampaign.audience === 'manual') {
+      const emails = Array.from(new Set(
+        manualEmails.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
+      ));
+      if (emails.length === 0) { notify('error', 'أدخل بريدًا إلكترونيًا واحدًا على الأقل'); return; }
+      audience_filter = { emails };
+    }
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/email-campaigns`, {
         method: 'POST', credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify(newCampaign),
+        body: JSON.stringify({ ...newCampaign, audience_filter }),
       });
       if (res.ok) {
         notify('success', 'تم حفظ الحملة كمسودة');
         setNewCampaign({ title: '', subject: '', body_html: '', audience: 'all' });
+        setManualEmails('');
         setActiveView('list');
         load();
       } else { notify('error', 'فشل الحفظ'); }
@@ -191,6 +205,14 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
                 {audienceOptions.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
             </div>
+            {newCampaign.audience === 'manual' && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">قائمة البريد الإلكتروني (سطر أو فاصلة لكل بريد)</label>
+                <textarea value={manualEmails} onChange={e => setManualEmails(e.target.value)}
+                  rows={4} placeholder={"example1@mail.com\nexample2@mail.com"}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
+              </div>
+            )}
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-1">موضوع الرسالة</label>
               <input value={newCampaign.subject} onChange={e => setNewCampaign(c => ({ ...c, subject: e.target.value }))}

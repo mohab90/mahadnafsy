@@ -33,6 +33,9 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'list' | 'new'>('list');
   const [newC, setNewC] = useState({ title: '', message: '', audience: 'all' });
+  // MKT-11: backend already supports audience='manual' + audience_filter:{phones:[...]}
+  // (routes/campaigns.js's SMS send handler), just never exposed in this form.
+  const [manualPhones, setManualPhones] = useState('');
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
 
@@ -60,21 +63,31 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
     { value: 'all', label: `كل المشتركين والليدات (${subscribers.length + leads.length})` },
     { value: 'subscribers', label: `المشتركون (${subscribers.length})` },
     { value: 'leads', label: `الليدات (${leads.length})` },
+    { value: 'manual', label: 'قائمة أرقام محددة' },
   ];
 
   async function saveDraft() {
     if (!newC.title.trim()) { notify('error', 'أدخل اسم الحملة'); return; }
     if (!newC.message.trim()) { notify('error', 'اكتب نص الرسالة'); return; }
+    let audience_filter: { phones: string[] } | undefined;
+    if (newC.audience === 'manual') {
+      const phones = Array.from(new Set(
+        manualPhones.split(/[\n,]+/).map(p => p.trim()).filter(Boolean)
+      ));
+      if (phones.length === 0) { notify('error', 'أدخل رقم هاتف واحد على الأقل'); return; }
+      audience_filter = { phones };
+    }
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/sms-campaigns`, {
         method: 'POST', credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify(newC),
+        body: JSON.stringify({ ...newC, audience_filter }),
       });
       if (res.ok) {
         notify('success', 'تم حفظ الحملة كمسودة');
         setNewC({ title: '', message: '', audience: 'all' });
+        setManualPhones('');
         setView('list');
         load();
       } else notify('error', 'فشل الحفظ');
@@ -192,6 +205,14 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
                 {audienceOptions.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
             </div>
+            {newC.audience === 'manual' && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">قائمة أرقام الهاتف (سطر أو فاصلة لكل رقم)</label>
+                <textarea value={manualPhones} onChange={e => setManualPhones(e.target.value)}
+                  rows={4} placeholder={"01xxxxxxxxx\n01xxxxxxxxx"}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 resize-none" />
+              </div>
+            )}
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center justify-between">
                 <span>نص الرسالة</span>
