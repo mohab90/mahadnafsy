@@ -9,11 +9,12 @@ const { loadRoleOverrides } = require('../lib/rbacOverrides');
 const { loadTemplates } = require('../lib/messageTemplates');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { invalidateFxCache } = require('../lib/finance');
+const { redactSecrets, preserveStoredSecrets } = require('../lib/configSecrets');
 
 // Settings (adminAiConfig, aiAgentConfig, messagingChannels, fbLeadAdsConfig)
 router.get('/api/admin/settings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    res.json(await getTenantSetting('settings', { tenantId: req.tenantId, fallback: {} }));
+    res.json(redactSecrets(await getTenantSetting('settings', { tenantId: req.tenantId, fallback: {} })));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -22,7 +23,17 @@ router.get('/api/admin/settings', requireAuth, requireAdmin, async (req, res) =>
 
 router.put('/api/admin/settings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await setTenantSetting('settings', req.body || {}, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
+    // The frontend saves one section at a time (e.g. { adminAiConfig: {...} }),
+    // so this must merge into the existing blob rather than replace it wholesale
+    // — setTenantSetting itself does a full REPLACE of the stored JSON, and a
+    // naive `setTenantSetting('settings', req.body, ...)` would silently wipe
+    // every other section (aiAgentConfig/messagingChannels/fbLeadAdsConfig)
+    // on every single save. preserveStoredSecrets also guards against a
+    // client echoing back a redacted ('') secret field (from the masked GET
+    // response) and overwriting the real stored value with a blank.
+    const existing = await getTenantSetting('settings', { tenantId: req.tenantId, fallback: {} });
+    const merged = { ...existing, ...preserveStoredSecrets(existing, req.body || {}) };
+    await setTenantSetting('settings', merged, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);

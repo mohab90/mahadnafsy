@@ -11,6 +11,7 @@ const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { setTenantSetting } = require('../lib/tenantSettings');
+const { redactSecrets } = require('../lib/configSecrets');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { whatsappSendLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
 
@@ -35,8 +36,11 @@ router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
 router.get('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, async (req, res) => {
   try {
     const cfg = await getFbLeadConfig(scopedTenantId(req));
-    // Mask token for security
-    res.json({ ...cfg, pageAccessToken: cfg.pageAccessToken ? '••••••••' : '', hasToken: !!(cfg.pageAccessToken) });
+    // redactSecrets() strips appSecret/verifyToken (not editable via this UI —
+    // never round-tripped back on save) fully; pageAccessToken keeps its own
+    // masked-placeholder convention since the save flow depends on it to
+    // detect "unchanged" vs "user typed a new token".
+    res.json({ ...redactSecrets(cfg), pageAccessToken: cfg.pageAccessToken ? '••••••••' : '', hasToken: !!(cfg.pageAccessToken) });
   } catch (e) { routeError(res, e); }
 });
 

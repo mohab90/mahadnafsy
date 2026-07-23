@@ -37,3 +37,12 @@ Production rule:
 
 Do not remove the remaining opt-in legacy startup schema until every target
 table has been verified on production and covered by migration tests.
+
+## Migration numbering gaps (015, 088, 089)
+
+These three numbers were never used — no file was ever created and later
+removed (confirmed via git history). `api/lib/migrationRunner.js` discovers
+migrations by globbing whatever `NNN_*.sql` files actually exist on disk and
+running them in sorted order, so a gap in the sequence has no functional
+effect; it does not expect or wait for a specific number. Documented here so
+a gap is not mistaken for a missing/lost migration file.
