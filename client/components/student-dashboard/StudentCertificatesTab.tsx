@@ -4,12 +4,19 @@ import { useNavigate } from 'react-router-dom';
 import { mysqlClient } from '../../lib/mysqlapi';
 import type { ExtraCertificateType, ExtraCertificateRequest } from '../../types';
 
+interface CourseCompletionRow {
+  course_id: string;
+  certificate_code: string;
+  completed_at: string;
+}
+
 interface CertificatesTabProps {
   subscriber: any;
   enrolledCourses: any[];
   getCourseLectures: (id: string | number) => any[];
+  completions: CourseCompletionRow[];
   setPlayerCourseId: (id: string) => void;
-  setCertModal: (data: { courseId: string }) => void;
+  setCertModal: (data: { courseId: string; certCode: string; completedAt: string }) => void;
   content: any;
   refreshMySubscriber: () => void;
 }
@@ -18,6 +25,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
   subscriber,
   enrolledCourses,
   getCourseLectures,
+  completions,
   setPlayerCourseId,
   setCertModal,
   content,
@@ -173,7 +181,12 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
                     .filter(([lid, pct]) => courseLectures.some(l => String(l.id) === lid) && (pct as number) >= 90).length
                 : 0;
               const pct = total > 0 ? Math.round((watched / total) * 100) : 100;
-              const isCompleted = total === 0 || pct === 100;
+              // The progress bar above is a client-side estimate for UX only — whether a
+              // printable certificate exists is decided ONLY by a real course_completions
+              // row (LMS-03). Watching 100% of lectures locally never issued one on its
+              // own; completeCourse() on the server is the sole source of truth.
+              const completion = completions.find(c => c.course_id === String(course.id));
+              const isCompleted = !!completion;
 
               return (
                 <div key={course.id} className={`rounded-2xl p-5 border shadow-sm ${isCompleted ? 'bg-gradient-to-br from-red-900 to-red-800 border-red-700 text-white' : 'bg-white border-gray-100'}`}>
@@ -207,9 +220,9 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
                       )}
                     </div>
                   </div>
-                  {isCompleted && (
+                  {completion && (
                     <button
-                      onClick={() => setCertModal({ courseId: course.id })}
+                      onClick={() => setCertModal({ courseId: course.id, certCode: completion.certificate_code, completedAt: completion.completed_at })}
                       className="w-full mt-4 bg-white/15 hover:bg-white/25 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2 border border-white/20"
                     >
                       🏆 عرض وطباعة الشهادة

@@ -142,8 +142,22 @@ const UserDashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
 
-  /* certificate modal */
-  const [certModal, setCertModal] = useState<{ courseId: string } | null>(null);
+  /* certificate modal — certCode/completedAt come from the real course_completions
+     row (LMS-03), never a client-side "all lectures watched" guess */
+  const [certModal, setCertModal] = useState<{ courseId: string; certCode: string; completedAt: string } | null>(null);
+
+  /* real, server-issued course completions (LMS-03) — reloaded whenever the
+     certificates tab is opened, so a completion earned moments earlier
+     (finishing the last lecture, passing the quiz) shows up without a full
+     page reload */
+  const [completions, setCompletions] = useState<{ course_id: string; certificate_code: string; completed_at: string }[]>([]);
+  useEffect(() => {
+    if (!authUser?.uid || !(activeTab === 'learning' && learningSection === 'certificates')) return;
+    mysqlClient.getMyCompletions()
+      .then(rows => setCompletions(rows as unknown as { course_id: string; certificate_code: string; completed_at: string }[]))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.uid, activeTab, learningSection]);
 
   /* payment proof upload */
   const [showProofForm, setShowProofForm] = useState(false);
@@ -895,6 +909,7 @@ const UserDashboard: React.FC = () => {
               subscriber={subscriber}
               enrolledCourses={enrolledCourses}
               getCourseLectures={(id) => getCourseLectures(String(id))}
+              completions={completions}
               setPlayerCourseId={setPlayerCourseId}
               setCertModal={setCertModal}
               content={content}
@@ -902,13 +917,13 @@ const UserDashboard: React.FC = () => {
             />
           )}
 
-          {/* Certificate modal */}
+          {/* Certificate modal — certNumber/issuedAt come straight from the real
+              course_completions row, not a guessed client code (LMS-03) */}
           {certModal && (() => {
             const course = courses.find(c => c.id === certModal.courseId);
             if (!course || !subscriber) return null;
             const courseLectures = getCourseLectures(course.id);
-            const certNum = subscriber.clientCode || `PSY-${subscriber.id.slice(-6).toUpperCase()}`;
-            const issuedDate = new Date().toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' });
+            const issuedDate = new Date(certModal.completedAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' });
             const hoursLabel = course.duration || '';
             return (
               <CourseCertificate
@@ -919,7 +934,7 @@ const UserDashboard: React.FC = () => {
                 instructorName={course.instructor}
                 lectureCount={courseLectures.length || Number(course.students)}
                 hoursLabel={hoursLabel}
-                certNumber={certNum}
+                certNumber={certModal.certCode}
                 issuedAt={issuedDate}
                 onClose={() => setCertModal(null)}
               />

@@ -285,7 +285,12 @@ router.get('/api/completions/:code/certificate', async (req, res) => {
     const LOGO_URL = brand.logoUrl;
     const qrData   = encodeURIComponent(`CERT:${certCode}|${studentName}|${courseName}`);
     const qrUrl    = `/api/qr?size=90&data=${qrData}`;
-    const verifyUrl = `https://mahadnafsy.com/verify/${certCode}`;
+    // Must match completeCourse()'s own completion email link (lib/courseCompletion.js)
+    // and the actual client route (client/App.tsx) — these had drifted (this route used
+    // to hardcode mahadnafsy.com/verify/:code, a path/domain nothing ever served, so the
+    // certificate's own QR code 404'd for every tenant that wasn't the default one).
+    const clientBase = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
+    const verifyUrl = `${clientBase}/certificate/${encodeURIComponent(certCode)}`;
 
     const html = `<!DOCTYPE html>
 <html lang="en">
