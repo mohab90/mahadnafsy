@@ -89,7 +89,6 @@ export type TabKey =
   | 'staff_settings'
   | 'online_clients'
   | 'daqqi_clients'
-  | 'my_clients'
   | 'refund_requests'
   | 'daqqi_accounting'
   | 'daqqi_stats'

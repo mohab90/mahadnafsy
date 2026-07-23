@@ -366,7 +366,7 @@ export function DashboardNavigation(props: Props) {
                   {(
                     [
                       { key: 'daqqi_schedule' as TabKey, label: 'جدول الدقي', icon: CalendarDays },
-                      { key: 'my_clients' as TabKey, label: 'عملائي', icon: UserCheck },
+                      { key: 'daqqi_clients' as TabKey, label: 'عملائي', icon: UserCheck },
                       { key: 'leads' as TabKey, label: 'العملاء المحتملين', icon: UserSearch },
                       { key: 'orders' as TabKey, label: 'مدفوعاتي', icon: CreditCard },
                       { key: 'overview' as TabKey, label: 'إحصائياتي', icon: BarChart3 },
@@ -418,7 +418,7 @@ export function DashboardNavigation(props: Props) {
                   {(
                     [
                       { key: 'daqqi_schedule' as TabKey, label: 'جدول الدقي', icon: CalendarDays },
-                      { key: 'my_clients' as TabKey, label: 'عملاء الدقي', icon: UserCheck },
+                      { key: 'daqqi_clients' as TabKey, label: 'عملاء الدقي', icon: UserCheck },
                       { key: 'leads' as TabKey, label: 'العملاء المحتملين', icon: UserSearch },
                       { key: 'orders' as TabKey, label: 'الطلبات والمدفوعات', icon: CreditCard },
                       { key: 'daqqi_accounting' as TabKey, label: 'حسابات الدقي', icon: Wallet },
