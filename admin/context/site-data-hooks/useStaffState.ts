@@ -3,10 +3,12 @@ import type { StaffMember } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
+type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
 
 export function useStaffState(
   initialStaffMembers: StaffMember[],
   lastCRMWriteRef: { current: number },
+  persistOrRevert: PersistOrRevert,
   track: Track,
 ) {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>(initialStaffMembers);
@@ -35,20 +37,30 @@ export function useStaffState(
 
   const updateStaffMember = (item: StaffMember) => {
     lastCRMWriteRef.current = Date.now();
+    const prevStaff = staffMembersRef.current;
     const nextStaff = staffMembersRef.current.map((row) => (row.id === item.id ? item : row));
     staffMembersRef.current = nextStaff;
     setStaffMembers(nextStaff);
     persistStaffMemberToCollection(item);
-    void mysqlAdmin.saveStaff(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveStaff(item as unknown as Record<string,unknown>),
+      () => { staffMembersRef.current = prevStaff; setStaffMembers(prevStaff); },
+      { field: 'staff', name: item.name }
+    );
     track('update', 'staff', item.name);
   };
 
   const deleteStaffMember = (id: string) => {
     lastCRMWriteRef.current = Date.now();
+    const prevStaff = staffMembersRef.current;
     const nextStaff = staffMembersRef.current.filter((row) => row.id !== id);
     staffMembersRef.current = nextStaff;
     setStaffMembers(nextStaff);
-    void mysqlAdmin.deleteStaff(id);
+    persistOrRevert(
+      mysqlAdmin.deleteStaff(id),
+      () => { staffMembersRef.current = prevStaff; setStaffMembers(prevStaff); },
+      { field: 'staff', name: id }
+    );
     track('delete', 'staff', id);
   };
 

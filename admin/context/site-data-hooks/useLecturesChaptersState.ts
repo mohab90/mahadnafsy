@@ -4,11 +4,13 @@ import type { CourseLectureItem, CourseChapterItem } from '../../types';
 import { mysqlAdmin, mysqlCatalog } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
+type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
 
 export function useLecturesChaptersState(
   initialLectures: CourseLectureItem[],
   initialChapters: CourseChapterItem[],
   lastLocalConfigWriteRef: MutableRefObject<number>,
+  persistOrRevert: PersistOrRevert,
   track: Track,
 ) {
   const [lectures, setLectures] = useState<CourseLectureItem[]>(initialLectures);
@@ -38,22 +40,36 @@ export function useLecturesChaptersState(
     lastLocalConfigWriteRef.current = Date.now();
     setLectures((prev) => [item, ...prev]);
     persistLectureToCollection(item);
-    void mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>),
+      () => setLectures((prev) => prev.filter((row) => row.id !== item.id)),
+      { field: 'lecture', name: item.title }
+    );
     track('create', 'lecture', item.title);
   };
 
   const updateLecture = (item: CourseLectureItem) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevLecture = lectures.find((row) => row.id === item.id);
     setLectures((prev) => prev.map((row) => (row.id === item.id ? item : row)));
     persistLectureToCollection(item);
-    void mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>),
+      () => { if (prevLecture) setLectures((prev) => prev.map((row) => (row.id === item.id ? prevLecture : row))); },
+      { field: 'lecture', name: item.title }
+    );
     track('update', 'lecture', item.title);
   };
 
   const deleteLecture = (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const removed = lectures.find((row) => row.id === id);
     setLectures((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteLecture(id);
+    persistOrRevert(
+      mysqlAdmin.deleteLecture(id),
+      () => { if (removed) setLectures((prev) => [removed, ...prev]); },
+      { field: 'lecture', name: removed?.title }
+    );
     track('delete', 'lecture', id);
   };
 
@@ -61,22 +77,37 @@ export function useLecturesChaptersState(
     lastLocalConfigWriteRef.current = Date.now();
     setChapters((prev) => [...prev, item]);
     persistChapterToCollection(item);
-    void mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>),
+      () => setChapters((prev) => prev.filter((row) => row.id !== item.id)),
+      { field: 'chapter', name: item.title }
+    );
     track('create', 'chapter', item.title);
   };
 
   const updateChapter = (item: CourseChapterItem) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevChapter = chapters.find((row) => row.id === item.id);
     setChapters((prev) => prev.map((row) => (row.id === item.id ? item : row)));
     persistChapterToCollection(item);
-    void mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>),
+      () => { if (prevChapter) setChapters((prev) => prev.map((row) => (row.id === item.id ? prevChapter : row))); },
+      { field: 'chapter', name: item.title }
+    );
     track('update', 'chapter', item.title);
   };
 
   const deleteChapter = (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevChapters = chapters;
+    const prevLectures = lectures;
     setChapters((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteChapter(id);
+    persistOrRevert(
+      mysqlAdmin.deleteChapter(id),
+      () => { setChapters(prevChapters); setLectures(prevLectures); },
+      { field: 'chapter', name: id }
+    );
     // Unlink lectures belonging to deleted chapter and persist updated lectures
     setLectures((prev) => {
       const updated = prev.map((row) => (row.chapterId === id ? { ...row, chapterId: undefined } : row));

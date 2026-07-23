@@ -4,10 +4,12 @@ import type { DaqqiRound } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
+type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
 
 export function useDaqqiRoundsState(
   initialDaqqiRounds: DaqqiRound[],
   lastCRMWriteRef: MutableRefObject<number>,
+  persistOrRevert: PersistOrRevert,
   track: Track,
 ) {
   const [daqqiRounds, setDaqqiRounds] = useState<DaqqiRound[]>(initialDaqqiRounds);
@@ -31,16 +33,26 @@ export function useDaqqiRoundsState(
 
   const updateDaqqiRound = (item: DaqqiRound) => {
     lastCRMWriteRef.current = Date.now();
+    const prevRound = daqqiRounds.find((r) => r.id === item.id);
     setDaqqiRounds((prev) => prev.map((r) => (r.id === item.id ? item : r)));
     persistDaqqiRoundToCollection(item);
-    void mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>),
+      () => { if (prevRound) setDaqqiRounds((prev) => prev.map((r) => (r.id === item.id ? prevRound : r))); },
+      { field: 'daqqiRound', name: item.courseId }
+    );
     track('update', 'daqqiRound', item.courseId);
   };
 
   const deleteDaqqiRound = (id: string) => {
     lastCRMWriteRef.current = Date.now();
+    const removed = daqqiRounds.find((r) => r.id === id);
     setDaqqiRounds((prev) => prev.filter((r) => r.id !== id));
-    void mysqlAdmin.deleteDaqqiRound(id);
+    persistOrRevert(
+      mysqlAdmin.deleteDaqqiRound(id),
+      () => { if (removed) setDaqqiRounds((prev) => [removed, ...prev]); },
+      { field: 'daqqiRound', name: id }
+    );
     track('delete', 'daqqiRound', id);
   };
 

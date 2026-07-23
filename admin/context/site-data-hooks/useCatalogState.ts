@@ -4,6 +4,7 @@ import type { Course, Bundle, Therapist, TestimonialItem } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
+type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
 
 // Courses/bundles/therapists/testimonials are cross-entangled (course update touches
 // embedding bundles, therapist rename touches courses by instructor name), so they're
@@ -14,6 +15,7 @@ export function useCatalogState(
   initialTherapists: Therapist[],
   initialTestimonials: TestimonialItem[],
   lastLocalConfigWriteRef: MutableRefObject<number>,
+  persistOrRevert: PersistOrRevert,
   track: Track,
 ) {
   const [courses, setCourses] = useState<Course[]>(initialCourses);
@@ -39,6 +41,7 @@ export function useCatalogState(
 
   const addCourse = (course: Course) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevCourses = courses;
     let resolvedCourse = course;
     setCourses((prev) => {
       if (course.courseCode) {
@@ -54,12 +57,18 @@ export function useCatalogState(
     });
     // Write after state update so resolvedCourse is fully set
     setTimeout(() => persistCourseToCollection(resolvedCourse), 0);
-    void mysqlAdmin.saveCourse(resolvedCourse as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveCourse(resolvedCourse as unknown as Record<string,unknown>),
+      () => setCourses(prevCourses),
+      { field: 'course', name: resolvedCourse.title }
+    );
     track('create', 'course', resolvedCourse.title);
   };
 
   const updateCourse = (course: Course) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevCourses = courses;
+    const prevBundles = bundles;
     setCourses((prev) => prev.map((item) => (item.id === course.id ? course : item)));
     // Update all bundles that embed this course
     setBundles((prev) => {
@@ -73,14 +82,25 @@ export function useCatalogState(
       return updated;
     });
     persistCourseToCollection(course);
-    void mysqlAdmin.saveCourse(course as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveCourse(course as unknown as Record<string,unknown>),
+      () => { setCourses(prevCourses); setBundles(prevBundles); },
+      { field: 'course', name: course.title }
+    );
     track('update', 'course', course.title);
   };
 
   const deleteCourse = (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevCourses = courses;
+    const prevBundles = bundles;
+    const removed = courses.find((item) => item.id === id);
     setCourses((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteCourse(id);
+    persistOrRevert(
+      mysqlAdmin.deleteCourse(id),
+      () => { setCourses(prevCourses); setBundles(prevBundles); },
+      { field: 'course', name: removed?.title }
+    );
     // Remove course from bundles that embed it
     setBundles((prev) => {
       return prev.map((bundle) => {
@@ -95,15 +115,22 @@ export function useCatalogState(
 
   const addTherapist = (therapist: Therapist) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevTherapists = therapists;
     const nextTherapists = [therapist, ...therapists];
     setTherapists(nextTherapists);
     persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>),
+      () => { setTherapists(prevTherapists); persistTherapistsToConfig(prevTherapists); },
+      { field: 'therapist', name: therapist.name }
+    );
     track('create', 'therapist', therapist.name);
   };
 
   const updateTherapist = (therapist: Therapist) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevTherapists = therapists;
+    const prevCourses = courses;
     const old = therapists.find((item) => item.id === therapist.id);
     const nextTherapists = therapists.map((item) => (item.id === therapist.id ? therapist : item));
     if (old && old.name !== therapist.name) {
@@ -117,17 +144,26 @@ export function useCatalogState(
     }
     setTherapists(nextTherapists);
     persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveTherapist(therapist as unknown as Record<string,unknown>),
+      () => { setTherapists(prevTherapists); persistTherapistsToConfig(prevTherapists); setCourses(prevCourses); },
+      { field: 'therapist', name: therapist.name }
+    );
     track('update', 'therapist', therapist.name);
   };
 
   const deleteTherapist = (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevTherapists = therapists;
     const target = therapists.find((item) => item.id === id);
     const nextTherapists = therapists.filter((item) => item.id !== id);
     setTherapists(nextTherapists);
     persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.deleteTherapist(id);
+    persistOrRevert(
+      mysqlAdmin.deleteTherapist(id),
+      () => { setTherapists(prevTherapists); persistTherapistsToConfig(prevTherapists); },
+      { field: 'therapist', name: target?.name }
+    );
     if (target) {
       track('delete', 'therapist', target.name);
     }
@@ -156,51 +192,82 @@ export function useCatalogState(
 
   const addBundle = (bundle: Bundle) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevBundles = bundles;
     setBundles((prev) => [bundle, ...prev]);
     persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
+    persistOrRevert(
+      mysqlAdmin.saveBundle(bundleToServerPayload(bundle)),
+      () => setBundles(prevBundles),
+      { field: 'bundle', name: bundle.title }
+    );
     track('create', 'bundle', bundle.title);
   };
 
   const updateBundle = (bundle: Bundle) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevBundles = bundles;
     setBundles((prev) => prev.map((item) => (item.id === bundle.id ? bundle : item)));
     persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
+    persistOrRevert(
+      mysqlAdmin.saveBundle(bundleToServerPayload(bundle)),
+      () => setBundles(prevBundles),
+      { field: 'bundle', name: bundle.title }
+    );
     track('update', 'bundle', bundle.title);
   };
 
   const deleteBundle = (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevBundles = bundles;
+    const removed = bundles.find((item) => item.id === id);
     setBundles((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteBundle(id);
+    persistOrRevert(
+      mysqlAdmin.deleteBundle(id),
+      () => setBundles(prevBundles),
+      { field: 'bundle', name: removed?.title }
+    );
     track('delete', 'bundle', id);
   };
 
   const addTestimonial = (item: TestimonialItem) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevTestimonials = testimonials;
     const next = [item, ...testimonials];
     setTestimonials(next);
     persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>),
+      () => { setTestimonials(prevTestimonials); persistTestimonialsToConfig(prevTestimonials); },
+      { field: 'testimonial', name: item.name }
+    );
     track('create', 'testimonial', item.name);
   };
 
   const updateTestimonial = (item: TestimonialItem) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevTestimonials = testimonials;
     const next = testimonials.map((row) => (row.id === item.id ? item : row));
     setTestimonials(next);
     persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>);
+    persistOrRevert(
+      mysqlAdmin.saveTestimonial(item as unknown as Record<string,unknown>),
+      () => { setTestimonials(prevTestimonials); persistTestimonialsToConfig(prevTestimonials); },
+      { field: 'testimonial', name: item.name }
+    );
     track('update', 'testimonial', item.name);
   };
 
   const deleteTestimonial = (id: number) => {
     lastLocalConfigWriteRef.current = Date.now();
+    const prevTestimonials = testimonials;
     const next = testimonials.filter((row) => row.id !== id);
     setTestimonials(next);
     persistTestimonialsToConfig(next);
-    void mysqlAdmin.deleteTestimonial(String(id));
+    persistOrRevert(
+      mysqlAdmin.deleteTestimonial(String(id)),
+      () => { setTestimonials(prevTestimonials); persistTestimonialsToConfig(prevTestimonials); },
+      { field: 'testimonial', name: String(id) }
+    );
     track('delete', 'testimonial', String(id));
   };
 
