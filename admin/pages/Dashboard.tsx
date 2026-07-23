@@ -176,6 +176,10 @@ import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
 import { useLeadsDerived } from './dashboard/hooks/useLeadsDerived';
 import { useSubscribersDerived } from './dashboard/hooks/useSubscribersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
+import { useCommunityDrafts } from './dashboard/hooks/useCommunityDrafts';
+import { useAdminAiAssistant } from './dashboard/hooks/useAdminAiAssistant';
+import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts';
+import { useCsvFbImportState } from './dashboard/hooks/useCsvFbImportState';
 import { exportOrdersCsv, exportSubscribersCsv as exportSubscribersCsvHelper, exportLeadsCsv as exportLeadsCsvHelper } from './dashboard/dashboardExports';
 import {
   DashboardClientTabs,
@@ -438,7 +442,6 @@ const Dashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribers, _aiAllManual]);
 
-  const [searchText, setSearchText] = useState('');
   const toast = useToast();
   const notify = (type: 'success' | 'error' | 'info', text: string) => toast.show(text, type);
   useRealtimeEvents<{ action?: string; entity?: string; actor?: string }>(
@@ -472,16 +475,16 @@ const Dashboard: React.FC = () => {
 
 
 
-  const [newContentKey, setNewContentKey] = useState('');
-  const [newContentValue, setNewContentValue] = useState('');
-  const [contentEdits, setContentEdits] = useState<Record<string, string>>({}); // local drafts for the All-Content tab
-  const [policyDrafts, setPolicyDrafts] = useState<Record<string, string>>({});
-  const [offerSelectedCourseId, setOfferSelectedCourseId] = useState(() => content['offer.courseId'] || '');
-  useEffect(() => {
-    if (content['offer.courseId']) setOfferSelectedCourseId(content['offer.courseId']);
-  }, [content['offer.courseId']]);
-  const [instituteGalleryUrlInput, setInstituteGalleryUrlInput] = useState('');
-  const instituteGalleryUploadRef = useRef<HTMLInputElement | null>(null);
+  const {
+    searchText, setSearchText,
+    newContentKey, setNewContentKey,
+    newContentValue, setNewContentValue,
+    contentEdits, setContentEdits,
+    policyDrafts, setPolicyDrafts,
+    offerSelectedCourseId, setOfferSelectedCourseId,
+    instituteGalleryUrlInput, setInstituteGalleryUrlInput,
+    instituteGalleryUploadRef,
+  } = useContentEditorDrafts(content);
 
   const [lectureCourseId, setLectureCourseId] = useState('');
 
@@ -608,7 +611,19 @@ const Dashboard: React.FC = () => {
   // -- Lead payment modal (unified — same design as subscriber payment modal) -
   const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
   const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
-  const [fbDraft, setFbDraft] = useState<FacebookLeadAdsConfig>(() => fbLeadAdsConfig || defaultFacebookLeadAdsConfig());
+  const {
+    fbDraft, setFbDraft,
+    bulkUploadNotice, setBulkUploadNotice,
+    csvImportOpen, setCsvImportOpen,
+    csvHeaders, setCsvHeaders,
+    csvImporting, setCsvImporting,
+    fbSyncLoading, setFbSyncLoading,
+    fbSyncNotice, setFbSyncNotice,
+    fbFormsLoading, setFbFormsLoading,
+    fbAvailableForms, setFbAvailableForms,
+    csvRows, setCsvRows,
+    csvMapping, setCsvMapping,
+  } = useCsvFbImportState(fbLeadAdsConfig, defaultFacebookLeadAdsConfig);
 
   const [leadsSearch, setLeadsSearch] = useState('');
   const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]); // empty = hide converted+hidden
@@ -628,14 +643,6 @@ const Dashboard: React.FC = () => {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['main', 'clients']));
   const [showSaveSegment, setShowSaveSegment] = useState(false);
   const [subscriberPage, setSubscriberPage] = useState(1);
-  const [bulkUploadNotice, setBulkUploadNotice] = useState('');
-  const [csvImportOpen, setCsvImportOpen] = useState(false);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [fbSyncLoading, setFbSyncLoading] = useState(false);
-  const [fbSyncNotice, setFbSyncNotice] = useState('');
-  const [fbFormsLoading, setFbFormsLoading] = useState(false);
-  const [fbAvailableForms, setFbAvailableForms] = useState<{id: string; name: string; status: string}[]>([]);
   const [staffShowPassword, setStaffShowPassword] = useState(false);
   const [subWaRow, setSubWaRow] = useState<SubscriberItem | null>(null);
   const [staffProfileModalId, setStaffProfileModalId] = useState<string | null>(null);
@@ -717,47 +724,20 @@ const Dashboard: React.FC = () => {
     createdAt: '',
   });
 
-  const [communityPostDraft, setCommunityPostDraft] = useState({
-    title: '',
-    body: '',
-    tag: 'نقاش عام',
-    authorName: 'إدارة المنصة',
-    authorRole: 'Admin',
-    authorImage: '',
-    pinned: false,
-  });
-  const [isCommunityPostFormOpen, setIsCommunityPostFormOpen] = useState(false);
-  const [communityLibraryDraft, setCommunityLibraryDraft] = useState({
-    title: '',
-    description: '',
-    fileType: 'PDF',
-    fileSize: '',
-    downloadUrl: '',
-  });
-  const [isCommunityLibraryFormOpen, setIsCommunityLibraryFormOpen] = useState(false);
-  const [communityVideoDraft, setCommunityVideoDraft] = useState({
-    title: '',
-    duration: '',
-    viewsLabel: '',
-    thumbnail: '',
-    videoUrl: '',
-    description: '',
-  });
-  const [isCommunityVideoFormOpen, setIsCommunityVideoFormOpen] = useState(false);
-  const [communityEventDraft, setCommunityEventDraft] = useState({
-    dateLabel: '',
-    title: '',
-    eventType: 'ندوة',
-    speaker: '',
-    platform: 'Zoom',
-    eventDate: '',
-    description: '',
-  });
-  const [isCommunityEventFormOpen, setIsCommunityEventFormOpen] = useState(false);
-  const [editingCommunityPostId, setEditingCommunityPostId] = useState('');
-  const [editingCommunityLibraryId, setEditingCommunityLibraryId] = useState('');
-  const [editingCommunityVideoId, setEditingCommunityVideoId] = useState('');
-  const [editingCommunityEventId, setEditingCommunityEventId] = useState('');
+  const {
+    communityPostDraft, setCommunityPostDraft,
+    isCommunityPostFormOpen, setIsCommunityPostFormOpen,
+    communityLibraryDraft, setCommunityLibraryDraft,
+    isCommunityLibraryFormOpen, setIsCommunityLibraryFormOpen,
+    communityVideoDraft, setCommunityVideoDraft,
+    isCommunityVideoFormOpen, setIsCommunityVideoFormOpen,
+    communityEventDraft, setCommunityEventDraft,
+    isCommunityEventFormOpen, setIsCommunityEventFormOpen,
+    editingCommunityPostId, setEditingCommunityPostId,
+    editingCommunityLibraryId, setEditingCommunityLibraryId,
+    editingCommunityVideoId, setEditingCommunityVideoId,
+    editingCommunityEventId, setEditingCommunityEventId,
+  } = useCommunityDrafts();
 
   const [orderSearch, setOrderSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'paid' | 'failed' | 'refunded'>('all');
@@ -932,9 +912,6 @@ const Dashboard: React.FC = () => {
       return JSON.parse(localStorage.getItem('crm.salesTargets') || '[]');
     } catch { return []; }
   });
-  // CSV general import state
-  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
-  const [csvMapping, setCsvMapping] = useState<Record<string, string>>({});
   // Tag input (keyed by lead id being edited)
 
   // Community sub-tab
@@ -945,51 +922,7 @@ const Dashboard: React.FC = () => {
 
   // -- Automation tab state moved to AutomationTab.tsx ---------------------
 
-  // -- Admin AI Assistant settings (separate from customer agent) -----------
-  const [adminAiDraft, setAdminAiDraft] = useState<{
-    provider: string; apiKey: string; model: string; temperature: number; maxTokens: number; systemPrompt: string;
-  }>(() => {
-    const DEPRECATED_MODELS = ['gemini-2.0-flash'];
-    try {
-      const raw = localStorage.getItem('mahad-admin-ai-config');
-      if (raw) {
-        const saved = JSON.parse(raw) as { provider: string; apiKey: string; model: string; temperature: number; maxTokens: number; systemPrompt?: string };
-        // Auto-fix deprecated model names
-        if (saved.provider === 'gemini' && DEPRECATED_MODELS.includes(saved.model)) {
-          saved.model = 'gemini-2.0-flash-lite';
-          localStorage.setItem('mahad-admin-ai-config', JSON.stringify(saved));
-        }
-        return { ...saved, systemPrompt: saved.systemPrompt || '' };
-      }
-    } catch {}
-    return { provider: 'gemini', apiKey: '', model: 'gemini-2.0-flash-lite', temperature: 0.7, maxTokens: 1500, systemPrompt: '' };
-  });
-
-  // -- Z.AI Dev Assistant ------------------------------------------------
-  const [aiDevMessages, setAiDevMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('mahad-ai-dev-messages') || '[]') as { role: 'user' | 'assistant'; text: string }[]; } catch { return []; }
-  });
-  const aiDevChatEndRef = React.useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    try { localStorage.setItem('mahad-ai-dev-messages', JSON.stringify(aiDevMessages.slice(-80))); } catch { /* quota exceeded — trim further */ try { localStorage.setItem('mahad-ai-dev-messages', JSON.stringify(aiDevMessages.slice(-30))); } catch { /* silent */ } }
-  }, [aiDevMessages]);
-
-  // Sync adminAiDraft once from MySQL when adminAiConfig loads (cross-device)
-  const adminAiSyncedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (adminAiConfig && !adminAiSyncedRef.current) {
-      adminAiSyncedRef.current = true;
-      setAdminAiDraft({
-        provider: adminAiConfig.provider || 'gemini',
-        apiKey: adminAiConfig.apiKey || '',
-        model: adminAiConfig.model || 'gemini-2.0-flash-lite',
-        temperature: adminAiConfig.temperature ?? 0.7,
-        maxTokens: adminAiConfig.maxTokens ?? 1500,
-        systemPrompt: adminAiConfig.systemPrompt || '',
-      });
-    }
-  }, [adminAiConfig]);
-
+  const { adminAiDraft, setAdminAiDraft, aiDevMessages, setAiDevMessages, aiDevChatEndRef } = useAdminAiAssistant(adminAiConfig);
 
   const menuGroups = DASHBOARD_MENU_GROUPS;
 
