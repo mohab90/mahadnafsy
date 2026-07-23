@@ -206,8 +206,8 @@ router.post('/api/orders/reserve', async (req, res) => {
     await conn.query(
       `INSERT INTO orders (id, item_id, item_title, type, status, amount, currency,
          payment_method, customer_name, customer_email, customer_phone, notes, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,'PENDING',?,?,?,?,?,?,?,?,?,NOW())
-       ON DUPLICATE KEY UPDATE status='PENDING', notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
+       VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,NOW())
+       ON DUPLICATE KEY UPDATE status='pending', notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, itemId||'', itemTitle||'', orderType, amount, currency||'EGP',
        paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, 'tenant-default', orderBranchId]
     );
@@ -296,7 +296,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     await assertWritable(new Date().toISOString().slice(0, 10), conn, tenantId);
 
     // 1. Mark order paid
-    await conn.query("UPDATE orders SET status='PAID', transaction_id=? WHERE id=? AND tenant_id=?", [transactionId, merchantOrderId, tenantId]);
+    await conn.query("UPDATE orders SET status='paid', transaction_id=? WHERE id=? AND tenant_id=?", [transactionId, merchantOrderId, tenantId]);
 
     // 2. Auto-enroll subscriber for course or bundle payments
     if ((orderType === 'course' || orderType === 'bundle') && sub) {

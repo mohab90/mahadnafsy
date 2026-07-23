@@ -144,7 +144,7 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
         key: 'paid_order_without_payment', severity: 'critical',
         sql: `SELECT o.id,o.type,o.item_title,o.amount,o.currency,o.transaction_id,o.paid_at
                 FROM orders o
-               WHERE o.tenant_id=? AND o.status='PAID' AND o.deleted_at IS NULL
+               WHERE o.tenant_id=? AND o.status='paid' AND o.deleted_at IS NULL
                  AND NOT EXISTS (
                    SELECT 1 FROM payments p WHERE p.tenant_id=o.tenant_id AND p.deleted_at IS NULL
                      AND (p.id=o.id OR (o.transaction_id IS NOT NULL AND p.transaction_id=o.transaction_id))

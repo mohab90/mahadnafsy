@@ -347,7 +347,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     );
     const [[pendingOrder]] = await conn.query(
       `SELECT id FROM orders
-       WHERE tenant_id=? AND customer_email=? AND type=? AND item_id=? AND status='PENDING'
+       WHERE tenant_id=? AND customer_email=? AND type=? AND item_id=? AND status='pending'
          AND created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [tenantId, normalizedEmail, normalizedType.toUpperCase(), itemId || normalizedType]
@@ -364,7 +364,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       `INSERT INTO orders
          (id, subscriber_id, item_id, item_title, type, status, amount, currency, payment_method,
           customer_name, customer_email, customer_phone, course_id, bundle_id, notes, tenant_id, branch_id, created_at)
-       VALUES (?,?,?,?,?,'PENDING',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,NOW())
+       VALUES (?,?,?,?,?,'pending',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE amount=VALUES(amount), item_title=VALUES(item_title), customer_name=VALUES(customer_name),
          customer_phone=VALUES(customer_phone), notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, subscriber?.id || null, itemId || normalizedType, canonicalTitle || normalizedType,

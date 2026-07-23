@@ -185,12 +185,12 @@ router.get('/api/admin/abandoned-checkouts', requireAuth, requireAdmin, async (r
       `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency,
               o.customer_name, o.customer_email, o.customer_phone, o.subscriber_id, o.created_at
        FROM orders o
-       WHERE o.status = 'PENDING' AND o.tenant_id=? AND o.deleted_at IS NULL
+       WHERE o.status = 'pending' AND o.tenant_id=? AND o.deleted_at IS NULL
          AND o.created_at <= DATE_SUB(NOW(), INTERVAL ? HOUR)
          AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
          AND NOT EXISTS (
            SELECT 1 FROM orders p
-           WHERE p.status = 'PAID' AND p.tenant_id=o.tenant_id AND p.deleted_at IS NULL AND p.item_id = o.item_id
+           WHERE p.status = 'paid' AND p.tenant_id=o.tenant_id AND p.deleted_at IS NULL AND p.item_id = o.item_id
              AND (p.customer_phone = o.customer_phone OR p.customer_email = o.customer_email)
          )
        ORDER BY o.created_at DESC LIMIT 300`, [req.tenantId, hours]);

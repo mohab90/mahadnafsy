@@ -64,7 +64,7 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
       [order_id, tenantId, normalizedEmail]
     );
     if (!order) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Order not found' }); }
-    if (order.status !== 'PENDING') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending payment' }); }
+    if (order.status !== 'pending') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending payment' }); }
     if (Number(order.amount) <= 0 || Number(order.amount) > 500000) {
       await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order amount is invalid' });
     }
@@ -334,7 +334,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     );
     if (!proof) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Proof not found' }); }
     if (proof.status !== 'PENDING') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Already reviewed' }); }
-    if (proof.order_status !== 'PENDING') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending' }); }
+    if (proof.order_status !== 'pending') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending' }); }
 
     const reviewed_at = new Date();
     const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
@@ -435,7 +435,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         });
       }
       await conn.query(
-        "UPDATE orders SET status='PAID', transaction_id=?, paid_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=?",
+        "UPDATE orders SET status='paid', transaction_id=?, paid_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=?",
         [proof.id, proof.order_id, tenantId]
       );
       await enqueueFinanceEvent({

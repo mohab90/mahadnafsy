@@ -11,7 +11,7 @@ test('checkout serializes the same business intent and reuses a recent pending o
   const route = read('routes/lead-capture-crm.js');
   const client = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'pages', 'Checkout.tsx'), 'utf8');
   assert.match(route, /createHash\('sha256'\)[\s\S]*SELECT GET_LOCK\(\?,5\) AS acquired/);
-  assert.match(route, /status='PENDING'[\s\S]*INTERVAL 24 HOUR[\s\S]*FOR UPDATE/);
+  assert.match(route, /status='pending'[\s\S]*INTERVAL 24 HOUR[\s\S]*FOR UPDATE/);
   assert.match(route, /SELECT RELEASE_LOCK\(\?\)/);
   assert.match(client, /Idempotency-Key': idempotencyKey/);
   assert.match(client, /sessionStorage\.getItem\(idempotencyStorageKey\)/);
