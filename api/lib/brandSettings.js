@@ -44,13 +44,21 @@ function fromContent(c = {}) {
   };
 }
 
-async function getBrandSettings(tenantId = DEFAULT_TENANT) {
+async function getBrandSettings(tenantId = DEFAULT_TENANT, db = undefined) {
   const cached = _cache.get(tenantId);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
   let value;
   try {
-    const content = await getTenantSetting('content', { tenantId, fallback: {} });
+    const [content, sysGeneral] = await Promise.all([
+      getTenantSetting('content', { tenantId, fallback: {}, ...(db ? { db } : {}) }),
+      getTenantSetting('sys_general', { tenantId, fallback: {}, ...(db ? { db } : {}) }),
+    ]);
     value = fromContent(content || {});
+    // The SaaS setup wizard's logo uploader (routes/branding-assets.js) saves
+    // into 'sys_general', a different settings section than this reads from —
+    // a tenant onboarded only through the wizard never saw their own logo on
+    // any branded output (ARC-07). Prefer it when present.
+    if (sysGeneral?.brand_logo_url) value.logoUrl = sysGeneral.brand_logo_url;
   } catch (_) {
     value = { ...DEFAULT_BRAND };
   }

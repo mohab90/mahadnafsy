@@ -596,8 +596,21 @@ router.get('/api/testimonials', async (req, res) => {
 // GET /api/content  (public site content key-value store)
 router.get('/api/content', async (req, res) => {
   try {
-    const data = await cached(`site_content:${req.tenantId}`, 5 * 60 * 1000, () =>
-      getTenantSetting('content', { tenantId: req.tenantId, fallback: {} }));
+    const data = await cached(`site_content:${req.tenantId}`, 5 * 60 * 1000, async () => {
+      const [content, sysGeneral] = await Promise.all([
+        getTenantSetting('content', { tenantId: req.tenantId, fallback: {} }),
+        getTenantSetting('sys_general', { tenantId: req.tenantId, fallback: {} }),
+      ]);
+      // The SaaS setup wizard's logo/favicon uploader (routes/branding-assets.js)
+      // saves into the 'sys_general' settings section — a different section than
+      // this one — so a tenant who only went through the wizard never saw their
+      // branding anywhere public (ARC-07). Overlay it onto the older
+      // institute.logo/institute.favicon keys every reader already expects.
+      const merged = { ...content };
+      if (sysGeneral?.brand_logo_url) merged['institute.logo'] = sysGeneral.brand_logo_url;
+      if (sysGeneral?.brand_favicon_url) merged['institute.favicon'] = sysGeneral.brand_favicon_url;
+      return merged;
+    });
     // Short browser cache so admin content edits reflect on the site within ~30s
     // (the server-side 'site_content' cache is invalidated on save, so this is cheap).
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');

@@ -273,9 +273,25 @@ const useMiniFooter = () => {
 };
 
 
+// Applies the tenant's own uploaded favicon (SaaS setup wizard, ARC-07) over the
+// static default in index.html — every tenant otherwise shared the same icon
+// regardless of what they uploaded in Settings.
+const useTenantFavicon = () => {
+  const { content } = useSiteData();
+  const faviconUrl = content['institute.favicon'];
+  useEffect(() => {
+    if (!faviconUrl) return;
+    const links = document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]');
+    const previous = Array.from(links).map(link => link.href);
+    links.forEach(link => { link.href = faviconUrl; });
+    return () => { links.forEach((link, i) => { link.href = previous[i]; }); };
+  }, [faviconUrl]);
+};
+
 const AppShell: React.FC = () => {
   const miniFooter = useMiniFooter();
   const location = useLocation();
+  useTenantFavicon();
 
   return (
     <>
