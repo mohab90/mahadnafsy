@@ -7,6 +7,7 @@ const { pool } = require('../lib/db');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
+const { resolveCertificatePrice } = require('../lib/certificatePricing');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { isString, isOneOf, validateBody } = require('../middleware/validate');
 
@@ -128,24 +129,17 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
     if (!eligible) return res.status(409).json({ error: 'certificate_not_eligible', message: 'يجب دفع وإتمام الكورس أولاً' });
 
     const content = await getTenantSetting('content', { tenantId, fallback: {} });
-    const pricing = (() => { try { return JSON.parse(content.extra_cert_pricing || '{}'); } catch { return {}; } })();
-    const typeKey = type.toLowerCase();
-    const priceRow = pricing[typeKey] || {};
-    const priceKey = nationality === 'EGYPTIAN' ? 'egyptianEGP'
-      : nationality === 'NON_EGYPTIAN_EGYPT' ? 'residentEGP'
-        : nationality === 'SAUDI_RESIDENT' ? 'residentSAR' : 'foreignUSD';
-    const price = Number(priceRow[priceKey]) || null;
-    const currency = priceKey.endsWith('SAR') ? 'SAR' : priceKey.endsWith('USD') ? 'USD' : 'EGP';
+    const pricingConfig = (() => { try { return JSON.parse(content.extra_cert_pricing || '{}'); } catch { return {}; } })();
+    const { price, currency, status } = resolveCertificatePrice({ type, nationality, pricingConfig });
     const requestId = require('crypto').randomUUID();
     await pool.query(
       `INSERT INTO certificate_requests
          (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality, id_number, status, price, currency, note, tenant_id, requested_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [requestId, sub.id, b.courseId, type, b.customName || null, b.nameAr || null, b.nameEn || null,
-       nationality, b.idNumber || null, price ? 'PRICED' : 'PENDING', price, price ? currency : null,
-       b.note || null, tenantId]
+       nationality, b.idNumber || null, status, price, currency, b.note || null, tenantId]
     );
-    res.json({ ok: true, id: requestId, status: price ? 'priced' : 'pending', price, currency: price ? currency : null });
+    res.json({ ok: true, id: requestId, status: status.toLowerCase(), price, currency });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

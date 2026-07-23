@@ -4,18 +4,8 @@ const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 
-const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
-const { sendEmail } = require('../lib/email');
-const { sendWhatsApp } = require('../lib/whatsapp');
-const { tryJson } = require('../lib/helpers');
-const { createNotification } = require('../lib/notification');
-const { logPaymentAudit, postJournalEntry, _paymentAccountCode } = require('../lib/finance');
-const { syncLeadDealValue } = require('../lib/leadDealValue');
-const { enqueueEmailSequence } = require('../lib/emailSequence');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { safeDateOnly } = require('../lib/dates');
-const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // PATCH /api/admin/payments/:id/status — approve or reject a payment (admin/manager)
 // (removed dead duplicate PATCH /api/admin/payments/:id/status — live in an earlier-mounted router)
@@ -72,10 +62,10 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
         SUM(c.commission_amount)             AS total_commission,
         SUM(c.payment_amount)                AS total_payment
       FROM crm_commissions c
-      LEFT JOIN staff s ON s.id = c.staff_id
-      WHERE DATE_FORMAT(c.created_at, '%Y-%m') >= ?
+      LEFT JOIN staff s ON s.id = c.staff_id AND s.tenant_id = c.tenant_id
+      WHERE c.tenant_id = ? AND DATE_FORMAT(c.created_at, '%Y-%m') >= ?
     `;
-    const params = [from];
+    const params = [req.tenantId, from];
     if (staffId) { sql += ' AND c.staff_id = ?'; params.push(staffId); }
     sql += ' GROUP BY month, c.staff_id, staff_name ORDER BY month ASC, total_commission DESC';
 
@@ -113,99 +103,17 @@ router.get('/api/admin/commissions/monthly', requireAuth, requireAdmin, async (r
   } catch (e) { logger.error('[commissions/monthly]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Excel-compatible CSV Export (UTF-8 BOM) ─────────────────────
-// GET /api/admin/export/orders?from=YYYY-MM-DD&to=YYYY-MM-DD&type=orders|commissions|subscribers
-// Returns a CSV file compatible with Excel (UTF-8 BOM so Arabic displays correctly).
-// Falls back gracefully — no external dependency needed.
-// ══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/export/orders', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
-  try {
-    const from = req.query.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
-    const type = req.query.type || 'orders';
-
-    let rows = [], headers = [], filename = '';
-
-    if (type === 'orders') {
-      const [data] = await pool.query(
-        `SELECT o.id, o.order_number, u.name AS client_name, u.email, u.phone,
-                c.title AS course_name, o.amount, o.currency, o.status,
-                o.payment_method, o.created_at, s.name AS staff_name
-         FROM orders o
-         LEFT JOIN users u ON u.id = o.user_id
-         LEFT JOIN courses c ON c.id = o.course_id
-         LEFT JOIN staff s ON s.id = o.staff_id
-         WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-         ORDER BY o.created_at DESC`,
-        [from, to]
-      );
-      headers = ['رقم الطلب','اسم العميل','البريد','الهاتف','الكورس','المبلغ','العملة','الحالة','طريقة الدفع','التاريخ','موظف المبيعات'];
-      rows = data.map(r => [
-        r.order_number || r.id, r.client_name || '', r.email || '', r.phone || '',
-        r.course_name || '', r.amount, r.currency || 'EGP', r.status || '',
-        r.payment_method || '', (r.created_at || '').toString().slice(0, 10), r.staff_name || '',
-      ]);
-      filename = `orders-${from}-${to}.csv`;
-
-    } else if (type === 'commissions') {
-      const [data] = await pool.query(
-        `SELECT c.id, s.name AS staff_name, s.email, c.commission_amount, c.payment_amount,
-                c.commission_type, c.description, c.created_at
-         FROM crm_commissions c
-         LEFT JOIN staff s ON s.id = c.staff_id
-         WHERE c.created_at >= ? AND c.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-         ORDER BY c.created_at DESC`,
-        [from, to]
-      );
-      headers = ['الموظف','البريد','مبلغ العمولة','مبلغ الدفع','نوع العمولة','وصف','التاريخ'];
-      rows = data.map(r => [
-        r.staff_name || '', r.email || '', r.commission_amount, r.payment_amount,
-        r.commission_type || '', r.description || '', (r.created_at || '').toString().slice(0, 10),
-      ]);
-      filename = `commissions-${from}-${to}.csv`;
-
-    } else if (type === 'subscribers') {
-      const [data] = await pool.query(
-        `SELECT s.id, s.name, s.email, s.phone, s.country,
-                s.is_active, s.created_at,
-                GROUP_CONCAT(c.title SEPARATOR ' | ') AS courses
-         FROM subscribers s
-         LEFT JOIN JSON_TABLE(s.enrolled_course_ids, '$[*]' COLUMNS(cid VARCHAR(36) PATH '$')) j ON 1=1
-         LEFT JOIN courses c ON c.id = j.cid
-         WHERE s.created_at >= ? AND s.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-         GROUP BY s.id ORDER BY s.created_at DESC`,
-        [from, to]
-      ).catch(async () => {
-        // Fallback without JSON_TABLE (older MySQL)
-        const [fb] = await pool.query(
-          `SELECT id, name, email, phone, country, is_active, created_at FROM subscribers
-           WHERE created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
-           ORDER BY created_at DESC`,
-          [from, to]
-        );
-        return [fb];
-      });
-      headers = ['الاسم','البريد','الهاتف','الدولة','نشط','الكورسات','تاريخ التسجيل'];
-      rows = data.map(r => [
-        r.name || '', r.email || '', r.phone || '', r.country || '',
-        r.is_active ? 'نعم' : 'لا', r.courses || '',
-        (r.created_at || '').toString().slice(0, 10),
-      ]);
-      filename = `subscribers-${from}-${to}.csv`;
-    } else {
-      return res.status(400).json({ error: 'type must be orders|commissions|subscribers' });
-    }
-
-    // Build CSV with UTF-8 BOM (Excel requires BOM for proper Arabic rendering)
-    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const BOM = '﻿';
-    const csv = BOM + [headers, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(csv);
-  } catch (e) { logger.error('[export/orders]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+// GET /api/admin/export/orders used to live here — a CSV export whose 'orders'
+// branch referenced columns that don't exist on the current orders table
+// (order_number, user_id, staff_id), whose 'commissions' branch referenced
+// non-existent crm_commissions columns (commission_type, description), and
+// whose 'subscribers' branch referenced non-existent subscribers columns
+// (country, enrolled_course_ids) — every invocation 500'd. None of the three
+// branches filtered by tenant_id either, which would have been a real
+// cross-tenant data leak the moment the column names got "fixed" without also
+// adding that scoping. It also had zero frontend callers (admin-utils.js
+// already has working, tenant-scoped export/subscribers, export/leads, and
+// export/payments; OrdersTab.tsx's own CSV export is client-side). Removed
+// rather than rebuilt against a schema it was never updated for.
 
 module.exports = router;
