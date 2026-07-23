@@ -1,8 +1,8 @@
 'use strict';
 
-const { transitionLead } = require('./leadState');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { invalidateFxCache } = require('./finance');
+const { runAutomationWorkflows } = require('./automationEngine');
 
 function startServerCronJobs({
   pool,
@@ -11,7 +11,6 @@ function startServerCronJobs({
   logger,
   createNotification,
   cacheInvalidate,
-  uuidv4,
   port,
   loadBlacklistFromDB,
 }) {
@@ -137,73 +136,17 @@ function startServerCronJobs({
   }, 30 * 1000);
 
   // -- Automation Engine: daily auto-run -------------------------------------
-  // Runs all enabled workflows once per day automatically (no manual button needed).
-  // First run is delayed 90s after startup to avoid DB load during boot.
+  // Runs all enabled workflows (across every tenant) once per day automatically.
+  // Delegates to lib/automationEngine.js — the SAME code the manual "تشغيل
+  // الآن" button (routes/automation.js) calls — instead of a hand-copied
+  // subset that had already drifted to 5 of the 20 real triggers and 4 of
+  // the 9 real actions (MKT-04). First run is delayed 90s after startup to
+  // avoid DB load during boot.
   async function runAutomationEngine() {
     try {
-      const [workflows] = await pool.query(
-        `SELECT id, tenant_id, name, \`trigger\`, action, enabled, conditions_json AS conditions, action_config_json AS action_config,
-         last_triggered_at, trigger_count, created_at
-         FROM automation_workflows WHERE enabled = 1 ORDER BY created_at ASC`
-      );
-      if (!workflows.length) return;
-      const todayStr = new Date().toISOString().slice(0, 10);
-      let totalActions = 0;
-      for (const wf of workflows) {
-        const actionCfg = tryJson(wf.action_config, {});
-        let matchedLeads = [];
-        if (wf.trigger === 'no_contact_x_days') {
-          const days = parseInt(actionCfg.days || '7');
-          const [rows] = await pool.query(`SELECT l.id,l.name,l.phone,l.assigned_sales_name FROM leads l LEFT JOIN (SELECT lead_id,MAX(date) AS last_date FROM communications GROUP BY lead_id) c ON c.lead_id=l.id WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number') AND DATEDIFF(NOW(),COALESCE(c.last_date,l.last_follow_up,l.created_at))>=?`, [wf.tenant_id, days]);
-          matchedLeads = rows;
-        } else if (wf.trigger === 'lead_score_threshold') {
-          const threshold = parseInt(actionCfg.scoreThreshold || '70');
-          const [rows] = await pool.query(`SELECT l.id,l.name,l.phone,l.assigned_sales_name,(CASE l.status WHEN 'interested_booking' THEN 100 WHEN 'interested_followup' THEN 80 WHEN 'interested' THEN 60 WHEN 'contacted' THEN 40 WHEN 'new' THEN 20 ELSE 10 END+CASE l.interest_level WHEN 'high' THEN 30 WHEN 'medium' THEN 15 ELSE 5 END) AS score FROM leads l WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost') HAVING score>=?`, [wf.tenant_id, threshold]);
-          matchedLeads = rows;
-        } else if (wf.trigger === 'new_lead') {
-          const sinceDays = parseInt(actionCfg.days || '1');
-          const [rows] = await pool.query(`SELECT id,name,phone,assigned_sales_name FROM leads WHERE tenant_id=? AND hidden=0 AND status='new' AND created_at>=DATE_SUB(NOW(),INTERVAL ? DAY)`, [wf.tenant_id, sinceDays]);
-          matchedLeads = rows;
-        } else if (wf.trigger === 'subscription_expiring_soon') {
-          const days = parseInt(actionCfg.days || '7');
-          const [rows] = await pool.query(`SELECT s.id,s.name,s.email,s.phone,srh.expires_at FROM subscribers s LEFT JOIN subscriber_role_history srh ON srh.subscriber_id=s.id WHERE s.tenant_id=? AND s.status='active' AND srh.expires_at IS NOT NULL AND DATEDIFF(srh.expires_at,NOW()) BETWEEN 0 AND ? GROUP BY s.id`, [wf.tenant_id, days]);
-          matchedLeads = rows;
-        } else if (wf.trigger === 'subscriber_inactive_x_days') {
-          const days = parseInt(actionCfg.days || '30');
-          const [rows] = await pool.query(`SELECT s.id,s.name,s.email,s.phone,MAX(lp.completed_at) AS last_progress FROM subscribers s LEFT JOIN lecture_completions lp ON lp.subscriber_id=s.id AND lp.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.status='active' GROUP BY s.id HAVING last_progress IS NULL OR DATEDIFF(NOW(),last_progress)>=?`, [wf.tenant_id, days]);
-          matchedLeads = rows;
-        }
-        let actionsRun = 0;
-        for (const lead of matchedLeads) {
-          if (wf.action === 'add_followup_reminder' && lead.id) {
-            const newDate = new Date(); newDate.setDate(newDate.getDate() + parseInt(actionCfg.days || '3'));
-            await pool.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND (next_follow_up_date IS NULL OR next_follow_up_date<NOW())', [newDate.toISOString().slice(0,10), lead.id, wf.tenant_id]);
-            await pool.query(
-              `INSERT INTO lead_timeline (id,tenant_id,lead_id,event_type,description,meta_json,at) VALUES (?,?,?,'followup_set',?,?,NOW())`,
-              [uuidv4(), wf.tenant_id, lead.id, `Automation scheduled follow-up for ${newDate.toISOString().slice(0,10)}`, JSON.stringify({ workflowId: wf.id, automation: true })]
-            );
-            actionsRun++;
-          } else if (wf.action === 'update_lead_status' && actionCfg.status && lead.id) {
-            await transitionLead({
-              tenantId: wf.tenant_id, leadId: lead.id, toStatus: actionCfg.status,
-              actor: 'scheduled-automation', reason: `Automation changed status to ${actionCfg.status}`,
-              metadata: { workflowId: wf.id, automation: true },
-            });
-            actionsRun++;
-          } else if (wf.action === 'add_note' && lead.id) {
-            const msg = (actionCfg.message || '').replace(/\{\{name\}\}/g, lead.name||'').replace(/\{\{phone\}\}/g, lead.phone||'');
-            if (msg) { await pool.query(`INSERT IGNORE INTO communications (id,lead_id,type,date,notes,outcome) VALUES (?,?,'note',?,?,'auto')`, [`auto-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, lead.id, todayStr, `[أتمتة: ${wf.name}] ${msg}`]); actionsRun++; }
-          } else if (wf.action === 'notify_admin') {
-            try { await pool.query(`INSERT IGNORE INTO automation_log (id,tenant_id,workflow_id,lead_id,action,triggered_at) VALUES (?,?,?,?,?,NOW())`, [uuidv4(), wf.tenant_id, wf.id, lead.id||null, wf.action]); } catch(_){}
-            actionsRun++;
-          }
-        }
-        if (actionsRun > 0) {
-          await pool.query('UPDATE automation_workflows SET trigger_count=trigger_count+?,last_triggered_at=? WHERE id=? AND tenant_id=?', [actionsRun, new Date().toISOString(), wf.id, wf.tenant_id]);
-        }
-        totalActions += actionsRun;
-      }
-      logger.info(`[auto-cron] Automation engine ran: ${workflows.length} workflows, ${totalActions} actions executed`);
+      const results = await runAutomationWorkflows({ actor: 'scheduled-automation' });
+      const totalActions = results.reduce((sum, r) => sum + (r.actionsRun || 0), 0);
+      logger.info(`[auto-cron] Automation engine ran: ${results.length} workflows, ${totalActions} actions executed`);
     } catch (e) {
       logger.warn('[auto-cron] Automation engine error:', e.message);
     }

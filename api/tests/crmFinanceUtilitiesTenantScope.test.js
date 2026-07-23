@@ -122,20 +122,20 @@ test('admin notification stores and readers share tenant ownership', () => {
 });
 
 test('manual and scheduled automation never select or mutate leads across tenants', () => {
+  // The manual "run now" button and the daily cron both delegate to this one
+  // engine now (MKT-04) — the tenant-scoping invariant only needs checking
+  // once, here, instead of against two independently-drifting copies.
+  const engine = read('lib/automationEngine.js');
   const route = read('routes/automation.js');
   const cron = read('lib/serverCronJobs.js');
-  const server = read('server.js');
   const migration = read('migrations/079_tenant_automation.sql');
-  assert.match(route, /FROM automation_workflows WHERE tenant_id=\?/);
-  assert.match(route, /WHERE l\.tenant_id=\? AND l\.hidden/);
-  assert.match(route, /transitionLead\(\{[\s\S]*tenantId: req\.tenantId/);
-  assert.match(route, /INSERT INTO tasks \(id, tenant_id/);
-  assert.match(cron, /SELECT id, tenant_id, name,/);
-  assert.match(cron, /WHERE l\.tenant_id=\?/);
-  assert.match(cron, /WHERE id=\? AND tenant_id=\?/);
-  assert.match(server, /SELECT id, tenant_id, name,/);
-  assert.match(server, /transitionLead\(\{[\s\S]*tenantId: wf\.tenant_id/);
-  assert.match(server, /UPDATE automation_workflows SET trigger_count=trigger_count\+\?,last_triggered_at=\? WHERE id=\? AND tenant_id=\?/);
+  assert.match(engine, /FROM automation_workflows WHERE \$\{where\}/);
+  assert.match(engine, /WHERE l\.tenant_id=\? AND l\.hidden/);
+  assert.match(engine, /transitionLead\(\{[\s\S]*tenantId: tid/);
+  assert.match(engine, /INSERT INTO tasks \(id, tenant_id/);
+  assert.match(engine, /UPDATE automation_workflows SET trigger_count = trigger_count \+ \?, last_triggered_at = \? WHERE id = \? AND tenant_id=\?/);
+  assert.match(route, /runAutomationWorkflows\(\{ tenantId: req\.tenantId/);
+  assert.match(cron, /runAutomationWorkflows\(/);
   assert.match(migration, /idx_automation_workflows_tenant_enabled/);
 });
 

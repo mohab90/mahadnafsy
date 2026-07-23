@@ -17,6 +17,13 @@ type WorkflowDraft = {
   actionConfig: Record<string, string>; enabled: boolean;
 };
 
+// Only triggers with a matching execution branch in both engines
+// (api/routes/automation.js's manual "run" AND api/lib/serverCronJobs.js's
+// daily cron) are listed — 11 were shown here with zero implementation
+// anywhere, so picking them silently did nothing forever (MKT-02). Removed
+// rather than stubbing 11 real feature builds (payment/refund/certificate/
+// community/inbox triggers each need their own real query and, in most
+// cases, product decisions about scope that belong in their own tickets).
 const TRIGGER_LABELS: Partial<Record<AutomationTrigger, string>> = {
   new_subscriber: '👤 عميل جديد يسجل',
   new_lead: '🧲 عميل محتمل جديد',
@@ -27,43 +34,26 @@ const TRIGGER_LABELS: Partial<Record<AutomationTrigger, string>> = {
   subscription_expiring_soon: '⏰ اشتراك على وشك الانتهاء',
   no_contact_x_days: '📵 بدون تواصل X أيام',
   new_payment: '💰 دفعة جديدة ناجحة',
-  payment_failed: '❌ فشل الدفع',
-  payment_partial: '🔸 دفع جزئي',
-  refund_requested: '↩ طلب استرداد',
-  course_enrolled: '🎓 تسجيل في كورس',
   subscriber_course_completed: '🏆 إتمام كورس',
   course_progress_stalled: '🛑 توقف التقدم',
-  certificate_requested: '📜 طلب شهادة',
   new_consultation: '📅 عرض استشارة جديد',
   consultation_confirmed: '✅ استشارة مؤكدة',
   consultation_cancelled: '❌ استشارة ملغاة',
   consultation_completed: '🎯 استشارة مكتملة',
-  community_post_pending: '💬 منشور ينتظر مراجعة',
   new_join_request: '📝 طلب انضمام جديد',
-  new_contact_message: '📨 رسالة تواصل جديدة',
-  whatsapp_message_received: '📱 رسالة واتساب واردة',
-  messenger_message_received: '💬 رسالة ماسنجر واردة',
-  ai_agent_escalated: '🤖 AI طلب تدخل بشري',
-  conversation_unassigned: '👤 محادثة بدون موظف',
   conversation_idle_x_hours: '😴 محادثة خاملة',
 };
 
+// Same reasoning as TRIGGER_LABELS above — 8 actions had zero matching
+// handler in either engine (MKT-03).
 const ACTION_LABELS: Partial<Record<AutomationAction, string>> = {
   notify_admin: '🔔 إشعار المسؤول',
   send_whatsapp: '📱 إرسال واتساب',
-  send_email: '📧 إرسال بريد إلكتروني',
   send_notification: '🔔 إشعار للعميل',
-  send_template_message: '📝 إرسال رسالة قالب',
   add_note: '📝 إضافة ملاحظة',
   update_lead_status: '🔄 تحديث حالة الليد',
   add_followup_reminder: '⏰ إضافة تذكير متابعة',
-  enroll_course: '🎓 تسجيل في كورس',
   assign_staff: '👤 تعيين موظف',
-  escalate_to_human: '🙋 تحويل لموظف',
-  ai_auto_reply: '🤖 رد AI تلقائي',
-  tag_conversation: '🏷 وضع تاج على المحادثة',
-  close_conversation: '✅ إغلاق المحادثة',
-  generate_certificate: '📜 إصدار شهادة',
 };
 
 const blankWf = (): WorkflowDraft => ({

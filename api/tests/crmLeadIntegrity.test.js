@@ -37,8 +37,11 @@ test('lead state mutation and timeline audit share one transaction', () => {
 test('business routes use the central lead transition service', () => {
   for (const file of [
     'routes/admin/leads.js', 'routes/admin/subscribers.js', 'routes/crm-advanced.js',
-    'routes/automation.js', 'routes/payment-proofs.js', 'routes/subscriber-payments.js',
-    'routes/public-orders.js', 'server.js', 'lib/serverCronJobs.js',
+    // routes/automation.js (manual run) and lib/serverCronJobs.js (daily cron)
+    // both delegate to this one engine now instead of each having their own
+    // transitionLead() call (MKT-04) — checked once here instead of twice.
+    'lib/automationEngine.js', 'routes/payment-proofs.js', 'routes/subscriber-payments.js',
+    'routes/public-orders.js', 'server.js',
   ]) {
     const source = read(file);
     assert.doesNotMatch(source, /UPDATE leads SET status|UPDATE leads SET[^;]{0,200}status='converted'/, file);
@@ -74,7 +77,10 @@ test('lead assignments validate tenant staff and persist audit in the same trans
   const service = read('lib/leadAssignment.js');
   const admin = read('routes/admin/leads.js');
   const advanced = read('routes/crm-advanced.js');
-  const automation = read('routes/automation.js');
+  // The automation "assign_staff" action lives in lib/automationEngine.js —
+  // the one engine both the manual "run" button (routes/automation.js) and
+  // the daily cron (lib/serverCronJobs.js) call (MKT-04 unification).
+  const automationEngine = read('lib/automationEngine.js');
   assert.match(service, /FROM leads WHERE id=\? AND tenant_id=\?[\s\S]*FOR UPDATE/);
   assert.match(service, /FROM staff WHERE id=\? AND tenant_id=\?[\s\S]*UPPER\(role\)='SALES'/);
   assert.match(service, /UPDATE leads SET assigned_sales_id=\?,assigned_sales_name=\?/);
@@ -82,7 +88,7 @@ test('lead assignments validate tenant staff and persist audit in the same trans
   assert.match(service, /await conn\.rollback\(\)/);
   assert.match(admin, /bulk-assign'[\s\S]*await conn\.beginTransaction\(\)[\s\S]*logLeadEventStrict[\s\S]*await conn\.commit\(\)/);
   assert.match(advanced, /smart-route'[\s\S]*FOR UPDATE[\s\S]*logLeadEventStrict[\s\S]*await conn\.commit\(\)/);
-  assert.match(automation, /assign_staff[\s\S]*await assignLead\(/);
+  assert.match(automationEngine, /assign_staff[\s\S]*await assignLead\(/);
 });
 
 test('overdue CRM SLA alerts are tenant-owned, daily-deduped and use the retryable outbox', () => {
