@@ -4,7 +4,6 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool } = require('../../lib/db');
-const { tryJson } = require('../../lib/helpers');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { postExpenseJournal } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
@@ -142,77 +141,15 @@ setInterval(async () => {
   } catch (e) { logger.warn('[cron recurring]', e.message); }
 }, 60000);
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Structured Installment Plans ─────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/installment-plans', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
-  try {
-    const { subscriber_id, status } = req.query;
-    let q = 'SELECT ip.*, s.name AS subscriber_name, s.phone AS subscriber_phone FROM installment_plans ip LEFT JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id WHERE ip.tenant_id=?';
-    const params = [req.tenantId];
-    if (subscriber_id) { q += ' AND ip.subscriber_id=?'; params.push(subscriber_id); }
-    if (status) { q += ' AND ip.status=?'; params.push(status); }
-    q += ' ORDER BY ip.created_at DESC LIMIT 200';
-    const [rows] = await pool.query(q, params);
-    res.json(rows.map(r => ({ ...r, installment_amounts: tryJson(r.installment_amounts,[]), due_dates: tryJson(r.due_dates,[]), paid_dates: tryJson(r.paid_dates,[]) })));
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-router.post('/api/admin/installment-plans', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
-  try {
-    const { subscriber_id, title, total_amount, currency='EGP', installments_count=3, due_dates=[], notes, payment_id } = req.body;
-    if (!subscriber_id || !total_amount) return res.status(400).json({ error: 'subscriber_id and total_amount required' });
-    const [[subscriber]] = await pool.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriber_id, req.tenantId]);
-    if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
-    const id = require('crypto').randomUUID();
-    const per = parseFloat((total_amount / installments_count).toFixed(2));
-    await pool.query('INSERT INTO installment_plans (id,tenant_id,subscriber_id,payment_id,title,total_amount,currency,installments_count,installment_amounts,due_dates,paid_dates,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      [id, req.tenantId, subscriber_id, payment_id||null, title||'خطة تقسيط', total_amount, currency, installments_count,
-       JSON.stringify(Array(Number(installments_count)).fill(per)), JSON.stringify(due_dates), JSON.stringify([]), notes||null, req.user?.email||null]);
-    res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-router.patch('/api/admin/installment-plans/:id/pay', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
-  const conn = await pool.getConnection();
-  let tx = false;
-  try {
-    const installmentIndex = Number(req.body.installment_index);
-    if (!Number.isInteger(installmentIndex) || installmentIndex < 0) return res.status(400).json({ error: 'Invalid installment index' });
-    await conn.beginTransaction();
-    tx = true;
-    const [[plan]] = await conn.query(
-      `SELECT id, subscriber_id, payment_id, title, total_amount, currency, installments_count,
-              paid_count, installment_amounts, due_dates, paid_dates, status, notes, created_at, created_by
-       FROM installment_plans WHERE id=? AND tenant_id=? FOR UPDATE`, [req.params.id, req.tenantId]
-    );
-    if (!plan) {
-      await conn.rollback(); tx = false;
-      return res.status(404).json({ error: 'Not found' });
-    }
-    if (installmentIndex >= Number(plan.installments_count)) {
-      await conn.rollback(); tx = false;
-      return res.status(400).json({ error: 'Installment index out of range' });
-    }
-    const paidDates = tryJson(plan.paid_dates, []);
-    if (paidDates[installmentIndex]) {
-      await conn.commit(); tx = false;
-      return res.json({ ok: true, paid_count: Number(plan.paid_count || 0), status: plan.status, unchanged: true });
-    }
-    paidDates[installmentIndex] = new Date().toISOString().slice(0, 10);
-    const paidCount = paidDates.filter(Boolean).length;
-    const st = paidCount >= plan.installments_count ? 'completed' : 'active';
-    await conn.query('UPDATE installment_plans SET paid_dates=?,paid_count=?,status=? WHERE id=? AND tenant_id=?', [JSON.stringify(paidDates), paidCount, st, req.params.id, req.tenantId]);
-    await conn.commit();
-    tx = false;
-    res.json({ ok: true, paid_count: paidCount, status: st });
-  } catch (e) {
-    if (tx) await conn.rollback().catch(() => {});
-    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
-  } finally { conn.release(); }
-});
-router.delete('/api/admin/installment-plans/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
-  try { await pool.query('DELETE FROM installment_plans WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]); res.json({ ok: true }); }
-  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
+// Structured Installment Plans used to live here — a duplicate, older
+// implementation of the same feature routes/installments.js now owns
+// (built for PAY-16). Because this router mounts before installmentsRouter
+// in server.js, this copy's blind, unconditional DELETE (no check for
+// already-recorded payments) silently WON over installments.js's real one,
+// which correctly refuses to delete a plan with paid_count > 0 — the safe
+// delete guard built for PAY-16 never actually ran. Removed rather than
+// reordering the mounts, since this copy's other endpoints (flat GET, PATCH
+// .../pay) were also unused by any frontend caller — see routes/installments.js.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: VAT Tracking on Expenses ─────────────────────────────────────

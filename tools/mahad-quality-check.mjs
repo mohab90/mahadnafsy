@@ -260,14 +260,22 @@ else fail(`admin mutating endpoints with NO authz guard (any logged-in user can 
 // hazard. There is a known backlog of such duplicates; this guard locks it so the
 // count can only DECREASE. Lowering DUP_BASELINE as duplicates are cleaned keeps
 // it honest. It FAILS if a NEW duplicate is introduced.
+//
+// Two coverage gaps fixed (ARC-02): the path string is matched with any of
+// '/"/` (not just single quotes) via a backreferenced delimiter, and each path
+// is normalized (every :paramName segment collapsed to :param) before
+// comparing — Express dispatches on path SHAPE, so /api/orders/:id and
+// /api/orders/:orderId shadow each other identically even though they were
+// previously counted as two different, non-colliding strings.
 console.log('\n13. Duplicate-route guard');
 const DUP_BASELINE = 0; // all duplicate routes cleaned (removed 5 dead files + 20 dead handlers, 2026-06-20). Keep at 0.
+const normalizeRoutePath = (p) => p.replace(/:[A-Za-z_][A-Za-z0-9_]*/g, ':param');
 const routeDefs = [];
 for (const f of walk(join(ROOT, 'api/routes'), '.js')) {
   const t = readText(f) || '';
-  const re = /router\.(get|post|put|patch|delete)\('(\/api\/[^']+)'/g;
+  const re = /router\.(get|post|put|patch|delete)\(\s*(['"`])(\/api\/[^'"`]+)\2/g;
   let m;
-  while ((m = re.exec(t))) routeDefs.push(`${m[1]} ${m[2]}`);
+  while ((m = re.exec(t))) routeDefs.push(`${m[1]} ${normalizeRoutePath(m[3])}`);
 }
 const seen = new Map();
 for (const r of routeDefs) seen.set(r, (seen.get(r) || 0) + 1);
