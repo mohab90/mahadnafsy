@@ -123,6 +123,7 @@ export type TabKey =
   | 'expense_analytics'
   | 'revenue_sources'
   | 'hr'
+  | 'hr_analytics'
   | 'my_hr'
   | 'enps_dashboard'
   | 'offboarding'
@@ -256,6 +257,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-purple-600',
     items: [
       { key: 'hr', label: 'نظام HR', icon: Briefcase },
+      { key: 'hr_analytics', label: 'تقارير وتحليلات HR', icon: BarChart3 },
       { key: 'staff_management', label: 'الموظفون', icon: Users },
       { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },
       { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },

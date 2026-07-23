@@ -27,6 +27,7 @@ export const FinancialReportsHub = lazy(() => import('./FinancialReportsHub'));
 export const FollowupRemindersTab = lazy(() => import('./tabs/FollowupRemindersTab'));
 export const ForecastTab = lazy(() => import('./tabs/ForecastTab'));
 export const HrTab = lazy(() => import('./tabs/HRTab'));
+export const HrAnalyticsTab = lazy(() => import('./tabs/HrAnalyticsTab'));
 export const InstallmentPlansTab = lazy(() => import('./tabs/InstallmentPlansTab'));
 export const IpWhitelistTab = lazy(() => import('./tabs/IpWhitelistTab'));
 export const JoinUsAdminTab = lazy(() => import('./tabs/JoinUsAdminTab'));
