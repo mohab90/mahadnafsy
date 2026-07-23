@@ -59,6 +59,11 @@ export default defineConfig(({ mode }) => {
             if (id.includes('recharts')) return 'recharts-vendor';
             // Icon set
             if (id.includes('lucide-react')) return 'icons';
+            // Realtime client (used on every admin page for live updates) — kept
+            // eager but in its own chunk, not lumped into the catch-all 'vendor'
+            // bucket, so it doesn't get cache-busted every time an unrelated
+            // small dependency changes (BUILD-02).
+            if (id.includes('socket.io-client') || id.includes('engine.io-client')) return 'socket-vendor';
             // dompurify is used by the always-loaded SafeHtml component (via
             // Dashboard.tsx) — keep it OUT of pdf-vendor, otherwise Vite's
             // modulePreload sees dompurify as eagerly-reachable and preloads
