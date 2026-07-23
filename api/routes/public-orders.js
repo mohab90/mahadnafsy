@@ -210,7 +210,7 @@ router.post('/api/orders/reserve', async (req, res) => {
        VALUES (?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,NOW())
        ON DUPLICATE KEY UPDATE status='pending', notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, itemId||'', itemTitle||'', orderType, amount, currency||'EGP',
-       paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, 'tenant-default', orderBranchId]
+       paymentMethod||'', customerName||'', customerEmail||'', customerPhone||'', extra, req.tenantId || DEFAULT_TENANT_ID, orderBranchId]
     );
     await conn.commit();
     res.json({ ok: true });
