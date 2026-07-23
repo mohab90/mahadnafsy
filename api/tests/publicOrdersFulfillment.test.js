@@ -1,34 +1,30 @@
 'use strict';
 /**
  * Regression coverage for the payment→enrollment path in
- * api/routes/public-orders.js. _finalisePaymobOrderInner is not currently
- * exported or written to accept an injectable connection (unlike
- * lib/periodLock.js or lib/courseCompletion.js), so it cannot be exercised
- * with a mock yet — this is exactly the gap the roadmap's Phase 1 item
- * ("Payment Fulfillment Service") is meant to close: extracting the
- * post-payment steps (ensure subscriber exists → create enrollment → post
- * journal entry → notify) into one exported, injectable function used by
- * every payment entry point (Paymob, manual transfer proof, installments).
+ * api/routes/public-orders.js.
  *
- * The test below is intentionally left as `test.todo` rather than skipped
- * silently or faked with a source-text regex: it names the exact known bug
- * (LMS-01 in the issue backlog) so it shows up in every `npm run test:unit`
- * run until Phase 1 lands, and it should be written for real — mock
- * connection, real assertions on the enrollment INSERT — as part of the same
- * commit that fixes the underlying bug, not before.
+ * Status update (Phase 1 of the roadmap):
+ * - LMS-01 (payment succeeds but the customer never gets enrolled because no
+ *   subscriber row existed) is fixed: _finalisePaymobOrderInner now calls
+ *   lib/subscriberProvisioning.ensureSubscriberForOrder, which is unit-tested
+ *   for real in api/tests/subscriberProvisioning.test.js.
+ * - PAY-03 (orders.status written as uppercase 'PAID'/'PENDING' while every
+ *   reader compares lowercase, leaving paid orders stuck) is fixed across
+ *   all five write/read sites — see the commit that closed it.
+ *
+ * What remains a real gap: _finalisePaymobOrderInner itself is still not
+ * exported or written to accept an injectable connection (unlike
+ * lib/courseCompletion.js or lib/subscriberProvisioning.js), so the full
+ * route-level flow — including the enrollment INSERT, payment INSERT, and
+ * journal posting happening atomically in one transaction — still can't be
+ * exercised end-to-end with a mock. That refactor (export it, accept an
+ * injectable conn) is tracked here rather than done as a side effect of a
+ * bug fix that didn't require it.
  */
 const { test } = require('node:test');
 
 test.todo(
-  'a successful Paymob payment for a customer with no existing subscriber row creates the ' +
-  'subscriber AND the enrollment in the same transaction, so the customer sees the course ' +
-  'immediately (LMS-01 — currently public-orders.js:277-302 silently skips enrollment when ' +
-  '`sub` is falsy; fix + this test land together as part of roadmap Phase 1)'
-);
-
-test.todo(
-  'a payment recorded through the manual transfer-proof path and one recorded through Paymob ' +
-  'both leave payments.status, orders.status, and enrollments in a mutually consistent state ' +
-  '(PAY-03 — payment-proofs.js currently writes status=\'PAID\' in uppercase, which every other ' +
-  'reader compares against lowercase, producing orders stuck in limbo)'
+  '_finalisePaymobOrderInner is exported and accepts an injectable connection so the full ' +
+  'payment→enrollment→journal transaction can be tested end-to-end with a mock, the same way ' +
+  'completeCourse() and ensureSubscriberForOrder() already are'
 );

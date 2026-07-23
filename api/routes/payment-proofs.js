@@ -6,8 +6,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { mailer, htmlEmail, sendEmail } = require('../lib/email');
 const { tryJson } = require('../lib/helpers');
-const { getNextClientCode } = require('../lib/mappers');
-const { branchIdForBranch } = require('../lib/branches');
+const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { sendWhatsApp } = require('../lib/whatsapp');
@@ -74,34 +73,11 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     );
     if (existingProof) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'A payment proof already exists for this order' }); }
 
-    let [[sub]] = await conn.query(
-      'SELECT id, lead_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1 FOR UPDATE',
-      [tenantId, uid || '', normalizedEmail]
-    );
-    if (!sub) {
-      const [[lead]] = await conn.query(
-        'SELECT id, branch, branch_id, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
-        [tenantId, normalizedEmail]
-      );
-      const subscriberId = uuidv4();
-      const clientCode = await getNextClientCode(conn);
-      const branch = lead?.branch || branchForId(order.branch_id);
-      const branchId = lead?.branch_id || order.branch_id || branchIdForBranch(branch);
-      await conn.query(
-        `INSERT INTO subscribers
-           (id, firebase_uid, client_code, lead_id, name, email, phone, branch, branch_id,
-            assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
-            is_active, tenant_id, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,NOW())`,
-        [subscriberId, uid || null, clientCode, lead?.id || null, order.customer_name,
-         normalizedEmail, order.customer_phone || '', branch, branchId,
-         lead?.assigned_sales_id || null, lead?.assigned_sales_name || null,
-         lead?.assigned_cs_id || null, lead?.assigned_cs_name || null, tenantId]
-      );
-      sub = { id: subscriberId, lead_id: lead?.id || null, branch, branch_id: branchId };
-    } else if (uid) {
-      await conn.query('UPDATE subscribers SET firebase_uid=COALESCE(firebase_uid,?) WHERE id=? AND tenant_id=?', [uid, sub.id, tenantId]);
-    }
+    const sub = await ensureSubscriberForOrder(conn, {
+      tenantId, uid, email: normalizedEmail, name: order.customer_name, phone: order.customer_phone,
+      fallbackBranch: branchForId(order.branch_id),
+      fallbackBranchId: order.branch_id,
+    });
     await conn.query('UPDATE orders SET subscriber_id=? WHERE id=? AND tenant_id=?', [sub.id, order.id, tenantId]);
 
     const id = `pp-${uuidv4()}`;

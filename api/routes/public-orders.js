@@ -16,6 +16,7 @@ const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { transitionLead } = require('../lib/leadState');
+const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -271,29 +272,34 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
   const payCourseId = orderType === 'course' ? (order.item_id || null) : null;
   const payBundleId = orderType === 'bundle' ? (order.item_id || null) : null;
 
-  // Find subscriber by email (read before transaction to avoid long lock)
-  const subParams = [(order.customer_email || '').toLowerCase().trim()];
-  const subWhere = appendTenantScope('WHERE email = ?', '', tenantId, subParams);
-  const [[sub]] = await pool.query(
-    `SELECT id, tenant_id, branch, branch_id FROM subscribers ${subWhere} LIMIT 1`,
-    subParams
-  );
-  const [[leadBranchRow]] = sub?.id
-    ? await pool.query(
-      'SELECT l.branch FROM leads l JOIN subscribers s ON s.lead_id = l.id WHERE s.id = ? AND (l.tenant_id = ? OR l.tenant_id IS NULL) LIMIT 1',
-      [sub.id, tenantId]
-    ).catch(() => [[null]])
-    : [[null]];
-  const paymentBranch = normalizePaymentBranch(sub?.branch)
-    || normalizePaymentBranch(leadBranchRow?.branch)
-    || normalizePaymentBranch(extra?.branch)
-    || 'ONLINE_EGYPT';
-
-  // ── Atomic transaction: mark order paid + enroll + record payment ──────────
+  // ── Atomic transaction: ensure subscriber + mark order paid + enroll + record payment ──
   const conn = await pool.getConnection();
+  let sub;
   try {
     await conn.beginTransaction();
     await assertWritable(new Date().toISOString().slice(0, 10), conn, tenantId);
+
+    // Registration alone never creates a subscribers row (only users + leads —
+    // see auth.js), so a customer paying for the first time has no subscriber
+    // yet. Without this, enrollment below was silently skipped whenever `sub`
+    // was falsy — the payment succeeded but the customer never got the course
+    // (LMS-01). ensureSubscriberForOrder creates one, linked to a matching
+    // lead when found, exactly like the manual-transfer-proof path already did.
+    sub = await ensureSubscriberForOrder(conn, {
+      tenantId,
+      email: order.customer_email,
+      name: order.customer_name,
+      phone: order.customer_phone,
+      fallbackBranch: normalizePaymentBranch(extra?.branch) || 'ONLINE_EGYPT',
+    });
+    const [[leadBranchRow]] = await conn.query(
+      'SELECT l.branch FROM leads l JOIN subscribers s ON s.lead_id = l.id WHERE s.id = ? AND (l.tenant_id = ? OR l.tenant_id IS NULL) LIMIT 1',
+      [sub.id, tenantId]
+    ).catch(() => [[null]]);
+    const paymentBranch = normalizePaymentBranch(sub?.branch)
+      || normalizePaymentBranch(leadBranchRow?.branch)
+      || normalizePaymentBranch(extra?.branch)
+      || 'ONLINE_EGYPT';
 
     // 1. Mark order paid
     await conn.query("UPDATE orders SET status='paid', transaction_id=? WHERE id=? AND tenant_id=?", [transactionId, merchantOrderId, tenantId]);
