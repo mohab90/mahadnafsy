@@ -140,15 +140,27 @@ const StatCard: React.FC<{
 // ══════════════════════════════════════════════════════════════════════════
 // Main Component
 // ══════════════════════════════════════════════════════════════════════════
+const DEFAULT_AUTOMATION_TOGGLES: Record<string, boolean> = {
+  welcome_lead: true, converted_msg: true, followup_reminder: true,
+  sms_drip: false, cart_recovery: false, review_request: true,
+};
+
 const MarketingHubTab: React.FC<Props> = ({ notify }) => {
-  const { leads, subscribers, orders, discounts, notifications, joinUsApplications } = useSiteData();
+  const { leads, subscribers, orders, discounts, notifications, joinUsApplications, content, setContentValue } = useSiteData();
 
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
-  const [automationToggles, setAutomationToggles] = useState<Record<string, boolean>>({
-    welcome_lead: true, converted_msg: true, followup_reminder: true,
-    sms_drip: false, cart_recovery: false, review_request: true,
-  });
+  // Persisted as a tenant content setting (MKT-01) — these switches were pure
+  // local state before, resetting to the hardcoded defaults on every refresh
+  // even though the panel below is explicit that flipping them doesn't wire
+  // up a real send yet ("الأتوميشن حالياً في وضع العرض"). Persisting at least
+  // means an admin's preview configuration survives a reload.
+  const automationToggles = useMemo<Record<string, boolean>>(() => {
+    try {
+      const saved = JSON.parse(content['marketing.automation_toggles'] || '{}');
+      return { ...DEFAULT_AUTOMATION_TOGGLES, ...saved };
+    } catch { return DEFAULT_AUTOMATION_TOGGLES; }
+  }, [content]);
 
   // ── Filtered data ──────────────────────────────────────────────────────
   const filteredLeads = useMemo(() =>
@@ -225,12 +237,10 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
   }, [discounts]);
 
   const toggleAutomation = useCallback((key: string) => {
-    setAutomationToggles(prev => {
-      const next = { ...prev, [key]: !prev[key] };
-      notify('success', `${next[key] ? 'تم تفعيل' : 'تم إيقاف'} الأتوميشن`);
-      return next;
-    });
-  }, [notify]);
+    const next = { ...automationToggles, [key]: !automationToggles[key] };
+    setContentValue('marketing.automation_toggles', JSON.stringify(next));
+    notify('success', `${next[key] ? 'تم تفعيل' : 'تم إيقاف'} الأتوميشن`);
+  }, [automationToggles, setContentValue, notify]);
 
   const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
     { key: 'today', label: 'اليوم' },
