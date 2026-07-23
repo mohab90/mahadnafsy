@@ -6,7 +6,7 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
-const { sendEmail, htmlEmail } = require('../lib/email');
+const { htmlEmail } = require('../lib/email');
 const { createNotification } = require('../lib/notification');
 const outbox = require('../lib/outbox');
 const { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash } = require('../lib/marketingConsent');
@@ -440,23 +440,31 @@ router.post('/api/admin/nps/send', requireAuth, requireAdmin, async (req, res) =
     const { subscriber_id } = req.body;
     const [[sub]] = await pool.query('SELECT id,email,name FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [subscriber_id, req.tenantId]);
     if (!sub || !sub.email) return res.status(404).json({ error: 'Subscriber not found or no email' });
+    // NPS is a marketing-adjacent survey — must respect the same suppression
+    // list every other campaign channel does (MKT-09: this used to send
+    // straight through sendEmail(), skipping both filterSuppressed() and the
+    // outbox, so an unsubscribed subscriber still got surveyed, and a mail
+    // provider outage silently lost the send with no retry).
+    const [allowed] = await filterSuppressed(req.tenantId, 'email', [sub], 'email');
+    if (!allowed) return res.status(409).json({ error: 'Subscriber has opted out of marketing messages' });
     const id = uuidv4();
     await pool.query(
       'INSERT INTO nps_responses (id,tenant_id,subscriber_id,subscriber_email,sent_at) VALUES (?,?,?,?,NOW())',
       [id, req.tenantId, sub.id, sub.email]
     );
     const link = `https://mahadnafsy.com/nps?id=${id}`;
-    await sendEmail(sub.email, 'كيف تقيّم تجربتك مع معهد الدراسات النفسية؟',
-      htmlEmail('تقييمك يهمنا', `
+    await outbox.enqueue({
+      channel: 'email', recipient: sub.email, subject: 'كيف تقيّم تجربتك مع معهد الدراسات النفسية؟',
+      payload: { html: htmlEmail('تقييمك يهمنا', `
         <p>مرحباً <strong>${sub.name || ''}</strong>،</p>
         <p>يسعدنا معرفة رأيك في خدماتنا. يرجى تقييم تجربتك من 0 إلى 10:</p>
         <div style="text-align:center;margin:20px 0">
           <a href="${link}" style="background:#7c3aed;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-size:16px;font-weight:bold;">قيّم الآن</a>
         </div>
         <p style="color:#9ca3af;font-size:12px">الرابط صالح لمرة واحدة فقط</p>
-      `),
-      { tenantId: req.tenantId }
-    ).catch(() => {});
+      `) },
+      tenantId: req.tenantId, dedupeKey: `nps:${req.tenantId}:${id}`, refType: 'nps_response', refId: id,
+    });
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
