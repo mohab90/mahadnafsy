@@ -683,7 +683,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     (async () => {
       try {
         await require('./hr/talent').convertJoinUs({ id, tenant_id: req.tenantId, name, email, phone, specialty, experience, type: safeType, linkedin, message });
-        await require('../lib/notification').createNotification('hr', 'متقدم جديد من الموقع', `${name} — ${roleLabel || safeType}`, { joinUsId: id });
+        await require('../lib/notification').createNotification('hr', 'متقدم جديد من الموقع', `${name} — ${roleLabel || safeType}`, { joinUsId: id }, req.tenantId);
       } catch (err) { logger.warn('[join-us→pipeline]', err.message); }
     })();
     res.json({ ok: true, id });

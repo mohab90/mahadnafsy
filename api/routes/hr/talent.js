@@ -163,7 +163,7 @@ router.post('/api/admin/hr/applicants/:appId/hire', requireAuth, requireAdminOrS
       );
     }
     await conn.commit();
-    createNotification('hr', 'New hire awaiting activation', `${a.name} (${role})`, { staffId }).catch(() => {});
+    createNotification('hr', 'New hire awaiting activation', `${a.name} (${role})`, { staffId }, req.tenantId).catch(() => {});
     res.json({ ok: true, staffId, role, activation_required: true });
   } catch (error) {
     await conn.rollback();

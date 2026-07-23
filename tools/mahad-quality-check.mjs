@@ -8,6 +8,7 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import { scanTenantViolations } from './tenant-scope-scan.mjs';
 import { scanMigrationDrift } from './migration-drift-scan.mjs';
+import { scanNotificationTenantViolations } from './notification-tenant-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -313,6 +314,21 @@ if (migrationDriftUnresolved.length === 0) {
   pass('migration drift: 0 unresolved ADD COLUMN IF NOT EXISTS conflicts (7 historical ones from 011↔028 confirmed fixed by 033)');
 } else {
   fail(`migration drift: ${migrationDriftUnresolved.length} unresolved column-default conflict(s) — a migration's ADD COLUMN IF NOT EXISTS is silently not applying. Run: node tools/migration-drift-scan.mjs --list`);
+}
+
+// ── 16. Notification tenant guard ────────────────────────────────────────────
+// Catches NOT-03: createNotification()'s tenantId param defaults to the
+// default tenant, so a forgotten 5th argument doesn't throw — it silently
+// writes the notification under the wrong tenant (invisible to that
+// tenant's staff, and a cross-tenant leak into the default tenant's feed).
+// Shipped in routes/hr/talent.js, routes/hr/attendance.js, and public.js's
+// join-us handler; all three fixed. Baseline 0, no legacy backlog.
+console.log('\n16. Notification tenant guard');
+const notificationTenantViolations = scanNotificationTenantViolations();
+if (notificationTenantViolations.length === 0) {
+  pass('notification tenant guard: 0 createNotification() calls missing tenantId');
+} else {
+  fail(`notification tenant guard: ${notificationTenantViolations.length} createNotification() call(s) missing tenantId — silently defaults to the default tenant. Run: node tools/notification-tenant-scan.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────

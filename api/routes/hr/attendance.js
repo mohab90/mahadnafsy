@@ -53,7 +53,7 @@ router.post('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePer
     // Notify admin
     await createNotification('info', 'طلب إجازة جديد',
       `موظف طلب ${type === 'PERMISSION' ? 'إذن' : 'إجازة'} من ${start_date} إلى ${end_date}`,
-      { leave_id: id, staff_id }
+      { leave_id: id, staff_id }, req.tenantId
     );
 
     res.json({ ok: true, id, total_days: totalDays });
