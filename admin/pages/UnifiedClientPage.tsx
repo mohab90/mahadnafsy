@@ -73,6 +73,51 @@ import {
   PaymentHistoryEntry,
 } from '../types';
 
+// ─── Installment plans: server row → frontend shape (PAY-16) ──────────────────
+// The backend stores each entry as parallel JSON arrays (installment_amounts,
+// due_dates, paid_dates, payment_ids, paid_amounts) rather than an array of
+// entry objects — matching the schema already read by the overdue-reminder
+// cron and the finance cockpit. Entry `id` here is just its array index,
+// which is exactly what /entries/:index/pay and /entries/:index expect back.
+interface ServerInstallmentPlanRow {
+  id: string; course_id: string | null; bundle_id: string | null; title: string | null;
+  total_amount: number; currency: 'EGP' | 'SAR' | 'USD';
+  installment_amounts: string | number[]; due_dates: string | (string | null)[];
+  paid_dates: string | (string | null)[]; paid_amounts: string | (number | null)[];
+  notes: string | null; created_at: string;
+}
+
+function parseJsonArr<T>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (typeof value === 'string') { try { const p = JSON.parse(value); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+}
+
+function mapServerInstallmentPlan(row: ServerInstallmentPlanRow): InstallmentPlan {
+  const amounts = parseJsonArr<number>(row.installment_amounts);
+  const dueDates = parseJsonArr<string | null>(row.due_dates);
+  const paidDates = parseJsonArr<string | null>(row.paid_dates);
+  const paidAmounts = parseJsonArr<number | null>(row.paid_amounts);
+  const entries: InstallmentEntry[] = amounts.map((amount, i) => ({
+    id: String(i),
+    amount,
+    currency: row.currency,
+    dueDate: dueDates[i] || '',
+    paidAt: paidDates[i] || undefined,
+    paidAmount: paidAmounts[i] ?? undefined,
+  }));
+  return {
+    id: row.id,
+    courseId: row.course_id || (row.bundle_id ? `bundle:${row.bundle_id}` : undefined),
+    courseTitle: row.title || undefined,
+    totalAmount: Number(row.total_amount),
+    currency: row.currency,
+    entries,
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface UnifiedClientPageProps {
@@ -322,10 +367,28 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     updateSubscriber,
   });
 
+  // ── installment plans: real backend state (PAY-16) ──────────────────────────
+  // Previously the whole feature only ever wrote into subscriber.crm_json via
+  // updateSubscriber(), so a confirmed installment payment never created a
+  // payments row, never posted a journal entry, and never showed up in any
+  // financial report. installment_plans/payments are now the source of truth;
+  // this component fetches from the real API instead of reading crm_json.
+  const [serverInstallmentPlans, setServerInstallmentPlans] = useState<InstallmentPlan[]>([]);
+  const refreshInstallmentPlans = React.useCallback(async () => {
+    if (!subscriber?.id) { setServerInstallmentPlans([]); return; }
+    try {
+      const rows = await mysqlAdmin.adminGet<ServerInstallmentPlanRow[]>(`/api/admin/subscribers/${subscriber.id}/installment-plans`);
+      setServerInstallmentPlans((rows || []).map(mapServerInstallmentPlan));
+    } catch {
+      setServerInstallmentPlans([]);
+    }
+  }, [subscriber?.id]);
+  useEffect(() => { void refreshInstallmentPlans(); }, [refreshInstallmentPlans]);
+
   // ── computed ──────────────────────────────────────────────────────────────
   const subCerts  = subscriber?.certificates ?? [];
   const extraReqs = subscriber?.extraCertificateRequests ?? [];
-  const subInstallmentPlans = subscriber?.installmentPlans ?? [];
+  const subInstallmentPlans = serverInstallmentPlans;
   const _todayStr = new Date().toISOString().slice(0, 10);
   const _soon3Str = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   const instOverdueCount = subInstallmentPlans.flatMap(p => p.entries.filter(e => !e.paidAt && e.dueDate < _todayStr)).length;
@@ -724,7 +787,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     return { expectedEGP, paidEGP, remainingEGP: Math.max(0, expectedEGP - paidEGP), currency: 'EGP' as const, title: c?.title || '' };
   };
 
-  const handleCreateInstallmentPlan = () => {
+  const handleCreateInstallmentPlan = async () => {
     if (!subscriber || !instPlanDraft.courseId || !instPlanDraft.numInstallments) return;
     const info = getInstBookingInfo(instPlanDraft.courseId);
     const remaining = info.remainingEGP;
@@ -739,70 +802,69 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     const intervalDays = Number(instPlanDraft.intervalDays || 30);
     const startDate = new Date(instPlanDraft.startDate);
 
-    const entries: InstallmentEntry[] = Array.from({ length: actualN }, (_, i) => {
+    const entries = Array.from({ length: actualN }, (_, i) => {
       const d = new Date(startDate);
       d.setDate(d.getDate() + i * intervalDays);
       const isLast = i === actualN - 1;
       return {
-        id: `ie-${Date.now()}-${i}`,
         amount: isLast ? remaining - perInst * (actualN - 1) : perInst,
-        currency: instPlanDraft.currency,
         dueDate: d.toISOString().slice(0, 10),
       };
     });
 
     const isBundleSel = instPlanDraft.courseId.startsWith('bundle:');
     const resolvedCourseId = isBundleSel ? undefined : instPlanDraft.courseId;
+    const resolvedBundleId = isBundleSel ? instPlanDraft.courseId.replace('bundle:', '') : undefined;
     const resolvedTitle = isBundleSel
       ? bundles.find(b => `bundle:${b.id}` === instPlanDraft.courseId)?.title
       : courses.find(c => c.id === instPlanDraft.courseId)?.title;
 
-    const plan: InstallmentPlan = {
-      id: `ip-${Date.now()}`,
-      courseId: resolvedCourseId,
-      courseTitle: resolvedTitle,
-      totalAmount: remaining,
-      currency: instPlanDraft.currency,
-      downPayment: info.paidEGP > 0 ? info.paidEGP : undefined,
-      entries,
-      notes: instPlanDraft.notes || undefined,
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-
-    updateSubscriber({ ...subscriber, installmentPlans: [...(subscriber.installmentPlans || []), plan] });
-    setShowInstPlanForm(false);
-    resetInstPlanDraft();
+    try {
+      await mysqlAdmin.adminPost(`/api/admin/subscribers/${subscriber.id}/installment-plans`, {
+        courseId: resolvedCourseId, bundleId: resolvedBundleId, title: resolvedTitle,
+        totalAmount: remaining, currency: instPlanDraft.currency, entries, notes: instPlanDraft.notes || undefined,
+      });
+      await refreshInstallmentPlans();
+      setShowInstPlanForm(false);
+      resetInstPlanDraft();
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'installmentPlan', name: resolvedTitle } }));
+    }
   };
 
-  const handlePayInstallmentEntry = (planId: string, entryId: string) => {
+  const handlePayInstallmentEntry = async (planId: string, entryId: string) => {
     if (!subscriber) return;
     const amt = Number(payEntryAmount);
     if (!amt || amt <= 0) return;
-    const plans = (subscriber.installmentPlans || []).map(plan => {
-      if (plan.id !== planId) return plan;
-      return {
-        ...plan,
-        entries: plan.entries.map(e =>
-          e.id !== entryId ? e : { ...e, paidAt: payEntryDate, paidAmount: amt }
-        ),
-      };
-    });
-    updateSubscriber({ ...subscriber, installmentPlans: plans });
-    resetPaidEntryState();
+    try {
+      await mysqlAdmin.adminPost(`/api/admin/installment-plans/${planId}/entries/${entryId}/pay`, {
+        amount: amt, paidDate: payEntryDate,
+      });
+      await refreshInstallmentPlans();
+      resetPaidEntryState();
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'installmentPlan', name: planId } }));
+    }
   };
 
-  const handleDeleteInstallmentPlan = (planId: string) => {
+  const handleDeleteInstallmentPlan = async (planId: string) => {
     if (!subscriber || !window.confirm('هل تريد حذف خطة الأقساط؟')) return;
-    updateSubscriber({ ...subscriber, installmentPlans: (subscriber.installmentPlans || []).filter(p => p.id !== planId) });
+    try {
+      await mysqlAdmin.adminDelete(`/api/admin/installment-plans/${planId}`);
+      await refreshInstallmentPlans();
+    } catch {
+      window.alert('تعذر حذف خطة الأقساط — قد تحتوي على دفعات مسجّلة بالفعل، لا يمكن حذف خطة له تاريخ مالي.');
+    }
   };
 
-  const handleDeleteInstallmentEntry = (planId: string, entryId: string) => {
+  const handleDeleteInstallmentEntry = async (planId: string, entryId: string) => {
     if (!subscriber || !window.confirm('حذف هذا القسط؟')) return;
-    const plans = (subscriber.installmentPlans || []).map(plan => {
-      if (plan.id !== planId) return plan;
-      return { ...plan, entries: plan.entries.filter(e => e.id !== entryId) };
-    });
-    updateSubscriber({ ...subscriber, installmentPlans: plans });
+    try {
+      await mysqlAdmin.adminDelete(`/api/admin/installment-plans/${planId}/entries/${entryId}`);
+      await refreshInstallmentPlans();
+    } catch {
+      window.alert('تعذر حذف هذا القسط — قد يكون مدفوعًا بالفعل.');
+    }
   };
 
   const handleGeneratePromo = () => {
