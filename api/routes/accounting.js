@@ -56,7 +56,7 @@ router.patch('/api/admin/waitlist/:id', requireAuth, requireAdminOrStaff, async 
   try {
     const { id } = req.params;
     const { status, notes } = req.body || {};
-    const allowed = ['waiting','contacted','enrolled','cancelled'];
+    const allowed = ['waiting','contacted','enrolled','converted','cancelled'];
     if (status && !allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const sets = [];
     const params = [];

@@ -12,20 +12,23 @@ interface SmsConfig {
   provider: string;
   apiKey: string;
   senderId: string;
-  apiUrl: string;
   enabled: boolean;
 }
 
+// Only vonage/infobip are actually implemented server-side (routes/misc/messaging.js's
+// POST /admin/sms/send) — the list used to also offer twilio/unifonic/msegat/custom,
+// which an admin could pick and save without error, only to hit "Unknown provider"
+// the first time they tried to actually send an SMS (CFG-01). The per-provider API
+// URL is hardcoded server-side too (no custom-URL support), so the "API URL" field
+// that used to sit here was never read or written by the backend either (CFG-02) —
+// removed rather than wired up to a capability that doesn't exist.
 const PROVIDERS = [
-  { value: 'twilio', label: 'Twilio', apiUrl: 'https://api.twilio.com/2010-04-01' },
-  { value: 'vonage', label: 'Vonage (Nexmo)', apiUrl: 'https://rest.nexmo.com/sms/json' },
-  { value: 'unifonic', label: 'Unifonic', apiUrl: 'https://el.cloud.unifonic.com/rest/SMS/messages' },
-  { value: 'msegat', label: 'Msegat', apiUrl: 'https://www.msegat.com/gw/sendsms.php' },
-  { value: 'custom', label: 'مزود مخصص', apiUrl: '' },
+  { value: 'vonage', label: 'Vonage (Nexmo)' },
+  { value: 'infobip', label: 'Infobip' },
 ];
 
 const DEFAULT_CONFIG: SmsConfig = {
-  provider: 'twilio', apiKey: '', senderId: '', apiUrl: '', enabled: false,
+  provider: 'vonage', apiKey: '', senderId: '', enabled: false,
 };
 
 export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
@@ -57,8 +60,7 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
   useEffect(() => { loadSettings(); }, []);
 
   function handleProviderChange(provider: string) {
-    const p = PROVIDERS.find(pr => pr.value === provider);
-    setConfig(c => ({ ...c, provider, apiUrl: p?.apiUrl || '' }));
+    setConfig(c => ({ ...c, provider }));
   }
 
   async function saveSettings() {
@@ -151,12 +153,6 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
                 {showKey ? 'إخفاء' : 'إظهار'}
               </button>
             </div>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-gray-700 mb-1">رابط API</label>
-            <input value={config.apiUrl} onChange={e => setConfig(c => ({ ...c, apiUrl: e.target.value }))}
-              placeholder="https://api.provider.com/sms"
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-300" />
           </div>
         </div>
 

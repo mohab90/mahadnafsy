@@ -14,7 +14,7 @@ type WaitlistEntry = {
   course_id: string | null;
   course_name: string | null;
   notes: string | null;
-  status: 'waiting' | 'contacted' | 'enrolled' | 'cancelled';
+  status: 'waiting' | 'contacted' | 'enrolled' | 'converted' | 'cancelled';
   branch: string;
   created_at: string;
   updated_at: string;
@@ -24,6 +24,7 @@ const STATUS_LABELS: Record<WaitlistEntry['status'], string> = {
   waiting: 'في الانتظار',
   contacted: 'تم التواصل',
   enrolled: 'مُسجَّل',
+  converted: 'تم التحويل إلى Lead',
   cancelled: 'ملغى',
 };
 
@@ -31,6 +32,7 @@ const STATUS_COLORS: Record<WaitlistEntry['status'], string> = {
   waiting: 'bg-amber-100 text-amber-800',
   contacted: 'bg-blue-100 text-blue-800',
   enrolled: 'bg-emerald-100 text-emerald-800',
+  converted: 'bg-violet-100 text-violet-800',
   cancelled: 'bg-gray-100 text-gray-500',
 };
 
@@ -94,8 +96,10 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
         clientCode,
       };
       await addLead(lead);
-      await mysqlAdmin.adminPatch(`/admin/waitlist/${entry.id}`, { status: 'enrolled' });
-      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, status: 'enrolled' } : e));
+      // SUB-03: this only creates a lead, not a real course enrollment — status
+      // must say 'converted', not 'enrolled'.
+      await mysqlAdmin.adminPatch(`/admin/waitlist/${entry.id}`, { status: 'converted' });
+      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, status: 'converted' } : e));
       notify('success', `تم تحويل ${entry.name} إلى Lead بكود ${clientCode}`);
     } catch { notify('error', 'فشل تحويل العميل إلى Lead'); }
     finally { setConvertingId(null); }
@@ -120,7 +124,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {(['waiting','contacted','enrolled','cancelled'] as WaitlistEntry['status'][]).map(s => (
+        {(['waiting','contacted','enrolled','converted','cancelled'] as WaitlistEntry['status'][]).map(s => (
           <button key={s} onClick={() => setStatusFilter(s === statusFilter ? '' : s)}
             className={`p-4 rounded-2xl border text-right transition ${statusFilter === s ? 'border-primary-400 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
             <p className="text-2xl font-extrabold text-gray-900">{statsByStatus[s] || 0}</p>
