@@ -303,8 +303,9 @@ const Checkout: React.FC = () => {
                       <h2 className="text-lg font-bold mb-4 text-gray-900">بياناتك</h2>
                       <div className="space-y-3 mb-5">
                         <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">الاسم الكامل</label>
+                          <label htmlFor="checkout-customer-name" className="block text-xs font-semibold text-gray-600 mb-1">الاسم الكامل</label>
                           <input
+                            id="checkout-customer-name"
                             type="text"
                             value={customerName}
                             onChange={e => setCustomerName(e.target.value)}
@@ -313,8 +314,9 @@ const Checkout: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">البريد الإلكتروني</label>
+                          <label htmlFor="checkout-customer-email" className="block text-xs font-semibold text-gray-600 mb-1">البريد الإلكتروني</label>
                           <input
+                            id="checkout-customer-email"
                             type="email"
                             value={customerEmail}
                             onChange={e => setCustomerEmail(e.target.value)}
@@ -323,8 +325,9 @@ const Checkout: React.FC = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">رقم الهاتف (واتساب)</label>
+                          <label htmlFor="checkout-customer-phone" className="block text-xs font-semibold text-gray-600 mb-1">رقم الهاتف (واتساب)</label>
                           <input
+                            id="checkout-customer-phone"
                             type="tel"
                             value={customerPhone}
                             onChange={e => setCustomerPhone(e.target.value)}

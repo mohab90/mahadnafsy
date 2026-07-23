@@ -1094,6 +1094,9 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
     <div
       className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition cursor-pointer group overflow-hidden"
       onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } }}
       dir="rtl"
     >
       {/* Rotting decay strip at top */}
