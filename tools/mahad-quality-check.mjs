@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import { scanTenantViolations } from './tenant-scope-scan.mjs';
+import { scanMigrationDrift } from './migration-drift-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -288,6 +289,22 @@ if (tenantViolations.length <= TENANT_VIOLATION_BASELINE) {
   pass(`tenant-scope violations: ${tenantViolations.length} across ${tenantTableCount} tracked tables (≤ baseline ${TENANT_VIOLATION_BASELINE}; lower the baseline as you clean them)`);
 } else {
   fail(`tenant-scope violations increased to ${tenantViolations.length} (baseline ${TENANT_VIOLATION_BASELINE}) — a new query on a tenant-scoped table is missing tenant_id. Run: node tools/tenant-scope-scan.mjs --list`);
+}
+
+// ── 15. Migration-schema drift guard ─────────────────────────────────────────
+// Catches the exact bug behind the migration-011-vs-028 production incident
+// (a real customer's lead vanished 2026-07-10, see 033_tenant_default_
+// alignment.sql): a later migration's `ADD COLUMN IF NOT EXISTS` silently
+// doing nothing because the column already exists with a different default
+// from an earlier migration. Baseline is 0 and stays 0 — unlike the tenant-
+// scope guard there is no legacy backlog to work down here; any hit means a
+// NEW migration just introduced the same class of silent no-op.
+console.log('\n15. Migration-schema drift guard');
+const { unresolved: migrationDriftUnresolved } = scanMigrationDrift();
+if (migrationDriftUnresolved.length === 0) {
+  pass('migration drift: 0 unresolved ADD COLUMN IF NOT EXISTS conflicts (7 historical ones from 011↔028 confirmed fixed by 033)');
+} else {
+  fail(`migration drift: ${migrationDriftUnresolved.length} unresolved column-default conflict(s) — a migration's ADD COLUMN IF NOT EXISTS is silently not applying. Run: node tools/migration-drift-scan.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────
