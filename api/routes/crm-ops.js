@@ -6,10 +6,10 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'crm-ops-route' });
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
-const { sendWhatsApp } = require('../lib/whatsapp');
 const { logLeadEvent } = require('../lib/crm');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { whatsappSendLimiter } = require('../middleware/rateLimits');
+const outbox = require('../lib/outbox');
 
 function routeError(res, error, message = 'crm ops route failed') {
   logger.error(message, error);
@@ -98,27 +98,32 @@ router.post('/api/admin/crm/bulk-whatsapp', requireAuth, requireAdminOrStaff, re
     `SELECT id, name, phone FROM leads WHERE tenant_id=? AND id IN (${leadIds.map(() => '?').join(',')}) AND hidden=0${ownership}`,
     params
   );
+  // Enqueued via the durable outbox (drained by the background worker) instead of
+  // sent inline — the previous loop awaited sendWhatsApp() plus 3 sequential DB
+  // queries per lead, blocking the request for the full batch's real API latency
+  // with no retry on failure (PERF-02).
   const results = [];
   for (const lead of ownedLeads) {
     const phone = (lead.phone || '').replace(/\D/g, '');
     const personalMsg = message.replace(/\{name\}/g, lead.name || '');
-    let ok = false; let errMsg = null;
-    try {
-      await sendWhatsApp(phone, personalMsg, { tenantId: req.tenantId });
-      ok = true;
-      await pool.query(
-        `INSERT INTO communications (id, lead_id, type, date, notes, staff_id)
-         VALUES (?, ?, 'WHATSAPP', NOW(), ?, ?)`,
-        [uuidv4(), lead.id, `رسالة جماعية: ${personalMsg.substring(0, 100)}`, req.user?.uid || null]
-      );
-      await pool.query('UPDATE leads SET last_follow_up=NOW() WHERE id=? AND tenant_id=?', [lead.id, req.tenantId]);
-      await logLeadEvent(lead.id, 'WHATSAPP_SENT', `رسالة جماعية للرقم ${phone}`,
-        { msg: personalMsg.substring(0, 200), sender: req.user?.email }, req.tenantId);
-    } catch (e) { errMsg = e.message; }
-    results.push({ id: lead.id, phone, ok, err: errMsg });
+    await outbox.enqueue({
+      channel: 'whatsapp', recipient: phone,
+      payload: { message: personalMsg },
+      tenantId: req.tenantId, refType: 'lead', refId: lead.id,
+    });
+    await pool.query(
+      `INSERT INTO communications (id, lead_id, type, date, notes, staff_id)
+       VALUES (?, ?, 'WHATSAPP', NOW(), ?, ?)`,
+      [uuidv4(), lead.id, `رسالة جماعية: ${personalMsg.substring(0, 100)}`, req.user?.uid || null]
+    );
+    await pool.query('UPDATE leads SET last_follow_up=NOW() WHERE id=? AND tenant_id=?', [lead.id, req.tenantId]);
+    await logLeadEvent(lead.id, 'WHATSAPP_QUEUED', `جدولة رسالة جماعية للرقم ${phone}`,
+      { msg: personalMsg.substring(0, 200), sender: req.user?.email }, req.tenantId);
+    results.push({ id: lead.id, phone, ok: true, err: null });
   }
-  const sent = results.filter(r => r.ok).length;
-  res.json({ ok: true, sent, failed: results.length - sent, results });
+  // `sent`/`failed` kept for the existing frontend caller (LeadsTab.tsx) — matches
+  // the already-established "queued now means sent" wording used for email/SMS campaigns.
+  res.json({ ok: true, sent: results.length, failed: 0, queued: results.length, results });
 });
 
 module.exports = router;

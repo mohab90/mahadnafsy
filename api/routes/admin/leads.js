@@ -24,6 +24,7 @@ const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal } = require('../../lib/finance');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
+const outbox = require('../../lib/outbox');
 const { assertWritable } = require('../../lib/periodLock');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
@@ -487,28 +488,33 @@ router.post('/api/admin/leads/bulk-whatsapp', requireAuth, requireAdminOrStaff, 
       params
     );
 
-    let sent = 0, failed = 0;
+    // Enqueued via the durable outbox (drained by the background worker, ~60s cadence)
+    // instead of sent inline. The previous loop awaited sendWhatsApp() plus a
+    // deliberate 300ms throttle per lead sequentially — a 200-lead batch (the max
+    // this route accepts) meant a guaranteed 60s+ minimum request time before even
+    // counting real API latency, well past most reverse-proxy timeouts (PERF-03).
     for (const lead of leads) {
       const personalised = message.replace(/\{\{name\}\}/g, lead.name || '').replace(/\{\{phone\}\}/g, lead.phone || '');
-      const result = await sendWhatsApp(lead.phone, personalised, { tenantId: req.tenantId }).catch(() => ({ ok: false }));
-      if (result.ok) {
-        sent++;
-        // Log as communication
-        await pool.query(
-          `INSERT IGNORE INTO communications (id, lead_id, type, date, notes, outcome)
-           VALUES (UUID(), ?, 'whatsapp', CURDATE(), ?, 'sent')`,
-          [lead.id, `[Bulk WA] ${personalised.slice(0, 200)}`]
-        ).catch(() => {});
-        await logLeadEvent(
-          lead.id, 'communication', 'إرسال واتساب جماعي',
-          { type: 'whatsapp', actor: req.user?.email || 'admin' }, req.tenantId
-        );
-      } else { failed++; }
-      // Small delay to avoid API rate limiting
-      await new Promise(r => setTimeout(r, 300));
+      await outbox.enqueue({
+        channel: 'whatsapp', recipient: lead.phone,
+        payload: { message: personalised },
+        tenantId: req.tenantId, refType: 'lead', refId: lead.id,
+      });
+      await pool.query(
+        `INSERT IGNORE INTO communications (id, lead_id, type, date, notes, outcome)
+         VALUES (UUID(), ?, 'whatsapp', CURDATE(), ?, 'queued')`,
+        [lead.id, `[Bulk WA] ${personalised.slice(0, 200)}`]
+      ).catch(() => {});
+      await logLeadEvent(
+        lead.id, 'communication', 'جدولة واتساب جماعي',
+        { type: 'whatsapp', actor: req.user?.email || 'admin' }, req.tenantId
+      );
     }
 
-    res.json({ ok: true, sent, failed, total: leads.length });
+    // `sent`/`failed` kept for existing frontend callers (LeadScoringTab.tsx,
+    // MarketingHubTab.tsx, SegmentationSection.tsx, AbTestSection.tsx) — matches the
+    // already-established "queued now means sent" wording used for email/SMS campaigns.
+    res.json({ ok: true, queued: leads.length, sent: leads.length, failed: 0, total: leads.length });
   } catch (e) { logger.error('[bulk-whatsapp]', e.message); sendRouteError(res, e); }
 });
 
@@ -914,7 +920,12 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, async (req, res
     }
     const statusFilter = (req.query.status || '').trim().toLowerCase();
     if (statusFilter && statusFilter !== 'all') {
-      sql += ' AND LOWER(l.status) = ?';
+      // leads.status uses the default utf8mb4 case-insensitive collation (like every
+      // other varchar column in this schema), so wrapping the column in LOWER() was
+      // redundant — and it defeated idx_leads_status, forcing a full scan on every
+      // status-filtered list request (PERF-08). A plain equality comparison matches
+      // the same rows and lets the existing index be used.
+      sql += ' AND l.status = ?';
       params.push(statusFilter);
     }
 

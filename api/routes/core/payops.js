@@ -20,6 +20,27 @@ router.post('/api/admin/backfill-payments', requireAuth, requireAdmin, async (re
       'SELECT id, branch, branch_id, crm_json FROM subscribers WHERE tenant_id=? AND crm_json IS NOT NULL LIMIT 5000',
       [tenantId]
     );
+    // Batched existence check (PERF-05): this used to run one SELECT per history item
+    // inside the double loop below — up to thousands of sequential queries for a
+    // single backfill run. Collecting every candidate id up front and checking them
+    // in one IN(...) query removes that hotspot; the INSERT + journal-posting per
+    // item still has to stay per-row since each carries its own accounting entry.
+    const allItemIds = [];
+    for (const subscriber of subscribers) {
+      const history = tryJson(subscriber.crm_json, {}).paymentHistory || [];
+      for (const item of Array.isArray(history) ? history : []) {
+        if (item?.id) allItemIds.push(item.id);
+      }
+    }
+    const existingIds = new Set();
+    if (allItemIds.length) {
+      const [existingRows] = await conn.query(
+        `SELECT id FROM payments WHERE tenant_id=? AND id IN (${allItemIds.map(() => '?').join(',')})`,
+        [tenantId, ...allItemIds]
+      );
+      for (const row of existingRows) existingIds.add(row.id);
+    }
+
     await conn.beginTransaction();
     transactionStarted = true;
     let inserted = 0;
@@ -30,8 +51,7 @@ router.post('/api/admin/backfill-payments', requireAuth, requireAdmin, async (re
       for (const item of Array.isArray(history) ? history : []) {
         const amount = Number(item.amount) || 0;
         if (!item.id || amount <= 0) { skipped += 1; continue; }
-        const [[exists]] = await conn.query('SELECT id FROM payments WHERE id=? AND tenant_id=? LIMIT 1', [item.id, tenantId]);
-        if (exists) { skipped += 1; continue; }
+        if (existingIds.has(item.id)) { skipped += 1; continue; }
         const paymentType = validTypes.has(String(item.paymentType || '').toUpperCase())
           ? String(item.paymentType).toUpperCase() : 'OTHER';
         const date = String(item.at || item.date || new Date().toISOString()).slice(0, 10);

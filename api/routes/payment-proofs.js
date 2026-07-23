@@ -199,21 +199,30 @@ router.get('/api/admin/subscribers/:id/progress', requireAuth, requireAdminOrSta
         WHERE e.subscriber_id=? AND e.tenant_id=?`,
       [subscriber.id, tenantId]
     );
-    const courseStats = [];
-    for (const course of courses) {
-      const [lectures] = await pool.query(
-        'SELECT id, title FROM course_lectures WHERE course_id=? AND is_published=1 ORDER BY sort_order',
-        [course.course_id]
+    // Batched instead of one course_lectures query per enrolled course (PERF-01).
+    const courseIds = courses.map(course => course.course_id);
+    const lecturesByCourse = new Map();
+    if (courseIds.length) {
+      const [allLectures] = await pool.query(
+        `SELECT id, title, course_id FROM course_lectures WHERE course_id IN (${courseIds.map(() => '?').join(',')}) AND is_published=1 ORDER BY sort_order`,
+        courseIds
       );
+      for (const lecture of allLectures) {
+        if (!lecturesByCourse.has(lecture.course_id)) lecturesByCourse.set(lecture.course_id, []);
+        lecturesByCourse.get(lecture.course_id).push(lecture);
+      }
+    }
+    const courseStats = courses.map(course => {
+      const lectures = lecturesByCourse.get(course.course_id) || [];
       const completed = lectures.filter(lecture => Number(progress[lecture.id] || 0) >= 90).length;
-      courseStats.push({
+      return {
         courseId: course.course_id,
         courseTitle: course.title,
         total: lectures.length,
         completed,
         pct: lectures.length ? Math.round((completed / lectures.length) * 100) : 0,
-      });
-    }
+      };
+    });
     res.json({ crmProgress: progress, courseStats });
   } catch (error) {
     logger.error('[admin-progress]', error.message);

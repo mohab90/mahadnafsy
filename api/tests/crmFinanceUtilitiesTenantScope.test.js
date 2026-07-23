@@ -113,7 +113,12 @@ test('admin notification stores and readers share tenant ownership', () => {
   const inbox = read('routes/misc/analytics.js');
   assert.match(lib, /INSERT INTO notifications \(id, tenant_id/);
   assert.match(route, /FROM notifications WHERE tenant_id=\?/);
-  assert.match(route, /await conn\.beginTransaction\(\)[\s\S]*await conn\.commit\(\)/);
+  assert.match(route, /UPDATE notifications SET read_at=NOW\(\) WHERE id=\? AND tenant_id=\?/);
+  assert.match(route, /DELETE FROM notifications WHERE id=\? AND tenant_id=\?/);
+  // routes/notifications.js used to have a bulk PUT (up to 400 sequential queries
+  // per call, PERF-04) whose own comment claimed a frontend caller that, on closer
+  // inspection, actually posts to a different endpoint entirely — removed as dead code.
+  assert.doesNotMatch(route, /router\.put\('\/api\/admin\/notifications'/);
   // routes/misc/analytics.js used to have its own parallel notification store
   // (admin_notifications) that no frontend caller ever read (NOT-01) — removed
   // and unified onto the one real table above.

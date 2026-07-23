@@ -24,44 +24,13 @@ router.get('/api/admin/notifications', requireAuth, requireAdmin, async (req, re
   }
 });
 
-// PUT /api/admin/notifications — persist admin broadcast notifications.
-// The frontend (saveNotifications/persistNotificationsToConfig) called this, but no
-// handler existed → broadcasts were lost on reload (the .catch() hid the 404).
-// Upserts into the SAME table the GET above reads from, so they round-trip.
-router.put('/api/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const items = Array.isArray(req.body) ? req.body : (req.body && Array.isArray(req.body.notifications) ? req.body.notifications : []);
-    if (items.length > 200) return res.status(400).json({ error: 'Too many notifications' });
-    await ensureNotificationsTable();
-    const { uuidv4 } = require('../lib/id');
-    let saved = 0;
-    await conn.beginTransaction();
-    for (const n of items) {
-      if (!n || typeof n !== 'object') continue;
-      const id = n.id || uuidv4();
-      const values = [String(n.type || 'broadcast').slice(0, 50), String(n.title || '').slice(0, 255),
-        String(n.message || n.body || '').slice(0, 10000), JSON.stringify(n.data || n.meta || {})];
-      const [[existing]] = await conn.query('SELECT id FROM notifications WHERE id=? AND tenant_id=? LIMIT 1', [id, req.tenantId]);
-      if (existing) {
-        await conn.query(
-          'UPDATE notifications SET type=?, title=?, message=?, data_json=? WHERE id=? AND tenant_id=?',
-          [...values, id, req.tenantId]
-        );
-      } else {
-        await conn.query(
-          `INSERT INTO notifications (id, tenant_id, type, title, message, data_json, created_at)
-           VALUES (?,?,?,?,?,?, NOW())`,
-          [id, req.tenantId, ...values]
-        );
-      }
-      saved++;
-    }
-    await conn.commit();
-    res.json({ ok: true, saved });
-  } catch (e) { try { await conn.rollback(); } catch (_) {} logger.error('[notifications save]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-  finally { conn.release(); }
-});
+// PERF-04: PUT /api/admin/notifications used to live here — a bulk upsert (up to
+// 200 items, each doing a SELECT-then-INSERT-or-UPDATE, so up to 400 sequential
+// queries per call) for admin broadcast notifications. Its own comment claimed the
+// frontend's saveNotifications()/persistNotificationsToConfig() called it, but that
+// helper actually PUTs to /api/admin/notification-settings (routes/config.js — a
+// single JSON-blob tenant setting, not this table) — this route had zero callers.
+// Removed rather than optimized.
 
 // PATCH /api/admin/notifications/read-all
 router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, async (req, res) => {
