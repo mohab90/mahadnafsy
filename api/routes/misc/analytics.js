@@ -9,7 +9,8 @@ const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = re
 const express = require('express');
 const router = express.Router();
 const ROUTE_LOCAL_CRONS_ENABLED = false;
-const { sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
+const { sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
+const { createNotification } = require('../../lib/notification');
 
 router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -362,42 +363,13 @@ router.get('/api/admin/analytics/expenses', requireAuth, requireAdmin, async (re
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── FEATURE: Notification Center ──────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
-
-
-// Push a notification
-
-router.get('/api/admin/notifications/inbox', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const unreadOnly = req.query.unread_only === '1';
-    const [rows] = await pool.query(
-      `SELECT id, type, title, message, link, is_read, created_at
-       FROM admin_notifications WHERE tenant_id=?${unreadOnly ? ' AND is_read=0' : ''} ORDER BY created_at DESC LIMIT 100`,
-      [req.tenantId]
-    );
-    const [[{ unread_count }]] = await pool.query('SELECT COUNT(*) AS unread_count FROM admin_notifications WHERE tenant_id=? AND is_read=0', [req.tenantId]);
-    res.json({ notifications: rows, unread_count: parseInt(unread_count) });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// PUT /api/admin/notifications/read-all
-router.put('/api/admin/notifications/read-all', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    await pool.query('UPDATE admin_notifications SET is_read=1 WHERE tenant_id=? AND is_read=0', [req.tenantId]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// DELETE /api/admin/notifications/:id
-router.delete('/api/admin/notifications/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const [result] = await pool.query('DELETE FROM admin_notifications WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
-    if (!result.affectedRows) return res.status(404).json({ error: 'Notification not found' });
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// The "Notification Center" that used to live here (GET .../inbox, PUT
+// .../read-all, DELETE .../:id) read/wrote a second, parallel notifications
+// table that no frontend caller ever queried — confirmed via grep across
+// admin/ (NOT-01). The real notification center — the one the
+// header bell polls and NotifInboxMgmtTab.tsx is now wired to — is
+// routes/notifications.js, backed by the `notifications` table
+// createNotification() writes.
 
 // Auto-trigger notifications on important events via cron (daily check)
 if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
@@ -409,7 +381,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         [tenantId]
       );
       if (parseInt(old_pending) > 0) {
-        await pushAdminNotif('warning', 'مدفوعات معلقة', `يوجد ${old_pending} مدفوعة معلقة منذ أكثر من 3 أيام`, '/dashboard?tab=orders', tenantId);
+        await createNotification('warning', 'مدفوعات معلقة', `يوجد ${old_pending} مدفوعة معلقة منذ أكثر من 3 أيام`, { link: '/dashboard?tab=orders' }, tenantId);
       }
 
       const [[{ at_risk }]] = await pool.query(
@@ -417,7 +389,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         [tenantId]
       );
       if (parseInt(at_risk) >= 5) {
-        await pushAdminNotif('alert', 'خطر انسحاب العملاء', `${at_risk} عميل لم يدفع منذ 60 يوماً`, '/dashboard?tab=retention', tenantId);
+        await createNotification('alert', 'خطر انسحاب العملاء', `${at_risk} عميل لم يدفع منذ 60 يوماً`, { link: '/dashboard?tab=retention' }, tenantId);
       }
     }
 
@@ -426,7 +398,10 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
       `SELECT COUNT(*) AS fail_count FROM login_history WHERE status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`
     ).catch(() => [[{ fail_count: 0 }]]);
     if (parseInt(fail_count) >= 10) {
-      await pushAdminNotif('alert', 'تنبيه أمني', `${fail_count} محاولة دخول فاشلة خلال آخر ساعة`);
+      // Deliberately not tenant-scoped: the underlying query counts failed
+      // logins across ALL tenants, so there is no single tenantId to pass —
+      // same reasoning as lib/reconcileJob.js's system-wide integrity alert.
+      await createNotification('alert', 'تنبيه أمني', `${fail_count} محاولة دخول فاشلة خلال آخر ساعة`, {}, undefined);
     }
   } catch (e) { /* non-critical */ }
 }, 6 * 60 * 60 * 1000); // every 6 hours

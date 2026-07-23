@@ -1,63 +1,95 @@
-import React, { useMemo, useState } from 'react';
-import { Bell, Check, CheckCheck, Trash2, Filter, Search, Clock, User, Tag, RefreshCw } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Bell, Check, CheckCheck, Trash2, Search, Clock } from 'lucide-react';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
+type NotifRow = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  data_json?: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
 const TYPE_LABEL: Record<string, string> = {
-  system: 'النظام', lead: 'ليد', payment: 'دفع', subscription: 'اشتراك',
+  system: 'النظام', lead: 'ليد', payment: 'دفع', subscriber: 'مشترك',
   staff: 'موظف', alert: 'تنبيه', reminder: 'تذكير', info: 'معلومة',
+  ticket: 'تذكرة', hr: 'موارد بشرية', certificate: 'شهادة', warning: 'تحذير', broadcast: 'إعلان',
 };
 const TYPE_COLOR: Record<string, string> = {
   system: 'bg-gray-100 text-gray-600',
   lead: 'bg-blue-100 text-blue-700',
   payment: 'bg-emerald-100 text-emerald-700',
-  subscription: 'bg-violet-100 text-violet-700',
+  subscriber: 'bg-violet-100 text-violet-700',
   staff: 'bg-indigo-100 text-indigo-700',
   alert: 'bg-red-100 text-red-700',
+  warning: 'bg-orange-100 text-orange-700',
   reminder: 'bg-amber-100 text-amber-700',
   info: 'bg-cyan-100 text-cyan-700',
+  ticket: 'bg-sky-100 text-sky-700',
+  hr: 'bg-pink-100 text-pink-700',
+  certificate: 'bg-yellow-100 text-yellow-700',
+  broadcast: 'bg-purple-100 text-purple-700',
 };
 
+// Connected to the REAL notification system (routes/notifications.js, the
+// same `notifications` table the header bell polls) — this tab used to read
+// SiteDataContext's `notifications`, which is actually the unrelated
+// marketing-broadcast list, so nothing a user/lead/payment/ticket/HR event
+// ever generated showed up here (NOT-01). Mutations now hit the server
+// instead of only a local Set (NOT-02).
 export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
-  const { notifications } = useSiteData();
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [rows, setRows] = useState<NotifRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState('all');
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [searchQ, setSearchQ] = useState('');
-  const [deleted, setDeleted] = useState<Set<string>>(new Set());
 
-  const allNotifs = useMemo(() =>
-    [...notifications]
-      .filter(n => !deleted.has(n.id))
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
-    [notifications, deleted]
-  );
+  const load = () => {
+    setLoading(true);
+    mysqlAdmin.getNotifications()
+      .then(res => setRows((res.rows as unknown as NotifRow[]) || []))
+      .catch(() => notify('error', 'تعذر تحميل الإشعارات'))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
 
   const filtered = useMemo(() =>
-    allNotifs.filter(n =>
+    rows.filter(n =>
       (typeFilter === 'all' || n.type === typeFilter) &&
-      (!showUnreadOnly || (!n.isRead && !readIds.has(n.id))) &&
+      (!showUnreadOnly || !n.read_at) &&
       (!searchQ || (n.message || n.title || '').toLowerCase().includes(searchQ.toLowerCase()))
     ),
-    [allNotifs, typeFilter, showUnreadOnly, searchQ, readIds]
+    [rows, typeFilter, showUnreadOnly, searchQ]
   );
 
-  function markRead(id: string) {
-    setReadIds(prev => new Set([...prev, id]));
+  async function markRead(id: string) {
+    try {
+      await mysqlAdmin.markNotificationRead(id);
+      setRows(prev => prev.map(n => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
+    } catch { notify('error', 'تعذر تحديث الإشعار'); }
   }
 
-  function markAllRead() {
-    setReadIds(new Set(allNotifs.map(n => n.id)));
-    notify('success', 'تم تعليم كل الإشعارات كمقروءة');
+  async function markAllRead() {
+    try {
+      await mysqlAdmin.markAllNotificationsRead();
+      setRows(prev => prev.map(n => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })));
+      notify('success', 'تم تعليم كل الإشعارات كمقروءة');
+    } catch { notify('error', 'تعذر تحديث الإشعارات'); }
   }
 
-  function deleteNotif(id: string) {
-    setDeleted(prev => new Set([...prev, id]));
+  async function deleteNotif(id: string) {
+    try {
+      await mysqlAdmin.deleteNotification(id);
+      setRows(prev => prev.filter(n => n.id !== id));
+    } catch { notify('error', 'تعذر حذف الإشعار'); }
   }
 
-  const unreadCount = allNotifs.filter(n => !n.isRead && !readIds.has(n.id)).length;
-  const types = [...new Set(notifications.map(n => n.type).filter(Boolean))];
+  const unreadCount = rows.filter(n => !n.read_at).length;
+  const types = [...new Set(rows.map(n => n.type).filter(Boolean))];
 
   function timeAgo(dt: string) {
     if (!dt) return '';
@@ -86,7 +118,7 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
             <p className="text-amber-100 text-sm mt-1">إدارة جميع الإشعارات والتنبيهات</p>
           </div>
           {unreadCount > 0 && (
-            <button onClick={markAllRead} className="flex items-center gap-1 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-bold transition">
+            <button onClick={() => { void markAllRead(); }} className="flex items-center gap-1 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-bold transition">
               <CheckCheck size={14} />تعليم الكل كمقروء
             </button>
           )}
@@ -103,7 +135,7 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
         </div>
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
-          <option value="all">كل الأنواع ({allNotifs.length})</option>
+          <option value="all">كل الأنواع ({rows.length})</option>
           {types.map(t => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
         </select>
         <label className="flex items-center gap-2 cursor-pointer">
@@ -115,9 +147,9 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'إجمالي الإشعارات', val: allNotifs.length, color: 'gray' },
+          { label: 'إجمالي الإشعارات', val: rows.length, color: 'gray' },
           { label: 'غير مقروء', val: unreadCount, color: 'amber' },
-          { label: 'مقروء', val: allNotifs.length - unreadCount, color: 'emerald' },
+          { label: 'مقروء', val: rows.length - unreadCount, color: 'emerald' },
           { label: 'المعروض', val: filtered.length, color: 'blue' },
         ].map(k => (
           <div key={k.label} className={`bg-${k.color}-50 border border-${k.color}-100 rounded-2xl p-4 text-center`}>
@@ -130,14 +162,19 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
       {/* Notifications list */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
         <div className="divide-y divide-gray-50 max-h-[600px] overflow-y-auto">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="p-12 text-center text-gray-400">
+              <div className="w-8 h-8 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" />
+              <p>جارٍ التحميل...</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="p-12 text-center text-gray-400">
               <Bell size={36} className="mx-auto mb-3 text-gray-200" />
               <p>لا توجد إشعارات</p>
             </div>
           ) : (
             filtered.map(n => {
-              const isRead = n.isRead || readIds.has(n.id);
+              const isRead = !!n.read_at;
               return (
                 <div key={n.id} className={`flex items-start gap-3 px-4 py-4 hover:bg-gray-50 transition ${!isRead ? 'bg-amber-50/40' : ''}`}>
                   <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${!isRead ? 'bg-amber-500' : 'bg-gray-200'}`} />
@@ -145,7 +182,7 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         {n.title && <div className={`text-sm font-bold ${!isRead ? 'text-gray-900' : 'text-gray-600'}`}>{n.title}</div>}
-                        <div className={`text-sm ${!isRead ? 'text-gray-800' : 'text-gray-500'} mt-0.5`}>{n.message || n.body || '—'}</div>
+                        <div className={`text-sm ${!isRead ? 'text-gray-800' : 'text-gray-500'} mt-0.5`}>{n.message || '—'}</div>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           {n.type && (
                             <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${TYPE_COLOR[n.type] || 'bg-gray-100 text-gray-600'}`}>
@@ -153,17 +190,17 @@ export default function NotifInboxMgmtTab({ notify }: { notify: NotifyFn }) {
                             </span>
                           )}
                           <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                            <Clock size={9} />{timeAgo(n.createdAt || '')}
+                            <Clock size={9} />{timeAgo(n.created_at || '')}
                           </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {!isRead && (
-                          <button onClick={() => markRead(n.id)} className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition" title="تعليم كمقروء">
+                          <button onClick={() => { void markRead(n.id); }} className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition" title="تعليم كمقروء">
                             <Check size={13} />
                           </button>
                         )}
-                        <button onClick={() => deleteNotif(n.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition" title="حذف">
+                        <button onClick={() => { void deleteNotif(n.id); }} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition" title="حذف">
                           <Trash2 size={13} />
                         </button>
                       </div>

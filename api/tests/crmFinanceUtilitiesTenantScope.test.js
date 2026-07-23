@@ -114,7 +114,11 @@ test('admin notification stores and readers share tenant ownership', () => {
   assert.match(lib, /INSERT INTO notifications \(id, tenant_id/);
   assert.match(route, /FROM notifications WHERE tenant_id=\?/);
   assert.match(route, /await conn\.beginTransaction\(\)[\s\S]*await conn\.commit\(\)/);
-  assert.match(inbox, /FROM admin_notifications WHERE tenant_id=\?/);
+  // routes/misc/analytics.js used to have its own parallel notification store
+  // (admin_notifications) that no frontend caller ever read (NOT-01) — removed
+  // and unified onto the one real table above.
+  assert.doesNotMatch(inbox, /admin_notifications/);
+  assert.doesNotMatch(inbox, /pushAdminNotif/);
 });
 
 test('manual and scheduled automation never select or mutate leads across tenants', () => {

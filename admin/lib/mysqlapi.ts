@@ -468,6 +468,7 @@ export const mysqlAdmin = {
   getNotifications: () => apiFetch<{ rows: AR[]; unread: number }>('/admin/notifications', {}, A),
   markAllNotificationsRead: () => apiFetch<{ ok: boolean }>('/admin/notifications/read-all', { method: 'PATCH', body: '{}' }, A),
   markNotificationRead: (id: string) => apiFetch<{ ok: boolean }>(`/admin/notifications/${id}/read`, { method: 'PATCH', body: '{}' }, A),
+  deleteNotification: (id: string) => apiFetch<{ ok: boolean }>(`/admin/notifications/${id}`, { method: 'DELETE' }, A),
 
   // ── Content analytics ──
   getLessonAnalytics: (courseId: string) => apiFetch<AR[]>(`/admin/lesson-analytics/${encodeURIComponent(courseId)}`, {}, A),

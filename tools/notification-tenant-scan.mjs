@@ -66,6 +66,9 @@ function extractCalls(src) {
   const callRe = /\bcreateNotification\s*\(/g;
   let m;
   while ((m = callRe.exec(src))) {
+    // Skip mentions inside a // line comment (e.g. this file's own doc comments).
+    const lineStart = src.lastIndexOf('\n', m.index) + 1;
+    if (src.slice(lineStart, m.index).includes('//')) continue;
     let depth = 1, i = callRe.lastIndex;
     for (; i < src.length && depth > 0; i++) {
       if (src[i] === '(') depth++;

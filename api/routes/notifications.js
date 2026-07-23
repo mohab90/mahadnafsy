@@ -88,4 +88,17 @@ router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdmin, asy
   }
 });
 
+// DELETE /api/admin/notifications/:id — NotifInboxMgmtTab.tsx's delete button (NOT-01/02).
+router.delete('/api/admin/notifications/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureNotificationsTable();
+    const [result] = await pool.query('DELETE FROM notifications WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Notification not found' });
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

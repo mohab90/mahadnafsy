@@ -8,6 +8,7 @@ const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
 const { DEFAULT_TENANT } = require('../../middleware/tenantContext');
 const { logLoginAttempt } = require('../../lib/loginAudit');
+const { createNotification } = require('../../lib/notification');
 
 async function forEachActiveTenant(task) {
   let tenantIds = [DEFAULT_TENANT];
@@ -114,13 +115,12 @@ scheduleDailyReport();
 
 // GET /api/admin/reports/daily-preview — preview what the daily report would look like
 
-async function pushAdminNotif(type, title, message, link = null, tenantId = DEFAULT_TENANT) {
-  try {
-    await pool.query('INSERT INTO admin_notifications (type, title, message, link, tenant_id) VALUES (?,?,?,?,?)', [type, title, message, link, tenantId]);
-  } catch (e) { /* non-critical */ }
-}
-
-// GET /api/admin/notifications/inbox?unread_only=1
+// pushAdminNotif() used to live here, writing into `admin_notifications` — a
+// second, parallel notification table nothing in the admin UI ever read
+// (NotifInboxMgmtTab.tsx was wired to yet a THIRD thing, the marketing-
+// broadcast list — see NOT-01/NOT-03). createNotification() (lib/notification.js)
+// writes the one real `notifications` table the header bell actually polls;
+// callers below now use that instead.
 
 async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
   try {
@@ -175,9 +175,9 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
       }
 
       // Push admin notification
-      pushAdminNotif('info', `تذكير متابعة: ${lead.name}`,
+      createNotification('info', `تذكير متابعة: ${lead.name}`,
         `موعد متابعة ${lead.name} (${lead.staff_name || 'غير محدد'}) — اليوم`,
-        '/dashboard?tab=leads', tenantId
+        { link: '/dashboard?tab=leads', leadId: lead.id }, tenantId
       ).catch(() => {});
 
       // Log to avoid re-send
@@ -422,4 +422,4 @@ const KV_ALLOWED_KEYS = ['tasks_board', 'support_tickets', 'sales_motiv_posts', 
 
 // GET /api/admin/kv/:key
 
-module.exports = { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };
+module.exports = { logLogin, sendDailyReport, scheduleDailyReport, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS };
