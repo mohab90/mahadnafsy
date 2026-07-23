@@ -8,8 +8,6 @@ const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { postJournalEntry, toEgp, _paymentAccountCode } = require('../lib/finance');
-const { syncLeadDealValue } = require('./public-orders');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { writeAuditEvent } = require('../lib/auditTrail');
@@ -604,109 +602,13 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// PATCH /api/admin/refund-requests/:id — approve or reject
-router.patch('/api/admin/refund-requests/:id', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
-  const conn = await pool.getConnection();
-  let committed = false;
-  try {
-    const { id } = req.params;
-    const { status, admin_note, refund_method } = req.body;
-    if (!['APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
-    const actor = req.staffRecord?.name || req.user?.email || 'admin';
-    const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
-    await conn.beginTransaction();
-    const [[rr]] = await conn.query(
-      'SELECT r.*, s.name AS sname, s.email AS semail FROM refund_requests r JOIN subscribers s ON s.id=r.subscriber_id AND s.tenant_id=r.tenant_id WHERE r.id=? AND r.tenant_id=? FOR UPDATE',
-      [id, tenantId]
-    );
-    if (!rr) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Refund request not found' });
-    }
-    if (rr.status !== 'PENDING') {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Refund request is already resolved' });
-    }
-    await conn.query(
-      'UPDATE refund_requests SET status=?, admin_note=?, refund_method=?, resolved_at=NOW(), resolved_by=? WHERE id=? AND tenant_id=?',
-      [status, admin_note || null, refund_method || null, actor, id, tenantId]
-    );
-    // If APPROVED: mark linked payment as refunded and log audit
-    if (status === 'APPROVED' && rr?.payment_id) {
-      const [[oldPay]] = await conn.query('SELECT status, amount, amount_egp, currency, payment_type, subscriber_id, course_id, bundle_id FROM payments WHERE id=? AND tenant_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE', [rr.payment_id, tenantId, rr.subscriber_id]).catch(() => [[null]]);
-      if (oldPay) {
-        await conn.query('UPDATE payments SET status=\'refunded\', note=CONCAT(COALESCE(note,\'\'), IF(note IS NOT NULL AND note!=\'\',\' | \',\'\'), \'Refunded by \', ?) WHERE id=? AND tenant_id=?',
-          [actor, rr.payment_id, tenantId]);
-        await conn.query(
-          `INSERT INTO payment_audit_log (id, payment_id, action, old_status, new_status, amount, subscriber_id, actor)
-           VALUES (?,?,?,?,?,?,?,?)`,
-          [uuidv4(), rr.payment_id, 'update', oldPay.status || null, 'refunded', oldPay.amount || null, oldPay.subscriber_id || null, actor]
-        ).catch(e => logger.warn('[refund] audit insert:', e.message));
-        // Cancel related commission (staff shouldn't earn on refunded payment)
-        await conn.query(
-          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | ملغى بسبب الاسترداد') WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
-          [rr.payment_id, tenantId]
-        ).catch(e => logger.warn('[refund] commission cancel:', e.message));
-        // Remove enrollment if course/bundle payment was refunded
-        if (oldPay.course_id || oldPay.bundle_id) {
-          await conn.query(
-            'DELETE FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
-            [tenantId, oldPay.subscriber_id, oldPay.course_id || null, oldPay.bundle_id || null]
-          ).catch(e => logger.warn('[refund] enrollment remove:', e.message));
-        }
-        // Post reversal journal entry (normalised to EGP like all journal postings)
-        const amt = parseFloat(oldPay.amount) || 0;
-        if (amt > 0) {
-          // Reverse against the SAME revenue account the original payment credited
-          // (e.g. a refunded COURSE sale debits 4100, not a generic 4900) so the
-          // reversal is symmetric and revenue per category nets to zero.
-          const [revCode, revName] = _paymentAccountCode((oldPay.payment_type || 'OTHER').toUpperCase());
-          const amtEgp = Number(oldPay.amount_egp) > 0 ? Number(oldPay.amount_egp) : await toEgp(amt, oldPay.currency, tenantId);
-          const refundJournalId = await postJournalEntry('refund', rr.payment_id, new Date().toISOString().slice(0,10),
-              `استرداد مبلغ ${amt} ${oldPay.currency || 'EGP'} (= ${amtEgp} EGP) — موافقة بواسطة ${actor}`,
-              [
-                { account_code: revCode, account_name: revName,        debit: amtEgp, credit: 0 },
-                { account_code: '1100',  account_name: 'نقدية وبنوك',   debit: 0,      credit: amtEgp },
-              ],
-              actor,
-              conn,
-              tenantId
-          );
-          if (!refundJournalId) throw new Error('Refund journal posting failed');
-        }
-      }
-    }
-    await conn.commit();
-    committed = true;
-    if (status === 'APPROVED' && rr?.subscriber_id) syncLeadDealValue(rr.subscriber_id, pool, tenantId).catch(() => {});
-    if (rr && rr.semail) {
-      const statusAr = status === 'APPROVED' ? '✅ تمت الموافقة' : '❌ تم الرفض';
-      sendEmail(rr.semail, `طلب الاسترداد — ${statusAr}`,
-        `<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px;max-width:500px">
-          <h2 style="color:${status==='APPROVED'?'#2f855a':'#c53030'}">${statusAr} على طلب الاسترداد</h2>
-          <p>أهلاً ${rr.sname}، بخصوص طلب الاسترداد بمبلغ <strong>${rr.amount} ${rr.currency}</strong>:</p>
-          ${admin_note ? `<p style="background:#f7fafc;padding:12px;border-right:3px solid #4299e1;color:#2d3748"><strong>ملاحظة الإدارة:</strong> ${admin_note}</p>` : ''}
-          ${status==='APPROVED' && refund_method ? `<p><strong>طريقة الاسترداد:</strong> ${refund_method}</p>` : ''}
-          <p style="color:#718096;font-size:13px">معهد الدراسات النفسية — info@mahadnafsy.com</p>
-        </div>`,
-        { tenantId }
-      ).catch(() => {});
-    }
-    await pool.query(
-      'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
-      [uuidv4(), status === 'APPROVED' ? 'refund_approved' : 'refund_rejected', 'refund_requests', id,
-       `استرداد ${status === 'APPROVED' ? 'موافق عليه' : 'مرفوض'} — ${rr?.sname || id}`, actor]
-    ).catch(() => {});
-    res.json({ ok: true });
-  } catch (e) {
-    if (!committed) { try { await conn.rollback(); } catch (_) {} }
-    logger.error('[refund approval]', e.message);
-    try { require('../lib/errorMonitor').captureException(e, { flow: 'refund_approval', refundId: req.params.id }); } catch (_) {}
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    conn.release();
-  }
-});
+// NOTE: refund approval/rejection is handled by PUT /api/admin/finance/refunds/:id
+// in api/routes/finance.js (the endpoint CustomerInboxTab.tsx actually calls),
+// which now uses the shared lib/refunds.js#applyRefundReversal(). A duplicate
+// PATCH /api/admin/refund-requests/:id used to live here — confirmed to have
+// zero frontend callers (grep across admin/ for 'refund-requests/' found only
+// the unrelated POST .../by-admin creation endpoint) — and was removed rather
+// than kept in sync with two copies of the same ~60 lines of financial logic.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Weekly Performance Summary Email ─────────────────────────────

@@ -9,7 +9,7 @@ const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { postJournalEntry, _paymentAccountCode, toEgp } = require('../lib/finance');
+const { applyRefundReversal } = require('../lib/refunds');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1109,54 +1109,7 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     );
 
     if (normalizedStatus === 'APPROVED' && rr.payment_id) {
-      const [[pay]] = await conn.query(
-        `SELECT id, subscriber_id, course_id, bundle_id, amount, amount_egp, currency, payment_type, status
-         FROM payments WHERE id = ? AND tenant_id=? LIMIT 1 FOR UPDATE`,
-        [rr.payment_id, tenantId]
-      );
-      if (pay) {
-        await conn.query(
-          `UPDATE payments
-           SET status='refunded',
-               note=CONCAT(COALESCE(note,''), IF(note IS NOT NULL AND note!='',' | ',''), 'Refunded by ', ?)
-           WHERE id=? AND tenant_id=?`,
-          [actor, pay.id, tenantId]
-        );
-        await conn.query(
-          `INSERT INTO payment_audit_log (id, payment_id, action, old_status, new_status, amount, subscriber_id, actor)
-           VALUES (?,?,?,?,?,?,?,?)`,
-          [uuidv4(), pay.id, 'update', pay.status || null, 'refunded', pay.amount || null, pay.subscriber_id || null, actor]
-        ).catch((e) => logger.warn('[finance/refunds] audit insert:', e.message));
-        await conn.query(
-          "UPDATE crm_commissions SET status='CANCELLED', note=CONCAT(COALESCE(note,''),' | Cancelled because payment was refunded') WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')",
-          [pay.id, tenantId]
-        ).catch((e) => logger.warn('[finance/refunds] commission cancel:', e.message));
-        if (pay.course_id || pay.bundle_id) {
-          await conn.query(
-            'DELETE FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
-            [tenantId, pay.subscriber_id, pay.course_id || null, pay.bundle_id || null]
-          ).catch((e) => logger.warn('[finance/refunds] enrollment remove:', e.message));
-        }
-        const amt = Number(pay.amount) || 0;
-        if (amt > 0) {
-          const [revCode, revName] = _paymentAccountCode(String(pay.payment_type || 'OTHER').toUpperCase());
-          const amtEgp = Number(pay.amount_egp) > 0 ? Number(pay.amount_egp) : await toEgp(amt, pay.currency, tenantId);
-          const journalId = await postJournalEntry(
-            'refund',
-            pay.id,
-            new Date().toISOString().slice(0, 10),
-            `Refund ${amt} ${pay.currency || 'EGP'} (= ${amtEgp} EGP) approved by ${actor}`,
-            [
-              { account_code: revCode, account_name: revName, debit: amtEgp, credit: 0 },
-              { account_code: '1100', account_name: 'Cash and banks', debit: 0, credit: amtEgp },
-            ],
-            actor,
-            conn,
-            tenantId
-          );
-          if (!journalId) throw new Error('Refund journal posting failed');
-        }
-      }
+      await applyRefundReversal({ paymentId: rr.payment_id, subscriberId: rr.subscriber_id, tenantId, actor }, conn);
     }
 
     await conn.query(

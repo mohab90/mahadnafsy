@@ -27,10 +27,15 @@ test('proof approval is row locked and cannot create a second payment', () => {
 });
 
 test('refund resolution locks one tenant request and posts a reversal in the same transaction', () => {
-  const route = read('routes/admin-utils.js');
-  assert.match(route, /WHERE r\.id=\? AND r\.tenant_id=\? FOR UPDATE/);
-  assert.match(route, /rr\.status !== 'PENDING'/);
-  assert.match(route, /UPDATE payments SET status=\\?'refunded\\?'[\s\S]*tenant_id=\?/);
-  assert.match(route, /postJournalEntry\('refund'[\s\S]*conn,[\s\S]*tenantId/);
+  // Was routes/admin-utils.js (the inline duplicate, since removed — Phase
+  // 1.d unified both copies behind lib/refunds.js#applyRefundReversal,
+  // called from the route the frontend actually uses).
+  const route = read('routes/finance.js');
+  const refunds = read('lib/refunds.js');
+  assert.match(route, /FROM refund_requests rr[\s\S]*FOR UPDATE/);
+  assert.match(route, /applyRefundReversal\(/);
+  assert.match(refunds, /UPDATE payments SET status='refunded'/);
+  assert.match(refunds, /await assertWritable\(/);
+  assert.match(refunds, /postJournalEntry\(\s*\n?\s*'refund'/);
   assert.match(route, /await conn\.commit\(\)/);
 });
