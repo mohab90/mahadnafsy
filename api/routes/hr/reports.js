@@ -28,8 +28,8 @@ router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, re
       SELECT COUNT(*) AS total_requests,
         SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status='APPROVED' THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN MONTH(start_date)=? AND YEAR(start_date)=? THEN days ELSE 0 END) AS days_this_month
-      FROM leave_requests
+        SUM(CASE WHEN MONTH(start_date)=? AND YEAR(start_date)=? THEN total_days ELSE 0 END) AS days_this_month
+      FROM leaves
       WHERE tenant_id=?
     `, [m, y, req.tenantId]);
 
@@ -108,8 +108,8 @@ router.get('/api/staff/me/hr', requireAuth, async (req, res) => {
     `, [req.tenantId, staff.id]);
 
     const [leaves] = await pool.query(`
-      SELECT id, type, start_date, end_date, days AS total_days, status, reason, created_at
-      FROM leave_requests WHERE tenant_id=? AND staff_id=? ORDER BY created_at DESC LIMIT 20
+      SELECT id, type, start_date, end_date, total_days, status, reason, created_at
+      FROM leaves WHERE tenant_id=? AND staff_id=? ORDER BY created_at DESC LIMIT 20
     `, [req.tenantId, staff.id]);
 
     const [attendance] = await pool.query(`

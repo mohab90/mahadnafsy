@@ -13,6 +13,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { hasPermission, PERMISSIONS } = require('../constants/permissions');
 
 router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
@@ -54,9 +55,15 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res)
   }
 });
 
+// This list is loaded broadly across the admin app for name lookups (assignee
+// dropdowns etc.), so the route itself stays open to any authenticated staff —
+// but sensitive fields (email/phone/notes/permissions/commission) require
+// view_staff (HR-04/05). req.isAdmin was never actually set anywhere (only
+// req.isSuperAdmin is), so this check was always false and hid these fields
+// from real admins too.
 router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
-    const isAdminUser = req.isAdmin === true;
+    const canViewSensitive = req.isSuperAdmin === true || hasPermission(req.staffRecord, PERMISSIONS.VIEW_STAFF);
     const [rows] = await pool.query(
       'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? ORDER BY name ASC',
       [req.tenantId]
@@ -64,17 +71,17 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res
     res.json(rows.map(r => ({
       id: r.id,
       name: r.name || '',
-      email: isAdminUser ? (r.email || '') : '',
-      phone: isAdminUser ? (r.phone || '') : '',
+      email: canViewSensitive ? (r.email || '') : '',
+      phone: canViewSensitive ? (r.phone || '') : '',
       role: (r.role || 'other').toLowerCase(),
       status: r.is_active ? 'active' : 'inactive',
       image: r.image || null,
       specialization: r.specialization || null,
       joinedAt: r.joined_at || r.created_at || null,
-      firebaseUid: isAdminUser ? (r.firebase_uid || null) : null,
-      commissionRate: isAdminUser ? (r.commission_rate || null) : null,
-      notes: isAdminUser ? (r.notes || null) : null,
-      permissions: isAdminUser ? (r.permissions_json ? tryJson(r.permissions_json, []) : []) : [],
+      firebaseUid: canViewSensitive ? (r.firebase_uid || null) : null,
+      commissionRate: canViewSensitive ? (r.commission_rate || null) : null,
+      notes: canViewSensitive ? (r.notes || null) : null,
+      permissions: canViewSensitive ? (r.permissions_json ? tryJson(r.permissions_json, []) : []) : [],
     })));
   } catch (e) {
     routeError(res, e);

@@ -61,7 +61,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, async (
       pool.query("SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND DATE(created_at)=CURDATE() AND hidden=0", [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND DATE(created_at)=CURDATE()", [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'", [req.tenantId]),
-      pool.query("SELECT COUNT(*) AS n FROM leave_requests WHERE tenant_id=? AND status='pending'", [req.tenantId]).catch(() => [[{n:0}]]),
+      pool.query("SELECT COUNT(*) AS n FROM leaves WHERE tenant_id=? AND status='PENDING'", [req.tenantId]).catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE tenant_id=? AND is_hidden=0", [req.tenantId]).catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM course_waitlist WHERE tenant_id=? AND status='waiting'", [req.tenantId]).catch(() => [[{n:0}]]),
     ]));

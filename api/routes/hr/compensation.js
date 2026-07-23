@@ -207,24 +207,51 @@ router.delete('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdminOrSt
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Self-service leave list/submit. Writes to the SAME `leaves` table the admin HR
+// approval workflow (routes/hr/attendance.js) reads/approves from — this used to write
+// to a separate `leave_requests` table that no approval screen ever looked at, so a
+// self-submitted request could never actually be approved (HR-02).
+router.get('/api/staff/me/leaves', requireAuth, async (req, res) => {
+  try {
+    const staff = await _resolveStaffByUser(req);
+    if (!staff) return res.status(403).json({ error: 'Staff record not found' });
+    const [rows] = await pool.query(
+      `SELECT l.id, l.type, l.start_date, l.end_date, l.total_days, l.reason, l.status, l.created_at,
+              a.name AS approved_by_name
+       FROM leaves l
+       LEFT JOIN staff a ON a.id=l.approved_by AND a.tenant_id=l.tenant_id
+       WHERE l.tenant_id=? AND l.staff_id=? ORDER BY l.created_at DESC LIMIT 50`,
+      [req.tenantId, staff.id]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
 router.post('/api/staff/me/leaves', requireAuth, async (req, res) => {
   try {
     const staff = await _resolveStaffByUser(req);
     if (!staff) return res.status(403).json({ error: 'Staff record not found' });
     const { type, start_date, end_date, reason } = req.body;
-    if (!type || !start_date || !end_date) return res.status(400).json({ error: 'type, start_date, end_date required' });
+    const VALID_TYPES = ['ANNUAL', 'SICK', 'UNPAID', 'MATERNITY', 'EMERGENCY', 'PERMISSION', 'OTHER'];
+    if (!type || !VALID_TYPES.includes(type) || !start_date || !end_date) {
+      return res.status(400).json({ error: 'type, start_date, end_date required' });
+    }
     const start = new Date(start_date);
     const end   = new Date(end_date);
     if (isNaN(start) || isNaN(end) || end < start) return res.status(400).json({ error: 'Invalid dates' });
-    const totalDays = Math.ceil((end - start) / 86400000) + 1;
+    const totalDays = type === 'PERMISSION' ? 0.5 : Math.ceil((end - start) / 86400000) + 1;
     const id = uuidv4();
     await pool.query(
-      `INSERT INTO leave_requests (id, tenant_id, staff_id, type, start_date, end_date, days, reason, status)
+      `INSERT INTO leaves (id, tenant_id, staff_id, type, start_date, end_date, total_days, reason, status)
        VALUES (?,?,?,?,?,?,?,?,'PENDING')`,
       [id, req.tenantId, staff.id, type, start_date, end_date, totalDays, reason || null]
     );
+    await createNotification('info', 'طلب إجازة جديد',
+      `موظف طلب ${type === 'PERMISSION' ? 'إذن' : 'إجازة'} من ${start_date} إلى ${end_date}`,
+      { leave_id: id, staff_id: staff.id }, req.tenantId
+    );
     const [[row]] = await pool.query(
-      'SELECT id, staff_id, type, start_date, end_date, days AS total_days, reason, status FROM leave_requests WHERE tenant_id=? AND id=?',
+      'SELECT id, staff_id, type, start_date, end_date, total_days, reason, status FROM leaves WHERE tenant_id=? AND id=?',
       [req.tenantId, id]
     );
     res.json(row);
@@ -328,11 +355,16 @@ router.get('/api/admin/hr/attendance-report', requireAuth, requireAdminOrStaff, 
       [req.tenantId, monthStart, monthEnd]
     ).catch(() => [[]]);
 
-    // Leave requests approved for the month
+    // Leave requests approved for the month. This used to read leave_requests (a table
+    // with no approval workflow — nothing could ever reach status='APPROVED' there) with
+    // a non-existent leave_type column; both errors were swallowed by .catch(), so
+    // leaveDays below was always 0 and attendance % was silently overstated for every
+    // approved leave. Fixed to read from `leaves`, the table the real approval flow
+    // (routes/hr/attendance.js) actually writes APPROVED status into.
     const [leaves] = await pool.query(
-      `SELECT staff_id, leave_type, status,
+      `SELECT staff_id, type, status,
               DATEDIFF(LEAST(end_date, ?), GREATEST(start_date, ?)) + 1 AS days_in_month
-       FROM leave_requests
+       FROM leaves
        WHERE tenant_id=? AND status = 'APPROVED'
          AND start_date < ? AND end_date >= ?`,
       [monthEnd, monthStart, req.tenantId, monthEnd, monthStart]

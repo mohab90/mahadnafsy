@@ -18,7 +18,7 @@ type ActivityLogRecord = ActivityLogItem & {
 type MyLeave = {
   id: string;
   status: string;
-  leave_type: string;
+  type: string;
   start_date?: string;
   end_date?: string;
   total_days: number;
@@ -156,7 +156,10 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     if (!me?.id) return;
     setLoadingMyLeaves(true);
     try {
-      const res = await fetch(`/api/admin/hr/leaves?staff_id=${me.id}`, { credentials: 'include', headers: adminAuthHeaders() });
+      // Self-service endpoint (requireAuth only) — the admin endpoint this used to call
+      // requires view_hr, which 403'd for every non-HR/admin employee viewing their OWN
+      // leave history (HR-01).
+      const res = await fetch('/api/staff/me/leaves', { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setMyLeavesList(await res.json());
     } catch { /* silently fail */ } finally { setLoadingMyLeaves(false); }
   }, [me?.id]);
@@ -166,10 +169,13 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
   const submitLeave = useCallback(async () => {
     if (!leaveForm.start_date || !leaveForm.end_date || !me?.id) return;
     try {
-      const res = await fetch('/api/admin/hr/leaves', {
+      // Self-service endpoint (requireAuth only, resolves the staff record from the
+      // token) — the admin endpoint this used to call requires manage_hr, which 403'd
+      // for every non-HR/admin employee submitting their OWN leave request (HR-01).
+      const res = await fetch('/api/staff/me/leaves', {
         method: 'POST', credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify({ staff_id: me.id, leave_type: leaveForm.type, start_date: leaveForm.start_date, end_date: leaveForm.end_date, reason: leaveForm.reason }),
+        body: JSON.stringify({ type: leaveForm.type, start_date: leaveForm.start_date, end_date: leaveForm.end_date, reason: leaveForm.reason }),
       });
       if (res.ok) {
         notify('success', 'تم إرسال طلب الإجازة ✅');
@@ -380,7 +386,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
                 <div key={leave.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${LEAVE_STATUS_COLORS[leave.status] || 'bg-gray-100'}`}>{LEAVE_STATUS_LABELS[leave.status] || leave.status}</span>
-                    <span className="text-xs font-bold text-gray-700">{LEAVE_TYPE_LABELS[leave.leave_type] || leave.leave_type}</span>
+                    <span className="text-xs font-bold text-gray-700">{LEAVE_TYPE_LABELS[leave.type] || leave.type}</span>
                     <span className="text-xs text-gray-500">{leave.start_date?.slice(0, 10)} — {leave.end_date?.slice(0, 10)}</span>
                     <span className="text-xs text-gray-500 font-semibold">{leave.total_days} {leave.total_days === 1 ? 'يوم' : 'أيام'}</span>
                   </div>

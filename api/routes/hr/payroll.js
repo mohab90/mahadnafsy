@@ -339,7 +339,7 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
     const timeMap = { APPROVED: 'approved_at', PAID: 'paid_at', CANCELLED: null, CALCULATED: 'calculated_at' };
     let sql = `UPDATE payroll_runs SET status=?`;
     const params = [status];
-    if (colMap[status]) { sql += `, ${colMap[status]}=?, ${timeMap[status]}=NOW()`; params.push(req.user.id); }
+    if (colMap[status]) { sql += `, ${colMap[status]}=?, ${timeMap[status]}=NOW()`; params.push(req.staffRecord?.id || null); }
     if (status === 'CALCULATED') sql += ', approved_by=NULL, approved_at=NULL';
     sql += ` WHERE id=? AND tenant_id=?`; params.push(runId, tenantId);
     await conn.query(sql, params);
@@ -436,7 +436,7 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdminOrSta
     await conn.query(`
       UPDATE payroll_items SET bonus=?, bonus_note=?, other_deductions=?, deductions_note=?,
         net_salary=?, is_manual_override=1, override_by=? WHERE id=? AND tenant_id=?
-    `, [b, bonus_note || null, od, deductions_note || null, net, req.user.id, itemId, req.tenantId]);
+    `, [b, bonus_note || null, od, deductions_note || null, net, req.staffRecord?.id || null, itemId, req.tenantId]);
     // Recalculate run total
     const [[{ total }]] = await conn.query(
       'SELECT SUM(net_salary) AS total FROM payroll_items WHERE payroll_run_id=? AND tenant_id=?',

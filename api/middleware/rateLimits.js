@@ -1,8 +1,6 @@
 'use strict';
 
 const rateLimit = require('express-rate-limit');
-const jwt = require('jsonwebtoken');
-const { JWT_SECRET } = require('../lib/token');
 
 const ipKeyGenerator = rateLimit.ipKeyGenerator || ((ip) => ip || 'unknown');
 
@@ -54,16 +52,6 @@ const registerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: tooMany('عدد تسجيلات كثير، انتظر ساعة وحاول مرة أخرى'),
-  skip: (req) => {
-    try {
-      const auth = req.headers.authorization || '';
-      if (!auth.startsWith('Bearer ')) return false;
-      const payload = jwt.verify(auth.slice(7), JWT_SECRET);
-      return payload && (payload.role === 'admin' || payload.role === 'superadmin');
-    } catch {
-      return false;
-    }
-  },
 });
 
 const paymobLimiter = rateLimit({
