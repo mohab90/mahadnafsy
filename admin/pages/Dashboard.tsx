@@ -180,6 +180,8 @@ import { useCommunityDrafts } from './dashboard/hooks/useCommunityDrafts';
 import { useAdminAiAssistant } from './dashboard/hooks/useAdminAiAssistant';
 import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts';
 import { useCsvFbImportState } from './dashboard/hooks/useCsvFbImportState';
+import { useLeadFilters } from './dashboard/useLeadFilters';
+import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { exportOrdersCsv, exportSubscribersCsv as exportSubscribersCsvHelper, exportLeadsCsv as exportLeadsCsvHelper } from './dashboard/dashboardExports';
 import {
   DashboardClientTabs,
@@ -489,7 +491,18 @@ const Dashboard: React.FC = () => {
   const [lectureCourseId, setLectureCourseId] = useState('');
 
   const [editingSubscriberId, setEditingSubscriberId] = useState('');
-  const [subscriberSubTab, setSubscriberSubTab] = useState<'local' | 'abroad' | 'all' | 'online25'>('all');
+  const {
+    subscriberSubTab, setSubscriberSubTab,
+    subscriberCourseFilter, setSubscriberCourseFilter,
+    subscriberSearch, setSubscriberSearch,
+    subscriberSalesFilter, setSubscriberSalesFilter,
+    subscriberCsFilter, setSubscriberCsFilter,
+    subscriberInstFilter, setSubscriberInstFilter,
+    subscriberRemainingFilter, setSubscriberRemainingFilter,
+    subscriberCertFilter, setSubscriberCertFilter,
+    subscriberPayFilter, setSubscriberPayFilter,
+    subscriberPage, setSubscriberPage,
+  } = useSubscriberFilters();
   // Reception Daqqi role — daqqi clients tab state
   const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
   const [daqqiAccDateFrom, setDaqqiAccDateFrom] = useState('');
@@ -527,14 +540,6 @@ const Dashboard: React.FC = () => {
   // Daqqi old-data distribution
   const [daqqiOldDistribPlan, setDaqqiOldDistribPlan] = useState<{staffId:string;count:string}[]>([{staffId:'',count:''}]);
   const [daqqiOldDistributing, setDaqqiOldDistributing] = useState(false);
-  const [subscriberCourseFilter, setSubscriberCourseFilter] = useState('');
-  const [subscriberSearch, setSubscriberSearch] = useState('');
-  const [subscriberSalesFilter, setSubscriberSalesFilter] = useState('all');
-  const [subscriberCsFilter, setSubscriberCsFilter] = useState('all');
-  const [subscriberInstFilter, setSubscriberInstFilter] = useState(''); // '' | 'overdue' | 'soon'
-  const [subscriberRemainingFilter, setSubscriberRemainingFilter] = useState(''); // '' | '1000' | '2000' | '3000' | '5000' | '8000'
-  const [subscriberCertFilter, setSubscriberCertFilter] = useState(''); // '' | 'has' | 'pending' | 'issued'
-  const [subscriberPayFilter, setSubscriberPayFilter] = useState(''); // '' | 'pending'
   const {
     grantSubscriberId, setGrantSubscriberId,
     grantEnrolledCourseIds, setGrantEnrolledCourseIds,
@@ -625,12 +630,14 @@ const Dashboard: React.FC = () => {
     csvMapping, setCsvMapping,
   } = useCsvFbImportState(fbLeadAdsConfig, defaultFacebookLeadAdsConfig);
 
-  const [leadsSearch, setLeadsSearch] = useState('');
-  const [leadsStatusFilter, setLeadsStatusFilter] = useState<string[]>([]); // empty = hide converted+hidden
-  const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue'>('all');
-  const [leadsBranchFilter, setLeadsBranchFilter] = useState<'all' | string>('all');
-  const [leadsSalesFilter, setLeadsSalesFilter] = useState<string>('all');
-  const [leadsCourseFilter, setLeadsCourseFilter] = useState<string>('all');
+  const {
+    leadsSearch, setLeadsSearch,
+    leadsStatusFilter, setLeadsStatusFilter,
+    leadsFollowupFilter, setLeadsFollowupFilter,
+    leadsBranchFilter, setLeadsBranchFilter,
+    leadsSalesFilter, setLeadsSalesFilter,
+    leadsCourseFilter, setLeadsCourseFilter,
+  } = useLeadFilters();
   const [staffSearch, setStaffSearch] = useState('');
   const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | 'instructor' | 'trainer' | 'expert' | 'sales' | 'manager' | 'admin' | 'support' | 'reception_daqqi' | 'daqqi_manager' | 'online_manager' | 'sales_collection_manager' | 'collection' | 'accountant' | 'consultant' | 'hr' | 'other'>('all');
 
@@ -642,7 +649,6 @@ const Dashboard: React.FC = () => {
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['main', 'clients']));
   const [showSaveSegment, setShowSaveSegment] = useState(false);
-  const [subscriberPage, setSubscriberPage] = useState(1);
   const [staffShowPassword, setStaffShowPassword] = useState(false);
   const [subWaRow, setSubWaRow] = useState<SubscriberItem | null>(null);
   const [staffProfileModalId, setStaffProfileModalId] = useState<string | null>(null);
