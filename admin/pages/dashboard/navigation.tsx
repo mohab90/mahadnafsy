@@ -85,6 +85,7 @@ export type TabKey =
   | 'pg_migrate'
   | 'server_monitor'
   | 'quizzes'
+  | 'course_waitlist'
   | 'live_streams'
   | 'staff_settings'
   | 'online_clients'
@@ -282,6 +283,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'lectures', label: 'المحاضرات', icon: ListOrdered },
       { key: 'bundles', label: 'المسارات والباقات', icon: FolderKanban },
       { key: 'quizzes', label: 'الاختبارات', icon: FileText },
+      { key: 'course_waitlist', label: 'قوائم الانتظار', icon: Clock },
       { key: 'live_streams', label: 'البث المباشر', icon: Video },
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
     ],

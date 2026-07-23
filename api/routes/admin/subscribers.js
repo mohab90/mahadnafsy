@@ -22,6 +22,7 @@ const { onlineMap } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
+const { notifyWaitlistForFreedSeats } = require('../../lib/courseWaitlist');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
@@ -402,6 +403,11 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       if (toDelete.length > 0) {
         const deleteIds = toDelete.map(r => r.id);
         await conn.query(`DELETE FROM enrollments WHERE tenant_id=? AND id IN (${deleteIds.map(() => '?').join(',')})`, [tenantId, ...deleteIds]);
+        // SUB-02: an admin unenrolling a subscriber frees a seat — auto-notify
+        // the waitlist instead of leaving it to be noticed and triggered manually.
+        for (const courseId of new Set(toDelete.map(r => r.course_id).filter(Boolean))) {
+          await notifyWaitlistForFreedSeats(tenantId, courseId, conn).catch(() => {});
+        }
       }
 
       // 2. INSERT new courses / UPDATE changed access for existing ones (batched)

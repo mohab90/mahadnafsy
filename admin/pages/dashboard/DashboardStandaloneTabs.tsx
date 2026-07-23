@@ -6,6 +6,7 @@ import {
   CohortAnalysisTab,
   ConsultationCalendarTab,
   DaqqiAttendanceTab,
+  CourseWaitlistTab,
   KpiDashboardTab,
   LiveStreamsTab,
   NotificationsAdminTab,
@@ -69,6 +70,12 @@ export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: Dash
       {activeTab === 'quizzes' && (
         <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" /></div>}>
           <QuizzesTab notify={notify} />
+        </Suspense>
+      )}
+
+      {activeTab === 'course_waitlist' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" /></div>}>
+          <CourseWaitlistTab notify={notify} />
         </Suspense>
       )}
 

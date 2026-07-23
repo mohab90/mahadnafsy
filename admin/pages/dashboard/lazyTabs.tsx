@@ -50,6 +50,7 @@ export const OtpSettingsTab = lazy(() => import('./tabs/OtpSettingsTab'));
 export const PaymentSettingsTab = lazy(() => import('./tabs/PaymentSettingsTab'));
 export const PgMigrateTab = lazy(() => import('./tabs/PgMigrateTab'));
 export const QuizzesTab = lazy(() => import('./tabs/QuizzesTab'));
+export const CourseWaitlistTab = lazy(() => import('./tabs/CourseWaitlistTab'));
 export const RecurringExpensesTab = lazy(() => import('./tabs/RecurringExpensesTab'));
 export const RetentionTab = lazy(() => import('./tabs/RetentionTab'));
 export const RevenueForecastTab = lazy(() => import('./tabs/RevenueForecastTab'));

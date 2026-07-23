@@ -20,6 +20,7 @@ const { uuidv4 } = require('./id');
 const { postJournalEntry, _paymentAccountCode, toEgp } = require('./finance');
 const { assertWritable } = require('./periodLock');
 const { logLeadEvent } = require('./crm');
+const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
 
 // Must run inside an existing transaction on `conn`. Call after the caller
 // has already row-locked and updated the refund_requests row itself — this
@@ -61,6 +62,9 @@ async function applyRefundReversal({ paymentId, subscriberId, tenantId, actor },
       'DELETE FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id<=>? AND bundle_id<=>? LIMIT 1',
       [tenantId, pay.subscriber_id, pay.course_id || null, pay.bundle_id || null]
     ).catch(() => {});
+    // SUB-02: a refund frees a seat — auto-notify the waitlist instead of
+    // leaving it to an admin to notice and trigger manually.
+    if (pay.course_id) await notifyWaitlistForFreedSeats(tenantId, pay.course_id, conn).catch(() => {});
   }
 
   // orders is the "online twin" of payments — a refund must flip it too, or
