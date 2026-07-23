@@ -152,7 +152,6 @@ import {
 import { useToast } from '../../shared/ui/Toast';
 import { useResizableCols } from '../components/useResizableCols';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
-import { SiteDataStoreBridge } from '../stores/SiteDataStoreBridge';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { contentHubRouteTabs, directContentTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
@@ -2364,7 +2363,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <>
-    <SiteDataStoreBridge />
     <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 py-6 md:py-8">
       <div className="container mx-auto px-4">
         <DashboardNavigation
