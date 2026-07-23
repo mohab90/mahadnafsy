@@ -9,6 +9,8 @@ const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { safeIsoString } = require('../lib/dates');
+const { assertWritable } = require('../lib/periodLock');
+const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
 
 
 // GET /api/admin/orders
@@ -102,6 +104,68 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/orders/:id/confirm-payment — the real "confirm payment" /
+// "link to transfer" workflow. PATCH deliberately rejects setting status to
+// paid/refunded (financial statuses need a real payments row + journal
+// entry, not a bare status flip) — but until this endpoint existed, the
+// admin UI's "Confirm Payment" button and both transfer-linking modals still
+// called the generic PATCH with status:'paid', so every one of them just
+// received a 409 and silently did nothing (PAY-02). This creates the actual
+// payment (ensuring a subscriber exists first, exactly like the Paymob/
+// manual-transfer-proof paths — PAY-16/LMS-01's ensureSubscriberForOrder),
+// posts the journal entry, grants enrollment for a course/bundle order, and
+// — when linking to a recorded transfer — marks that transfer consumed so
+// the same transfer can never confirm two different orders (closing PAY-06:
+// a single transfer being reusable across multiple orders was never actually
+// enforced despite migration 022's comment saying that was the intent).
+router.post('/api/admin/orders/:id/confirm-payment', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { linkedTransferId } = req.body || {};
+    await conn.beginTransaction();
+
+    const [[order]] = await conn.query(
+      'SELECT * FROM orders WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]
+    );
+    if (!order) { await conn.rollback(); return res.status(404).json({ error: 'Order not found' }); }
+    if (String(order.status).toLowerCase() !== 'pending') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Order is not pending — it may already be confirmed' });
+    }
+
+    let transfer = null;
+    if (linkedTransferId) {
+      const [[existingLink]] = await conn.query(
+        'SELECT id FROM orders WHERE linked_transfer_id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+        [linkedTransferId, req.tenantId]
+      );
+      if (existingLink) { await conn.rollback(); return res.status(409).json({ error: 'This transfer is already linked to another order' }); }
+      [[transfer]] = await conn.query(
+        `SELECT * FROM orders WHERE id=? AND tenant_id=? AND type='transfer' AND status='paid' LIMIT 1 FOR UPDATE`,
+        [linkedTransferId, req.tenantId]
+      );
+      if (!transfer) { await conn.rollback(); return res.status(404).json({ error: 'Transfer not found' }); }
+    }
+
+    await assertWritable(new Date().toISOString().slice(0, 10), conn, req.tenantId);
+
+    const { paymentId } = await confirmOrderPayment({
+      order, transfer, linkedTransferId, tenantId: req.tenantId,
+      staffId: req.staffRecord?.id, staffName: req.staffRecord?.name, actorEmail: req.user?.email,
+    }, conn);
+
+    await conn.commit();
+    res.json({ ok: true, paymentId });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
   }
 });
 

@@ -155,6 +155,7 @@ interface SiteDataShape {
   reloadLectures: () => Promise<void>;
   reloadLeads: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;
+  reloadOrders: () => Promise<void>;
   logout: () => void;
   refreshAuth: () => void;
   triggerAutomation: (trigger: AutomationTrigger, data?: Record<string, unknown>) => void;
@@ -524,6 +525,35 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch { /* caller keeps current state on a transient refresh failure */ }
   }, []);
 
+  // Used after POST /api/admin/orders/:id/confirm-payment — that endpoint
+  // mutates status/linked_transfer_id server-side, so the client refetches
+  // rather than trying to hand-roll the same normalization as an optimistic
+  // update for a moderately complex financial state change.
+  const reloadOrders = React.useCallback(async () => {
+    try {
+      const fresh = await mysqlAdmin.listAllOrders();
+      const normalized = (fresh as unknown as Record<string, unknown>[]).map(r => ({
+        id: r.id as string,
+        subscriberId: (r.subscriberId ?? r.subscriber_id ?? undefined) as string | undefined,
+        type: (r.type as string || 'course') as 'course' | 'bundle' | 'consultation' | 'transfer',
+        itemId: (r.itemId ?? r.item_id ?? '') as string,
+        itemTitle: (r.itemTitle ?? r.item_title ?? '') as string,
+        amount: Number(r.amount) || 0,
+        currency: (r.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
+        paymentMethod: (r.paymentMethod ?? r.payment_method ?? 'wallet') as string,
+        customerName: (r.customerName ?? r.customer_name ?? '') as string,
+        customerEmail: (r.customerEmail ?? r.customer_email ?? '') as string,
+        status: (r.status || 'paid') as 'paid' | 'failed' | 'refunded' | 'pending',
+        createdAt: (r.createdAt ?? r.created_at ?? '') as string,
+        transactionId: (r.transactionId ?? r.transaction_id) as string | undefined,
+        staffId: (r.staffId ?? r.staff_id ?? undefined) as string | undefined,
+        staffName: (r.staffName ?? r.staff_name ?? undefined) as string | undefined,
+        linkedTransferId: (r.linkedTransferId ?? r.linked_transfer_id ?? undefined) as string | undefined,
+      }));
+      setOrders(normalized as unknown as OrderItem[]);
+    } catch { /* caller keeps current state on a transient refresh failure */ }
+  }, []);
+
   useEffect(() => {
     if (!authUser || isAdmin) return;
     setMySubscriberLoaded(false);
@@ -730,6 +760,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             transactionId: (r.transactionId ?? r.transaction_id) as string | undefined,
             staffId: (r.staffId ?? r.staff_id ?? undefined) as string | undefined,
             staffName: (r.staffName ?? r.staff_name ?? undefined) as string | undefined,
+            linkedTransferId: (r.linkedTransferId ?? r.linked_transfer_id ?? undefined) as string | undefined,
           }));
           setOrders(normalized as OrderItem[]);
         }
@@ -2655,6 +2686,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     reloadLectures,
     reloadLeads,
     reloadSubscribers,
+    reloadOrders,
     logout,
     refreshAuth,
     triggerAutomation,

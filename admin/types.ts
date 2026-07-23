@@ -546,6 +546,7 @@ export interface OrderItem {
   couponCode?: string;
   staffId?: string;    // Staff who processed / confirmed this order
   staffName?: string;  // Display name
+  linkedTransferId?: string; // set once a bank transfer has confirmed this order (or vice versa) — a transfer can only be linked once
   // Legacy / extra server fields (may be present on older records)
   courseId?: string;
   bundleId?: string;

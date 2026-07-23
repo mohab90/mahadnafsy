@@ -88,6 +88,7 @@ interface Props {
   updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => void;
   addOrder: (order: OrderItem) => void;
   deleteOrder: (id: string) => void;
+  reloadOrders: () => Promise<void>;
   exportFilteredOrdersCsv: () => void;
 }
 
@@ -114,11 +115,11 @@ export default function OrdersTab({
   linkOrderModal, setLinkOrderModal,
   transferForm, setTransferForm,
   currentStaff, authUser, content,
-  updateOrderStatus, addOrder, deleteOrder, exportFilteredOrdersCsv,
+  updateOrderStatus, addOrder, deleteOrder, reloadOrders, exportFilteredOrdersCsv,
 }: Props) {
   const navigate = useNavigate();
 
-  const handleConfirmOrder = (row: OrderItem) => {
+  const handleConfirmOrder = async (row: OrderItem) => {
     if (!isAdmin && currentStaff?.role !== 'manager') {
       notify('error', 'تأكيد المدفوعات للإدارة فقط.');
       return;
@@ -127,7 +128,13 @@ export default function OrdersTab({
       notify('error', 'لا يمكنك تأكيد دفعة قمت بتسجيلها أنت.');
       return;
     }
-    updateOrderStatus(row.id, 'paid');
+    try {
+      await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, {});
+      await reloadOrders();
+      notify('success', `✅ تم تأكيد دفعة ${row.customerName} بنجاح`);
+    } catch {
+      notify('error', 'تعذر تأكيد الدفعة — تحقق من أن الطلب لسه قيد المراجعة.');
+    }
   };
 
   // ── Online Manager view ──────────────────────────────────────────────────
@@ -959,11 +966,16 @@ export default function OrdersTab({
                               <div className="text-center py-8 text-gray-400 text-sm">لا توجد دفعات قيد المراجعة حالياً</div>
                             ) : pendingOrders.map(order => (
                               <button key={order.id}
-                                onClick={() => {
-                                  updateOrderStatus(order.id, 'paid');
-                                  notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
-                                  setLinkTransferModal(null);
-                                  setOrderReviewTab('accepted');
+                                onClick={async () => {
+                                  try {
+                                    await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
+                                    await reloadOrders();
+                                    notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
+                                    setLinkTransferModal(null);
+                                    setOrderReviewTab('accepted');
+                                  } catch {
+                                    notify('error', 'تعذر ربط التحويل — قد يكون مستخدَمًا بالفعل لطلب آخر.');
+                                  }
                                 }}
                                 className="w-full text-right border border-gray-200 hover:border-violet-400 hover:bg-violet-50 rounded-xl px-4 py-3 transition group">
                                 <div className="flex items-center justify-between gap-3">
@@ -996,7 +1008,8 @@ export default function OrdersTab({
                   ══════════════════════════════════════════ */}
                   {linkOrderModal && (() => {
                     const order = linkOrderModal.row;
-                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid');
+                    const usedTransferIds = new Set(effectiveOrders.map(r => r.linkedTransferId).filter(Boolean));
+                    const availableTransfers = effectiveOrders.filter(r => r.type === 'transfer' && r.status === 'paid' && !usedTransferIds.has(r.id));
                     return (
                       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" dir="rtl">
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLinkOrderModal(null)} />
@@ -1019,11 +1032,16 @@ export default function OrdersTab({
                               <div className="text-center py-8 text-gray-400 text-sm">لا توجد تحويلات متاحة — أضف تحويلاً أولاً من تبويب "التحويلات"</div>
                             ) : availableTransfers.map(transfer => (
                               <button key={transfer.id}
-                                onClick={() => {
-                                  updateOrderStatus(order.id, 'paid');
-                                  notify('success', `✅ تم ربط دفعة ${order.customerName} بتحويل ${transfer.customerName} وتأكيدها`);
-                                  setLinkOrderModal(null);
-                                  setOrderReviewTab('accepted');
+                                onClick={async () => {
+                                  try {
+                                    await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
+                                    await reloadOrders();
+                                    notify('success', `✅ تم ربط دفعة ${order.customerName} بتحويل ${transfer.customerName} وتأكيدها`);
+                                    setLinkOrderModal(null);
+                                    setOrderReviewTab('accepted');
+                                  } catch {
+                                    notify('error', 'تعذر ربط التحويل — قد يكون مستخدَمًا بالفعل لطلب آخر.');
+                                  }
                                 }}
                                 className="w-full text-right border border-gray-200 hover:border-violet-400 hover:bg-violet-50 rounded-xl px-4 py-3 transition group">
                                 <div className="flex items-center justify-between gap-3">
