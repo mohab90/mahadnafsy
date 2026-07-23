@@ -172,6 +172,11 @@ import {
 } from './dashboard/dashboardPaymentHandlers';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
+import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
+import { useLeadsDerived } from './dashboard/hooks/useLeadsDerived';
+import { useSubscribersDerived } from './dashboard/hooks/useSubscribersDerived';
+import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
+import { exportOrdersCsv, exportSubscribersCsv as exportSubscribersCsvHelper, exportLeadsCsv as exportLeadsCsvHelper } from './dashboard/dashboardExports';
 import {
   DashboardClientTabs,
   DashboardCommunityAdminPanel,
@@ -1187,106 +1192,19 @@ const Dashboard: React.FC = () => {
     [branchQueryFilter, effectiveOrders, effectiveSubs]
   );
 
-  const filteredSubscribers = useMemo(() => {
-    setSubscriberPage(1);
-    return branchFilteredEffectiveSubs.filter((row) => {
-      if (!isSalesOnly && !isAdmin && !isDaqqiManager && !isReceptionDaqqi && normBranchId(row.branch) === 'DAQQI') return false;
-      // Sales staff see only subscribers linked to their own leads
-      if (isSalesOnly && currentStaff) {
-        const myLeadIds = new Set(effectiveLeads.map(l => l.id));
-        const myEmails = new Set(effectiveLeads.map(l => l.email).filter(Boolean));
-        const linked = (row.leadId && myLeadIds.has(row.leadId)) || myEmails.has(row.email);
-        if (!linked) return false;
-      }
-      const isAbroad = normBranchId(row.branch) === 'ONLINE_SAUDI' || normBranchId(row.branch) === 'ONLINE_ABROAD';
-      if (subscriberSubTab === 'local' && isAbroad) return false;
-      if (subscriberSubTab === 'abroad' && !isAbroad) return false;
-      const sl = subscriberSearch.toLowerCase();
-      const searchDigits = subscriberSearch.replace(/\D/g, '');
-      const phoneDigitMatch = searchDigits.length >= 4
-        ? (row.phone || '').replace(/\D/g, '').includes(searchDigits)
-        : false;
-      const ms = !subscriberSearch
-        || row.name.toLowerCase().includes(sl)
-        || phoneDigitMatch
-        || (row.phone || '').includes(subscriberSearch)
-        || (row.email || '').toLowerCase().includes(sl);
-      const courseMatch = !subscriberCourseFilter || (() => {
-        const cids = row.enrolledCourseIds || [];
-        if (subscriberCourseFilter.startsWith('bundle:')) {
-          const bndId = subscriberCourseFilter.slice(7);
-          const bnd = bundles.find(b => b.id === bndId);
-          if (!bnd) return false;
-          return bnd.courses.every(co => cids.includes(co.id));
-        }
-        return cids.includes(subscriberCourseFilter);
-      })();
-      const salesMatch = isSalesOnly || subscriberSalesFilter === 'all' || (() => {
-        if (row.assignedSalesId === subscriberSalesFilter) return true;
-        if (!row.leadId) return false;
-        const lnkLead = effectiveLeads.find(l => l.id === row.leadId);
-        return lnkLead?.assignedSalesId === subscriberSalesFilter;
-      })();
-      // CS / collection filter
-      const csMatch = subscriberCsFilter === 'all' || row.assignedCsId === subscriberCsFilter;
-      // Installment due filter
-      const todayStr2 = new Date().toISOString().slice(0, 10);
-      const soon3Str = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-      const instMatch = !subscriberInstFilter || (() => {
-        const plans = row.installmentPlans || [];
-        const unpaid = plans.flatMap(p => (p.entries || []).filter(e => !e.paidAt));
-        if (subscriberInstFilter === 'overdue') return unpaid.some(e => e.dueDate < todayStr2);
-        if (subscriberInstFilter === 'soon') return unpaid.some(e => e.dueDate >= todayStr2 && e.dueDate <= soon3Str);
-        return true;
-      })();
-      // Remaining amount filter
-      const remainingMatch = !subscriberRemainingFilter || (() => {
-        const hist = row.paymentHistory || [];
-        const totalExpected = hist.filter(p => !p.isInstallment && p.courseExpected).reduce((s, p) => s + (p.courseExpected || 0), 0);
-        const totalPaid = hist.filter(p => !p.isInstallment && p.currency === 'EGP').reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        const remaining = Math.max(0, totalExpected - totalPaid);
-        return remaining >= Number(subscriberRemainingFilter);
-      })();
-      // Cert filter
-      const certMatch = !subscriberCertFilter || (() => {
-        const reqs = row.extraCertificateRequests || [];
-        const certs = row.certificates || [];
-        if (subscriberCertFilter === 'has') return reqs.length > 0 || certs.length > 0;
-        if (subscriberCertFilter === 'pending') return reqs.some(r => r.status === 'pending' || r.status === 'priced');
-        if (subscriberCertFilter === 'issued') return reqs.some(r => r.status === 'issued') || certs.length > 0;
-        return true;
-      })();
-      // Payment filter
-      const payMatch = !subscriberPayFilter || (() => {
-        if (subscriberPayFilter === 'pending') return (row.paymentHistory || []).some(p => p.status === 'pending');
-        return true;
-      })();
-      return ms && courseMatch && salesMatch && csMatch && instMatch && remainingMatch && certMatch && payMatch;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchFilteredEffectiveSubs, effectiveLeads, subscriberSearch, subscriberCourseFilter, subscriberSubTab, subscriberSalesFilter, isSalesOnly, currentStaff, bundles, subscriberCsFilter, subscriberInstFilter, subscriberRemainingFilter, subscriberCertFilter, subscriberPayFilter]);
-  const enabledConsultationTherapists = useMemo(
-    () => therapists.filter((row) => row.consultationSettings?.enabled),
-    [therapists]
+  const { filteredSubscribers, enabledConsultationTherapists, subscriberPaidTotalsMap, getSubscriberPaidTotals } = useSubscribersDerived(
+    branchFilteredEffectiveSubs, effectiveSubs, effectiveLeads, effectiveOrders, therapists, bundles,
+    isSalesOnly, isAdmin, isDaqqiManager, isReceptionDaqqi, currentStaff,
+    subscriberSubTab, subscriberSearch, subscriberCourseFilter, subscriberSalesFilter, subscriberCsFilter,
+    subscriberInstFilter, subscriberRemainingFilter, subscriberCertFilter, subscriberPayFilter, setSubscriberPage,
   );
   const grantSubscriber = grantSubscriberId ? subscribers.find((row) => row.id === grantSubscriberId) : undefined;
   const selectedConsultationTherapist = consultationDraft.therapistId
     ? therapists.find((row) => row.id === consultationDraft.therapistId)
     : therapists.find((row) => row.name === consultationDraft.therapistName);
-  const filteredOrders = useMemo(() => branchFilteredEffectiveOrders.filter((row) => {
-    const text = `${row.id} ${row.itemTitle} ${row.customerName} ${row.staffName || ''}`.toLowerCase();
-    const matchesSearch = text.includes(orderSearch.toLowerCase());
-    const matchesStatus = orderStatusFilter === 'all' || row.status === orderStatusFilter;
-    const matchesType = orderTypeFilter === 'all' || row.type === orderTypeFilter;
-    const matchesMethod = orderMethodFilter === 'all' || row.paymentMethod === orderMethodFilter;
-    const matchesStaff = orderStaffFilter === 'all' || (row.staffName || '') === orderStaffFilter;
-    const rowTime = new Date(row.createdAt.replace(' ', 'T')).getTime();
-    const fromTime = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`).getTime() : null;
-    const toTime = orderDateTo ? new Date(`${orderDateTo}T23:59:59`).getTime() : null;
-    const hasValidTime = !Number.isNaN(rowTime);
-    const matchesDate = hasValidTime && (fromTime === null || rowTime >= fromTime) && (toTime === null || rowTime <= toTime);
-    return matchesSearch && matchesStatus && matchesType && matchesMethod && matchesStaff && matchesDate;
-  }), [branchFilteredEffectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo]);
+  const { filteredOrders, ordersStats } = useOrdersDerived(
+    branchFilteredEffectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo,
+  );
 
   const handleConfirmOrder = (row: OrderItem) => {
     // Only admin (or manager) can confirm. Staff cannot confirm their own payment.
@@ -1300,22 +1218,6 @@ const Dashboard: React.FC = () => {
     }
     updateOrderStatus(row.id, 'paid');
   };
-  const ordersStats = useMemo(() => {
-    const paidOrders = branchFilteredEffectiveOrders.filter((row) => row.status === 'paid');
-    const revenueEGP = paidOrders.filter((r) => r.currency === 'EGP').reduce((a, r) => a + r.amount, 0);
-    const revenueSAR = paidOrders.filter((r) => r.currency === 'SAR').reduce((a, r) => a + r.amount, 0);
-    const revenueUSD = paidOrders.filter((r) => r.currency === 'USD').reduce((a, r) => a + r.amount, 0);
-    return {
-      total: branchFilteredEffectiveOrders.length,
-      paid: paidOrders.length,
-      failed: branchFilteredEffectiveOrders.filter((row) => row.status === 'failed').length,
-      refunded: branchFilteredEffectiveOrders.filter((row) => row.status === 'refunded').length,
-      revenueEGP,
-      revenueSAR,
-      revenueUSD,
-    };
-  }, [branchFilteredEffectiveOrders]);
-
   // -- Permission helpers -------------------------------------------------
   // Uses master resolvePermissions — single source of truth from admin/constants/permissions.ts
   const hasPermission = React.useCallback((perm: StaffPermission): boolean => {
@@ -1354,138 +1256,10 @@ const Dashboard: React.FC = () => {
 
   // normalizeAr defined at module level
 
-  // Helper: does an online25 lead have meaningful course data in notes?
-  const _online25HasCourse = (l: LeadItem) => {
-    if (l.source !== 'أونلاين 2025') return false;
-    const m = (l.notes || '').match(/(?:السعر|price)[:\s]+([^\n|]+)/);
-    const hasCourse = m && m[1].trim().length > 0;
-    const hasPrice = /(?:السعر|price)[:\s]+[\d.]+/.test(l.notes || '');
-    return hasCourse || hasPrice;
-  };
-
-  const filteredCourseLeads = useMemo(() => {
-    // Sales staff see ALL their assigned leads regardless of leadType or converted status
-    const base = isSalesOnly
-      ? effectiveLeads
-      : effectiveLeads
-          // Exclude online25 clients that already have course data (they live in the online25 tab)
-          .filter((l) => !_online25HasCourse(l))
-          .filter((l) => l.leadType === 'course' || l.leadType === 'general' || !l.leadType);
-    const filterStatuses = leadsStatusFilter.filter(s => s !== '__hidden__');
-    const showHidden = leadsStatusFilter.includes('__hidden__');
-    const result = base.filter((l) => {
-      const sl = _normalizeAr(leadsSearch);
-      const normPhone = leadsSearch.replace(/\D/g, '');
-      const ms = !leadsSearch
-        || _normalizeAr(l.name).includes(sl)
-        || (normPhone && (l.phone || '').replace(/\D/g, '').includes(normPhone))
-        || (l.phone || '').includes(leadsSearch)
-        || _normalizeAr(l.email).includes(sl)
-        || (l.clientCode || '').includes(leadsSearch);
-      const courseMatch = leadsCourseFilter === 'all' || (() => {
-        if (leadsCourseFilter.startsWith('bundle:')) {
-          const bid = leadsCourseFilter.slice(7);
-          const bndCourseIds = bundles.find(b => b.id === bid)?.courses.map((c: { id: string }) => c.id) || [];
-          return (l.interestedCourseIds || (l.enrolledCourseId ? [l.enrolledCourseId] : [])).some(id => bndCourseIds.includes(id));
-        }
-        return (l.interestedCourseIds || [l.enrolledCourseId]).filter(Boolean).includes(leadsCourseFilter);
-      })();
-      const fToday = new Date().toISOString().slice(0, 10);
-      const matchFollowup = leadsFollowupFilter === 'all'
-        ? true
-        : leadsFollowupFilter === 'today'
-          ? l.nextFollowUpDate === fToday
-          : !!(l.nextFollowUpDate && l.nextFollowUpDate < fToday && !['converted', 'lost'].includes(l.status));
-      // Status/hidden filter logic
-      let statusMatch: boolean;
-      if (isSalesOnly) {
-        statusMatch = filterStatuses.length === 0 ? true : (showHidden ? l.hidden === true : false) || filterStatuses.includes(l.status);
-      } else if (leadsStatusFilter.length === 0) {
-        // Default: hide converted + hidden
-        statusMatch = !l.hidden && l.status !== 'converted';
-      } else if (showHidden && filterStatuses.length === 0) {
-        statusMatch = l.hidden === true;
-      } else if (showHidden) {
-        statusMatch = l.hidden === true || (!l.hidden && filterStatuses.includes(l.status));
-      } else {
-        statusMatch = !l.hidden && filterStatuses.includes(l.status);
-      }
-      return ms && statusMatch
-        && (leadsBranchFilter === 'all' || normBranchId(l.branch) === normBranchId(leadsBranchFilter))
-        && (leadsSalesFilter === 'all' || l.assignedSalesId === leadsSalesFilter)
-        && courseMatch && matchFollowup;
-    });
-    // Newest first
-    return result.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }, [effectiveLeads, isSalesOnly, leadsSearch, leadsStatusFilter, leadsFollowupFilter, leadsBranchFilter, leadsSalesFilter, leadsCourseFilter, bundles]);
-
-  const filteredConsultLeads = useMemo(() => {
-    const base = effectiveLeads.filter((l) => l.leadType === 'consultation');
-    const result = base.filter((l) => {
-      const sl = _normalizeAr(leadsSearch);
-      const normPhone = leadsSearch.replace(/\D/g, '');
-      const ms = !leadsSearch
-        || _normalizeAr(l.name).includes(sl)
-        || (normPhone && (l.phone || '').replace(/\D/g, '').includes(normPhone))
-        || (l.phone || '').includes(leadsSearch)
-        || _normalizeAr(l.email).includes(sl)
-        || (l.clientCode || '').includes(leadsSearch);
-      const filterStatuses2 = leadsStatusFilter.filter(s => s !== '__hidden__');
-      const showHidden2 = leadsStatusFilter.includes('__hidden__');
-      let statusMatch2: boolean;
-      if (leadsStatusFilter.length === 0) {
-        statusMatch2 = !l.hidden && l.status !== 'converted';
-      } else if (showHidden2 && filterStatuses2.length === 0) {
-        statusMatch2 = l.hidden === true;
-      } else if (showHidden2) {
-        statusMatch2 = l.hidden === true || (!l.hidden && filterStatuses2.includes(l.status));
-      } else {
-        statusMatch2 = !l.hidden && filterStatuses2.includes(l.status);
-      }
-      return ms && statusMatch2
-        && (leadsBranchFilter === 'all' || normBranchId(l.branch) === normBranchId(leadsBranchFilter))
-        && (leadsSalesFilter === 'all' || l.assignedSalesId === leadsSalesFilter);
-    });
-    // Newest first
-    return result.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }, [effectiveLeads, leadsSearch, leadsStatusFilter, leadsBranchFilter, leadsSalesFilter]);
-
-  const filteredStaffList = useMemo(() =>
-    staffMembers.filter((s) => {
-      const sl = staffSearch.toLowerCase();
-      const ms = !staffSearch || s.name.toLowerCase().includes(sl) || (s.email || '').toLowerCase().includes(sl) || (s.phone || '').includes(staffSearch);
-      return ms && (staffRoleFilter === 'all' || s.role === staffRoleFilter);
-    }),
-  [staffMembers, staffSearch, staffRoleFilter]);
-
-  const leadsStats = useMemo(() => {
-    const base = effectiveLeads;
-    const total = base.length;
-    const newC = base.filter((l) => l.status === 'new').length;
-    const contacted = base.filter((l) => l.status === 'interested' || l.status === 'contacted').length;
-    const converted = base.filter((l) => l.status === 'converted').length;
-    return { total, newC, contacted, converted, rate: total > 0 ? Math.round((converted / total) * 100) : 0, courseCount: base.filter((l) => l.leadType === 'course').length };
-  }, [effectiveLeads]);
-
-  const salesStaff = useMemo(() => staffMembers.filter((s) => s.role === 'sales'), [staffMembers]);
-  const csStaff = useMemo(() => staffMembers.filter((s) => { const r = (s.role||'').toLowerCase(); return r === 'support' || r === 'collection'; }), [staffMembers]);
-
-  // -- Pre-computed maps for subscriber paid totals (avoid O(nÃ—m) in render) -
-  const subscriberPaidTotalsMap = useMemo(() => {
-    const map = new Map<string, { EGP: number; SAR: number; USD: number }>();
-    effectiveSubs.forEach(sub => {
-      const totals = { EGP: 0, SAR: 0, USD: 0 };
-      (sub.paymentHistory || []).forEach(p => { totals[p.currency] = (totals[p.currency] || 0) + (Number(p.amount) || 0); });
-      const normalizedName = sub.name.trim().toLowerCase();
-      effectiveOrders.forEach(order => {
-        if (order.status !== 'paid') return;
-        if (order.customerName.trim().toLowerCase() !== normalizedName) return;
-        totals[order.currency] = (totals[order.currency] || 0) + (Number(order.amount) || 0);
-      });
-      map.set(sub.id, totals);
-    });
-    return map;
-  }, [effectiveSubs, effectiveOrders]);
+  const { filteredCourseLeads, filteredConsultLeads, leadsStats, filteredStaffList, salesStaff, csStaff } = useLeadsDerived(
+    effectiveLeads, isSalesOnly, leadsSearch, leadsStatusFilter, leadsFollowupFilter, leadsBranchFilter, leadsSalesFilter, leadsCourseFilter, bundles,
+    staffMembers, staffSearch, staffRoleFilter,
+  );
 
   // -- Client DB base data: raw mapping + dedup (expensive, only changes when data changes) -
   const clientRawData = useMemo(() => {
@@ -1632,131 +1406,11 @@ const Dashboard: React.FC = () => {
     });
   }, [clientRawData, clientDbSearch, clientDbTypeFilter, clientDbBranchFilter, clientDbSalesFilter, clientDbCollectionFilter, clientDbCourseFilter, clientDbSort, bundles, consultations]);
 
-  // -- Overview stats (expensive O(nÃ—m), only recomputes when data changes) -
-  const overviewStats = useMemo(() => {
-    const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-    const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
-    const toEGP = (o: { currency: string; amount: number }) =>
-      o.currency === 'EGP' ? o.amount : o.currency === 'SAR' ? o.amount * sarRate : o.amount * usdRate;
-    const paidOrders = orders.filter(o => o.status === 'paid');
-    const totalRevenue = paidOrders.reduce((sum, o) => sum + toEGP(o), 0)
-      + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? []).filter(p => !p.isInstallment).reduce((ps, p) => ps + toEGP(p), 0), 0);
-    const leadsBySource: [string, number][] = (Object.entries(
-      leads.reduce((acc: Record<string, number>, l) => { const src = l.source || 'غير محدد'; acc[src] = (acc[src] || 0) + 1; return acc; }, {})
-    ) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    const courseEnrollments = courses.map(c => ({
-      id: c.id,
-      title: c.title.length > 26 ? c.title.slice(0, 26) + '…' : c.title,
-      count: subscribers.filter(s => (s.enrolledCourseIds || []).includes(c.id)).length,
-    })).sort((a, b) => b.count - a.count).slice(0, 6);
-    const consultsByStatus = consultations.reduce((acc: Record<string, number>, c) => { acc[c.status] = (acc[c.status] || 0) + 1; return acc; }, {});
-    const salesStatsCalc = staffMembers.filter(s => s.role === 'sales').map(s => {
-      const myLeads = leads.filter(l => l.assignedSalesId === s.id);
-      const converted = myLeads.filter(l => l.status === 'converted').length;
-      return { name: s.name, total: myLeads.length, converted, rate: myLeads.length > 0 ? Math.round((converted / myLeads.length) * 100) : 0 };
-    });
-    const seenIds = new Set<string>();
-    const recentLeads = [...leads]
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-      .filter(l => { if (seenIds.has(l.id)) return false; seenIds.add(l.id); return true; })
-      .slice(0, 5);
-    // Today stats
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const todayRevenue = paidOrders
-      .filter(o => (o.createdAt || '').slice(0, 10) === todayStr)
-      .reduce((sum, o) => sum + toEGP(o), 0)
-      + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
-        .filter(p => !p.isInstallment && (p.at || '').slice(0, 10) === todayStr)
-        .reduce((ps, p) => ps + toEGP(p), 0), 0);
-    const todayNewSubscribers = subscribers.filter(s => (s.createdAt || '').slice(0, 10) === todayStr).length;
-    const todayNewLeads = leads.filter(l => (l.createdAt || '').slice(0, 10) === todayStr).length;
-    const thisMonthStr = new Date().toISOString().slice(0, 7);
-    const monthRevenue = paidOrders
-      .filter(o => (o.createdAt || '').slice(0, 7) === thisMonthStr)
-      .reduce((sum, o) => sum + toEGP(o), 0)
-      + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
-        .filter(p => !p.isInstallment && (p.at || '').slice(0, 7) === thisMonthStr)
-        .reduce((ps, p) => ps + toEGP(p), 0), 0);
-    return { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue };
-  }, [orders, subscribers, leads, courses, staffMembers, consultations, content]);
+  const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content);
 
-  const getSubscriberPaidTotals = (row: typeof subscribers[number]) => {
-    const precomputed = subscriberPaidTotalsMap.get(row.id);
-    if (precomputed) return precomputed;
-    // Fallback: compute directly from paymentHistory (for sales staff whose subs aren't in context)
-    const totals: { EGP: number; SAR: number; USD: number } = { EGP: 0, SAR: 0, USD: 0 };
-    ((row as SubscriberItem).paymentHistory || []).forEach(p => {
-      const cur = (p.currency || 'EGP') as 'EGP' | 'SAR' | 'USD';
-      totals[cur] = (totals[cur] || 0) + (Number(p.amount) || 0);
-    });
-    return totals;
-  };
-
-  const exportFilteredOrdersCsv = () => {
-    if (filteredOrders.length === 0) return;
-
-    const escapeCsv = (value: string | number) => {
-      const raw = String(value ?? '');
-      const escaped = raw.replace(/"/g, '""');
-      return `"${escaped}"`;
-    };
-
-    const header = ['order_id', 'item_title', 'type', 'customer_name', 'payment_method', 'amount', 'currency', 'status', 'created_at'];
-    const rows = filteredOrders.map((row) => [
-      row.id,
-      row.itemTitle,
-      row.type,
-      row.customerName,
-      row.paymentMethod,
-      row.amount,
-      row.currency,
-      row.status,
-      row.createdAt,
-    ]);
-    const csv = [header, ...rows].map(r => r.map(escapeCsv).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportSubscribersCsv = () => {
-    if (subscribers.length === 0) return;
-    const escape = (v: string | number | undefined) => { const s = String(v ?? ''); return `"${s.replace(/"/g, '"""')}"`; };
-    const branchLabel = (b?: string) => branchLabelMap[b || ''] || b || '';
-    const header = ['معرف', 'الاسم', 'الهاتف', 'البريد', 'الفرع', 'الحالة', 'تاريخ التسجيل', 'الكورسات', 'عدد الكورسات', 'اسم السيلز', 'ملاحظات'];
-    const rows = subscribers.map(s => [
-      s.id, s.name, s.phone, s.email || '',
-      branchLabel(s.branch), s.status, s.createdAt?.slice(0, 10) || '',
-      (() => { const cIds = s.enrolledCourseIds || []; const cBnds = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => cIds.includes(co.id))); const hIds = new Set(cBnds.flatMap(b => b.courses.map(co => co.id))); return [...cBnds.map(b => b.title), ...cIds.filter(id => !hIds.has(id)).map(id => courses.find(c => c.id === id)?.title || id)].join(' | '); })(),
-      (s.enrolledCourseIds || []).length,
-      s.assignedSalesName || '', s.notes || '',
-    ]);
-    const csv = [header, ...rows].map(r => r.map(c => escape(c as string)).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  };
-
-  const exportLeadsCsv = () => {
-    const rows = leads;
-    if (rows.length === 0) return;
-    const escapeCsv = (v: string | number | undefined) => { const s = String(v ?? ''); return `"${s.replace(/"/g, '""')}"`; };
-    const header = ['id', 'name', 'phone', 'email', 'status', 'source', 'branch', 'leadType', 'assignedSalesName', 'createdAt', 'notes'];
-    const csvRows = rows.map(r => [r.id, r.name, r.phone, r.email, r.status, r.source, r.branch, r.leadType, r.assignedSalesName, r.createdAt, r.notes]);
-    const csv = [header, ...csvRows].map(line => line.map(c => escapeCsv(c as string)).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url; link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  };
+  const exportFilteredOrdersCsv = () => exportOrdersCsv(filteredOrders);
+  const exportSubscribersCsv = () => exportSubscribersCsvHelper(subscribers, bundles, courses, branchLabelMap);
+  const exportLeadsCsv = () => exportLeadsCsvHelper(leads);
 
   const saveInstituteGalleryImages = (images: string[]) => {
     setContentValue('institute.gallery.images', JSON.stringify(images, null, 2));
