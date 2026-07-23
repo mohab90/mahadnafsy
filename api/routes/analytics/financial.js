@@ -88,7 +88,13 @@ router.delete('/api/admin/recurring-expenses/:id', requireAuth, requireAdminOrSt
   try { await pool.query('DELETE FROM recurring_expenses WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-// Cron: auto-create expenses from recurring templates daily at 8 AM Cairo
+// Cron: auto-create expenses from recurring templates daily at 8 AM Cairo.
+// Only frequency='monthly' auto-fires — day_of_month + "not already run this
+// month" is the right trigger shape for a monthly cadence, but applying the
+// same check to weekly/quarterly/yearly items (CFG-03) would have posted a
+// real expense every month regardless of their actual cadence. Those
+// frequencies remain informational/manual until multi-cadence scheduling
+// is built.
 setInterval(async () => {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
   if (now.getHours() !== 8 || now.getMinutes() > 4) return;
@@ -98,7 +104,7 @@ setInterval(async () => {
   try {
     const [recs] = await pool.query(
       `SELECT id, tenant_id, title, amount_egp, category, notes, frequency, day_of_month, is_active, last_run, created_at, created_by
-       FROM recurring_expenses WHERE is_active=1 AND day_of_month=? AND (last_run IS NULL OR last_run < ?)`,
+       FROM recurring_expenses WHERE is_active=1 AND frequency='monthly' AND day_of_month=? AND (last_run IS NULL OR last_run < ?)`,
       [dom, monthStart]
     );
     let created = 0;
@@ -111,7 +117,7 @@ setInterval(async () => {
         const [[rec]] = await conn.query(
           `SELECT id, tenant_id, title, amount_egp, category, frequency, last_run
            FROM recurring_expenses
-           WHERE id=? AND tenant_id=? AND is_active=1 AND (last_run IS NULL OR last_run < ?)
+           WHERE id=? AND tenant_id=? AND is_active=1 AND frequency='monthly' AND (last_run IS NULL OR last_run < ?)
            FOR UPDATE`,
           [candidate.id, candidate.tenant_id, monthStart]
         );

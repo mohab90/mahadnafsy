@@ -1,35 +1,28 @@
-import React, { useMemo, useState } from 'react';
-import { RefreshCcw, Plus, Trash2, Edit2, Save, X, DollarSign, Calendar, Tag, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
-import type { ExpenseCategory } from '../../../types';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshCcw, Plus, Trash2, Edit2, Save, Calendar } from 'lucide-react';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
 type Frequency = 'monthly' | 'quarterly' | 'yearly' | 'weekly';
-type CurrencyCode = 'EGP' | 'SAR' | 'USD';
 
 interface RecurringItem {
   id: string;
-  name: string;
-  category: ExpenseCategory;
-  amount: number;
-  currency: CurrencyCode;
+  title: string;
+  amount_egp: number;
+  category: string;
+  notes: string | null;
   frequency: Frequency;
-  nextDue: string;
-  active: boolean;
-  notes?: string;
+  day_of_month: number;
+  is_active: boolean | number;
+  last_run: string | null;
+  created_at: string;
 }
-
-const LS_KEY = 'mahad_recurring_expenses_v1';
-function load(): RecurringItem[] {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
-}
-function save(items: RecurringItem[]) { localStorage.setItem(LS_KEY, JSON.stringify(items)); }
 
 const FREQ_LABELS: Record<Frequency, string> = { weekly: 'أسبوعي', monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
 const FREQ_MULTIPLIER: Record<Frequency, number> = { weekly: 52, monthly: 12, quarterly: 4, yearly: 1 };
-const CATEGORIES: ExpenseCategory[] = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'أخرى'];
+const CATEGORIES = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'أخرى'];
 
 const CAT_COLORS: Record<string, string> = {
   'رواتب': 'bg-blue-100 text-blue-700', 'تسويق': 'bg-purple-100 text-purple-700',
@@ -37,82 +30,88 @@ const CAT_COLORS: Record<string, string> = {
   'معدات': 'bg-gray-100 text-gray-700', 'أخرى': 'bg-pink-100 text-pink-700',
 };
 
-const TODAY = new Date().toISOString().slice(0, 10);
-
-// Seed default items if none
-function seedDefaults(): RecurringItem[] {
-  return [
-    { id: '1', name: 'اشتراك Firebase', category: 'برمجيات', amount: 500, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10), active: true },
-    { id: '2', name: 'إيجار المكتب', category: 'إيجار', amount: 8000, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10), active: true },
-    { id: '3', name: 'رواتب الفريق', category: 'رواتب', amount: 25000, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 25).toISOString().slice(0, 10), active: true },
-    { id: '4', name: 'إعلانات Meta', category: 'تسويق', amount: 3000, currency: 'EGP', frequency: 'monthly', nextDue: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10), active: true },
-    { id: '5', name: 'تجديد الدومين', category: 'برمجيات', amount: 800, currency: 'EGP', frequency: 'yearly', nextDue: new Date(new Date().getFullYear() + 1, new Date().getMonth(), 1).toISOString().slice(0, 10), active: true },
-  ];
-}
+type Draft = { title?: string; amount_egp?: number; category?: string; frequency?: Frequency; day_of_month?: number; notes?: string };
 
 const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
-  const { expenses } = useSiteData();
-  const [items, setItems] = useState<RecurringItem[]>(() => { const d = load(); return d.length > 0 ? d : seedDefaults(); });
+  const [items, setItems] = useState<RecurringItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [draft, setDraft] = useState<Partial<RecurringItem>>({});
+  const [draft, setDraft] = useState<Draft>({});
   const [filter, setFilter] = useState<string>('all');
 
-  React.useEffect(() => { save(items); }, [items]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await mysqlAdmin.adminGet<RecurringItem[]>('/admin/recurring-expenses');
+      setItems(Array.isArray(rows) ? rows : []);
+    } catch { notify('error', 'تعذّر تحميل المصروفات المتكررة'); }
+    finally { setLoading(false); }
+  }, [notify]);
+
+  useEffect(() => { load(); }, [load]);
 
   const format = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 
   const stats = useMemo(() => {
-    const active = items.filter(i => i.active);
-    const monthlyTotal = active.reduce((s, i) => s + (i.currency === 'EGP' ? i.amount * (FREQ_MULTIPLIER[i.frequency] / 12) : 0), 0);
+    const active = items.filter(i => i.is_active);
+    const monthlyTotal = active.reduce((s, i) => s + i.amount_egp * (FREQ_MULTIPLIER[i.frequency] / 12), 0);
     const yearlyTotal = monthlyTotal * 12;
-    const overdue = items.filter(i => i.active && i.nextDue < TODAY).length;
-    const dueSoon = items.filter(i => i.active && i.nextDue >= TODAY && i.nextDue <= new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)).length;
-    return { monthlyTotal, yearlyTotal, overdue, dueSoon, activeCount: active.length };
+    const today = new Date().getDate();
+    const dueSoon = active.filter(i => i.frequency === 'monthly' && i.day_of_month >= today && i.day_of_month <= today + 7).length;
+    return { monthlyTotal, yearlyTotal, dueSoon, activeCount: active.length };
   }, [items]);
 
-  const addItem = () => {
-    if (!draft.name?.trim() || !draft.amount) { notify('error', 'أدخل الاسم والمبلغ'); return; }
-    const item: RecurringItem = {
-      id: Date.now().toString(),
-      name: draft.name,
-      category: draft.category || 'أخرى',
-      amount: +draft.amount,
-      currency: draft.currency || 'EGP',
-      frequency: draft.frequency || 'monthly',
-      nextDue: draft.nextDue || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10),
-      active: true,
-      notes: draft.notes,
-    };
-    setItems(prev => [...prev, item]);
-    setDraft({});
-    setShowAdd(false);
-    notify('success', 'تم إضافة المصروف المتكرر');
+  const addItem = async () => {
+    if (!draft.title?.trim() || !draft.amount_egp) { notify('error', 'أدخل الاسم والمبلغ'); return; }
+    try {
+      await mysqlAdmin.adminPost('/admin/recurring-expenses', {
+        title: draft.title.trim(),
+        amount_egp: draft.amount_egp,
+        category: draft.category || 'أخرى',
+        frequency: draft.frequency || 'monthly',
+        day_of_month: draft.day_of_month || 1,
+        notes: draft.notes || null,
+      });
+      setDraft({});
+      setShowAdd(false);
+      notify('success', 'تم إضافة المصروف المتكرر');
+      load();
+    } catch { notify('error', 'فشل إضافة المصروف'); }
   };
 
-  const saveEdit = (id: string) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, ...draft } : i));
-    setEditingId(null);
-    setDraft({});
-    notify('success', 'تم الحفظ');
+  const saveEdit = async (id: string) => {
+    try {
+      await mysqlAdmin.adminPut(`/admin/recurring-expenses/${id}`, draft);
+      setEditingId(null);
+      setDraft({});
+      notify('success', 'تم الحفظ');
+      load();
+    } catch { notify('error', 'فشل الحفظ'); }
   };
 
-  const deleteItem = (id: string) => {
-    setItems(prev => prev.filter(i => i.id !== id));
-    notify('success', 'تم الحذف');
+  const deleteItem = async (id: string) => {
+    if (!window.confirm('حذف هذا المصروف المتكرر؟')) return;
+    try {
+      await mysqlAdmin.adminDelete(`/admin/recurring-expenses/${id}`);
+      notify('success', 'تم الحذف');
+      load();
+    } catch { notify('error', 'فشل الحذف'); }
   };
 
-  const toggleActive = (id: string) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, active: !i.active } : i));
+  const toggleActive = async (item: RecurringItem) => {
+    try {
+      await mysqlAdmin.adminPut(`/admin/recurring-expenses/${item.id}`, { is_active: item.is_active ? 0 : 1 });
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_active: item.is_active ? 0 : 1 } : i));
+    } catch { notify('error', 'فشل التحديث'); }
   };
 
-  const filtered = items.filter(i => filter === 'all' ? true : filter === 'active' ? i.active : filter === 'inactive' ? !i.active : i.category === filter);
+  const filtered = items.filter(i => filter === 'all' ? true : filter === 'active' ? !!i.is_active : filter === 'inactive' ? !i.is_active : i.category === filter);
 
-  // Monthly cost by category
   const byCat = useMemo(() => {
     const cats: Record<string, number> = {};
-    items.filter(i => i.active && i.currency === 'EGP').forEach(i => {
-      cats[i.category] = (cats[i.category] || 0) + i.amount * FREQ_MULTIPLIER[i.frequency] / 12;
+    items.filter(i => i.is_active).forEach(i => {
+      cats[i.category] = (cats[i.category] || 0) + i.amount_egp * FREQ_MULTIPLIER[i.frequency] / 12;
     });
     return Object.entries(cats).sort((a, b) => b[1] - a[1]);
   }, [items]);
@@ -126,19 +125,18 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2"><RefreshCcw size={22} /> المصروفات المتكررة</h2>
-            <p className="text-orange-200 text-sm mt-0.5">إدارة الالتزامات المالية الدورية</p>
+            <p className="text-orange-200 text-sm mt-0.5">إدارة الالتزامات المالية الدورية (مشتركة بين كل الموظفين)</p>
           </div>
-          <button onClick={() => { setShowAdd(true); setDraft({ frequency: 'monthly', currency: 'EGP', category: 'أخرى' }); }}
+          <button onClick={() => { setShowAdd(true); setDraft({ frequency: 'monthly', category: 'أخرى', day_of_month: 1 }); }}
             className="flex items-center gap-2 bg-white text-orange-700 font-bold px-4 py-2 rounded-xl hover:bg-orange-50 text-sm">
             <Plus size={16} /> إضافة مصروف
           </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
           {[
             { label: 'تكلفة شهرية', value: `${format(stats.monthlyTotal)} ج.م`, bg: 'bg-white/15' },
             { label: 'تكلفة سنوية', value: `${format(stats.yearlyTotal)} ج.م`, bg: 'bg-white/15' },
-            { label: 'مستحقة (متأخرة)', value: stats.overdue, bg: stats.overdue > 0 ? 'bg-red-500/30' : 'bg-white/10' },
-            { label: 'تستحق قريباً', value: stats.dueSoon, bg: stats.dueSoon > 0 ? 'bg-yellow-400/30' : 'bg-white/10' },
+            { label: 'تستحق قريباً (شهرية)', value: stats.dueSoon, bg: stats.dueSoon > 0 ? 'bg-yellow-400/30' : 'bg-white/10' },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
               <div className="text-xl font-black">{s.value}</div>
@@ -148,16 +146,20 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
         </div>
       </div>
 
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-xs">
+        <strong>ملاحظة:</strong> البنود ذات التكرار "شهري" فقط تُنشئ مصروفًا حقيقيًا تلقائيًا كل شهر (في اليوم المحدد). البنود الأسبوعية/ربع السنوية/السنوية للمتابعة والتخطيط فقط حاليًا ولا تُسجَّل تلقائيًا بعد.
+      </div>
+
       {/* Add form */}
       {showAdd && (
         <div className="bg-white border border-orange-200 rounded-2xl p-4 shadow-sm">
           <h3 className="font-bold text-gray-800 mb-3">إضافة مصروف متكرر</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <input value={draft.name || ''} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))}
+            <input value={draft.title || ''} onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
               placeholder="اسم المصروف *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-            <input type="number" value={draft.amount || ''} onChange={e => setDraft(p => ({ ...p, amount: +e.target.value }))}
-              placeholder="المبلغ *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-            <select value={draft.category || 'أخرى'} onChange={e => setDraft(p => ({ ...p, category: e.target.value as ExpenseCategory }))}
+            <input type="number" value={draft.amount_egp || ''} onChange={e => setDraft(p => ({ ...p, amount_egp: +e.target.value }))}
+              placeholder="المبلغ (ج.م) *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+            <select value={draft.category || 'أخرى'} onChange={e => setDraft(p => ({ ...p, category: e.target.value }))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -165,12 +167,11 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
               {Object.entries(FREQ_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
-            <select value={draft.currency || 'EGP'} onChange={e => setDraft(p => ({ ...p, currency: e.target.value as CurrencyCode }))}
-              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
-              <option value="EGP">EGP</option><option value="SAR">SAR</option><option value="USD">USD</option>
-            </select>
-            <input type="date" value={draft.nextDue || ''} onChange={e => setDraft(p => ({ ...p, nextDue: e.target.value }))}
-              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none" />
+            <input type="number" min={1} max={28} value={draft.day_of_month ?? 1} onChange={e => setDraft(p => ({ ...p, day_of_month: Math.min(28, Math.max(1, +e.target.value || 1)) }))}
+              placeholder="يوم الاستحقاق (1-28)" title="يوم الاستحقاق من الشهر"
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+            <input value={draft.notes || ''} onChange={e => setDraft(p => ({ ...p, notes: e.target.value }))}
+              placeholder="ملاحظات (اختياري)" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none" />
           </div>
           <div className="flex gap-3 mt-3">
             <button onClick={addItem} className="bg-orange-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-orange-700">إضافة</button>
@@ -212,30 +213,30 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
             ))}
           </div>
 
-          {filtered.map(item => {
+          {loading && <div className="text-center py-10 text-gray-400 text-sm">جاري التحميل...</div>}
+
+          {!loading && filtered.map(item => {
             const isEditing = editingId === item.id;
-            const isOverdue = item.active && item.nextDue < TODAY;
-            const isDueSoon = item.active && item.nextDue >= TODAY && item.nextDue <= new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-            const monthlyEq = item.currency === 'EGP' ? item.amount * FREQ_MULTIPLIER[item.frequency] / 12 : null;
+            const monthlyEq = item.amount_egp * FREQ_MULTIPLIER[item.frequency] / 12;
 
             return (
-              <div key={item.id} className={`bg-white border rounded-xl p-3 shadow-sm ${!item.active ? 'opacity-60' : isOverdue ? 'border-red-200' : isDueSoon ? 'border-amber-200' : 'border-gray-200'}`}>
+              <div key={item.id} className={`bg-white border rounded-xl p-3 shadow-sm ${!item.is_active ? 'opacity-60' : 'border-gray-200'}`}>
                 {isEditing ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
-                      <input value={draft.name || item.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))}
+                      <input value={draft.title ?? item.title} onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none" />
-                      <input type="number" value={draft.amount ?? item.amount} onChange={e => setDraft(p => ({ ...p, amount: +e.target.value }))}
+                      <input type="number" value={draft.amount_egp ?? item.amount_egp} onChange={e => setDraft(p => ({ ...p, amount_egp: +e.target.value }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none" />
-                      <select value={draft.category || item.category} onChange={e => setDraft(p => ({ ...p, category: e.target.value as ExpenseCategory }))}
+                      <select value={draft.category ?? item.category} onChange={e => setDraft(p => ({ ...p, category: e.target.value }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
                         {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                       </select>
-                      <select value={draft.frequency || item.frequency} onChange={e => setDraft(p => ({ ...p, frequency: e.target.value as Frequency }))}
+                      <select value={draft.frequency ?? item.frequency} onChange={e => setDraft(p => ({ ...p, frequency: e.target.value as Frequency }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
                         {Object.entries(FREQ_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </select>
-                      <input type="date" value={draft.nextDue || item.nextDue} onChange={e => setDraft(p => ({ ...p, nextDue: e.target.value }))}
+                      <input type="number" min={1} max={28} value={draft.day_of_month ?? item.day_of_month} onChange={e => setDraft(p => ({ ...p, day_of_month: Math.min(28, Math.max(1, +e.target.value || 1)) }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none" />
                     </div>
                     <div className="flex gap-2">
@@ -247,22 +248,21 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-gray-800 text-sm">{item.name}</span>
+                        <span className="font-bold text-gray-800 text-sm">{item.title}</span>
                         <span className={`text-xs px-1.5 py-0.5 rounded-full ${CAT_COLORS[item.category] || 'bg-gray-100 text-gray-600'}`}>{item.category}</span>
                         <span className="text-xs text-gray-400">{FREQ_LABELS[item.frequency]}</span>
-                        {isOverdue && <span className="text-xs text-red-600 font-bold">⚠️ متأخر!</span>}
-                        {isDueSoon && !isOverdue && <span className="text-xs text-amber-600">⏰ يستحق قريباً</span>}
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-                        <span className="font-bold text-gray-700">{item.amount.toLocaleString()} {item.currency}</span>
-                        {monthlyEq && <span className="text-gray-400">≈ {format(monthlyEq)} ج.م/شهر</span>}
-                        <span><Calendar size={10} className="inline ml-0.5" />{item.nextDue}</span>
+                        <span className="font-bold text-gray-700">{item.amount_egp.toLocaleString()} ج.م</span>
+                        <span className="text-gray-400">≈ {format(monthlyEq)} ج.م/شهر</span>
+                        {item.frequency === 'monthly' && <span><Calendar size={10} className="inline ml-0.5" />يوم {item.day_of_month} من كل شهر</span>}
+                        {item.last_run && <span>آخر تسجيل: {item.last_run.slice(0, 10)}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => toggleActive(item.id)}
-                        className={`text-xs px-2 py-0.5 rounded-lg border transition-colors ${item.active ? 'border-green-200 text-green-600 hover:bg-red-50' : 'border-gray-200 text-gray-400 hover:bg-green-50'}`}>
-                        {item.active ? '✅' : '⏸️'}
+                      <button onClick={() => toggleActive(item)}
+                        className={`text-xs px-2 py-0.5 rounded-lg border transition-colors ${item.is_active ? 'border-green-200 text-green-600 hover:bg-red-50' : 'border-gray-200 text-gray-400 hover:bg-green-50'}`}>
+                        {item.is_active ? '✅' : '⏸️'}
                       </button>
                       <button onClick={() => { setEditingId(item.id); setDraft({}); }} className="text-gray-400 hover:text-orange-500"><Edit2 size={13} /></button>
                       <button onClick={() => deleteItem(item.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
@@ -272,7 +272,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
               </div>
             );
           })}
-          {filtered.length === 0 && <div className="text-center py-10 text-gray-400 text-sm">لا مصروفات</div>}
+          {!loading && filtered.length === 0 && <div className="text-center py-10 text-gray-400 text-sm">لا مصروفات</div>}
         </div>
       </div>
     </div>
