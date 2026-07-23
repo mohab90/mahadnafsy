@@ -89,7 +89,7 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
         method: 'POST', credentials: 'include', headers: adminAuthHeaders(),
       });
       const data = await res.json();
-      if (res.ok) { notify('success', `تم الإرسال: ${data.totalCount} رسالة`); load(); }
+      if (res.ok) { notify('success', `تم الإرسال: ${data.queued} رسالة`); load(); }
       else notify('error', data.error || 'فشل الإرسال');
     } catch { notify('error', 'خطأ في الاتصال'); }
     setSending(null);

@@ -135,7 +135,7 @@ router.get('/api/community/library', async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'library'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT id, title, category, description, file_url, thumbnail, file_type, tags, created_at
+        `SELECT id, title, category, description, file_url, thumbnail, file_type, file_size, tags, created_at
          FROM community_library WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
         [req.tenantId]
       );
@@ -153,15 +153,19 @@ router.post('/api/admin/community/library', requireAuth, requireAdminOrStaff, re
   try {
     const l = req.body;
     const id = l.id || uuidv4();
-    const values = [l.title || '', l.category || 'general', l.description || '', l.fileUrl || l.file_url || '', l.thumbnail || null, l.fileType || l.file_type || 'pdf', JSON.stringify(l.tags || [])];
+    // Admin form (DashboardCommunityAdminPanel.tsx) sends downloadUrl and
+    // fileSize — added as aliases (downloadUrl alongside the pre-existing
+    // fileUrl/file_url; fileSize backed by the new file_size column) so
+    // neither is lost to a silent field-name/missing-column mismatch (MKT-12).
+    const values = [l.title || '', l.category || 'general', l.description || '', l.downloadUrl || l.fileUrl || l.file_url || '', l.thumbnail || null, l.fileType || l.file_type || 'pdf', l.fileSize || l.file_size || null, JSON.stringify(l.tags || [])];
     const [updated] = l.id ? await pool.query(
-      'UPDATE community_library SET title=?, category=?, description=?, file_url=?, thumbnail=?, file_type=?, tags=? WHERE tenant_id=? AND id=?',
+      'UPDATE community_library SET title=?, category=?, description=?, file_url=?, thumbnail=?, file_type=?, file_size=?, tags=? WHERE tenant_id=? AND id=?',
       [...values, req.tenantId, id]
     ) : [{ affectedRows: 0 }];
     if (l.id && !updated.affectedRows) return res.status(404).json({ error: 'Library item not found' });
     if (!l.id) await pool.query(
-      `INSERT INTO community_library (id, tenant_id, title, category, description, file_url, thumbnail, file_type, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO community_library (id, tenant_id, title, category, description, file_url, thumbnail, file_type, file_size, tags, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, ...values, l.createdAt || new Date().toISOString()]
     );
     invalidate(req, 'library');
@@ -189,7 +193,7 @@ router.get('/api/community/videos', async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'videos'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT id, title, category, description, video_url, thumbnail, duration, tags, created_at
+        `SELECT id, title, category, description, video_url, thumbnail, duration, views_label, tags, created_at
          FROM community_videos WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
         [req.tenantId]
       );
@@ -207,15 +211,16 @@ router.post('/api/admin/community/videos', requireAuth, requireAdminOrStaff, req
   try {
     const v = req.body;
     const id = v.id || uuidv4();
-    const values = [v.title || '', v.category || 'general', v.description || '', v.videoUrl || v.video_url || '', v.thumbnail || null, v.duration || '', JSON.stringify(v.tags || [])];
+    // views_label (MKT-14) had no matching DB column — added.
+    const values = [v.title || '', v.category || 'general', v.description || '', v.videoUrl || v.video_url || '', v.thumbnail || null, v.duration || '', v.viewsLabel || v.views_label || null, JSON.stringify(v.tags || [])];
     const [updated] = v.id ? await pool.query(
-      'UPDATE community_videos SET title=?, category=?, description=?, video_url=?, thumbnail=?, duration=?, tags=? WHERE tenant_id=? AND id=?',
+      'UPDATE community_videos SET title=?, category=?, description=?, video_url=?, thumbnail=?, duration=?, views_label=?, tags=? WHERE tenant_id=? AND id=?',
       [...values, req.tenantId, id]
     ) : [{ affectedRows: 0 }];
     if (v.id && !updated.affectedRows) return res.status(404).json({ error: 'Video not found' });
     if (!v.id) await pool.query(
-      `INSERT INTO community_videos (id, tenant_id, title, category, description, video_url, thumbnail, duration, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO community_videos (id, tenant_id, title, category, description, video_url, thumbnail, duration, views_label, tags, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, ...values, v.createdAt || new Date().toISOString()]
     );
     invalidate(req, 'videos');
@@ -244,7 +249,7 @@ router.get('/api/community/events', async (req, res) => {
     const data = await cached(cacheKey(req, 'events'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT id, title, category, description, image_url, event_date, date_label,
-         location_name, registration_url, is_online, tags, created_at
+         location_name, registration_url, is_online, speaker, event_type, platform, tags, created_at
          FROM community_events WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
         [req.tenantId]
       );
@@ -262,22 +267,24 @@ router.post('/api/admin/community/events', requireAuth, requireAdminOrStaff, req
   try {
     const ev = req.body;
     const id = ev.id || uuidv4();
+    // speaker/eventType/platform (MKT-13) had no matching DB columns — added.
     const values = [
       ev.title || '', ev.category || 'general', ev.description || '', ev.imageUrl || ev.image_url || null,
       ev.eventDate || ev.event_date || null, ev.dateLabel || ev.date_label || null,
       ev.location || ev.location_name || null, ev.registrationUrl || ev.registration_url || null,
-      ev.isOnline ? 1 : 0, JSON.stringify(ev.tags || []),
+      ev.isOnline ? 1 : 0, ev.speaker || null, ev.eventType || ev.event_type || null, ev.platform || null,
+      JSON.stringify(ev.tags || []),
     ];
     const [updated] = ev.id ? await pool.query(
       `UPDATE community_events SET title=?, category=?, description=?, image_url=?, event_date=?, date_label=?,
-       location_name=?, registration_url=?, is_online=?, tags=? WHERE tenant_id=? AND id=?`,
+       location_name=?, registration_url=?, is_online=?, speaker=?, event_type=?, platform=?, tags=? WHERE tenant_id=? AND id=?`,
       [...values, req.tenantId, id]
     ) : [{ affectedRows: 0 }];
     if (ev.id && !updated.affectedRows) return res.status(404).json({ error: 'Event not found' });
     if (!ev.id) await pool.query(
       `INSERT INTO community_events (id, tenant_id, title, category, description, image_url,
-         event_date, date_label, location_name, registration_url, is_online, tags, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         event_date, date_label, location_name, registration_url, is_online, speaker, event_type, platform, tags, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, req.tenantId, ...values, ev.createdAt || new Date().toISOString()]
     );
     invalidate(req, 'events');
