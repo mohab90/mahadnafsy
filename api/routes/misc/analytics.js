@@ -9,7 +9,7 @@ const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = re
 const express = require('express');
 const router = express.Router();
 const ROUTE_LOCAL_CRONS_ENABLED = false;
-const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
+const { sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
 router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -153,18 +153,6 @@ router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, r
       GROUP BY day ORDER BY day`, [req.tenantId]);
     res.json({ total: parseInt(total), failed: parseInt(failed), unique_ips: parseInt(unique_ips), suspicious, recentLogins, dailyActivity });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// Simpler approach: add a middleware that fires after login and logs
-router.use('/api/auth/login', (req, res, next) => {
-  const origJson = res.json.bind(res);
-  res.json = (body) => {
-    const status = body?.token ? 'success' : body?.requires2fa ? '2fa_pending' : 'failed';
-    const reason = body?.error || null;
-    logLogin(body?.userId || null, req.body?.email, req, status, reason).catch(() => {});
-    return origJson(body);
-  };
-  next();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
