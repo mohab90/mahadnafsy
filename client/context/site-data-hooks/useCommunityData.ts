@@ -29,6 +29,18 @@ export function useCommunityData(
     }
   };
 
+  // Customer edits to an EXISTING post (likes/comments engagement, or an actual content
+  // edit) must PATCH the real row by id — routing them through createCommunityPost (as
+  // persistCommunityPostToCollection does for brand-new posts) silently created a fresh
+  // duplicate pending post on every like/comment click instead (MKT-16).
+  const persistCommunityPostUpdate = (post: CommunityPostItem) => {
+    if (isAdmin) {
+      void mysqlAdmin.saveCommunityPost(post as unknown as Record<string, unknown>).catch(() => {});
+    } else {
+      void mysqlClient.updateCommunityPost(post.id, post as unknown as Record<string, unknown>).catch(() => {});
+    }
+  };
+
   const persistCommunityLibraryItemToCollection = (item: CommunityLibraryItem) => {
     void mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string, unknown>).catch(() => {});
   };
@@ -49,13 +61,20 @@ export function useCommunityData(
 
   const updateCommunityPost = (item: CommunityPostItem) => {
     setCommunityPosts((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityPostToCollection(item);
+    persistCommunityPostUpdate(item);
     track('update', 'community_post', item.title);
   };
 
   const deleteCommunityPost = (id: string) => {
     setCommunityPosts((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityPost(id).catch(() => {});
+    // Only admins may hit the admin-only delete endpoint (manage_community permission) —
+    // routing a customer's own-post deletion there used to 403 while the UI optimistically
+    // removed it anyway, so the post silently reappeared on the next reload (MKT-16).
+    if (isAdmin) {
+      void mysqlAdmin.deleteCommunityPost(id).catch(() => {});
+    } else {
+      void mysqlClient.deleteCommunityPost(id).catch(() => {});
+    }
     track('delete', 'community_post', id);
   };
 

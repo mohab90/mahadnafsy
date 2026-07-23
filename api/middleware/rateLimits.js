@@ -112,6 +112,16 @@ const connectorDiagnosticLimiter = rateLimit({
   handler: tooMany('تم تجاوز حد اختبارات الربط. انتظر 10 دقائق وحاول مرة أخرى.'),
 });
 
+const communityPostLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.tenantId || 'tenant-default'}:${req.user?.uid || req.user?.email || ipKeyGenerator(req.ip)}`,
+  validate: { ip: false },
+  handler: tooMany('عدد كبير من المشاركات، انتظر قليلاً وحاول مرة أخرى'),
+});
+
 module.exports = {
   adminLimiter,
   loginLimiter,
@@ -123,4 +133,5 @@ module.exports = {
   contactLimiter,
   whatsappSendLimiter,
   connectorDiagnosticLimiter,
+  communityPostLimiter,
 };

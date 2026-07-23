@@ -7,6 +7,13 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { communityPostLimiter } = require('../middleware/rateLimits');
+
+const findOwnSubscriber = (req) => pool.query(
+  `SELECT id, name FROM subscribers
+   WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?))) LIMIT 1`,
+  [req.tenantId, req.user?.uid || '', req.user?.email || '']
+).then(([[row]]) => row);
 
 const cacheKey = (req, resource) => `community:${req.tenantId || 'tenant-default'}:${resource}:public`;
 const invalidate = (req, resource) => cacheInvalidate(`community:${req.tenantId || 'tenant-default'}:${resource}`);
@@ -59,16 +66,12 @@ router.get('/api/community/posts', async (req, res) => {
 });
 
 // Customer-created post → saved as PENDING for admin review. Any authenticated subscriber may post.
-router.post('/api/community/posts', requireAuth, async (req, res) => {
+router.post('/api/community/posts', requireAuth, communityPostLimiter, async (req, res) => {
   try {
     const p = req.body || {};
     if (!p.title?.trim() || !p.body?.trim()) return res.status(400).json({ error: 'title and body are required' });
     const id = uuidv4();
-    const [[subscriber]] = await pool.query(
-      `SELECT id, name FROM subscribers
-       WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?))) LIMIT 1`,
-      [req.tenantId, req.user?.uid || '', req.user?.email || '']
-    );
+    const subscriber = await findOwnSubscriber(req);
     if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
     await pool.query(
       `INSERT INTO community_posts (id, tenant_id, title, category, body, author, author_role, subscriber_id, image_url, tags, featured, pinned, likes, status, created_at)
@@ -82,6 +85,68 @@ router.post('/api/community/posts', requireAuth, async (req, res) => {
     );
     invalidate(req, 'posts');
     res.json({ ok: true, id, status: 'pending' });
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Customer edit of THEIR OWN post (MKT-16). Editing title/body/category resends the
+// post to moderation (status → pending); an engagement-only update (likes) leaves the
+// current status untouched so liking an approved post doesn't hide it from the feed.
+// Note: comments/commentsList are NOT persisted — community_posts has no such column,
+// so the client's comment feature is currently session-local only.
+router.patch('/api/community/posts/:id', requireAuth, async (req, res) => {
+  try {
+    const subscriber = await findOwnSubscriber(req);
+    if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
+    const [[existing]] = await pool.query(
+      'SELECT title, category, body, subscriber_id, likes FROM community_posts WHERE tenant_id=? AND id=?',
+      [req.tenantId, req.params.id]
+    );
+    if (!existing) return res.status(404).json({ error: 'Post not found' });
+    if (existing.subscriber_id !== subscriber.id) return res.status(403).json({ error: 'Not your post' });
+
+    const p = req.body || {};
+    const nextTitle = p.title != null ? String(p.title).trim().slice(0, 200) : existing.title;
+    const nextCategory = p.tag || p.category || existing.category;
+    const nextBody = p.body != null ? String(p.body).trim().slice(0, 5000) : existing.body;
+    const nextLikes = Number.isFinite(p.likes) ? Math.max(0, Math.trunc(p.likes)) : existing.likes;
+    const contentChanged = nextTitle !== existing.title || nextCategory !== existing.category || nextBody !== existing.body;
+
+    if (contentChanged) {
+      await pool.query(
+        'UPDATE community_posts SET title=?, category=?, body=?, likes=?, status=\'pending\' WHERE tenant_id=? AND id=?',
+        [nextTitle, nextCategory, nextBody, nextLikes, req.tenantId, req.params.id]
+      );
+    } else {
+      await pool.query(
+        'UPDATE community_posts SET title=?, category=?, body=?, likes=? WHERE tenant_id=? AND id=?',
+        [nextTitle, nextCategory, nextBody, nextLikes, req.tenantId, req.params.id]
+      );
+    }
+    invalidate(req, 'posts');
+    res.json({ ok: true, status: contentChanged ? 'pending' : undefined });
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Customer delete of THEIR OWN post (MKT-16). Previously the client's delete button
+// called the admin-only DELETE endpoint, which 403'd for regular subscribers while the
+// UI still optimistically removed the post locally — it silently reappeared on reload.
+router.delete('/api/community/posts/:id', requireAuth, async (req, res) => {
+  try {
+    const subscriber = await findOwnSubscriber(req);
+    if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
+    const [result] = await pool.query(
+      'DELETE FROM community_posts WHERE tenant_id=? AND id=? AND subscriber_id=?',
+      [req.tenantId, req.params.id, subscriber.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Post not found' });
+    invalidate(req, 'posts');
+    res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });

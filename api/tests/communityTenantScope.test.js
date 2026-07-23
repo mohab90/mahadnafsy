@@ -39,3 +39,16 @@ test('forum detail, upvote and moderation are tenant-bound and transactional', (
   assert.match(forumWindow, /commit\(\)/);
   assert.match(forumWindow, /rollback\(\)/);
 });
+
+test('customer post creation is rate limited (MKT-16)', () => {
+  assert.match(community, /router\.post\('\/api\/community\/posts',\s*requireAuth,\s*communityPostLimiter/);
+});
+
+test('customer PATCH/DELETE of a community post check subscriber ownership before mutating (MKT-16)', () => {
+  const patchWindow = community.slice(community.indexOf("router.patch('/api/community/posts/:id'"), community.indexOf("router.delete('/api/community/posts/:id'"));
+  assert.match(patchWindow, /existing\.subscriber_id !== subscriber\.id/);
+  assert.match(patchWindow, /WHERE tenant_id=\? AND id=\?/);
+
+  const deleteWindow = community.slice(community.indexOf("router.delete('/api/community/posts/:id'"), community.indexOf("// Community Library"));
+  assert.match(deleteWindow, /DELETE FROM community_posts WHERE tenant_id=\? AND id=\? AND subscriber_id=\?/);
+});

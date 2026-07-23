@@ -101,6 +101,11 @@ export const mysqlClient = {
   // Community — customer-created post (saved as pending for admin review)
   createCommunityPost: (o: AR) =>
     apiFetch<{ ok: boolean; id: string; status: string }>('/community/posts', { method: 'POST', body: JSON.stringify(o) }, true),
+  // Community — customer edit/delete of THEIR OWN post (MKT-16)
+  updateCommunityPost: (id: string, o: AR) =>
+    apiFetch<{ ok: boolean; status?: string }>(`/community/posts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(o) }, true),
+  deleteCommunityPost: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/community/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }, true),
   // Certificate request — writes to the certificate_requests table (single source of truth)
   createCertificateRequest: (o: AR) =>
     apiFetch<{ ok: boolean; id: string; status: string; price: number | null; currency: 'EGP' | 'SAR' | 'USD' | null }>('/me/certificate-request', { method: 'POST', body: JSON.stringify(o) }, true),
