@@ -15,6 +15,7 @@ const { logLeadEvent } = require('../lib/crm');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { branchIdForBranch } = require('../lib/branches');
+const { getNextSalesRep } = require('../lib/leadAssignment');
 const { JWT_SECRET, JWT_EXPIRY, revokeToken } = require('../lib/token');
 const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
@@ -102,13 +103,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
       } else {
         const leadId = uuidv4();
         createdLeadId = leadId;
-        const [[salesRep]] = await conn.execute(
-          `SELECT s.id, s.name FROM staff s
-           LEFT JOIN leads l ON l.assigned_sales_id=s.id AND l.tenant_id=? AND l.hidden=0
-           WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
-           GROUP BY s.id, s.name ORDER BY COUNT(l.id) ASC, s.name ASC LIMIT 1`,
-          [tenantId, tenantId]
-        );
+        const salesRep = await getNextSalesRep(tenantId, conn);
         await conn.execute(
           `INSERT INTO leads
              (id, tenant_id, client_code, name, email, phone, source, status, hidden,

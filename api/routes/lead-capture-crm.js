@@ -15,6 +15,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middlewar
 const { publicLimiter } = require('../middleware/rateLimits');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
+const { getNextSalesRep } = require('../lib/leadAssignment');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -62,13 +63,7 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     let salesId = existing?.assigned_sales_id || null;
     let salesName = existing?.assigned_sales_name || null;
     if (!salesId) {
-      const [[rep]] = await conn.query(
-        `SELECT s.id, s.name FROM staff s
-         LEFT JOIN leads l ON l.assigned_sales_id=s.id AND l.tenant_id=? AND l.hidden=0
-         WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
-         GROUP BY s.id, s.name ORDER BY COUNT(l.id) ASC, s.name ASC LIMIT 1`,
-        [tenantId, tenantId]
-      );
+      const rep = await getNextSalesRep(tenantId, conn);
       salesId = rep?.id || null;
       salesName = rep?.name || null;
     }
@@ -147,12 +142,7 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     let code = null;
     try { code = await getNextClientCode(conn); } catch (_) {}
-    const [[rep]] = await conn.query(
-      `SELECT s.id,s.name FROM staff s
-       LEFT JOIN leads l ON l.tenant_id=s.tenant_id AND l.assigned_sales_id=s.id AND l.hidden=0
-       WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
-       GROUP BY s.id,s.name ORDER BY COUNT(l.id),s.name LIMIT 1`, [tenantId]
-    );
+    const rep = await getNextSalesRep(tenantId, conn);
     const normalizedBranch = normalizeBranch(branch, 'OTHER');
     await conn.execute(
       `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)

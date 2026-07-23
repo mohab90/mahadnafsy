@@ -43,18 +43,35 @@ function cleanLegacyLeadText(value) {
 
 
 router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+  const l = req.body;
+  const tenantId = req.tenantId;
+  // Lock by phone (the actual duplicate-detection key) so two concurrent
+  // creates for the same number can't both pass the "does this exist?"
+  // check before either INSERT lands — the exact race the public capture
+  // routes already guard against with the same GET_LOCK pattern. Falls back
+  // to the request's own id for updates, where the FOR UPDATE row lock below
+  // is the real guard and this is just a lightweight serialization aid.
+  const rawPhone = String(l.phone || '').replace(/[^\d+\-\s()]/g, '').trim();
+  const lockKey = `admin-lead:${crypto.createHash('sha256').update(`${tenantId}:${rawPhone || l.id || ''}`).digest('hex').slice(0, 40)}`;
+  let conn;
+  let lockAcquired = false;
   try {
-    const l = req.body;
-    const tenantId = req.tenantId;
+    conn = await pool.getConnection();
+    const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [lockKey]);
+    lockAcquired = Number(lock?.acquired) === 1;
+    if (!lockAcquired) return res.status(409).json({ error: 'Lead save is already being processed' });
+    await conn.beginTransaction();
+
     const requestedId = l.id ? String(l.id) : null;
-    const [[existing]] = requestedId ? await pool.query(
-      'SELECT status, crm_json, assigned_sales_id FROM leads WHERE id=? AND tenant_id=? LIMIT 1',
+    const [[existing]] = requestedId ? await conn.query(
+      'SELECT status, crm_json, assigned_sales_id FROM leads WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [requestedId, tenantId]
     ) : [[null]];
     const id = existing ? requestedId : uuidv4();
     // SALES staff can only update their OWN assigned leads (not reassign to others)
     if (req.staffRecord?.role === 'SALES') {
       if (existing && existing.assigned_sales_id !== req.staffRecord.id) {
+        await conn.rollback();
         return res.status(403).json({ error: 'غير مصرح: يمكنك فقط تعديل الليدز المعيّنة لك' });
       }
     }
@@ -73,38 +90,46 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     // Only check for duplicate phone when CREATING a new lead (not updating)
     if (isNew && safePhone) {
       // Check against subscribers first (phone already enrolled)
-      const [[existSub]] = await pool.query(
+      const [[existSub]] = await conn.query(
         'SELECT id, name, client_code FROM subscribers WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, safePhone]
       );
-      if (existSub) return res.status(409).json({
-        error: `رقم الهاتف ${safePhone} مسجل بالفعل كمشترك (${existSub.name || ''})`,
-        existingId: existSub.id,
-        existingCode: existSub.client_code,
-        type: 'subscriber',
-      });
-      const [[existLead]] = await pool.query(
+      if (existSub) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: `رقم الهاتف ${safePhone} مسجل بالفعل كمشترك (${existSub.name || ''})`,
+          existingId: existSub.id,
+          existingCode: existSub.client_code,
+          type: 'subscriber',
+        });
+      }
+      const [[existLead]] = await conn.query(
         'SELECT id, name FROM leads WHERE tenant_id=? AND phone=? AND id != ? AND hidden=0 LIMIT 1', [tenantId, safePhone, id]
       );
-      if (existLead) return res.status(409).json({
-        error: `رقم الهاتف ${safePhone} مسجل بالفعل في العملاء المحتملين (${existLead.name || ''})`,
-        existingId: existLead.id,
-        type: 'lead',
-      });
+      if (existLead) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: `رقم الهاتف ${safePhone} مسجل بالفعل في العملاء المحتملين (${existLead.name || ''})`,
+          existingId: existLead.id,
+          type: 'lead',
+        });
+      }
     }
     // Check for duplicate email on new lead
     if (isNew && safeEmail) {
-      const [[existByEmail]] = await pool.query(
+      const [[existByEmail]] = await conn.query(
         'SELECT id, name FROM leads WHERE tenant_id=? AND email=? AND id != ? AND hidden=0 LIMIT 1', [tenantId, safeEmail, id]
       );
-      if (existByEmail) return res.status(409).json({
-        error: `البريد الإلكتروني مسجل بالفعل (${existByEmail.name || ''})`,
-        existingId: existByEmail.id,
-      });
+      if (existByEmail) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: `البريد الإلكتروني مسجل بالفعل (${existByEmail.name || ''})`,
+          existingId: existByEmail.id,
+        });
+      }
     }
     // Auto-generate client_code for new leads
     if (isNew && !code) {
-      const conn2 = await pool.getConnection();
-      try { code = await getNextClientCode(conn2); } catch { /* ignore */ } finally { conn2.release(); }
+      try { code = await getNextClientCode(conn); } catch { /* ignore */ }
     }
     // Auto-assign to sales on new lead if not already assigned
     let salesId   = crmData.assignedSalesId   || null;
@@ -158,7 +183,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       ? JSON.stringify(crmData.interestedCourseIds) : null;
 
     if (isNew) {
-      await pool.query(
+      await conn.query(
         `INSERT INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, hidden,
            assigned_sales_id, assigned_sales_name, crm_json, branch, client_type, interested_course_ids_json)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -166,7 +191,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
          safeNotes||null, hidden||0, salesId, salesName, JSON.stringify(crmToStore), branchVal, leadClientTypeVal, courseIdsJson]
       );
     } else {
-      const [updated] = await pool.query(
+      const [updated] = await conn.query(
         `UPDATE leads SET name=?, notes=COALESCE(?,notes), client_code=COALESCE(client_code,?),
            assigned_sales_id=COALESCE(?,assigned_sales_id), assigned_sales_name=COALESCE(?,assigned_sales_name),
            crm_json=?, branch=COALESCE(NULLIF(?,''),branch), client_type=COALESCE(?,client_type),
@@ -175,13 +200,17 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         [safeName||'', safeNotes||null, code, salesId, salesName,
          JSON.stringify(crmToStore), branchVal, leadClientTypeVal, courseIdsJson, id, tenantId]
       );
-      if (!updated.affectedRows) return res.status(404).json({ error: 'Lead not found' });
+      if (!updated.affectedRows) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Lead not found' });
+      }
     }
     let statusTransitionLogged = false;
     if (!isNew && String(prevStatus || '').toLowerCase() !== normalizedRequestedStatus) {
       const transition = await transitionLead({
         tenantId, leadId: id, toStatus: normalizedRequestedStatus,
         actor: req.user?.email || req.staffRecord?.name || null,
+        db: conn,
       });
       statusTransitionLogged = transition.changed;
     }
@@ -191,53 +220,66 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       crmData.communications, crmData.nextFollowUpDate, crmData.interestedCourseIds,
       crmData.createdAt || new Date().toISOString()
     );
-    await pool.query('UPDATE leads SET score=? WHERE id=? AND tenant_id=?', [newScore, id, tenantId]);
+    await conn.query('UPDATE leads SET score=? WHERE id=? AND tenant_id=?', [newScore, id, tenantId]);
 
     // ── Log timeline events ────────────────────────────────────────────────
     const normalizedNew = normalizedRequestedStatus;
     const normalizedPrev = (prevStatus || '').toLowerCase();
+    // Deferred until after commit — fire-and-forget, must not run against a
+    // connection whose transaction might still roll back.
+    const postCommitNotifications = [];
     if (isNew) {
-      await logLeadEvent(id, 'created', `تم إضافة الليد من: ${source || 'غير محدد'}`, { source, status: normalizedNew, name, phone }, tenantId);
-      if (salesId) await logLeadEvent(id, 'assigned', `تعيين تلقائي للمبيعات: ${salesName || salesId}`, { salesId, salesName, auto: true }, tenantId);
+      await logLeadEvent(id, 'created', `تم إضافة الليد من: ${source || 'غير محدد'}`, { source, status: normalizedNew, name, phone }, tenantId, conn);
+      if (salesId) await logLeadEvent(id, 'assigned', `تعيين تلقائي للمبيعات: ${salesName || salesId}`, { salesId, salesName, auto: true }, tenantId, conn);
       // Automation #4: Auto-set follow-up date to +2 days if none specified
       if (!crmData.nextFollowUpDate) {
         const followUpDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        await pool.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND next_follow_up_date IS NULL', [followUpDate, id, tenantId]);
-        await logLeadEvent(id, 'followup_set', `موعد متابعة تلقائي: ${followUpDate}`, { date: followUpDate, auto: true }, tenantId);
+        await conn.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND next_follow_up_date IS NULL', [followUpDate, id, tenantId]);
+        await logLeadEvent(id, 'followup_set', `موعد متابعة تلقائي: ${followUpDate}`, { date: followUpDate, auto: true }, tenantId, conn);
       }
       // Notify assigned sales staff (or all admins) of new lead
-      createNotification('lead', '📋 ليد جديد',
+      postCommitNotifications.push(() => createNotification('lead', '📋 ليد جديد',
         `${safeName || 'مجهول'} — ${safeSource || 'بدون مصدر'}${safePhone ? ' | ' + safePhone : ''}`,
         { leadId: id, assignedSalesId: salesId }, tenantId
-      ).catch(() => {});
+      ));
     } else {
       // Status changed?
       if (normalizedPrev && normalizedPrev !== normalizedNew && !statusTransitionLogged) {
         const STATUS_AR = { new:'جديد', contacted:'تم التواصل', interested:'مهتم', not_interested:'غير مهتم', no_answer:'لا جواب', closed:'مغلق', converted:'تحوّل لعميل', lost:'خسرنا' };
-        await logLeadEvent(id, 'status_changed', `تغيير الحالة: ${STATUS_AR[normalizedPrev] || normalizedPrev} ← ${STATUS_AR[normalizedNew] || normalizedNew}`, { from: normalizedPrev, to: normalizedNew }, tenantId);
+        await logLeadEvent(id, 'status_changed', `تغيير الحالة: ${STATUS_AR[normalizedPrev] || normalizedPrev} ← ${STATUS_AR[normalizedNew] || normalizedNew}`, { from: normalizedPrev, to: normalizedNew }, tenantId, conn);
       }
       // New communication added?
       if (newCommCount > prevCommCount) {
         const added = (crmData.communications || []).slice(-1)[0];
         const TYPE_AR = { call:'مكالمة', whatsapp:'واتساب', email:'إيميل', meeting:'اجتماع', note:'ملاحظة', payment_followup:'متابعة دفع', new_course_sale:'بيع كورس', certificate:'شهادة' };
-        await logLeadEvent(id, 'communication', `تواصل جديد: ${TYPE_AR[added?.type] || added?.type || '؟'}${added?.notes ? ' — ' + added.notes.slice(0, 80) : ''}`, { type: added?.type, notes: added?.notes, outcome: added?.outcome }, tenantId);
+        await logLeadEvent(id, 'communication', `تواصل جديد: ${TYPE_AR[added?.type] || added?.type || '؟'}${added?.notes ? ' — ' + added.notes.slice(0, 80) : ''}`, { type: added?.type, notes: added?.notes, outcome: added?.outcome }, tenantId, conn);
       }
       // Assignment changed?
       if (crmData.assignedSalesId && crmData.assignedSalesId !== prevCrm.assignedSalesId) {
-        await logLeadEvent(id, 'assigned', `تعيين لـ: ${crmData.assignedSalesName || crmData.assignedSalesId}`, { salesId: crmData.assignedSalesId, salesName: crmData.assignedSalesName }, tenantId);
-        createNotification('lead', '👤 تعيين ليد',
+        await logLeadEvent(id, 'assigned', `تعيين لـ: ${crmData.assignedSalesName || crmData.assignedSalesId}`, { salesId: crmData.assignedSalesId, salesName: crmData.assignedSalesName }, tenantId, conn);
+        postCommitNotifications.push(() => createNotification('lead', '👤 تعيين ليد',
           `${safeName || 'ليد'} تم تعيينه لـ: ${crmData.assignedSalesName || crmData.assignedSalesId}`,
           { leadId: id, assignedSalesId: crmData.assignedSalesId, assignedSalesName: crmData.assignedSalesName }, tenantId
-        ).catch(() => {});
+        ));
       }
       // Follow-up date set/changed?
       if (crmData.nextFollowUpDate && crmData.nextFollowUpDate !== prevCrm.nextFollowUpDate) {
-        await logLeadEvent(id, 'followup_set', `موعد متابعة: ${crmData.nextFollowUpDate}`, { date: crmData.nextFollowUpDate }, tenantId);
+        await logLeadEvent(id, 'followup_set', `موعد متابعة: ${crmData.nextFollowUpDate}`, { date: crmData.nextFollowUpDate }, tenantId, conn);
       }
     }
 
+    await conn.commit();
+    for (const fire of postCommitNotifications) fire().catch(() => {});
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+  } catch (e) {
+    if (conn) await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message); sendRouteError(res, e);
+  } finally {
+    if (conn) {
+      if (lockAcquired) await conn.query('SELECT RELEASE_LOCK(?)', [lockKey]).catch(() => {});
+      conn.release();
+    }
+  }
 });
 
 // ── POST /api/admin/import/daqqi — bulk import subscribers + enrollments + payments for DAQQI branch ──

@@ -3,6 +3,40 @@
 const { pool } = require('./db');
 const { logLeadEventStrict } = require('./crm');
 
+// Canonical "least-loaded" sales-rep picker for single-lead auto-assignment
+// at capture time (public registration, chatbot capture, self-registration,
+// Facebook Lead Ads webhook). Previously reimplemented 4 separate times with
+// diverging fairness rules — the two most impactful bugs this closes:
+//   - Some copies counted EVERY non-hidden lead ever assigned to a rep,
+//     including years-old converted/lost ones, toward their "load". A
+//     veteran rep who has converted hundreds of leads over time looks
+//     permanently "overloaded" and stops receiving new auto-assigned leads,
+//     while a brand-new hire with zero history gets everything. This version
+//     only counts leads still in a non-terminal status (matching the one
+//     implementation — crm-advanced.js's smart-route — that already had this
+//     right).
+//   - api/lib/facebookLeadAds.js's copy queried staff/leads outside any
+//     transaction with no is_active/deleted_at guard consistency with the
+//     others; folded in here.
+// Bulk operations (admin/leads.js's cyclic bulk-assign, crm-advanced.js's
+// smart-route re-sorting batch distributor) are intentionally NOT routed
+// through this — they distribute a whole batch in one pass with their own
+// rebalancing strategy, which this single-pick helper isn't shaped for.
+async function getNextSalesRep(tenantId, db = pool) {
+  const [reps] = await db.query(
+    `SELECT s.id, s.name FROM staff s
+     LEFT JOIN leads l
+       ON l.assigned_sales_id = s.id AND l.tenant_id = s.tenant_id AND l.hidden = 0
+      AND l.status NOT IN ('converted','lost','archived','disqualified')
+     WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role) IN ('SALES','MANAGER')
+     GROUP BY s.id, s.name
+     ORDER BY COUNT(l.id) ASC, s.name ASC
+     LIMIT 1`,
+    [tenantId]
+  );
+  return reps[0] || null;
+}
+
 async function assignLead({ tenantId, leadId, salesId, actor = null, reason = 'Lead assigned', metadata = {} }, db = null) {
   if (!tenantId || !leadId || !salesId) {
     const error = new Error('tenantId, leadId and salesId are required');
@@ -57,4 +91,4 @@ async function assignLead({ tenantId, leadId, salesId, actor = null, reason = 'L
   }
 }
 
-module.exports = { assignLead };
+module.exports = { assignLead, getNextSalesRep };

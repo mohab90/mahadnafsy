@@ -1,6 +1,5 @@
 'use strict';
 
-const { pool } = require('./db');
 const logger = require('./logger').child({ module: 'facebook-lead-ads' });
 const { tryJson } = require('./helpers');
 const { getLeadSourceConnectorSettings } = require('./saasSettings');
@@ -45,22 +44,6 @@ async function fetchFbLeadDetails(leadgenId, pageAccessToken) {
   return resp.json();
 }
 
-async function getNextSalesRep(tenantId = 'tenant-default') {
-  const [reps] = await pool.execute(
-    `SELECT id, name FROM staff WHERE tenant_id=? AND role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`,
-    [tenantId]
-  );
-  if (!reps.length) return null;
-  const [counts] = await pool.execute(
-    `SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
-    [tenantId]
-  );
-  const countMap = {};
-  for (const c of counts) countMap[c.assigned_sales_id] = Number(c.cnt);
-  reps.sort((a, b) => (countMap[a.id] || 0) - (countMap[b.id] || 0));
-  return reps[0];
-}
-
 if (!process.env.FB_VERIFY_TOKEN) {
   logger.warn('[FB] FB_VERIFY_TOKEN not set - Facebook webhook verification will fail');
 }
@@ -68,5 +51,4 @@ if (!process.env.FB_VERIFY_TOKEN) {
 module.exports = {
   fetchFbLeadDetails,
   getFbLeadConfig,
-  getNextSalesRep,
 };

@@ -186,11 +186,16 @@ test('employee subscriber lists cannot mix CRM ownership or payment history acro
 
 test('public lead capture is tenant-deduped, serialized, assigned and audited atomically', () => {
   const route = read('routes/lead-capture-crm.js');
+  const leadAssignment = read('lib/leadAssignment.js');
   assert.match(route, /registration:\$\{crypto\.createHash/);
   assert.match(route, /lead-public:\$\{crypto\.createHash/);
   assert.match(route, /FROM leads WHERE tenant_id=\? AND RIGHT\(REGEXP_REPLACE/);
   assert.match(route, /UPDATE leads SET notes[\s\S]*WHERE id = \? AND tenant_id=\?/);
-  assert.match(route, /WHERE s\.tenant_id=\? AND s\.is_active=1/);
+  // Single-lead auto-assignment (CRM-01) is unified in leadAssignment.js's
+  // getNextSalesRep(), shared by this route, auth.js register, and the
+  // Facebook Lead Ads webhook — assert the tenant-scoping guarantee there.
+  assert.match(route, /getNextSalesRep\(tenantId, conn\)/);
+  assert.match(leadAssignment, /WHERE s\.tenant_id=\? AND s\.is_active=1/);
   assert.match(route, /logLeadEvent\(id, existing \? 'updated' : 'created'/);
   assert.match(route, /getTenantSetting\('crm_rr_index'/);
   assert.match(route, /SELECT id, name FROM staff WHERE tenant_id=\?/);

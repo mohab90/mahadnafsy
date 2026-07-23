@@ -1048,6 +1048,25 @@ const Dashboard: React.FC = () => {
     void fetchSalesData();
   }, [fetchSalesData]);
 
+  // Background polling for non-admin staff (sales/collection/daqqi/online-manager) —
+  // fetchSalesData no-ops for real admins internally, so this mirrors the admin-only
+  // polling in SiteDataContext.tsx (leads/subscribers every 2 min + on tab-focus) for
+  // the roles that context effect explicitly skips (CRM-04). Without this, a sales
+  // rep's dashboard only ever reflects data as of page load / their last manual action.
+  useEffect(() => {
+    let cancelled = false;
+    const pollId = setInterval(() => { if (!cancelled) void fetchSalesData(); }, 2 * 60 * 1000);
+    const onVisible = () => {
+      if (!cancelled && document.visibilityState === 'visible') void fetchSalesData();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(pollId);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchSalesData]);
+
   // Effective arrays: for non-admin roles use own-data; for admin use context
   const effectiveLeads = usesStaffScopedData ? salesOwnLeads : leads;
   const effectiveSubs = usesStaffScopedData ? salesOwnSubscribers : subscribers;

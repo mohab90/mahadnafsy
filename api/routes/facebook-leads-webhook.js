@@ -9,7 +9,8 @@ const { pool } = require('../lib/db');
 const { getNextClientCode } = require('../lib/mappers');
 const { branchIdForBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
-const { fetchFbLeadDetails, getFbLeadConfig, getNextSalesRep } = require('../lib/facebookLeadAds');
+const { fetchFbLeadDetails, getFbLeadConfig } = require('../lib/facebookLeadAds');
+const { getNextSalesRep } = require('../lib/leadAssignment');
 
 const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN;
 
