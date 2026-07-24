@@ -61,6 +61,77 @@ type Props = {
   onlineMgrNewEventsBadge: number;
 };
 
+type CompactTab = { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> };
+
+type CompactRoleNavProps = {
+  tabs: CompactTab[];
+  activeTab: TabKey;
+  setActiveTab: (tab: TabKey) => void;
+  activeButtonClass: string;
+  avatarClass: string;
+  spinnerBorderClass: string;
+  roleBadge?: string;
+  roleBadgeClass?: string;
+  currentStaff: StaffMember | null | undefined;
+  salesDataLoading: boolean;
+  staffNotifBadge: number;
+  setSalesNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  extraTabsSlot?: React.ReactNode;
+  extraHeaderButtons?: React.ReactNode;
+};
+
+function CompactRoleNav({
+  tabs, activeTab, setActiveTab, activeButtonClass, avatarClass, spinnerBorderClass,
+  roleBadge, roleBadgeClass, currentStaff, salesDataLoading, staffNotifBadge,
+  setSalesNotifOpen, extraTabsSlot, extraHeaderButtons,
+}: CompactRoleNavProps) {
+  const navigate = useNavigate();
+  return (
+    <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {tabs.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.key;
+          return (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
+                isActive ? activeButtonClass : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}>
+              <Icon size={15} />
+              {tab.label}
+            </button>
+          );
+        })}
+        {extraTabsSlot}
+      </div>
+      {currentStaff && (
+        <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
+          <div className={`w-7 h-7 rounded-full grid place-items-center text-xs font-bold flex-shrink-0 ${avatarClass}`}>
+            {currentStaff.name.charAt(0)}
+          </div>
+          <span className="font-semibold text-gray-800">{currentStaff.name}</span>
+          {roleBadge && <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${roleBadgeClass}`}>{roleBadge}</span>}
+          {salesDataLoading && <span className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${spinnerBorderClass}`} />}
+          <button
+            onClick={() => setSalesNotifOpen(true)}
+            className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
+            title="الإشعارات والمتابعات"
+          >
+            <Bell size={13} />
+            {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
+          </button>
+          {extraHeaderButtons}
+          <button
+            onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
+            className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
+            title="تسجيل الخروج"
+          ><LogOut size={13} /></button>
+        </div>
+      )}
+    </nav>
+  );
+}
+
 export function DashboardNavigation(props: Props) {
   const {
     isSalesOnly, isCollectionRole, isReceptionDaqqi, isOnlineManager, isDaqqiManager,
@@ -258,265 +329,107 @@ export function DashboardNavigation(props: Props) {
 
             {/* ── Sales horizontal nav (no sidebar) ── */}
             {isSalesOnly && (
-              <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {(
-                    [
-                      { key: 'leads' as TabKey, label: 'العملاء المحتملون', icon: UserPlus },
-                      { key: 'online_clients' as TabKey, label: 'عملائي', icon: UserCheck },
-                      { key: 'orders' as TabKey, label: 'مدفوعاتي', icon: CreditCard },
-                      { key: 'overview' as TabKey, label: 'إحصائياتي', icon: BarChart3 },
-                      { key: 'staff_settings' as TabKey, label: 'ملفي الشخصي', icon: UserCog },
-                    ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[]
-                  ).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isActive ? 'bg-primary-600 text-white shadow-md shadow-primary-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}>
-                        <Icon size={15} />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentStaff && (
-                  <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-                    <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 grid place-items-center text-xs font-bold flex-shrink-0">
-                      {currentStaff.name.charAt(0)}
-                    </div>
-                    <span className="font-semibold text-gray-800">{currentStaff.name}</span>
-                    {salesDataLoading && <span className="w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" />}
-                    <button
-                      onClick={() => setSalesNotifOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
-                      title="الإشعارات والمتابعات"
-                    >
-                      <Bell size={13} />
-                      {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
-                      className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-                      title="تسجيل الخروج"
-                    ><LogOut size={13} /></button>
-                  </div>
-                )}
-              </nav>
+              <CompactRoleNav
+                tabs={[
+                  { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
+                  { key: 'online_clients', label: 'عملائي', icon: UserCheck },
+                  { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
+                  { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
+                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                ]}
+                activeTab={activeTab} setActiveTab={setActiveTab}
+                activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
+                avatarClass="bg-primary-100 text-primary-700"
+                spinnerBorderClass="border-primary-400"
+                currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+              />
             )}
 
             {/* ── Collection horizontal nav (no sidebar) ── */}
             {isCollectionRole && (
-              <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {(
-                    [
-                      { key: 'online_clients' as TabKey, label: 'عملاء الاونلاين', icon: UserCheck },
-                      { key: 'leads' as TabKey, label: 'العملاء المحتملين', icon: UserSearch },
-                      { key: 'refund_requests' as TabKey, label: 'طلبات الاسترداد', icon: RotateCcw },
-                      { key: 'orders' as TabKey, label: 'مدفوعاتي', icon: CreditCard },
-                      { key: 'overview' as TabKey, label: 'إحصائياتي', icon: BarChart3 },
-                      { key: 'staff_settings' as TabKey, label: 'ملفي الشخصي', icon: UserCog },
-                    ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[]
-                  ).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isActive ? 'bg-primary-600 text-white shadow-md shadow-primary-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}>
-                        <Icon size={15} />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentStaff && (
-                  <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-                    <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-700 grid place-items-center text-xs font-bold flex-shrink-0">
-                      {currentStaff.name.charAt(0)}
-                    </div>
-                    <span className="font-semibold text-gray-800">{currentStaff.name}</span>
-                    {salesDataLoading && <span className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />}
-                    <button
-                      onClick={() => setSalesNotifOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
-                      title="الإشعارات والمتابعات"
-                    >
-                      <Bell size={13} />
-                      {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
-                      className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-                      title="تسجيل الخروج"
-                    ><LogOut size={13} /></button>
-                  </div>
-                )}
-              </nav>
+              <CompactRoleNav
+                tabs={[
+                  { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
+                  { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
+                  { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
+                  { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
+                  { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
+                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                ]}
+                activeTab={activeTab} setActiveTab={setActiveTab}
+                activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
+                avatarClass="bg-teal-100 text-teal-700"
+                spinnerBorderClass="border-teal-400"
+                currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+              />
             )}
 
             {/* ── Reception Daqqi horizontal nav (no sidebar) ── */}
             {isReceptionDaqqi && !isDaqqiManager && (
-              <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {(
-                    [
-                      { key: 'daqqi_schedule' as TabKey, label: 'جدول الدقي', icon: CalendarDays },
-                      { key: 'daqqi_clients' as TabKey, label: 'عملائي', icon: UserCheck },
-                      { key: 'leads' as TabKey, label: 'العملاء المحتملين', icon: UserSearch },
-                      { key: 'orders' as TabKey, label: 'مدفوعاتي', icon: CreditCard },
-                      { key: 'overview' as TabKey, label: 'إحصائياتي', icon: BarChart3 },
-                      { key: 'staff_settings' as TabKey, label: 'ملفي الشخصي', icon: UserCog },
-                    ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[]
-                  ).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isActive ? 'bg-primary-600 text-white shadow-md shadow-primary-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}>
-                        <Icon size={15} />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentStaff && (
-                  <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-                    <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 grid place-items-center text-xs font-bold flex-shrink-0">
-                      {currentStaff.name.charAt(0)}
-                    </div>
-                    <span className="font-semibold text-gray-800">{currentStaff.name}</span>
-                    {salesDataLoading && <span className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />}
-                    <button
-                      onClick={() => setSalesNotifOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
-                      title="الإشعارات والمتابعات"
-                    >
-                      <Bell size={13} />
-                      {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
-                      className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-                      title="تسجيل الخروج"
-                    ><LogOut size={13} /></button>
-                  </div>
-                )}
-              </nav>
+              <CompactRoleNav
+                tabs={[
+                  { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
+                  { key: 'daqqi_clients', label: 'عملائي', icon: UserCheck },
+                  { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
+                  { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
+                  { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
+                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                ]}
+                activeTab={activeTab} setActiveTab={setActiveTab}
+                activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
+                avatarClass="bg-orange-100 text-orange-700"
+                spinnerBorderClass="border-orange-400"
+                currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+              />
             )}
 
             {/* ── Daqqi Manager horizontal nav (no sidebar) ── */}
             {isDaqqiManager && !isAdmin && (
-              <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {(
-                    [
-                      { key: 'daqqi_schedule' as TabKey, label: 'جدول الدقي', icon: CalendarDays },
-                      { key: 'daqqi_clients' as TabKey, label: 'عملاء الدقي', icon: UserCheck },
-                      { key: 'leads' as TabKey, label: 'العملاء المحتملين', icon: UserSearch },
-                      { key: 'orders' as TabKey, label: 'الطلبات والمدفوعات', icon: CreditCard },
-                      { key: 'daqqi_accounting' as TabKey, label: 'حسابات الدقي', icon: Wallet },
-                      { key: 'daqqi_stats' as TabKey, label: 'إحصائيات فريق الدقي', icon: BarChart3 },
-                      { key: 'staff_settings' as TabKey, label: 'ملفي الشخصي', icon: UserCog },
-                    ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[]
-                  ).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isActive ? 'bg-purple-600 text-white shadow-md shadow-purple-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}>
-                        <Icon size={15} />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentStaff && (
-                  <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-                    <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 grid place-items-center text-xs font-bold flex-shrink-0">
-                      {currentStaff.name.charAt(0)}
-                    </div>
-                    <span className="font-semibold text-gray-800">{currentStaff.name}</span>
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold">مدير الدقي</span>
-                    {salesDataLoading && <span className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />}
-                    <button
-                      onClick={() => setSalesNotifOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
-                      title="الإشعارات والمتابعات"
-                    >
-                      <Bell size={13} />
-                      {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
-                      className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-                      title="تسجيل الخروج"
-                    ><LogOut size={13} /></button>
-                  </div>
-                )}
-              </nav>
+              <CompactRoleNav
+                tabs={[
+                  { key: 'daqqi_schedule', label: 'جدول الدقي', icon: CalendarDays },
+                  { key: 'daqqi_clients', label: 'عملاء الدقي', icon: UserCheck },
+                  { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
+                  { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
+                  { key: 'daqqi_accounting', label: 'حسابات الدقي', icon: Wallet },
+                  { key: 'daqqi_stats', label: 'إحصائيات فريق الدقي', icon: BarChart3 },
+                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                ]}
+                activeTab={activeTab} setActiveTab={setActiveTab}
+                activeButtonClass="bg-purple-600 text-white shadow-md shadow-purple-200"
+                avatarClass="bg-purple-100 text-purple-700"
+                spinnerBorderClass="border-purple-400"
+                roleBadge="مدير الدقي" roleBadgeClass="bg-purple-100 text-purple-700"
+                currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+              />
             )}
 
             {/* ── Sales & Collection Manager horizontal nav (no sidebar) ── */}
             {isSalesCollectionManager && !isAdmin && (
-              <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {([
-                    { key: 'leads' as TabKey, label: 'العملاء المحتملون', icon: UserPlus },
-                    { key: 'sales_hub' as TabKey, label: 'فريق المبيعات', icon: TrendingUp },
-                    { key: 'online_clients' as TabKey, label: 'عملاء الأونلاين', icon: UserCheck },
-                    { key: 'online_hub' as TabKey, label: 'فريق التحصيل', icon: Monitor },
-                    { key: 'orders' as TabKey, label: 'الطلبات والمدفوعات', icon: CreditCard },
-                    { key: 'financial' as TabKey, label: 'التقارير المالية', icon: BarChart3 },
-                    { key: 'activity' as TabKey, label: 'سجل النشاط', icon: Activity },
-                    { key: 'overview' as TabKey, label: 'إحصائيات', icon: BarChart3 },
-                    { key: 'staff_settings' as TabKey, label: 'ملفي الشخصي', icon: UserCog },
-                  ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[]).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                        }`}>
-                        <Icon size={15} />
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {currentStaff && (
-                  <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-                    <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 grid place-items-center text-xs font-bold flex-shrink-0">
-                      {currentStaff.name.charAt(0)}
-                    </div>
-                    <span className="font-semibold text-gray-800">{currentStaff.name}</span>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">مدير المبيعات والتحصيل</span>
-                    {salesDataLoading && <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />}
-                    <button
-                      onClick={() => setSalesNotifOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-800 grid place-items-center transition"
-                      title="الإشعارات"
-                    >
-                      <Bell size={13} />
-                      {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
-                      className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-                      title="تسجيل الخروج"
-                    ><LogOut size={13} /></button>
-                  </div>
-                )}
-              </nav>
+              <CompactRoleNav
+                tabs={[
+                  { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
+                  { key: 'sales_hub', label: 'فريق المبيعات', icon: TrendingUp },
+                  { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
+                  { key: 'online_hub', label: 'فريق التحصيل', icon: Monitor },
+                  { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
+                  { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
+                  { key: 'activity', label: 'سجل النشاط', icon: Activity },
+                  { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
+                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                ]}
+                activeTab={activeTab} setActiveTab={setActiveTab}
+                activeButtonClass="bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                avatarClass="bg-indigo-100 text-indigo-700"
+                spinnerBorderClass="border-indigo-400"
+                roleBadge="مدير المبيعات والتحصيل" roleBadgeClass="bg-indigo-100 text-indigo-700"
+                currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+              />
             )}
 
             {/* ── Online Manager horizontal nav (no sidebar) ── */}
@@ -524,102 +437,85 @@ export function DashboardNavigation(props: Props) {
               const academyTabKeys: TabKey[] = ['courses','lectures','instructors','bundles','testimonials','discounts','quizzes','live_streams','community','institute_gallery'];
               const isAcademyActive = academyTabKeys.includes(activeTab as TabKey);
               return (
-              <nav className="bg-white border border-gray-200 rounded-2xl p-2 shadow-sm flex items-center gap-2 flex-wrap justify-between" dir="rtl">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {([
-                    { key: 'online_clients' as TabKey, label: 'عملاء الاونلاين', icon: UserCheck },
-                    { key: 'client' as TabKey, label: 'قاعدة العملاء', icon: UserSearch },
-                    { key: 'refund_requests' as TabKey, label: 'طلبات الاسترداد', icon: RotateCcw },
-                    { key: 'orders' as TabKey, label: 'الطلبات والمدفوعات', icon: CreditCard },
-                    { key: 'overview' as TabKey, label: 'إحصائيات', icon: BarChart3 },
-                    { key: 'staff_settings' as TabKey, label: 'ملفي الشخصي', icon: UserCog },
-                  ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> }[]).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                <CompactRoleNav
+                  tabs={[
+                    { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
+                    { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
+                    { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
+                    { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
+                    { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
+                    { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                  ]}
+                  activeTab={activeTab} setActiveTab={setActiveTab}
+                  activeButtonClass="bg-emerald-600 text-white shadow-md shadow-emerald-200"
+                  avatarClass="bg-emerald-100 text-emerald-700"
+                  spinnerBorderClass="border-emerald-400"
+                  roleBadge="مسئول الأونلاين" roleBadgeClass="bg-emerald-100 text-emerald-700"
+                  currentStaff={currentStaff} salesDataLoading={salesDataLoading}
+                  staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                  extraTabsSlot={
+                    <div className="relative">
+                      <button
+                        onClick={() => setOnlineMgrAcademyOpen(o => !o)}
                         className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                          isActive ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                          isAcademyActive ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                         }`}>
-                        <Icon size={15} />
-                        {tab.label}
+                        <BookOpen size={15} />
+                        الأكاديمية والمحتوى
+                        <ChevronDown size={13} className={`transition-transform ${onlineMgrAcademyOpen ? 'rotate-180' : ''}`} />
                       </button>
-                    );
-                  })}
-                  {/* Academy dropdown */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setOnlineMgrAcademyOpen(o => !o)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                        isAcademyActive ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                      }`}>
-                      <BookOpen size={15} />
-                      الأكاديمية والمحتوى
-                      <ChevronDown size={13} className={`transition-transform ${onlineMgrAcademyOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {onlineMgrAcademyOpen && (
-                      <div className="absolute top-full mt-1 right-0 bg-white border border-gray-200 rounded-xl shadow-xl z-50 min-w-[180px] py-1" dir="rtl">
-                        {([
-                          { key: 'courses' as TabKey, label: 'الكورسات والدبلومات', icon: BookOpen },
-                          { key: 'lectures' as TabKey, label: 'الدروس', icon: ListOrdered },
-                          { key: 'instructors' as TabKey, label: 'المحاضرون والخبراء', icon: Users },
-                          { key: 'bundles' as TabKey, label: 'المسارات والباقات', icon: FolderKanban },
-                          { key: 'testimonials' as TabKey, label: 'الآراء والتوصيات', icon: MessageSquareText },
-                          { key: 'discounts' as TabKey, label: 'الخصومات والكوبونات', icon: Tag },
-                          { key: 'quizzes' as TabKey, label: 'اختبارات الكورسات', icon: FileText },
-                          { key: 'live_streams' as TabKey, label: 'البث المباشر', icon: Video },
-                          { key: 'community' as TabKey, label: 'المجتمع', icon: MessageSquareText },
-                          { key: 'institute_gallery' as TabKey, label: 'معرض صور المعهد', icon: Image },
-                        ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[]).map(item => {
-                          const Icon = item.icon;
-                          const isActive = activeTab === item.key;
-                          return (
-                            <button key={item.key}
-                              onClick={() => { setActiveTab(item.key); setOnlineMgrAcademyOpen(false); }}
-                              className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-right transition ${
-                                isActive ? 'bg-emerald-600 text-white' : 'text-gray-700 hover:bg-gray-50'
-                              }`}>
-                              <Icon size={13} className="flex-shrink-0" />
-                              <span className="flex-1 text-right">{item.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {currentStaff && (
-                  <div className="flex items-center gap-2 pl-2 text-sm text-gray-600">
-                    <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center text-xs font-bold flex-shrink-0">
-                      {currentStaff.name.charAt(0)}
+                      {onlineMgrAcademyOpen && (
+                        <div className="absolute top-full mt-1 right-0 bg-white border border-gray-200 rounded-xl shadow-xl z-50 min-w-[180px] py-1" dir="rtl">
+                          {([
+                            { key: 'courses' as TabKey, label: 'الكورسات والدبلومات', icon: BookOpen },
+                            { key: 'lectures' as TabKey, label: 'الدروس', icon: ListOrdered },
+                            { key: 'instructors' as TabKey, label: 'المحاضرون والخبراء', icon: Users },
+                            { key: 'bundles' as TabKey, label: 'المسارات والباقات', icon: FolderKanban },
+                            { key: 'testimonials' as TabKey, label: 'الآراء والتوصيات', icon: MessageSquareText },
+                            { key: 'discounts' as TabKey, label: 'الخصومات والكوبونات', icon: Tag },
+                            { key: 'quizzes' as TabKey, label: 'اختبارات الكورسات', icon: FileText },
+                            { key: 'live_streams' as TabKey, label: 'البث المباشر', icon: Video },
+                            { key: 'community' as TabKey, label: 'المجتمع', icon: MessageSquareText },
+                            { key: 'institute_gallery' as TabKey, label: 'معرض صور المعهد', icon: Image },
+                          ] as { key: TabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[]).map(item => {
+                            const Icon = item.icon;
+                            const isActive = activeTab === item.key;
+                            return (
+                              <button key={item.key}
+                                onClick={() => { setActiveTab(item.key); setOnlineMgrAcademyOpen(false); }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-right transition ${
+                                  isActive ? 'bg-emerald-600 text-white' : 'text-gray-700 hover:bg-gray-50'
+                                }`}>
+                                <Icon size={13} className="flex-shrink-0" />
+                                <span className="flex-1 text-right">{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <span className="font-semibold text-gray-800">{currentStaff.name}</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">مسئول الأونلاين</span>
-                    {salesDataLoading && <span className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />}
-                    <button
-                      onClick={() => setOnlineMgrFollowupOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-600 hover:text-teal-800 grid place-items-center transition"
-                      title="متابعات التحصيل والأقساط"
-                    >
-                      <AlarmClock size={13} />
-                      {onlineMgrFollowupBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{onlineMgrFollowupBadge > 9 ? '9+' : onlineMgrFollowupBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => setOnlineMgrNewEventsOpen(true)}
-                      className="relative w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-800 grid place-items-center transition"
-                      title="عملاء أونلاين جدد ومدفوعات"
-                    >
-                      <Banknote size={13} />
-                      {onlineMgrNewEventsBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[8px] font-bold grid place-items-center">{onlineMgrNewEventsBadge > 9 ? '9+' : onlineMgrNewEventsBadge}</span>}
-                    </button>
-                    <button
-                      onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
-                      className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
-                      title="تسجيل الخروج"
-                    ><LogOut size={13} /></button>
-                  </div>
-                )}
-              </nav>
+                  }
+                  extraHeaderButtons={
+                    <>
+                      <button
+                        onClick={() => setOnlineMgrFollowupOpen(true)}
+                        className="relative w-7 h-7 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-600 hover:text-teal-800 grid place-items-center transition"
+                        title="متابعات التحصيل والأقساط"
+                      >
+                        <AlarmClock size={13} />
+                        {onlineMgrFollowupBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{onlineMgrFollowupBadge > 9 ? '9+' : onlineMgrFollowupBadge}</span>}
+                      </button>
+                      <button
+                        onClick={() => setOnlineMgrNewEventsOpen(true)}
+                        className="relative w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-800 grid place-items-center transition"
+                        title="عملاء أونلاين جدد ومدفوعات"
+                      >
+                        <Banknote size={13} />
+                        {onlineMgrNewEventsBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white text-[8px] font-bold grid place-items-center">{onlineMgrNewEventsBadge > 9 ? '9+' : onlineMgrNewEventsBadge}</span>}
+                      </button>
+                    </>
+                  }
+                />
               );
             })()}
 </>
