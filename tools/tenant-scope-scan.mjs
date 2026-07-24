@@ -59,7 +59,7 @@ function buildTenantTables() {
       if (/\btenant_id\b/i.test(body)) tenantTables.add(tableName);
     }
 
-    const alterRe = /ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD (?:COLUMN\s+)?(?:IF NOT EXISTS\s+)?`?tenant_id`?/gi;
+    const alterRe = /ALTER TABLE\s+(?:IF EXISTS\s+)?`?([a-zA-Z0-9_]+)`?\s+ADD (?:COLUMN\s+)?(?:IF NOT EXISTS\s+)?`?tenant_id`?/gi;
     while ((m = alterRe.exec(sql))) tenantTables.add(m[1]);
   }
   return tenantTables;
