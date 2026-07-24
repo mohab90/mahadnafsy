@@ -350,6 +350,20 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
 });
 
 // ── CSAT — public rating page data + submission (unauthenticated, id-gated) ─
+// RATE-02 precedent applies, but resolves the other way: NOT tenant-scoped,
+// deliberately. The email link (see the csat_requested_at block above) is
+// `https://mahadnafsy.com/ticket-rating?id=...` — one shared client URL for
+// every tenant, not a per-tenant subdomain, and TicketRating.tsx calls this
+// route same-origin with no X-Tenant-Id header. A visitor clicking it has no
+// subdomain/header/JWT to resolve from, so req.tenantId falls through to
+// DEFAULT_TENANT (tenantContext.js) regardless of which tenant the ticket
+// actually belongs to. Filtering by req.tenantId here would 404 every CSAT
+// link for a non-default tenant's ticket. Unlike the cert-verify route,
+// there's no join-based tenant-consistency check to fall back on either —
+// but none is needed: support_tickets.id is a UUID PRIMARY KEY (globally
+// unique, not composite with tenant_id), so `WHERE id=?` already identifies
+// at most one row with no risk of a cross-tenant match, and the id is not
+// realistically guessable/enumerable.
 router.get('/api/ticket-csat/:id', publicLimiter, async (req, res) => {
   try {
     const [[t]] = await pool.query('SELECT subject, csat_score FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
