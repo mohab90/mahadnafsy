@@ -633,15 +633,36 @@ router.get('/api/quizzes', async (req, res) => {
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// GET /api/live-streams
-router.get('/api/live-streams', async (req, res) => {
+// GET /api/live-streams — every visibility value (ALL_SUBSCRIBERS,
+// COURSE_SUBSCRIBERS, COMMUNITY_ALL, COMMUNITY_AND_SUBSCRIBERS) implies some
+// form of gating; none of them mean "public". This previously had no auth at
+// all and returned stream_url (the actual join link) to anyone, ignoring the
+// visibility column entirely (LMS-10). Now requires a logged-in subscriber,
+// then additionally filters COURSE_SUBSCRIBERS rows to ones the caller is
+// actually enrolled in.
+router.get('/api/live-streams', requireAuth, async (req, res) => {
   try {
+    const [[sub]] = await pool.query(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
+      [req.tenantId, String(req.user?.email || '').toLowerCase().trim()]
+    );
+    if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً لعرض البث المباشر' });
     const [rows] = await pool.query(
       `SELECT id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
        stream_url, platform, visibility, target_course_ids_json, status, recording_url,
        description, created_at
        FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT 200`, [req.tenantId]);
-    res.json(rows);
+    const [enrollRows] = await pool.query(
+      'SELECT course_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id IS NOT NULL',
+      [req.tenantId, sub.id]
+    );
+    const enrolledCourseIds = new Set(enrollRows.map(r => r.course_id));
+    const visible = rows.filter(row => {
+      if (row.visibility !== 'COURSE_SUBSCRIBERS') return true;
+      const targetIds = tryJson(row.target_course_ids_json, []);
+      return Array.isArray(targetIds) && targetIds.some(id => enrolledCourseIds.has(id));
+    });
+    res.json(visible);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

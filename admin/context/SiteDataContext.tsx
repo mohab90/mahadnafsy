@@ -349,7 +349,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { notifications, setNotifications, addNotification, updateNotification, deleteNotification } =
     useNotificationsState((initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || [], lastLocalConfigWriteRef, track);
   const { liveStreams, setLiveStreams, addLiveStream, updateLiveStream, deleteLiveStream } =
-    useLiveStreamsState((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [], track);
+    useLiveStreamsState((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [], persistOrRevert, track);
   // Reconciled during ARC-03/04 resurrection: the previously-inline version of this
   // domain had regressed back to a no-op persist function and a delete that never
   // called the backend (both were genuinely fixed once before, in the commit that
