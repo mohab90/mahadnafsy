@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Zap, Star, Shield, Clock, ChevronLeft, Search, Filter, UserCheck, Lock, CalendarDays, CheckCircle, ChevronDown, ChevronUp, BookOpen, Phone, Video, MessageCircle } from 'lucide-react';
+import { Zap, Star, Shield, Clock, ChevronLeft, Search, Filter, UserCheck, Lock, CalendarDays, ChevronDown, ChevronUp, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Currency, Therapist } from '../types';
+import { Therapist } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';

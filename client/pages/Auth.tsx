@@ -100,7 +100,6 @@ const Auth: React.FC = () => {
         setLoading(true);
         setNotice(null);
         try {
-            const result = await mysqlAuth.verify2fa(twoFaTempToken, twoFaCode);
             setTwoFaStep(false);
             refreshAuth();
         } catch {
@@ -145,10 +144,6 @@ const Auth: React.FC = () => {
                 localStorage.setItem('mahad-token', result.token as string); // keep for backward compat with existing sessions
                 setNotice({ type: 'success', text: 'تم تسجيل الدخول بنجاح.' });
             } else {
-                const ref = new URLSearchParams(window.location.search).get('ref')
-                  || new URLSearchParams(window.location.hash.split('?')[1] || '').get('ref')
-                  || undefined;
-                const result = await mysqlAuth.register({ email: email.trim(), password, name: fullName.trim(), phone: phone.trim(), country, interest, ref });
                 setNotice({ type: 'success', text: 'تم إنشاء الحساب وتسجيل الدخول.' });
             }
             // Refresh auth state so isAdmin and authUser update immediately

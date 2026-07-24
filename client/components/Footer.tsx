@@ -1,10 +1,10 @@
-﻿import React from 'react';
+import React from 'react';
 import { Facebook, Youtube, Instagram, Mail, Phone, MapPin, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 
 const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
-  const { content, courses, bundles } = useSiteData();
+  const { content, bundles } = useSiteData();
   const topBundles = bundles.slice(0, 7);
 
   const phone = content['footer.phone'] || '+20 100 000 0000';

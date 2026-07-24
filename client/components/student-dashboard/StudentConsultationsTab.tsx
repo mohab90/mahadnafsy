@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, ChevronRight, Clock, MessageSquare, Phone, User, Video } from 'lucide-react';
 

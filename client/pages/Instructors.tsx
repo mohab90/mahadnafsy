@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Shield, ArrowRight, CalendarCheck2, Users, Award, Globe, GraduationCap } from 'lucide-react';
+import { Star, Shield, ArrowRight, CalendarCheck2, Globe, GraduationCap } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';

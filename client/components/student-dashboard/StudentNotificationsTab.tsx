@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertCircle, Bell, Sparkles, X } from 'lucide-react';
 
 type NotificationItem = {

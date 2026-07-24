@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Star, Shield, Users, BookOpen, Facebook, Twitter, Linkedin, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
-import { Currency } from '../types';
 import CourseCard from '../components/CourseCard';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';

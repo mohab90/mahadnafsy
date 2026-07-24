@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Filter, Search, BookOpen, Users, Play, Award } from 'lucide-react';
-import { Currency } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 

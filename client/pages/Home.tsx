@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, CheckCircle, Clock, Video, Users, Star, Play, Award, ChevronRight, Quote, Send, BookOpen, GraduationCap, Phone, Briefcase } from 'lucide-react';
-import { Currency, LeadItem } from '../types';
+import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
@@ -60,7 +60,6 @@ const Home: React.FC = () => {
   // Pick a random gallery image each render (stable per session via useMemo-like approach)
   const heroGalleryImg = galleryImages.length > 0 ? galleryImages[0] : '';
   // For sections needing multiple gallery images, spread or pick sequentially
-  const getGalleryImg = (idx: number) => galleryImages.length > 0 ? galleryImages[idx % galleryImages.length] : '';
 
   const getEmbedUrl = (url: string): string => {
     if (!url) return '';

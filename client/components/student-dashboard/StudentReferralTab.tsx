@@ -1,4 +1,3 @@
-import React from 'react';
 import { CheckCircle, Copy, Gift, Share2 } from 'lucide-react';
 
 type ReferralStats = {

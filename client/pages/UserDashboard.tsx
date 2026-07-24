@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BookOpen, Award, Clock, LogOut, User, ChevronRight, CheckCircle,
+  BookOpen, Award, LogOut, User, CheckCircle,
   Bell, Settings, MessageSquare, CreditCard, Play, Edit3, Camera,
-  Save, X, Phone, AlertCircle,
-  ChevronDown, ChevronUp, FileText,
+  Save, X, 
+  FileText,
   Users, Sparkles, Radio, Share2, Gift,
 } from 'lucide-react';
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
@@ -53,7 +53,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
   useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
-  const { courses, subscribers, notifications, communityPosts, consultations, getCourseLectures, updateSubscriber, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, currency, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
+  const { courses, subscribers, notifications, communityPosts, consultations, getCourseLectures, updateSubscriber, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const navigate = useNavigate();
 
   // ── Direct staff check (for non-admin staff whose staffMembers won't be loaded) ──
@@ -178,7 +178,6 @@ const UserDashboard: React.FC = () => {
   const [installModal, setInstallModal] = useState<{ courseId: string; courseTitle: string; remaining: number } | null>(null);
   const [installAmount, setInstallAmount] = useState('');
   const [installIframeUrl, setInstallIframeUrl] = useState('');
-  const [installLoading, setInstallLoading] = useState(false);
   const [installError, setInstallError] = useState('');
 
   /* profile editing */
@@ -540,15 +539,6 @@ const UserDashboard: React.FC = () => {
     { id: 'account',       label: 'حسابي',      icon: <User size={15} />,           count: (unreadNotifications.length + installmentAlerts.length) || undefined },
   ];
 
-  const statusColors: Record<string, string> = {
-    pending:   'bg-yellow-100 text-yellow-700',
-    confirmed: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
-    cancelled: 'bg-red-100 text-red-700',
-  };
-  const statusLabels: Record<string, string> = {
-    pending: 'قيد الانتظار', confirmed: 'مؤكدة', completed: 'مكتملة', cancelled: 'ملغاة',
-  };
 
   return (
     <>

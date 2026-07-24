@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   CheckCircle, Award, ArrowRight, PlayCircle, Briefcase, TrendingUp,
-  Send, Star, Users, Clock, Shield, X, Play,
+  Send, Star, Clock, Shield, X, Play,
 } from 'lucide-react';
-import { Currency, BranchType } from '../types';
+import { BranchType } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCertificate from '../components/CourseCertificate';
 import { cdnImg } from '../lib/img';

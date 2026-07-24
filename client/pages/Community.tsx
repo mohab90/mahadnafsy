@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users, BookOpen, MessageSquare, Calendar, Download, FileText,
   Heart, MessageCircle, Share2, MoreHorizontal, Play, Video,
@@ -48,7 +48,6 @@ const Community: React.FC = () => {
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
 
-  const featuredEvent = communityEvents[0];
   const totalMembers = 847 + communityPosts.length;
 
   const getEmbedUrl = (url: string) => {

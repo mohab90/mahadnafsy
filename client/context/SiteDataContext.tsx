@@ -1,7 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
-import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DiscountRule, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, LeadType, BranchType, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, CourseAccessSetting, AutomationWorkflow, AutomationTrigger, PaymentHistoryEntry, CourseQuiz, QuizAttempt, LiveStream } from '../types';
-import { mysqlCatalog, mysqlClient, mysqlForms, mysqlAdmin } from '../lib/mysqlapi';
+import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DiscountRule, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AutomationTrigger, PaymentHistoryEntry, CourseQuiz, QuizAttempt, LiveStream } from '../types';
+import { mysqlClient, mysqlForms, mysqlAdmin } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
 import { useActivityLog } from './site-data-hooks/useActivityLog';
 import { useCurrency } from './site-data-hooks/useCurrency';
@@ -123,17 +123,8 @@ interface SiteDataShape {
 const STORAGE_KEY = 'mahad-admin-site-data-v1';
 const DATA_VERSION = 3; // bumped to clear seed bundles b1/b2/b3 from localStorage cache
 
-const _parseEnvList = (v: string | undefined) =>
-  (v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 // Keys whose old values must be replaced with the new default — even if Firestore has the old value.
-const CONTENT_FORCED_UPDATES: Record<string, string> = {
-  'courseDetails.price.cta': 'احجز الآن واستفد بخصم إضافي',
-  'courseDetails.mobile.cta': 'احجز الآن واستفد بخصم',
-  'bundleDetails.sidebar.cta': 'احجز الآن واستفد بخصم إضافي',
-  'courseDetails.price.feature1': 'وصول لمدة سنة واحدة للمحتوى',
-  'courseDetails.faq.a2': 'بالتأكيد! جميع المحاضرات (سواء المسجلة أو البث المباشر) تظل محفوظة في حسابك لمدة سنة واحدة ويمكنك الرجوع إليها في أي وقت.',
-};
 
 const defaultContent: Record<string, string> = {
   'home.hero.badge': 'مستقبلك المهني يبدأ من هنا',
@@ -523,7 +514,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [joinUsApplications, setJoinUsApplications] = useState<JoinUsApplication[]>((initial as typeof seedData & { joinUsApplications?: JoinUsApplication[] }).joinUsApplications || []);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>((initial as typeof seedData & { contactMessages?: ContactMessage[] }).contactMessages || []);
   const [automationWorkflows, setAutomationWorkflows] = useState<AutomationWorkflow[]>((initial as typeof seedData & { automationWorkflows?: AutomationWorkflow[] }).automationWorkflows || []);
-  const { authUser, setAuthUser, logout, refreshAuth } = useAuth();
+  const { authUser, logout, refreshAuth } = useAuth();
   const isAdmin = Boolean(authUser?.isAdmin);
   const { activityLogs, track, resetActivityLogs } = useActivityLog(authUser, initial.activityLogs);
   const { currency, setCurrency } = useCurrency();
@@ -577,13 +568,10 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isStaff, setIsStaff] = useState(false);
   // Timestamp of last local CRM/config mutation
   const lastCRMWriteRef = useRef(0);
-  const lastLocalConfigWriteRef = useRef(0);
   // Debounce timers for MySQL persist effects
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const configTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Round-robin counter for auto-assigning new leads to sales staff
-  const roundRobinIndexRef = useRef(0);
   // High-water mark for client codes (local fallback when MySQL unavailable)
   const isValidClientCodeFormat = (c: string | undefined): boolean =>
     !!c && /^C\d+$/.test(c) && parseInt(c.slice(1), 10) >= 10000;
@@ -701,7 +689,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!authUser?.email || isAdmin) return;
     let cancelled = false;
-    const email = authUser.email.toLowerCase().trim();
     mysqlClient.getMyConsultations().then((list) => {
       if (cancelled) return;
       setConsultations((list as unknown as ConsultationItem[]).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
@@ -720,7 +707,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // MySQL-only: staff data lives in MySQL.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistStaffMemberToCollection = (_member: StaffMember) => { /* MySQL */ };
 
   const persistAutomationWorkflowToCollection = (workflow: AutomationWorkflow) => {
     void mysqlAdmin.saveAutomationWorkflow(workflow as unknown as Record<string,unknown>).catch(() => {});
@@ -861,62 +847,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     track('delete', 'subscriber', id);
   };
 
-  const addLead = async (item: LeadItem): Promise<void> => {
-    lastCRMWriteRef.current = Date.now();
-    // Auto round-robin assignment if no sales person assigned yet
-    let resolvedItem = item;
-    if (!item.assignedSalesId) {
-      const activeSales = staffMembers.filter((s) => s.role === 'sales' && s.status !== 'inactive');
-      if (activeSales.length > 0) {
-        const idx = roundRobinIndexRef.current % activeSales.length;
-        const assigned = activeSales[idx];
-        roundRobinIndexRef.current = idx + 1;
-        resolvedItem = { ...item, assignedSalesId: assigned.id, assignedSalesName: assigned.name };
-      }
-    }
-    // Assign clientCode upfront using atomic transaction so cross-session duplicates are impossible
-    if (!resolvedItem.clientCode) {
-      resolvedItem = { ...resolvedItem, clientCode: await issueClientCodeAsync() };
-    }
-    const normPhone = resolvedItem.phone.replace(/\D/g, '');
-    const normEmail = (resolvedItem.email || '').toLowerCase().trim();
-    // Block if a subscriber already exists with same phone/email
-    const isSubscriber = subscribersRef.current.some((s) => {
-      const sp = s.phone.replace(/\D/g, '');
-      const se = (s.email || '').toLowerCase().trim();
-      return (normPhone.length >= 7 && sp === normPhone) || (normEmail && se === normEmail);
-    });
-    if (isSubscriber) return;
-    // If lead already exists with same phone/email → merge instead of duplicate
-    const existingIdx = leadsRef.current.findIndex((l) => {
-      const lp = l.phone.replace(/\D/g, '');
-      const le = (l.email || '').toLowerCase().trim();
-      return (normPhone.length >= 7 && lp === normPhone) || (normEmail && le === normEmail);
-    });
-    let leadToWrite: LeadItem;
-    if (existingIdx !== -1) {
-      const existing = leadsRef.current[existingIdx];
-      leadToWrite = {
-        ...existing,
-        name: resolvedItem.name || existing.name,
-        interestedCourseIds: [...new Set([...(existing.interestedCourseIds || []), ...(resolvedItem.interestedCourseIds || []), resolvedItem.enrolledCourseId || ''].filter(Boolean))],
-        source: resolvedItem.source || existing.source,
-      };
-      const nextLeads = leadsRef.current.map((l, i) => i === existingIdx ? leadToWrite : l);
-      leadsRef.current = nextLeads;
-      setLeads(nextLeads);
-    } else {
-      leadToWrite = resolvedItem;
-      const nextLeads = [resolvedItem, ...leadsRef.current];
-      leadsRef.current = nextLeads;
-      setLeads(nextLeads);
-    }
-    persistLeadToCollection(leadToWrite);
-    void mysqlAdmin.saveLead(resolvedItem as unknown as Record<string,unknown>);
-    track('create', 'lead', resolvedItem.name);
-    // (Inbox auto-conversation removed — inbox is an admin-app feature; the server links leads to inbox)
-    triggerAutomation('new_lead', { leadId: item.id, name: item.name, source: item.source || '' });
-  };
 
   // addPublicLead: for public registration forms — uses MySQL /api/registrations (no auth needed).
   const addPublicLead = async (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }): Promise<void> => {
@@ -934,110 +864,16 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const updateLead = (item: LeadItem) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextLeads = leadsRef.current.map((row) => (row.id === item.id ? item : row));
-    leadsRef.current = nextLeads;
-    setLeads(nextLeads);
-    persistLeadToCollection(item);
-    void mysqlAdmin.saveLead(item as unknown as Record<string,unknown>);
-    triggerAutomation('lead_status_changed', { leadId: item.id, name: item.name, status: item.status || '' });
-    track('update', 'lead', item.name);
-  };
 
   // Updates local state only — no API call. Use for bulk auto-convert on mount.
-  const markLeadsConverted = (ids: string[]) => {
-    const idSet = new Set(ids);
-    const nextLeads = leadsRef.current.map((l) =>
-      idSet.has(l.id) ? { ...l, status: 'converted' as const, hidden: true } : l
-    );
-    leadsRef.current = nextLeads;
-    setLeads(nextLeads);
-  };
 
-  const deleteLead = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextLeads = leadsRef.current.filter((row) => row.id !== id);
-    leadsRef.current = nextLeads;
-    setLeads(nextLeads);
-    void mysqlAdmin.deleteLead(id);
-    track('delete', 'lead', id);
-  };
 
-  const bulkDeleteLeads = (ids: string[]) => {
-    lastCRMWriteRef.current = Date.now();
-    const idSet = new Set(ids);
-    const nextLeads = leadsRef.current.filter((row) => !idSet.has(row.id));
-    leadsRef.current = nextLeads;
-    setLeads(nextLeads);
-    ids.forEach(id => void mysqlAdmin.deleteLead(id));
-    track('delete', 'lead', `bulk:${ids.length}`);
-  };
 
   // Batch-assign client codes — write only the changed documents to their collections.
-  const bulkAssignClientCodes = (updatedSubs: SubscriberItem[], updatedLeads: LeadItem[]) => {
-    lastCRMWriteRef.current = Date.now();
-    if (updatedSubs.length > 0) {
-      const subsMap = new Map(updatedSubs.map(s => [s.id, s]));
-      const nextSubs = subscribersRef.current.map(s => subsMap.get(s.id) ?? s);
-      subscribersRef.current = nextSubs;
-      setSubscribers(nextSubs);
-      // Write to BOTH Firestore and PostgreSQL so codes survive PG bootstrap on next reload
-      updatedSubs.forEach(s => {
-        persistSubscriberToCollection(s);
-        void mysqlAdmin.saveSubscriber(s as unknown as Record<string,unknown>);
-      });
-    }
-    if (updatedLeads.length > 0) {
-      const leadsMap = new Map(updatedLeads.map(l => [l.id, l]));
-      const nextLeads = leadsRef.current.map(l => leadsMap.get(l.id) ?? l);
-      leadsRef.current = nextLeads;
-      setLeads(nextLeads);
-      updatedLeads.forEach(l => {
-        persistLeadToCollection(l);
-        void mysqlAdmin.saveLead(l as unknown as Record<string,unknown>);
-      });
-    }
-    track('update', 'clientCode', `bulk:${updatedSubs.length + updatedLeads.length}`);
-  };
 
-  const bulkRedistributeLeads = async (_mode: 'unassigned' | 'all'): Promise<number> => 0; // admin-only
 
-  const addStaffMember = (item: StaffMember) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextStaff = [item, ...staffMembersRef.current];
-    staffMembersRef.current = nextStaff;
-    setStaffMembers(nextStaff);
-    void mysqlAdmin.saveStaff(item as unknown as Record<string,unknown>).then(() => {
-      persistStaffMemberToCollection(item);
-    }).catch((err) => {
-      console.error('[Staff] Failed to save staff to MySQL — rolling back:', err);
-      const reverted = staffMembersRef.current.filter(s => s.id !== item.id);
-      staffMembersRef.current = reverted;
-      setStaffMembers(reverted);
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'staff', name: item.name } }));
-    });
-    track('create', 'staff', item.name);
-  };
 
-  const updateStaffMember = (item: StaffMember) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextStaff = staffMembersRef.current.map((row) => (row.id === item.id ? item : row));
-    staffMembersRef.current = nextStaff;
-    setStaffMembers(nextStaff);
-    persistStaffMemberToCollection(item);
-    void mysqlAdmin.saveStaff(item as unknown as Record<string,unknown>);
-    track('update', 'staff', item.name);
-  };
 
-  const deleteStaffMember = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    const nextStaff = staffMembersRef.current.filter((row) => row.id !== id);
-    staffMembersRef.current = nextStaff;
-    setStaffMembers(nextStaff);
-    void mysqlAdmin.deleteStaff(id);
-    track('delete', 'staff', id);
-  };
 
   const addConsultation = (item: ConsultationItem) => {
     lastCRMWriteRef.current = Date.now();

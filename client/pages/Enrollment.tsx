@@ -1,9 +1,8 @@
-﻿import React, { FormEvent, useState, useMemo, useEffect } from 'react';
+import React, { FormEvent, useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BookOpen, CheckCircle, Banknote, Plus, Loader2, Shield, ChevronDown, Trash2, Zap, Award, MessageCircle, AlertCircle, CreditCard } from 'lucide-react';
 import { mysqlAuth } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
-import type { Course, BranchType } from '../types';
 import { cdnImg } from '../lib/img';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
@@ -12,7 +11,6 @@ type PayType = 'cash' | 'installment';
 const CASH_DISCOUNT = 0.15;      // 15% off → full access
 const INSTALL_FIRST_PCT = 0.25;  // first installment = 25% of discounted price
 const INSTALL_DISCOUNT = 0.07;   // 7% off base price on installment payments
-const INSTALL_LIMIT = 20;
 
 // ── Arabic error messages ────────────────────────────────────────────
 const authAr: Record<string, string> = {

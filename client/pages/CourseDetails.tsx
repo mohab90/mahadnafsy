@@ -80,9 +80,6 @@ const CourseDetails: React.FC = () => {
     : undefined;
   const discountedPrice = applicableDiscount ? Math.round(currentPrice * (1 - applicableDiscount.discountPercent / 100)) : null;
   // Cash discount (applied on checkout for direct online payment)
-  const cashDiscountPct = Number(globalContent['checkout.cashDiscountPercent'] || 0);
-  const basePrice = discountedPrice !== null ? discountedPrice : currentPrice;
-  const cashPrice = cashDiscountPct > 0 ? Math.round(basePrice * (1 - cashDiscountPct / 100)) : null;
         // Prefer the globally-loaded lists (logged-in students), else the
         // on-demand fetch (anonymous visitors, whose bulk list is login-gated).
         const ctxChapters = course && courseFromCtx ? getCourseChapters(course.id) : [];
@@ -268,7 +265,7 @@ const CourseDetails: React.FC = () => {
     setRatingSubmitting(true);
     try {
       const res = await mysqlClient.rateCourse(course!.id, star, ratingComment) as any;
-      setRatingData(prev => ({ avg: res.avg, count: res.count, myRating: { rating: star, comment: ratingComment } }));
+      setRatingData(() => ({ avg: res.avg, count: res.count, myRating: { rating: star, comment: ratingComment } }));
       setRatingNotice('شكراً! تم حفظ تقييمك.');
     } catch { setRatingNotice('حدث خطأ، حاول مجدداً.'); }
     setRatingSubmitting(false);

@@ -43,7 +43,7 @@ import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
-import { mysqlClient, mysqlForms } from './lib/mysqlapi';
+import { mysqlForms } from './lib/mysqlapi';
 
 /** Lead Capture Widget — floating "استفسر الآن" form for public visitors */
 const LeadCaptureWidget: React.FC = () => {

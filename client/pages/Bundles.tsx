@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { Layers, Map, ArrowRight, Check, Send, Award, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Currency } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
 
