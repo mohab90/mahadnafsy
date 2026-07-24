@@ -26,6 +26,8 @@ logs/
 npm-debug.log*
 pids/
 *.pid
+.img-cache/
+**/.img-cache/
 
 # ── OS / editor cruft ────────────────────────────────────────────────────────
 .DS_Store
