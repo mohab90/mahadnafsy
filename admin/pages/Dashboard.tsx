@@ -185,6 +185,7 @@ import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { useSubscriberModals } from './dashboard/hooks/useSubscriberModals';
 import { useStaffHrState } from './dashboard/hooks/useStaffHrState';
 import { useOrdersFinanceState } from './dashboard/hooks/useOrdersFinanceState';
+import { useLeadCrmTabState, type LeadSegment, type WaTemplate } from './dashboard/hooks/useLeadCrmTabState';
 import { exportOrdersCsv, exportSubscribersCsv as exportSubscribersCsvHelper, exportLeadsCsv as exportLeadsCsvHelper } from './dashboard/dashboardExports';
 import {
   DashboardClientTabs,
@@ -564,21 +565,38 @@ const Dashboard: React.FC = () => {
     subWaRow, setSubWaRow,
   } = useSubscriberModals();
 
-  const [editingLeadId, setEditingLeadId] = useState('');
-  const [salesNotifOpen, setSalesNotifOpen] = useState(false);
-  const [onlineMgrFollowupOpen, setOnlineMgrFollowupOpen] = useState(false);
-  const [onlineMgrNewEventsOpen, setOnlineMgrNewEventsOpen] = useState(false);
-  const [leadDraft, setLeadDraft] = useState<LeadItem>(blankLead());
-  const [convertLeadModal, setConvertLeadModal] = useState<{ lead: LeadItem | null; courseId: string; accessMode: AccessMode }>({ lead: null, courseId: '', accessMode: 'full' });
-  const bulkUploadRef = React.useRef<HTMLInputElement>(null);
+  const {
+    editingLeadId, setEditingLeadId,
+    salesNotifOpen, setSalesNotifOpen,
+    onlineMgrFollowupOpen, setOnlineMgrFollowupOpen,
+    onlineMgrNewEventsOpen, setOnlineMgrNewEventsOpen,
+    leadDraft, setLeadDraft,
+    convertLeadModal, setConvertLeadModal,
+    bulkUploadRef,
+    quickBookOpen, setQuickBookOpen,
+    quickBookSearch, setQuickBookSearch,
+    leadPayRow, setLeadPayRow,
+    leadPayDraft, setLeadPayDraft,
+    editingConsultationId, setEditingConsultationId,
+    consultationDraft, setConsultationDraft,
+    clientDbSearch, setClientDbSearch,
+    clientDbTypeFilter, setClientDbTypeFilter,
+    clientDbCourseFilter, setClientDbCourseFilter,
+    clientDbSalesFilter, setClientDbSalesFilter,
+    clientDbCollectionFilter, setClientDbCollectionFilter,
+    clientDbBranchFilter, setClientDbBranchFilter,
+    clientDbSort, setClientDbSort,
+    crmContactRow, setCrmContactRow,
+    crmContactDraft, setCrmContactDraft,
+    showSaveSegment, setShowSaveSegment,
+    savedSegments, setSavedSegments,
+    segmentNameInput, setSegmentNameInput,
+    waTemplates, setWaTemplates,
+    waTemplateEditId, setWaTemplateEditId,
+    waTemplateDraft, setWaTemplateDraft,
+    leadsSalesTargets, setLeadsSalesTargets,
+  } = useLeadCrmTabState();
 
-  // -- Global Quick Booking FAB ---------------------------------------------
-  const [quickBookOpen, setQuickBookOpen] = useState(false);
-  const [quickBookSearch, setQuickBookSearch] = useState('');
-
-  // -- Lead payment modal (unified — same design as subscriber payment modal) -
-  const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
-  const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
   const {
     fbDraft, setFbDraft,
     bulkUploadNotice, setBulkUploadNotice,
@@ -605,7 +623,6 @@ const Dashboard: React.FC = () => {
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['main', 'clients']));
-  const [showSaveSegment, setShowSaveSegment] = useState(false);
   const toggleGroup = (key: string) => setOpenGroups(prev => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -661,29 +678,6 @@ const Dashboard: React.FC = () => {
   }, [navigate]);
   const activeTab = activeTabState;
 
-  const [editingConsultationId, setEditingConsultationId] = useState('');
-  const [consultationDraft, setConsultationDraft] = useState<ConsultationItem>({
-    id: '',
-    clientName: '',
-    clientEmail: '',
-    clientPhone: '',
-    therapistId: '',
-    therapistName: '',
-    sessionType: 'individual' as 'individual' | 'couple' | 'family',
-    sessionDate: '',
-    slotId: '',
-    slotLabel: '',
-    timezone: 'Africa/Cairo',
-    status: 'pending' as 'pending' | 'confirmed' | 'completed' | 'cancelled',
-    notes: '',
-    amount: 0,
-    currency: 'EGP',
-    sessionDurationMinutes: 50,
-    meetingProvider: 'google_meet',
-    meetingLink: '',
-    createdAt: '',
-  });
-
   const {
     communityPostDraft, setCommunityPostDraft,
     isCommunityPostFormOpen, setIsCommunityPostFormOpen,
@@ -721,16 +715,6 @@ const Dashboard: React.FC = () => {
   // Notification state moved to NotificationsAdminTab.tsx
 
   // Quiz + LiveStream state moved to their own tab components
-
-  const [clientDbSearch, setClientDbSearch] = useState('');
-  const [clientDbTypeFilter, setClientDbTypeFilter] = useState<'all' | 'subscriber' | 'lead' | 'consultation'>('all');
-  const [clientDbCourseFilter, setClientDbCourseFilter] = useState('');
-  const [clientDbSalesFilter, setClientDbSalesFilter] = useState('');
-  const [clientDbCollectionFilter, setClientDbCollectionFilter] = useState('');
-  const [clientDbBranchFilter, setClientDbBranchFilter] = useState('');
-  const [clientDbSort, setClientDbSort] = useState('date_desc');
-  const [crmContactRow, setCrmContactRow] = useState<LeadItem | null>(null);
-  const [crmContactDraft, setCrmContactDraft] = useState<{ type: CommunicationRecord['type']; date: string; notes: string; outcome: string; nextFollowUp: string; newStatus: LeadStatus | ''; }>({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
 
   // Auto-dedup on first load (silent — keeps oldest lead when duplicates found)
   const _dedupedRef = React.useRef(false);
@@ -785,11 +769,6 @@ const Dashboard: React.FC = () => {
   // Leads view mode: table or kanban
 
   // -- Saved Segments --------------------------------------------------------
-  type LeadSegment = { id: string; name: string; search: string; statuses: string[]; branch: string; sales: string; course: string; followup: string };
-  const [savedSegments, setSavedSegments] = useState<LeadSegment[]>(() => {
-    try { return JSON.parse(localStorage.getItem('crm.savedSegments') || '[]'); } catch { return []; }
-  });
-  const [segmentNameInput, setSegmentNameInput] = useState('');
   const saveCurrentSegment = () => {
     if (!segmentNameInput.trim()) return;
     const seg: LeadSegment = { id: `seg-${Date.now()}`, name: segmentNameInput.trim(), search: leadsSearch, statuses: leadsStatusFilter, branch: leadsBranchFilter, sales: leadsSalesFilter, course: leadsCourseFilter, followup: leadsFollowupFilter };
@@ -814,12 +793,6 @@ const Dashboard: React.FC = () => {
   };
 
   // -- WhatsApp Templates ----------------------------------------------------
-  type WaTemplate = { id: string; name: string; body: string };
-  const [waTemplates, setWaTemplates] = useState<WaTemplate[]>(() => {
-    try { return JSON.parse(localStorage.getItem('crm.waTemplates') || '[]'); } catch { return []; }
-  });
-  const [waTemplateEditId, setWaTemplateEditId] = useState('');
-  const [waTemplateDraft, setWaTemplateDraft] = useState({ name: '', body: '' });
   const applyWaTemplate = (template: string, lead: typeof leads[0]) => {
     const courseIds = [...(lead.interestedCourseIds || []), ...(lead.enrolledCourseId ? [lead.enrolledCourseId] : [])];
     const courseName = courseIds.map(id => id.startsWith('bundle:') ? bundles.find(b => b.id === id.replace('bundle:', ''))?.title : (courses.find(c => c.id === id)?.title || bundles.find(b => b.id === id)?.title)).filter(Boolean)[0] || '';
@@ -849,14 +822,6 @@ const Dashboard: React.FC = () => {
     setWaTemplates(next);
     localStorage.setItem('crm.waTemplates', JSON.stringify(next));
   };
-  const [leadsSalesTargets, setLeadsSalesTargets] = useState<SalesTarget[]>(() => {
-    try {
-      // Try content first (Firebase-persisted), fallback to localStorage for migration
-      const fromContent = (window as unknown as Record<string, unknown>)['__crm_targets__'];
-      if (fromContent) return fromContent as SalesTarget[];
-      return JSON.parse(localStorage.getItem('crm.salesTargets') || '[]');
-    } catch { return []; }
-  });
   // Tag input (keyed by lead id being edited)
 
   // Community sub-tab
