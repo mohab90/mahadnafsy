@@ -1,4 +1,3 @@
-import React from 'react';
 import type { UnifiedClientTab } from './useUnifiedClientActiveTab';
 
 export type UnifiedClientTabItem = [UnifiedClientTab, string];

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2 } from 'lucide-react';
 import { BRANCHES, BRANCH_LABELS_AR } from '../../../constants/branches';
 

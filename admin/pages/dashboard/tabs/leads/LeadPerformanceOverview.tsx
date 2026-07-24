@@ -160,7 +160,7 @@ export function LeadPerformanceOverview({
             {salesPerformance
               .slice()
               .sort((a, b) => b.convPct - a.convPct)
-              .map(({ rep, leads: rl, converted, convPct, revenue }, idx) => {
+              .map(({ rep, leads: rl, converted, convPct }, idx) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 const medal = idx < 3 ? medals[idx] : `#${idx + 1}`;
                 const barColor = convPct >= 30 ? 'bg-emerald-500' : convPct >= 15 ? 'bg-amber-500' : 'bg-red-400';

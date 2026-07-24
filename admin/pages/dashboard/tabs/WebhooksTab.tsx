@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Webhook, Plus, Trash2, Edit2, Save, X, CheckCircle, XCircle, Clock, AlertTriangle, RefreshCw, Eye, Send, Globe } from 'lucide-react';
+import { Plus, Trash2, Edit2, CheckCircle, XCircle, Clock, RefreshCw, Send, Globe } from 'lucide-react';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }

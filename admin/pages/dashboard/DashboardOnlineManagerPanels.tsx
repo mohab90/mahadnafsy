@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlarmClock, Banknote } from 'lucide-react';
 import type { InstallmentEntry, InstallmentPlan, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';

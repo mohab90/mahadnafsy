@@ -103,7 +103,7 @@ export default function OrdersTab({
   omOrdReviewTab, setOmOrdReviewTab,
   effectiveOrders, filteredOrders, ordersStats,
   orderSearch, setOrderSearch,
-  orderStatusFilter, setOrderStatusFilter,
+  setOrderStatusFilter,
   orderTypeFilter, setOrderTypeFilter,
   orderMethodFilter, setOrderMethodFilter,
   orderDateFrom, setOrderDateFrom,

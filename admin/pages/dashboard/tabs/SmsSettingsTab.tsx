@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { MessageSquare, Save, RefreshCw, CheckCircle, AlertCircle, Send, TestTube, Globe, Key, Phone } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { MessageSquare, Save, RefreshCw, Send, TestTube, Globe, Key, Phone } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;

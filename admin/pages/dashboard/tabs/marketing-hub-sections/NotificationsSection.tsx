@@ -1,4 +1,3 @@
-import React from 'react';
 import { Bell, Send, Calendar, Users, Inbox, ChevronRight } from 'lucide-react';
 import type { NotificationBroadcast, SubscriberItem } from '../../../../types';
 import { StatCard, TODAY, MONTH } from './shared';

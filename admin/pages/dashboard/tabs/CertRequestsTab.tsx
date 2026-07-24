@@ -1,7 +1,5 @@
-﻿import React, { useState } from 'react';
 import { Search, Star, Trash2, X } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../types';
-import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 

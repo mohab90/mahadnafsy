@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { Info, ArrowRight, Loader } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
@@ -31,7 +31,7 @@ const UnifiedClientView: React.FC<{ subscriber?: SubscriberItem; lead?: LeadItem
 const ClientProfile: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const { subscribers, leads, daqqiRounds, consultations, isAdmin, staffScopedSubscribers, staffScopedLeads } = useSiteData();
+  const { subscribers, leads, daqqiRounds, consultations, staffScopedSubscribers, staffScopedLeads } = useSiteData();
 
   // Merge context + scoped data so non-admin staff can navigate to clients
   const allSubs = subscribers.length > 0 ? subscribers : staffScopedSubscribers;

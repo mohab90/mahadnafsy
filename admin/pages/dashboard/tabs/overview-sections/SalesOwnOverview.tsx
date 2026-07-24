@@ -1,4 +1,3 @@
-import React from 'react';
 import { Activity, AlertCircle, BarChart3, Clock, Percent, TrendingUp, UserCheck, UserPlus } from 'lucide-react';
 import type { LeadItem, OrderItem, StaffMember, SubscriberItem } from '../../../../types';
 import ActionCenter from '../../ActionCenter';
@@ -14,7 +13,7 @@ interface Props {
   setActiveTab: (tab: string) => void;
 }
 
-export default function SalesOwnOverview({ salesOwnLeads, salesOwnSubscribers, salesOwnOrders, currentStaff, myMonthlyTarget, navigate, setActiveTab }: Props) {
+export default function SalesOwnOverview({ salesOwnLeads, salesOwnSubscribers, currentStaff, myMonthlyTarget, navigate, setActiveTab }: Props) {
                 const myLeads = salesOwnLeads;
                 const myNew = myLeads.filter(l => l.status === 'new').length;
                 const myContacted = myLeads.filter(l => l.status === 'contacted').length;
@@ -22,7 +21,6 @@ export default function SalesOwnOverview({ salesOwnLeads, salesOwnSubscribers, s
                 const myConverted = myLeads.filter(l => l.status === 'converted').length;
                 const myLost = myLeads.filter(l => ['lost','not_interested_hidden'].includes(l.status || '')).length;
                 const mySubs = salesOwnSubscribers;
-                const myOrders = salesOwnOrders;
                 const myRevenueSubs = mySubs.flatMap(s => s.paymentHistory || []).reduce((acc, p) => {
                   const egp = p.currency === 'EGP' ? p.amount : p.currency === 'SAR' ? p.amount * 13 : p.amount * 50;
                   const month = (p.at || '').slice(0, 7);

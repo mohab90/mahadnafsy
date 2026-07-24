@@ -1,4 +1,3 @@
-import React from 'react';
 import { ExternalLink, Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSiteData } from '../../context/SiteDataContext';

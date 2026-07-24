@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Users, Phone, Mail, Target, Star, Edit2, Save, X, Plus, Trash2, BarChart3, Calendar } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Users } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import type { StaffMember, SalesTarget } from '../../../types';
+import type { SalesTarget } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -16,7 +16,7 @@ const STATUS_COLOR: Record<string, string> = {
   inactive: 'bg-gray-100 text-gray-500',
 };
 
-export default function SalesTeamTab({ notify, salesTargets = [], onOpenStaffProfile }: {
+export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: {
   notify: NotifyFn;
   salesTargets?: SalesTarget[];
   onOpenStaffProfile?: (staffId: string) => void;

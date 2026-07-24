@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Scale, TrendingUp, TrendingDown, DollarSign, BarChart3, ArrowUpRight, ArrowDownRight, Layers, PieChart, Info } from 'lucide-react';
+import { Scale, BarChart3, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 type BalancePeriod = 'month' | 'quarter' | 'year' | 'all';
 
-const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
-  const { orders, expenses, subscribers, leads } = useSiteData();
+const BalanceSheetTab: React.FC<Props> = () => {
+  const { orders, expenses, subscribers } = useSiteData();
   const [period, setPeriod] = useState<BalancePeriod>('year');
 
   const { assets, liabilities, equity, prevEquity, incomeStatement } = useMemo(() => {

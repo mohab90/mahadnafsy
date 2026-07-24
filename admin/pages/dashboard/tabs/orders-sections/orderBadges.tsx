@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Shared payment-method / order-type badge renderers used across the orders views.
 export const payMethodBadge = (m: string | undefined) => {

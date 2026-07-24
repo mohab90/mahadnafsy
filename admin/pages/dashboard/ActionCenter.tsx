@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, RefreshCw, AlertTriangle, CheckCircle2, Inbox, ArrowLeft } from 'lucide-react';
 
 interface Item { key: string; label: string; count: number; severity: 'high' | 'warn' | 'ok'; link: string; }

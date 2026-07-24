@@ -1,4 +1,4 @@
-﻿/**
+/**
  * UnifiedClientPage — ONE page for ALL clients (leads + subscribers)
  * URL: /client/:code  (stable, never changes even after conversion)
  *
@@ -6,19 +6,18 @@
  *   LEFT sidebar  → full client data + actions (edit / pay / grant / contact / convert)
  *   RIGHT main    → overview tab first, then contextual tabs
  */
-import React, { Suspense, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Phone, MessageSquare, Plus, Trash2, Mail,
-  CheckCircle, Clock, CreditCard, Info, Copy,
-  Activity, User, Key, Tag,
-  Printer, DollarSign, CalendarCheck2, RefreshCw, AlertCircle, X,
+  
+  CreditCard, 
+  
+  X,
 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
-import { SideRow } from './unified-client/SideRow';
 import { useUnifiedClientActiveTab, type UnifiedClientTab } from './unified-client/useUnifiedClientActiveTab';
 import { buildUnifiedClientTabs, UnifiedClientTabs } from './unified-client/UnifiedClientTabs';
 import { UnifiedClientCertificatesPanel } from './unified-client/UnifiedClientCertificatesPanel';
@@ -56,18 +55,14 @@ import {
   UnifiedClientSidebarQuickActions,
 } from './unified-client/UnifiedClientSidebarCards';
 import {
-  branchLabels,
   commTypeMeta,
   generatePromoCode,
-  normBranchKey,
-  ptLabels,
-  statusColors,
 } from './unified-client/constants';
 
 import {
   LeadItem, SubscriberItem, CommunicationRecord,
   PaymentRecord, BranchType, StaffMember, PaymentItemType,
-  CourseAccessSetting, SubscriberCertificate,
+  CourseAccessSetting, 
   ExtraCertificateRequest, ExtraCertificateType,
   UserSessionData, InstallmentPlan, InstallmentEntry,
   PaymentHistoryEntry,
@@ -130,7 +125,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const {
     courses, bundles, staffMembers, subscribers, leads, isAdmin, authUser,
     updateLead, deleteLead, addSubscriber, updateSubscriber, deleteSubscriber,
-    getCourseLectures, daqqiRounds, consultations, communityPosts, content,
+    getCourseLectures, daqqiRounds, consultations, content,
   } = useSiteData();
 
   const { isOnlineManager, canManageCourseAccess } = useUnifiedClientPermissions({
@@ -402,11 +397,9 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   // lead payments
   const leadPayments   = lead?.paymentRecords ?? [];
   const leadPaidEGP    = leadPayments.reduce((s, p) => p.currency === 'EGP' ? s + p.amount : s, 0);
-  const leadPaidSAR    = leadPayments.reduce((s, p) => p.currency === 'SAR' ? s + p.amount : s, 0);
   const enrolledCourse = lead?.enrolledCourseId ? courses.find(c => c.id === lead.enrolledCourseId) : null;
   const coursePriceEGP = enrolledCourse?.price?.EGP ?? 0;
   const leadRemaining  = Math.max(0, coursePriceEGP - leadPaidEGP);
-  const leadPaidPct    = coursePriceEGP > 0 ? Math.min(100, Math.round((leadPaidEGP / coursePriceEGP) * 100)) : 0;
 
   // subscriber payments — only show confirmed (paid) entries in client view
   const subHistory = subscriber?.paymentHistory ?? [];
@@ -659,21 +652,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
     setPayModalDraft(createClientPaymentDraft());
   };
 
-  const handleGrant = () => {
-    if (!grantDraft.courseId || !subscriber) return;
-    const alreadyEnrolled = subscriber.enrolledCourseIds.includes(grantDraft.courseId);
-    const newIds = alreadyEnrolled ? subscriber.enrolledCourseIds : [...subscriber.enrolledCourseIds, grantDraft.courseId];
-    updateSubscriber({
-      ...subscriber,
-      enrolledCourseIds: newIds,
-      courseAccess: { ...(subscriber.courseAccess ?? {}), [grantDraft.courseId]: { mode: 'full' } },
-    });
-    // Write directly to enrollments table so client sees it immediately even if crm_json sync fails
-    if (!alreadyEnrolled) {
-      mysqlAdmin.addEnrollment(subscriber.id, grantDraft.courseId, null, 'full').catch(() => {});
-    }
-    setGrantDraft({ courseId: '', note: '' });
-  };
 
   const handleAddExtraCertRequest = () => {
     if (!extraCertDraft.courseId || !extraCertDraft.type || !subscriber) return;

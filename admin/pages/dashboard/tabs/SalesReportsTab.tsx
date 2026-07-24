@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { FileText, TrendingUp, Users, DollarSign, Download, Filter, Calendar, Tag, BarChart3, PieChart as PieIcon } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { FileText, TrendingUp, Users, DollarSign, Tag, BarChart3, PieChart as PieIcon } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Range = 'week' | 'month' | '3months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316'];
@@ -21,7 +20,7 @@ function getRangeStart(range: Range): string {
   return '2000-01-01';
 }
 
-export default function SalesReportsTab({ notify }: { notify: NotifyFn }) {
+export default function SalesReportsTab() {
   const { leads, orders, staffMembers, courses } = useSiteData();
   const [range, setRange] = useState<Range>('month');
 

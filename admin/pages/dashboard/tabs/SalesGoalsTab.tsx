@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Target, Trophy, Edit2, Save, X, Plus, TrendingUp, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Target, Trophy, Edit2, Save, X } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;

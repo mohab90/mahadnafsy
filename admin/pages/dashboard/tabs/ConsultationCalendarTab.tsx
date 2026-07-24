@@ -1,8 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Calendar, Clock, User, Phone, BookOpen, CheckCircle, X, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const STATUS_LABEL: Record<string, string> = {
   scheduled: 'مجدولة', completed: 'مكتملة', cancelled: 'ملغاة', pending: 'معلقة', no_show: 'لم يحضر',
@@ -23,7 +22,7 @@ function getFirstDayOfMonth(year: number, month: number) {
   return new Date(year, month, 1).getDay();
 }
 
-export default function ConsultationCalendarTab({ notify }: { notify: NotifyFn }) {
+export default function ConsultationCalendarTab() {
   const { consultations, staffMembers } = useSiteData();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());

@@ -1,18 +1,16 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
 import {
-  Calendar, Download, ExternalLink, Eye, MessageSquareText,
-  Phone, Plus, Receipt, RefreshCw, Search, Trash2, Users, Wallet, X,
+  
+  Plus, X,
 } from 'lucide-react';
 import type {
-  BranchType, Bundle, CommunicationRecord, Course,
+  BranchType, Bundle, Course,
   DaqqiRound, DaqqiRoundAttendee, LeadItem, LeadStatus,
   PaymentHistoryEntry, StaffMember, SubscriberItem,
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { SUB_STATUS_CFG, normBranchId, type SubStatus } from '../dashboardShared';
+import { normBranchId } from '../dashboardShared';
 import { type PaymentDraft } from '../../../components/PaymentModal';
-import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { OnlineClientCourseDetailsModal } from './OnlineClientCourseDetailsModal';
 import { OnlineClientConvertModal, type OnlineClientConvertType } from './OnlineClientConvertModal';
@@ -26,17 +24,12 @@ import { FiltersToolbar } from './online-clients-sections/FiltersToolbar';
 import { ClientsTable } from './online-clients-sections/ClientsTable';
 import {
   calcSubscribersPaidEGP,
-  errorMessage,
   formatCompactNumber,
   isInternationalSubscriber,
-  isOnlineSubscriber,
-  paymentAmountInEGP,
   subscriberRemainingEGP,
-  type BulkAssignCollectionResult,
   type SubContactDraft,
   type SubInstDraft,
   type SubscriberSavePayload,
-  type SubscriberWithCustomPrices,
 } from './onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -92,7 +85,6 @@ export default function OnlineClientsTab({
   setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
   setSubInstRow, setSubInstDraft, setSubWaRow, branchFilter,
 }: Props) {
-  const navigate = useNavigate();
   // Collection role — online clients tab state
   const [collOnlineSubTab, setCollOnlineSubTab] = useState<'all' | 'local' | 'intl' | 'mine'>('all');
   const [collOnlineSearch, setCollOnlineSearch] = useState('');
@@ -168,7 +160,6 @@ export default function OnlineClientsTab({
                 });
               }
               const isIntlSub = isInternationalSubscriber;
-              const isOnlineSub = isOnlineSubscriber;
               // «عملائي» = subscribers personally converted by this collection employee
               const myCollLeadIds = new Set(
                 salesOwnLeads
@@ -190,7 +181,6 @@ export default function OnlineClientsTab({
                 : masterList;
               const mineSubsAll = branchScopedMasterList.filter(s => s.leadId && myCollLeadIds.has(s.leadId));
               // For allOnline KPI tiles — subscribers with explicit online branch
-              const allOnline = (branchFilter ? scopedOrContextSubscribers.filter(s => branchMatchesFilter(s.branch, branchFilter)) : scopedOrContextSubscribers).filter(isOnlineSub);
               const allCombined = isDaqqiClientsTab
                 ? branchScopedMasterList.filter(s => normBranchId(s.branch) === 'DAQQI')
                 : branchScopedMasterList.filter(s => normBranchId(s.branch) !== 'DAQQI');
@@ -260,8 +250,6 @@ export default function OnlineClientsTab({
                 return true;
               });
               const todayOnlineStr = new Date().toISOString().slice(0, 10);
-              const in3daysOnlineStr = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-              const currFmt = (c: string) => c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م';
               // Collection financial stats
               const thisWeekStart = (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().slice(0,10); })();
               const calcPaidEGP = calcSubscribersPaidEGP;

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Mail, Smartphone, MessageCircle, UserPlus } from 'lucide-react';
 import type { JoinUsApplication, LeadItem } from '../../../../types';
 import type { NotifyFn } from './shared';

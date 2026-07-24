@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Droplets, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, DollarSign, Calendar, BarChart3, RefreshCw } from 'lucide-react';
+import { Droplets, TrendingUp, ArrowDownRight, BarChart3 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -7,7 +7,7 @@ interface Props { notify: NotifyFn; }
 
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
-const CashFlowTab: React.FC<Props> = ({ notify }) => {
+const CashFlowTab: React.FC<Props> = () => {
   const { orders, expenses } = useSiteData();
   const [monthsCount, setMonthsCount] = useState(6);
   const [viewType, setViewType] = useState<'chart' | 'table'>('chart');

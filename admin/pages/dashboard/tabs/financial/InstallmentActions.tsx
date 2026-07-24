@@ -1,4 +1,3 @@
-import React from 'react';
 import { Download, Plus } from 'lucide-react';
 import type { SubscriberItem } from '../../../../types';
 

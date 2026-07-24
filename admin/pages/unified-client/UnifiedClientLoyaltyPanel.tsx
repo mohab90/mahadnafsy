@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Award, Gift, Loader2, Minus, Plus, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 

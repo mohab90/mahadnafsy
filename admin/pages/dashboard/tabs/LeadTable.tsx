@@ -2,7 +2,7 @@ import React from 'react';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
 import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
-import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, calcLeadScore, getRottenLevel } from './leadUtils';
+import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
@@ -44,7 +44,7 @@ type LeadTableProps = {
   sources: string[];
 };
 
-export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, deleteLead, addSubscriber, updateSubscriber, subscribers, salesStaff, isSalesOnly, onSalesClick, onBook, branchOptions, sources }) => {
+export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, deleteLead, subscribers, salesStaff, isSalesOnly, onSalesClick, onBook, branchOptions, sources }) => {
   // Deduplicated branch options: merge instituteBranches with ENUM fallbacks without duplicates
   const mergedBranchOpts = React.useMemo(() => {
     const enumEntries = Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => ({ id, label }));
@@ -182,15 +182,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
           <tbody>
             {pageRows.map((row, idx) => {
               const commCount = row.communications?.length || 0;
-              const lastNote = row.lastContactNote || (row.communications && row.communications.length > 0
-                ? [...row.communications].sort((a, b) => b.date.localeCompare(a.date))[0].notes
-                : null);
               const interestedCourseIds = [...new Set([...(row.interestedCourseIds || []), ...(row.enrolledCourseId ? [row.enrolledCourseId] : [])])];
               const sourceMeta = crmSourceLabels[row.source] || null;
               // ── CRM metrics ──
-              const score = calcLeadScore(row);
-              const scoreBarColor = score >= 70 ? 'bg-emerald-500' : score >= 40 ? 'bg-amber-400' : 'bg-gray-400';
-              const scoreTextColor = score >= 70 ? 'text-emerald-700' : score >= 40 ? 'text-amber-700' : 'text-gray-500';
               const agingDays = row.createdAt
                 ? Math.floor((Date.now() - new Date(row.createdAt.replace(/\//g, '-').replace(' ', 'T')).getTime()) / 86_400_000)
                 : 0;

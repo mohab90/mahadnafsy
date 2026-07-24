@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { TrendingUp, TrendingDown, Users, UserCheck, UserX, BarChart3, Calendar, RefreshCw, Star } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Users, UserCheck, BarChart3, RefreshCw, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
+import { XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Legend, PieChart, Pie, Cell } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 
@@ -17,8 +16,8 @@ function getLast12Months() {
   return months;
 }
 
-export default function RetentionTab({ notify }: { notify: NotifyFn }) {
-  const { subscribers, orders, courses } = useSiteData();
+export default function RetentionTab() {
+  const { subscribers, courses } = useSiteData();
   const [courseFilter, setCourseFilter] = useState('all');
   const months = getLast12Months();
 

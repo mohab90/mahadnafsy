@@ -4,7 +4,7 @@ import {
   Calendar, ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
-  Bundle, CommunicationRecord, Course, DaqqiRoundAttendee,
+  Bundle, CommunicationRecord, Course, 
   StaffMember, SubscriberItem,
 } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -187,10 +187,6 @@ export function ClientsTable({
             const comms = row.communications || [];
             const lastComm = comms.length > 0 ? [...comms].sort((a,b)=>b.date.localeCompare(a.date))[0] : null;
             const commActor = lastComm ? (staffMembers.find(s => s.id === (lastComm as {actorId?:string}).actorId)?.name || (lastComm as {actorName?:string}).actorName || '') : '';
-            const branchBadge = branchId === 'ONLINE_EGYPT' ? { text:'أونلاين مصر', cls:'bg-purple-50 text-purple-700 border-purple-200' }
-              : branchId === 'ONLINE_SAUDI' ? { text:'السعودية', cls:'bg-cyan-50 text-cyan-700 border-cyan-200' }
-              : branchId === 'ONLINE_ABROAD' ? { text:'خارج مصر', cls:'bg-teal-50 text-teal-700 border-teal-200' }
-              : { text: row.branch||'—', cls:'bg-gray-50 text-gray-600 border-gray-200' };
             const rowSpan = Math.max(courseRows.length, 1);
             const instCell = (
               nextInst ? (

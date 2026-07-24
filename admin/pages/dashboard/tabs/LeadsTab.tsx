@@ -1,19 +1,11 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Suspense } from 'react';
-import {
-  AlertCircle, Archive, Award, BookOpen, CalendarPlus,
-  Columns, CreditCard, EyeOff, Eye,
-  Inbox, Link2, MessageSquare, MessageSquareText,
-  Plus, Search, Share2, Tag, Trash2,
-  Upload, Wallet, X,
-} from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import { mysqlAdmin, mysqlClient } from '../../../lib/mysqlapi';
-import { useResizableCols } from '../../../components/useResizableCols';
 import type {
-  LeadItem, LeadStatus, CommunicationRecord, SalesTarget, Course, Bundle,
+  LeadItem, LeadStatus, CommunicationRecord, 
   BranchType, PaymentHistoryEntry, PaymentItemType,
   SubscriberItem, StaffMember, CourseAccessSetting,
 } from '../../../types';
@@ -21,7 +13,7 @@ import { DEFAULT_CRM_SETTINGS } from './CrmSettingsModal';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import type { CrmSettings, NotifyFn } from './CrmSettingsModal';
-import { DEFAULT_SOURCES, ONLINE_EXCLUDED_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from './crmConstants';
+import { DEFAULT_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from './crmConstants';
 import { LeadTable } from './LeadTable';
 import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
@@ -36,14 +28,7 @@ import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 import {
   BRANCH_ENUM_LABELS,
-  COMM_ICON,
-  COMM_LABEL,
-  IL_LABEL,
-  PIPELINE_COLS,
-  PRESET_TAGS,
-  ROTTEN_CFG,
   STATUS_CFG,
-  getLeadBranchRaw,
   getRottenLevel,
   // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
 } from './leadUtils';
@@ -67,8 +52,7 @@ type StaffSelfSnapshot = {
   name?: string;
 };
 
-import { TagInput, getScoreBreakdown, LeadJourneyTimeline, QuickEditPanel, MultiSelectDropdown, crmSourceLabels, normBranchId, mkPromoCode, paymentTypeLabels, EVENT_CFG } from './leads/LeadSubcomponents';
-import type { CertPricingMap } from './leads/LeadSubcomponents';
+import { QuickEditPanel, normBranchId } from './leads/LeadSubcomponents';
 import { LeadsTabHeader } from './leads/LeadsTabHeader';
 import { LeadFilterBar } from './leads/LeadFilterBar';
 import { LeadSalesKpiStrip } from './leads/LeadSalesKpiStrip';
@@ -92,7 +76,7 @@ const LeadSectionFallback = () => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
-  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber, authUser, isAdmin, issueClientCodeAsync, content } = useSiteData();
+  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber, authUser, issueClientCodeAsync } = useSiteData();
   const instituteBranches = useBranches();
   const navigate = useNavigate();
   const currentStaff = useMemo(() =>
@@ -103,7 +87,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     Object.fromEntries(instituteBranches.flatMap(b => [[b.id, b.label], [normBranchId(b.id), b.label]])),
     [instituteBranches]
   );
-  const salesStaff = useMemo(() => staffMembers.filter(s => s.role === 'sales'), [staffMembers]);
 
   const statusDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Drag-and-drop between kanban columns
@@ -321,7 +304,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays);
 
-  const { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads, today } = useLeadFilteringData({
+  const { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads } = useLeadFilteringData({
     effectiveLeads,
     leads,
     salesReps,
@@ -568,44 +551,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   // Extra handlers from LeadsTab
   // ═══════════════════════════════════════════════════════════════════════
 
-  const exportLeadsCsv = () => {
-    const rows = leads;
-    if (rows.length === 0) return;
-    const header = ['id', 'name', 'phone', 'email', 'status', 'source', 'branch', 'leadType', 'assignedSalesName', 'createdAt', 'notes'];
-    const csvRows = rows.map(r => [r.id, r.name, r.phone, r.email, r.status, r.source, r.branch, r.leadType, r.assignedSalesName, r.createdAt, r.notes]);
-    const csv = buildCsv([header, ...csvRows]);
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url; link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  };
 
 
-  const normalizeAccessEntry = (entry?: CourseAccessSetting | 'preview' | 'full'): CourseAccessSetting => {
-    if (entry === 'full') return { mode: 'full' };
-    if (entry === 'preview') return { mode: 'preview' };
-    if (!entry) return { mode: 'preview' };
-    if (entry.mode === 'limited') {
-      const rawLimit = Number(entry.lectureLimit || 1);
-      return { mode: 'limited', lectureLimit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 1 };
-    }
-    return { mode: entry.mode };
-  };
 
-  const normalizeCourseAccess = (enrolledCourseIds: string[], currentMap: Record<string, CourseAccessSetting | 'preview' | 'full'> = {}) => {
-    const nextMap: Record<string, CourseAccessSetting> = {};
-    enrolledCourseIds.forEach((courseId) => {
-      nextMap[courseId] = normalizeAccessEntry(currentMap[courseId]);
-    });
-    return nextMap;
-  };
 
   // lectureProgress is stored as { [lectureId]: percentNumber } where 100 = complete.
   // Pass through unchanged — it is keyed by lectureId, not courseId.
-  const normalizeLectureProgress = (_enrolledCourseIds: string[], currentMap: Record<string, number> = {}) => {
-    return currentMap;
-  };
 
 
   const openLeadBook = (row: LeadItem) => {
@@ -858,17 +809,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     }
   };
 
-  const handleSaveCrmContact = () => {
-    if (!crmContactRow || !crmContactDraft.notes.trim()) return;
-    const freshLead = leads.find(l => l.id === crmContactRow.id) || crmContactRow;
-    const rec: CommunicationRecord = { id: `comm-${Date.now()}`, type: crmContactDraft.type, date: crmContactDraft.date.replace('T', ' '), notes: crmContactDraft.notes, outcome: crmContactDraft.outcome || undefined, nextFollowUp: crmContactDraft.nextFollowUp || undefined };
-    const updatedComms = [...(freshLead.communications || []), rec];
-    const newStatus: LeadStatus = (crmContactDraft.newStatus as LeadStatus) || (freshLead.status === 'new' ? 'contacted' : freshLead.status);
-    updateLead({ ...freshLead, communications: updatedComms, status: newStatus, lastFollowUp: rec.date, lastContactNote: crmContactDraft.notes, nextFollowUpDate: crmContactDraft.nextFollowUp || freshLead.nextFollowUpDate });
-    setCrmContactRow(null);
-    setCrmContactDraft({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
-    notify('success', 'تم تسجيل التواصل بنجاح.');
-  };
 
 
   const convertLeadToSubscriber = async () => {

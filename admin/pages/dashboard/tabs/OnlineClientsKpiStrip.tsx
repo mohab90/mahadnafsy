@@ -1,4 +1,3 @@
-import React from 'react';
 import type { SubscriberItem } from '../../../types';
 
 type OnlineClientsKpiStripProps = {

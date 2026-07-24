@@ -3,7 +3,7 @@
  * Saves to content['msg.templates'] (JSON) via setContentValue; the API reloads
  * them immediately and renders {{var}} placeholders in its cron messages.
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { MessageSquareText, Save, Check, RotateCcw, Variable } from 'lucide-react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { TEMPLATE_DEFS, parseTemplates, renderPreview } from './messageTemplates';

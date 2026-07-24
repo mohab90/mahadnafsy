@@ -4,7 +4,7 @@
  * mode='online'  → branch selectable, optional account credentials
  * mode='general' → branch selectable, minimal fields
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { UserPlus, X, Printer } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import type { PaymentHistoryEntry, PaymentItemType } from '../types';

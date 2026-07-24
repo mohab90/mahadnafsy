@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Target, Edit3, Save, X, Plus, Trash2, Wallet, ExternalLink } from 'lucide-react';
 import type { StaffMember, StaffRole, StaffAbsence } from '../../../../types';

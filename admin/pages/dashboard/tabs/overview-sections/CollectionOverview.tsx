@@ -1,4 +1,3 @@
-import React from 'react';
 import { Clock, Settings2, TrendingUp } from 'lucide-react';
 import type { StaffMember, SubscriberItem } from '../../../../types';
 

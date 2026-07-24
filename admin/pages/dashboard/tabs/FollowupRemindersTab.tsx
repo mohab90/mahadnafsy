@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Bell, Phone, MessageSquare, Clock, AlertTriangle, Check,
-  Calendar, User, ChevronRight, Filter, RefreshCw, Flame,
-  UserCheck, SortAsc, BarChart3,
+  Bell, Phone, MessageSquare, Clock, 
+  User, 
+  BarChart3,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { LeadItem, LeadStatus } from '../../../types';
@@ -41,7 +41,7 @@ function bucket(lead: LeadItem): 'overdue' | 'today' | 'tomorrow' | 'week' | nul
   return null;
 }
 
-const FollowupRemindersTab: React.FC<Props> = ({ notify }) => {
+const FollowupRemindersTab: React.FC<Props> = () => {
   const { leads, staffMembers } = useSiteData();
   const [filterSales, setFilterSales] = useState<string>('all');
   const [showBucket, setShowBucket] = useState<string>('all');
@@ -69,8 +69,6 @@ const FollowupRemindersTab: React.FC<Props> = ({ notify }) => {
 
   const overdue = reminders.filter(l => bucket(l) === 'overdue');
   const todayList = reminders.filter(l => bucket(l) === 'today');
-  const tomorrowList = reminders.filter(l => bucket(l) === 'tomorrow');
-  const weekList = reminders.filter(l => bucket(l) === 'week');
 
   const buckets = [
     { key: 'overdue',  label: 'متأخرة',  count: leads.filter(l => bucket(l) === 'overdue').length,   icon: '🔴', bg: 'bg-red-50 border-red-200', header: 'bg-red-100 text-red-800' },

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { BarChart3, BookOpen, CreditCard, FileText, RotateCcw, Target, TrendingUp } from 'lucide-react';
 import type { NotifyFn } from '../../types';
 

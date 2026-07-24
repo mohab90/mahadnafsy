@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign, BarChart2 } from 'lucide-react';
+import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
     leads, subscribers, orders, courses, bundles, therapists, consultations,
-    communityPosts, joinUsApplications, contactMessages, staffMembers, adminAiConfig,
+    contactMessages, staffMembers, adminAiConfig,
   } = useSiteData();
 
   // ── Chat state (moved from Dashboard) ─────────────────────────────────────
@@ -111,28 +111,16 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const _now = new Date();
   const _todayISO = _now.toISOString().slice(0, 10);
   const _tM = _now.getMonth(), _tY = _now.getFullYear();
-  const _lM = _tM === 0 ? 11 : _tM - 1, _lMY = _tM === 0 ? _tY - 1 : _tY;
   const _monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
   // Date filters
   const _isToday    = (d: string) => !!d && (d.startsWith(_todayISO) || new Date(d).toDateString() === _now.toDateString());
-  const _isWeek     = (d: string) => { if (!d) return false; const s=new Date(_now);s.setDate(_now.getDate()-_now.getDay());s.setHours(0,0,0,0);return new Date(d)>=s; };
-  const _isThisMonth= (d: string) => { if (!d) return false; const x=new Date(d);return x.getMonth()===_tM&&x.getFullYear()===_tY; };
-  const _isLastMonth= (d: string) => { if (!d) return false; const x=new Date(d);return x.getMonth()===_lM&&x.getFullYear()===_lMY; };
-  const _isThisYear = (d: string) => { if (!d) return false; return new Date(d).getFullYear()===_tY; };
   const _toEGP = (amt: number, cur: string) => cur==='EGP'?amt:cur==='SAR'?amt*13:amt*50;
 
   // Branch label mapping
   const BRANCH_LABELS: Record<string,string> = {
     daqqi:'الدقي', tagamoa:'التجمع', 'online-egypt':'أون لاين - مصر',
     'online-saudi':'أون لاين - السعودية', 'online-abroad':'خارج مصر', other:'أخرى',
-  };
-  const BRANCH_ALIAS: Record<string,string> = {
-    'دقي':'daqqi','الدقي':'daqqi','daqqi':'daqqi',
-    'تجمع':'tagamoa','التجمع':'tagamoa','tagamoa':'tagamoa',
-    'أون لاين مصر':'online-egypt','اونلاين مصر':'online-egypt',
-    'سعودية':'online-saudi','السعودية':'online-saudi',
-    'خارج مصر':'online-abroad','الخارج':'online-abroad',
   };
 
   // ── All manual payments (pre-memoized above for performance) ──────────────────

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, User, Tag, ChevronDown, Flame, Star, ArrowRight, X, Send, TrendingUp, Zap, ExternalLink } from 'lucide-react';
+import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -47,7 +47,6 @@ interface TicketMessage {
   at: string;
 }
 
-const TODAY = new Date().toISOString().slice(0, 10);
 
 const STATUS_CFG: Record<TicketStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   open:       { label: 'مفتوح',       color: 'text-blue-700',  bg: 'bg-blue-50 border-blue-200',   icon: <AlertCircle size={13} /> },
@@ -181,59 +180,9 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     breached: tickets.filter(t => t.slaBreached && t.status !== 'closed' && t.status !== 'resolved').length,
   };
 
-  const createTicket = () => {
-    if (!draft.title?.trim() || !draft.clientName?.trim()) { notify('error', 'أدخل العنوان واسم العميل'); return; }
-    const priority = (draft.priority || 'medium') as TicketPriority;
-    const ticket: SupportTicket = {
-      id: Date.now().toString(),
-      title: draft.title,
-      description: draft.description || '',
-      status: 'open',
-      priority,
-      category: draft.category || 'general',
-      clientName: draft.clientName,
-      clientPhone: draft.clientPhone,
-      clientEmail: draft.clientEmail,
-      assigneeId: draft.assigneeId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      slaHours: SLA_BY_PRIORITY[priority],
-      slaBreached: false,
-      messages: draft.description ? [{ id: Date.now().toString(), text: draft.description, author: draft.clientName, isStaff: false, at: new Date().toISOString() }] : [],
-    };
-    setTickets(prev => [ticket, ...prev]);
-    setDraft({});
-    setShowCreate(false);
-    notify('success', 'تم إنشاء التذكرة');
-  };
 
-  const updateStatus = (id: string, status: TicketStatus) => {
-    setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString(), ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) } : t));
-    notify('success', `تم تحديث الحالة إلى "${STATUS_CFG[status].label}"`);
-  };
 
-  const addReply = () => {
-    if (!replyText.trim() || !selectedTicket) return;
-    const msg: TicketMessage = { id: Date.now().toString(), text: replyText, author: 'الإدارة', isStaff: true, at: new Date().toISOString() };
-    setTickets(prev => prev.map(t => t.id === selectedTicket.id
-      ? { ...t, messages: [...t.messages, msg], updatedAt: new Date().toISOString(), respondedAt: t.respondedAt || new Date().toISOString() }
-      : t
-    ));
-    setReplyText('');
-    setShowCanned(false);
-    notify('success', 'تم إضافة الرد');
-  };
 
-  const escalateTicket = (id: string) => {
-    const admins = supportTeam.filter(s => s.role === 'admin' || s.role === 'manager');
-    if (!admins.length) { notify('error', 'لا يوجد مدير للتصعيد إليه'); return; }
-    const manager = admins[0];
-    setTickets(prev => prev.map(t => t.id === id
-      ? { ...t, escalatedTo: manager.id, escalatedAt: new Date().toISOString(), priority: 'urgent' as TicketPriority, updatedAt: new Date().toISOString() }
-      : t
-    ));
-    notify('info', `تم تصعيد التذكرة إلى ${manager.name}`);
-  };
 
   // Check SLA breaches every minute
   useEffect(() => {
@@ -251,11 +200,6 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const deleteTicket = (id: string) => {
-    setTickets(prev => prev.filter(t => t.id !== id));
-    if (selectedTicket?.id === id) setSelectedTicket(null);
-    notify('success', 'تم حذف التذكرة');
-  };
 
   const createTicketApi = async () => {
     if (!draft.title?.trim() || !draft.clientName?.trim()) { notify('error', 'أدخل العنوان واسم العميل'); return; }

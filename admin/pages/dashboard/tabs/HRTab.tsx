@@ -1,5 +1,5 @@
-﻿import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, Trash2, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, AlertCircle } from 'lucide-react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, Trash2, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, OrderItem, StaffMember, StaffRole, StaffAbsence } from '../../../types';

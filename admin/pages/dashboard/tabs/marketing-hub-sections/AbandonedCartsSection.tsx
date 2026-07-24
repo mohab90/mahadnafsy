@@ -1,4 +1,3 @@
-import React from 'react';
 import { Receipt, MessageCircle, Mail } from 'lucide-react';
 import type { AbandonedCart } from './shared';
 

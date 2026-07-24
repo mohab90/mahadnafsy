@@ -62,7 +62,7 @@ const blankWf = (): WorkflowDraft => ({
 });
 
 const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
-  const { automationWorkflows, addAutomationWorkflow, updateAutomationWorkflow, deleteAutomationWorkflow, staffMembers, courses, bundles } = useSiteData();
+  const { automationWorkflows, addAutomationWorkflow, updateAutomationWorkflow, deleteAutomationWorkflow, staffMembers, courses } = useSiteData();
   const instituteBranches = useBranches();
 
   const [automationFormOpen, setAutomationFormOpen] = useState(false);

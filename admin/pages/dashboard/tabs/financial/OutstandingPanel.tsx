@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowDownRight, CheckCircle2, Download, TrendingDown, Users } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { BulkStubPanel } from '../FinancialPanels';

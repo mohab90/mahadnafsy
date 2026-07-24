@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   UserPlus, Percent, Users, CreditCard, CheckCircle, Globe, Filter, Tag, Bell,
 } from 'lucide-react';

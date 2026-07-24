@@ -1,7 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeftRight, BookOpen, CalendarDays, ChevronRight,
+  ArrowLeftRight, CalendarDays, ChevronRight,
   CreditCard, Eye, MessageCircle, Pencil, Phone,
   Search, UserCheck, UserPlus, Users, X,
 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import type {
   DaqqiDayOfWeek, DaqqiRound, DaqqiTimeSlot,
   PaymentHistoryEntry, PaymentItemType, CommunicationRecord,
-  ExtraCertificateRequest, ExtraCertificateType, SubscriberItem,
+  SubscriberItem,
   Bundle, Course,
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -179,7 +179,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const timeSlotColors = DAQQI_TIME_SLOT_COLORS;
   const statusColorsMap = DAQQI_STATUS_COLORS;
   const assignedSubIds = new Set(daqqiRounds.flatMap(r => r.attendees.map(a => a.subscriberId)));
-  const unassignedDaqqiSubs = daqqiSubs.filter(s => !assignedSubIds.has(s.id));
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleInitCreateRound = () => {

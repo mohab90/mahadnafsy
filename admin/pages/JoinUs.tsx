@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Briefcase, Heart } from 'lucide-react';
+import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 
 const JoinUs: React.FC = () => {

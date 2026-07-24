@@ -1,13 +1,13 @@
-﻿import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   Megaphone, Users, TrendingUp, Mail, MessageSquare, Zap, BarChart3,
   UserPlus, Target, Globe, Bell, Tag, Star, ArrowUpRight, ArrowDownRight,
-  PieChart, Filter, Calendar, Clock, ChevronRight, Activity, RefreshCw,
-  Smartphone, Send, Settings2, Link2, CheckCircle, AlertCircle, Plus,
-  Eye, Percent, CreditCard, BookOpen, ExternalLink, Download,
-  TrendingDown, Flame, Trophy, Wallet, Receipt, Edit2, X, Save,
-  Hash, Copy, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
-  MessageCircle, AtSign, MousePointer, Inbox, Layers, Award,
+  Filter, Calendar, Clock, ChevronRight, RefreshCw,
+  Smartphone, Send, CheckCircle, 
+  Percent, CreditCard, 
+  Trophy, X, 
+  Hash, Copy, 
+  MessageCircle, Inbox, Layers, Award,
 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -1078,7 +1078,7 @@ function calcSegScore(lead: any): number {
   return Math.min(100, (STATUS_W[lead.status] ?? 20) + (SOURCE_W[(lead.source || '').toLowerCase()] ?? 10) + (lead.followUpDate ? 10 : 0) + (lead.notes ? 5 : 0) + recency);
 }
 
-function SegmentationTab({ leads, subscribers, notify }: { leads: any[]; subscribers: any[]; notify: NotifyFn }) {
+function SegmentationTab({ leads, notify }: { leads: any[]; subscribers: any[]; notify: NotifyFn }) {
   const [srcFilter, setSrcFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [minScore, setMinScore] = useState(0);

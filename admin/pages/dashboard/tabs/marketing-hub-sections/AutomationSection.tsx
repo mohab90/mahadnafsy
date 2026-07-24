@@ -1,4 +1,3 @@
-import React from 'react';
 import { Zap, UserPlus, CheckCircle, Clock, Smartphone, RefreshCw, Star, ChevronRight } from 'lucide-react';
 
 interface Props {

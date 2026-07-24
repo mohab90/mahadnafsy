@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 import type { LeadItem, SubscriberItem } from '../../types';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { PaymentModal } from './lazyDashboardComponents';

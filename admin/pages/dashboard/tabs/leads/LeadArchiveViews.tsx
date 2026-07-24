@@ -1,4 +1,3 @@
-import React from 'react';
 import { Globe } from 'lucide-react';
 import { LeadTable } from '../LeadTable';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';

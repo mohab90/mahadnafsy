@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Target, Send } from 'lucide-react';
 import type { LeadItem } from '../../../../types';
 import type { NotifyFn } from './shared';

@@ -2,7 +2,7 @@
  * CrmSettingsModal is imported directly from Dashboard.tsx because CRM settings
  * can be opened from outside the Leads tab.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 

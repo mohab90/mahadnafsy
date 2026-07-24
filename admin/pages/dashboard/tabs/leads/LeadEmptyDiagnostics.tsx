@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle, FilterX, RefreshCw, Settings2, UserCheck } from 'lucide-react';
 
 type LeadEmptyDiagnosticsProps = {

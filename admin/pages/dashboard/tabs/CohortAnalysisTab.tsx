@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Users, TrendingUp, Calendar } from 'lucide-react';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;

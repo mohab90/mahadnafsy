@@ -1,20 +1,12 @@
-import React, { useMemo, useState } from 'react';
-import { BookOpen, TrendingUp, Users, DollarSign, Calendar, Filter, BarChart3, Star } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { BookOpen, Users, DollarSign, BarChart3, Star } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Range = 'month' | '3months' | '6months' | 'all';
 
 const STATUS_LABEL: Record<string, string> = {
   active: 'نشط', finished: 'منتهي', paused: 'متوقف', refunded: 'مسترد', leads: 'ليد',
-};
-const STATUS_COLOR: Record<string, string> = {
-  active: 'bg-emerald-100 text-emerald-700',
-  finished: 'bg-gray-100 text-gray-600',
-  paused: 'bg-amber-100 text-amber-700',
-  refunded: 'bg-red-100 text-red-700',
-  leads: 'bg-blue-100 text-blue-700',
 };
 
 function getLastNMonths(n: number) {
@@ -46,8 +38,8 @@ function getMonthsForRange(range: Range, earliestMonth: string) {
   return ms;
 }
 
-export default function SubscriptionsTab({ notify }: { notify: NotifyFn }) {
-  const { subscribers, courses, orders } = useSiteData();
+export default function SubscriptionsTab() {
+  const { subscribers, courses } = useSiteData();
   const [range, setRange] = useState<Range>('6months');
   const [statusFilter, setStatusFilter] = useState('all');
   const earliestMonth = useMemo(() => subscribers.reduce((min, s) => {

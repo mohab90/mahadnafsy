@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Shield, AlertTriangle, CheckCircle, XCircle, Eye, Lock, Unlock, Search, RefreshCw, Activity, User, Clock, Globe, Plus, Trash2, Server, Key } from 'lucide-react';
+import { Shield, AlertTriangle, Lock, Search, RefreshCw, Activity, Globe, Plus, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { ActivityLogItem } from '../../../types';
 

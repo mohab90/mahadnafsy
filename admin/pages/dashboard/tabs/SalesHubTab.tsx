@@ -1,14 +1,14 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   TrendingUp, Users, Target, Award, Phone, Mail, Calendar, ChevronRight,
-  BarChart3, Star, Zap, Clock, CheckCircle, AlertCircle, ArrowUpRight,
-  ArrowDownRight, Filter, UserPlus, CreditCard, MessageCircle, Trophy,
-  ThumbsUp, Send, Flame, Shield, Activity, RefreshCw, Download, Edit2,
-  ChevronDown, ChevronUp, X, Plus, Briefcase,
+  BarChart3, Star, Clock, CheckCircle, AlertCircle, 
+  Filter, UserPlus, CreditCard, MessageCircle, Trophy,
+  ThumbsUp, Send, Flame, 
+  ChevronDown, ChevronUp, X, Briefcase,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { StaffMember, LeadItem, SalesTarget } from '../../../types';
+import type { SalesTarget } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -73,7 +73,7 @@ interface MotivPost {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile }) => {
-  const { staffMembers, leads, orders, subscribers } = useSiteData();
+  const { staffMembers, leads, orders } = useSiteData();
 
   // Only sales-role staff
   const salesTeam = useMemo(() =>

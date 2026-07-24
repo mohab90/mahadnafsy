@@ -1,43 +1,22 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Activity, AlertCircle, Archive, Award, BarChart2, Bell, BookOpen, CalendarPlus, CheckCheck, CheckCircle,
-  ChevronDown, Clock, Columns, CreditCard, Download, ExternalLink, EyeOff, Eye,
-  FolderKanban, Globe, Inbox, Link2, MapPin, MessageCircle, MessageSquare, MessageSquareText,
-  Phone, Plus, RefreshCw, Search, Settings, Share2, Star, Tag, Trash2, TrendingUp,
-  Upload, UserPlus, Users, Wallet, X,
+  
+  
+  MapPin, 
+  Plus, 
+  X,
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, PieChart, Pie, Cell,
-} from 'recharts';
-import { useSiteData } from '../../../../context/SiteDataContext';
-import { useBranches } from '../../../../hooks/useBranches';
-import { mysqlAdmin, mysqlClient } from '../../../../lib/mysqlapi';
-import { useResizableCols } from '../../../../components/useResizableCols';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type {
-  LeadItem, LeadStatus, CommunicationRecord, SalesTarget, Course, Bundle,
-  BranchType, FacebookLeadAdsConfig, PaymentHistoryEntry, PaymentItemType,
-  SubscriberItem, StaffMember, AccessMode, CourseAccessSetting,
+  LeadItem, LeadStatus, CommunicationRecord, Course, Bundle,
+  
+  SubscriberItem, StaffMember,
 } from '../../../../types';
-import { CrmSettingsModal, DEFAULT_CRM_SETTINGS } from '../CrmSettingsModal';
-import PaymentModal, { PaymentDraft, blankPaymentDraft } from '../../../../components/PaymentModal';
-import type { CrmSettings, NotifyFn } from '../CrmSettingsModal';
-import { DEFAULT_SOURCES, ONLINE_EXCLUDED_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from '../crmConstants';
-import { LeadTable } from '../LeadTable';
+import type { NotifyFn } from '../CrmSettingsModal';
 import {
-  BRANCH_ENUM_LABELS,
-  COMM_ICON,
-  COMM_LABEL,
-  IL_LABEL,
-  PIE_COLORS,
-  PIPELINE_COLS,
   PRESET_TAGS,
-  ROTTEN_CFG,
   STATUS_CFG,
-  calcLeadScore,
-  getLeadBranchRaw,
-  getRottenLevel,
   // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
 } from '../leadUtils';
 

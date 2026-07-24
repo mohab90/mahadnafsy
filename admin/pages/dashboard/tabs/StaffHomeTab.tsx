@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   User, TrendingUp, Clock, CheckCircle, Activity, Calendar,
-  Phone, UserCheck, Target, Star, ArrowLeft, Bell, FileText,
+  Phone, UserCheck, Star, ArrowLeft, Bell, FileText,
   BarChart3, Zap, RefreshCw, ChevronRight, MessageCircle,
   UserPlus, Percent, AlertCircle, Briefcase, Award,
 } from 'lucide-react';
@@ -52,7 +52,7 @@ const STATUS_COLOR: Record<string, string> = {
   no_answer: 'bg-gray-100 text-gray-600',
 };
 
-export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavigate }: StaffHomeTabProps) {
+export default function StaffHomeTab({ staff, leads, subscribers, onNavigate }: StaffHomeTabProps) {
   const [leaveBalance, setLeaveBalance] = useState<number | null>(null);
   const [pendingLeaves, setPendingLeaves] = useState<number>(0);
   const [myTasks, setMyTasks] = useState<any[]>([]);

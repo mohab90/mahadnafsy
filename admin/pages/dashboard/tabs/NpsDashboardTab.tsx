@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Star, TrendingUp, TrendingDown, Users, ThumbsUp, ThumbsDown, Minus, BarChart3, Award, MessageSquare, RefreshCw } from 'lucide-react';
+import { Star, TrendingUp, Users, Award } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -14,8 +14,8 @@ function calcNPS(promoters: number, passives: number, detractors: number) {
   return Math.round(((promoters - detractors) / total) * 100);
 }
 
-const NpsDashboardTab: React.FC<Props> = ({ notify }) => {
-  const { subscribers, orders, courses } = useSiteData();
+const NpsDashboardTab: React.FC<Props> = () => {
+  const { subscribers, courses } = useSiteData();
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
   const [period, setPeriod] = useState<NpsPeriod>('month');
 

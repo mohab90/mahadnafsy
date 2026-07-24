@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { Monitor, Users, BookOpen, TrendingUp, Video, Globe, Star, Calendar, CheckCircle, Clock } from 'lucide-react';
+import { useMemo } from 'react';
+import { Monitor, Users, BookOpen, Video, CheckCircle } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const ROLE_LABEL: Record<string, string> = {
   online_manager: 'مدير أونلاين', sales: 'سيلز', collection: 'تحصيل',
@@ -19,8 +18,8 @@ function getLast6Months() {
   return ms;
 }
 
-export default function OnlineTeamMgmtTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, subscribers, leads, orders, courses } = useSiteData();
+export default function OnlineTeamMgmtTab() {
+  const { staffMembers, subscribers, leads, courses } = useSiteData();
   const months = getLast6Months();
 
   const onlineTeam = useMemo(() =>

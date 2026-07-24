@@ -1,13 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, Users, Target, Trophy, Star, Award, Phone, ArrowUpRight, ArrowDownRight, Calendar, Filter, Download } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { BarChart3, TrendingUp, Users, Target, Trophy, Star, Award } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import type { StaffMember, LeadItem, OrderItem } from '../../../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'week' | 'month' | '3months' | 'all';
 
-const TODAY = new Date().toISOString().slice(0, 10);
 const MONTH = new Date().toISOString().slice(0, 7);
 
 function getRangeStart(range: TimeRange): string {
@@ -32,8 +29,8 @@ const ROLE_LABEL: Record<string, string> = {
 const RANK_ICONS = [Trophy, Award, Star];
 const RANK_COLORS = ['text-yellow-500', 'text-slate-400', 'text-amber-600'];
 
-export default function StaffPerformanceTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, leads, orders, subscribers } = useSiteData();
+export default function StaffPerformanceTab() {
+  const { staffMembers, leads, orders } = useSiteData();
   const [range, setRange] = useState<TimeRange>('month');
   const [roleFilter, setRoleFilter] = useState('all');
 

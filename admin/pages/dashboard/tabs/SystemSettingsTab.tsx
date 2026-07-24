@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Settings, Save, RotateCcw, Loader2, CheckCircle,
   Shield, Database,
@@ -262,7 +262,7 @@ const ExchangeRatesSection: React.FC<{ data: ExchangeRates; mutateField: (f: str
 };
 
 // ─── Certificate Pricing (uses old content format) ────────────────────────
-const CertPricingSection: React.FC<{ data: CertItem[]; mutate: (v: CertItem[]) => void; c: typeof COLOR[string] }> = ({ data, mutate, c }) => {
+const CertPricingSection: React.FC<{ data: CertItem[]; mutate: (v: CertItem[]) => void; c: typeof COLOR[string] }> = ({ data, mutate }) => {
   const items = data || CERT_TYPES.map(ct => ({ type: ct.type, label: ct.label, egyptianEGP: 0, residentEGP: 0, residentSAR: 0, foreignUSD: 0 }));
   const update = (idx: number, field: keyof CertItem, value: any) =>
     mutate(items.map((it,i) => i===idx ? { ...it, [field]: typeof it[field]==='number' ? Number(value) : value } : it));

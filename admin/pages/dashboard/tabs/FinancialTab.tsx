@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Plus, TrendingUp,
 } from 'lucide-react';
@@ -13,8 +13,8 @@ import { usePaymentProofsReview } from './financial/usePaymentProofsReview';
 import { exportCSV, exportExpensesPdfReport, exportFullFinancialReport, exportPaymentsExcelReport } from './financial/financialExports';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { PaymentItemType, PaymentHistoryEntry, ExpenseItem, InstallmentEntry, InstallmentPlan, SubscriberItem } from '../../../types';
-import { branchMatches, createBlankIncomeDraft, paymentTypeLabels, type FinancialSubTab } from './financial/financialTabUtils';
+import type { PaymentHistoryEntry, ExpenseItem, InstallmentEntry, InstallmentPlan, SubscriberItem } from '../../../types';
+import { branchMatches, createBlankIncomeDraft, type FinancialSubTab } from './financial/financialTabUtils';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const AgingReportPanel = React.lazy(() => import('./financial/AgingReportPanel').then(module => ({ default: module.AgingReportPanel })));

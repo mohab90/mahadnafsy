@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { TrendingUp, BarChart3, Calendar, DollarSign, Star, Target, ArrowUpRight, Info, AlertTriangle } from 'lucide-react';
+import { TrendingUp, BarChart3, Target, ArrowUpRight, Info } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -17,8 +17,8 @@ type RevenuePoint = {
 
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
-const RevenueForecastTab: React.FC<Props> = ({ notify }) => {
-  const { orders, leads, subscribers } = useSiteData();
+const RevenueForecastTab: React.FC<Props> = () => {
+  const { orders, leads } = useSiteData();
   const [forecastMonths, setForecastMonths] = useState(3);
   const [growthRate, setGrowthRate] = useState(5); // % per month
 
@@ -76,7 +76,6 @@ const RevenueForecastTab: React.FC<Props> = ({ notify }) => {
   const format = (n: number) => Math.round(n).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 
   const totalForecast = forecastData.reduce((s, d) => s + d.revenue, 0);
-  const totalHistorical = historicalMonths.reduce((s, d) => s + d.revenue, 0);
   const ytdRevenue = orders.filter(o => o.status === 'paid' && (o.paidAt || o.createdAt) >= `${now.getFullYear()}-01-01`).reduce((s, o) => s + o.amount, 0);
 
   // Revenue by source (from leads → orders)

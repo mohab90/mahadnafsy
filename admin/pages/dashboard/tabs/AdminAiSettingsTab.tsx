@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Settings2, Bot, FileText, AlertCircle, Zap, Save, CheckCircle, Code2, Video } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 

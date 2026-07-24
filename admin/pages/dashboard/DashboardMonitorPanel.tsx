@@ -1,4 +1,3 @@
-import React from 'react';
 import { Activity, CalendarDays, MessageSquareText, Phone, TrendingUp, Users, X } from 'lucide-react';
 import type { LeadItem, SubscriberItem } from '../../types';
 

@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { StaffPermission } from '../../types';

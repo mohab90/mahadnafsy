@@ -1,4 +1,3 @@
-import React from 'react';
 import { CreditCard, X } from 'lucide-react';
 import type { PaymentItemType, SubscriberItem, Bundle, Course } from '../../../../types';
 
@@ -41,7 +40,7 @@ const certTypeLabels: Record<string, string> = {
   institute: 'شهادة المعهد', other: 'أخرى',
 };
 
-export function DaqqiPayModal({ modal, draft, setDraft, onClose, onSubmit, subscribers, courses, bundles, content, requirePaymentApproval }: Props) {
+export function DaqqiPayModal({ modal, draft, setDraft, onClose, onSubmit, subscribers, courses, bundles, content }: Props) {
   if (!modal) return null;
 
   const payModalSub = subscribers.find(s => s.id === modal.subscriberId);

@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { DollarSign, TrendingUp, Tag, PieChart as PieIcon, BarChart3, ArrowUpRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { DollarSign, Tag, PieChart as PieIcon, BarChart3 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Range = 'month' | '3months' | '6months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899'];
@@ -17,8 +16,8 @@ function getLast6Months() {
   return ms;
 }
 
-export default function RevenueSourcesTab({ notify }: { notify: NotifyFn }) {
-  const { orders, leads, subscribers, courses, bundles } = useSiteData();
+export default function RevenueSourcesTab() {
+  const { orders, leads, courses, bundles } = useSiteData();
   const [range, setRange] = useState<Range>('month');
   const months = getLast6Months();
 

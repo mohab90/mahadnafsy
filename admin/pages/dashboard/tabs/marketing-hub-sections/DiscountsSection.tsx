@@ -1,4 +1,3 @@
-import React from 'react';
 import { Tag, CheckCircle, Hash, X, Award, Copy } from 'lucide-react';
 import type { DiscountRule } from '../../../../types';
 import { StatCard, ProgressBar, pct } from './shared';

@@ -13,7 +13,6 @@ const ClientProfile = React.lazy(() => import('./pages/ClientProfile'));
 const TherapistPortal = React.lazy(() => import('./pages/TherapistPortal'));
 const JoinUs        = React.lazy(() => import('./pages/JoinUs'));
 const Auth          = React.lazy(() => import('./pages/Auth'));
-const UnifiedClientPage = React.lazy(() => import('./pages/UnifiedClientPage'));
 
 const PageSpinner: React.FC = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50">

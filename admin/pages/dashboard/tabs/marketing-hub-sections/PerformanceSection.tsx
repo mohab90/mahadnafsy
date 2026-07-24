@@ -1,4 +1,3 @@
-import React from 'react';
 import { TrendingUp, CreditCard, BarChart3, Users, Tag, Globe, Trophy, Layers } from 'lucide-react';
 import type { DiscountRule } from '../../../../types';
 import { StatCard, ProgressBar, SOURCE_ICONS, SOURCE_COLORS, pct, fmtK, type SourceBreakdownRow, type FunnelStep } from './shared';

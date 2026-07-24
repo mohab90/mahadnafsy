@@ -1,4 +1,3 @@
-import React from 'react';
 import { Bell, RefreshCw } from 'lucide-react';
 import type { StaffMember } from '../../../../types';
 

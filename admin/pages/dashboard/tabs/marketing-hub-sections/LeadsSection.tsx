@@ -1,4 +1,3 @@
-import React from 'react';
 import { TrendingUp, CheckCircle, Globe } from 'lucide-react';
 import type { LeadItem } from '../../../../types';
 import { MiniBarChart, SOURCE_ICONS, SOURCE_COLORS, pct, fmtK, type SourceBreakdownRow } from './shared';

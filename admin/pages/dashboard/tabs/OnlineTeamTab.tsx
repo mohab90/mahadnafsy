@@ -1,12 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Monitor, Users, CreditCard, CheckCircle, Clock, AlertCircle, TrendingUp,
-  BarChart3, Target, Calendar, Phone, Mail, Briefcase, Star, ArrowUpRight,
-  UserCheck, Wallet, Receipt, Trophy, Flame, Zap, Edit2, Save, X,
-  ChevronDown, ChevronUp, TrendingDown, Percent, Award, Headphones,
+  Monitor, Users, CreditCard, AlertCircle, TrendingUp,
+  BarChart3, Target, Calendar, Phone, 
+  Wallet, Receipt, Trophy, Edit2, Save, X,
+  Percent, Award, Headphones,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import type { StaffMember } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -116,11 +115,6 @@ const MiniBarChart: React.FC<{
 };
 
 // ── Staff Avatar ──────────────────────────────────────────────────────────
-const Avatar: React.FC<{ name: string; grad: string; size?: number }> = ({ name, grad, size = 11 }) => (
-  <div className={`w-${size} h-${size} rounded-xl bg-gradient-to-br ${grad} text-white flex items-center justify-center font-bold text-sm shrink-0`}>
-    {name.slice(0, 2)}
-  </div>
-);
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
@@ -372,7 +366,6 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
                 {onlineTeam.length === 0
                   ? <p className="p-6 text-center text-gray-400 text-sm">لا يوجد فريق أونلاين نشط</p>
                   : onlineStats.map((stat, idx) => {
-                    const progress = stat.target > 0 ? pct(stat.ordersCount, stat.target) : 0;
                     return (
                       <div key={stat.staff.id} className="px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -480,7 +473,6 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {onlineStats.map((stat, idx) => {
-                const isExpanded = expandedStaff === stat.staff.id;
                 const hasTarget = stat.target > 0;
                 const progress = hasTarget ? pct(stat.ordersCount, stat.target) : 0;
                 const achieved = hasTarget && progress >= 100;

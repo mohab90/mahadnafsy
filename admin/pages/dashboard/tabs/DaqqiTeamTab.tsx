@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Users, Calendar, BookOpen, Award, TrendingUp, Star, Clock, CheckCircle, XCircle, ChevronDown, User, BarChart3, Layers } from 'lucide-react';
+import { Users, Calendar, BookOpen, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -12,7 +12,7 @@ const ROLE_LABELS: Record<string, string> = {
   trainer: 'مدرب',
 };
 
-const DaqqiTeamTab: React.FC<Props> = ({ notify }) => {
+const DaqqiTeamTab: React.FC<Props> = () => {
   const { staffMembers, daqqiRounds, courses } = useSiteData();
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'team' | 'stats' | 'schedule'>('team');

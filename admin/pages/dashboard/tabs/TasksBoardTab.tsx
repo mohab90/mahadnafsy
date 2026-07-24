@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  CheckSquare, Plus, X, Edit2, Save, Trash2, Clock, AlertCircle,
-  User, Tag, Calendar, Flag, ChevronDown, ArrowRight, Check,
-  BarChart3, TrendingUp, Zap, Circle,
+  CheckSquare, Plus, X, Trash2, 
+  User, Calendar, Check,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -94,9 +93,6 @@ const TasksBoardTab: React.FC<Props> = ({ notify }) => {
     notify('success', 'تمت إضافة المهمة');
   }, [draft, addingColumn, notify]);
 
-  const updateTask = useCallback((id: string, updates: Partial<Task>) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  }, []);
 
   const deleteTask = useCallback((id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));

@@ -1,4 +1,3 @@
-import React from 'react';
 import { CheckCheck, Clock, MessageCircle } from 'lucide-react';
 import type { LeadStatus } from '../../../../types';
 import { DataTable, type Column } from '../../../../components/shared/DataTable';

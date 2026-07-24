@@ -1,4 +1,4 @@
-﻿import React, { Suspense } from 'react';
+import React, { Suspense } from 'react';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -58,8 +58,8 @@ interface Props {
 }
 
 export default function OverviewTab({
-  overviewStats, isSalesOnly, currentStaff, salesOwnLeads, salesOwnSubscribers, salesOwnOrders,
-  subscribers, courses, staffMembers, leads, consultations, therapists, communityPosts, content,
+  overviewStats, isSalesOnly, currentStaff, salesOwnLeads, salesOwnSubscribers, 
+  subscribers, courses, staffMembers, leads, consultations, therapists, communityPosts, 
   isAdmin, isOnlineManager, isCollectionRole, isReceptionDaqqi,
   onlineTeamMembers, onlineUsers, kpiModal, setKpiModal,
   notify, setActiveTab, navigate,
@@ -75,7 +75,6 @@ export default function OverviewTab({
                 const myConverted = myLeads.filter(l => l.status === 'converted').length;
                 const myLost = myLeads.filter(l => ['lost','not_interested_hidden'].includes(l.status || '')).length;
                 const mySubs = salesOwnSubscribers;
-                const myOrders = salesOwnOrders;
                 const myRevenueSubs = mySubs.flatMap(s => s.paymentHistory || []).reduce((acc, p) => {
                   const egp = p.currency === 'EGP' ? p.amount : p.currency === 'SAR' ? p.amount * 13 : p.amount * 50;
                   const month = (p.at || '').slice(0, 7);

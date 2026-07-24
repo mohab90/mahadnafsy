@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { TrendingUp, Target, Calendar, BarChart3, AlertCircle, CheckCircle, ArrowUpRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { TrendingUp, Target, ArrowUpRight } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Area, AreaChart } from 'recharts';
+import { XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 function getLast6Months() {
   const ms: string[] = [];
@@ -28,7 +27,7 @@ const MONTH_LABELS: Record<string, string> = {
   '07':'يوليو','08':'أغسطس','09':'سبتمبر','10':'أكتوبر','11':'نوفمبر','12':'ديسمبر'
 };
 
-export default function ForecastTab({ notify }: { notify: NotifyFn }) {
+export default function ForecastTab() {
   const { orders, subscribers, leads } = useSiteData();
   const [growthRate, setGrowthRate] = useState(10);
 

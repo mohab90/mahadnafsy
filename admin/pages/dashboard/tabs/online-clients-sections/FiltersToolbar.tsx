@@ -1,4 +1,3 @@
-import React from 'react';
 import { Download, Eye, Search } from 'lucide-react';
 import type { Bundle, Course, DaqqiRound, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';

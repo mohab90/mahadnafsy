@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertCircle, CheckCircle2, Download } from 'lucide-react';
 import type { InstallmentPlan, SubscriberItem } from '../../../../types';
 

@@ -2,7 +2,7 @@
  * FeatureFlagsPanel — reusable module on/off toggles (used inside the unified
  * Settings page). Persists to site_config via the safe setContentValue path.
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { FEATURE_DEFS, parseFeatures, type FeatureKey } from './featureFlags';
 

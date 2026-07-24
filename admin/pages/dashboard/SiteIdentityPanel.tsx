@@ -5,7 +5,7 @@
  * setContentValue (a partial PUT would wipe the whole blob). Rendered as the
  * "identity" section of the unified Settings page.
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Building2, CreditCard, Save, Check, Plus, X, Palette } from 'lucide-react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { BRAND_PRESETS, applyBrandTheme } from '../../lib/brandTheme';

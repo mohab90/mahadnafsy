@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CreditCard, AlertTriangle, CheckCircle, Clock, TrendingUp, Download, Search, Filter, ChevronDown, Calendar, DollarSign, User, BarChart3 } from 'lucide-react';
+import { CreditCard, Search, ChevronDown, User } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { SubscriberItem, InstallmentEntry, InstallmentPlan } from '../../../types';
 
@@ -17,7 +17,7 @@ interface EnrichedEntry {
   daysUntil: number;
 }
 
-const InstallmentPlansTab: React.FC<Props> = ({ notify }) => {
+const InstallmentPlansTab: React.FC<Props> = () => {
   const { subscribers, courses } = useSiteData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');

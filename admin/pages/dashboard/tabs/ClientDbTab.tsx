@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Search, Users, UserCheck, UserPlus, MessageSquare,
   CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square,
@@ -84,7 +84,7 @@ const SUB_TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
-  const { subscribers, leads, courses, bundles, staffScopedSubscribers, staffScopedLeads } = useSiteData();
+  const { subscribers, leads, courses, staffScopedSubscribers, staffScopedLeads } = useSiteData();
   // Staff-scoped data is populated from the original DB rows by Dashboard's fetchSalesData.
   // Prefer it whenever available so full-access staff roles (online manager) do not fall back to a separate admin-only context path.
   const effectiveSubs = staffScopedSubscribers.length > 0 ? staffScopedSubscribers : subscribers;

@@ -1,4 +1,3 @@
-import React from 'react';
 import { ExternalLink } from 'lucide-react';
 import { calcLeadScore } from '../leadUtils';
 import { ScoreBadge, formatWaPhone } from './LeadSubcomponents';

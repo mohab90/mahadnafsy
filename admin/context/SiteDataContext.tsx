@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
-import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, LeadType, BranchType, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, CourseAccessSetting, AutomationWorkflow, AutomationTrigger, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, MessagingChannel, InboxConversation, FacebookLeadAdsConfig, PaymentHistoryEntry, CourseQuiz, QuizAttempt, LiveStream } from '../types';
-import { mysqlCatalog, mysqlAdmin, mysqlClient, mysqlForms } from '../lib/mysqlapi';
+import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AutomationTrigger, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream } from '../types';
+import { mysqlCatalog, mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
 import { useDiscountsState } from './site-data-hooks/useDiscountsState';
 import { useNotificationsState } from './site-data-hooks/useNotificationsState';
@@ -13,7 +13,7 @@ import { useContentState } from './site-data-hooks/useContentState';
 import { useCourseQuizzesState } from './site-data-hooks/useCourseQuizzesState';
 import { useCommunityState } from './site-data-hooks/useCommunityState';
 import { useAutomationState } from './site-data-hooks/useAutomationState';
-import { useActivityLogState, nowLabel } from './site-data-hooks/useActivityLogState';
+import { useActivityLogState } from './site-data-hooks/useActivityLogState';
 import { useAiMessagingConfigState } from './site-data-hooks/useAiMessagingConfigState';
 import { useCatalogState } from './site-data-hooks/useCatalogState';
 import { useLecturesChaptersState } from './site-data-hooks/useLecturesChaptersState';
@@ -198,17 +198,8 @@ function normalizeStaffStatus(staff: StaffMemberWire): StaffMember['status'] {
 const STORAGE_KEY = 'mahad-admin-site-data-v1';
 const DATA_VERSION = 4; // v4 removes all CRM/HR/finance/PII from browser persistence
 
-const _parseEnvList = (v: string | undefined) =>
-  (v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 // Keys whose old values must be replaced with the new default — even if Firestore has the old value.
-const CONTENT_FORCED_UPDATES: Record<string, string> = {
-  'courseDetails.price.cta': 'احجز الآن واستفد بخصم إضافي',
-  'courseDetails.mobile.cta': 'احجز الآن واستفد بخصم',
-  'bundleDetails.sidebar.cta': 'احجز الآن واستفد بخصم إضافي',
-  'courseDetails.price.feature1': 'وصول لمدة سنة واحدة للمحتوى',
-  'courseDetails.faq.a2': 'بالتأكيد! جميع المحاضرات (سواء المسجلة أو البث المباشر) تظل محفوظة في حسابك لمدة سنة واحدة ويمكنك الرجوع إليها في أي وقت.',
-};
 
 const SiteDataContext = createContext<SiteDataShape | null>(null);
 
@@ -279,7 +270,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const subscribersRef = useRef<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
   const leadsRef = useRef<LeadItem[]>(initial.leads || defaultLeads);
   const { currency, setCurrency } = useCurrencyState();
-  const { authUser, setAuthUser, logout, refreshAuth } = useAuth();
+  const { authUser, logout, refreshAuth } = useAuth();
   const { activityLogs, setActivityLogs, track } = useActivityLogState(authUser, initial.activityLogs);
   const {
     adminAiConfig, setAdminAiConfigLocal, setAdminAiConfig,
@@ -503,7 +494,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!authUser?.email || isAdmin) return;
     let cancelled = false;
-    const email = authUser.email.toLowerCase().trim();
     mysqlClient.getMyConsultations().then((list) => {
       if (cancelled) return;
       setConsultations((list as unknown as ConsultationItem[]).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));

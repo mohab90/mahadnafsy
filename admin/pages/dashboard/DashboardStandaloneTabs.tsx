@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
 import {
@@ -50,7 +50,7 @@ export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: Dash
       {activeTab === 'consultations' && (
         <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" /></div>}>
           <TabErrorBoundary>
-            <ConsultationCalendarTab notify={notify} />
+            <ConsultationCalendarTab />
           </TabErrorBoundary>
         </Suspense>
       )}

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Download } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../../types';

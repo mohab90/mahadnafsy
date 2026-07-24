@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Star, MessageSquare, Send, X, Zap, Filter } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Star, MessageSquare, Send, X, Zap } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';

@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Zap, Play, Pause, Plus, Trash2, Edit2, Save, X, Clock, Users, MessageSquare, Mail, Bell, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Zap, Play, Pause, Plus, Trash2, Save, X, Bell } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -44,7 +44,7 @@ const DEFAULT_RULES: AutoRule[] = [
 ];
 
 export default function AutomationDashboardTab({ notify }: { notify: NotifyFn }) {
-  const { leads, subscribers, activityLogs } = useSiteData();
+  const { subscribers } = useSiteData();
   const [rules, setRules] = useState<AutoRule[]>(DEFAULT_RULES);
   const [addingNew, setAddingNew] = useState(false);
   const [newRule, setNewRule] = useState({ name: '', trigger: 'new_lead', action: 'send_whatsapp', condition: 'الكل' });
