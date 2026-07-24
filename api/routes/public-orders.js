@@ -8,7 +8,7 @@ const { pool } = require('../lib/db');
 const { sendEmail } = require('../lib/email');
 const { tryJson } = require('../lib/helpers');
 const { getPaymentGatewaySettings, isPaymobActive } = require('../lib/saasSettings');
-const { paymobLimiter } = require('../middleware/rateLimits');
+const { paymobLimiter, publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch } = require('../lib/branches');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { awardPointsForPayment } = require('../lib/loyalty');
@@ -189,7 +189,7 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
 
 // ── Paymob: reserve pending order before payment (client calls this before iframe) ─────────
 // No auth required — consultations and certificates don't require login.
-router.post('/api/orders/reserve', async (req, res) => {
+router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
   let conn;
   try {
     const {

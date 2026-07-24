@@ -16,6 +16,7 @@ const path    = require('path');
 const https   = require('https');
 const http    = require('http');
 const logger  = require('../lib/logger');
+const { imageProxyLimiter } = require('../middleware/rateLimits');
 
 let sharp = null;
 try { sharp = require('sharp'); }
@@ -54,7 +55,7 @@ function fetchBuffer(url) {
   });
 }
 
-router.get('/api/img', async (req, res) => {
+router.get('/api/img', imageProxyLimiter, async (req, res) => {
   const src = String(req.query.src || '');
   try {
     let u;

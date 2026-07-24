@@ -7,7 +7,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { communityPostLimiter } = require('../middleware/rateLimits');
+const { communityPostLimiter, publicLimiter } = require('../middleware/rateLimits');
 
 const findOwnSubscriber = (req) => pool.query(
   `SELECT id, name FROM subscribers
@@ -47,7 +47,7 @@ router.get('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requi
 });
 
 // Public feed — only APPROVED posts are visible to everyone.
-router.get('/api/community/posts', async (req, res) => {
+router.get('/api/community/posts', publicLimiter, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'posts'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
@@ -196,7 +196,7 @@ router.delete('/api/admin/community/posts/:id', requireAuth, requireAdminOrStaff
 });
 
 // Community Library
-router.get('/api/community/library', async (req, res) => {
+router.get('/api/community/library', publicLimiter, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'library'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
@@ -254,7 +254,7 @@ router.delete('/api/admin/community/library/:id', requireAuth, requireAdminOrSta
 });
 
 // Community Videos
-router.get('/api/community/videos', async (req, res) => {
+router.get('/api/community/videos', publicLimiter, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'videos'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
@@ -309,7 +309,7 @@ router.delete('/api/admin/community/videos/:id', requireAuth, requireAdminOrStaf
 });
 
 // Community Events
-router.get('/api/community/events', async (req, res) => {
+router.get('/api/community/events', publicLimiter, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'events'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(

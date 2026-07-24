@@ -5,18 +5,19 @@
 const express = require('express');
 const path = require('path');
 const router = express.Router();
+const { publicLimiter } = require('../middleware/rateLimits');
 
 const SPEC_PATH = path.join(__dirname, '..', 'docs', 'openapi.json');
 
 // Raw spec (machine-readable — import into Postman/Insomnia/codegen).
-router.get('/api/openapi.json', (_req, res) => {
+router.get('/api/openapi.json', publicLimiter, (_req, res) => {
   res.sendFile(SPEC_PATH, (err) => {
     if (err) res.status(500).json({ error: 'spec not found' });
   });
 });
 
 // Human-readable Swagger UI.
-router.get('/api/docs', (_req, res) => {
+router.get('/api/docs', publicLimiter, (_req, res) => {
   // The global CSP sets script-src 'none'; relax it for THIS page only so the
   // Swagger UI bundle (jsdelivr CDN) can load. Scoped to the docs response.
   res.setHeader('Content-Security-Policy',

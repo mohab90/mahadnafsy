@@ -11,6 +11,7 @@ const { branchIdForBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { fetchFbLeadDetails, getFbLeadConfig } = require('../lib/facebookLeadAds');
 const { getNextSalesRep } = require('../lib/leadAssignment');
+const { publicLimiter } = require('../middleware/rateLimits');
 
 const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN;
 
@@ -18,7 +19,7 @@ function scopedTenantId(req) {
   return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
 }
 
-router.get('/api/webhooks/facebook-leads', async (req, res) => {
+router.get('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
@@ -32,7 +33,7 @@ router.get('/api/webhooks/facebook-leads', async (req, res) => {
   }
 });
 
-router.post('/api/webhooks/facebook-leads', async (req, res) => {
+router.post('/api/webhooks/facebook-leads', publicLimiter, async (req, res) => {
   const tenantId = scopedTenantId(req);
   const fbConfig = await getFbLeadConfig(tenantId).catch(() => ({}));
   const FB_APP_SECRET = fbConfig.appSecret || process.env.FB_APP_SECRET;

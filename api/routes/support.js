@@ -14,6 +14,7 @@ const { uuidv4 } = require('../lib/id');
 const outbox = require('../lib/outbox');
 const { createNotification } = require('../lib/notification');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { publicLimiter } = require('../middleware/rateLimits');
 const {
   CATEGORY_META, DEPARTMENT_LABEL, resolveDepartment, defaultPriority,
   computeSlaDue, pickAssignee, logTicketEvent,
@@ -349,14 +350,14 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
 });
 
 // ── CSAT — public rating page data + submission (unauthenticated, id-gated) ─
-router.get('/api/ticket-csat/:id', async (req, res) => {
+router.get('/api/ticket-csat/:id', publicLimiter, async (req, res) => {
   try {
     const [[t]] = await pool.query('SELECT subject, csat_score FROM support_tickets WHERE id=? LIMIT 1', [req.params.id]);
     if (!t) return res.status(404).json({ error: 'Not found' });
     res.json({ subject: t.subject, rated: t.csat_score != null });
   } catch (e) { logger.error('[cs/csat]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-router.post('/api/ticket-csat/:id', async (req, res) => {
+router.post('/api/ticket-csat/:id', publicLimiter, async (req, res) => {
   try {
     const { score, comment } = req.body;
     if (score === undefined || score === null) return res.status(400).json({ error: 'score required' });

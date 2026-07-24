@@ -124,6 +124,17 @@ const communityPostLimiter = rateLimit({
   handler: tooMany('عدد كبير من المشاركات، انتظر قليلاً وحاول مرة أخرى'),
 });
 
+// A single page can embed dozens of <img> tags proxied through this route, so it
+// needs a much higher per-IP ceiling than an ordinary public API call (publicLimiter's
+// 60/min would throttle normal browsing, not just abuse).
+const imageProxyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooMany('طلبات صور كثيرة، انتظر دقيقة وحاول مرة أخرى'),
+});
+
 module.exports = {
   adminLimiter,
   loginLimiter,
@@ -137,4 +148,5 @@ module.exports = {
   connectorDiagnosticLimiter,
   communityPostLimiter,
   bulkOperationLimiter,
+  imageProxyLimiter,
 };

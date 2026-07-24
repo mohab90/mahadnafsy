@@ -7,13 +7,14 @@ const logger = require('../lib/logger').child({ module: 'promo-codes-route' });
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { publicLimiter } = require('../middleware/rateLimits');
 
 function routeError(res, error, message = 'promo codes route failed') {
   logger.error(message, error);
   return res.status(500).json({ error: 'Internal server error' });
 }
 
-router.post('/api/promo/validate', async (req, res) => {
+router.post('/api/promo/validate', publicLimiter, async (req, res) => {
   const { code, amount } = req.body || {};
   if (!code) return res.status(400).json({ error: 'الكود مطلوب' });
   try {

@@ -10,6 +10,7 @@ import { scanTenantViolations } from './tenant-scope-scan.mjs';
 import { scanMigrationDrift } from './migration-drift-scan.mjs';
 import { scanNotificationTenantViolations } from './notification-tenant-scan.mjs';
 import { scanBulkRateLimitViolations } from './bulk-rate-limit-scan.mjs';
+import { scanPublicRateLimitViolations } from './public-rate-limit-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -342,6 +343,20 @@ if (bulkRateLimitViolations.length === 0) {
   pass('bulk/export rate-limit guard: 0 bulk/export routes missing a dedicated limiter');
 } else {
   fail(`bulk/export rate-limit guard: ${bulkRateLimitViolations.length} bulk/export route(s) missing a dedicated rate limiter. Run: node tools/bulk-rate-limit-scan.mjs --list`);
+}
+
+// ── 18. Public/optionalAuth rate-limit guard ──────────────────────────────────
+// Catches the root cause behind RATE-01..04: rate limiting was added
+// per-endpoint by hand, so a newly-added public or optionalAuth route can
+// silently ship with zero abuse protection until the next manual audit finds
+// it. /api/admin and /api/staff are excluded (blanket adminLimiter/
+// advancedRateLimit at the app.use() mount in server.js already covers them).
+console.log('\n18. Public/optionalAuth rate-limit guard');
+const publicRateLimitViolations = scanPublicRateLimitViolations();
+if (publicRateLimitViolations.length === 0) {
+  pass('public rate-limit guard: 0 public/optionalAuth routes missing a dedicated limiter');
+} else {
+  fail(`public rate-limit guard: ${publicRateLimitViolations.length} public/optionalAuth route(s) missing a dedicated rate limiter. Run: node tools/public-rate-limit-scan.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────

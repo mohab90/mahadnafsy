@@ -173,7 +173,7 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
 });
 
 // GET /api/courses/:id/ratings
-router.get('/api/courses/:id/ratings', optionalAuth, async (req, res) => {
+router.get('/api/courses/:id/ratings', publicLimiter, optionalAuth, async (req, res) => {
   try {
     const courseId = req.params.id;
     const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
@@ -190,7 +190,7 @@ router.get('/api/courses/:id/ratings', optionalAuth, async (req, res) => {
 });
 
 // ── Content Analytics: POST /api/lectures/:id/view ──────────────────────────
-router.post('/api/lectures/:id/view', optionalAuth, async (req, res) => {
+router.post('/api/lectures/:id/view', publicLimiter, optionalAuth, async (req, res) => {
   try {
     await pool.query(
       `UPDATE course_lectures cl JOIN courses c ON c.id=cl.course_id

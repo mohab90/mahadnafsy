@@ -11,6 +11,7 @@ const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { applyRefundReversal } = require('../lib/refunds');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { publicLimiter } = require('../middleware/rateLimits');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: HTML Invoice ─────────────────────────────────────────────────
@@ -793,7 +794,7 @@ router.get('/api/admin/payment-links', requireAuth, requireAdminOrStaff, require
 });
 
 // GET /api/payment-links/:token — public validate (used by client checkout)
-router.get('/api/payment-links/:token', async (req, res) => {
+router.get('/api/payment-links/:token', publicLimiter, async (req, res) => {
   try {
     const { token } = req.params;
     const [[pl]] = await pool.query(

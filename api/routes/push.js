@@ -10,6 +10,7 @@ const logger = require('../lib/logger').child({ module: 'push-route' });
 const { isPushConfigured, publicVapidKey, sendPushNotification } = require('../lib/push');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { requireAuth } = require('../middleware/auth');
+const { publicLimiter } = require('../middleware/rateLimits');
 
 function endpointHash(subscription) {
   return crypto.createHash('sha256').update(String(subscription?.endpoint || '')).digest('hex');
@@ -33,7 +34,7 @@ async function subscriberIdForUser(req) {
 }
 
 // GET /api/push/vapid-public-key
-router.get('/api/push/vapid-public-key', (_req, res) => {
+router.get('/api/push/vapid-public-key', publicLimiter, (_req, res) => {
   res.json({
     ok: true,
     enabled: isPushConfigured(),
