@@ -135,7 +135,7 @@ const publicLecture = (r, positionInCourse, previewLimit) => {
 };
 
 // GET /api/courses/:id  (accepts id OR slug)
-router.get('/api/courses/:id', async (req, res) => {
+router.get('/api/courses/:id', publicLimiter, async (req, res) => {
   try {
     const lookup = req.params.id;
     const [[row]] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`, [req.tenantId, lookup, lookup]);
@@ -233,13 +233,23 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
 });
 
 // GET /api/completions/verify/:code — public certificate verification (JSON)
-router.get('/api/completions/verify/:code', async (req, res) => {
+// RATE-02: rate-limited (certificate codes are guessable-ish strings, so this
+// is a realistic enumeration target). NOT tenant-scoped deliberately —
+// course_completions.certificate_code has a global (not per-tenant) UNIQUE
+// constraint by design, because the verify link (see verifyUrl below) is one
+// shared client URL for every tenant, not a per-tenant subdomain — a visitor
+// hitting it from any tenant's page would resolve req.tenantId to whatever
+// that page's tenant is, not the certificate's actual tenant. Scoping by
+// req.tenantId here would 404 every certificate that isn't on the default
+// tenant. The join columns still carry tenant_id=tenant_id so a result can
+// never straddle two tenants' subscriber/course rows even without the filter.
+router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code, cc.completed_at, s.name AS subscriber_name, c.title AS course_title
        FROM course_completions cc
-       JOIN subscribers s ON s.id = cc.subscriber_id
-       JOIN courses c ON c.id = cc.course_id
+       JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id = cc.tenant_id
+       JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
        WHERE cc.certificate_code = ?`,
       [req.params.code]
     );
@@ -249,7 +259,9 @@ router.get('/api/completions/verify/:code', async (req, res) => {
 });
 
 // GET /api/completions/:code/certificate — printable HTML certificate (A4 portrait)
-router.get('/api/completions/:code/certificate', async (req, res) => {
+// RATE-03: rate-limited — 3 JOINs + brand/content lookups per request, an easy
+// resource-exhaustion target with no auth gate.
+router.get('/api/completions/:code/certificate', publicLimiter, async (req, res) => {
   try {
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code, cc.completed_at,
@@ -491,7 +503,7 @@ router.get('/api/admin/referrals', requireAuth, requireAdmin, async (req, res) =
 });
 
 // GET /api/bundles?limit=50
-router.get('/api/bundles', async (req, res) => {
+router.get('/api/bundles', publicLimiter, async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 50, 200);
     const data = await cached(`bundles:${req.tenantId}:${limit}`, 5 * 60 * 1000, async () => {
@@ -512,7 +524,7 @@ router.get('/api/bundles', async (req, res) => {
 });
 
 // GET /api/lectures?limit=500&offset=0
-router.get('/api/lectures', async (req, res) => {
+router.get('/api/lectures', publicLimiter, async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 500, 5000);
     const offset = parseOffset(req.query.offset);
@@ -538,7 +550,7 @@ router.get('/api/lectures', async (req, res) => {
 });
 
 // GET /api/chapters?limit=500
-router.get('/api/chapters', async (req, res) => {
+router.get('/api/chapters', publicLimiter, async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 500, 1000);
     const data = await cached(`chapters:${req.tenantId}:${limit}`, 5 * 60 * 1000, async () => {
@@ -554,7 +566,7 @@ router.get('/api/chapters', async (req, res) => {
 });
 
 // GET /api/therapists?limit=50
-router.get('/api/therapists', async (req, res) => {
+router.get('/api/therapists', publicLimiter, async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 50, 200);
     const data = await cached(`therapists:${req.tenantId}:${limit}`, 10 * 60 * 1000, async () => {
@@ -581,7 +593,7 @@ router.get('/api/therapists', async (req, res) => {
 });
 
 // GET /api/testimonials
-router.get('/api/testimonials', async (req, res) => {
+router.get('/api/testimonials', publicLimiter, async (req, res) => {
   try {
     const data = await cached(`testimonials:${req.tenantId}`, 10 * 60 * 1000, async () => {
       const [rows] = await pool.query(
@@ -594,7 +606,7 @@ router.get('/api/testimonials', async (req, res) => {
 });
 
 // GET /api/content  (public site content key-value store)
-router.get('/api/content', async (req, res) => {
+router.get('/api/content', publicLimiter, async (req, res) => {
   try {
     const data = await cached(`site_content:${req.tenantId}`, 5 * 60 * 1000, async () => {
       const [content, sysGeneral] = await Promise.all([
@@ -623,7 +635,7 @@ router.get('/api/content', async (req, res) => {
 // anyone could otherwise read the answer key straight out of the network tab.
 // Grading happens server-side in POST /api/me/quiz-attempts, against the full
 // (unstripped) row read directly from the DB.
-router.get('/api/quizzes', async (req, res) => {
+router.get('/api/quizzes', publicLimiter, async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const [rows] = await pool.query(
@@ -712,7 +724,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
 });
 
 // GET /api/jobs — public list of open job postings (careers / employee join page).
-router.get('/api/jobs', async (req, res) => {
+router.get('/api/jobs', publicLimiter, async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT j.id, j.title, j.branch, j.employment_type, j.description, j.requirements,
@@ -890,7 +902,7 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
 });
 
 // Public FAQ knowledge base — self-service, reduces support ticket volume.
-router.get('/api/faq', async (req, res) => {
+router.get('/api/faq', publicLimiter, async (req, res) => {
   try {
     const [rows] = await pool.query(
       'SELECT id, question, answer, category FROM faq_entries WHERE tenant_id=? AND is_published=1 ORDER BY category, sort_order, created_at LIMIT 500',
