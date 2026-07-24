@@ -1,6 +1,8 @@
 'use strict';
 
 const { uuidv4 } = require('./id');
+const logger = require('./logger').child({ module: 'finance-utils' });
+const { captureException } = require('./errorMonitor');
 
 /**
  * Creates an automated double-entry journal entry for a payment or refund.
@@ -66,8 +68,9 @@ async function createAutomatedJournalEntry(conn, data) {
 
     return entryId;
   } catch (error) {
-    console.error('Failed to create automated journal entry:', error);
-    // We don't throw here to avoid blocking the main payment flow, 
+    logger.error('[createAutomatedJournalEntry] Failed to create automated journal entry', { message: error.message, refType: data.ref_type, refId: data.ref_id });
+    captureException(error, { scope: 'createAutomatedJournalEntry', refType: data.ref_type, refId: data.ref_id });
+    // We don't throw here to avoid blocking the main payment flow,
     // but in a strict system we might want to throw if in a transaction.
     return null;
   }
