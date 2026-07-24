@@ -755,10 +755,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const msSinceWrite = Date.now() - lastCRMWriteRef.current;
       if (msSinceWrite < 180_000) return;
       try {
-        const [freshLeads, freshSubs, freshRounds] = await Promise.allSettled([
+        const [freshLeads, freshSubs, freshRounds, freshExpenses] = await Promise.allSettled([
           mysqlAdmin.listAllLeads(),
           mysqlAdmin.listAllSubscribers(),
           mysqlAdmin.listAllDaqqiRounds(),
+          mysqlAdmin.listAllExpenses(),
         ]);
         if (cancelled) return;
         // Re-check after the async fetch — user may have made a CRM write while we were waiting
@@ -782,6 +783,13 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (freshRounds.status === 'fulfilled' && (freshRounds.value as unknown as DaqqiRound[]).length > 0) {
           setDaqqiRounds(freshRounds.value as unknown as DaqqiRound[]);
         }
+        if (freshExpenses.status === 'fulfilled' && (freshExpenses.value as unknown as ExpenseItem[]).length > 0) {
+          setExpenses(freshExpenses.value as unknown as ExpenseItem[]);
+        }
+        // Orders reuse reloadOrders() (already normalizes snake_case→camelCase) so
+        // the Financial Overview tab doesn't lag behind Cockpit/Reconciliation,
+        // which already read live from the DB on every render (PAY-15).
+        void reloadOrders();
       } catch { /* silent — polling failure is non-fatal */ }
     };
 

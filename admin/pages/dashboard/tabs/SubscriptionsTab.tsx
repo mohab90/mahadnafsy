@@ -17,11 +17,31 @@ const STATUS_COLOR: Record<string, string> = {
   leads: 'bg-blue-100 text-blue-700',
 };
 
-function getLast6Months() {
+function getLastNMonths(n: number) {
   const ms: string[] = [];
-  for (let i = 5; i >= 0; i--) {
+  for (let i = n - 1; i >= 0; i--) {
     const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
     ms.push(d.toISOString().slice(0, 7));
+  }
+  return ms;
+}
+
+// Chart month range now follows the same `range` filter as the KPI cards
+// below (PAY-18) — it was previously hardcoded to always show 6 months
+// regardless of the selected range.
+function getMonthsForRange(range: Range, earliestMonth: string) {
+  if (range === 'month') return getLastNMonths(1);
+  if (range === '3months') return getLastNMonths(3);
+  if (range === '6months') return getLastNMonths(6);
+  // 'all' — from the earliest subscriber's signup month through the current month
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const start = earliestMonth && earliestMonth < thisMonth ? earliestMonth : thisMonth;
+  const ms: string[] = [];
+  const cursor = new Date(`${start}-01T00:00:00`);
+  const end = new Date(`${thisMonth}-01T00:00:00`);
+  while (cursor <= end) {
+    ms.push(cursor.toISOString().slice(0, 7));
+    cursor.setMonth(cursor.getMonth() + 1);
   }
   return ms;
 }
@@ -30,7 +50,11 @@ export default function SubscriptionsTab({ notify }: { notify: NotifyFn }) {
   const { subscribers, courses, orders } = useSiteData();
   const [range, setRange] = useState<Range>('6months');
   const [statusFilter, setStatusFilter] = useState('all');
-  const months = getLast6Months();
+  const earliestMonth = useMemo(() => subscribers.reduce((min, s) => {
+    const m = (s.createdAt || '').slice(0, 7);
+    return m && (!min || m < min) ? m : min;
+  }, ''), [subscribers]);
+  const months = useMemo(() => getMonthsForRange(range, earliestMonth), [range, earliestMonth]);
 
   const getRangeStart = () => {
     const d = new Date(); d.setDate(1);

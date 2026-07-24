@@ -85,12 +85,19 @@ export function StudentPaymentsTab({
   handleSubmitProof,
 }: Props) {
   const history = subscriber?.paymentHistory ?? [];
-  const totalEGP = history.filter(payment => payment.currency === 'EGP').reduce((sum, payment) => sum + payment.amount, 0);
-  const totalSAR = history.filter(payment => payment.currency === 'SAR').reduce((sum, payment) => sum + payment.amount, 0);
-  const totalUSD = history.filter(payment => payment.currency === 'USD').reduce((sum, payment) => sum + payment.amount, 0);
+  // status is undefined/missing for older rows written before the field
+  // existed — treat that the same as 'paid' (backward compat); only exclude
+  // rows explicitly marked pending/failed from "what the client has paid"
+  // (PAY-13). Scoped to the totals only — the full history list below still
+  // shows pending/failed entries so the client can track their status.
+  const isPaid = (payment: { status?: string }) => !payment.status || payment.status === 'paid';
+  const paidHistory = history.filter(isPaid);
+  const totalEGP = paidHistory.filter(payment => payment.currency === 'EGP').reduce((sum, payment) => sum + payment.amount, 0);
+  const totalSAR = paidHistory.filter(payment => payment.currency === 'SAR').reduce((sum, payment) => sum + payment.amount, 0);
+  const totalUSD = paidHistory.filter(payment => payment.currency === 'USD').reduce((sum, payment) => sum + payment.amount, 0);
   const methodMap: Record<string, number> = {};
 
-  history.filter(payment => payment.currency === 'EGP').forEach(payment => {
+  paidHistory.filter(payment => payment.currency === 'EGP').forEach(payment => {
     const method = payment.paymentMethod || 'غير محدد';
     methodMap[method] = (methodMap[method] || 0) + payment.amount;
   });

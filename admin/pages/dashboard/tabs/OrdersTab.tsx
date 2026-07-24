@@ -89,7 +89,7 @@ interface Props {
   addOrder: (order: OrderItem) => void;
   deleteOrder: (id: string) => void;
   reloadOrders: () => Promise<void>;
-  exportFilteredOrdersCsv: () => void;
+  exportFilteredOrdersCsv: (rows: OrderItem[]) => void;
 }
 
 export default function OrdersTab({
@@ -666,9 +666,9 @@ export default function OrdersTab({
                       <span className="text-xs text-gray-500 font-medium bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
                         {tabRows.length} طلب · {tabTotal.toLocaleString()} ج
                       </span>
-                      {/* Export */}
-                      <button onClick={exportFilteredOrdersCsv} disabled={filteredOrders.length === 0}
-                        className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition ${filteredOrders.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
+                      {/* Export — the active review tab's rows, matching the count shown above (PAY-12) */}
+                      <button onClick={() => exportFilteredOrdersCsv(tabRows)} disabled={tabRows.length === 0}
+                        className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition ${tabRows.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white'}`}>
                         <Download size={12} /> تصدير CSV
                       </button>
                     </div>

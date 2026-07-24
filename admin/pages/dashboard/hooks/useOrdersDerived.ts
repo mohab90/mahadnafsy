@@ -24,11 +24,15 @@ export function useOrdersDerived(
     const matchesType = orderTypeFilter === 'all' || row.type === orderTypeFilter;
     const matchesMethod = orderMethodFilter === 'all' || row.paymentMethod === orderMethodFilter;
     const matchesStaff = orderStaffFilter === 'all' || (row.staffName || '') === orderStaffFilter;
+    // A row with an unparseable createdAt must not be silently dropped when
+    // no date filter is even active (PAY-11) — only enforce hasValidTime once
+    // the admin has actually picked a from/to date to filter by.
     const rowTime = new Date(row.createdAt.replace(' ', 'T')).getTime();
     const fromTime = orderDateFrom ? new Date(`${orderDateFrom}T00:00:00`).getTime() : null;
     const toTime = orderDateTo ? new Date(`${orderDateTo}T23:59:59`).getTime() : null;
     const hasValidTime = !Number.isNaN(rowTime);
-    const matchesDate = hasValidTime && (fromTime === null || rowTime >= fromTime) && (toTime === null || rowTime <= toTime);
+    const matchesDate = (fromTime === null && toTime === null)
+      || (hasValidTime && (fromTime === null || rowTime >= fromTime) && (toTime === null || rowTime <= toTime));
     return matchesSearch && matchesStatus && matchesType && matchesMethod && matchesStaff && matchesDate;
   }), [branchFilteredEffectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo]);
 

@@ -1305,7 +1305,7 @@ const Dashboard: React.FC = () => {
 
   const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content);
 
-  const exportFilteredOrdersCsv = () => exportOrdersCsv(filteredOrders);
+  const exportFilteredOrdersCsv = (rows: OrderItem[]) => exportOrdersCsv(rows);
   const exportSubscribersCsv = () => exportSubscribersCsvHelper(subscribers, bundles, courses, branchLabelMap);
   const exportLeadsCsv = () => exportLeadsCsvHelper(leads);
 

@@ -77,6 +77,54 @@ function startServerCronJobs({
   installmentReminderCron();
   setInterval(installmentReminderCron, CRON_INTERVAL_MS);
 
+  // -- Overdue installment escalation (runs once per hour, checks past-due) --
+  // The reminder above only ever fires BEFORE the due date — once an
+  // installment actually goes unpaid past its due date, nothing follow-up
+  // happens automatically at all (PAY-17). This alerts the subscriber's
+  // assigned collection/sales staff (or all admins, if unassigned) once per
+  // day per overdue entry so it doesn't silently sit unchased.
+  const _overdueEscalationSentToday = new Set(); // key: `${tenantId}:${subId}:${dueDate}:${courseId}`
+  let _overdueEscalationLastReset = new Date().toISOString().slice(0, 10);
+  async function overdueInstallmentEscalationCron() {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      if (today !== _overdueEscalationLastReset) {
+        _overdueEscalationSentToday.clear();
+        _overdueEscalationLastReset = today;
+      }
+      const [subs] = await pool.query(
+        "SELECT id, tenant_id, name, assigned_cs_id, assigned_sales_id, crm_json FROM subscribers WHERE is_active=1 AND crm_json LIKE '%installmentPlans%' LIMIT 2000"
+      );
+      let escalated = 0;
+      for (const sub of subs) {
+        const crm = tryJson(sub.crm_json, {});
+        const plans = crm.installmentPlans || [];
+        for (const plan of plans) {
+          for (const entry of (plan.entries || [])) {
+            const dueDate = (entry.dueDate || '').slice(0, 10);
+            if (!dueDate || dueDate >= today) continue; // not overdue yet
+            if (entry.paidAt) continue; // already paid
+            const dedupeKey = `${sub.tenant_id}:${sub.id}:${dueDate}:${plan.courseId || ''}`;
+            if (_overdueEscalationSentToday.has(dedupeKey)) continue;
+            _overdueEscalationSentToday.add(dedupeKey);
+            const courseName = plan.courseTitle || 'غير محدد';
+            const daysLate = Math.max(1, Math.round((Date.now() - new Date(`${dueDate}T00:00:00Z`).getTime()) / 86400000));
+            try {
+              await createNotification('payment', '⏰ قسط متأخر', `${sub.name || 'مشترك'} — ${entry.amount} ${plan.currency || 'EGP'} متأخر ${daysLate} يوم (${courseName})`,
+                { subscriberId: sub.id, assignedCsId: sub.assigned_cs_id, assignedSalesId: sub.assigned_sales_id, dueDate, courseId: plan.courseId }, sub.tenant_id);
+            } catch (_) {}
+            escalated++;
+          }
+        }
+      }
+      if (escalated) logger.info(`[Cron] overdueInstallmentEscalation: escalated ${escalated} overdue installment(s)`);
+    } catch (e) {
+      logger.warn('[Cron] overdueInstallmentEscalationCron error:', e.message);
+    }
+  }
+  overdueInstallmentEscalationCron();
+  setInterval(overdueInstallmentEscalationCron, CRON_INTERVAL_MS);
+
   // -- Pending payment reminder (runs daily - reminds clients with pending > 3 days) --
   async function pendingPaymentReminderCron() {
     try {

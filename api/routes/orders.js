@@ -84,6 +84,14 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
     if (!itemId) return res.status(400).json({ error: 'item_id مطلوب' });
     if (!itemTitle) return res.status(400).json({ error: 'item_title مطلوب' });
     if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'amount غير صالح' });
+    // Same protection as PATCH (PAY-07): financial statuses need a real
+    // payments row + journal entry via confirm-payment/refund, not a bare
+    // status value on insert — otherwise this bypasses that guard entirely
+    // and creates a "paid" order with no corresponding payment/journal.
+    const requestedStatus = String(o.status || 'pending').toLowerCase();
+    if (['paid', 'refunded'].includes(requestedStatus)) {
+      return res.status(409).json({ error: 'Use payment approval/refund workflow for financial statuses' });
+    }
     const id = o.id || uuidv4();
     let staffName = o.staff_name || null;
     if (!staffName && o.staff_id) {
@@ -96,7 +104,7 @@ router.post('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => 
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE status=VALUES(status), notes=VALUES(notes), staff_id=VALUES(staff_id), staff_name=VALUES(staff_name), updated_at=CURRENT_TIMESTAMP`,
       [id, o.subscriber_id || null, itemId, itemTitle, o.type || 'course',
-       o.status || 'pending', amount, o.currency || 'EGP', o.payment_method || 'CARD',
+       requestedStatus, amount, o.currency || 'EGP', o.payment_method || 'CARD',
        o.notes || null, o.staff_id || null, staffName, req.tenantId,
        o.branch_id || 'branch-other', o.created_at || new Date().toISOString()]
     );
