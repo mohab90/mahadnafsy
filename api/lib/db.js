@@ -11,9 +11,12 @@ const pool = mysql.createPool({
   password:           process.env.DB_PASSWORD,
   database:           process.env.DB_NAME,
   waitForConnections: true,
-  // Tunable per environment. Shared hosting → keep ~10; dedicated/scaled → raise via env.
-  connectionLimit:    parseInt(process.env.DB_POOL_LIMIT  || '10'),
-  queueLimit:         parseInt(process.env.DB_QUEUE_LIMIT || '100'),
+  // Default sized for the dedicated VPS target (100 concurrent staff). MySQL's
+  // default max_connections (151) comfortably absorbs this with headroom for
+  // other clients; drop DB_POOL_LIMIT back to ~10 in env on constrained/shared
+  // hosting, or raise it further on a bigger box.
+  connectionLimit:    parseInt(process.env.DB_POOL_LIMIT  || '20'),
+  queueLimit:         parseInt(process.env.DB_QUEUE_LIMIT || '200'),
   connectTimeout:     parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '3000'),
   charset:            'UTF8MB4_UNICODE_CI',
   enableKeepAlive:    true,
@@ -163,7 +166,7 @@ function cacheInvalidate(...prefixes) {
 // Tunable per environment — should track connectionLimit above, not sit fixed
 // below it (a lower hardcoded value throttles requests even when the pool has
 // spare connections).
-const DB_MAX_CONCURRENT = parseInt(process.env.DB_MAX_CONCURRENT || process.env.DB_POOL_LIMIT || '10');
+const DB_MAX_CONCURRENT = parseInt(process.env.DB_MAX_CONCURRENT || process.env.DB_POOL_LIMIT || '20');
 let _dbActive = 0;
 const _dbQueue = [];
 function acquireDb() {
