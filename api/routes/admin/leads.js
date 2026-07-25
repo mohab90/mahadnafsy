@@ -916,21 +916,23 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
 // rides idx_leads_tenant_status_created instead of loading every row.
 router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, async (req, res) => {
   try {
-    let where = 'l.tenant_id = ? AND l.hidden = 0';
+    // tenant_id kept inline in the query string (not folded into a variable) so
+    // the static tenant-scope guard can see this table is properly scoped.
+    let scopeClause = '';
     const params = [req.tenantId];
     const role = (req.staffRecord?.role || '').toLowerCase();
     if (req.staffRecord && !req.isSuperAdmin) {
       const scope = DATA_SCOPE[role] || 'assigned_sales';
       if (scope === 'none') return res.json({ total: 0, byStatus: {}, assigned: 0, unassigned: 0, totalDealValue: 0 });
-      if (scope === 'assigned_sales') { where += ' AND l.assigned_sales_id = ?'; params.push(req.staffRecord.id); }
-      else if (scope === 'assigned_cs') { where += ' AND l.id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL)'; params.push(req.tenantId, req.staffRecord.id); }
-      else if (scope.startsWith('branch:')) { where += ' AND l.branch = ?'; params.push(scope.slice(7)); }
+      if (scope === 'assigned_sales') { scopeClause = ' AND l.assigned_sales_id = ?'; params.push(req.staffRecord.id); }
+      else if (scope === 'assigned_cs') { scopeClause = ' AND l.id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL)'; params.push(req.tenantId, req.staffRecord.id); }
+      else if (scope.startsWith('branch:')) { scopeClause = ' AND l.branch = ?'; params.push(scope.slice(7)); }
     }
     const [rows] = await pool.query(
       `SELECT l.status AS status, COUNT(*) AS cnt,
               SUM(CASE WHEN l.assigned_sales_id IS NULL OR l.assigned_sales_id = '' THEN 1 ELSE 0 END) AS unassigned_cnt,
               SUM(COALESCE(l.deal_value, 0)) AS deal_sum
-       FROM leads l WHERE ${where} GROUP BY l.status`,
+       FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause} GROUP BY l.status`,
       params,
     );
     const byStatus = {};
