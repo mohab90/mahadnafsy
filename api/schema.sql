@@ -1576,14 +1576,12 @@ CREATE TABLE `leads` (
   KEY `idx_leads_next_followup` (`next_follow_up_date`),
   KEY `idx_leads_score` (`score`),
   KEY `idx_leads_assigned_cs` (`assigned_cs_id`),
-  KEY `idx_leads_hidden` (`hidden`),
   KEY `idx_leads_phone` (`phone`(20)),
   KEY `idx_source` (`source`),
   KEY `idx_status_created` (`status`,`created_at`),
   KEY `idx_leads_tenant_created` (`tenant_id`,`created_at`),
   KEY `idx_leads_tenant_status_created` (`tenant_id`,`status`,`created_at`),
   KEY `idx_leads_unsubscribed` (`is_unsubscribed`),
-  KEY `idx_leads_status_lower` (`status`),
   KEY `idx_leads_tenant_hidden_created_id` (`tenant_id`,`hidden`,`created_at`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
