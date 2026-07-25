@@ -135,28 +135,37 @@ export const mysqlAdmin = {
   // round-trips needed to load everything from 1/7 down to 1/3, since each
   // request already gets the maximum the server allows instead of an arbitrary
   // smaller 2000 that forced extra round trips for no benefit.
-  listAllSubscribers:      async (pageSize = 5000): Promise<AR[]> => {
+  // maxRows caps how much the browser will hold. The default (50k) is far above
+  // real prod scale today, so every caller loads everything exactly as before;
+  // it only engages at 100k+ to stop the client from trying to buffer the whole
+  // table into memory and freezing — past the cap the list/search run
+  // server-side and top-line counts come from the /stats aggregate endpoint.
+  listAllSubscribers:      async (pageSize = 5000, maxRows = 50000): Promise<AR[]> => {
     const all: AR[] = [];
     let offset = 0;
-    while (true) {
+    while (all.length < maxRows) {
       const page = await apiFetch<AR[]>(`/admin/subscribers?limit=${pageSize}&offset=${offset}`, {}, A);
       all.push(...page);
       if (page.length < pageSize) break;
       offset += pageSize;
     }
-    return all;
+    return Number.isFinite(maxRows) ? all.slice(0, maxRows) : all;
   },
-  listAllLeads:            async (pageSize = 5000): Promise<AR[]> => {
+  listAllLeads:            async (pageSize = 5000, maxRows = 50000): Promise<AR[]> => {
     const all: AR[] = [];
     let offset = 0;
-    while (true) {
+    while (all.length < maxRows) {
       const page = await apiFetch<AR[]>(`/admin/leads?limit=${pageSize}&offset=${offset}`, {}, A);
       all.push(...page);
       if (page.length < pageSize) break;
       offset += pageSize;
     }
-    return all;
+    return Number.isFinite(maxRows) ? all.slice(0, maxRows) : all;
   },
+  // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
+  // query, so the CRM shows correct counts without loading every row.
+  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number }> =>
+    apiFetch(`/admin/leads/stats`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
   listStaffSubscribers:    async (pageSize = 2000): Promise<AR[]> => {
     const all: AR[] = [];

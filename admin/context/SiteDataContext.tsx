@@ -572,6 +572,9 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // while deep filters/reports still receive the complete dataset in the background.
         void (async () => {
           await new Promise(r => setTimeout(r, 1000));
+          // listAllLeads/listAllSubscribers self-cap at 50k rows (see mysqlapi) so
+          // the browser can't freeze trying to buffer an unbounded table; at real
+          // prod scale today this loads everything exactly as before.
           const [fullLeadsRes, fullSubsRes] = await Promise.allSettled([
             mysqlAdmin.listAllLeads(),
             mysqlAdmin.listAllSubscribers(),
