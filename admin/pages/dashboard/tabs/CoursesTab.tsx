@@ -14,6 +14,8 @@ import type { LessonAnalyticsRow } from './courses/LessonAnalyticsModal';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type RichField = 'shortDescription' | 'description';
 
+const INP = 'w-full border border-gray-300 rounded-xl px-4 py-2.5';
+
 type RichBtn = [command: string, label: string, arg?: string];
 const RICH_BTNS_BASE: RichBtn[] = [['bold', 'عريض'], ['italic', 'مائل'], ['underline', 'تسطير'], ['formatBlock', 'H2', '<h2>'], ['formatBlock', 'H3', '<h3>'], ['insertUnorderedList', 'قائمة']];
 const RICH_BTNS_SHORT: RichBtn[] = [...RICH_BTNS_BASE, ['removeFormat', 'مسح']];
@@ -202,6 +204,12 @@ export default function CoursesTab({
         <p className="text-xs font-bold text-gray-500 mb-2">معاينة مباشرة</p>
         <SafeHtml className="prose prose-sm max-w-none" html={courseDraft[field] || '<p class="text-gray-400">لا يوجد نص بعد</p>'} />
       </div>
+    </div>
+  );
+  const priceField = (label: string, group: 'price' | 'originalPrice', cur: 'EGP' | 'SAR' | 'USD') => (
+    <div>
+      <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+      <input type="number" className={INP} value={courseDraft[group][cur]} onChange={(e) => setCourseDraft({ ...courseDraft, [group]: { ...courseDraft[group], [cur]: Number(e.target.value) } })} />
     </div>
   );
   const readFileAsDataUrl = (file: File, maxPx = 900, quality = 0.78) => compressImageFile(file, { maxPx, quality });
@@ -653,30 +661,12 @@ const saveChapter = () => {
                 <option value="Recorded">مسجل</option><option value="Live">لايف</option><option value="Mix">مختلط</option>
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي EGP (جنيه)</label>
-              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.price.EGP} onChange={(e) => setCourseDraft({ ...courseDraft, price: { ...courseDraft.price, EGP: Number(e.target.value) } })} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم EGP (جنيه)</label>
-              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.originalPrice.EGP} onChange={(e) => setCourseDraft({ ...courseDraft, originalPrice: { ...courseDraft.originalPrice, EGP: Number(e.target.value) } })} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي SAR (ريال)</label>
-              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.price.SAR} onChange={(e) => setCourseDraft({ ...courseDraft, price: { ...courseDraft.price, SAR: Number(e.target.value) } })} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم SAR (ريال)</label>
-              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.originalPrice.SAR} onChange={(e) => setCourseDraft({ ...courseDraft, originalPrice: { ...courseDraft.originalPrice, SAR: Number(e.target.value) } })} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي USD (دولار)</label>
-              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.price.USD} onChange={(e) => setCourseDraft({ ...courseDraft, price: { ...courseDraft.price, USD: Number(e.target.value) } })} />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم USD (دولار)</label>
-              <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.originalPrice.USD} onChange={(e) => setCourseDraft({ ...courseDraft, originalPrice: { ...courseDraft.originalPrice, USD: Number(e.target.value) } })} />
-            </div>
+            {priceField('السعر الحالي EGP (جنيه)', 'price', 'EGP')}
+            {priceField('السعر قبل الخصم EGP (جنيه)', 'originalPrice', 'EGP')}
+            {priceField('السعر الحالي SAR (ريال)', 'price', 'SAR')}
+            {priceField('السعر قبل الخصم SAR (ريال)', 'originalPrice', 'SAR')}
+            {priceField('السعر الحالي USD (دولار)', 'price', 'USD')}
+            {priceField('السعر قبل الخصم USD (دولار)', 'originalPrice', 'USD')}
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">عدد الطلاب المتوقع</label>
               <input type="number" className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.students} onChange={(e) => setCourseDraft({ ...courseDraft, students: Number(e.target.value) })} />
