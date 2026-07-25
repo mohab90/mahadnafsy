@@ -14,6 +14,11 @@ import type { LessonAnalyticsRow } from './courses/LessonAnalyticsModal';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type RichField = 'shortDescription' | 'description';
 
+type RichBtn = [command: string, label: string, arg?: string];
+const RICH_BTNS_BASE: RichBtn[] = [['bold', 'عريض'], ['italic', 'مائل'], ['underline', 'تسطير'], ['formatBlock', 'H2', '<h2>'], ['formatBlock', 'H3', '<h3>'], ['insertUnorderedList', 'قائمة']];
+const RICH_BTNS_SHORT: RichBtn[] = [...RICH_BTNS_BASE, ['removeFormat', 'مسح']];
+const RICH_BTNS_LONG: RichBtn[] = [...RICH_BTNS_BASE, ['justifyRight', 'يمين'], ['justifyLeft', 'يسار'], ['removeFormat', 'مسح']];
+
 const CourseInstructorsPanel = React.lazy(() => import('./courses/CourseInstructorsPanel').then(module => ({ default: module.CourseInstructorsPanel })));
 const CourseLectureList = React.lazy(() => import('./courses/CourseLectureList').then(module => ({ default: module.CourseLectureList })));
 const CourseListPanel = React.lazy(() => import('./courses/CourseListPanel').then(module => ({ default: module.CourseListPanel })));
@@ -182,6 +187,23 @@ export default function CoursesTab({
   const focusEditor = (field: RichField) => { setActiveRichField(field); getEditorRef(field).current?.focus(); };
   const syncEditorContent = (field: RichField) => { const editor = getEditorRef(field).current; setCourseDraft((prev) => ({ ...prev, [field]: sanitizeRichHtml(editor?.innerHTML || '') })); };
   const runEditorCommand = (command: string, value?: string) => { document.execCommand(command, false, value); syncEditorContent(activeRichField); getEditorRef(activeRichField).current?.focus(); };
+  const renderRichEditor = (label: string, field: RichField, minH: string, buttons: RichBtn[]) => (
+    <div className="md:col-span-2">
+      <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+      <div className="border border-gray-300 rounded-xl bg-white overflow-hidden">
+        <div className="flex flex-wrap gap-2 p-2 border-b border-gray-200 bg-gray-50">
+          {buttons.map(([cmd, lbl, arg]) => (
+            <button key={lbl} type="button" onClick={() => { focusEditor(field); runEditorCommand(cmd, arg); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">{lbl}</button>
+          ))}
+        </div>
+        <div ref={getEditorRef(field)} dir="rtl" contentEditable suppressContentEditableWarning className={`${minH} p-3 outline-none`} onFocus={() => setActiveRichField(field)} onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, [field]: html })); }} />
+      </div>
+      <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">
+        <p className="text-xs font-bold text-gray-500 mb-2">معاينة مباشرة</p>
+        <SafeHtml className="prose prose-sm max-w-none" html={courseDraft[field] || '<p class="text-gray-400">لا يوجد نص بعد</p>'} />
+      </div>
+    </div>
+  );
   const readFileAsDataUrl = (file: File, maxPx = 900, quality = 0.78) => compressImageFile(file, { maxPx, quality });
   const handleGalleryUpload = async (files: FileList | null) => { if (!files || files.length === 0) return; try { const uploaded = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file))); setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), ...uploaded])) })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627. \u062c\u0631\u0628 \u0635\u0648\u0631\u0629 \u0623\u0635\u063a\u0631.'); } };
   const handleCertificateUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file, 1200, 0.82); setCourseDraft((prev) => ({ ...prev, certificateTemplateUrl: uploaded, certificateTemplateName: file.name })); } catch { notify('error', '\u0646\u0645\u0648\u0630\u062c \u0627\u0644\u0634\u0647\u0627\u062f\u0629 \u0643\u0628\u064a\u0631 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647.'); } };
@@ -703,63 +725,9 @@ const saveChapter = () => {
               </div>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-gray-600 mb-1">الوصف القصير (WYSIWYG)</label>
-              <div className="border border-gray-300 rounded-xl bg-white overflow-hidden">
-                <div className="flex flex-wrap gap-2 p-2 border-b border-gray-200 bg-gray-50">
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('bold'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">عريض</button>
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('italic'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مائل</button>
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('underline'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">تسطير</button>
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('formatBlock', '<h2>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H2</button>
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('formatBlock', '<h3>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H3</button>
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('insertUnorderedList'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">قائمة</button>
-                  <button type="button" onClick={() => { focusEditor('shortDescription'); runEditorCommand('removeFormat'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مسح</button>
-                </div>
-                <div
-                  ref={shortDescriptionRef}
-                  dir="rtl"
-                  contentEditable
-                  suppressContentEditableWarning
-                  className="min-h-[120px] p-3 outline-none"
-                  onFocus={() => setActiveRichField('shortDescription')}
-                  onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, shortDescription: html })); }}
-                />
-              </div>
-              <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">
-                <p className="text-xs font-bold text-gray-500 mb-2">معاينة مباشرة</p>
-                <SafeHtml className="prose prose-sm max-w-none" html={courseDraft.shortDescription || '<p class="text-gray-400">لا يوجد نص بعد</p>'} />
-              </div>
-            </div>
+            {renderRichEditor('الوصف القصير (WYSIWYG)', 'shortDescription', 'min-h-[120px]', RICH_BTNS_SHORT)}
 
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-gray-600 mb-1">الوصف التفصيلي (WYSIWYG)</label>
-              <div className="border border-gray-300 rounded-xl bg-white overflow-hidden">
-                <div className="flex flex-wrap gap-2 p-2 border-b border-gray-200 bg-gray-50">
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('bold'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">عريض</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('italic'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مائل</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('underline'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">تسطير</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('formatBlock', '<h2>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H2</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('formatBlock', '<h3>'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">H3</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('insertUnorderedList'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">قائمة</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('justifyRight'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">يمين</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('justifyLeft'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">يسار</button>
-                  <button type="button" onClick={() => { focusEditor('description'); runEditorCommand('removeFormat'); }} className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-bold">مسح</button>
-                </div>
-                <div
-                  ref={descriptionRef}
-                  dir="rtl"
-                  contentEditable
-                  suppressContentEditableWarning
-                  className="min-h-[180px] p-3 outline-none"
-                  onFocus={() => setActiveRichField('description')}
-                  onInput={(e) => { const html = sanitizeRichHtml((e.currentTarget as HTMLDivElement).innerHTML); setCourseDraft((prev) => ({ ...prev, description: html })); }}
-                />
-              </div>
-              <div className="mt-2 border border-dashed border-gray-300 rounded-xl p-3 bg-white">
-                <p className="text-xs font-bold text-gray-500 mb-2">معاينة مباشرة</p>
-                <SafeHtml className="prose prose-sm max-w-none" html={courseDraft.description || '<p class="text-gray-400">لا يوجد نص بعد</p>'} />
-              </div>
-            </div>
+            {renderRichEditor('الوصف التفصيلي (WYSIWYG)', 'description', 'min-h-[180px]', RICH_BTNS_LONG)}
 
             <div className="md:col-span-2">
               <div className="flex items-center justify-between gap-2 mb-2">
