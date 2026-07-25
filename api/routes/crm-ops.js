@@ -28,7 +28,7 @@ router.get('/api/admin/crm/stale-leads', requireAuth, requireAdminOrStaff, requi
         DATEDIFF(NOW(), COALESCE(MAX(c.date), l.last_follow_up, l.created_at)) AS days_silent
       FROM leads l
       LEFT JOIN communications c ON c.lead_id = l.id
-      WHERE l.tenant_id=? AND l.hidden=0 AND LOWER(l.status) NOT IN ('converted','lost','not_interested')`;
+      WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost','not_interested')`;
     const params = [req.tenantId];
     const staffRole = (req.staffRecord?.role || '').toUpperCase();
     if (req.staffRecord && !req.isSuperAdmin) {
@@ -64,7 +64,7 @@ router.get('/api/admin/crm/follow-up-due', requireAuth, requireAdminOrStaff, req
       WHERE l.tenant_id=? AND l.hidden=0
         AND l.next_follow_up_date IS NOT NULL
         AND l.next_follow_up_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
-        AND LOWER(l.status) NOT IN ('converted','lost')`;
+        AND l.status NOT IN ('converted','lost')`;
     const params = [req.tenantId];
     const fuRole = (req.staffRecord?.role || '').toUpperCase();
     if (req.staffRecord && !req.isSuperAdmin) {

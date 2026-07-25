@@ -153,7 +153,7 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
         key: 'converted_without_subscriber', severity: 'critical',
         sql: `SELECT l.id,l.name,l.email,l.phone,l.updated_at
                 FROM leads l
-               WHERE l.tenant_id=? AND l.hidden=0 AND LOWER(l.status)='converted'
+               WHERE l.tenant_id=? AND l.hidden=0 AND l.status='converted'
                  AND NOT EXISTS (
                    SELECT 1 FROM subscribers s WHERE s.tenant_id=l.tenant_id
                      AND (s.lead_id=l.id OR (l.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(l.email))) OR (l.phone<>'' AND s.phone=l.phone))

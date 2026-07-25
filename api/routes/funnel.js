@@ -31,9 +31,9 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
     const data = await cached(`funnel:${req.tenantId}:${from || ''}:${to || ''}:${br || 'all'}`, 5 * 60 * 1000, async () => {
       const [leads, contacted, interested, converted, subscribers, paying, learners, certified, revenue] = await Promise.all([
         n(`SELECT COUNT(*) FROM leads WHERE ${lw}`, lp),
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND LOWER(status) <> 'new'`, lp),
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND (LOWER(status)='interested' OR interest_level='HIGH')`, lp),
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND LOWER(status)='converted'`, lp),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND status <> 'new'`, lp),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND (status='interested' OR interest_level='HIGH')`, lp),
+        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND status='converted'`, lp),
         n(`SELECT COUNT(*) FROM subscribers WHERE ${sw}`, sp),
         n(`SELECT COUNT(DISTINCT subscriber_id) FROM payments WHERE ${pw}`, pp),
         n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM lecture_completions t ${learnerJoin} AND t.tenant_id=s.tenant_id`, learnerParams),
@@ -88,7 +88,7 @@ router.get('/api/admin/funnel/attribution', requireAuth, requireAdmin, async (re
       const [rows] = await pool.query(
         `SELECT ${groupCol} AS label,
                 COUNT(DISTINCT l.id) AS leads,
-                COUNT(DISTINCT CASE WHEN LOWER(l.status)='converted' THEN l.id END) AS converted,
+                COUNT(DISTINCT CASE WHEN l.status='converted' THEN l.id END) AS converted,
                 COUNT(DISTINCT s.id) AS subscribers,
                 COALESCE(SUM(CASE WHEN p.status='paid' THEN p.amount_egp END),0) AS revenue
            FROM leads l
@@ -119,8 +119,8 @@ router.get('/api/admin/action-center', requireAuth, requireAdmin, async (req, re
   try {
     const [pendingProofs, overdueFollowups, uncontacted, pendingCerts, newJoinUs, newContact, failedMsgs] = await Promise.all([
       n("SELECT COUNT(*) FROM payment_proofs WHERE tenant_id=? AND status='PENDING'", [req.tenantId]),
-      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND LOWER(status) NOT IN ('converted','lost')", [req.tenantId]),
-      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND LOWER(status)='new' AND created_at < (NOW() - INTERVAL 1 DAY)", [req.tenantId]),
+      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND next_follow_up_date IS NOT NULL AND next_follow_up_date < NOW() AND status NOT IN ('converted','lost')", [req.tenantId]),
+      n("SELECT COUNT(*) FROM leads WHERE tenant_id=? AND hidden=0 AND status='new' AND created_at < (NOW() - INTERVAL 1 DAY)", [req.tenantId]),
       n("SELECT COUNT(*) FROM certificate_requests WHERE tenant_id=? AND status='PENDING'", [req.tenantId]),
       n("SELECT COUNT(*) FROM join_us_applications WHERE tenant_id=? AND LOWER(COALESCE(status,'new')) IN ('new','pending')", [req.tenantId]),
       n("SELECT COUNT(*) FROM contact_messages WHERE tenant_id=? AND LOWER(COALESCE(status,'new')) IN ('new','pending','unread')", [req.tenantId]),
