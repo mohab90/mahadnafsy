@@ -743,8 +743,8 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       if (needsLink && (safePhone || safeEmail)) {
         const normPhone = safePhone ? safePhone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
         const matchQ = normPhone
-          ? `SELECT id, status FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0 ORDER BY created_at DESC LIMIT 1`
-          : 'SELECT id, status FROM leads WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND hidden=0 ORDER BY created_at DESC LIMIT 1';
+          ? `SELECT id, status FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0 ORDER BY created_at DESC LIMIT 1`
+          : 'SELECT id, status FROM leads WHERE tenant_id=? AND email = ? AND hidden=0 ORDER BY created_at DESC LIMIT 1';
         const matchParams = normPhone ? [tenantId, `%${normPhone.slice(-9)}`, safeEmail || ''] : [tenantId, safeEmail];
         const [[matchedLead]] = await conn.query(matchQ, matchParams);
         if (matchedLead) {

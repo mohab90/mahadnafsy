@@ -460,7 +460,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
           const [[found]] = await pool.query(
             `SELECT id FROM leads
              WHERE tenant_id=? AND hidden=0
-               AND ((? IS NOT NULL AND REGEXP_REPLACE(phone,'[^0-9]','') LIKE ?) OR LOWER(email)=LOWER(?))
+               AND ((? IS NOT NULL AND REGEXP_REPLACE(phone,'[^0-9]','') LIKE ?) OR email = ?)
              ORDER BY created_at DESC LIMIT 1`,
             [subTenantId, normPhone, normPhone ? `%${normPhone.slice(-9)}` : '', subRow.email || '']
           );
@@ -530,8 +530,8 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
       const normPhone = sub.phone ? sub.phone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
       const params = normPhone ? [`%${normPhone.slice(-9)}`, sub.email || ''] : [sub.email];
       const base = normPhone
-        ? `WHERE (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0`
-        : 'WHERE LOWER(email)=LOWER(?) AND hidden=0';
+        ? `WHERE (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0`
+        : 'WHERE email = ? AND hidden=0';
       const where = appendTenantScope(base, '', tenantId, params);
       const [[found]] = await db.query(`SELECT id FROM leads ${where} ORDER BY created_at DESC LIMIT 1`, params);
       leadId = found?.id || null;

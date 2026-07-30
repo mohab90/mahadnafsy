@@ -208,7 +208,7 @@ router.get('/api/staff/me', requireAuth, async (req, res) => {
     const email = (req.user?.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'No email in token' });
     const [rows] = await pool.query(
-      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? AND LOWER(email) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? AND email = ? AND is_active = 1 LIMIT 1',
       [req.tenantId, email]
     );
     if (!rows.length) return res.json(null);
@@ -245,7 +245,7 @@ router.patch('/api/staff/me', requireAuth, async (req, res) => {
     if (image !== undefined && (image === null || typeof image === 'string')) { fields.push('image = ?'); vals.push(image ? image.slice(0, 500) : null); }
     if (fields.length === 0) return res.status(400).json({ error: 'No updatable fields provided' });
     vals.push(req.tenantId, email);
-    const [result] = await pool.query(`UPDATE staff SET ${fields.join(', ')} WHERE tenant_id=? AND LOWER(email) COLLATE utf8mb4_unicode_ci = ?`, vals);
+    const [result] = await pool.query(`UPDATE staff SET ${fields.join(', ')} WHERE tenant_id=? AND email = ?`, vals);
     if (!result.affectedRows) return res.status(404).json({ error: 'Staff not found' });
     res.json({ ok: true });
   } catch (e) {

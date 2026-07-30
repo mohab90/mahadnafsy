@@ -72,7 +72,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     if (scope === 'none') return res.json([]);
 
     const adminExclusions = ADMIN_EMAILS.length > 0
-      ? `AND (s.email IS NULL OR LOWER(s.email) NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+      ? `AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
       : '';
     let scopeClause = '1=1';
     const scopeParams = [];
@@ -117,7 +117,7 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
        LEFT JOIN staff ss ON ss.id = s.assigned_sales_id AND ss.tenant_id=s.tenant_id
        LEFT JOIN staff cs ON cs.id = s.assigned_cs_id AND cs.tenant_id=s.tenant_id
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.is_active=1 AND (${scopeClause}) AND NOT EXISTS (
-         SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
+         SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
        ) ${adminExclusions}${searchClause}
        ORDER BY s.created_at DESC LIMIT ? OFFSET ?`,
       [req.tenantId, ...scopeParams, ...ADMIN_EMAILS.map(e => e.toLowerCase()), ...searchParams, limit, offset]
@@ -252,10 +252,10 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
     if (scope === 'all') {
       // Full access — return everything (excluding staff/admin emails)
       const adminExclusions = ADMIN_EMAILS.length > 0
-        ? ` AND (s.email IS NULL OR LOWER(s.email) NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+        ? ` AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
         : '';
       whereClause = `NOT EXISTS (
-        SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND LOWER(st.email) = LOWER(s.email) AND st.is_active = 1
+        SELECT 1 FROM staff st WHERE st.tenant_id=s.tenant_id AND st.email = s.email AND st.is_active = 1
       )${adminExclusions}`;
       params.push(...ADMIN_EMAILS.map(e => e.toLowerCase()));
     } else if (scope === 'assigned_sales') {

@@ -97,7 +97,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
                 assigned_cs_id,assigned_cs_name,tenant_id,branch,branch_id,client_code
            FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (lead_id=? OR (?<>'' AND phone=?) OR (?<>'' AND LOWER(email)=LOWER(?)))
+            AND (lead_id=? OR (?<>'' AND phone=?) OR (?<>'' AND email = ?))
           ORDER BY created_at ASC LIMIT 1`,
         [
           req.tenantId, lead.id,
@@ -139,7 +139,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       const [[existing]] = await pool.query(
         `SELECT id FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone=? OR (?<>'' AND LOWER(email)=LOWER(?)))
+            AND (phone=? OR (?<>'' AND email = ?))
           LIMIT 1`,
         [req.tenantId, safePhone, safeEmail, safeEmail]
       );
@@ -258,7 +258,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       const [[racedSubscriber]] = await conn.query(
         `SELECT id FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (phone=? OR (?<>'' AND LOWER(email)=LOWER(?)))
+            AND (phone=? OR (?<>'' AND email = ?))
           LIMIT 1 FOR UPDATE`,
         [paymentTenantId, subRow.phone, String(subRow.email || ''), String(subRow.email || '')]
       );
@@ -310,7 +310,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
                 assigned_cs_id,assigned_cs_name,tenant_id,branch,branch_id,client_code
            FROM subscribers
           WHERE tenant_id=? AND deleted_at IS NULL
-            AND (lead_id=? OR (?<>'' AND phone=?) OR (?<>'' AND LOWER(email)=LOWER(?)))
+            AND (lead_id=? OR (?<>'' AND phone=?) OR (?<>'' AND email = ?))
           ORDER BY created_at ASC LIMIT 1 FOR UPDATE`,
         [
           paymentTenantId, lockedLead.id,
