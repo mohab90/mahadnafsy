@@ -14,6 +14,14 @@ async function transitionLead({
   reason = null,
   metadata = {},
   db = null,
+  // Skip the configurable-pipeline check. Reserved for transitions driven by a
+  // fact that already happened and cannot be undone by a workflow rule — a
+  // confirmed provider payment being the case this exists for. Without it, a
+  // tenant whose custom pipeline omits the lead's current status would get a 409
+  // from validateTransition and the paying customer would stay an open lead.
+  // Everything else (locking, the UPDATE, the timeline row) still goes through
+  // this one service, so history stays consistent.
+  force = false,
 }) {
   if (!tenantId || !leadId) {
     const error = new Error('tenantId and leadId are required');
@@ -36,7 +44,7 @@ async function transitionLead({
       if (ownsConnection) await conn.commit();
       return { changed: false, fromStatus, toStatus: status };
     }
-    await validateTransition(tenantId, fromStatus, status, conn);
+    if (!force) await validateTransition(tenantId, fromStatus, status, conn);
     await conn.query(
       'UPDATE leads SET status=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
       [status, leadId, tenantId]

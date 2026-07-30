@@ -17,6 +17,7 @@ const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { transitionLead } = require('../lib/leadState');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
+const { createNotification } = require('../lib/notification');
 const {
   PAYMOB_HMAC_FIELDS,
   buildPaymobHmacPayload,
@@ -380,6 +381,27 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     }, conn);
     if (!journalId) throw new Error('Paymob payment journal posting failed');
 
+    // 5. Close the linked lead in the CRM pipeline — atomically with the payment,
+    // through the central transition service so the timeline stays consistent.
+    // force:true because a confirmed provider payment is ground truth: a tenant's
+    // custom pipeline must not be able to veto it. This used to run after commit
+    // in a fire-and-forget setImmediate whose 409 from validateTransition was
+    // swallowed, leaving paying customers sitting in the pipeline as open leads —
+    // sales kept chasing them, conversion rate read low, and staff KPIs
+    // undercounted their own wins.
+    if (sub?.lead_id) {
+      await transitionLead({
+        tenantId,
+        leadId: sub.lead_id,
+        toStatus: 'converted',
+        actor: 'paymob-callback',
+        reason: 'تحوّل لمشترك بعد دفعة إلكترونية مؤكدة',
+        metadata: { paymentId: payId, subscriberId: sub.id, orderId: merchantOrderId },
+        db: conn,
+        force: true,
+      });
+    }
+
     await conn.commit();
     awardPointsForPayment({
       id: payId,
@@ -439,6 +461,25 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       } catch (commErr) { logger.warn('[paymob] commission calc error:', commErr.message); }
     });
   }
+  // In-app notification so the dashboard bell surfaces online revenue to the
+  // accountant/admin. The WhatsApp ping below only reaches one env-configured
+  // number and is silently skipped when ADMIN_WHATSAPP_PHONE is unset, so it was
+  // possible for an online payment to land with nobody being told at all.
+  createNotification(
+    'payment',
+    '💳 دفعة أونلاين جديدة',
+    `${order.customer_name || order.customer_email || 'عميل'} — ${order.amount} ${order.currency || 'EGP'}`,
+    {
+      paymentId: payId,
+      orderId: merchantOrderId,
+      subscriberId: sub?.id || null,
+      amount: order.amount,
+      currency: order.currency || 'EGP',
+      link: '/dashboard?tab=payments',
+    },
+    tenantId,
+  ).catch(() => {});
+
   // Notify admin on new Paymob payment
   const adminPhone = process.env.ADMIN_WHATSAPP_PHONE;
   if (adminPhone) {
@@ -448,8 +489,10 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
   // Auto-update lead deal_value and convert lead on successful payment
   if (sub?.id && order.amount > 0) {
     syncLeadDealValue(sub.id, pool, tenantId).catch(() => {});
-    // Auto-convert matched lead to 'converted' on successful payment
-    setImmediate(async () => {
+    // Fallback only: when the subscriber carries no lead_id, try to discover an
+    // unlinked lead by phone/email. The linked case is already converted inside
+    // the payment transaction above, so this no longer runs for it.
+    if (!sub.lead_id) setImmediate(async () => {
       try {
         const [[subRow]] = await pool.query('SELECT lead_id, phone, email, tenant_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [sub.id, tenantId]);
         if (!subRow) return;
