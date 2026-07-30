@@ -87,7 +87,7 @@ const CHECKS = [
     name: 'paid course/bundle orders have payment, journal, subscriber and enrollment',
     severity: 'critical',
     sql: `SELECT COUNT(*) AS n FROM orders o
-          WHERE LOWER(o.status)='paid' AND LOWER(o.type) IN ('course','bundle')
+          WHERE o.status='paid' AND o.type IN ('course','bundle')
             AND NOT EXISTS (
               SELECT 1 FROM payments p
                WHERE p.tenant_id=o.tenant_id AND p.status='paid'
@@ -101,14 +101,14 @@ const CHECKS = [
                       AND je.total_debit=je.total_credit
                  )
                  AND (
-                   (LOWER(o.type)='course' AND EXISTS (
+                   (o.type='course' AND EXISTS (
                      SELECT 1 FROM enrollments e
                       WHERE e.tenant_id=o.tenant_id
                         AND e.subscriber_id=COALESCE(o.subscriber_id,p.subscriber_id)
                         AND e.course_id=COALESCE(o.course_id,o.item_id) AND e.status='active'
                    ))
                    OR
-                   (LOWER(o.type)='bundle'
+                   (o.type='bundle'
                     AND EXISTS (
                       SELECT 1 FROM bundle_courses bc
                        WHERE bc.tenant_id=o.tenant_id AND bc.bundle_id=COALESCE(o.bundle_id,o.item_id)

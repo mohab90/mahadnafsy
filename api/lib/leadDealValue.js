@@ -27,8 +27,8 @@ async function syncLeadDealValue(arg1, arg2, arg3, arg4 = false) {
     if (!leadId && (sub.phone || sub.email)) {
       const normPhone = sub.phone ? sub.phone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
       const q = normPhone
-        ? "SELECT id FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0 ORDER BY created_at DESC LIMIT 1"
-        : 'SELECT id FROM leads WHERE tenant_id=? AND LOWER(email)=LOWER(?) AND hidden=0 ORDER BY created_at DESC LIMIT 1';
+        ? "SELECT id FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0 ORDER BY created_at DESC LIMIT 1"
+        : 'SELECT id FROM leads WHERE tenant_id=? AND email = ? AND hidden=0 ORDER BY created_at DESC LIMIT 1';
       const params = normPhone ? [tenantId, `%${normPhone.slice(-9)}`, sub.email || ''] : [tenantId, sub.email];
       const [[found]] = await pool.query(q, params);
       leadId = found?.id || null;

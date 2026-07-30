@@ -229,7 +229,7 @@ async function autoAssignStaff(role, tenantId = 'tenant-default') {
     let workloadJoin = '';
     if (normalizedRole === 'SALES') {
       workloadJoin = `LEFT JOIN leads w ON w.tenant_id=s.tenant_id
-        AND w.assigned_sales_id=s.id AND w.hidden=0 AND LOWER(w.status) NOT IN ('converted','lost','closed')`;
+        AND w.assigned_sales_id=s.id AND w.hidden=0 AND w.status NOT IN ('converted','lost','closed')`;
     } else if (normalizedRole === 'COLLECTION') {
       workloadJoin = `LEFT JOIN subscribers w ON w.tenant_id=s.tenant_id
         AND w.assigned_cs_id=s.id AND w.deleted_at IS NULL AND w.is_active=1`;

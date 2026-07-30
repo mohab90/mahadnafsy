@@ -28,7 +28,7 @@ async function findAbandonedOrders(options = {}, db = pool) {
      FROM orders o
      LEFT JOIN checkout_reminders cr
        ON cr.order_id = o.id AND cr.channel = 'whatsapp'
-     WHERE LOWER(o.status) = 'pending'
+     WHERE o.status = 'pending'
        AND o.created_at < DATE_SUB(NOW(), INTERVAL ? HOUR)
        AND cr.id IS NULL
        AND (o.customer_phone IS NOT NULL AND o.customer_phone <> '')

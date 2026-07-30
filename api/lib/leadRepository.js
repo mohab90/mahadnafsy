@@ -21,7 +21,7 @@ async function findLeadByIdentity({
   const clauses = [];
   const params = [tenantId];
   if (phone) { clauses.push('phone=?'); params.push(phone); }
-  if (email) { clauses.push('LOWER(email)=LOWER(?)'); params.push(email); }
+  if (email) { clauses.push('email = ?'); params.push(email); }
   if (!clauses.length) return null;
   if (excludeId) params.push(excludeId);
   const [[lead]] = await db.query(
