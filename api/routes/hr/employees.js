@@ -58,6 +58,12 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     const now = new Date();
     const curMonth = now.getMonth() + 1;
     const curYear = now.getFullYear();
+    // Half-open month window [monthStart, nextMonthStart) for the leads/payments
+    // KPI subqueries below. MONTH(col)=? AND YEAR(col)=? can't use an index and
+    // those two tables grow without bound, unlike the staff-sized HR tables.
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const monthStart = `${curYear}-${pad2(curMonth)}-01`;
+    const nextMonthStart = curMonth === 12 ? `${curYear + 1}-01-01` : `${curYear}-${pad2(curMonth + 1)}-01`;
     const [[commThisMonth]] = await pool.query(`
       SELECT COALESCE(SUM(commission_amount),0) AS total, COUNT(*) AS count
       FROM crm_commissions
@@ -162,10 +168,10 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     // KPI this month: leads handled, converted, revenue
     const [[kpi]] = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND MONTH(created_at)=? AND YEAR(created_at)=?) AS leads_assigned,
-        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND MONTH(updated_at)=? AND YEAR(updated_at)=?) AS leads_converted,
-        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND MONTH(date)=? AND YEAR(date)=?) AS revenue_generated
-    `, [req.tenantId, id, curMonth, curYear, req.tenantId, id, curMonth, curYear, req.tenantId, id, curMonth, curYear]);
+        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND created_at >= ? AND created_at < ?) AS leads_assigned,
+        (SELECT COUNT(*) FROM leads WHERE tenant_id=? AND assigned_sales_id=? AND status IN ('closed','converted') AND updated_at >= ? AND updated_at < ?) AS leads_converted,
+        (SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE tenant_id=? AND staff_id=? AND status='paid' AND date >= ? AND date < ?) AS revenue_generated
+    `, [req.tenantId, id, monthStart, nextMonthStart, req.tenantId, id, monthStart, nextMonthStart, req.tenantId, id, monthStart, nextMonthStart]);
 
     res.json({
       staff,
