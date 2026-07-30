@@ -209,11 +209,11 @@ router.get('/api/admin/kpi/summary', requireAuth, requireAdmin, async (req, res)
       return d.toISOString().slice(0, 10);
     })();
 
-    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND DATE(date)=? AND status='paid'`, [req.tenantId, today]);
+    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date >= ? AND date < DATE_ADD(?, INTERVAL 1 DAY) AND status='paid'`, [req.tenantId, today, today]);
     const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, weekAgo]);
     const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, monthStart]);
     const [[prevMonRev]]= await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND date<? AND status='paid'`, [req.tenantId, prevMonthStart, monthStart]);
-    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND DATE(created_at)=?`, [req.tenantId, today]);
+    const [[todayLeads]]= await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
     const [[weekLeads]] = await pool.query(`SELECT COUNT(*) AS v FROM leads WHERE tenant_id=? AND created_at>=?`, [req.tenantId, weekAgo]);
     const [[totalSubs]] = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=?`, [req.tenantId]);
     const [[newSubs7]]  = await pool.query(`SELECT COUNT(*) AS v FROM subscribers WHERE tenant_id=? AND created_at>=?`, [req.tenantId, weekAgo]);

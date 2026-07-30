@@ -19,7 +19,7 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
 
     const [byStatus] = await pool.query(`
       SELECT status, COUNT(*) AS cnt FROM leads
-      WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
+      WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY status`, [req.tenantId, from, to]);
 
     const statusMap = Object.fromEntries(byStatus.map(r => [r.status, parseInt(r.cnt)]));
@@ -34,7 +34,7 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
     const [bySource] = await pool.query(`
       SELECT source, COUNT(*) AS cnt,
              SUM(CASE WHEN status='converted' THEN 1 ELSE 0 END) AS conversions
-      FROM leads WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
+      FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY source ORDER BY cnt DESC`, [req.tenantId, from, to]);
 
     // Staff performance
@@ -45,7 +45,7 @@ router.get('/api/admin/analytics/conversion-funnel', requireAuth, requireAdmin, 
              ROUND(SUM(CASE WHEN l.status='converted' THEN 1 ELSE 0 END) / COUNT(l.id) * 100, 1) AS conv_rate
       FROM leads l
       JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id=l.tenant_id
-      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY l.assigned_sales_id ORDER BY conversions DESC`, [req.tenantId, from, to]);
 
     res.json({
@@ -163,11 +163,11 @@ router.get('/api/admin/security/stats', requireAuth, requireAdmin, async (req, r
 router.get('/api/admin/reports/daily-preview', requireAuth, requireAdmin, async (req, res) => {
   try {
     const today = req.query.date || new Date().toISOString().slice(0, 10);
-    const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at)=?`, [req.tenantId, today]);
-    const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND DATE(created_at)=?`, [req.tenantId, today]);
-    const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND DATE(created_at)=?`, [req.tenantId, today]);
+    const [[{ revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
+    const [[{ new_leads }]] = await pool.query(`SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
+    const [[{ new_clients }]] = await pool.query(`SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]);
     const [[{ pending_payments }]] = await pool.query(`SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending'`, [req.tenantId]);
-    const [[{ failed_logins }]] = await pool.query(`SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND DATE(created_at)=?`, [req.tenantId, today]).catch(() => [[{ failed_logins: 0 }]]);
+    const [[{ failed_logins }]] = await pool.query(`SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]).catch(() => [[{ failed_logins: 0 }]]);
     const [[{ month_revenue }]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`, [req.tenantId]);
     res.json({ date: today, revenue: parseFloat(revenue), new_leads: parseInt(new_leads), new_clients: parseInt(new_clients), pending_payments: parseInt(pending_payments), failed_logins: parseInt(failed_logins), month_revenue: parseFloat(month_revenue) });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -293,15 +293,15 @@ router.get('/api/admin/analytics/staff-performance', requireAuth, requireAdmin, 
         COALESCE((
           SELECT SUM(p.amount_egp) FROM payments p
           JOIN subscribers sub ON sub.id = p.subscriber_id AND sub.tenant_id=p.tenant_id
-          WHERE p.tenant_id=st.tenant_id AND sub.assigned_sales_id = st.id AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+          WHERE p.tenant_id=st.tenant_id AND sub.assigned_sales_id = st.id AND p.status='paid' AND p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY)
         ), 0) AS revenue_generated,
         -- Tasks completed
         COUNT(DISTINCT CASE WHEN t.status='done' THEN t.id END) AS tasks_done,
         COUNT(DISTINCT t.id) AS tasks_total
       FROM staff st
-      LEFT JOIN leads l ON l.tenant_id=st.tenant_id AND l.assigned_sales_id = st.id AND DATE(l.created_at) BETWEEN ? AND ?
-      LEFT JOIN subscribers s ON s.tenant_id=st.tenant_id AND s.assigned_sales_id = st.id AND DATE(s.created_at) BETWEEN ? AND ?
-      LEFT JOIN tasks t ON t.tenant_id=st.tenant_id AND t.assigned_to = st.id AND DATE(t.created_at) BETWEEN ? AND ?
+      LEFT JOIN leads l ON l.tenant_id=st.tenant_id AND l.assigned_sales_id = st.id AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+      LEFT JOIN subscribers s ON s.tenant_id=st.tenant_id AND s.assigned_sales_id = st.id AND s.created_at >= ? AND s.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+      LEFT JOIN tasks t ON t.tenant_id=st.tenant_id AND t.assigned_to = st.id AND t.created_at >= ? AND t.created_at < DATE_ADD(?, INTERVAL 1 DAY)
       WHERE st.tenant_id=? AND st.is_active = 1
       GROUP BY st.id
       ORDER BY revenue_generated DESC`,

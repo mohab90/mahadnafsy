@@ -35,7 +35,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted,
         SUM(CASE WHEN l.status = 'lost' THEN 1 ELSE 0 END) AS lost
       FROM leads l
-      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
       GROUP BY l.source ORDER BY total_leads DESC
     `, [req.tenantId, from, to, ...scope.params]);
 
@@ -48,7 +48,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         COUNT(*) AS total_leads,
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
-      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
       GROUP BY l.utm_campaign, l.utm_source, l.utm_medium
       ORDER BY total_leads DESC
       LIMIT 100
@@ -61,7 +61,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         COUNT(*) AS new_leads,
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
-      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
       GROUP BY month ORDER BY month ASC
     `, [req.tenantId, from, to, ...scope.params]);
 
@@ -77,7 +77,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
         JOIN leads l ON l.id = s.lead_id AND l.tenant_id = p.tenant_id
         WHERE p.tenant_id=? AND p.status IN ('paid','confirmed')
-          AND DATE(p.date) BETWEEN ? AND ?${scope.sql}
+          AND p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
         GROUP BY l.source ORDER BY revenue DESC
       `, [req.tenantId, from, to, ...scope.params]);
     }
@@ -89,7 +89,7 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
       JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
-      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
+      WHERE l.tenant_id=? AND l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)${scope.sql}
       GROUP BY l.enrolled_course_id, c.title ORDER BY interested_count DESC LIMIT 20
     `, [req.tenantId, from, to, ...scope.params]);
 

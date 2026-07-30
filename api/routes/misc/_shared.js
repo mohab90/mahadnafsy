@@ -30,15 +30,15 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
     const [[{ revenue }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at)=?`, [tenantId, today]);
+      `SELECT COALESCE(SUM(amount_egp),0) AS revenue FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
     const [[{ new_leads }]] = await pool.query(
-      `SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND DATE(created_at)=?`, [tenantId, today]);
+      `SELECT COUNT(*) AS new_leads FROM leads WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
     const [[{ new_clients }]] = await pool.query(
-      `SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND DATE(created_at)=?`, [tenantId, today]);
+      `SELECT COUNT(*) AS new_clients FROM subscribers WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]);
     const [[{ pending_payments }]] = await pool.query(
       `SELECT COUNT(*) AS pending_payments FROM payments WHERE tenant_id=? AND status='pending'`, [tenantId]);
     const [[{ failed_logins }]] = await pool.query(
-      `SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND DATE(created_at)=?`, [tenantId, today]).catch(() => [[{ failed_logins: 0 }]]);
+      `SELECT COUNT(*) AS failed_logins FROM login_history WHERE tenant_id=? AND status='failed' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, today, today]).catch(() => [[{ failed_logins: 0 }]]);
     const [[{ month_revenue }]] = await pool.query(
       `SELECT COALESCE(SUM(amount_egp),0) AS month_revenue FROM payments WHERE tenant_id=? AND status='paid' AND DATE_FORMAT(created_at,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')`, [tenantId]);
 
@@ -131,16 +131,15 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
              st.name AS staff_name, st.phone AS staff_phone, st.email AS staff_email
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND DATE(l.next_follow_up_date) = ?
+      WHERE l.tenant_id = ? AND l.next_follow_up_date >= ? AND l.next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY)
         AND l.status NOT IN ('converted','disqualified','archived')
-      LIMIT 100`, [tenantId, today]);
+      LIMIT 100`, [tenantId, today, today]);
 
     let sent = 0;
     // Batch-check which leads were already reminded today (1 query instead of N)
     const _fuKeys = leads.map(l => `followup_${l.id}_${today}`);
     const [_fuSentRows] = leads.length ? await pool.query(
-      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='followup' AND ref_id IN (${_fuKeys.map(() => '?').join(',')}) AND DATE(sent_at)=?`,
-      [tenantId, ..._fuKeys, today]
+      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='followup' AND ref_id IN (${_fuKeys.map(() => '?').join(',')}) AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, ..._fuKeys, today, today]
     ).catch(() => [[]]) : [[]];
     const _fuDone = new Set(_fuSentRows.map(r => r.ref_id));
     for (const lead of leads) {
@@ -225,8 +224,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
     // Batch-check which payments were already reminded today (1 query instead of N)
     const _pdKeys = pending.map(p => `payment_due_${p.id}_${today}`);
     const [_pdSentRows] = pending.length ? await pool.query(
-      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='payment_due' AND ref_id IN (${_pdKeys.map(() => '?').join(',')}) AND DATE(sent_at)=?`,
-      [tenantId, ..._pdKeys, today]
+      `SELECT ref_id FROM reminder_log WHERE tenant_id=? AND type='payment_due' AND ref_id IN (${_pdKeys.map(() => '?').join(',')}) AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [tenantId, ..._pdKeys, today, today]
     ).catch(() => [[]]) : [[]];
     const _pdDone = new Set(_pdSentRows.map(r => r.ref_id));
     for (const p of pending) {

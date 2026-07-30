@@ -33,7 +33,7 @@ router.get('/api/admin/finance/documents', ...view, async (req, res) => {
       return res.status(400).json({ error: 'Invalid document type' });
     }
     const params = [req.tenantId, range.from, range.to];
-    let where = 'fd.tenant_id=? AND DATE(fd.issued_at) BETWEEN ? AND ?';
+    let where = 'fd.tenant_id=? AND fd.issued_at >= ? AND fd.issued_at < DATE_ADD(?, INTERVAL 1 DAY)';
     if (scope.branchId) { where += ' AND fd.branch_id=?'; params.push(scope.branchId); }
     if (type) { where += ' AND fd.document_type=?'; params.push(type); }
     const [rows] = await pool.query(
@@ -133,7 +133,7 @@ router.get('/api/admin/finance/audit-package', ...view, bulkOperationLimiter, as
         `SELECT id,document_type,document_number,source_type,source_id,related_document_id,
                 amount,currency,issued_at,issued_by,branch_id
            FROM financial_documents
-          WHERE tenant_id=? AND DATE(issued_at) BETWEEN ? AND ?${branchSql}
+          WHERE tenant_id=? AND issued_at >= ? AND issued_at < DATE_ADD(?, INTERVAL 1 DAY)${branchSql}
           ORDER BY issued_at,id LIMIT 10000`,
         params
       ).then(([rows]) => rows),
@@ -153,7 +153,7 @@ router.get('/api/admin/finance/audit-package', ...view, bulkOperationLimiter, as
       pool.query(
         `SELECT id,entity_type,entity_id,action,old_json,new_json,amount,actor,created_at
            FROM financial_audit_log
-          WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
+          WHERE tenant_id=? AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
           ORDER BY created_at,id LIMIT 10000`,
         params.slice(0, 3)
       ).then(([rows]) => rows),

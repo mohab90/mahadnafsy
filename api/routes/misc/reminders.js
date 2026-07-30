@@ -60,7 +60,7 @@ router.get('/api/admin/payments/due-upcoming', requireAuth, requireAdminOrStaff,
       FROM payments p
       JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
       WHERE p.tenant_id = ? AND p.status = 'pending'
-        AND DATE(p.date) BETWEEN ? AND ?
+        AND p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY)
       ORDER BY p.date ASC
       LIMIT 200`, [req.tenantId, today, future]);
     res.json({ from: today, to: future, count: rows.length, payments: rows });
@@ -90,7 +90,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
     const [byType] = await pool.query(`
       SELECT COALESCE(payment_type, 'other') AS source,
              COUNT(*) AS transactions, SUM(amount_egp) AS total
-      FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?
+      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY source ORDER BY total DESC`, [req.tenantId, from, to]);
 
     // Monthly breakdown by source
@@ -98,7 +98,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
       SELECT DATE_FORMAT(created_at,'%Y-%m') AS month,
              COALESCE(payment_type, 'other') AS source,
              SUM(amount_egp) AS total
-      FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?
+      FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY month, source ORDER BY month, total DESC`, [req.tenantId, from, to]);
 
     // Top paying clients
@@ -106,7 +106,7 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
       SELECT s.id, s.name, s.phone, s.branch, s.client_code,
              SUM(p.amount_egp) AS total_paid, COUNT(p.id) AS payment_count
       FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+      WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY s.id ORDER BY total_paid DESC LIMIT 20`, [req.tenantId, from, to]);
 
     // By branch
@@ -114,11 +114,11 @@ router.get('/api/admin/analytics/revenue-sources', requireAuth, requireAdminOrSt
       SELECT COALESCE(s.branch,'غير محدد') AS branch,
              SUM(p.amount_egp) AS total, COUNT(p.id) AS count
       FROM payments p JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.status='paid' AND DATE(p.created_at) BETWEEN ? AND ?
+      WHERE p.tenant_id=? AND p.status='paid' AND p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY)
       GROUP BY branch ORDER BY total DESC`, [req.tenantId, from, to]);
 
     const [[{ grand_total }]] = await pool.query(
-      `SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM payments WHERE tenant_id=? AND status='paid' AND DATE(created_at) BETWEEN ? AND ?`,
+      `SELECT COALESCE(SUM(amount_egp),0) AS grand_total FROM payments WHERE tenant_id=? AND status='paid' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`,
       [req.tenantId, from, to]
     );
 
@@ -154,7 +154,7 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const today = new Date().toISOString().slice(0, 10);
 
     const [[{ followup_due }]] = await pool.query(
-      `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND DATE(next_follow_up_date) = ? AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today]);
+      `SELECT COUNT(*) AS followup_due FROM leads WHERE tenant_id=? AND next_follow_up_date >= ? AND next_follow_up_date < DATE_ADD(?, INTERVAL 1 DAY) AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today, today]);
     const [[{ followup_overdue }]] = await pool.query(
       `SELECT COUNT(*) AS followup_overdue FROM leads WHERE tenant_id=? AND next_follow_up_date < ? AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today]);
     const [[{ payment_due_3d }]] = await pool.query(
@@ -162,7 +162,7 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const [[{ payment_overdue }]] = await pool.query(
       `SELECT COUNT(*) AS payment_overdue FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND DATE(date) < ?`, [req.tenantId, today]);
     const [[{ reminders_sent_today }]] = await pool.query(
-      `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND DATE(sent_at) = ?`, [req.tenantId, today]).catch(() => [[{ reminders_sent_today: 0 }]]);
+      `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]).catch(() => [[{ reminders_sent_today: 0 }]]);
     // Was drip_campaigns.is_active — a column that table never had (MKT-08),
     // and drip_campaigns itself is the dead parallel system removed for
     // MKT-05/07 in favor of drip_sequences (the one with a real send worker).
