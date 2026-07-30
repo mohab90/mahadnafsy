@@ -12,6 +12,7 @@ import { scanNotificationTenantViolations } from './notification-tenant-scan.mjs
 import { scanBulkRateLimitViolations } from './bulk-rate-limit-scan.mjs';
 import { scanPublicRateLimitViolations } from './public-rate-limit-scan.mjs';
 import { scanPermissionMatrix } from './permission-matrix-scan.mjs';
+import { scanSchemaSourceDrift } from './schema-source-drift.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -385,6 +386,28 @@ if (publicRateLimitViolations.length === 0) {
   pass('public rate-limit guard: 0 public/optionalAuth routes missing a dedicated limiter');
 } else {
   fail(`public rate-limit guard: ${publicRateLimitViolations.length} public/optionalAuth route(s) missing a dedicated rate limiter. Run: node tools/public-rate-limit-scan.mjs --list`);
+}
+
+// ── 20. schema.sql ↔ migrations drift guard ───────────────────────────────────
+// A fresh environment loads api/schema.sql and then replays only the migrations
+// newer than that snapshot (001-033 are baselined = recorded WITHOUT executing).
+// So structure the migrations build but schema.sql doesn't declare is stale
+// documentation at best and — when it came from a baselined migration — a
+// table/column a NEW environment would never get at worst. Baselined so the gap
+// can shrink but never silently grow.
+// Measured 2026-07-30: 15 tables / 79 columns. Nearly all come from
+// post-baseline migrations, which still execute on a fresh build and therefore
+// self-heal; the rest are stale declarations in migration 007 that the live
+// schema later renamed (e.g. conditions → conditions_json).
+console.log('\n20. schema.sql ↔ migrations drift guard');
+const SCHEMA_DRIFT_TABLE_BASELINE = 15;
+const SCHEMA_DRIFT_COLUMN_BASELINE = 79;
+const schemaDrift = scanSchemaSourceDrift();
+if (schemaDrift.missingTables.length <= SCHEMA_DRIFT_TABLE_BASELINE
+    && schemaDrift.missingColumnCount <= SCHEMA_DRIFT_COLUMN_BASELINE) {
+  pass(`schema drift: ${schemaDrift.missingTables.length} table(s) / ${schemaDrift.missingColumnCount} column(s) built by migrations but absent from schema.sql (≤ baseline ${SCHEMA_DRIFT_TABLE_BASELINE}/${SCHEMA_DRIFT_COLUMN_BASELINE}; lower it as schema.sql is refreshed)`);
+} else {
+  fail(`schema drift grew to ${schemaDrift.missingTables.length} table(s) / ${schemaDrift.missingColumnCount} column(s) (baseline ${SCHEMA_DRIFT_TABLE_BASELINE}/${SCHEMA_DRIFT_COLUMN_BASELINE}) — a migration added structure api/schema.sql doesn't declare, so a fresh build from it would be incomplete. Run: node tools/schema-source-drift.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────
