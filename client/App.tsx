@@ -166,17 +166,8 @@ const NotFound: React.FC = () => (
   </div>
 );
 
-/** Locale redirect — sets currency from URL then redirects to home.
- *  Usage: /#/eg → EGP, /#/sa → SAR, /#/usd → USD
- */
-const LocaleRoute: React.FC<{ locale: 'EGP' | 'SAR' | 'USD' }> = ({ locale }) => {
-  const { setCurrency } = useSiteData();
-  useEffect(() => {
-    setCurrency(locale);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locale]);
-  return <Navigate to="/" replace />;
-};
+/** Legacy locale URLs redirect only; the server owns customer currency. */
+const LocaleRoute: React.FC<{ locale: 'EGP' | 'SAR' | 'USD' }> = () => <Navigate to="/" replace />;
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();

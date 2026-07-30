@@ -13,6 +13,24 @@ export type CrmSettings = {
   autoAssign: 'none' | 'rr' | 'least';
   sheets: GSheet[];
 };
+export type CrmPipelineStage = {
+  status: string;
+  label: string;
+  position: number;
+  showInPipeline: boolean;
+  isTerminal: boolean;
+  allowedNext: string[];
+};
+type AssignmentMember = {
+  id?: string;
+  staffId: string;
+  staffName: string;
+  branchKey: string;
+  teamKey: string;
+  weight: number;
+  maxOpenLeads: number | null;
+  isAvailable: boolean;
+};
 
 const DEFAULT_SOURCES = [
   'واتساب', 'فيسبوك', 'إنستغرام', 'توصية', 'الموقع', 'شات الـAI', 'جوجل', 'تسجيل دخول', 'Google Sheet', 'أخرى',
@@ -35,14 +53,17 @@ function mergeDefaultSheets(savedSheets: GSheet[]): GSheet[] {
   return [...savedSheets, ...missingDefaults];
 }
 
-export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
+export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [], onSynced }: {
   onClose: () => void;
   notify: NotifyFn;
   salesReps: { id: string; name: string }[];
+  branchOptions?: { id: string; label: string }[];
   onSynced: () => void;
 }) {
-  const [tab, setTab] = useState<'sources' | 'assign' | 'gsheet'>('sources');
+  const [tab, setTab] = useState<'sources' | 'assign' | 'pipeline' | 'gsheet'>('sources');
   const [settings, setSettings] = useState<CrmSettings>(DEFAULT_CRM_SETTINGS);
+  const [pipeline, setPipeline] = useState<CrmPipelineStage[]>([]);
+  const [assignmentMembers, setAssignmentMembers] = useState<AssignmentMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -53,7 +74,11 @@ export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; hint: string; headers?: string[] }>>({});
 
   useEffect(() => {
-    mysqlAdmin.getCrmSettings().then(data => {
+    Promise.all([
+      mysqlAdmin.getCrmSettings(),
+      mysqlAdmin.getCrmPipeline(),
+      mysqlAdmin.getCrmAssignmentMembers(),
+    ]).then(([data, pipelineData, assignmentData]) => {
       if (data && Object.keys(data).length > 0) {
         const d = data as Partial<CrmSettings & { gsheetId?: string; gsheetGid?: string }>;
         const savedSheets: GSheet[] = Array.isArray(d.sheets) && d.sheets.length > 0
@@ -68,6 +93,12 @@ export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
           sheets,
         });
       }
+      setPipeline(pipelineData.stages || []);
+      const savedMembers = assignmentData.members as unknown as AssignmentMember[];
+      setAssignmentMembers(savedMembers.length ? savedMembers : salesReps.map(rep => ({
+        staffId: rep.id, staffName: rep.name, branchKey: '*', teamKey: 'sales',
+        weight: 1, maxOpenLeads: null, isAvailable: true,
+      })));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -75,9 +106,13 @@ export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
   const save = async () => {
     setSaving(true);
     try {
-      await mysqlAdmin.saveCrmSettings(settings as unknown as Record<string, unknown>);
+      await Promise.all([
+        mysqlAdmin.saveCrmSettings(settings as unknown as Record<string, unknown>),
+        mysqlAdmin.saveCrmPipeline(pipeline as unknown as Array<Record<string, unknown>>),
+        mysqlAdmin.saveCrmAssignmentMembers(assignmentMembers as unknown as Array<Record<string, unknown>>),
+      ]);
       notify('success', 'تم حفظ الإعدادات');
-      onClose();
+      onSynced();
     } catch (e) {
       notify('error', e instanceof Error ? e.message : 'فشل الحفظ');
     } finally { setSaving(false); }
@@ -145,7 +180,7 @@ export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
 
         {/* Tabs */}
         <div className="flex border-b border-gray-100">
-          {([['sources','مصادر الليدز'],['assign','التوزيع التلقائي'],['gsheet','Google Sheets']] as const).map(([t,l]) => (
+          {([['sources','المصادر'],['assign','التوزيع'],['pipeline','Pipeline'],['gsheet','Google Sheets']] as const).map(([t,l]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`flex-1 py-2.5 text-xs font-bold transition ${
                 tab === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
@@ -194,6 +229,83 @@ export function CrmSettingsModal({ onClose, notify, salesReps, onSynced }: {
                 ))}
               </div>
               {salesReps.length === 0 && <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl p-3">⚠️ لا يوجد مندوبو مبيعات نشطون — أضف موظفين بدور Sales أولاً</p>}
+              {assignmentMembers.length > 0 && (
+                <div className="space-y-2 border-t border-gray-100 pt-4">
+                  <p className="text-xs font-bold text-gray-700">سياسة أعضاء فريق المبيعات</p>
+                  {assignmentMembers.map((member, index) => (
+                    <div key={member.id || `${member.staffId}-${index}`} className="grid grid-cols-2 gap-2 rounded-xl border border-gray-200 p-3 text-xs">
+                      <div className="col-span-2 flex items-center justify-between">
+                        <strong>{member.staffName}</strong>
+                        <label className="flex items-center gap-1">
+                          <input type="checkbox" checked={member.isAvailable} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, isAvailable: e.target.checked } : row))} />
+                          متاح للتوزيع
+                        </label>
+                      </div>
+                      <label>الفرع
+                        <select value={member.branchKey} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, branchKey: e.target.value } : row))} className="mt-1 w-full rounded-lg border p-1.5">
+                          <option value="*">كل الفروع</option>
+                          {branchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.label}</option>)}
+                        </select>
+                      </label>
+                      <label>الوزن
+                        <input type="number" min="0.1" step="0.1" value={member.weight} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, weight: Number(e.target.value) } : row))} className="mt-1 w-full rounded-lg border p-1.5" />
+                      </label>
+                      <label className="col-span-2">أقصى عدد Leads مفتوحة (فارغ = بلا حد)
+                        <input type="number" min="0" value={member.maxOpenLeads ?? ''} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, maxOpenLeads: e.target.value === '' ? null : Number(e.target.value) } : row))} className="mt-1 w-full rounded-lg border p-1.5" />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : tab === 'pipeline' ? (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">رتّب مراحل الـPipeline وحدد الظاهر منها والانتقالات المسموحة. التحقق يتم على الخادم لكل تغيير حالة.</p>
+              {pipeline.map((stage, index) => (
+                <div key={stage.status} className="rounded-xl border border-gray-200 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-20 text-[11px] font-mono text-gray-500">{stage.status}</span>
+                    <input
+                      value={stage.label}
+                      onChange={e => setPipeline(rows => rows.map((row, i) => i === index ? { ...row, label: e.target.value } : row))}
+                      className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                    />
+                    <button disabled={index === 0} onClick={() => setPipeline(rows => {
+                      const next = [...rows]; [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                      return next.map((row, i) => ({ ...row, position: (i + 1) * 10 }));
+                    })} className="rounded border px-2 py-1 disabled:opacity-30">↑</button>
+                    <button disabled={index === pipeline.length - 1} onClick={() => setPipeline(rows => {
+                      const next = [...rows]; [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                      return next.map((row, i) => ({ ...row, position: (i + 1) * 10 }));
+                    })} className="rounded border px-2 py-1 disabled:opacity-30">↓</button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <input type="checkbox" checked={stage.showInPipeline} onChange={e => setPipeline(rows => rows.map((row, i) => i === index ? { ...row, showInPipeline: e.target.checked } : row))} />
+                      يظهر في اللوحة
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <input type="checkbox" checked={stage.isTerminal} onChange={e => setPipeline(rows => rows.map((row, i) => i === index ? { ...row, isTerminal: e.target.checked } : row))} />
+                      مرحلة نهائية
+                    </label>
+                  </div>
+                  <label className="block text-[11px] text-gray-500">
+                    الانتقالات المسموحة
+                    <select
+                      multiple
+                      value={stage.allowedNext}
+                      onChange={e => {
+                        const values = Array.from(e.currentTarget.selectedOptions, option => option.value);
+                        setPipeline(rows => rows.map((row, i) => i === index ? { ...row, allowedNext: values.length ? values : ['*'] } : row));
+                      }}
+                      className="mt-1 h-20 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                    >
+                      <option value="*">كل المراحل</option>
+                      {pipeline.filter(item => item.status !== stage.status).map(item => <option key={item.status} value={item.status}>{item.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="space-y-4">

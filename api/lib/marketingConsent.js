@@ -3,12 +3,13 @@
 const crypto = require('crypto');
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
+const { resolveSecret } = require('./secretResolver');
 
 const SUBJECT_TABLES = Object.freeze({ lead: 'leads', subscriber: 'subscribers' });
 const CHANNEL_COLUMNS = Object.freeze({ email: 'email', sms: 'phone', whatsapp: 'phone' });
 
 function tokenSecret() {
-  const secret = process.env.MARKETING_TOKEN_SECRET || process.env.JWT_SECRET;
+  const secret = resolveSecret('MARKETING_TOKEN_SECRET') || resolveSecret('JWT_SECRET');
   if (!secret || String(secret).length < 32) throw new Error('Marketing token secret is not configured');
   return String(secret);
 }

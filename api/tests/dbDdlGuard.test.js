@@ -7,7 +7,7 @@ const { pool } = require('../lib/db');
 test('runtime schema DDL is blocked outside migration mode', async () => {
   const oldAllow = process.env.ALLOW_RUNTIME_SCHEMA_DDL;
   const oldMigration = process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE;
-  delete process.env.ALLOW_RUNTIME_SCHEMA_DDL;
+  process.env.ALLOW_RUNTIME_SCHEMA_DDL = '1';
   delete process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE;
   try {
     const [result] = await pool.query('ALTER TABLE definitely_not_a_real_table ADD COLUMN x INT');

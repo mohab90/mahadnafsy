@@ -37,6 +37,7 @@ interface LeadModalsHostProps {
   salesReps: StaffMember[];
   reloadLeads: () => void | Promise<void>;
   setCrmSettings: React.Dispatch<React.SetStateAction<CrmSettings>>;
+  reloadPipeline: () => void | Promise<void>;
   showAddLead: boolean;
   setShowAddLead: (open: boolean) => void;
   sources: string[];
@@ -73,6 +74,7 @@ export function LeadModalsHost({
   salesReps,
   reloadLeads,
   setCrmSettings,
+  reloadPipeline,
   showAddLead,
   setShowAddLead,
   sources,
@@ -128,9 +130,10 @@ export function LeadModalsHost({
           onClose={() => setShowSettings(false)}
           notify={notify}
           salesReps={salesReps}
+          branchOptions={instituteBranches}
           onSynced={async () => {
             setShowSettings(false);
-            await reloadLeads();
+            await Promise.all([reloadLeads(), reloadPipeline()]);
             mysqlAdmin.getCrmSettings().then((data) => {
               if (data && (data as Partial<CrmSettings>).leadSources?.length) {
                 setCrmSettings((current) => ({ ...current, ...(data as Partial<CrmSettings>) }));

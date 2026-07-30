@@ -11,6 +11,7 @@ import { scanMigrationDrift } from './migration-drift-scan.mjs';
 import { scanNotificationTenantViolations } from './notification-tenant-scan.mjs';
 import { scanBulkRateLimitViolations } from './bulk-rate-limit-scan.mjs';
 import { scanPublicRateLimitViolations } from './public-rate-limit-scan.mjs';
+import { scanPermissionMatrix } from './permission-matrix-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -156,7 +157,11 @@ else fail(`Dashboard.tsx — ${dashLines} lines (very large)`);
 
 // ── 8. Server hardening ───────────────────────────────────────────────────────
 console.log('\n8. Server hardening');
-const srv = readText(join(ROOT, 'api/server.js')) || '';
+const srv = [
+  readText(join(ROOT, 'api/server.js')),
+  readText(join(ROOT, 'api/lib/httpApp.js')),
+  readText(join(ROOT, 'api/lib/processLifecycle.js')),
+].filter(Boolean).join('\n');
 if (srv.includes("require('helmet')") || srv.includes('require("helmet")'))
   pass('helmet.js security headers configured');
 else fail('helmet.js missing — add to server.js');
@@ -240,17 +245,24 @@ else warn('analytics.js still references paid_at or payment_audit_log for revenu
 // client) can hit it. Guard tokens may sit on the route line or the next line
 // (multiline route definitions). Catches the installment-plans class of hole.
 console.log('\n12. Authorization-coverage guard');
-const AUTHZ = /requireAdmin\b|requireAdminOrStaff|requirePermission|requireAdminOrOnlineManager|requireSuperAdmin/;
+const AUTHZ = /requireAdmin\b|requireAdminOrStaff|requirePermission|requireAdminOrOnlineManager|requireSuperAdmin|requirePlatformAdmin/;
 const routeFiles = walk(join(ROOT, 'api/routes'), '.js');
 const adminMutating = [];
 const unguarded = [];
 for (const f of routeFiles) {
-  const lines = (readText(f) || '').split('\n');
+  const routeText = readText(f) || '';
+  const lines = routeText.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if (/router\.(post|put|patch|delete)\('\/api\/admin\//.test(lines[i])) {
       adminMutating.push(1);
       const window = (lines[i] + '\n' + (lines[i + 1] || '') + '\n' + (lines[i + 2] || ''));
-      if (!AUTHZ.test(window)) unguarded.push(`${f.split(/[\\/]/).slice(-1)[0]}:${i + 1}`);
+      const guardedSpread = [...window.matchAll(/\.\.\.(\w+)/g)].some(([, name]) => {
+        const declaration = routeText.match(new RegExp(`const\\s+${name}\\s*=\\s*\\[([\\s\\S]*?)\\];`));
+        return declaration && AUTHZ.test(declaration[1]);
+      });
+      if (!AUTHZ.test(window) && !guardedSpread) {
+        unguarded.push(`${f.split(/[\\/]/).slice(-1)[0]}:${i + 1}`);
+      }
     }
   }
 }
@@ -294,12 +306,28 @@ else fail(`duplicate routes increased to ${dupCount} (baseline ${DUP_BASELINE}) 
 // migrate-branches, and tables that had no tenant_id column at all). Locks
 // the count so it can only DECREASE — lower BASELINE as violations are fixed.
 console.log('\n14. Tenant isolation guard');
-const TENANT_VIOLATION_BASELINE = 68; // was 98 before the 2026-07-23 hardening pass — keep lowering this
+const TENANT_VIOLATION_BASELINE = 0;
 const { tenantTableCount, violations: tenantViolations } = scanTenantViolations();
 if (tenantViolations.length <= TENANT_VIOLATION_BASELINE) {
   pass(`tenant-scope violations: ${tenantViolations.length} across ${tenantTableCount} tracked tables (≤ baseline ${TENANT_VIOLATION_BASELINE}; lower the baseline as you clean them)`);
 } else {
   fail(`tenant-scope violations increased to ${tenantViolations.length} (baseline ${TENANT_VIOLATION_BASELINE}) — a new query on a tenant-scoped table is missing tenant_id. Run: node tools/tenant-scope-scan.mjs --list`);
+}
+
+// ── Permission matrix guard ─────────────────────────────────────────────────
+console.log('\nPermission matrix guard');
+const permissionMatrix = scanPermissionMatrix();
+const permissionViolations = [
+  ...permissionMatrix.unguardedStaffRoutes,
+  ...permissionMatrix.unknownRoutePermissions,
+  ...permissionMatrix.unmappedTabs,
+  ...permissionMatrix.unknownTabPermissions,
+  ...permissionMatrix.permissionRegistryDrift,
+];
+if (!permissionViolations.length) {
+  pass(`permission matrix complete across ${permissionMatrix.routeFiles} route files and ${permissionMatrix.tabCount} dashboard tabs`);
+} else {
+  fail(`${permissionViolations.length} permission-matrix violation(s). Run: node tools/permission-matrix-scan.mjs --list`);
 }
 
 // ── 15. Migration-schema drift guard ─────────────────────────────────────────

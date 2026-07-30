@@ -192,6 +192,8 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
 router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
   let conn;
   try {
+    const config = await getPaymentGatewaySettings(req.tenantId);
+    if (!isPaymobActive(config)) return gatewayUnavailable(res, 'paymob_disabled');
     const {
       orderId, type, itemId, itemTitle, amount, currency, paymentMethod,
       customerEmail, customerName, customerPhone, bundleCourseIds,
@@ -217,6 +219,7 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
   } catch (e) {
     if (conn) await conn.rollback().catch(() => {});
     logger.error('[orders/reserve]', e.message);
+    if (isDatabaseUnavailableError(e)) return gatewayUnavailable(res, 'payment_config_unavailable');
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     if (conn) conn.release();
@@ -255,10 +258,9 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
 
   // Additional idempotency check: if transactionId already in payments table, skip
   if (transactionId) {
-    const existingParams = [transactionId];
-    const existingWhere = appendTenantScope('WHERE transaction_id = ?', '', tenantId, existingParams);
     const [[existingPay]] = await pool.query(
-      `SELECT id FROM payments ${existingWhere} LIMIT 1`, existingParams
+      `SELECT id FROM payments WHERE transaction_id=? AND tenant_id=? LIMIT 1`,
+      [transactionId, tenantId]
     );
     if (existingPay) {
       logger.info(`[paymob] transactionId ${transactionId} already recorded — skipping`);
@@ -311,10 +313,10 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       if (orderType === 'bundle') {
         const [bundleRows] = await conn.query(
           `SELECT bc.course_id FROM bundle_courses bc
-           JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=?
-           JOIN courses c ON c.id=bc.course_id AND c.tenant_id=? AND c.deleted_at IS NULL
-           WHERE bc.bundle_id=?`,
-          [tenantId, tenantId, order.item_id]
+           JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=bc.tenant_id
+           JOIN courses c ON c.id=bc.course_id AND c.tenant_id=bc.tenant_id AND c.deleted_at IS NULL
+           WHERE bc.tenant_id=? AND bc.bundle_id=?`,
+          [tenantId, order.item_id]
         );
         courseIds = bundleRows.map(row => row.course_id);
         if (!courseIds.length) throw new Error('Paid bundle has no tenant-owned courses');
@@ -399,29 +401,35 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
   if (sub?.id && order.amount > 0) {
     setImmediate(async () => {
       try {
-        const [[subRow]] = await pool.query('SELECT assigned_sales_id FROM subscribers WHERE id=? LIMIT 1', [sub.id]);
+        const [[subRow]] = await pool.query(
+          'SELECT assigned_sales_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+          [sub.id, tenantId]
+        );
         const finalStaffId = subRow?.assigned_sales_id || null;
         if (!finalStaffId) return;
         const [[rule]] = await pool.query(`
           SELECT id, percentage_value FROM commission_rules
-          WHERE is_active=1 AND calc_type='PERCENTAGE'
-            AND (staff_id=? OR (staff_id IS NULL AND JSON_CONTAINS(COALESCE(apply_to_roles,'[]'), JSON_QUOTE((SELECT role FROM staff WHERE id=? LIMIT 1)))))
+          WHERE tenant_id=? AND is_active=1 AND calc_type='PERCENTAGE'
+            AND (staff_id=? OR (staff_id IS NULL AND JSON_CONTAINS(COALESCE(apply_to_roles,'[]'), JSON_QUOTE((SELECT role FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))))
             AND effective_from <= CURDATE() AND (effective_to IS NULL OR effective_to >= CURDATE())
             AND (min_payment IS NULL OR min_payment <= ?)
           ORDER BY staff_id DESC, priority ASC LIMIT 1
-        `, [finalStaffId, finalStaffId, Number(order.amount)]).catch(() => [[null]]);
+        `, [tenantId, finalStaffId, finalStaffId, tenantId, Number(order.amount)]).catch(() => [[null]]);
         let commRate = rule?.percentage_value || 0;
         if (!commRate) {
-          const [[stf]] = await pool.query('SELECT commission_rate FROM staff WHERE id=? LIMIT 1', [finalStaffId]).catch(() => [[null]]);
+          const [[stf]] = await pool.query(
+            'SELECT commission_rate FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
+            [finalStaffId, tenantId]
+          ).catch(() => [[null]]);
           commRate = stf?.commission_rate || 0;
         }
         if (commRate > 0) {
           const commAmount = parseFloat((Number(order.amount) * commRate / 100).toFixed(2));
           const now = new Date();
           await pool.query(
-            `INSERT INTO crm_commissions (id, staff_id, payment_id, rule_id, client_id, client_type, payment_amount, commission_amount, calc_details, month, year, status, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDING',NOW()) ON DUPLICATE KEY UPDATE commission_amount=VALUES(commission_amount)`,
-            [uuidv4(), finalStaffId, payId, rule?.id||null, sub.id, 'subscriber',
+            `INSERT INTO crm_commissions (id, tenant_id, branch_id, staff_id, payment_id, rule_id, client_id, client_type, payment_amount, commission_amount, calc_details, month, year, status, created_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'PENDING',NOW()) ON DUPLICATE KEY UPDATE commission_amount=VALUES(commission_amount)`,
+            [uuidv4(), tenantId, order.branch_id || 'branch-other', finalStaffId, payId, rule?.id||null, sub.id, 'subscriber',
              Number(order.amount), commAmount,
              JSON.stringify({ rate: commRate, calc_type: 'PERCENTAGE', rule_id: rule?.id||null, trigger: 'paymob_payment' }),
              now.getMonth()+1, now.getFullYear()]
@@ -449,12 +457,13 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         let leadId = subRow.lead_id;
         if (!leadId && (subRow.phone || subRow.email)) {
           const normPhone = subRow.phone ? subRow.phone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
-          const params = normPhone ? [`%${normPhone.slice(-9)}`, subRow.email || ''] : [subRow.email];
-          const base = normPhone
-            ? `WHERE (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR LOWER(email)=LOWER(?)) AND hidden=0`
-            : 'WHERE LOWER(email)=LOWER(?) AND hidden=0';
-          const where = appendTenantScope(base, '', subTenantId, params);
-          const [[found]] = await pool.query(`SELECT id FROM leads ${where} ORDER BY created_at DESC LIMIT 1`, params);
+          const [[found]] = await pool.query(
+            `SELECT id FROM leads
+             WHERE tenant_id=? AND hidden=0
+               AND ((? IS NOT NULL AND REGEXP_REPLACE(phone,'[^0-9]','') LIKE ?) OR LOWER(email)=LOWER(?))
+             ORDER BY created_at DESC LIMIT 1`,
+            [subTenantId, normPhone, normPhone ? `%${normPhone.slice(-9)}` : '', subRow.email || '']
+          );
           leadId = found?.id || null;
         }
         if (leadId) {

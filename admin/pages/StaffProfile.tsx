@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, Shield, Eye, EyeOff, Save, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
-import { mysqlAuth } from '../lib/mysqlapi';
+import { mysqlAdmin, mysqlAuth } from '../lib/mysqlapi';
 import type { StaffMember, StaffPermission } from '../types';
 import {
   ROLE_DEFAULT_PERMISSIONS as MASTER_ROLE_PERMS,
@@ -161,8 +161,8 @@ const ACCESS_PREVIEW_TABS = [
   { label:'الذكاء الاصطناعي',   icon:'🤖', perms:['ask_ai'] as StaffPermission[] },
 ];
 
-const _createMysqlAccount = async (email: string, password: string): Promise<void> => {
-  await mysqlAuth.register({ email, password });
+const createStaffAccount = async (staff: StaffMember, password: string): Promise<void> => {
+  await mysqlAdmin.createStaffAccount({ ...staff, staffId: staff.id, password } as unknown as Record<string, unknown>);
 };
 
 type Tab = 'reports' | 'attendance' | 'activity' | 'bookings' | 'settings';
@@ -184,7 +184,7 @@ const ATTENDANCE_STATUS_LABEL: Record<string, { label: string; cls: string }> = 
 const StaffProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { staffMembers, leads, subscribers, updateStaffMember, addStaffMember, isAdmin } = useSiteData();
+  const { staffMembers, leads, subscribers, reloadStaffMembers, updateStaffMember, addStaffMember, isAdmin } = useSiteData();
 
   const [activeTab, setActiveTab] = useState<Tab>('reports');
   const [draft, setDraft] = useState<StaffMember | null>(null);
@@ -300,18 +300,21 @@ const StaffProfile: React.FC = () => {
     if (!draft.name || !draft.email) { setSaveMsg('❌ الاسم والبريد الإلكتروني مطلوبان'); return; }
     setSaving(true);
     setSaveMsg('');
+    const payload: StaffMember = { ...draft };
     try {
       if (!draft.firebaseUid && password.trim()) {
-        await _createMysqlAccount(draft.email.trim(), password.trim());
+        await createStaffAccount(payload, password.trim());
+        await reloadStaffMembers();
+      } else {
+        const saved = staff.id === payload.id
+          ? await updateStaffMember(payload)
+          : await addStaffMember(payload);
+        if (!saved) throw new Error('تعذر حفظ بيانات الموظف');
       }
     } catch (err: unknown) {
-      setSaveMsg(`⚠️ ${err instanceof Error ? err.message : 'فشل إنشاء حساب الدخول'} — تم الحفظ بدون حساب دخول.`);
-    }
-    const payload: StaffMember = { ...draft };
-    if (staff.id === payload.id) {
-      updateStaffMember(payload);
-    } else {
-      addStaffMember(payload);
+      setSaving(false);
+      setSaveMsg(`❌ ${err instanceof Error ? err.message : 'فشل حفظ الموظف أو حساب الدخول'}`);
+      return;
     }
     setSaving(false);
     setSaveMsg('✅ تم حفظ البيانات بنجاح');
@@ -321,8 +324,7 @@ const StaffProfile: React.FC = () => {
   const handlePasswordReset = async () => {
     if (!staff.email) return;
     try {
-      const tmpPw = Math.random().toString(36).slice(-8);
-      await mysqlAuth.resetPassword(staff.email, tmpPw);
+      const { temporaryPassword: tmpPw } = await mysqlAuth.forceResetPassword(staff.email);
       setSaveMsg(`✅ تم تعيين كلمة مرور مؤقتة: ${tmpPw} — يرجى تسليمها للموظف`);
     } catch (err: unknown) {
       setSaveMsg(`❌ ${err instanceof Error ? err.message : 'فشل تعيين كلمة المرور'}`);

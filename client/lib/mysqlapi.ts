@@ -21,6 +21,9 @@ function getToken(): string | null {
 const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_RETRIES = 1;
 const RETRY_BACKOFF_MS = 1_000;
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
@@ -38,7 +41,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
-    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || `HTTP ${res.status}`); }
+    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new ApiError(b.error || `HTTP ${res.status}`, res.status); }
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
@@ -51,10 +54,87 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
   }
 }
 
+type QueuedProgress = { lectureId: string; pct: number; watchSeconds?: number };
+const isRetryableProgressError = (error: unknown) =>
+  error instanceof TypeError ||
+  (error instanceof DOMException && error.name === 'AbortError') ||
+  (error instanceof ApiError && (error.status === 408 || error.status === 429 || error.status >= 500));
+const progressQueueKey = () => {
+  const token = getToken() || '';
+  let identity = token || 'anonymous';
+  try {
+    const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')));
+    const subject = payload.uid || payload.email;
+    if (subject) identity = `${payload.tenant_id || payload.tenantId || ''}:${subject}`;
+  } catch { /* malformed/legacy token: hash the token itself */ }
+  let hash = 2166136261;
+  for (let index = 0; index < identity.length; index++) hash = Math.imul(hash ^ identity.charCodeAt(index), 16777619);
+  return `mahad-progress-queue:${(hash >>> 0).toString(36)}`;
+};
+const readProgressQueue = (): QueuedProgress[] => {
+  try { return JSON.parse(localStorage.getItem(progressQueueKey()) || '[]') as QueuedProgress[]; } catch { return []; }
+};
+const writeProgressQueue = (items: QueuedProgress[]) => {
+  try { localStorage.setItem(progressQueueKey(), JSON.stringify(items.slice(-200))); } catch { /* storage unavailable */ }
+};
+const queueProgress = (lectureId: string, pct: number, watchSeconds = 0) => {
+  const queued = readProgressQueue();
+  const current = queued.find(item => item.lectureId === lectureId);
+  if (current) {
+    current.pct = Math.max(current.pct, pct);
+    current.watchSeconds = Math.max(current.watchSeconds || 0, watchSeconds);
+  } else queued.push({ lectureId, pct, watchSeconds });
+  writeProgressQueue(queued);
+};
+export async function flushLectureProgressQueue() {
+  const queued = readProgressQueue();
+  if (!queued.length || !getToken()) return 0;
+  const remaining: QueuedProgress[] = [];
+  let synced = 0;
+  for (const item of queued) {
+    try {
+      await apiFetch('/me/progress', { method: 'PATCH', body: JSON.stringify(item) }, true);
+      synced++;
+    } catch (error) {
+      if (isRetryableProgressError(error)) remaining.push(item);
+    }
+  }
+  writeProgressQueue(remaining);
+  if (synced && typeof window !== 'undefined') window.dispatchEvent(new Event('mahad-progress-synced'));
+  return synced;
+}
+async function saveLectureProgress(lectureId: string, pct: number, watchSeconds = 0) {
+  try {
+    const result = await apiFetch<{ ok: boolean }>('/me/progress', {
+      method: 'PATCH', body: JSON.stringify({ lectureId, pct, watchSeconds }),
+    }, true);
+    void flushLectureProgressQueue();
+    return { ...result, queued: false };
+  } catch (error) {
+    if (isRetryableProgressError(error)) {
+      queueProgress(lectureId, pct, watchSeconds);
+      return { ok: false, queued: true };
+    }
+    throw error;
+  }
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { void flushLectureProgressQueue(); });
+  setTimeout(() => { void flushLectureProgressQueue(); }, 0);
+}
+
 type AR = Record<string, unknown>;
 
 // ── Public catalog ────────────────────────────────────────────────────────────
 export const mysqlCatalog = {
+  getClientContext: () => apiFetch<{
+    countryCode: string;
+    currency: 'EGP' | 'SAR' | 'USD';
+    branch: 'ONLINE_EGYPT' | 'ONLINE_SAUDI' | 'ONLINE_ABROAD';
+    source: string;
+    locationResolved: true;
+  }>('/public/client-context'),
   listCourses: (limit = 500, offset = 0) => apiFetch<AR[]>(`/courses?limit=${limit}&offset=${offset}`),
   getCourse: (idOrSlug: string) => apiFetch<AR & { lectures?: AR[]; chapters?: AR[] }>(`/courses/${encodeURIComponent(idOrSlug)}`),
   listBundles: (limit = 200) => apiFetch<AR[]>(`/bundles?limit=${limit}`),
@@ -62,8 +142,9 @@ export const mysqlCatalog = {
   listChapters: (limit = 1000) => apiFetch<AR[]>(`/chapters?limit=${limit}`),
   listTherapists: (limit = 100) => apiFetch<AR[]>(`/therapists?limit=${limit}`),
   listTestimonials: () => apiFetch<AR[]>('/testimonials'),
-  listQuizzes: (limit = 200) => apiFetch<AR[]>(`/quizzes?limit=${limit}`),
+  listQuizzes: (limit = 200) => apiFetch<AR[]>(`/quizzes?limit=${limit}`, {}, true),
   listLiveStreams: (limit = 200) => apiFetch<AR[]>(`/live-streams?limit=${limit}`),
+  listDiscounts: () => apiFetch<AR[]>('/discounts'),
   listCommunityPosts: () => apiFetch<AR[]>('/community/posts'),
   listCommunityLibrary: () => apiFetch<AR[]>('/community/library'),
   listCommunityVideos: () => apiFetch<AR[]>('/community/videos'),
@@ -75,8 +156,31 @@ export const mysqlCatalog = {
 export const mysqlClient = {
   heartbeat: (name?: string) => apiFetch<{ ok: boolean }>('/me/heartbeat', { method: 'POST', body: JSON.stringify({ name: name || '' }) }, true),
   getMySubscriber: () => apiFetch<AR | null>('/me/subscriber', {}, true),
+  getMyPrivacyRequests: () => apiFetch<Array<{
+    id: string; request_type: 'erasure'; status: string; reason?: string | null;
+    decision_note?: string | null; legal_hold_reason?: string | null;
+    due_at: string; completed_at?: string | null; created_at: string;
+  }>>('/me/privacy/requests', {}, true),
+  requestPrivacyErasure: (reason: string) =>
+    apiFetch<{ ok: boolean; id: string; status: string }>(
+      '/me/privacy/requests',
+      { method: 'POST', body: JSON.stringify({ request_type: 'erasure', reason }) },
+      true,
+    ),
+  downloadMyPrivacyExport: async () => {
+    const token = getToken();
+    const response = await fetch(`${API_BASE}/me/privacy/export`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new ApiError(body.error || `HTTP ${response.status}`, response.status);
+    }
+    return response.blob();
+  },
   getMyConsultations: () => apiFetch<AR[]>('/me/consultations', {}, true),
-  getMyQuizAttempts: (sid: string) => apiFetch<AR[]>(`/me/quiz-attempts?subscriberId=${sid}`, {}, true),
+  getMyQuizAttempts: () => apiFetch<AR[]>('/me/quiz-attempts', {}, true),
   // Server grades against its own copy of correctIndex (never trusts a client score) — LMS-06.
   submitQuizAttempt: (quizId: string, answers: number[]) =>
     apiFetch<{ ok: boolean; id: string; score: number; passed: boolean; correctCount: number; total: number }>(
@@ -84,14 +188,25 @@ export const mysqlClient = {
     ),
   checkIsStaff: () => apiFetch<{ isStaff: boolean; isAdmin: boolean; role?: string; staffId?: string }>('/me/is-staff', {}, true),
   getStaffSelf: () => apiFetch<AR>('/staff/me', {}, true),
-  saveLectureProgress: (lectureId: string, pct: number) =>
-    apiFetch<{ ok: boolean }>('/me/progress', { method: 'PATCH', body: JSON.stringify({ lectureId, pct }) }, true),
-  // Auth-gated: returns the real video URL only if the user is enrolled & allowed for this lecture.
+  saveLectureProgress,
+  // Auth-gated: returns a short-lived media ticket only if enrollment policy allows access.
   getLectureAccess: (lectureId: string) =>
-    apiFetch<{ accessible: boolean; video_url?: string; reason?: string }>(`/me/lectures/${encodeURIComponent(lectureId)}/access`, {}, true),
+    apiFetch<{ accessible: boolean; video_url?: string; video_kind?: 'embed' | 'hls' | 'video'; expires_in?: number; reason?: string; unlocks_at?: string }>(`/me/lectures/${encodeURIComponent(lectureId)}/access`, {}, true),
+  getLectureNote: (lectureId: string) =>
+    apiFetch<{ note: string }>(`/me/lecture-notes/${encodeURIComponent(lectureId)}`, {}, true),
+  saveLectureNote: (lectureId: string, note: string) =>
+    apiFetch<{ ok: boolean }>(`/me/lecture-notes/${encodeURIComponent(lectureId)}`, {
+      method: 'PUT', body: JSON.stringify({ note }),
+    }, true),
   // Payment proofs
-  submitPaymentProof: (data: { order_id: string; payment_method: string; proof_image?: string | null; note?: string }) =>
-    apiFetch<{ ok: boolean; id: string }>('/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true),
+  createPaymentIntent: (data: { order_id: string; provider?: 'manual'; idempotency_key?: string }) =>
+    apiFetch<{ ok: boolean; id: string; order_id: string; amount: number; currency: string; status: string }>(
+      '/me/payment-intents', { method: 'POST', body: JSON.stringify(data) }, true
+    ),
+  submitPaymentProof: (data: { order_id: string; payment_intent_id?: string; payment_method: string; proof_image?: string | null; note?: string }) =>
+    apiFetch<{ ok: boolean; id: string; payment_intent_id: string; payment_attempt_id: string }>(
+      '/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true
+    ),
   getMyPaymentProofs: () => apiFetch<AR[]>('/me/payment-proofs', {}, true),
   getMyOrders: () => apiFetch<Array<{ id: string; item_id: string | null; item_title: string; type: string; status: string; amount: number; currency: string }>>('/me/orders', {}, true),
   // Course ratings
@@ -106,6 +221,20 @@ export const mysqlClient = {
     apiFetch<{ ok: boolean; status?: string }>(`/community/posts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(o) }, true),
   deleteCommunityPost: (id: string) =>
     apiFetch<{ ok: boolean }>(`/community/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }, true),
+  toggleCommunityPostLike: (id: string) =>
+    apiFetch<{ ok: boolean; liked: boolean; likes: number }>(`/community/posts/${encodeURIComponent(id)}/like`, { method: 'POST' }, true),
+  addCommunityPostComment: (id: string, body: string) =>
+    apiFetch<{ ok: boolean; comment: { id: string; author: string; body: string; at: string } }>(
+      `/community/posts/${encodeURIComponent(id)}/comments`,
+      { method: 'POST', body: JSON.stringify({ body }) },
+      true,
+    ),
+  getBroadcastNotifications: () =>
+    apiFetch<{ notifications: AR[]; readIds: string[] }>('/notifications/broadcasts', {}, true),
+  markBroadcastNotificationRead: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/notifications/broadcasts/${encodeURIComponent(id)}/read`, { method: 'PATCH', body: '{}' }, true),
+  markAllBroadcastNotificationsRead: () =>
+    apiFetch<{ ok: boolean }>('/notifications/broadcasts/read-all', { method: 'PATCH', body: '{}' }, true),
   // Certificate request — writes to the certificate_requests table (single source of truth)
   createCertificateRequest: (o: AR) =>
     apiFetch<{ ok: boolean; id: string; status: string; price: number | null; currency: 'EGP' | 'SAR' | 'USD' | null }>('/me/certificate-request', { method: 'POST', body: JSON.stringify(o) }, true),
@@ -114,6 +243,7 @@ export const mysqlClient = {
     apiFetch<{ ok: boolean }>(`/lectures/${encodeURIComponent(lectureId)}/view`, { method: 'POST' }, true),
   // Course completions / digital certificates
   getMyCompletions: () => apiFetch<AR[]>('/me/completions', {}, true),
+  getMyTimeline: () => apiFetch<AR[]>('/me/timeline', {}, true),
   verifyCertificate: (code: string) => apiFetch<AR>(`/completions/verify/${encodeURIComponent(code)}`),
   // Referral
   getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),
@@ -448,12 +578,18 @@ export const mysqlPaymob = {
 // ── Custom Auth ───────────────────────────────────────────────────────────────
 export const mysqlAuth = {
   login: (email: string, password: string) =>
-    apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    apiFetch<{
+      ok: boolean;
+      token?: string;
+      user?: AuthUser;
+      totpRequired?: boolean;
+      pendingToken?: string;
+    }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string; ref?: string }) =>
     apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
-  updateProfile: (name: string) =>
-    apiFetch<{ ok: boolean }>('/auth/update-profile', { method: 'PUT', body: JSON.stringify({ name }) }, true),
+  updateProfile: (name?: string, nameEn?: string) =>
+    apiFetch<{ ok: boolean }>('/auth/update-profile', { method: 'PUT', body: JSON.stringify({ name, nameEn }) }, true),
   updatePassword: (currentPassword: string, newPassword: string) =>
     apiFetch<{ ok: boolean }>('/auth/update-password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }, true),
   resetPassword: (resetToken: string, newPassword: string) =>
@@ -464,8 +600,8 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
-  verify2fa: (tempToken: string, code: string) =>
-    apiFetch<{ ok: boolean; token: string; user: AR }>('/auth/verify-2fa', { method: 'POST', body: JSON.stringify({ tempToken, code }) }),
+  verify2fa: (pendingToken: string, token: string) =>
+    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
   refreshToken: () => apiFetch<{ ok: boolean; token: string }>('/auth/refresh', { method: 'POST', body: '{}' }, true),
 };

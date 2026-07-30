@@ -12,13 +12,17 @@ import {
   TrendingDown,
   Wallet,
   XCircle,
+  HandCoins,
+  Landmark,
 } from 'lucide-react';
 import type { FinancialSubTab } from './financialTabUtils';
 
 const subTabs: [FinancialSubTab, string, React.ElementType][] = [
+  ['operations', 'عمليات الحسابات', Landmark],
   ['cockpit', 'لوحة القيادة', BarChart3],
   ['budget', 'الميزانية', TrendingDown],
   ['refunds', 'الاسترجاعات', XCircle],
+  ['advances', 'سلف الموظفين', HandCoins],
   ['overview', 'نظرة مالية', BarChart3],
   ['orders', 'الإيرادات', CreditCard],
   ['expenses', 'المصروفات', Wallet],

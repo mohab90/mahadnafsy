@@ -82,7 +82,7 @@ export const LecturePlayerSection: React.FC<LecturePlayerSectionProps> = ({
                                 <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-3"></div>
                                 <p className="text-sm">جاري تحميل الفيديو...</p>
                             </div>
-                        ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') ? (
+                        ) : (resolvedLectureUrl || '').includes('youtube.com') || (resolvedLectureUrl || '').includes('youtu.be') || (resolvedLectureUrl || '').startsWith('enc:') || (resolvedLectureUrl || '').includes('kind=embed') ? (
                             <div className="relative w-full h-full">
                               <iframe
                                 src={getEmbedUrl(resolvedLectureUrl)}

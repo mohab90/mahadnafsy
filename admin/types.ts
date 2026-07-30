@@ -64,6 +64,7 @@ export interface Course {
   description: string;
   shortDescription: string;
   instructor: string;
+  instructorId?: string;
   thumbnail: string;
   category: 'Therapy' | 'Diagnosis' | 'Child' | 'General';
   type: 'Recorded' | 'Live' | 'Mix';
@@ -112,6 +113,7 @@ export interface Bundle {
 
 export interface Therapist {
   id: string;
+  staffId?: string;
   name: string;
   specialty: string;
   image: string;
@@ -181,6 +183,10 @@ export interface SubscriberCertificate {
   courseId: string;
   certificateNumber: string;
   issuedAt: string;
+  status?: 'active' | 'revoked';
+  version?: number;
+  revokedAt?: string;
+  revokeReason?: string;
   note?: string;
 }
 
@@ -216,6 +222,7 @@ export interface ExtraCertificateRequest {
 export interface PaymentRecord {
   id: string;
   amount: number;
+  amountEgp?: number;             // Immutable EGP equivalent captured by the server
   currency: 'EGP' | 'SAR' | 'USD';
   courseId: string;
   date: string;
@@ -245,6 +252,7 @@ export interface LeadItem {
   assignedCsId?: string;
   assignedCsName?: string;
   communications?: CommunicationRecord[];
+  communicationCount?: number;
   notes?: string;
   lastFollowUp?: string;
   lastContactNote?: string;
@@ -261,6 +269,7 @@ export interface LeadItem {
   waOptOut?: boolean;      // Lead opted out of WhatsApp messages
   updatedAt?: string;      // Last update timestamp (for follow-up recency)
   score?: number;          // Lead score
+  internalQuickNote?: string; // Internal team-only note persisted in CRM JSON
 }
 
 export type StaffRole = 'instructor' | 'trainer' | 'expert' | 'sales' | 'manager' | 'admin' | 'support' | 'reception_daqqi' | 'daqqi_manager' | 'collection' | 'accountant' | 'consultant' | 'sales_collection_manager' | 'hr' | 'online_manager' | 'other';
@@ -351,6 +360,7 @@ export interface StaffMember {
   salary?: number;                           // Monthly base salary (EGP)
   monthlyTargetType?: 'egp' | 'clients';    // Target is revenue or client count
   monthlyTarget?: number;                    // Target value (EGP or count)
+  monthlyLeadsTarget?: number;               // Monthly conversion/lead-count target
   monthlyBonus?: number;                     // Fixed monthly bonus on target hit (EGP)
   absences?: StaffAbsence[];                // Absence / leave records
   hrNotes?: string;                          // Private HR notes
@@ -412,6 +422,7 @@ export interface SubscriberItem {
   nameAr?: string;      // Explicit Arabic name (same as name by default)
   email: string;
   phone: string;
+  isActive?: boolean;    // Authoritative subscribers.is_active flag from the API
   enrolledCourseIds: string[];
   courseAccess?: Record<string, 'preview' | 'full' | CourseAccessSetting>;
   lectureProgress?: Record<string, number>;
@@ -444,6 +455,18 @@ export interface SubscriberItem {
   assignedStaffId?: string;
   consultantId?: string;
   enrolledCourseId?: string;
+  internalQuickNote?: string; // Internal team-only note persisted in CRM JSON
+}
+
+export interface CustomerTimelineEvent {
+  category: 'order' | 'payment' | 'learning' | 'certificate' | 'support';
+  event_type: string;
+  entity_id: string;
+  occurred_at: string;
+  title: string;
+  status?: string;
+  amount?: number;
+  currency?: string;
 }
 
 export type DaqqiDayOfWeek = 'الأحد' | 'الاثنين' | 'الثلاثاء' | 'الأربعاء' | 'الخميس' | 'الجمعة' | 'السبت';
@@ -491,6 +514,9 @@ export interface JoinUsApplication {
   status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected';
   createdAt: string;
   adminNote?: string;
+  convertedApplicantId?: string;
+  applicantStage?: 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
+  hiredStaffId?: string;
 }
 
 export interface ContactMessage {
@@ -745,6 +771,13 @@ export interface PaymentProof {
   reviewer_id?: string | null;
   reviewer_note?: string | null;
   submitted_at: string;
+  review_due_at?: string | null;
+  risk_level?: 'standard' | 'high';
+  second_review_required?: boolean | 0 | 1;
+  first_reviewer_id?: string | null;
+  first_review_note?: string | null;
+  first_reviewed_at?: string | null;
+  sla_state?: 'within_sla' | 'due_soon' | 'breached' | 'completed';
   reviewed_at?: string | null;
 }
 
@@ -1044,6 +1077,7 @@ export interface CourseQuiz {
   title: string;
   questions: QuizQuestion[];
   passingScore: number; // percentage 0-100
+  requiredForCompletion?: boolean;
   createdAt: string;
   updatedAt: string;
   generatedByAI: boolean;

@@ -4,56 +4,84 @@ import type { DaqqiRound } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
-type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
-
 export function useDaqqiRoundsState(
   initialDaqqiRounds: DaqqiRound[],
   lastCRMWriteRef: MutableRefObject<number>,
-  persistOrRevert: PersistOrRevert,
   track: Track,
 ) {
   const [daqqiRounds, setDaqqiRounds] = useState<DaqqiRound[]>(initialDaqqiRounds);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistDaqqiRoundToCollection = (_item: DaqqiRound) => { /* PG-only */ };
-
-  const addDaqqiRound = async (item: DaqqiRound): Promise<void> => {
+  const addDaqqiRound = async (item: DaqqiRound) => {
     lastCRMWriteRef.current = Date.now();
-    setDaqqiRounds((prev) => [item, ...prev]);
-    persistDaqqiRoundToCollection(item);
+    try {
+      const result = await mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>);
+      const committed = { ...item, code: result.code || item.code };
+      setDaqqiRounds((prev) => [committed, ...prev]);
+      track('create', 'daqqiRound', item.courseId);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'daqqiRound', name: item.courseId },
+      }));
+      return false;
+    }
+  };
+
+  const updateDaqqiRound = async (item: DaqqiRound) => {
+    lastCRMWriteRef.current = Date.now();
     try {
       await mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>);
-    } catch (err) {
-      // Roll back optimistic add if save fails
-      setDaqqiRounds((prev) => prev.filter((r) => r.id !== item.id));
-      throw err;
+      setDaqqiRounds((prev) => prev.map((round) => round.id === item.id ? item : round));
+      track('update', 'daqqiRound', item.courseId);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'daqqiRound', name: item.courseId },
+      }));
+      return false;
     }
-    track('create', 'daqqiRound', item.courseId);
   };
 
-  const updateDaqqiRound = (item: DaqqiRound) => {
+  const deleteDaqqiRound = async (id: string) => {
     lastCRMWriteRef.current = Date.now();
-    const prevRound = daqqiRounds.find((r) => r.id === item.id);
-    setDaqqiRounds((prev) => prev.map((r) => (r.id === item.id ? item : r)));
-    persistDaqqiRoundToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveDaqqiRound(item as unknown as Record<string,unknown>),
-      () => { if (prevRound) setDaqqiRounds((prev) => prev.map((r) => (r.id === item.id ? prevRound : r))); },
-      { field: 'daqqiRound', name: item.courseId }
-    );
-    track('update', 'daqqiRound', item.courseId);
+    try {
+      await mysqlAdmin.deleteDaqqiRound(id);
+      setDaqqiRounds((prev) => prev.filter((round) => round.id !== id));
+      track('delete', 'daqqiRound', id);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'daqqiRound', name: id },
+      }));
+      return false;
+    }
   };
 
-  const deleteDaqqiRound = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    const removed = daqqiRounds.find((r) => r.id === id);
-    setDaqqiRounds((prev) => prev.filter((r) => r.id !== id));
-    persistOrRevert(
-      mysqlAdmin.deleteDaqqiRound(id),
-      () => { if (removed) setDaqqiRounds((prev) => [removed, ...prev]); },
-      { field: 'daqqiRound', name: id }
-    );
-    track('delete', 'daqqiRound', id);
+  const transferDaqqiAttendee = async (subscriberId: string, fromRoundId: string, toRoundId: string) => {
+    try {
+      await mysqlAdmin.transferDaqqiAttendee({ subscriberId, fromRoundId, toRoundId });
+      setDaqqiRounds((prev) => {
+        const source = prev.find((round) => round.id === fromRoundId);
+        const attendee = source?.attendees.find((row) => row.subscriberId === subscriberId);
+        if (!attendee) return prev;
+        return prev.map((round) => {
+          if (round.id === fromRoundId) {
+            return { ...round, attendees: round.attendees.filter((row) => row.subscriberId !== subscriberId) };
+          }
+          if (round.id === toRoundId) {
+            return { ...round, attendees: [...round.attendees, { ...attendee, bookedAt: new Date().toISOString().slice(0, 10) }] };
+          }
+          return round;
+        });
+      });
+      track('update', 'daqqiRound', `transfer:${subscriberId}`);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'daqqiRound', name: `transfer:${subscriberId}` },
+      }));
+      return false;
+    }
   };
 
   // Bulk-load daqqi rounds without triggering DB saves (for non-admin staff initial load)
@@ -69,5 +97,5 @@ export function useDaqqiRoundsState(
     });
   };
 
-  return { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, bulkSetDaqqiRounds };
+  return { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds };
 }

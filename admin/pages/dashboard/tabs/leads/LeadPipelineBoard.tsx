@@ -14,6 +14,7 @@ type LeadPipelineBoardProps = {
   setDragOverCol: React.Dispatch<React.SetStateAction<LeadStatus | null>>;
   draggedLeadRef: React.MutableRefObject<LeadItem | null>;
   bulkMode: boolean;
+  canManageLeads: boolean;
   selectedLeadIds: Set<string>;
   setSelectedLeadIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setSelectedId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -42,6 +43,7 @@ export function LeadPipelineBoard({
   setDragOverCol,
   draggedLeadRef,
   bulkMode,
+  canManageLeads,
   selectedLeadIds,
   setSelectedLeadIds,
   setSelectedId,
@@ -75,12 +77,12 @@ export function LeadPipelineBoard({
                 key={status}
                 className={`w-60 flex-shrink-0 rounded-xl border-t-4 transition ${cfg.colColor} ${isDropTarget ? 'bg-primary-50 ring-2 ring-primary-300' : 'bg-gray-50'}`}
                 dir="rtl"
-                onDragOver={event => { event.preventDefault(); setDragOverCol(status); }}
+                onDragOver={event => { if (!canManageLeads) return; event.preventDefault(); setDragOverCol(status); }}
                 onDragLeave={() => setDragOverCol(null)}
                 onDrop={event => {
                   event.preventDefault();
                   setDragOverCol(null);
-                  if (draggedLeadRef.current && draggedLeadRef.current.status !== status) {
+                  if (canManageLeads && draggedLeadRef.current && draggedLeadRef.current.status !== status) {
                     handleStatusChange(draggedLeadRef.current, status);
                   }
                   draggedLeadRef.current = null;
@@ -101,11 +103,11 @@ export function LeadPipelineBoard({
                     <div
                       key={lead.id}
                       className="relative"
-                      draggable
+                      draggable={canManageLeads}
                       onDragStart={() => { draggedLeadRef.current = lead; }}
                       onDragEnd={() => { draggedLeadRef.current = null; setDragOverCol(null); }}
                     >
-                      {bulkMode && (
+                      {canManageLeads && bulkMode && (
                         <input
                           type="checkbox"
                           checked={selectedLeadIds.has(lead.id)}
@@ -124,10 +126,10 @@ export function LeadPipelineBoard({
                       <LeadCard
                         lead={lead}
                         score={lead._score || 0}
-                        onSelect={() => !bulkMode && setSelectedId(lead.id)}
+                        onSelect={() => canManageLeads && !bulkMode && setSelectedId(lead.id)}
                         onStatusChange={nextStatus => handleStatusChange(lead, nextStatus)}
-                        onBook={openLeadBook}
-                        onContact={row => {
+                        onBook={canManageLeads ? openLeadBook : undefined}
+                        onContact={canManageLeads ? row => {
                           setCrmContactRow(row);
                           setCrmContactDraft({
                             type: 'call',
@@ -137,7 +139,8 @@ export function LeadPipelineBoard({
                             nextFollowUp: '',
                             newStatus: '',
                           });
-                        }}
+                        } : undefined}
+                        canManageLeads={canManageLeads}
                         instituteBranches={instituteBranches}
                         courses={courses}
                         bundles={bundles}

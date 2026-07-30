@@ -14,7 +14,7 @@ interface Props {
   getCourseLectures: (courseId: string) => CourseLectureItem[];
   getCourseChapters: (courseId: string) => CourseChapterItem[];
   startEditLecture: (row: CourseLectureItem) => void;
-  deleteLecture: (id: string) => void;
+  deleteLecture: (id: string) => Promise<boolean>;
 }
 
 export function CourseLectureList({
@@ -45,7 +45,7 @@ export function CourseLectureList({
               </div>
               <div className="flex gap-2">
                 <button onClick={() => startEditLecture(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button>
-                <button onClick={() => deleteLecture(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
+                <button onClick={() => void deleteLecture(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
               </div>
             </div>
           );

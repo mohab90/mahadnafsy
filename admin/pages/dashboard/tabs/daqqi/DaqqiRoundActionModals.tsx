@@ -27,7 +27,7 @@ interface TransferModalProps {
   subscribers: SubscriberItem[];
   courses: Course[];
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }
 
 export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
@@ -93,7 +93,7 @@ interface ToskeenModalProps {
   subscribers: SubscriberItem[];
   courses: Course[];
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }
 
 export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
@@ -187,8 +187,8 @@ interface PostponeModalProps {
   rounds: DaqqiRound[];
   courses: Course[];
   onClose: () => void;
-  onConfirmStartDate: () => void;
-  onUpdateRound: (round: DaqqiRound) => void;
+  onConfirmStartDate: () => void | Promise<void>;
+  onUpdateRound: (round: DaqqiRound) => Promise<boolean>;
   notify: (type: 'success' | 'error' | 'info', text: string) => void;
 }
 
@@ -230,9 +230,13 @@ export const DaqqiPostponeRoundModal: React.FC<PostponeModalProps> = ({
             <div className="border-t border-gray-100 pt-4">
               <label className="block text-xs font-bold text-gray-600 mb-2">تأجيل محاضرة هذا الأسبوع</label>
               <button
-                onClick={() => {
+                onClick={async () => {
                   const weeks = round.postponedWeeks || [];
-                  onUpdateRound({ ...round, postponedWeeks: isPostponedThisWeek ? weeks.filter(w => w !== thisWeek) : [...weeks, thisWeek] });
+                  const saved = await onUpdateRound({ ...round, postponedWeeks: isPostponedThisWeek ? weeks.filter(w => w !== thisWeek) : [...weeks, thisWeek] });
+                  if (!saved) {
+                    notify('error', 'تعذر تحديث تأجيل المحاضرة.');
+                    return;
+                  }
                   onClose();
                   notify('success', isPostponedThisWeek ? 'تم إلغاء تأجيل المحاضرة.' : 'تم تأجيل محاضرة هذا الأسبوع.');
                 }}

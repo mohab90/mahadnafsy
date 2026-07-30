@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
+const { getTenantSetting, isSecretSetting, setTenantSetting } = require('../lib/tenantSettings');
 
 test('tenant settings are always queried by tenant and key', async () => {
   const calls = [];
@@ -41,5 +41,13 @@ test('tenant settings upsert includes tenant identity and actor', async () => {
   assert.equal(captured.params[1], 'tenant-a');
   assert.equal(captured.params[2], 'sys_otp_provider');
   assert.equal(captured.params[3], '{"enabled":true}');
+  assert.equal(captured.params[4], 1);
+});
+
+test('the combined settings blob is marked secret because it contains provider credentials', async () => {
+  let captured;
+  const db = { query: async (sql, params) => { captured = { sql, params }; return [{}]; } };
+  await setTenantSetting('settings', { adminAiConfig: { apiKey: 'server-secret' } }, { tenantId: 'tenant-a', db });
+  assert.equal(isSecretSetting('settings'), true);
   assert.equal(captured.params[4], 1);
 });

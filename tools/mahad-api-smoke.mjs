@@ -1,10 +1,24 @@
 #!/usr/bin/env node
 
 const apiPort = Number(process.env.API_PORT || process.argv[2] || 3101);
-const baseUrl = `http://127.0.0.1:${apiPort}`;
+const baseUrl = String(process.env.SMOKE_BASE_URL || `http://127.0.0.1:${apiPort}`).replace(/\/$/, '');
+const parsedBaseUrl = new URL(baseUrl);
+const localHttp = parsedBaseUrl.protocol === 'http:'
+  && ['127.0.0.1', 'localhost', '::1'].includes(parsedBaseUrl.hostname);
+if (parsedBaseUrl.protocol !== 'https:' && !localHttp) {
+  throw new Error('SMOKE_BASE_URL must use HTTPS unless it targets localhost');
+}
+const requestTimeoutMs = Math.max(1000, Number(process.env.SMOKE_REQUEST_TIMEOUT_MS) || 8000);
+
+function fetchWithTimeout(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    signal: options.signal || AbortSignal.timeout(requestTimeoutMs),
+  });
+}
 
 async function request(path, options = {}) {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const res = await fetchWithTimeout(`${baseUrl}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
@@ -51,8 +65,8 @@ const checks = [
     run: async () => assertStatus('paymob webhook suspended ack', (await request('/api/webhooks/paymob', { method: 'POST', body: '{}' })).status, 200),
   },
   {
-    name: 'order reserve validation',
-    run: async () => assertStatus('order reserve validation', (await request('/api/orders/reserve', { method: 'POST', body: '{}' })).status, 400),
+    name: 'order reserve suspended without mutation',
+    run: async () => assertStatus('order reserve suspended', (await request('/api/orders/reserve', { method: 'POST', body: '{}' })).status, 503),
   },
   {
     name: 'facebook webhook verification rejects bad token',
@@ -62,10 +76,12 @@ const checks = [
   // ── Auth & authorization ────────────────────────────────────────────────
   {
     name: 'register rejects missing credentials',
+    dbBacked: true,
     run: async () => assertStatus('register rejects missing credentials', (await request('/api/auth/register', { method: 'POST', body: '{}' })).status, 400),
   },
   {
     name: 'register rejects short password',
+    dbBacked: true,
     run: async () => assertStatus('register rejects short password', (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: 'smoke@test.local', password: '123' }) })).status, 400),
   },
   {
@@ -124,6 +140,7 @@ const checks = [
   },
   {
     name: 'public lead submit validation',
+    dbBacked: true,
     run: async () => {
       const r = await request('/api/leads-public', { method: 'POST', body: '{}' });
       if (![400, 422].includes(r.status)) throw new Error(`public lead submit validation: expected 400/422, got ${r.status}`);
@@ -253,18 +270,22 @@ const checks = [
   // ── Input validation (validateBody middleware) ─────────────────────────
   {
     name: 'login rejects invalid email format (400)',
+    dbBacked: true,
     run: async () => assertStatus('login rejects invalid email format', (await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'not-an-email', password: 'somepassword' }) })).status, 400),
   },
   {
     name: 'register rejects invalid email format (400)',
+    dbBacked: true,
     run: async () => assertStatus('register rejects invalid email format', (await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: 'not-an-email', password: 'validpass123' }) })).status, 400),
   },
   {
     name: 'public leads rejects missing phone (400)',
+    dbBacked: true,
     run: async () => assertStatus('public leads rejects missing phone', (await request('/api/leads-public', { method: 'POST', body: JSON.stringify({ name: 'Ahmed' }) })).status, 400),
   },
   {
     name: 'public leads rejects missing name (400)',
+    dbBacked: true,
     run: async () => assertStatus('public leads rejects missing name', (await request('/api/leads-public', { method: 'POST', body: JSON.stringify({ phone: '01012345678' }) })).status, 400),
   },
 
@@ -286,7 +307,7 @@ const checks = [
   {
     name: 'CORS: unknown origin is rejected (no Allow-Origin header)',
     run: async () => {
-      const res = await fetch(`${baseUrl}/api/health/live`, { headers: { Origin: 'https://evil-hacker.com' } });
+      const res = await fetchWithTimeout(`${baseUrl}/api/health/live`, { headers: { Origin: 'https://evil-hacker.com' } });
       const acao = res.headers.get('access-control-allow-origin');
       if (acao === 'https://evil-hacker.com' || acao === '*') throw new Error(`CORS: evil origin was accepted — ACAO=${acao}`);
     },
@@ -294,7 +315,7 @@ const checks = [
   {
     name: 'rate limit header present on admin route',
     run: async () => {
-      const res = await fetch(`${baseUrl}/api/admin/leads`);
+      const res = await fetchWithTimeout(`${baseUrl}/api/admin/leads`);
       const limit = res.headers.get('ratelimit-limit') || res.headers.get('x-ratelimit-limit');
       if (!limit) throw new Error('rate limit headers missing on /api/admin/leads');
     },
@@ -310,14 +331,14 @@ const checks = [
   {
     name: 'responses carry X-Request-ID',
     run: async () => {
-      const res = await fetch(`${baseUrl}/api/health/live`);
+      const res = await fetchWithTimeout(`${baseUrl}/api/health/live`);
       if (!res.headers.get('x-request-id')) throw new Error('missing X-Request-ID header');
     },
   },
   {
     name: 'responses carry CSP header',
     run: async () => {
-      const res = await fetch(`${baseUrl}/api/health/live`);
+      const res = await fetchWithTimeout(`${baseUrl}/api/health/live`);
       if (!res.headers.get('content-security-policy')) throw new Error('missing Content-Security-Policy header');
     },
   },

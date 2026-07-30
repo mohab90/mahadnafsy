@@ -16,7 +16,7 @@ type BaseProps = {
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   notify: NotifyFn;
 };
 
@@ -74,12 +74,13 @@ export function ContentHubSimpleEditor({
         <div className="flex gap-2">
           <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
           <button
-            onClick={() => {
-              fields.forEach((field) => {
+            onClick={async () => {
+              const saved = await Promise.all(fields.map((field) => {
                 const value = policyDrafts[field.key] ?? content[field.key] ?? '';
-                setContentValue(field.key, value);
-              });
-              notify('success', successMessage);
+                return setContentValue(field.key, value);
+              }));
+              notify(saved.every(Boolean) ? 'success' : 'error',
+                saved.every(Boolean) ? successMessage : 'تعذر حفظ بعض الحقول على السيرفر.');
             }}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
           >
@@ -116,14 +117,16 @@ export function ContentHubPoliciesEditor({
         <div className="flex gap-2">
           <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
           <button
-            onClick={() => {
-              sections.forEach((section) => {
-                section.fields.forEach((field) => {
+            onClick={async () => {
+              const saved = await Promise.all(sections.flatMap((section) =>
+                section.fields.map((field) => {
                   const value = policyDrafts[field.key] ?? content[field.key] ?? '';
-                  setContentValue(field.key, value);
-                });
-              });
-              notify('success', 'تم حفظ نصوص السياسات القانونية بنجاح.');
+                  return setContentValue(field.key, value);
+                })
+              ));
+              notify(saved.every(Boolean) ? 'success' : 'error', saved.every(Boolean)
+                ? 'تم حفظ نصوص السياسات القانونية بنجاح.'
+                : 'تعذر حفظ بعض نصوص السياسات على السيرفر.');
             }}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
           >
@@ -184,9 +187,12 @@ export function ContentHubGenericPageEditor({
         <div className="flex gap-2">
           <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
           <button
-            onClick={() => {
-              tabCfg.fields.forEach(field => setContentValue(field.key, policyDrafts[field.key] ?? content[field.key] ?? ''));
-              notify('success', tabCfg.msg);
+            onClick={async () => {
+              const saved = await Promise.all(tabCfg.fields.map(field =>
+                setContentValue(field.key, policyDrafts[field.key] ?? content[field.key] ?? '')
+              ));
+              notify(saved.every(Boolean) ? 'success' : 'error',
+                saved.every(Boolean) ? tabCfg.msg : 'تعذر حفظ بعض الحقول على السيرفر.');
             }}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
           >

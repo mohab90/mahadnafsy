@@ -9,7 +9,7 @@ type DashboardFooterSettingsPanelProps = {
   content: Record<string, string>;
   policyDrafts: Record<string, string>;
   setPolicyDrafts: Dispatch<SetStateAction<Record<string, string>>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   notify: Notify;
   instituteBranches: InstituteBranch[];
 };
@@ -27,10 +27,14 @@ export function DashboardFooterSettingsPanel({
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="font-bold text-gray-900 text-lg">إعدادات الفوتر والتواصل الاجتماعي</h3>
       <button
-        onClick={() => {
-          Object.entries(policyDrafts).forEach(([k, v]) => {
-            if (k.startsWith('footer.') || k === 'institute.logo') setContentValue(k, v);
-          });
+        onClick={async () => {
+          const entries = Object.entries(policyDrafts)
+            .filter(([key]) => key.startsWith('footer.') || key === 'institute.logo');
+          const saved = await Promise.all(entries.map(([key, value]) => setContentValue(key, value)));
+          if (!saved.every(Boolean)) {
+            notify('error', 'تعذر حفظ بعض إعدادات الفوتر على السيرفر.');
+            return;
+          }
           setPolicyDrafts(prev => {
             const next = { ...prev };
             Object.keys(next).filter(k => k.startsWith('footer.') || k === 'institute.logo').forEach(k => delete next[k]);

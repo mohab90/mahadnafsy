@@ -8,6 +8,7 @@
 // Ported (adapted to 25's content-key scheme) from the 26 line's brandSettings.
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
+const { pool } = require('./db');
 
 const DEFAULT_BRAND = {
   instituteName: 'معهد مهاد للدراسات النفسية',
@@ -59,6 +60,15 @@ async function getBrandSettings(tenantId = DEFAULT_TENANT, db = undefined) {
     // a tenant onboarded only through the wizard never saw their own logo on
     // any branded output (ARC-07). Prefer it when present.
     if (sysGeneral?.brand_logo_url) value.logoUrl = sysGeneral.brand_logo_url;
+    if (sysGeneral?.website_url) value.websiteUrl = str(sysGeneral.website_url, value.websiteUrl);
+    if (!content?.['site.url'] && !content?.['footer.website'] && !sysGeneral?.website_url) {
+      const queryDb = db || pool;
+      const [[domain]] = await queryDb.query(
+        "SELECT domain FROM tenant_domains WHERE tenant_id=? AND status='verified' LIMIT 1",
+        [tenantId]
+      ).catch(() => [[null]]);
+      if (domain?.domain) value.websiteUrl = `https://${domain.domain}`;
+    }
   } catch (_) {
     value = { ...DEFAULT_BRAND };
   }

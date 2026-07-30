@@ -1,8 +1,8 @@
 'use strict';
 const logger = require('./logger');
 const https = require('https');
-const { uuidv4 } = require('./id');
 const { pool } = require('./db');
+const { appendLeadInteraction } = require('./leadInteractions');
 const { getNextClientCode } = require('./mappers');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
@@ -174,10 +174,12 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           if (!insertResult.affectedRows) { totalSkipped++; continue; }
           // Insert notes as a communication record so it appears in the lead timeline
           if (notes) {
-            await pool.execute(
-              `INSERT IGNORE INTO communications (id, lead_id, type, date, notes, staff_id) VALUES (?,?,'note',NOW(),?,NULL)`,
-              [uuidv4(), leadId, notes]
-            );
+            await appendLeadInteraction({
+              tenantId,
+              leadId,
+              interaction: { type: 'note', notes },
+              actor: { name: 'google-sheets-sync' },
+            });
           }
           totalImported++;
         }

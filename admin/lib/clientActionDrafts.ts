@@ -1,4 +1,5 @@
 import { blankPaymentDraft, type PaymentDraft } from '../components/PaymentModal';
+import { currencyForBranch } from './branchCurrency';
 
 export type ClientActionBookingType = 'new_booking' | 'installment';
 export type ClientActionCurrency = 'EGP' | 'SAR' | 'USD';
@@ -16,7 +17,7 @@ export function createClientPaymentDraft(options: ClientPaymentDraftOptions = {}
     ...blankPaymentDraft({
       courseId: options.courseId || '',
       branch: options.branch || '',
-      currency: options.currency || 'EGP',
+      currency: options.currency || currencyForBranch(options.branch),
       email: options.email || '',
     }),
     bookingType: options.bookingType || 'new_booking',

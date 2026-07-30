@@ -3,11 +3,14 @@ const logger = require('../lib/logger');
 const { Router } = require('express');
 const router = Router();
 
-const bcrypt = require('bcryptjs');
+const bcrypt = require('../lib/passwordHash');
 const jwt    = require('jsonwebtoken');
+const { createHmac } = require('crypto');
+const { resolveSecret } = require('../lib/secretResolver');
 const { uuidv4 } = require('../lib/id');
+const { generateTemporaryPassword, generateNumericCode } = require('../lib/secureCredentials');
 
-const { pool, getStaffIdByEmail, ensureUsersTable, requireDb } = require('../lib/db');
+const { pool, getStaffIdByEmail, requireDb } = require('../lib/db');
 const { sanitize, validate, EMAIL_RE, PHONE_RE } = require('../lib/helpers');
 const { sendEmail: sendEmailBase, htmlEmail, mailer } = require('../lib/email');
 const { getNextClientCode } = require('../lib/mappers');
@@ -16,33 +19,55 @@ const { sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { branchIdForBranch } = require('../lib/branches');
 const { getNextSalesRep } = require('../lib/leadAssignment');
-const { JWT_SECRET, JWT_EXPIRY, revokeToken } = require('../lib/token');
-const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrOnlineManager } = require('../middleware/auth');
+const { grantCourseSelections } = require('../lib/entitlements');
+const {
+  JWT_SECRET, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
+} = require('../lib/token');
+const {
+  ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin,
+  requireAdminOrOnlineManager, invalidateIdentity,
+} = require('../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../middleware/validate');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { logLoginAttempt } = require('../lib/loginAudit');
+const { hasPermission } = require('../constants/permissions');
+const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
+const { requireTenantQuota } = require('../middleware/tenantQuota');
+const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
+const { createSessionBinding, rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
+
+function hashOtp({ tenantId, email, type, code }) {
+  const secret = String(resolveSecret('OTP_HMAC_SECRET') || JWT_SECRET);
+  return createHmac('sha256', secret)
+    .update(`${tenantId}\0${String(email).toLowerCase().trim()}\0${type}\0${String(code).trim()}`)
+    .digest('hex');
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/auth/register
-router.post('/api/auth/register', registerLimiter, requireDb,
+router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota('users'),
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
-  const { email, password, name, phone, country, interest, ref } = req.body || {};
+  const { email, password, name, phone, interest, ref } = req.body || {};
   let conn;
   let transactionStarted = false;
   try {
-    conn = await pool.getConnection();
-    await ensureUsersTable(conn);
     const normalizedEmail = email.toLowerCase().trim();
     const tenantId = req.tenantId || 'tenant-default';
-    const branch = 'ONLINE_EGYPT';
+    const clientContext = await resolveClientContext(req);
+    if (!clientContext.locationResolved) {
+      return res.status(503).json({ error: 'تعذر تحديد الدولة بأمان؛ حاول مرة أخرى', code: 'LOCATION_UNAVAILABLE' });
+    }
+    const branch = clientContext.branch;
+    const session = createSessionBinding(req);
+    conn = await pool.getConnection();
     const [[protectedStaff]] = await conn.execute(
       'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
       [tenantId, normalizedEmail]
@@ -57,15 +82,20 @@ router.post('/api/auth/register', registerLimiter, requireDb,
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
     await conn.execute(
-      'INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, tenantId, normalizedEmail, hash, (name || '').trim(), 'user']
+      `INSERT INTO users
+         (id, tenant_id, email, password_hash, name, role, active_session_id,
+          active_session_ip_hash, active_session_started_at, active_session_last_seen_at,
+          last_country_code, preferred_currency, last_geo_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
+      [id, tenantId, normalizedEmail, hash, (name || '').trim(), 'user',
+        session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
     // Also write to registrations table (best-effort)
     try {
       await conn.execute(
         `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', country || '', interest || '']
+        [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', clientContext.countryCode, interest || '']
       );
     } catch { /* registrations table may not exist — ignore */ }
     // Generate ONE shared client code — same code on both lead and subscriber for this person
@@ -103,7 +133,7 @@ router.post('/api/auth/register', registerLimiter, requireDb,
       } else {
         const leadId = uuidv4();
         createdLeadId = leadId;
-        const salesRep = await getNextSalesRep(tenantId, conn);
+        const salesRep = await getNextSalesRep(tenantId, conn, { branch });
         await conn.execute(
           `INSERT INTO leads
              (id, tenant_id, client_code, name, email, phone, source, status, hidden,
@@ -123,8 +153,10 @@ router.post('/api/auth/register', registerLimiter, requireDb,
     // converts them after payment (admin moves them to عملاء الأونلاين and assigns a course).
     await conn.commit();
     transactionStarted = false;
-    const token = jwt.sign({ uid: id, email: normalizedEmail, tid: tenantId, jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
+    const token = signAccessToken({
+      uid: id, email: normalizedEmail, tenantId, sessionVersion: 1, sessionId: session.sessionId,
+    });
+    setAuthCookie(res, token);
     res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
 
     // Best-effort referral tracking
@@ -146,20 +178,25 @@ router.post('/api/auth/register', registerLimiter, requireDb,
   } finally { if (conn) conn.release(); }
 });
 // Alias — WAF on shared hosting may block /api/auth/ paths; this exposes the same handler under /api/user/signup
-router.post('/api/user/signup', registerLimiter, requireDb,
+router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('users'),
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
-  const { email, password, name, phone, country, interest, ref } = req.body || {};
-  const conn = await pool.getConnection();
+  const { email, password, name, phone, interest, ref } = req.body || {};
+  let conn;
   let transactionStarted = false;
   try {
-    await ensureUsersTable(conn);
     const normalizedEmail = email.toLowerCase().trim();
     const tenantId = req.tenantId || 'tenant-default';
-    const branch = 'ONLINE_EGYPT';
+    const clientContext = await resolveClientContext(req);
+    if (!clientContext.locationResolved) {
+      return res.status(503).json({ error: 'تعذر تحديد الدولة بأمان؛ حاول مرة أخرى', code: 'LOCATION_UNAVAILABLE' });
+    }
+    const branch = clientContext.branch;
+    const session = createSessionBinding(req);
+    conn = await pool.getConnection();
     const [[protectedStaff]] = await conn.execute(
       'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
       [tenantId, normalizedEmail]
@@ -174,8 +211,13 @@ router.post('/api/user/signup', registerLimiter, requireDb,
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
     await conn.execute(
-      'INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, tenantId, normalizedEmail, hash, (name || '').trim(), 'user']
+      `INSERT INTO users
+         (id, tenant_id, email, password_hash, name, role, active_session_id,
+          active_session_ip_hash, active_session_started_at, active_session_last_seen_at,
+          last_country_code, preferred_currency, last_geo_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
+      [id, tenantId, normalizedEmail, hash, (name || '').trim(), 'user',
+        session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
     // Referral attribution (best-effort): credit the referrer + tag the new user.
     if (ref) {
@@ -186,7 +228,7 @@ router.post('/api/user/signup', registerLimiter, requireDb,
     try {
       await conn.execute(
         `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', country || '', interest || '']
+        [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', clientContext.countryCode, interest || '']
       );
     } catch { /* ignore */ }
     let sharedClientCode = null;
@@ -233,8 +275,10 @@ router.post('/api/user/signup', registerLimiter, requireDb,
     }
     await conn.commit();
     transactionStarted = false;
-    const token = jwt.sign({ uid: id, email: normalizedEmail, tid: tenantId, jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
+    const token = signAccessToken({
+      uid: id, email: normalizedEmail, tenantId, sessionVersion: 1, sessionId: session.sessionId,
+    });
+    setAuthCookie(res, token);
     res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
     if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId }).catch(() => {});
   } catch (err) {
@@ -246,7 +290,7 @@ router.post('/api/user/signup', registerLimiter, requireDb,
 
 // POST /api/admin/staff-account — create login account for a staff member (admin only)
 // Creates the user in `users` table + inserts/updates `staff` table
-router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin,
+router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin, requireTenantQuota('staff'),
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
@@ -266,7 +310,13 @@ router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin,
     if (existing.length > 0) {
       uid = existing[0].id;
       const hash = await bcrypt.hash(password, 12);
-      await conn.execute('UPDATE users SET password_hash=?, name=?, is_active=1 WHERE id=? AND tenant_id=?', [hash, name.trim(), uid, tenantId]);
+      await conn.execute(
+        `UPDATE users SET password_hash=?, name=?, is_active=1,
+          session_version=session_version+1, active_session_id=NULL,
+          active_session_ip_hash=NULL, active_session_started_at=NULL,
+          active_session_last_seen_at=NULL WHERE id=? AND tenant_id=?`,
+        [hash, name.trim(), uid, tenantId]
+      );
     } else {
       uid = uuidv4();
       const hash = await bcrypt.hash(password, 12);
@@ -276,13 +326,38 @@ router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin,
     // Upsert into staff table
     const id = staffId || uuidv4();
     const dbRole = ((role || 'OTHER').toUpperCase());
+    const joinedAt = String(req.body.joinedAt || req.body.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
+    const numberOrNull = value => value === undefined || value === null || value === '' ? null : Number(value);
+    const permissionsJson = req.body.permissions_json
+      || (Array.isArray(req.body.permissions) ? JSON.stringify(req.body.permissions) : null);
     await conn.execute(
-      `INSERT INTO staff (id,tenant_id,name,email,phone,role,is_active,joined_at) VALUES (?,?,?,?,?,?,1,NOW())
-       ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), is_active=1`,
-      [id, tenantId, name.trim(), email.toLowerCase().trim(), phone||'', dbRole]
+      `INSERT INTO staff
+         (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image,
+          specialization, joined_at, is_active, notes, commission_rate, permissions_json,
+          monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         branch_id=VALUES(branch_id), firebase_uid=VALUES(firebase_uid), name=VALUES(name),
+         email=VALUES(email), phone=VALUES(phone), role=VALUES(role), image=VALUES(image),
+         specialization=VALUES(specialization), joined_at=VALUES(joined_at), is_active=1,
+         notes=VALUES(notes), commission_rate=VALUES(commission_rate),
+         permissions_json=VALUES(permissions_json), monthly_target=VALUES(monthly_target),
+         monthly_target_type=VALUES(monthly_target_type),
+         monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
+      [
+        id, tenantId, req.body.branch_id || 'branch-other', uid, name.trim(),
+        email.toLowerCase().trim(), phone || '', dbRole, req.body.image || null,
+        req.body.specialization || null, joinedAt, 1, req.body.notes || null,
+        numberOrNull(req.body.commissionRate ?? req.body.commission_rate), permissionsJson,
+        numberOrNull(req.body.monthlyTarget ?? req.body.monthly_target),
+        req.body.monthlyTargetType ?? req.body.monthly_target_type ?? null,
+        numberOrNull(req.body.monthlyLeadsTarget ?? req.body.monthly_leads_target),
+        numberOrNull(req.body.monthlyBonus ?? req.body.monthly_bonus),
+      ]
     );
     await conn.commit();
     transactionStarted = false;
+    if (existing.length > 0) invalidateIdentity(tenantId, uid, email);
     res.json({ ok: true, uid, staffId: id });
   } catch (err) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -325,25 +400,39 @@ router.get('/api/admin/check-account', requireAuth, requireAdmin, async (req, re
 });
 
 // POST /api/admin/create-account — create or re-activate a subscriber's login account
-router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManager, async (req, res) => {
+router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManager, requireTenantQuota('users'), async (req, res) => {
   const { email, name, password, phone, courses, firstPayment } = req.body || {};
   const normEmail = (email || '').toLowerCase().trim();
   if (!normEmail || !normEmail.includes('@')) return res.status(400).json({ error: 'valid email required' });
+  if (courses !== undefined && !Array.isArray(courses)) return res.status(400).json({ error: 'courses must be an array' });
+  if (firstPayment && Number(firstPayment.amount) > 0) {
+    const method = String(firstPayment.paymentMethod || '').trim();
+    if (!method || method.length > 100) return res.status(400).json({ error: 'A valid payment method is required for the first payment' });
+    if (method.toLowerCase().includes('paymob')) {
+      return res.status(409).json({ error: 'Paymob payments must only be created by the verified Paymob workflow' });
+    }
+    if (firstPayment.date && !/^\d{4}-\d{2}-\d{2}$/.test(firstPayment.date)) {
+      return res.status(400).json({ error: 'Invalid first payment date' });
+    }
+    const expected = firstPayment.courseExpected;
+    if (expected !== undefined && expected !== null && (!Number.isFinite(Number(expected)) || Number(expected) <= 0)) {
+      return res.status(400).json({ error: 'Invalid expected course price' });
+    }
+  }
   const conn = await pool.getConnection();
   try {
     const tenantId = req.tenantId;
     const [[existing]] = await conn.execute('SELECT id, name, is_active FROM users WHERE tenant_id=? AND LOWER(TRIM(email)) = ? LIMIT 1', [tenantId, normEmail]);
     if (existing && existing.is_active) return res.status(409).json({ error: 'حساب فعّال موجود بالفعل بهذا البريد' });
 
-    let tempPass = password && password.trim() ? password.trim() : '';
-    if (!tempPass) {
-      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-      for (let i = 0; i < 8; i++) tempPass += chars[Math.floor(Math.random() * chars.length)];
-    }
+    const tempPass = password && password.trim() ? password.trim() : generateTemporaryPassword();
+    if (tempPass.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     const hash = await bcrypt.hash(tempPass, 12);
     const displayName = (name || existing?.name || normEmail).trim();
     const phoneVal = (phone || '').trim() || null; // NULL not '' so UNIQUE constraint works
     let action = '';
+    let firstPaymentStatus = null;
+    let createdSubscriberId = null;
     const defaultBranch = 'ONLINE_EGYPT';
 
     // This handler writes across users/subscribers/enrollments/payments — wrap in a
@@ -352,56 +441,25 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
     await conn.beginTransaction();
 
     if (existing) {
-      await conn.execute('UPDATE users SET password_hash=?, name=?, is_active=1 WHERE id=? AND tenant_id=?', [hash, displayName, existing.id, tenantId]);
+      await conn.execute(
+        `UPDATE users SET password_hash=?, name=?, is_active=1,
+          session_version=session_version+1, active_session_id=NULL,
+          active_session_ip_hash=NULL, active_session_started_at=NULL,
+          active_session_last_seen_at=NULL WHERE id=? AND tenant_id=?`,
+        [hash, displayName, existing.id, tenantId]
+      );
       if (phoneVal) await conn.execute('UPDATE subscribers SET phone=? WHERE tenant_id=? AND LOWER(TRIM(email))=? AND (phone IS NULL OR phone=\'\') LIMIT 1', [phoneVal, tenantId, normEmail]);
       // Also save courses for reactivated user
       if (courses && courses.length > 0) {
-        const [[reSub]] = await conn.execute('SELECT id, crm_json, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, normEmail]);
+        const [[reSub]] = await conn.execute('SELECT id, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, normEmail]);
         if (reSub) {
           const validCourses = courses.filter(c => c.courseId && c.courseId.trim());
           if (validCourses.length > 0) {
-            // Expand bundle IDs to individual course UUIDs (bundle:xyz → individual course ids)
-            const rawCourseIds = validCourses.map(c => c.courseId.trim());
-            const enrolledCourseIds = [];
-            const courseAccess = {};
-            for (const c of validCourses) {
-              const cid = c.courseId.trim();
-              const mode = c.accessType === 'limited' ? 'limited' : 'full';
-              const lim = c.accessType === 'limited' && c.videoCount ? parseInt(c.videoCount) || null : null;
-              if (cid.startsWith('bundle:')) {
-                const bId = cid.replace('bundle:', '');
-                const [bRows] = await conn.execute(
-                  'SELECT bc.course_id FROM bundle_courses bc JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=? WHERE bc.bundle_id=?',
-                  [tenantId, bId]
-                );
-                for (const br of bRows) {
-                  courseAccess[br.course_id] = { mode, lectureLimit: lim };
-                  enrolledCourseIds.push(br.course_id);
-                }
-                courseAccess[cid] = { mode, lectureLimit: lim }; // keep bundle key for reference
-              } else {
-                courseAccess[cid] = { mode, lectureLimit: lim };
-                enrolledCourseIds.push(cid);
-              }
-            }
-            const existingCrm = reSub.crm_json ? JSON.parse(reSub.crm_json) : {};
-            const mergedIds = [...new Set([...(existingCrm.enrolledCourseIds || []), ...enrolledCourseIds])];
-            const mergedAccess = { ...(existingCrm.courseAccess || {}), ...courseAccess };
-            const newCrm = { ...existingCrm, enrolledCourseIds: mergedIds, courseAccess: mergedAccess };
-            await conn.execute('UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?', [JSON.stringify(newCrm), reSub.id, tenantId]);
-            for (const c of validCourses) {
-              const cid = c.courseId.trim();
-              if (cid.startsWith('bundle:')) continue;
-              const mode = c.accessType === 'limited' ? 'limited' : 'full';
-              const lim = c.accessType === 'limited' && c.videoCount ? parseInt(c.videoCount) || null : null;
-              await conn.execute(
-                `INSERT INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, lecture_limit, tenant_id, branch_id)
-                 SELECT UUID(), ?, ?, NOW(), ?, ?, ?, ?
-                 FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL
-                 ON DUPLICATE KEY UPDATE access_type=VALUES(access_type), lecture_limit=VALUES(lecture_limit)`,
-                [reSub.id, cid, mode, lim, tenantId, reSub.branch_id || 'branch-other', cid, tenantId]
-              );
-            }
+            await grantCourseSelections({
+              tenantId, subscriberId: reSub.id, selections: validCourses,
+              branchId: reSub.branch_id, source: 'account_reactivation',
+              actor: req.user?.email || 'admin',
+            }, conn);
           }
         }
       }
@@ -427,56 +485,15 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
         targetSubId = subExists.id;
         if (phoneVal) await conn.execute('UPDATE subscribers SET phone=? WHERE tenant_id=? AND LOWER(TRIM(email))=? AND (phone IS NULL OR phone=\'\') LIMIT 1', [phoneVal, tenantId, normEmail]);
       }
-      // Save course access: update crm_json + insert into enrollments
+      // Enrollment rows are the sole entitlement authority.
       if (courses && courses.length > 0) {
         const validCourses = courses.filter(c => c.courseId && c.courseId.trim());
         if (validCourses.length > 0) {
-          // Build enrolledCourseIds and courseAccess for crm_json
-          // Expand bundle IDs to individual course UUIDs so isEnrolled works on the client
-          const enrolledCourseIds = [];
-          const courseAccess = {};
-          for (const c of validCourses) {
-            const cid = c.courseId.trim();
-            const mode = c.accessType === 'limited' ? 'limited' : 'full';
-            const lim = c.accessType === 'limited' && c.videoCount ? parseInt(c.videoCount) || null : null;
-            if (cid.startsWith('bundle:')) {
-              // Bundle — expand to individual course IDs via bundle_courses table
-              const bId = cid.replace('bundle:', '');
-              const [bRows] = await conn.execute(
-                'SELECT bc.course_id FROM bundle_courses bc JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=? WHERE bc.bundle_id=?',
-                [tenantId, bId]
-              );
-              for (const br of bRows) {
-                courseAccess[br.course_id] = { mode, lectureLimit: lim };
-                enrolledCourseIds.push(br.course_id);
-              }
-              courseAccess[cid] = { mode, lectureLimit: lim }; // keep bundle key for reference
-            } else {
-              courseAccess[cid] = { mode, lectureLimit: lim };
-              enrolledCourseIds.push(cid);
-            }
-          }
-          // Fetch existing crm_json (if subscriber already existed)
-          const [[subRow]] = await conn.execute('SELECT crm_json, branch_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [targetSubId, tenantId]);
-          const existingCrm = subRow?.crm_json ? JSON.parse(subRow.crm_json) : {};
-          const mergedIds = [...new Set([...(existingCrm.enrolledCourseIds || []), ...enrolledCourseIds])];
-          const mergedAccess = { ...(existingCrm.courseAccess || {}), ...courseAccess };
-          const newCrm = { ...existingCrm, enrolledCourseIds: mergedIds, courseAccess: mergedAccess };
-          await conn.execute('UPDATE subscribers SET crm_json=? WHERE id=? AND tenant_id=?', [JSON.stringify(newCrm), targetSubId, tenantId]);
-          // Insert into enrollments table for each plain course (non-bundle)
-          for (const c of validCourses) {
-            const cid = c.courseId.trim();
-            if (cid.startsWith('bundle:')) continue; // bundles handled via crm_json
-            const mode = c.accessType === 'limited' ? 'limited' : 'full';
-            const lim = c.accessType === 'limited' && c.videoCount ? parseInt(c.videoCount) || null : null;
-            await conn.execute(
-              `INSERT INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, lecture_limit, tenant_id, branch_id)
-               SELECT UUID(), ?, ?, NOW(), ?, ?, ?, ?
-               FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL
-               ON DUPLICATE KEY UPDATE access_type=VALUES(access_type), lecture_limit=VALUES(lecture_limit)`,
-              [targetSubId, cid, mode, lim, tenantId, subRow?.branch_id || subExists?.branch_id || 'branch-other', cid, tenantId]
-            );
-          }
+          await grantCourseSelections({
+            tenantId, subscriberId: targetSubId, selections: validCourses,
+            branchId: subExists?.branch_id || branchIdForBranch(defaultBranch),
+            source: 'account_creation', actor: req.user?.email || 'admin',
+          }, conn);
         }
       }
       action = 'created';
@@ -484,42 +501,63 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
 
     // ── Optional first payment — record it against the subscriber (atomic with account) ──
     if (firstPayment && Number(firstPayment.amount) > 0) {
+      const amount = Number(firstPayment.amount);
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid first payment amount');
+      const paymentMethod = String(firstPayment.paymentMethod || '').trim();
       const [[paySub]] = await conn.execute(
         'SELECT id, tenant_id, branch, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
         [tenantId, normEmail]
       );
       if (!paySub) throw new Error('Payment subscriber not found in tenant');
-      const paymentCourseId = firstPayment.courseId && !String(firstPayment.courseId).startsWith('bundle:')
-        ? String(firstPayment.courseId) : null;
+      const rawPaymentItemId = firstPayment.courseId ? String(firstPayment.courseId) : '';
+      const paymentBundleId = rawPaymentItemId.startsWith('bundle:') ? rawPaymentItemId.slice(7) : null;
+      const paymentCourseId = rawPaymentItemId && !paymentBundleId ? rawPaymentItemId : null;
       if (paymentCourseId) {
         const [[course]] = await conn.execute('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [paymentCourseId, tenantId]);
         if (!course) throw new Error('Payment course does not belong to tenant');
       }
+      if (paymentBundleId) {
+        const [[bundle]] = await conn.execute('SELECT id FROM bundles WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [paymentBundleId, tenantId]);
+        if (!bundle) throw new Error('Payment bundle does not belong to tenant');
+      }
       const paymentId = uuidv4();
       const paymentDate = firstPayment.date || new Date().toISOString().slice(0, 10);
+      const courseExpected = firstPayment.courseExpected === undefined || firstPayment.courseExpected === null
+        ? null : Number(firstPayment.courseExpected);
       const currency = ['EGP', 'SAR', 'USD'].includes(firstPayment.currency) ? firstPayment.currency : 'EGP';
       const paymentBranch = paySub.branch || defaultBranch;
       const paymentBranchId = paySub.branch_id || branchIdForBranch(paymentBranch);
+      const canApproveFinancial = !!req.isSuperAdmin || hasPermission(req.staffRecord, 'manage_financial');
+      firstPaymentStatus = canApproveFinancial ? 'paid' : 'pending';
       await assertWritable(paymentDate, conn, tenantId);
       await conn.execute(
         `INSERT INTO payments
-           (id, subscriber_id, course_id, amount, currency, payment_type, payment_method,
-            transaction_id, is_installment, date, note, status, source, staff_id, staff_name,
-            tenant_id, branch, branch_id)
-         VALUES (?, ?, ?, ?, ?, 'COURSE', ?, ?, 0, ?, ?, 'paid', 'staff', ?, ?, ?, ?, ?)`,
-        [paymentId, paySub.id, paymentCourseId, Number(firstPayment.amount), currency,
-         firstPayment.paymentMethod || null, firstPayment.transactionId || null, paymentDate,
-         firstPayment.note || null, req.staffRecord?.id || null,
-         req.staffRecord?.name || req.user?.email || null, tenantId, paymentBranch, paymentBranchId]
+           (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
+             transaction_id, is_installment, date, note, status, source, staff_id, staff_name,
+             tenant_id, branch, branch_id, course_expected)
+         VALUES (?, ?, ?, ?, ?, ?, 'COURSE', ?, ?, 0, ?, ?, ?, 'staff', ?, ?, ?, ?, ?, ?)`,
+        [paymentId, paySub.id, paymentCourseId, paymentBundleId, amount, currency,
+         paymentMethod, firstPayment.transactionId ? String(firstPayment.transactionId).slice(0, 191) : null, paymentDate,
+         firstPayment.note ? String(firstPayment.note).slice(0, 2000) : null, firstPaymentStatus, req.staffRecord?.id || null,
+         req.staffRecord?.name || req.user?.email || null, tenantId, paymentBranch, paymentBranchId, courseExpected]
       );
-      const journalId = await postPaymentJournal({
-        paymentId, amount: Number(firstPayment.amount), currency, payType: 'COURSE',
-        date: paymentDate, actor: req.user?.email || 'create-account', tenantId,
-      }, conn);
-      if (!journalId) throw new Error('First payment journal posting failed');
+      if (firstPaymentStatus === 'paid') {
+        const journalId = await postPaymentJournal({
+          paymentId, amount, currency, payType: 'COURSE',
+          date: paymentDate, actor: req.user?.email || 'create-account', tenantId,
+        }, conn);
+        if (!journalId) throw new Error('First payment journal posting failed');
+      }
     }
 
+    const [[responseSubscriber]] = await conn.execute(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
+      [tenantId, normEmail]
+    );
+    if (!responseSubscriber) throw new Error('Subscriber account projection was not created');
+    createdSubscriberId = responseSubscriber.id;
     await conn.commit();
+    if (existing) invalidateIdentity(tenantId, existing.id, normEmail);
 
     // Send welcome email with new password (best-effort, outside the transaction)
     try {
@@ -546,10 +584,21 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       logger.warn('[create-account] email failed:', mailErr.message);
     }
 
-    res.json({ ok: true, action, email: normEmail, tempPass });
+    res.json({
+      ok: true,
+      action,
+      email: normEmail,
+      tempPass,
+      subscriberId: createdSubscriberId,
+      firstPaymentStatus,
+      approvalRequired: firstPaymentStatus === 'pending',
+    });
   } catch (e) {
     await conn.rollback().catch(() => {});
     logger.error('[create-account]', e.message);
+    if (e.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Duplicate email, phone, or payment transaction reference' });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
   finally { conn.release(); }
@@ -596,7 +645,11 @@ router.get('/api/admin/missing-accounts', requireAuth, requireAdmin, async (req,
 });
 
 // POST /api/admin/bulk-create-accounts — create accounts for subscribers without one
-router.post('/api/admin/bulk-create-accounts', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
+router.post(
+  '/api/admin/bulk-create-accounts',
+  requireAuth, requireAdmin, bulkOperationLimiter,
+  requireTenantQuota('users', { increment: req => Math.min(parseInt(req.body?.limit) || 50, 200) }),
+  async (req, res) => {
   const limit = Math.min(parseInt(req.body?.limit) || 50, 200);
   const conn = await pool.getConnection();
   try {
@@ -607,12 +660,10 @@ router.post('/api/admin/bulk-create-accounts', requireAuth, requireAdmin, bulkOp
        LIMIT ?`, [req.tenantId, limit]
     );
     let created = 0, failed = 0, emailsSent = 0;
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     for (const sub of rows) {
       const normEmail = sub.email.toLowerCase().trim();
       try {
-        let tempPass = '';
-        for (let i = 0; i < 8; i++) tempPass += chars[Math.floor(Math.random() * chars.length)];
+        const tempPass = generateTemporaryPassword();
         const hash = await bcrypt.hash(tempPass, 12);
         const displayName = (sub.name || normEmail).trim();
         await conn.execute(
@@ -661,9 +712,9 @@ router.post('/api/auth/login', loginLimiter, requireDb,
   let conn;
   try {
     conn = await pool.getConnection();
-    await ensureUsersTable(conn);
     const [rows] = await conn.execute(
-      'SELECT id, email, name, password_hash FROM users WHERE tenant_id=? AND email = ? AND is_active = 1',
+      `SELECT id, email, name, password_hash, session_version, totp_enabled
+       FROM users WHERE tenant_id=? AND email = ? AND is_active = 1`,
       [req.tenantId, email.toLowerCase().trim()]);
     if (rows.length === 0) {
       // No users record — check if they exist as a subscriber (admin-added clients)
@@ -672,6 +723,8 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1',
         [req.tenantId, email.toLowerCase().trim()]
       );
+      conn.release();
+      conn = null;
       if (subExists) {
         logger.info('[login] subscriber exists but no users record — directing to reset:', email.toLowerCase().trim());
         await logLoginAttempt({ email: email.toLowerCase().trim(), req, status: 'failed', failureReason: 'password_not_set' });
@@ -685,6 +738,11 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const user = rows[0];
+    // Do not hold a scarce MySQL connection while bcrypt runs or while
+    // logLoginAttempt acquires its own connection. At pool-sized login bursts
+    // that otherwise forms a circular wait and every request times out.
+    conn.release();
+    conn = null;
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       logger.info('[login] wrong password for:', email.toLowerCase().trim());
@@ -692,21 +750,29 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     // ── Admin 2FA: check if this user is a staff member with TOTP enabled ──
-    const [[staffWith2FA]] = await pool.query(
-      'SELECT id, totp_enabled FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND totp_enabled=1 LIMIT 1',
-      [req.tenantId, user.email?.toLowerCase().trim()]
-    ).catch(() => [[]]);
-    if (staffWith2FA?.totp_enabled) {
+    if (user.totp_enabled) {
       // Issue a short-lived "pending" token — full session not granted until TOTP verified
+      const loginIp = getClientIp(req);
       const pendingToken = jwt.sign(
-        { uid: user.id, email: user.email, tid: req.tenantId || 'tenant-default', purpose: 'totp_pending', jti: uuidv4() },
+        {
+          uid: user.id, email: user.email, tid: req.tenantId || 'tenant-default',
+          sv: Number(user.session_version), iph: hashClientIp(loginIp),
+          purpose: 'totp_pending', jti: uuidv4(),
+        },
         JWT_SECRET,
         { expiresIn: '5m' }
       );
       await logLoginAttempt({ userId: user.id, email: user.email, req, status: '2fa_pending' });
       return res.json({ ok: false, totpRequired: true, pendingToken });
     }
-    const token = jwt.sign({ uid: user.id, email: user.email, tid: req.tenantId || 'tenant-default', jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    const session = await rotateSingleSession(pool, {
+      userId: user.id, tenantId: req.tenantId || 'tenant-default', req,
+    });
+    invalidateIdentity(req.tenantId, user.id, user.email);
+    const token = signAccessToken({
+      uid: user.id, email: user.email, tenantId: req.tenantId || 'tenant-default',
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+    });
     // Link subscriber record to this user account (best-effort)
     pool.query(
       `UPDATE subscribers SET firebase_uid = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND firebase_uid IS NULL LIMIT 1`,
@@ -721,8 +787,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // Only real paid subscribers (created by admin staff) should appear in the subscribers table.
     // Unenrolled users will see the "حسابك قيد المراجعة" screen after login — this is intentional.
     // Set httpOnly cookie (secure, 7-day expiry) + return token in body for backward compat
-    const cookieOpts = 'HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure';
-    res.setHeader('Set-Cookie', `authToken=${token}; ${cookieOpts}`);
+    setAuthCookie(res, token);
     await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'success' });
     res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
   } catch (err) {
@@ -737,9 +802,12 @@ router.post('/api/auth/login', loginLimiter, requireDb,
 // POST /api/auth/logout — invalidate token immediately (client must clear storage too)
 router.post('/api/auth/logout', requireAuth, async (req, res) => {
   const { jti } = req.user || {};
-  if (jti) await revokeToken(jti, Date.now() + 30 * 24 * 60 * 60 * 1000); // expire after 30d max
-  // Clear httpOnly cookie
-  res.setHeader('Set-Cookie', 'authToken=; HttpOnly; Path=/; Max-Age=0; SameSite=None; Secure');
+  if (jti) await revokeToken(jti, tokenExpiryMs(req.user));
+  await closeSingleSession(pool, {
+    userId: req.user.uid, tenantId: req.tenantId, sessionId: req.user.session_id,
+  });
+  invalidateIdentity(req.tenantId, req.user.uid, req.user.email);
+  clearAuthCookie(res);
   res.json({ ok: true });
 });
 
@@ -829,28 +897,56 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
       return res.json({ ok: true });
     }
 
-    // Expire previous unused OTPs for this email
-    await pool.query("UPDATE otp_codes SET used=1 WHERE tenant_id=? AND email=? AND type='password_reset' AND used=0", [req.tenantId, safeEmail]).catch(() => {});
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp = generateNumericCode();
+    const otpId = uuidv4();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
-    await pool.query(
-      `INSERT INTO otp_codes (id, tenant_id, user_id, email, code, type, expires_at) VALUES (?,?,?,?,?,?,?)`,
-      [uuidv4(), req.tenantId, user.id, safeEmail, otp, 'password_reset', expiresAt]
-    );
+    const otpConn = await pool.getConnection();
     try {
-      await sendEmail(safeEmail, 'رمز إعادة تعيين كلمة المرور',
+      await otpConn.beginTransaction();
+      await otpConn.query(
+        "UPDATE otp_codes SET used=1 WHERE tenant_id=? AND email=? AND type='password_reset' AND used=0",
+        [req.tenantId, safeEmail]
+      );
+      await otpConn.query(
+        `INSERT INTO otp_codes (id, tenant_id, user_id, email, code, type, expires_at) VALUES (?,?,?,?,?,?,?)`,
+        [otpId, req.tenantId, user.id, safeEmail, hashOtp({
+          tenantId: req.tenantId, email: safeEmail, type: 'password_reset', code: otp,
+        }), 'password_reset', expiresAt]
+      );
+      await otpConn.commit();
+    } catch (error) {
+      await otpConn.rollback().catch(() => {});
+      throw error;
+    } finally {
+      otpConn.release();
+    }
+    try {
+      const delivery = await sendEmail(safeEmail, 'رمز إعادة تعيين كلمة المرور',
         `<p>أهلاً ${user.name || ''}،</p>
          <p>تلقّينا طلب إعادة تعيين كلمة المرور لحسابك.</p>
          <div class="otp-box">${otp}</div>
          <p style="color:#888;font-size:13px;text-align:center;">صالح لمدة 15 دقيقة فقط. إذا لم تطلب ذلك، تجاهل هذا البريد.</p>`
       );
+      await pool.query(
+        `UPDATE otp_codes
+            SET delivery_status='accepted', provider_message_id=?, sent_at=NOW()
+          WHERE id=? AND tenant_id=?`,
+        [String(delivery.messageId || '').slice(0, 255) || null, otpId, req.tenantId]
+      );
       logger.info('[forgot-password] OTP sent to:', safeEmail);
       res.json({ ok: true });
     } catch (mailErr) {
       logger.error('[forgot-password] SMTP error for', safeEmail, ':', mailErr.message);
-      // Invalidate the OTP we just created since email didn't go out
-      await pool.query("UPDATE otp_codes SET used=1 WHERE tenant_id=? AND email=? AND type='password_reset' AND used=0", [req.tenantId, safeEmail]).catch(() => {});
-      res.status(422).json({ error: 'فشل إرسال البريد الإلكتروني — تحقق من البريد الصحيح أو تواصل مع الدعم' });
+      await pool.query(
+        `UPDATE otp_codes
+            SET used=1, delivery_status='failed', delivery_error_code=?
+          WHERE id=? AND tenant_id=?`,
+        [String(mailErr.code || 'SMTP_REJECTED').slice(0, 80), otpId, req.tenantId]
+      ).catch(() => {});
+      res.status(503).json({
+        error: 'تعذر تسليم رسالة الاسترجاع الآن؛ لم يتم تفعيل أي كود. حاول مرة أخرى أو تواصل مع الدعم',
+        code: 'RESET_EMAIL_NOT_DELIVERED',
+      });
     }
   } catch (e) { logger.error('[forgot-password]', e); res.status(500).json({ error: 'فشل الإرسال' }); }
 });
@@ -860,17 +956,60 @@ router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   const { email, code, type = 'password_reset' } = req.body || {};
   if (!email || !code) return res.status(400).json({ error: 'البريد والرمز مطلوبان' });
   const safeEmail = email.toLowerCase().trim();
+  let conn;
   try {
-    const [[row]] = await pool.query(
-      `SELECT id, user_id FROM otp_codes WHERE tenant_id=? AND email=? AND code=? AND type=? AND used=0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`,
-      [req.tenantId, safeEmail, String(code).trim(), type]
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [[row]] = await conn.query(
+      `SELECT id, user_id FROM otp_codes
+        WHERE tenant_id=? AND email=? AND code=? AND type=? AND used=0
+          AND delivery_status='accepted' AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [req.tenantId, safeEmail, hashOtp({
+        tenantId: req.tenantId, email: safeEmail, type, code,
+      }), type]
     );
-    if (!row) return res.status(400).json({ error: 'الرمز غير صحيح أو منتهي الصلاحية' });
-    await pool.query('UPDATE otp_codes SET used=1 WHERE id=? AND tenant_id=?', [row.id, req.tenantId]);
+    if (!row) {
+      await conn.rollback();
+      conn.release();
+      conn = null;
+      return res.status(400).json({ error: 'الرمز غير صحيح أو منتهي الصلاحية' });
+    }
+    const [consumed] = await conn.query(
+      'UPDATE otp_codes SET used=1 WHERE id=? AND tenant_id=? AND used=0',
+      [row.id, req.tenantId]
+    );
+    if (consumed.affectedRows !== 1) throw new Error('OTP already consumed');
     // Issue a short-lived reset token (5 min)
-    const resetToken = jwt.sign({ uid: row.user_id, tid: req.tenantId, purpose: 'reset', jti: uuidv4() }, JWT_SECRET, { expiresIn: '5m' });
+    const [[user]] = await conn.query(
+      'SELECT session_version FROM users WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1',
+      [row.user_id, req.tenantId]
+    );
+    if (!user) {
+      await conn.rollback();
+      conn.release();
+      conn = null;
+      return res.status(400).json({ error: 'الحساب غير متاح' });
+    }
+    await conn.commit();
+    conn.release();
+    conn = null;
+    const resetToken = jwt.sign(
+      {
+        uid: row.user_id, tid: req.tenantId, sv: Number(user.session_version),
+        purpose: 'reset', jti: uuidv4(),
+      },
+      JWT_SECRET,
+      { expiresIn: '5m' }
+    );
     res.json({ ok: true, resetToken });
-  } catch (e) { res.status(500).json({ error: 'فشل التحقق' }); }
+  } catch (e) {
+    if (conn) {
+      await conn.rollback().catch(() => {});
+      conn.release();
+    }
+    res.status(500).json({ error: 'فشل التحقق' });
+  }
 });
 
 // POST /api/auth/reset-password — set new password using reset token
@@ -883,51 +1022,60 @@ router.post('/api/auth/reset-password', loginLimiter, async (req, res) => {
     if (payload.purpose !== 'reset') return res.status(400).json({ error: 'رمز غير صالح' });
     const hash = await bcrypt.hash(newPassword, 12);
     if (payload.tid !== req.tenantId) return res.status(400).json({ error: 'Tenant mismatch' });
-    const [updated] = await pool.query('UPDATE users SET password_hash=? WHERE id=? AND tenant_id=?', [hash, payload.uid, payload.tid]);
+    const [updated] = await pool.query(
+      `UPDATE users
+       SET password_hash=?, session_version=session_version+1,
+           active_session_id=NULL, active_session_ip_hash=NULL,
+           active_session_started_at=NULL, active_session_last_seen_at=NULL
+       WHERE id=? AND tenant_id=? AND session_version=?`,
+      [hash, payload.uid, payload.tid, Number(payload.sv)]
+    );
     if (!updated.affectedRows) return res.status(400).json({ error: 'Invalid reset token' });
+    invalidateIdentity(payload.tid, payload.uid);
     res.json({ ok: true });
   } catch { res.status(400).json({ error: 'انتهت صلاحية الرمز' }); }
 });
 
-// POST /api/auth/verify-2fa — verify admin 2FA OTP and issue full JWT
-router.post('/api/auth/verify-2fa', otpLimiter, async (req, res) => {
-  const { tempToken, code } = req.body || {};
-  if (!tempToken || !code) return res.status(400).json({ error: 'البيانات مطلوبة' });
-  try {
-    const payload = jwt.verify(tempToken, JWT_SECRET);
-    if (payload.purpose !== '2fa_pending') return res.status(400).json({ error: 'رمز غير صالح' });
-    const [[row]] = await pool.query(
-      `SELECT id FROM otp_codes WHERE tenant_id=? AND email=? AND code=? AND type='2fa' AND used=0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`,
-      [payload.tid || req.tenantId, payload.email, String(code).trim()]
-    );
-    if (!row) return res.status(400).json({ error: 'الرمز غير صحيح أو منتهي الصلاحية' });
-    await pool.query('UPDATE otp_codes SET used=1 WHERE id=? AND tenant_id=?', [row.id, payload.tid || req.tenantId]);
-    // Issue full JWT
-    const token = jwt.sign({ uid: payload.uid, email: payload.email, tid: payload.tid || req.tenantId || 'tenant-default', jti: uuidv4() }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    pool.query(`UPDATE subscribers SET firebase_uid=? WHERE tenant_id=? AND LOWER(TRIM(email))=? AND firebase_uid IS NULL LIMIT 1`, [payload.uid, payload.tid || req.tenantId, payload.email]).catch(() => {});
-    const cookieOpts = 'HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure';
-    res.setHeader('Set-Cookie', `authToken=${token}; ${cookieOpts}`);
-    const [[user]] = await pool.query('SELECT name FROM subscribers WHERE tenant_id=? AND firebase_uid = ? LIMIT 1', [payload.tid || req.tenantId, payload.uid]).catch(() => [[null]]);
-    res.json({ ok: true, token, user: { uid: payload.uid, email: payload.email, displayName: user?.name || '' } });
-  } catch { res.status(400).json({ error: 'انتهت صلاحية الجلسة، أعد تسجيل الدخول' }); }
-});
-
 // PUT /api/auth/update-profile
 router.put('/api/auth/update-profile', requireAuth, async (req, res) => {
-  const { name } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'Name required' });
+  const { name, nameEn } = req.body || {};
+  const hasName = typeof name === 'string' && name.trim().length > 0;
+  const hasNameEn = typeof nameEn === 'string' && nameEn.trim().length > 0;
+  if (!hasName && !hasNameEn) return res.status(400).json({ error: 'Name or English name required' });
   const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
-    const trimmedName = (name || '').trim();
-    // Update auth user record
-    await conn.execute('UPDATE users SET name = ? WHERE id = ? AND tenant_id=?', [trimmedName, req.user.uid, req.tenantId]);
-    // Sync name to subscribers table so CRM stays consistent
-    await conn.execute(
-      'UPDATE subscribers SET name = ? WHERE tenant_id=? AND email = ?',
-      [trimmedName, req.tenantId, req.user.email]
+    const safeName = hasName ? sanitize(name, 255) : null;
+    const safeNameEn = hasNameEn ? sanitize(nameEn, 255) : null;
+    const identityEmail = String(req.user.email || '').trim().toLowerCase();
+    await conn.beginTransaction();
+    transactionStarted = true;
+    if (safeName) {
+      await conn.execute('UPDATE users SET name = ? WHERE id = ? AND tenant_id=?', [safeName, req.user.uid, req.tenantId]);
+    }
+    const [subscriberUpdate] = await conn.execute(
+      `UPDATE subscribers
+          SET name=CASE WHEN ? IS NULL THEN name ELSE ? END,
+              crm_json=CASE WHEN ? IS NULL THEN crm_json
+                ELSE JSON_SET(
+                  CASE WHEN JSON_VALID(crm_json) THEN crm_json ELSE JSON_OBJECT() END,
+                  '$.nameEn', ?
+                )
+              END
+        WHERE tenant_id=?
+          AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?)))`,
+      [safeName, safeName, safeNameEn, safeNameEn, req.tenantId, req.user.uid, identityEmail]
     );
+    if (safeNameEn && !subscriberUpdate.affectedRows) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Subscriber profile not found' });
+    }
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true });
   } catch (err) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[auth/update-profile]', err);
     res.status(500).json({ error: 'Update failed' });
   } finally { if (conn) conn.release(); }
@@ -945,8 +1093,16 @@ router.put('/api/auth/update-password', requireAuth, async (req, res) => {
     const match = await bcrypt.compare(currentPassword, rows[0].password_hash);
     if (!match) return res.status(401).json({ error: 'Current password incorrect' });
     const hash = await bcrypt.hash(newPassword, 12);
-    await conn.execute('UPDATE users SET password_hash = ? WHERE id = ? AND tenant_id=?', [hash, req.user.uid, req.tenantId]);
-    res.json({ ok: true });
+    await conn.execute(
+      `UPDATE users SET password_hash = ?, session_version=session_version+1,
+        active_session_id=NULL, active_session_ip_hash=NULL,
+        active_session_started_at=NULL, active_session_last_seen_at=NULL
+       WHERE id = ? AND tenant_id=?`,
+      [hash, req.user.uid, req.tenantId]
+    );
+    invalidateIdentity(req.tenantId, req.user.uid, req.user.email);
+    clearAuthCookie(res);
+    res.json({ ok: true, reauthenticationRequired: true });
   } catch (err) {
     logger.error('[auth/update-password]', err);
     res.status(500).json({ error: 'Update failed' });
@@ -956,13 +1112,22 @@ router.put('/api/auth/update-password', requireAuth, async (req, res) => {
 // POST /api/admin/force-reset-password — direct password reset by email (super-admin only:
 // it can reset ANY account incl. admins, so online/daqqi managers must not have it).
 router.post('/api/admin/force-reset-password', requireAuth, requireSuperAdmin, async (req, res) => {
-  const { email, newPassword } = req.body || {};
-  if (!email || !newPassword) return res.status(400).json({ error: 'Email and new password required' });
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  const newPassword = generateTemporaryPassword();
   const conn = await pool.getConnection();
   try {
     const hash = await bcrypt.hash(newPassword, 12);
-    const [result] = await conn.execute('UPDATE users SET password_hash = ? WHERE tenant_id=? AND email = ?', [hash, req.tenantId, email.toLowerCase().trim()]);
+    const normalizedEmail = email.toLowerCase().trim();
+    const [result] = await conn.execute(
+      `UPDATE users SET password_hash = ?, session_version=session_version+1,
+        active_session_id=NULL, active_session_ip_hash=NULL,
+        active_session_started_at=NULL, active_session_last_seen_at=NULL
+       WHERE tenant_id=? AND email = ?`,
+      [hash, req.tenantId, normalizedEmail]
+    );
     if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+    invalidateIdentity(req.tenantId, '', normalizedEmail);
     res.json({ ok: true });
   } catch (err) {
     logger.error('[admin/force-reset-password]', err);
@@ -990,6 +1155,9 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
     const params = [];
     if (newEmail) { sets.push('email = ?'); params.push(newEmail.toLowerCase().trim()); }
     if (newPassword) { sets.push('password_hash = ?'); params.push(await bcrypt.hash(newPassword, 12)); }
+    sets.push('session_version = session_version + 1');
+    sets.push('active_session_id = NULL', 'active_session_ip_hash = NULL',
+      'active_session_started_at = NULL', 'active_session_last_seen_at = NULL');
     params.push(req.tenantId, currentEmail.toLowerCase().trim());
     const [result] = await conn.execute(`UPDATE users SET ${sets.join(', ')} WHERE tenant_id=? AND email = ?`, params);
     if (result.affectedRows === 0) {
@@ -1009,7 +1177,11 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
       // If email changed, sync subscribers table too
       await conn.execute('UPDATE subscribers SET email = ? WHERE id = ? AND tenant_id=?', [newEmail.toLowerCase().trim(), id, req.tenantId]);
     }
-    res.json({ ok: true });
+    if (result.affectedRows) {
+      invalidateIdentity(req.tenantId, '', currentEmail);
+      if (newEmail) invalidateIdentity(req.tenantId, '', newEmail);
+    }
+    res.json({ ok: true, temporaryPassword: newPassword });
   } catch (err) {
     logger.error('[admin/subscribers/credentials]', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -1019,17 +1191,17 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
 // NOTE: duplicate POST /api/auth/forgot-password (temp-password flow) removed.
 // The OTP-based flow above (loginLimiter, sends OTP code) is the correct active handler.
 
-// POST /api/auth/refresh  — issues a new 7-day token; revokes the old jti
+// POST /api/auth/refresh — rotate the access token and revoke the previous jti.
 router.post('/api/auth/refresh', requireAuth, async (req, res) => {
   try {
     const { jti: oldJti } = req.user || {};
-    if (oldJti) revokeToken(oldJti, Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const token = jwt.sign(
-      { uid: req.user.uid, email: req.user.email, tid: req.tenantId, jti: uuidv4() },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRY }
-    );
-    res.setHeader('Set-Cookie', `authToken=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure`);
+    if (oldJti) await revokeToken(oldJti, tokenExpiryMs(req.user));
+    const token = signAccessToken({
+      uid: req.user.uid, email: req.user.email, tenantId: req.tenantId,
+      sessionVersion: req.user.session_version, sessionId: req.user.session_id,
+      mfaVerified: req.user.mfa_verified,
+    });
+    setAuthCookie(res, token);
     res.json({ ok: true, token });
   } catch (e) {
     res.status(500).json({ error: 'Refresh failed' });
@@ -1045,8 +1217,8 @@ router.post('/api/auth/refresh', requireAuth, async (req, res) => {
 router.get('/api/auth/2fa/status', requireAuth, async (req, res) => {
   try {
     const [[row]] = await pool.query(
-      'SELECT totp_enabled FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
-      [req.tenantId, req.user.email?.toLowerCase().trim()]
+      'SELECT totp_enabled FROM users WHERE tenant_id=? AND id=? LIMIT 1',
+      [req.tenantId, req.user.uid]
     );
     res.json({ enabled: !!row?.totp_enabled });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -1055,19 +1227,32 @@ router.get('/api/auth/2fa/status', requireAuth, async (req, res) => {
 // POST /api/auth/2fa/setup — generate TOTP secret + QR code for current staff
 router.post('/api/auth/2fa/setup', requireAuth, async (req, res) => {
   try {
-    const { authenticator } = require('otplib');
+    const { generateSecret, generateURI } = require('otplib');
     const QRCode = require('qrcode');
     const email = req.user.email?.toLowerCase().trim();
-    const [[staff]] = await pool.query('SELECT id, name FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
-    if (!staff) return res.status(403).json({ error: 'Staff account not found' });
+    const [[user]] = await pool.query(
+      'SELECT id, name, totp_enabled FROM users WHERE tenant_id=? AND id=? AND is_active=1 LIMIT 1',
+      [req.tenantId, req.user.uid]
+    );
+    if (!user) return res.status(403).json({ error: 'User account not found' });
+    if (user.totp_enabled) {
+      return res.status(409).json({ error: '2FA is already enabled; disable it before creating a new secret' });
+    }
 
-    const secret = authenticator.generateSecret();
+    const secret = generateSecret();
     const issuer = 'مهاد نفسي';
-    const otpAuthUrl = authenticator.keyuri(email, issuer, secret);
+    const otpAuthUrl = generateURI({ label: email, issuer, secret });
     const qrDataUrl = await QRCode.toDataURL(otpAuthUrl);
 
     // Store secret but don't enable yet — only enable after first successful verify
-    await pool.query('UPDATE staff SET totp_secret=?, totp_enabled=0 WHERE id=? AND tenant_id=?', [secret, staff.id, req.tenantId]);
+    await pool.query(
+      'UPDATE users SET totp_secret=?, totp_enabled=0 WHERE id=? AND tenant_id=?',
+      [secret, user.id, req.tenantId]
+    );
+    await pool.query(
+      'UPDATE staff SET totp_secret=?, totp_enabled=0 WHERE tenant_id=? AND LOWER(TRIM(email))=?',
+      [secret, req.tenantId, email]
+    ).catch(() => {});
     res.json({ secret, qrDataUrl, otpAuthUrl });
   } catch (e) {
     logger.error('[2fa/setup]', e);
@@ -1080,16 +1265,37 @@ router.post('/api/auth/2fa/enable', requireAuth, loginLimiter, async (req, res) 
   try {
     const { token: totpToken } = req.body || {};
     if (!totpToken) return res.status(400).json({ error: 'TOTP token required' });
-    const { authenticator } = require('otplib');
+    const { verify } = require('otplib');
     const email = req.user.email?.toLowerCase().trim();
-    const [[staff]] = await pool.query('SELECT id, totp_secret FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
-    if (!staff?.totp_secret) return res.status(400).json({ error: 'Setup not initiated — call /2fa/setup first' });
+    const [[user]] = await pool.query(
+      'SELECT id, totp_secret, session_version FROM users WHERE tenant_id=? AND id=? AND is_active=1 LIMIT 1',
+      [req.tenantId, req.user.uid]
+    );
+    if (!user?.totp_secret) return res.status(400).json({ error: 'Setup not initiated — call /2fa/setup first' });
 
-    const valid = authenticator.verify({ token: String(totpToken), secret: staff.totp_secret });
+    const { valid } = await verify({
+      token: String(totpToken), secret: user.totp_secret, epochTolerance: 30,
+    });
     if (!valid) return res.status(400).json({ error: 'الرمز غير صحيح — تحقق من الوقت على جهازك' });
 
-    await pool.query('UPDATE staff SET totp_enabled=1 WHERE id=? AND tenant_id=?', [staff.id, req.tenantId]);
-    res.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
+    await pool.query(
+      'UPDATE users SET totp_enabled=1 WHERE id=? AND tenant_id=?',
+      [user.id, req.tenantId]
+    );
+    await pool.query(
+      'UPDATE staff SET totp_secret=?, totp_enabled=1 WHERE tenant_id=? AND LOWER(TRIM(email))=?',
+      [user.totp_secret, req.tenantId, email]
+    ).catch(() => {});
+    const session = await rotateSingleSession(pool, {
+      userId: user.id, tenantId: req.tenantId, req,
+    });
+    invalidateIdentity(req.tenantId, user.id, email);
+    const fullToken = signAccessToken({
+      uid: user.id, email, tenantId: req.tenantId,
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: true,
+    });
+    setAuthCookie(res, fullToken);
+    res.json({ ok: true, token: fullToken, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
   } catch (e) {
     logger.error('[2fa/enable]', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -1101,19 +1307,52 @@ router.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
   try {
     const { token: totpToken } = req.body || {};
     const email = req.user.email?.toLowerCase().trim();
-    const [[staff]] = await pool.query('SELECT id, totp_secret, totp_enabled FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
-    if (!staff) return res.status(403).json({ error: 'Staff account not found' });
+    const [[user]] = await pool.query(
+      'SELECT id, totp_secret, totp_enabled, session_version FROM users WHERE tenant_id=? AND id=? LIMIT 1',
+      [req.tenantId, req.user.uid]
+    );
+    if (!user) return res.status(403).json({ error: 'User account not found' });
+    const [[staff]] = await pool.query(
+      'SELECT role, permissions_json FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND is_active=1 LIMIT 1',
+      [req.tenantId, email]
+    ).catch(() => [[null]]);
+    const policy = await getMfaPolicy(req.tenantId);
+    const forcedAdmin = ADMIN_EMAILS.includes(req.user.email) || ADMIN_UIDS.includes(req.user.uid);
+    if (policy.enabled && (forcedAdmin || policyRequiresStaff(policy, staff))) {
+      return res.status(409).json({
+        error: 'لا يمكن تعطيل المصادقة الثنائية لأن سياسة أمان المؤسسة تفرضها على هذا الحساب',
+        code: 'MFA_POLICY_ENFORCED',
+      });
+    }
 
-    // Must provide valid TOTP to disable (unless admin override)
-    const isAdmin = ADMIN_EMAILS.includes(req.user.email);
-    if (!isAdmin && staff.totp_enabled) {
+    if (user.totp_enabled) {
       if (!totpToken) return res.status(400).json({ error: 'TOTP token required to disable 2FA' });
-      const { authenticator } = require('otplib');
-      const valid = authenticator.verify({ token: String(totpToken), secret: staff.totp_secret });
+      const { verify } = require('otplib');
+      const { valid } = await verify({
+        token: String(totpToken), secret: user.totp_secret, epochTolerance: 30,
+      });
       if (!valid) return res.status(400).json({ error: 'الرمز غير صحيح' });
     }
-    await pool.query('UPDATE staff SET totp_enabled=0, totp_secret=NULL WHERE id=? AND tenant_id=?', [staff.id, req.tenantId]);
-    res.json({ ok: true, message: 'تم تعطيل المصادقة الثنائية' });
+    await pool.query(
+      `UPDATE users
+       SET totp_enabled=0, totp_secret=NULL
+       WHERE id=? AND tenant_id=?`,
+      [user.id, req.tenantId]
+    );
+    await pool.query(
+      'UPDATE staff SET totp_enabled=0, totp_secret=NULL WHERE tenant_id=? AND LOWER(TRIM(email))=?',
+      [req.tenantId, email]
+    ).catch(() => {});
+    const session = await rotateSingleSession(pool, {
+      userId: user.id, tenantId: req.tenantId, req,
+    });
+    invalidateIdentity(req.tenantId, user.id, email);
+    const token = signAccessToken({
+      uid: user.id, email, tenantId: req.tenantId,
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+    });
+    setAuthCookie(res, token);
+    res.json({ ok: true, token, message: 'تم تعطيل المصادقة الثنائية' });
   } catch (e) {
     logger.error('[2fa/disable]', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -1126,7 +1365,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
   try {
     const { pendingToken, token: totpToken } = req.body || {};
     if (!pendingToken || !totpToken) return res.status(400).json({ error: 'pendingToken and token required' });
-    const { authenticator } = require('otplib');
+    const { verify } = require('otplib');
 
     // Decode the pending token (limited JWT issued before TOTP check)
     let payload;
@@ -1136,24 +1375,39 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
       return res.status(401).json({ error: 'رمز انتهت صلاحيته — أعد تسجيل الدخول' });
     }
     if (payload.purpose !== 'totp_pending') return res.status(400).json({ error: 'رمز غير صالح' });
+    if (!payload.iph || payload.iph !== hashClientIp(getClientIp(req))) {
+      return res.status(401).json({
+        error: 'يجب إكمال التحقق من نفس عنوان الاتصال الذي بدأ تسجيل الدخول',
+        code: 'SESSION_IP_MISMATCH',
+      });
+    }
 
-    const [[staff]] = await pool.query(
-      'SELECT id, totp_secret FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND totp_enabled=1 LIMIT 1',
-      [payload.tid || req.tenantId, payload.email?.toLowerCase().trim()]
+    const tenantId = payload.tid || req.tenantId;
+    const [[user]] = await pool.query(
+      `SELECT session_version, totp_secret FROM users
+       WHERE id=? AND tenant_id=? AND is_active=1 AND totp_enabled=1 LIMIT 1`,
+      [payload.uid, tenantId]
     );
-    if (!staff?.totp_secret) return res.status(400).json({ error: 'TOTP not configured' });
+    if (!user?.totp_secret) return res.status(400).json({ error: 'TOTP not configured' });
+    if (!user || Number(payload.sv) !== Number(user.session_version)) {
+      return res.status(401).json({ error: 'انتهت صلاحية الجلسة — أعد تسجيل الدخول', code: 'SESSION_REVOKED' });
+    }
 
-    const valid = authenticator.verify({ token: String(totpToken), secret: staff.totp_secret });
+    const { valid } = await verify({
+      token: String(totpToken), secret: user.totp_secret, epochTolerance: 30,
+    });
     if (!valid) return res.status(401).json({ error: 'رمز المصادقة غير صحيح' });
 
     // Issue full JWT
-    const fullToken = jwt.sign(
-      { uid: payload.uid, email: payload.email, tid: payload.tid || req.tenantId || 'tenant-default', jti: uuidv4() },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRY }
-    );
-    const cookieOpts = 'HttpOnly; Path=/; Max-Age=604800; SameSite=None; Secure';
-    res.setHeader('Set-Cookie', `authToken=${fullToken}; ${cookieOpts}`);
+    const session = await rotateSingleSession(pool, {
+      userId: payload.uid, tenantId, req,
+    });
+    invalidateIdentity(tenantId, payload.uid, payload.email);
+    const fullToken = signAccessToken({
+      uid: payload.uid, email: payload.email, tenantId,
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: true,
+    });
+    setAuthCookie(res, fullToken);
     await logLoginAttempt({ userId: payload.uid, email: payload.email, req, tenantId: payload.tid || req.tenantId, status: '2fa_success' });
     res.json({ ok: true, token: fullToken });
   } catch (e) {

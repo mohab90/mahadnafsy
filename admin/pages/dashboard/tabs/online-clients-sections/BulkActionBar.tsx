@@ -1,10 +1,9 @@
 import React from 'react';
 import type { Course, StaffMember, SubscriberItem } from '../../../../types';
-import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type BulkAction = null|'pause'|'finish'|'delete'|'refund'|'assign';
+type BulkAction = null|'pause'|'finish'|'delete'|'assign';
 
 interface Props {
   collOnlineSelected: Set<string>;
@@ -20,8 +19,8 @@ interface Props {
   actionSubscribers: SubscriberItem[];
   shouldUseScopedSubscribers: boolean;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
-  deleteSubscriber: (id: string) => void;
-  updateSubscriber: (s: SubscriberItem) => void;
+  deleteSubscriber: (id: string) => Promise<boolean>;
+  updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
   notify: NotifyFn;
 }
 
@@ -30,6 +29,7 @@ export function BulkActionBar({
   collOnlineBulkAssignTo, setCollOnlineBulkAssignTo, isAdmin, staffMembers, filtered, courses,
   actionSubscribers, shouldUseScopedSubscribers, setSalesOwnSubscribers, deleteSubscriber, updateSubscriber, notify,
 }: Props) {
+  const [saving, setSaving] = React.useState(false);
   if (collOnlineSelected.size === 0 && !collOnlineBulkConfirm) return null;
 
   return (
@@ -40,7 +40,6 @@ export function BulkActionBar({
           <span className="flex-1"/>
           <button onClick={() => setCollOnlineBulkConfirm('pause')} className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 transition">⏸ وقف</button>
           <button onClick={() => setCollOnlineBulkConfirm('finish')} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition">✅ إنهاء</button>
-          <button onClick={() => setCollOnlineBulkConfirm('refund')} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition">↩ استرداد</button>
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('assign')} className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition">👤 تعيين مسئول</button>}
           {isAdmin && <button onClick={() => setCollOnlineBulkConfirm('delete')} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">🗑 حذف</button>}
           <button onClick={() => {
@@ -63,7 +62,6 @@ export function BulkActionBar({
             <div className="text-lg font-bold mb-3 text-gray-800">
               {collOnlineBulkConfirm === 'delete' ? '🗑 حذف العملاء المحددين'
                 : collOnlineBulkConfirm === 'pause' ? '⏸ وقف العملاء المحددين'
-                : collOnlineBulkConfirm === 'refund' ? '↩ استرداد العملاء المحددين'
                 : collOnlineBulkConfirm === 'assign' ? '👤 تعيين مسئول تحصيل'
                 : '✅ إنهاء العملاء المحددين'}
             </div>
@@ -72,7 +70,7 @@ export function BulkActionBar({
                 ? `هل أنت متأكد من حذف ${collOnlineSelected.size} عميل؟ هذا الإجراء لا يمكن التراجع عنه.`
                 : collOnlineBulkConfirm === 'assign'
                 ? `اختر مسئول التحصيل الجديد لـ ${collOnlineSelected.size} عميل:`
-                : `هل تريد تغيير حالة ${collOnlineSelected.size} عميل إلى "${collOnlineBulkConfirm === 'pause' ? 'متوقف' : collOnlineBulkConfirm === 'refund' ? 'مسترد' : 'منتهي'}"؟`}
+                : `هل تريد تغيير حالة ${collOnlineSelected.size} عميل إلى "${collOnlineBulkConfirm === 'pause' ? 'متوقف' : 'منتهي'}"؟`}
             </p>
             {collOnlineBulkConfirm === 'assign' && (
               <select value={collOnlineBulkAssignTo} onChange={e=>setCollOnlineBulkAssignTo(e.target.value)}
@@ -87,36 +85,49 @@ export function BulkActionBar({
               <button onClick={() => { setCollOnlineBulkConfirm(null); setCollOnlineBulkAssignTo(''); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">إلغاء</button>
               <button onClick={async () => {
                 const ids = [...collOnlineSelected];
-                if (collOnlineBulkConfirm === 'delete') {
-                  for (const id of ids) {
-                    if (isAdmin) deleteSubscriber(id);
-                    else await mysqlAdmin.deleteSubscriber(id).catch(()=>{});
+                const succeeded = new Set<string>();
+                const failed = new Set<string>();
+                setSaving(true);
+                try {
+                  if (collOnlineBulkConfirm === 'delete') {
+                    for (const id of ids) {
+                      if (await deleteSubscriber(id)) succeeded.add(id);
+                      else failed.add(id);
+                    }
+                    if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.filter(s => !succeeded.has(s.id)));
+                  } else if (collOnlineBulkConfirm === 'assign') {
+                    if (!collOnlineBulkAssignTo) return;
+                    for (const id of ids) {
+                      const sub = actionSubscribers.find(s=>s.id===id);
+                      if (sub && await updateSubscriber({ ...sub, collectionStaffId: collOnlineBulkAssignTo })) succeeded.add(id);
+                      else failed.add(id);
+                    }
+                    if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>succeeded.has(s.id)?{...s,collectionStaffId:collOnlineBulkAssignTo}:s));
+                  } else {
+                    const newStatus = collOnlineBulkConfirm === 'pause' ? 'paused' : 'finished';
+                    for (const id of ids) {
+                      const sub = actionSubscribers.find(s=>s.id===id);
+                      if (sub && await updateSubscriber({ ...sub, clientStatus: newStatus })) succeeded.add(id);
+                      else failed.add(id);
+                    }
+                    if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>succeeded.has(s.id)?{...s,clientStatus:newStatus}:s));
                   }
-                  if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev => prev.filter(s => !collOnlineSelected.has(s.id)));
-                } else if (collOnlineBulkConfirm === 'assign') {
-                  if (!collOnlineBulkAssignTo) return;
-                  for (const id of ids) {
-                    const sub = actionSubscribers.find(s=>s.id===id);
-                    if (sub) updateSubscriber({ ...sub, collectionStaffId: collOnlineBulkAssignTo });
-                  }
-                  if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>collOnlineSelected.has(s.id)?{...s,collectionStaffId:collOnlineBulkAssignTo}:s));
-                } else {
-                  const newStatus = collOnlineBulkConfirm === 'pause' ? 'paused' : collOnlineBulkConfirm === 'refund' ? 'refunded' : 'finished';
-                  for (const id of ids) {
-                    const sub = actionSubscribers.find(s=>s.id===id);
-                    if (sub) updateSubscriber({ ...sub, clientStatus: newStatus });
-                  }
-                  if (shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>collOnlineSelected.has(s.id)?{...s,clientStatus:newStatus}:s));
+                  setCollOnlineSelected(failed);
+                  setCollOnlineBulkConfirm(null);
+                  setCollOnlineBulkAssignTo('');
+                  notify(
+                    failed.size > 0 ? 'error' : 'success',
+                    failed.size > 0
+                      ? `تم تنفيذ ${succeeded.size} وفشل ${failed.size}. بقيت السجلات الفاشلة محددة لإعادة المحاولة.`
+                      : `✅ تم تنفيذ الإجراء على ${succeeded.size} عميل`
+                  );
+                } finally {
+                  setSaving(false);
                 }
-                setCollOnlineSelected(new Set());
-                setCollOnlineBulkConfirm(null);
-                setCollOnlineBulkAssignTo('');
-                notify('success', `✅ تم تنفيذ الإجراء على ${ids.length} عميل`);
-              }} disabled={collOnlineBulkConfirm==='assign'&&!collOnlineBulkAssignTo}
+              }} disabled={saving || (collOnlineBulkConfirm==='assign'&&!collOnlineBulkAssignTo)}
                 className={`px-4 py-2 text-white rounded-lg text-sm font-bold disabled:opacity-40 ${
                   collOnlineBulkConfirm==='delete'?'bg-red-600 hover:bg-red-700':
                   collOnlineBulkConfirm==='assign'?'bg-purple-600 hover:bg-purple-700':
-                  collOnlineBulkConfirm==='refund'?'bg-orange-500 hover:bg-orange-600':
                   'bg-blue-600 hover:bg-blue-700'}`}>تأكيد</button>
             </div>
           </div>

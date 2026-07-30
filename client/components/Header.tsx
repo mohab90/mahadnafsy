@@ -1,36 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Menu, X, Globe, LogIn, LogOut, User } from 'lucide-react';
-import { Currency } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import GlobalSearch from './GlobalSearch';
 
 const FALLBACK_LOGO = 'https://h.top4top.io/p_3734xfq501.png';
 
 const Header: React.FC = () => {
-  const { currency, setCurrency, authUser, isAdmin, logout, content } = useSiteData();
+  const { currency, authUser, logout, content } = useSiteData();
   const logoUrl = content['institute.logo'] || FALLBACK_LOGO;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currencyOpen, setCurrencyOpen] = useState(false);
-  const currencyRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-
-  // Close currency dropdown when clicking outside
-  useEffect(() => {
-    if (!currencyOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (currencyRef.current && !currencyRef.current.contains(e.target as Node)) {
-        setCurrencyOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [currencyOpen]);
-
-  const selectCurrency = (c: Currency) => {
-    setCurrency(c);
-    setCurrencyOpen(false);
-  };
 
   const handleLogout = () => {
     logout();
@@ -62,24 +42,13 @@ const Header: React.FC = () => {
           {/* Actions */}
           <div className="hidden lg:flex items-center gap-4">
             <GlobalSearch />
-            {isAdmin && (
-            <div className="relative" ref={currencyRef}>
-              <button
-                onClick={() => setCurrencyOpen(p => !p)}
-                className="flex items-center gap-1 text-sm text-gray-600 hover:text-primary-600 border px-3 py-1 rounded-full"
-              >
+            <div
+              className="flex items-center gap-1 text-sm text-gray-600 border px-3 py-1 rounded-full"
+              title="العملة محددة تلقائيًا حسب موقع الاتصال"
+            >
                 <Globe size={16} />
-                <span>{currency === 'EGP' ? '🇪🇬 مصر' : currency === 'SAR' ? '🇸🇦 السعودية' : '🌐 دولي'}</span>
-              </button>
-              {currencyOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-white shadow-xl rounded-xl overflow-hidden border border-gray-100 z-50">
-                  <button onClick={() => selectCurrency('EGP')} className={`flex items-center gap-2 w-full text-right px-4 py-2.5 hover:bg-gray-50 text-sm ${currency === 'EGP' ? 'bg-primary-50 text-primary-700 font-bold' : ''}`}>🇪🇬 مصر (EGP)</button>
-                  <button onClick={() => selectCurrency('SAR')} className={`flex items-center gap-2 w-full text-right px-4 py-2.5 hover:bg-gray-50 text-sm ${currency === 'SAR' ? 'bg-primary-50 text-primary-700 font-bold' : ''}`}>🇸🇦 السعودية (SAR)</button>
-                  <button onClick={() => selectCurrency('USD')} className={`flex items-center gap-2 w-full text-right px-4 py-2.5 hover:bg-gray-50 text-sm ${currency === 'USD' ? 'bg-primary-50 text-primary-700 font-bold' : ''}`}>🌐 دولي (USD)</button>
-                </div>
-              )}
+                <span>{currency === 'EGP' ? 'مصر (EGP)' : currency === 'SAR' ? 'السعودية (SAR)' : 'دولي (USD)'}</span>
             </div>
-            )}
 
             {authUser ? (
               <div className="flex items-center gap-2">
@@ -131,13 +100,10 @@ const Header: React.FC = () => {
                 <LogIn size={16} /> تسجيل دخول
               </Link>
             )}
-            {isAdmin && (
-            <div className="flex gap-2 pt-2 border-t">
-              <button onClick={() => { selectCurrency('EGP'); setIsMenuOpen(false); }} className={`flex-1 py-2 text-center text-sm rounded ${currency === 'EGP' ? 'bg-primary-100 text-primary-800 font-bold' : 'bg-gray-100'}`}>🇪🇬 مصر</button>
-              <button onClick={() => { selectCurrency('SAR'); setIsMenuOpen(false); }} className={`flex-1 py-2 text-center text-sm rounded ${currency === 'SAR' ? 'bg-primary-100 text-primary-800 font-bold' : 'bg-gray-100'}`}>🇸🇦 السعودية</button>
-              <button onClick={() => { selectCurrency('USD'); setIsMenuOpen(false); }} className={`flex-1 py-2 text-center text-sm rounded ${currency === 'USD' ? 'bg-primary-100 text-primary-800 font-bold' : 'bg-gray-100'}`}>🌐 دولي</button>
+            <div className="flex items-center gap-2 pt-3 border-t text-sm text-gray-600">
+              <Globe size={16} />
+              <span>العملة حسب موقعك: {currency}</span>
             </div>
-            )}
           </nav>
         )}
       </div>

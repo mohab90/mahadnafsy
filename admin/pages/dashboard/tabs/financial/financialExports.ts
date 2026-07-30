@@ -3,15 +3,21 @@ import type { ExpenseItem, OrderItem, SubscriberItem } from '../../../../types';
 
 type ContentMap = Record<string, string>;
 
-const exchangeRates = (content: ContentMap) => ({
-  sar: parseFloat(content['exchange.sar_to_egp'] || '13') || 13,
-  usd: parseFloat(content['exchange.usd_to_egp'] || '50') || 50,
-});
-
 const toEgpWith = (content: ContentMap) => {
-  const rates = exchangeRates(content);
-  return (amount: number, currency: string) =>
-    currency === 'EGP' ? amount : currency === 'SAR' ? amount * rates.sar : amount * rates.usd;
+  const rates = {
+    SAR: Number(content['exchange.sar_to_egp']),
+    USD: Number(content['exchange.usd_to_egp']),
+  };
+  const updatedAt = new Date(content['exchange.updated_at'] || '').getTime();
+  const fresh = Number.isFinite(updatedAt) && Date.now() - updatedAt <= 48 * 3600000 && updatedAt <= Date.now();
+  return (amount: number, currency: string) => {
+    const normalized = String(currency || 'EGP').toUpperCase();
+    if (normalized === 'EGP') return amount;
+    if (!fresh || !['SAR', 'USD'].includes(normalized) || !Number.isFinite(rates[normalized as 'SAR' | 'USD'])) {
+      throw new Error(`لا يمكن تصدير ${normalized} بدون سعر صرف حديث ومعتمد`);
+    }
+    return amount * rates[normalized as 'SAR' | 'USD'];
+  };
 };
 
 const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
@@ -33,8 +39,9 @@ export function exportFullFinancialReport(params: {
   orders: OrderItem[];
   subscribers: SubscriberItem[];
   expenses: ExpenseItem[];
+  officialTotals: { totalRevenue: number; totalExpenses: number; netProfit: number; margin: number };
 }) {
-  const { content, orders, subscribers, expenses } = params;
+  const { content, orders, subscribers, expenses, officialTotals } = params;
   const toEGP = toEgpWith(content);
   const sections: string[] = [];
   const row = (...cols: (string | number)[]) => cols.map(csvCell).join(',');
@@ -59,16 +66,17 @@ export function exportFullFinancialReport(params: {
     )
   );
 
-  const onlineRevenue = paidOnlineOrders.reduce((sum, order) => sum + toEGP(order.amount, order.currency), 0);
-  const manualRevenue = manualPayments.reduce((sum, payment) => sum + toEGP(payment.amount, payment.currency), 0);
-  const totalRevenue = onlineRevenue + manualRevenue;
-  const totalExpenses = expenses.reduce((sum, expense) => sum + toEGP(expense.amount, expense.currency), 0);
-  const netProfit = totalRevenue - totalExpenses;
+  paidOnlineOrders.forEach(order => { toEGP(order.amount, order.currency); });
+  manualPayments.forEach(payment => { toEGP(payment.amount, payment.currency); });
+  expenses.forEach(expense => { toEGP(expense.amount, expense.currency); });
+  const totalRevenue = officialTotals.totalRevenue;
+  const totalExpenses = officialTotals.totalExpenses;
+  const netProfit = officialTotals.netProfit;
   sections.push(row(
     Math.round(totalRevenue),
     Math.round(totalExpenses),
     Math.round(netProfit),
-    totalRevenue > 0 ? `${Math.round((netProfit / totalRevenue) * 100)}%` : '0%',
+    `${officialTotals.margin}%`,
   ));
   sections.push('');
 

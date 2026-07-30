@@ -3,6 +3,7 @@ import { Award, Star, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { mysqlClient } from '../../lib/mysqlapi';
 import type { ExtraCertificateType, ExtraCertificateRequest } from '../../types';
+import { useSiteData } from '../../context/SiteDataContext';
 
 interface CourseCompletionRow {
   course_id: string;
@@ -32,6 +33,7 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
   refreshMySubscriber,
 }) => {
   const navigate = useNavigate();
+  const { currency } = useSiteData();
 
   const [extraCertType, setExtraCertType] = useState<ExtraCertificateType | ''>('');
   const [extraCertCourseId, setExtraCertCourseId] = useState('');
@@ -73,23 +75,16 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
     if (!extraCertType) return null;
     const row = certPricingMap[extraCertType];
     if (!row) return null;
-    if (extraCertNationality === 'egyptian') {
-      const p = row.egyptianEGP || 0;
-      return p > 0 ? { price: p, currency: 'EGP' } : null;
-    }
-    if (extraCertNationality === 'non_egyptian_egypt') {
-      const p = row.residentEGP || 0;
-      return p > 0 ? { price: p, currency: 'EGP' } : null;
-    }
-    if (extraCertNationality === 'saudi_resident') {
+    if (currency === 'SAR') {
       const p = row.residentSAR || 0;
       return p > 0 ? { price: p, currency: 'SAR' } : null;
     }
-    if (extraCertNationality === 'international') {
+    if (currency === 'USD') {
       const p = row.foreignUSD || 0;
       return p > 0 ? { price: p, currency: 'USD' } : null;
     }
-    return null;
+    const p = extraCertNationality === 'egyptian' ? row.egyptianEGP : row.residentEGP;
+    return p > 0 ? { price: p, currency: 'EGP' } : null;
   };
   const autoPrice = getPriceAndCurrency();
 

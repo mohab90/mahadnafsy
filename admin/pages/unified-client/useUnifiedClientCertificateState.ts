@@ -6,14 +6,12 @@ export type ExtraCertificateDraft = {
   courseId: string;
   type: ExtraCertificateType | '';
   certExpected: string;
-  certPaid: string;
 };
 
 export const createExtraCertificateDraft = (): ExtraCertificateDraft => ({
   courseId: '',
   type: '',
   certExpected: '',
-  certPaid: '',
 });
 
 export const useUnifiedClientCertificateState = () => {

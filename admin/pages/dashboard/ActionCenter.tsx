@@ -15,15 +15,26 @@ const SEV: Record<string, string> = {
 export default function ActionCenter({ onNavigate }: { onNavigate?: (link: string) => void }) {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const load = () => {
     setLoading(true);
+    setLoadError(false);
     fetch('/api/admin/action-center', { credentials: 'include' })
-      .then(r => r.json()).then(setData).catch(() => {}).finally(() => setLoading(false));
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setData(await r.json());
+      }).catch(() => setLoadError(true)).finally(() => setLoading(false));
   };
   useEffect(load, []);
 
   if (loading) return <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center justify-center h-28"><Loader2 className="animate-spin text-indigo-500" size={22} /></div>;
+  if (loadError) return (
+    <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-red-700 flex items-center justify-between gap-3">
+      <span className="text-sm font-bold">تعذر تحميل مركز المهام من السيرفر.</span>
+      <button onClick={load} className="text-xs underline">إعادة المحاولة</button>
+    </div>
+  );
   if (!data) return null;
 
   const active = data.items.filter(i => i.count > 0);

@@ -1,12 +1,11 @@
 import React from 'react';
-import { AlertCircle, Camera, Eye, EyeOff, Lock, LogOut, Save, User } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Lock, LogOut, Save, User } from 'lucide-react';
 import type { AuthUser, SubscriberItem } from '../../types';
+import { StudentPrivacyPanel } from './StudentPrivacyPanel';
 
 interface StudentSettingsTabProps {
   displayName: string;
-  avatarDataUrl: string;
   avatarBg: string;
-  avatarInputRef: React.RefObject<HTMLInputElement | null>;
   editingName: boolean;
   newName: string;
   setEditingName: React.Dispatch<React.SetStateAction<boolean>>;
@@ -36,9 +35,7 @@ interface StudentSettingsTabProps {
 
 export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
   displayName,
-  avatarDataUrl,
   avatarBg,
-  avatarInputRef,
   editingName,
   newName,
   setEditingName,
@@ -72,17 +69,8 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
       </h3>
 
       <div className="mb-5 flex items-center gap-4">
-        <div className={`flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-extrabold text-white ${!avatarDataUrl ? avatarBg : ''}`}>
-          {avatarDataUrl ? <img src={avatarDataUrl} alt="avatar" className="h-full w-full object-cover" /> : displayName.charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <button
-            onClick={() => avatarInputRef.current?.click()}
-            className="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-200"
-          >
-            <Camera size={15} /> تغيير الصورة
-          </button>
-          <p className="mt-1 text-xs text-gray-400">JPG, PNG - يتم الحفظ على هذا الجهاز</p>
+        <div className={`flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full text-2xl font-extrabold text-white ${avatarBg}`}>
+          {displayName.charAt(0).toUpperCase()}
         </div>
       </div>
 
@@ -168,6 +156,8 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
         حفظ كلمة المرور
       </button>
     </div>
+
+    <StudentPrivacyPanel />
 
     <button
       onClick={onLogout}

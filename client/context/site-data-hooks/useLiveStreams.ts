@@ -1,32 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LiveStream } from '../../types';
+import { mysqlCatalog } from '../../lib/mysqlapi';
 
-type Track = (action: string, entity: string, label: string) => void;
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const persistLiveStreamToCollection = (_stream: LiveStream) => { /* PG-only — no Firestore write */ };
-
-export function useLiveStreams(initialLiveStreams: LiveStream[], track: Track) {
+/** Published live streams; all management remains in the admin app. */
+export function useLiveStreams(initialLiveStreams: LiveStream[], authUserUid?: string, isAdmin = false) {
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>(initialLiveStreams);
 
-  const addLiveStream = (item: LiveStream) => {
-    setLiveStreams((prev) => [item, ...prev]);
-    persistLiveStreamToCollection(item);
-    track('create', 'liveStream', item.title);
-  };
+  useEffect(() => {
+    if (!authUserUid || isAdmin) {
+      if (!authUserUid) setLiveStreams([]);
+      return;
+    }
+    let cancelled = false;
+    void mysqlCatalog.listLiveStreams().then((rows) => {
+      if (!cancelled) setLiveStreams(rows as unknown as LiveStream[]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [authUserUid, isAdmin]);
 
-  const updateLiveStream = (item: LiveStream) => {
-    setLiveStreams((prev) => prev.map((s) => (s.id === item.id ? item : s)));
-    persistLiveStreamToCollection(item);
-    track('update', 'liveStream', item.title);
-  };
-
-  const deleteLiveStream = (id: string) => {
-    setLiveStreams((prev) => prev.filter((s) => s.id !== id));
-    track('delete', 'liveStream', id);
-  };
-
-  const resetLiveStreams = () => setLiveStreams([]);
-
-  return { liveStreams, addLiveStream, updateLiveStream, deleteLiveStream, resetLiveStreams };
+  return { liveStreams };
 }

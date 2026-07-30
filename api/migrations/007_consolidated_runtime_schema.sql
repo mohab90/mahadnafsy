@@ -7,9 +7,9 @@
 -- environments. Statements are idempotent (IF NOT EXISTS / ADD COLUMN
 -- IF NOT EXISTS) and safe to run on an existing production database.
 --
--- NOTE: startupTasks.js still runs the same DDL at boot for backwards
--- compatibility. New schema changes MUST be added here (as a new
--- numbered migration), NOT in startupTasks.js.
+-- NOTE: The legacy startupTasks.js source was retired after this migration
+-- became the canonical schema authority. New schema changes MUST be added as
+-- numbered migrations.
 -- ══════════════════════════════════════════════════════════════
 
 SET FOREIGN_KEY_CHECKS = 0;

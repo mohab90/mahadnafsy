@@ -1,12 +1,9 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { MutableRefObject } from 'react';
-import type { AutomationTrigger, ConsultationItem, InboxConversation, JoinUsApplication, LeadItem, LeadStatus, MessagingChannel, OrderItem, StaffMember, SubscriberItem } from '../../types';
+import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStatus, OrderItem, SubscriberItem } from '../../types';
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
-import { nowLabel } from './useActivityLogState';
 
 type Track = (action: string, entity: string, label: string) => void;
-type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
-type TriggerAutomation = (trigger: AutomationTrigger, data?: Record<string, unknown>) => void;
 
 // subscribers/leads/staffScoped*/consultations/orders/joinUsApplications are kept
 // together as one "CRM core" domain rather than split further — they're read and
@@ -14,11 +11,8 @@ type TriggerAutomation = (trigger: AutomationTrigger, data?: Record<string, unkn
 // overlapping fields), and addSubscriber/addLead/addConsultation/addJoinUsApplication
 // all cross-write into `leads` directly (dedup-on-convert, auto-create-lead-from-X),
 // so a clean single-domain split would just relocate the coupling rather than
-// remove it. triggerAutomation (owned by useAutomationState) needs this hook's
-// setLeads as an input, while this hook's own functions need triggerAutomation —
-// resolved via a ref the provider points at the real triggerAutomation once
-// useAutomationState has been called, same "forward ref" shape used for
-// subscribersRef/leadsRef/issueClientCodeAsync below.
+// remove it. Automation execution is exclusively server-owned; browser CRUD
+// never mutates CRM projections as a substitute for the backend engine.
 export function useCrmCoreState(
   initialSubscribers: SubscriberItem[],
   initialLeads: LeadItem[],
@@ -28,13 +22,9 @@ export function useCrmCoreState(
   subscribersRef: MutableRefObject<SubscriberItem[]>,
   leadsRef: MutableRefObject<LeadItem[]>,
   lastCRMWriteRef: MutableRefObject<number>,
-  persistOrRevert: PersistOrRevert,
   track: Track,
-  staffMembers: StaffMember[],
   issueClientCodeAsync: () => Promise<string>,
   isValidClientCodeFormat: (code: string) => boolean,
-  setInboxConversations: React.Dispatch<React.SetStateAction<InboxConversation[]>>,
-  triggerAutomationRef: MutableRefObject<TriggerAutomation>,
 ) {
   const [subscribers, setSubscribers] = useState<SubscriberItem[]>(initialSubscribers);
   subscribersRef.current = subscribers;
@@ -46,34 +36,22 @@ export function useCrmCoreState(
   const [consultations, setConsultations] = useState<ConsultationItem[]>(initialConsultations);
   const [orders, setOrders] = useState<OrderItem[]>(initialOrders);
   const [joinUsApplications, setJoinUsApplications] = useState<JoinUsApplication[]>(initialJoinUsApplications);
-  // Round-robin counter for auto-assigning new leads to sales staff
-  const roundRobinIndexRef = useRef(0);
 
   // MySQL-only: subscriber/lead/consultation/order/joinUs data lives in MySQL.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistSubscriberToCollection = (_sub: SubscriberItem) => { /* MySQL */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistLeadToCollection = (_lead: LeadItem) => { /* MySQL */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistConsultationToCollection = (_item: ConsultationItem) => { /* PG-only */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistOrderToCollection = (_item: OrderItem) => { /* PG-only */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistJoinUsToCollection = (_item: JoinUsApplication) => { /* PG-only */ };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistPaymentHistoryToCollection = (_subscriberId: string, _entries: SubscriberItem['paymentHistory']) => { /* PG-only */ };
 
   const reloadLeads = async () => {
     try {
       const fresh = await mysqlAdmin.listAllLeads();
-      if ((fresh as unknown as LeadItem[]).length > 0) {
-        const normalized = (fresh as unknown as LeadItem[]).map(l => ({
-          ...l,
-          status: (l.status || 'new').toLowerCase() as LeadStatus,
-        }));
-        leadsRef.current = normalized;
-        setLeads(normalized);
-      }
+      const normalized = (fresh as unknown as LeadItem[]).map(l => ({
+        ...l,
+        status: (l.status || 'new').toLowerCase() as LeadStatus,
+      }));
+      leadsRef.current = normalized;
+      setLeads(normalized);
     } catch { /* silent */ }
   };
 
@@ -87,6 +65,24 @@ export function useCrmCoreState(
       subscribersRef.current = normalized;
       setSubscribers(normalized);
     } catch { /* caller keeps current state on a transient refresh failure */ }
+  };
+
+  const recordSubscriberPayment = async (
+    subscriberId: string,
+    payment: Record<string, unknown>,
+  ): Promise<{ ok: boolean; id: string; status: string; approvalRequired?: boolean }> => {
+    const result = await mysqlAdmin.saveSubscriberPayment(subscriberId, payment) as {
+      ok: boolean; id: string; status?: string; approvalRequired?: boolean;
+    };
+    // Money and entitlements are committed together by the API. Always reload
+    // the server projection instead of granting access through crm_json locally.
+    await reloadSubscribers();
+    return {
+      ok: result.ok,
+      id: result.id,
+      status: result.status || 'pending',
+      approvalRequired: result.approvalRequired,
+    };
   };
 
   // Used after POST /api/admin/orders/:id/confirm-payment — that endpoint
@@ -159,51 +155,16 @@ export function useCrmCoreState(
       const msg = saveErr instanceof Error ? saveErr.message : String(saveErr);
       throw new Error(msg); // propagate real error so UI shows correct message
     }
-    // Auto-delete any leads with matching phone or email
-    // NOTE: payment sync to payments table is handled server-side in POST /api/admin/subscribers
-    const np = (finalItem.phone || '').replace(/\D/g, '');
-    const ne = (finalItem.email || '').toLowerCase().trim();
-    setLeads((prev) => {
-      const toRemove = prev.filter((l) => {
-        const lp = (l.phone || '').replace(/\D/g, '');
-        const le = (l.email || '').toLowerCase().trim();
-        return (np.length >= 7 && lp === np) || (ne && le === ne);
-      });
-      toRemove.forEach(l => {
-        persistOrRevert(
-          mysqlAdmin.deleteLead(l.id),
-          () => setLeads((cur) => (cur.some(x => x.id === l.id) ? cur : [l, ...cur])),
-          { field: 'lead', name: l.name }
-        );
-      });
-      return prev.filter((l) => {
-        const lp = (l.phone || '').replace(/\D/g, '');
-        const le = (l.email || '').toLowerCase().trim();
-        return !((np.length >= 7 && lp === np) || (ne && le === ne));
-      });
-    });
-    if (finalItem.leadId) {
-      const prevLead = leadsRef.current.find(l => l.id === finalItem.leadId);
-      setLeads((prev) => prev.map((l) => {
-        if (l.id !== finalItem.leadId) return l;
-        const updated = { ...l, status: 'converted' as LeadStatus };
-        persistLeadToCollection(updated);
-        persistOrRevert(
-          mysqlAdmin.saveLead(updated as unknown as Record<string,unknown>), // mark lead as 'converted'
-          () => { if (prevLead) setLeads((cur) => cur.map((x) => (x.id === finalItem.leadId ? prevLead : x))); },
-          { field: 'lead', name: updated.name }
-        );
-        return updated;
-      }));
-    }
+    // The API links and converts the matching lead in the same subscriber
+    // transaction. Keep the lead as CRM history instead of deleting it.
+    await Promise.all([reloadLeads(), reloadSubscribers()]);
     // Sync initial enrollments handled via crm_json in saveSubscriber
     void 0;
-    triggerAutomationRef.current('new_subscriber', { subscriberId: finalItem.id, name: finalItem.name });
     track('create', 'subscriber', finalItem.name);
     return true;
   };
 
-  const updateSubscriber = (item: SubscriberItem) => {
+  const updateSubscriber = async (item: SubscriberItem): Promise<boolean> => {
     // Snapshot the old record BEFORE updating so we can diff.
     const oldSub = subscribersRef.current.find(r => r.id === item.id);
     // Upsert: add if not found (handles non-admin staff whose context subscribers are initially empty)
@@ -214,32 +175,34 @@ export function useCrmCoreState(
     subscribersRef.current = nextSubscribers;
     lastCRMWriteRef.current = Date.now();
     setSubscribers(nextSubscribers);
-    persistSubscriberToCollection(item);
-    // saveSubscriber sends the full crm_json to server — server auto-syncs paymentHistory → payments table
+    // The API strips table-owned projections such as paymentHistory and certificate
+    // requests; financial changes must use their dedicated transactional endpoints.
     // Pass updatedAt for OCC — server rejects with 409 if another write happened since last load
     const payload = { ...item, updatedAt: oldSub?.updatedAt ?? item.updatedAt };
-    void mysqlAdmin.saveSubscriber(payload as unknown as Record<string,unknown>).catch((err: unknown) => {
+    try {
+      await mysqlAdmin.saveSubscriber(payload as unknown as Record<string,unknown>);
+    } catch (err: unknown) {
+      subscribersRef.current = exists
+        ? subscribersRef.current.map((row) => (row.id === item.id ? oldSub! : row))
+        : subscribersRef.current.filter((row) => row.id !== item.id);
+      setSubscribers(subscribersRef.current);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('تعارض') || msg.includes('conflict') || msg.includes('409')) {
-        // OCC conflict: reload the latest version from server then re-apply non-payment changes
-        void reloadLeads();
-        mysqlAdmin.listAllSubscribers().then((fresh) => {
-          const subs = (fresh as unknown as SubscriberItem[]).map(s => ({
-            ...s,
-            enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [],
-          }));
-          if (subs.length > 0) { subscribersRef.current = subs; setSubscribers(subs); }
-        }).catch(() => {});
-        console.warn('[OCC] Subscriber conflict — reloaded fresh data from server');
+        await Promise.all([reloadLeads(), reloadSubscribers()]).catch(() => {});
       }
-    });
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'subscriber', name: item.name },
+      }));
+      return false;
+    }
+    persistSubscriberToCollection(item);
     persistPaymentHistoryToCollection(item.id, item.paymentHistory ?? []);
-
     track('update', 'subscriber', item.name);
+    return true;
   };
 
-  // Helpers: add to blocked set AND persist to localStorage so deletions survive page refresh
-  const deleteSubscriber = (id: string) => {
+  // Subscriber removal is confirmed by the canonical API before it remains hidden.
+  const deleteSubscriber = async (id: string): Promise<boolean> => {
     const removed = subscribersRef.current.find((row) => row.id === id);
     const nextSubscribers = subscribersRef.current.filter((row) => row.id !== id);
     subscribersRef.current = nextSubscribers;
@@ -249,108 +212,25 @@ export function useCrmCoreState(
     // allowed to delete) silently left the row removed from the UI while it still
     // existed in the DB — it just reappeared on the next reload with zero explanation.
     // Revert the optimistic removal on failure and surface the existing error toast.
-    mysqlAdmin.deleteSubscriber(id).catch(() => {
+    try {
+      await mysqlAdmin.deleteSubscriber(id);
+    } catch {
       if (removed) {
         subscribersRef.current = [removed, ...subscribersRef.current];
         setSubscribers(subscribersRef.current);
       }
       window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'subscriber', name: removed?.name } }));
-    });
+      return false;
+    }
     track('delete', 'subscriber', id);
+    return true;
   };
 
   const addLead = async (item: LeadItem): Promise<void> => {
     lastCRMWriteRef.current = Date.now();
-    // Auto round-robin assignment if no sales person assigned yet
-    let resolvedItem = item;
-    if (!item.assignedSalesId) {
-      const activeSales = staffMembers.filter((s) => s.role === 'sales' && s.status !== 'inactive');
-      if (activeSales.length > 0) {
-        const idx = roundRobinIndexRef.current % activeSales.length;
-        const assigned = activeSales[idx];
-        roundRobinIndexRef.current = idx + 1;
-        resolvedItem = { ...item, assignedSalesId: assigned.id, assignedSalesName: assigned.name };
-      }
-    }
-    // Assign clientCode upfront using atomic transaction so cross-session duplicates are impossible
-    if (!resolvedItem.clientCode) {
-      resolvedItem = { ...resolvedItem, clientCode: await issueClientCodeAsync() };
-    }
-    const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '');
-    const normPhone = normalizePhone(resolvedItem.phone);
-    const normEmail = (resolvedItem.email || '').toLowerCase().trim();
-    // Block if a subscriber already exists with same phone/email
-    const isSubscriber = subscribersRef.current.some((s) => {
-      const sp = normalizePhone(s.phone);
-      const se = (s.email || '').toLowerCase().trim();
-      return (normPhone.length >= 7 && sp === normPhone) || (normEmail && se === normEmail);
-    });
-    if (isSubscriber) return;
-    const prevLeadsSnapshot = leadsRef.current;
-    // If lead already exists with same phone/email → merge instead of duplicate
-    const existingIdx = leadsRef.current.findIndex((l) => {
-      const lp = normalizePhone(l.phone);
-      const le = (l.email || '').toLowerCase().trim();
-      return (normPhone.length >= 7 && lp === normPhone) || (normEmail && le === normEmail);
-    });
-    let leadToWrite: LeadItem;
-    if (existingIdx !== -1) {
-      const existing = leadsRef.current[existingIdx];
-      leadToWrite = {
-        ...existing,
-        name: resolvedItem.name || existing.name,
-        interestedCourseIds: [...new Set([...(existing.interestedCourseIds || []), ...(resolvedItem.interestedCourseIds || []), resolvedItem.enrolledCourseId || ''].filter(Boolean))],
-        source: resolvedItem.source || existing.source,
-      };
-      const nextLeads = leadsRef.current.map((l, i) => i === existingIdx ? leadToWrite : l);
-      leadsRef.current = nextLeads;
-      setLeads(nextLeads);
-    } else {
-      leadToWrite = resolvedItem;
-      const nextLeads = [resolvedItem, ...leadsRef.current];
-      leadsRef.current = nextLeads;
-      setLeads(nextLeads);
-    }
-    persistLeadToCollection(leadToWrite);
-    persistOrRevert(
-      mysqlAdmin.saveLead(resolvedItem as unknown as Record<string,unknown>),
-      () => { leadsRef.current = prevLeadsSnapshot; setLeads(prevLeadsSnapshot); },
-      { field: 'lead', name: resolvedItem.name }
-    );
-    track('create', 'lead', resolvedItem.name);
-    // Auto-create inbox conversation for messaging channels
-    const src = (item.source || '').toLowerCase();
-    const isMessaging = item.phone && (
-      src.includes('واتساب') || src.includes('whatsapp') ||
-      src.includes('ماسنجر') || src.includes('messenger') ||
-      src.includes('انستجرام') || src.includes('instagram')
-    );
-    if (isMessaging) {
-      const channel: MessagingChannel =
-        src.includes('ماسنجر') || src.includes('messenger') ? 'messenger'
-        : src.includes('انستجرام') || src.includes('instagram') ? 'instagram'
-        : 'whatsapp';
-      const newConv: InboxConversation = {
-        id: `conv-lead-${Date.now()}`,
-        channel,
-        contactName: item.name,
-        contactId: item.phone || '',
-        contactAvatar: '',
-        lastMessage: `ليد جديد: ${item.name}`,
-        lastMessageAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-        unreadCount: 1,
-        status: 'open',
-        assignedToStaffId: item.assignedSalesId || '',
-        assignedToStaffName: item.assignedSalesName || '',
-        tags: [],
-        messages: [],
-        linkedLeadId: item.id,
-        linkedSubscriberId: '',
-        createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      };
-      setInboxConversations((prev) => [newConv, ...prev]);
-    }
-    triggerAutomationRef.current('new_lead', { leadId: item.id, name: item.name, source: item.source || '' });
+    await mysqlAdmin.saveLead(item as unknown as Record<string, unknown>);
+    await reloadLeads();
+    track('create', 'lead', item.name);
   };
 
   // addPublicLead: for public registration forms — uses MySQL /api/registrations (no auth needed).
@@ -367,20 +247,24 @@ export function useCrmCoreState(
     }
   };
 
-  const updateLead = (item: LeadItem) => {
+  const updateLead = async (item: LeadItem): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     const prevLeads = leadsRef.current;
     const nextLeads = leadsRef.current.map((row) => (row.id === item.id ? item : row));
     leadsRef.current = nextLeads;
     setLeads(nextLeads);
-    persistLeadToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveLead(item as unknown as Record<string,unknown>),
-      () => { leadsRef.current = prevLeads; setLeads(prevLeads); },
-      { field: 'lead', name: item.name }
-    );
-    triggerAutomationRef.current('lead_status_changed', { leadId: item.id, name: item.name, status: item.status || '' });
+    try {
+      await mysqlAdmin.saveLead(item as unknown as Record<string,unknown>);
+    } catch {
+      leadsRef.current = prevLeads;
+      setLeads(prevLeads);
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'lead', name: item.name },
+      }));
+      return false;
+    }
     track('update', 'lead', item.name);
+    return true;
   };
 
   // Updates local state only — no API call. Use for bulk auto-convert on mount.
@@ -393,37 +277,22 @@ export function useCrmCoreState(
     setLeads(nextLeads);
   };
 
-  const deleteLead = (id: string) => {
+  const deleteLead = async (id: string): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     const prevLeads = leadsRef.current;
     const nextLeads = leadsRef.current.filter((row) => row.id !== id);
     leadsRef.current = nextLeads;
     setLeads(nextLeads);
-    persistOrRevert(
-      mysqlAdmin.deleteLead(id),
-      () => { leadsRef.current = prevLeads; setLeads(prevLeads); },
-      { field: 'lead', name: id }
-    );
+    try {
+      await mysqlAdmin.deleteLead(id);
+    } catch {
+      leadsRef.current = prevLeads;
+      setLeads(prevLeads);
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'lead', name: id } }));
+      return false;
+    }
     track('delete', 'lead', id);
-  };
-
-  const bulkDeleteLeads = (ids: string[]) => {
-    lastCRMWriteRef.current = Date.now();
-    const prevLeads = leadsRef.current;
-    const idSet = new Set(ids);
-    const nextLeads = leadsRef.current.filter((row) => !idSet.has(row.id));
-    leadsRef.current = nextLeads;
-    setLeads(nextLeads);
-    Promise.allSettled(ids.map(id => mysqlAdmin.deleteLead(id))).then((results) => {
-      const anyFailed = results.some(r => r.status === 'rejected');
-      if (anyFailed) {
-        console.error('[lead] Bulk delete: one or more deletions failed — rolling back the whole batch');
-        leadsRef.current = prevLeads;
-        setLeads(prevLeads);
-        window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'lead', name: `bulk:${ids.length}` } }));
-      }
-    });
-    track('delete', 'lead', `bulk:${ids.length}`);
+    return true;
   };
 
   // Batch-assign client codes — write only the changed documents to their collections.
@@ -452,7 +321,6 @@ export function useCrmCoreState(
       const nextLeads = leadsRef.current.map(l => leadsMap.get(l.id) ?? l);
       leadsRef.current = nextLeads;
       setLeads(nextLeads);
-      updatedLeads.forEach(l => persistLeadToCollection(l));
       Promise.allSettled(updatedLeads.map(l => mysqlAdmin.saveLead(l as unknown as Record<string,unknown>))).then((results) => {
         if (results.some(r => r.status === 'rejected')) {
           console.error('[clientCode] Bulk lead code assignment: one or more saves failed — rolling back the whole batch');
@@ -472,206 +340,86 @@ export function useCrmCoreState(
     if (assigned === 0) return 0;
     // Reload leads from server so the UI reflects the new assignments
     const freshLeads = await mysqlAdmin.listAllLeads();
-    if ((freshLeads as unknown as LeadItem[]).length > 0) {
-      const normalizedLeads = (freshLeads as unknown as LeadItem[]).map(l => ({
-        ...l,
-        status: (l.status || 'new').toLowerCase() as LeadStatus,
-      }));
-      leadsRef.current = normalizedLeads;
-      setLeads(normalizedLeads);
-    }
+    const normalizedLeads = (freshLeads as unknown as LeadItem[]).map(l => ({
+      ...l,
+      status: (l.status || 'new').toLowerCase() as LeadStatus,
+    }));
+    leadsRef.current = normalizedLeads;
+    setLeads(normalizedLeads);
     track('update', 'lead', `bulkRedistribute:${assigned}`);
     return assigned;
   };
 
-  const addConsultation = (item: ConsultationItem) => {
+  const addOrder = async (item: OrderItem): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
-    // Auto-create a lead if this consultation client is not already in the system
-    const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '');
-    const inPhone = normalizePhone(item.clientPhone);
-    const inEmail = (item.clientEmail || '').toLowerCase().trim();
-    const alreadyExists =
-      subscribers.some(s =>
-        (inPhone && normalizePhone(s.phone) === inPhone) ||
-        (inEmail && s.email?.toLowerCase().trim() === inEmail)
-      ) ||
-      leads.some(l =>
-        (inPhone && normalizePhone(l.phone) === inPhone) ||
-        (inEmail && l.email?.toLowerCase().trim() === inEmail)
-      );
-    if (!alreadyExists && (item.clientPhone || item.clientEmail)) {
-      // Issue the code BEFORE setState so we can await the async transaction
-      void issueClientCodeAsync().then(newCode => {
-        const newLead: LeadItem = {
-          id: `lead-consult-${item.id}`,
-          clientCode: newCode,
-          name: item.clientName,
-          email: item.clientEmail || '',
-          phone: item.clientPhone || '',
-          source: 'استشارة',
-          status: 'new',
-          leadType: 'consultation',
-          branch: 'other',
-          interestLevel: 'medium',
-          assignedSalesId: '',
-          assignedSalesName: '',
-          communications: [],
-          notes: `حجز استشارة مع ${item.therapistName}`,
-          createdAt: item.createdAt || nowLabel(),
-        };
-        const nextLeads = [newLead, ...leadsRef.current];
-        leadsRef.current = nextLeads;
-        setLeads(nextLeads);
-        persistLeadToCollection(newLead);
-      });
+    try {
+      await mysqlAdmin.saveOrder(item as unknown as Record<string,unknown>);
+      await reloadOrders();
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'order', name: item.itemTitle } }));
+      return false;
     }
-    setConsultations((prev) => [item, ...prev]);
-    persistConsultationToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveConsultation(item as unknown as Record<string,unknown>),
-      () => setConsultations((prev) => prev.filter((row) => row.id !== item.id)),
-      { field: 'consultation', name: item.clientName }
-    );
-    triggerAutomationRef.current('new_consultation', { consultationId: item.id, therapistName: item.therapistName, clientName: item.clientName });
-    track('create', 'consultation', item.clientName);
-  };
-
-  const updateConsultation = (item: ConsultationItem) => {
-    lastCRMWriteRef.current = Date.now();
-    const prevConsultation = consultations.find((row) => row.id === item.id);
-    setConsultations((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistConsultationToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.updateConsultationStatus(item.id, item.status, item.notes, item.meetingLink),
-      () => { if (prevConsultation) setConsultations((prev) => prev.map((row) => (row.id === item.id ? prevConsultation : row))); },
-      { field: 'consultation', name: item.clientName }
-    );
-    const consultTrigger: AutomationTrigger = item.status === 'confirmed' ? 'consultation_confirmed'
-      : item.status === 'completed' ? 'consultation_completed'
-      : item.status === 'cancelled' ? 'consultation_cancelled'
-      : 'new_consultation';
-    triggerAutomationRef.current(consultTrigger, { consultationId: item.id, therapistName: item.therapistName });
-    track('update', 'consultation', item.clientName);
-  };
-
-  const deleteConsultation = (id: string) => {
-    lastCRMWriteRef.current = Date.now();
-    const removed = consultations.find((row) => row.id === id);
-    setConsultations((prev) => prev.filter((row) => row.id !== id));
-    persistOrRevert(
-      mysqlAdmin.deleteConsultation(id),
-      () => { if (removed) setConsultations((prev) => [removed, ...prev]); },
-      { field: 'consultation', name: removed?.clientName }
-    );
-    track('delete', 'consultation', id);
-  };
-
-  const addOrder = (item: OrderItem) => {
-    lastCRMWriteRef.current = Date.now();
-    setOrders((prev) => [item, ...prev]);
-    persistOrderToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveOrder(item as unknown as Record<string,unknown>),
-      () => setOrders((prev) => prev.filter((row) => row.id !== item.id)),
-      { field: 'order', name: item.itemTitle }
-    );
-    triggerAutomationRef.current('new_payment', { orderId: item.id, type: item.type, itemId: item.itemId, amount: String(item.amount) });
     track('create', 'order', item.itemTitle);
+    return true;
   };
 
-  const updateOrderStatus = (id: string, status: OrderItem['status']) => {
+  const updateOrderStatus = async (id: string, status: OrderItem['status']): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
-    const prevStatus = orders.find((row) => row.id === id)?.status;
-    setOrders((prev) => prev.map((row) => {
-      if (row.id !== id) return row;
-      const updated = { ...row, status };
-      persistOrderToCollection(updated);
-      persistOrRevert(
-        mysqlAdmin.updateOrderStatus(id, status),
-        () => { if (prevStatus) setOrders((p) => p.map((r) => (r.id === id ? { ...r, status: prevStatus } : r))); },
-        { field: 'order', name: id }
-      );
-      return updated;
-    }));
+    try {
+      await mysqlAdmin.updateOrderStatus(id, status);
+      await reloadOrders();
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'order', name: id } }));
+      return false;
+    }
     track('update', 'order', `${id} -> ${status}`);
+    return true;
   };
 
-  const deleteOrder = (id: string) => {
+  const deleteOrder = async (id: string): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
-    const prevOrders = orders;
-    const prevSubscribers = subscribersRef.current;
-    setOrders((prev) => prev.filter((row) => row.id !== id));
-    // Also remove from subscriber's paymentHistory if present
-    setSubscribers((prev) => prev.map((sub) => {
-      if (!sub.paymentHistory?.some((p) => p.id === id)) return sub;
-      const updated = { ...sub, paymentHistory: sub.paymentHistory.filter((p) => p.id !== id) };
-      persistOrRevert(
-        mysqlAdmin.saveSubscriber(updated), // persist removal
-        () => { subscribersRef.current = prevSubscribers; setSubscribers(prevSubscribers); },
-        { field: 'subscriber', name: sub.name }
-      );
-      return updated;
-    }));
-    persistOrRevert(
-      mysqlAdmin.deleteOrder(id),
-      () => setOrders(prevOrders),
-      { field: 'order', name: id }
-    );
+    try {
+      await mysqlAdmin.deleteOrder(id);
+      await reloadOrders();
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'order', name: id } }));
+      return false;
+    }
     track('delete', 'order', id);
+    return true;
   };
 
-  const addJoinUsApplication = (item: JoinUsApplication) => {
-    setJoinUsApplications((prev) => [item, ...prev]);
-    persistJoinUsToCollection(item);
-    // Auto-create a lead for the applicant if not already in system
-    const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '');
-    const inPhone = normalizePhone(item.phone);
-    const inEmail = (item.email || '').toLowerCase().trim();
-    const alreadyExists =
-      subscribers.some(s =>
-        (inPhone && normalizePhone(s.phone) === inPhone) ||
-        (inEmail && s.email?.toLowerCase().trim() === inEmail)
-      ) ||
-      leads.some(l =>
-        (inPhone && normalizePhone(l.phone) === inPhone) ||
-        (inEmail && l.email?.toLowerCase().trim() === inEmail)
-      );
-    if (!alreadyExists && (item.phone || item.email)) {
-      // Issue the code BEFORE setState so we can await the async transaction
-      void issueClientCodeAsync().then(newCode => {
-        const newLead: LeadItem = {
-          id: `lead-joinus-${item.id}`,
-          clientCode: newCode,
-          name: item.name,
-          email: item.email || '',
-          phone: item.phone || '',
-          source: 'طلب انضمام',
-          status: 'new',
-          leadType: 'general',
-          branch: 'other',
-          interestLevel: 'medium',
-          assignedSalesId: '',
-          assignedSalesName: '',
-          communications: [],
-          notes: `طلب انضمام${item.specialty ? ` - تخصص: ${item.specialty}` : ''}`,
-          createdAt: nowLabel(),
-        };
-        const nextLeads = [newLead, ...leadsRef.current];
-        leadsRef.current = nextLeads;
-        setLeads(nextLeads);
-        persistLeadToCollection(newLead);
-      });
+  const addJoinUsApplication = async (item: JoinUsApplication): Promise<boolean> => {
+    try {
+      await mysqlForms.submitJoinUs(item as unknown as Record<string, unknown>);
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'joinUs', name: item.name } }));
+      return false;
     }
     track('create', 'joinUs', item.name);
+    return true;
   };
-  const updateJoinUsApplication = (item: JoinUsApplication) => {
-    setJoinUsApplications((prev) => prev.map((x) => (x.id === item.id ? item : x)));
-    persistJoinUsToCollection(item);
+  const updateJoinUsApplication = async (item: JoinUsApplication): Promise<boolean> => {
+    try {
+      await mysqlAdmin.updateJoinUs(item.id, item.status, item.adminNote);
+      setJoinUsApplications((prev) => prev.map((x) => (x.id === item.id ? item : x)));
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'joinUs', name: item.name } }));
+      return false;
+    }
     track('update', 'joinUs', item.name);
+    return true;
   };
-  const deleteJoinUsApplication = (id: string) => {
-    setJoinUsApplications((prev) => prev.filter((x) => x.id !== id));
+  const deleteJoinUsApplication = async (id: string): Promise<boolean> => {
+    try {
+      await mysqlAdmin.deleteJoinUs(id);
+      setJoinUsApplications((prev) => prev.filter((x) => x.id !== id));
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'joinUs', name: id } }));
+      return false;
+    }
     track('delete', 'joinUs', id);
+    return true;
   };
 
   return {
@@ -683,10 +431,9 @@ export function useCrmCoreState(
     orders, setOrders,
     joinUsApplications, setJoinUsApplications,
     addSubscriber, updateSubscriber, deleteSubscriber,
-    addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkDeleteLeads, bulkAssignClientCodes, bulkRedistributeLeads,
-    addConsultation, updateConsultation, deleteConsultation,
+    addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkAssignClientCodes, bulkRedistributeLeads,
     addOrder, updateOrderStatus, deleteOrder,
     addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication,
-    reloadLeads, reloadSubscribers, reloadOrders,
+    reloadLeads, reloadSubscribers, reloadOrders, recordSubscriberPayment,
   };
 }

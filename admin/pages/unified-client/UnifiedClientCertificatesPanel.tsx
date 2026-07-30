@@ -1,4 +1,4 @@
-import { Award, Eye, Plus, Trash2 } from 'lucide-react';
+import { Award, Ban, Eye, Plus, RotateCcw } from 'lucide-react';
 import type { Course, ExtraCertificateRequest, SubscriberCertificate, SubscriberItem } from '../../types';
 import { EXTRA_TYPE_LABELS } from './constants';
 
@@ -9,7 +9,8 @@ interface UnifiedClientCertificatesPanelProps {
   extraRequests: ExtraCertificateRequest[];
   onRequestExtraCertificate: () => void;
   onViewCertificate: (certificateId: string) => void;
-  onDeleteCertificate: (certificateId: string) => void;
+  onRevokeCertificate: (certificateId: string) => void;
+  onReissueCertificate: (certificateId: string) => void;
 }
 
 function extraStatusClass(status?: string) {
@@ -48,7 +49,8 @@ export function UnifiedClientCertificatesPanel({
   extraRequests,
   onRequestExtraCertificate,
   onViewCertificate,
-  onDeleteCertificate,
+  onRevokeCertificate,
+  onReissueCertificate,
 }: UnifiedClientCertificatesPanelProps) {
   return (
     <div id="section-certificates" className="space-y-3">
@@ -81,30 +83,36 @@ export function UnifiedClientCertificatesPanel({
         </div>
       ) : certificates.map((cert) => {
         const certCourse = courses.find((course) => course.id === cert.courseId);
+        const isRevoked = cert.status === 'revoked';
         return (
-          <div key={cert.id} className="border border-emerald-200 bg-emerald-50 rounded-xl p-4 group flex items-start justify-between gap-3">
+          <div key={cert.id} className={`border rounded-xl p-4 group flex items-start justify-between gap-3 ${isRevoked ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}>
             <div className="flex gap-3">
               <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base flex-shrink-0">🏆</div>
               <div>
                 <p className="font-bold text-emerald-800 text-sm">{certCourse?.title || cert.courseId}</p>
                 <p className="text-xs font-mono bg-emerald-100 inline-block px-2 py-0.5 rounded mt-0.5">{cert.certificateNumber}</p>
                 <p className="text-xs text-gray-500 mt-0.5">صدرت في {cert.issuedAt}</p>
+                <p className={`text-[11px] font-bold mt-1 ${isRevoked ? 'text-red-700' : 'text-emerald-700'}`}>
+                  {isRevoked ? `ملغاة${cert.revokeReason ? ` — ${cert.revokeReason}` : ''}` : `سارية — إصدار ${cert.version || 1}`}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button
+              {!isRevoked && <button
                 onClick={() => onViewCertificate(cert.id)}
                 className="flex items-center gap-1 px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-100"
               >
                 <Eye size={12} /> عرض
-              </button>
-              <button
-                onClick={() => onDeleteCertificate(cert.id)}
-                className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label="حذف الشهادة"
-              >
-                <Trash2 size={14} />
-              </button>
+              </button>}
+              {isRevoked ? (
+                <button onClick={() => onReissueCertificate(cert.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-blue-300 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-50">
+                  <RotateCcw size={12} /> إعادة إصدار
+                </button>
+              ) : (
+                <button onClick={() => onRevokeCertificate(cert.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-red-300 text-red-700 rounded-lg text-xs font-bold hover:bg-red-50">
+                  <Ban size={12} /> إلغاء
+                </button>
+              )}
             </div>
           </div>
         );

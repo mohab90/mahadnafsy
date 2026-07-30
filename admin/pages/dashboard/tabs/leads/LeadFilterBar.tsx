@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import type { Bundle, Course, LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { BRANCH_ENUM_LABELS, STATUS_CFG } from '../leadUtils';
-import { normBranchId } from './LeadSubcomponents';
+import { normBranchId } from './leadBranchUtils';
 
 type BranchOption = {
   id: string;

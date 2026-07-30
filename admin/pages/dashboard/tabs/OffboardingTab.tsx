@@ -27,6 +27,7 @@ export default function OffboardingTab({ notify }: { notify: NotifyFn }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ staff_id: '', reason: 'resignation', last_working_day: '', notes: '' });
+  const [successorByCase, setSuccessorByCase] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -66,7 +67,7 @@ export default function OffboardingTab({ notify }: { notify: NotifyFn }) {
 
   const complete = (o: Offboarding) => {
     if (!window.confirm('إتمام إنهاء الخدمة سيوقف حساب الموظف ويلغي صلاحياته. متابعة؟')) return;
-    patch(o, { status: 'completed' });
+    patch(o, { status: 'completed', reassign_to: successorByCase[o.id] || null });
     notify('info', 'سيتم إيقاف حساب الموظف عند الاكتمال');
   };
 
@@ -123,7 +124,20 @@ export default function OffboardingTab({ notify }: { notify: NotifyFn }) {
               <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                 <span className="text-xs text-gray-400">{doneCount}/{o.checklist.length} مكتمل</span>
                 {o.status === 'in_progress' && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={successorByCase[o.id] || ''}
+                      onChange={event => setSuccessorByCase(current => ({ ...current, [o.id]: event.target.value }))}
+                      className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white"
+                      title="الموظف البديل الذي ستُنقل إليه الأعمال المفتوحة"
+                    >
+                      <option value="">الموظف البديل عند وجود أعمال</option>
+                      {staff.filter(member => member.id !== o.staff_id).map(member => (
+                        <option key={member.id} value={member.id}>
+                          {member.name}{member.role ? ` (${member.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
                     <button onClick={() => patch(o, { status: 'cancelled' })} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg border border-gray-200">إلغاء</button>
                     <button onClick={() => complete(o)} disabled={doneCount < o.checklist.length}
                       className="text-xs bg-emerald-600 text-white px-3 py-1 rounded-lg hover:bg-emerald-700 disabled:opacity-40" title={doneCount < o.checklist.length ? 'أكمل كل المهام أولاً' : ''}>

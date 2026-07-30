@@ -10,9 +10,23 @@ const { htmlEmail } = require('../lib/email');
 const { createNotification } = require('../lib/notification');
 const outbox = require('../lib/outbox');
 const { createUnsubscribeToken, verifyUnsubscribeToken, setMarketingConsent, filterSuppressed, destinationHash } = require('../lib/marketingConsent');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { assertSafeWebhookUrl } = require('../lib/webhookSecurity');
+const WEBHOOK_EVENTS = new Set([
+  'new_lead', 'lead_converted', 'new_subscriber', 'new_payment', 'new_order',
+  'refund_requested', 'new_consultation', 'new_contact', 'new_join_us',
+]);
+
+function validateWebhookInput({ name, url, secret, events }) {
+  if (typeof name !== 'string' || !name.trim() || name.length > 255) return 'Invalid webhook name';
+  if (typeof url !== 'string' || !url.trim() || url.length > 1000) return 'Invalid webhook URL';
+  if (!Array.isArray(events) || events.length === 0 || events.length > WEBHOOK_EVENTS.size ||
+      events.some(event => !WEBHOOK_EVENTS.has(event))) return 'Invalid webhook events';
+  if (secret !== undefined && secret !== null && typeof secret !== 'string') return 'Invalid webhook secret';
+  if (typeof secret === 'string' && secret.length > 255) return 'Webhook secret is too long';
+  return null;
+}
 
 function publicApiBase(req) {
   const configured = process.env.PUBLIC_API_URL || process.env.API_PUBLIC_URL || String(process.env.ALLOWED_ORIGINS || '').split(',')[0];
@@ -190,21 +204,22 @@ async function validateTaskReferences(req, task) {
   return null;
 }
 
-router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
   try {
     const mineOnly = req.query.mine === '1' || !taskManager(req);
-    const where = mineOnly ? 'WHERE tenant_id=? AND assigned_to=?' : 'WHERE tenant_id=?';
-    const params = mineOnly ? [req.tenantId, taskActorId(req)] : [req.tenantId];
     const [rows] = await pool.query(
       `SELECT id, title, description, assigned_to, assigned_name, related_sub_id, related_lead_id,
               priority, status, due_date, completed_at, created_by, created_at, updated_at
-       FROM tasks ${where} ORDER BY due_date ASC, created_at DESC LIMIT 500`, params
+       FROM tasks
+       WHERE tenant_id=? AND (?=0 OR assigned_to=?)
+       ORDER BY due_date ASC, created_at DESC LIMIT 500`,
+      [req.tenantId, mineOnly ? 1 : 0, taskActorId(req)]
     );
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
   try {
     const t = { ...(req.body || {}) };
     if (!['low','medium','high','urgent'].includes(t.priority || 'medium') || !['todo','in_progress','done','cancelled'].includes(t.status || 'todo')) return res.status(400).json({ error: 'Invalid task status or priority' });
@@ -223,7 +238,7 @@ router.post('/api/admin/tasks', requireAuth, requireAdminOrStaff, async (req, re
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
   try {
     const t = { ...(req.body || {}) };
     if (!['low','medium','high','urgent'].includes(t.priority || 'medium') || !['todo','in_progress','done','cancelled'].includes(t.status || 'todo')) return res.status(400).json({ error: 'Invalid task status or priority' });
@@ -245,7 +260,7 @@ router.put('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (req,
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
   try {
     const [result] = await pool.query(
       `DELETE FROM tasks WHERE id=? AND tenant_id=?${taskManager(req) ? '' : ' AND (assigned_to=? OR created_by=?)'}`,
@@ -265,17 +280,18 @@ router.delete('/api/admin/tasks/:id', requireAuth, requireAdminOrStaff, async (r
 // ── FEATURE: Webhooks ──────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/api/admin/webhooks', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/webhooks', requireAuth, requireAdmin, requirePermission('manage_settings'), async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT id,name,url,events,is_active,last_triggered_at,last_status,created_at FROM webhooks WHERE tenant_id=? ORDER BY created_at DESC', [req.tenantId]);
     res.json(rows.map(r => ({ ...r, events: tryJson(r.events, []) })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/api/admin/webhooks', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/webhooks', requireAuth, requireAdmin, requirePermission('manage_settings'), async (req, res) => {
   try {
     const { name, url, secret, events } = req.body;
-    if (!name || !url) return res.status(400).json({ error: 'name and url required' });
+    const validationError = validateWebhookInput({ name, url, secret, events });
+    if (validationError) return res.status(400).json({ error: validationError });
     const safeUrl = await assertSafeWebhookUrl(url);
     const id = uuidv4();
     await pool.query(
@@ -286,19 +302,22 @@ router.post('/api/admin/webhooks', requireAuth, requireAdmin, async (req, res) =
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/api/admin/webhooks/:id', requireAuth, requireAdmin, async (req, res) => {
+router.put('/api/admin/webhooks/:id', requireAuth, requireAdmin, requirePermission('manage_settings'), async (req, res) => {
   try {
     const { name, url, secret, events, is_active } = req.body;
+    const validationError = validateWebhookInput({ name, url, secret, events });
+    if (validationError) return res.status(400).json({ error: validationError });
     const safeUrl = await assertSafeWebhookUrl(url);
-    await pool.query(
+    const [result] = await pool.query(
       'UPDATE webhooks SET name=?,url=?,secret=COALESCE(NULLIF(?,\'\'),secret),events=?,is_active=? WHERE id=? AND tenant_id=?',
       [name, safeUrl, secret || null, JSON.stringify(events || []), is_active ? 1 : 0, req.params.id, req.tenantId]
     );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Webhook not found' });
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.delete('/api/admin/webhooks/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/webhooks/:id', requireAuth, requireAdmin, requirePermission('manage_settings'), async (req, res) => {
   try {
     const [result] = await pool.query('DELETE FROM webhooks WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     if (!result.affectedRows) return res.status(404).json({ error: 'Webhook not found' });
@@ -307,7 +326,7 @@ router.delete('/api/admin/webhooks/:id', requireAuth, requireAdmin, async (req, 
 });
 
 // POST /api/admin/webhooks/:id/test — send a test payload
-router.post('/api/admin/webhooks/:id/test', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/webhooks/:id/test', requireAuth, requireAdmin, requirePermission('manage_settings'), async (req, res) => {
   try {
     const [[wh]] = await pool.query(
       `SELECT id, name, url, secret, events, is_active, last_triggered_at, last_status, created_at
@@ -360,12 +379,12 @@ async function triggerWebhooks(tenantId, event, data) {
 
 router.get('/api/admin/budgets', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { month } = req.query; // YYYY-MM
-    const where = month ? 'WHERE tenant_id=? AND month=?' : 'WHERE tenant_id=?';
-    const params = month ? [req.tenantId, month] : [req.tenantId];
+    const month = req.query.month || null; // YYYY-MM
     const [rows] = await pool.query(
       `SELECT id, month, category, budgeted_amount, currency, notes, created_at
-       FROM budgets ${where} ORDER BY month DESC, category ASC`, params
+       FROM budgets WHERE tenant_id=? AND (? IS NULL OR month=?)
+       ORDER BY month DESC, category ASC`,
+      [req.tenantId, month, month]
     );
     // Get actual spending per month per category from expenses
     let actual = [];
@@ -424,10 +443,13 @@ router.post('/api/nps/respond', publicLimiter, async (req, res) => {
   try {
     const { id, score, comment } = req.body;
     if (!id || score === undefined) return res.status(400).json({ error: 'id and score required' });
-    const numScore = Math.min(10, Math.max(0, parseInt(score, 10)));
+    const numScore = Number(score);
+    if (!Number.isInteger(numScore) || numScore < 0 || numScore > 10) {
+      return res.status(400).json({ error: 'score must be an integer from 0 to 10' });
+    }
     const [result] = await pool.query(
       'UPDATE nps_responses SET score=?,comment=?,responded_at=NOW() WHERE id=? AND tenant_id=? AND responded_at IS NULL',
-      [numScore, comment || null, id, req.tenantId]
+      [numScore, comment ? String(comment).trim().slice(0, 2000) : null, id, req.tenantId]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Survey not found or already answered' });
     res.json({ ok: true });
@@ -436,9 +458,10 @@ router.post('/api/nps/respond', publicLimiter, async (req, res) => {
 
 // Admin: manually send NPS to subscriber
 router.post('/api/admin/nps/send', requireAuth, requireAdmin, async (req, res) => {
+  let conn;
   try {
     const { subscriber_id } = req.body;
-    const [[sub]] = await pool.query('SELECT id,email,name FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [subscriber_id, req.tenantId]);
+    const [[sub]] = await pool.query('SELECT id,email,name,branch_id FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [subscriber_id, req.tenantId]);
     if (!sub || !sub.email) return res.status(404).json({ error: 'Subscriber not found or no email' });
     // NPS is a marketing-adjacent survey — must respect the same suppression
     // list every other campaign channel does (MKT-09: this used to send
@@ -448,9 +471,11 @@ router.post('/api/admin/nps/send', requireAuth, requireAdmin, async (req, res) =
     const [allowed] = await filterSuppressed(req.tenantId, 'email', [sub], 'email');
     if (!allowed) return res.status(409).json({ error: 'Subscriber has opted out of marketing messages' });
     const id = uuidv4();
-    await pool.query(
-      'INSERT INTO nps_responses (id,tenant_id,subscriber_id,subscriber_email,sent_at) VALUES (?,?,?,?,NOW())',
-      [id, req.tenantId, sub.id, sub.email]
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    await conn.query(
+      'INSERT INTO nps_responses (id,tenant_id,branch_id,subscriber_id,subscriber_email,sent_at) VALUES (?,?,?,?,?,NOW())',
+      [id, req.tenantId, sub.branch_id || null, sub.id, sub.email]
     );
     const link = `https://mahadnafsy.com/nps?id=${id}`;
     await outbox.enqueue({
@@ -464,9 +489,16 @@ router.post('/api/admin/nps/send', requireAuth, requireAdmin, async (req, res) =
         <p style="color:#9ca3af;font-size:12px">الرابط صالح لمرة واحدة فقط</p>
       `) },
       tenantId: req.tenantId, dedupeKey: `nps:${req.tenantId}:${id}`, refType: 'nps_response', refId: id,
-    });
+    }, conn);
+    await conn.commit();
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (conn) await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn?.release();
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -4,10 +4,9 @@ import {
   Heart, MessageCircle, Share2, MoreHorizontal, Play, Video,
   Pin, Plus, X, Send, Eye, Bell,
   ChevronRight, ChevronLeft, Award, Flame, Clock, CheckCircle, TrendingUp,
-  Pencil, Trash2, Upload,
+  Pencil, Trash2,
 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
-import { CommunityComment } from '../types';
 import { cdnImg } from '../lib/img';
 
 const TAG_COLORS: Record<string, string> = {
@@ -26,18 +25,18 @@ const ARABIC_DAYS_SHORT = ['سبت','أحد','اثن','ثلا','أرب','خمس'
 
 const Community: React.FC = () => {
   useEffect(() => { document.title = 'المجتمع النفسي | معهد الدراسات النفسية'; }, []);
-  const { communityPosts, communityLibraryItems, communityVideos, communityEvents, addCommunityPost, updateCommunityPost, deleteCommunityPost, addCommunityLibraryItem, addCommunityVideo, addCommunityEvent, content } = useSiteData();
+  const {
+    communityPosts, communityLibraryItems, communityVideos, communityEvents,
+    addCommunityPost, updateCommunityPost, deleteCommunityPost,
+    toggleCommunityPostLike, addCommunityPostComment,
+    content, isAdmin, authUser,
+  } = useSiteData();
   const [activeTab, setActiveTab] = useState<'discussions' | 'library' | 'events' | 'videos'>('discussions');
   const [tagFilter, setTagFilter] = useState('الكل');
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [showNewPostModal, setShowNewPostModal] = useState(false);
-  const [postModalStep, setPostModalStep] = useState<'type' | 'form'>('type');
-  const [postType, setPostType] = useState<'discussion' | 'library' | 'video' | 'event' | null>(null);
   const [showVideoModal, setShowVideoModal] = useState<string | null>(null);
   const [newPost, setNewPost] = useState({ title: '', body: '', tag: 'نقاش عام' });
-  const [newLibrary, setNewLibrary] = useState({ title: '', description: '', fileType: 'PDF', fileSize: '', downloadUrl: '' });
-  const [newVideo, setNewVideo] = useState({ title: '', videoUrl: '', thumbnail: '', duration: '', description: '' });
-  const [newEvent, setNewEvent] = useState({ title: '', eventType: 'ندوة', speaker: '', platform: 'Zoom', eventDate: '', description: '' });
   const [postSubmitted, setPostSubmitted] = useState(false);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [commentPanelId, setCommentPanelId] = useState<string | null>(null);
@@ -47,6 +46,8 @@ const Community: React.FC = () => {
   const [editPostDraft, setEditPostDraft] = useState({ title: '', body: '', tag: 'نقاش عام' });
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const totalMembers = 847 + communityPosts.length;
 
@@ -58,7 +59,7 @@ const Community: React.FC = () => {
 
   const filteredPosts = useMemo(() => {
     // Only show approved posts (or legacy posts without status) to regular users
-    const visible = communityPosts.filter(p => !p.status || p.status === 'approved');
+    const visible = communityPosts.filter(p => !p.status || p.status === 'approved' || p.isOwner);
     const sorted = [...visible].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
     return sorted.filter(p => tagFilter === 'الكل' || p.tag === tagFilter);
   }, [communityPosts, tagFilter]);
@@ -70,103 +71,98 @@ const Community: React.FC = () => {
   })();
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  const handleLike = (id: string, currentLikes: number) => {
-    const post = communityPosts.find(p => p.id === id);
-    if (!post) return;
-    if (likedPosts.has(id)) {
-      setLikedPosts(prev => { const n = new Set(prev); n.delete(id); return n; });
-      updateCommunityPost({ ...post, likes: Math.max(0, currentLikes - 1) });
-    } else {
-      setLikedPosts(prev => new Set([...prev, id]));
-      updateCommunityPost({ ...post, likes: currentLikes + 1 });
+  const handleLike = async (id: string) => {
+    if (actionPending) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      const result = await toggleCommunityPostLike(id);
+      setLikedPosts(prev => {
+        const next = new Set(prev);
+        if (result.liked) next.add(id); else next.delete(id);
+        return next;
+      });
+    } catch {
+      setActionError('تعذر حفظ الإعجاب. سجّل الدخول وتأكد من اتصالك ثم حاول مرة أخرى.');
+    } finally {
+      setActionPending(false);
     }
   };
 
-  const handleSubmitComment = (postId: string) => {
+  const handleSubmitComment = async (postId: string) => {
     const post = communityPosts.find(p => p.id === postId);
     const body = commentDrafts[postId];
-    if (!post || !body?.trim()) return;
-    const newComment: CommunityComment = {
-      id: `c-${Date.now()}`,
-      author: 'مشترك',
-      body: body.trim(),
-      at: 'الآن',
-    };
-    updateCommunityPost({
-      ...post,
-      commentsList: [...(post.commentsList || []), newComment],
-      comments: post.comments + 1,
-    });
-    setCommentDrafts(prev => ({ ...prev, [postId]: '' }));
+    if (!post || !body?.trim() || actionPending) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await addCommunityPostComment(postId, body.trim());
+      setCommentDrafts(prev => ({ ...prev, [postId]: '' }));
+    } catch {
+      setActionError('تعذر حفظ التعليق. سجّل الدخول وتأكد من اتصالك ثم حاول مرة أخرى.');
+    } finally {
+      setActionPending(false);
+    }
   };
 
-  const handleSubmitPost = () => {
-    if (!newPost.title.trim() || !newPost.body.trim()) return;
-    addCommunityPost({
-      id: `cp-${Date.now()}`,
-      authorName: 'مشترك',
-      authorRole: 'عضو',
-      authorImage: 'https://ui-avatars.com/api/?name=%D9%85%D8%B4%D8%AA%D8%B1%D9%83&background=7c3aed&color=fff&size=100',
-      title: newPost.title.trim(),
-      body: newPost.body.trim(),
-      tag: newPost.tag,
-      likes: 0,
-      comments: 0,
-      createdAt: 'الآن',
-      status: 'pending',
-    });
-    setNewPost({ title: '', body: '', tag: 'نقاش عام' });
-    setPostSubmitted(true);
-    setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); setPostType(null); setPostModalStep('type'); }, 2000);
+  const handleSubmitPost = async () => {
+    if (!newPost.title.trim() || !newPost.body.trim() || actionPending) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await addCommunityPost({
+        id: `cp-${Date.now()}`,
+        authorName: 'مشترك',
+        authorRole: 'عضو',
+        authorImage: 'https://ui-avatars.com/api/?name=%D9%85%D8%B4%D8%AA%D8%B1%D9%83&background=7c3aed&color=fff&size=100',
+        title: newPost.title.trim(),
+        body: newPost.body.trim(),
+        tag: newPost.tag,
+        likes: 0,
+        comments: 0,
+        createdAt: 'الآن',
+        status: 'pending',
+      });
+      setNewPost({ title: '', body: '', tag: 'نقاش عام' });
+      setPostSubmitted(true);
+      setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); }, 2000);
+    } catch {
+      setActionError('لم يتم حفظ المنشور. تأكد من تسجيل الدخول والاتصال ثم حاول مرة أخرى.');
+    } finally {
+      setActionPending(false);
+    }
   };
 
-  const handleUpdatePost = () => {
-    if (!editingPostId || !editPostDraft.title.trim() || !editPostDraft.body.trim()) return;
+  const handleUpdatePost = async () => {
+    if (!editingPostId || !editPostDraft.title.trim() || !editPostDraft.body.trim() || actionPending) return;
     const post = communityPosts.find(p => p.id === editingPostId);
     if (!post) return;
-    updateCommunityPost({ ...post, title: editPostDraft.title.trim(), body: editPostDraft.body.trim(), tag: editPostDraft.tag });
-    setEditingPostId(null);
-    setEditPostDraft({ title: '', body: '', tag: 'نقاش عام' });
-    setPostSubmitted(true);
-    setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); setPostType(null); setPostModalStep('type'); }, 1500);
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await updateCommunityPost({ ...post, title: editPostDraft.title.trim(), body: editPostDraft.body.trim(), tag: editPostDraft.tag });
+      setEditPostDraft({ title: '', body: '', tag: 'نقاش عام' });
+      setPostSubmitted(true);
+      setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); setEditingPostId(null); }, 1500);
+    } catch {
+      setActionError('تعذر تحديث المنشور ولم يتم تغيير النسخة المحفوظة.');
+    } finally {
+      setActionPending(false);
+    }
   };
 
-  const handleDeletePost = (postId: string) => {
-    deleteCommunityPost(postId);
-    setContextMenuPostId(null);
-  };
-
-  const handleSubmitLibrary = () => {
-    if (!newLibrary.title.trim() || !newLibrary.downloadUrl.trim()) return;
-    addCommunityLibraryItem({ id: `cl-${Date.now()}`, title: newLibrary.title.trim(), description: newLibrary.description.trim(), fileType: newLibrary.fileType, fileSize: newLibrary.fileSize, downloadUrl: newLibrary.downloadUrl.trim() });
-    setNewLibrary({ title: '', description: '', fileType: 'PDF', fileSize: '', downloadUrl: '' });
-    setPostSubmitted(true);
-    setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); setPostType(null); setPostModalStep('type'); setActiveTab('library'); }, 1500);
-  };
-
-  const handleSubmitVideo = () => {
-    if (!newVideo.title.trim() || !newVideo.videoUrl.trim()) return;
-    addCommunityVideo({ id: `cv-${Date.now()}`, title: newVideo.title.trim(), videoUrl: newVideo.videoUrl.trim(), thumbnail: newVideo.thumbnail || '', duration: newVideo.duration, viewsLabel: '0', description: newVideo.description });
-    setNewVideo({ title: '', videoUrl: '', thumbnail: '', duration: '', description: '' });
-    setPostSubmitted(true);
-    setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); setPostType(null); setPostModalStep('type'); setActiveTab('videos'); }, 1500);
-  };
-
-  const handleSubmitEvent = () => {
-    if (!newEvent.title.trim()) return;
-    addCommunityEvent({
-      id: `ce-${Date.now()}`,
-      title: newEvent.title.trim(),
-      eventType: newEvent.eventType,
-      speaker: newEvent.speaker,
-      platform: newEvent.platform,
-      dateLabel: newEvent.eventDate ? new Date(newEvent.eventDate + 'T00:00:00').toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'short' }) : '',
-      eventDate: newEvent.eventDate,
-      description: newEvent.description,
-    });
-    setNewEvent({ title: '', eventType: 'ندوة', speaker: '', platform: 'Zoom', eventDate: '', description: '' });
-    setPostSubmitted(true);
-    setTimeout(() => { setShowNewPostModal(false); setPostSubmitted(false); setPostType(null); setPostModalStep('type'); setActiveTab('events'); }, 1500);
+  const handleDeletePost = async (postId: string) => {
+    if (actionPending) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await deleteCommunityPost(postId);
+      setContextMenuPostId(null);
+    } catch {
+      setActionError('تعذر حذف المنشور ولم يتم حذفه من الواجهة.');
+    } finally {
+      setActionPending(false);
+    }
   };
 
   const handleShare = (title: string) => {
@@ -209,6 +205,11 @@ const Community: React.FC = () => {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+        {actionError && (
+          <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {actionError}
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
 
           {/* Left Sidebar */}
@@ -221,9 +222,13 @@ const Community: React.FC = () => {
                   <p className="text-xs text-primary-600 font-medium bg-primary-50 px-2 py-0.5 rounded-full inline-block mt-0.5">عضو نشط</p>
                 </div>
               </div>
-              <button onClick={() => setShowNewPostModal(true)} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-xl font-bold mb-5 shadow flex items-center justify-center gap-2 transition">
-                <Plus size={18} />مشاركة جديدة
-              </button>
+              {authUser && !isAdmin ? (
+                <button onClick={() => { setActionError(null); setShowNewPostModal(true); }} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-xl font-bold mb-5 shadow flex items-center justify-center gap-2 transition">
+                  <Plus size={18} />مشاركة جديدة
+                </button>
+              ) : (
+                <p className="mb-5 rounded-xl bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-700">سجّل الدخول للمشاركة والتفاعل.</p>
+              )}
               <nav className="space-y-1">
                 {([
                   { key: 'discussions', icon: MessageSquare, label: content['community.discussions.title'] || 'ساحة النقاش', count: communityPosts.length },
@@ -258,7 +263,7 @@ const Community: React.FC = () => {
                     <button key={tag} onClick={() => setTagFilter(tag)} className={`text-xs px-3 py-1.5 rounded-full border font-medium transition ${tagFilter === tag ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>{tag}</button>
                   ))}
                 </div>
-                <div onClick={() => setShowNewPostModal(true)} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex gap-3 items-center cursor-pointer hover:border-primary-300 transition group">
+                <div onClick={authUser && !isAdmin ? () => setShowNewPostModal(true) : undefined} className={`bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex gap-3 items-center transition group ${authUser && !isAdmin ? 'cursor-pointer hover:border-primary-300' : 'opacity-70'}`}>
                   <div className="w-10 h-10 rounded-full bg-primary-100 flex-shrink-0 flex items-center justify-center text-primary-600 font-bold">م</div>
                   <div className="flex-1 bg-gray-50 group-hover:bg-primary-50 rounded-full px-4 py-2.5 text-gray-400 text-sm transition">شارك أفكارك، أسئلتك، أو حالة للنقاش...</div>
                 </div>
@@ -286,15 +291,15 @@ const Community: React.FC = () => {
                           <p className="text-xs text-gray-400">{post.authorRole === 'Admin' ? 'معهد الدراسات النفسية' : post.authorRole} • {post.createdAt}</p>
                         </div>
                       </div>
-                      <div className="relative">
+                      {post.isOwner && <div className="relative">
                         <button onClick={(e) => { e.stopPropagation(); setContextMenuPostId(contextMenuPostId === post.id ? null : post.id); }} aria-label="خيارات المنشور" className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition"><MoreHorizontal size={18} /></button>
                         {contextMenuPostId === post.id && (
                           <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 min-w-[100px]">
-                            <button onClick={() => { setEditingPostId(post.id); setEditPostDraft({ title: post.title, body: post.body, tag: post.tag }); setShowNewPostModal(true); setPostModalStep('form'); setPostType('discussion'); setContextMenuPostId(null); }} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"><Pencil size={13} />تعديل</button>
+                            <button onClick={() => { setEditingPostId(post.id); setEditPostDraft({ title: post.title, body: post.body, tag: post.tag }); setShowNewPostModal(true); setContextMenuPostId(null); }} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"><Pencil size={13} />تعديل</button>
                             <button onClick={() => handleDeletePost(post.id)} className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 size={13} />حذف</button>
                           </div>
                         )}
-                      </div>
+                      </div>}
                     </div>
                     <div className="mb-4">
                       <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border inline-block mb-2 ${getTagColor(post.tag)}`}>{post.tag}</span>
@@ -308,7 +313,7 @@ const Community: React.FC = () => {
                     </div>
                     <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                       <div className="flex gap-5">
-                        <button onClick={() => handleLike(post.id, post.likes)} className={`flex items-center gap-2 text-sm transition group ${likedPosts.has(post.id) ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}>
+                        <button onClick={() => void handleLike(post.id)} disabled={actionPending || !authUser} className={`flex items-center gap-2 text-sm transition group disabled:opacity-50 ${likedPosts.has(post.id) ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}>
                           <Heart size={17} className={likedPosts.has(post.id) ? 'fill-red-500' : 'group-hover:fill-red-500'} />
                           <span className="font-medium">{post.likes}</span>
                         </button>
@@ -324,7 +329,7 @@ const Community: React.FC = () => {
                       <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
                         {(post.commentsList || []).length > 0 && (
                           <div className="space-y-3">
-                            {(post.commentsList as CommunityComment[]).map(c => (
+                            {(post.commentsList || []).map(c => (
                               <div key={c.id} className="flex gap-3">
                                 <div className="w-8 h-8 rounded-full bg-primary-100 flex-shrink-0 flex items-center justify-center text-primary-600 text-xs font-bold">{c.author.charAt(0)}</div>
                                 <div className="flex-1 bg-gray-50 rounded-xl p-3">
@@ -342,11 +347,12 @@ const Community: React.FC = () => {
                           <input
                             value={commentDrafts[post.id] || ''}
                             onChange={e => setCommentDrafts(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            onKeyDown={e => e.key === 'Enter' && handleSubmitComment(post.id)}
-                            placeholder="اكتب تعليقك..."
-                            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                            onKeyDown={e => { if (e.key === 'Enter') void handleSubmitComment(post.id); }}
+                            placeholder={authUser ? 'اكتب تعليقك...' : 'سجّل الدخول للتعليق'}
+                            disabled={!authUser || actionPending}
+                            className="flex-1 border border-gray-200 disabled:bg-gray-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
                           />
-                          <button onClick={() => handleSubmitComment(post.id)} className="bg-primary-600 hover:bg-primary-700 text-white p-2 rounded-xl transition flex-shrink-0">
+                          <button onClick={() => void handleSubmitComment(post.id)} disabled={actionPending || !authUser} className="bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 text-white p-2 rounded-xl transition flex-shrink-0">
                             <Send size={16} />
                           </button>
                         </div>
@@ -456,8 +462,7 @@ const Community: React.FC = () => {
                       return (
                         <div
                           key={day}
-                          onClick={() => { setNewEvent(p => ({ ...p, eventDate: dateStr })); setPostType('event'); setPostModalStep('form'); setShowNewPostModal(true); }}
-                          className={`min-h-[72px] p-1.5 border-b border-gray-100 cursor-pointer hover:bg-primary-50/50 transition ${col === 6 ? '' : 'border-r border-gray-100'}`}
+                          className={`min-h-[72px] p-1.5 border-b border-gray-100 transition ${col === 6 ? '' : 'border-r border-gray-100'}`}
                         >
                           <div className={`text-xs font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-primary-600 text-white' : 'text-gray-600'}`}>{day}</div>
                           {dayEvents.slice(0, 2).map(e => (
@@ -474,7 +479,6 @@ const Community: React.FC = () => {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                     <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2"><Flame size={16} className="text-orange-500" />فعاليات {ARABIC_MONTHS[calendarMonth]}</h3>
-                    <button onClick={() => { setPostType('event'); setPostModalStep('form'); setShowNewPostModal(true); }} className="flex items-center gap-1.5 bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold"><Plus size={12} />إضافة فعالية</button>
                   </div>
                   <div className="divide-y divide-gray-50">
                     {communityEvents
@@ -572,52 +576,26 @@ const Community: React.FC = () => {
 
       {/* New Post / Edit Modal */}
       {showNewPostModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => { setShowNewPostModal(false); setPostType(null); setPostModalStep('type'); setEditingPostId(null); setPostSubmitted(false); }}>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => { setShowNewPostModal(false); setEditingPostId(null); setPostSubmitted(false); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100 flex-shrink-0">
               <h3 className="font-bold text-gray-900 text-lg">
-                {editingPostId ? 'تعديل المشاركة' : postModalStep === 'type' ? 'إنشاء مشاركة جديدة' : postType === 'discussion' ? 'مشاركة في ساحة النقاش' : postType === 'library' ? 'رفع ملف في المكتبة' : postType === 'video' ? 'إضافة فيديو / محاضرة' : 'إضافة فعالية للتقويم'}
+                {editingPostId ? 'تعديل المشاركة' : 'مشاركة في ساحة النقاش'}
               </h3>
-              <div className="flex items-center gap-2">
-                {postModalStep === 'form' && !editingPostId && (
-                  <button onClick={() => { setPostModalStep('type'); setPostType(null); }} className="text-xs text-gray-500 hover:text-primary-600 font-medium px-2 py-1 rounded hover:bg-gray-100">← رجوع</button>
-                )}
-                <button onClick={() => { setShowNewPostModal(false); setPostType(null); setPostModalStep('type'); setEditingPostId(null); setPostSubmitted(false); }} className="text-gray-400 hover:text-gray-600 transition p-1.5 rounded-lg hover:bg-gray-100"><X size={20} /></button>
-              </div>
+              <button onClick={() => { setShowNewPostModal(false); setEditingPostId(null); setPostSubmitted(false); }} className="text-gray-400 hover:text-gray-600 transition p-1.5 rounded-lg hover:bg-gray-100"><X size={20} /></button>
             </div>
 
             <div className="overflow-y-auto flex-1">
+              {actionError && <div role="alert" className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</div>}
               {postSubmitted ? (
                 <div className="p-8 text-center">
                   <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} className="text-emerald-500" /></div>
                   <h3 className="font-bold text-gray-900 text-xl mb-2">{editingPostId ? 'تم التحديث بنجاح!' : '📬 تم استلام منشورك!'}</h3>
                   <p className="text-gray-500 text-sm">{editingPostId ? 'ستظهر التعديلات فوراً' : 'سيتم مراجعته من قِبل الإدارة قبل نشره للجميع'}</p>
                 </div>
-              ) : postModalStep === 'type' && !editingPostId ? (
-                <div className="p-5">
-                  <p className="text-sm text-gray-500 mb-4 text-center">اختر نوع المشاركة التي تريد إضافتها</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { type: 'discussion' as const, icon: MessageSquare, label: 'ساحة النقاش', desc: 'شارك رأيك وأفكارك', color: 'bg-blue-50 text-blue-600 border-blue-200 hover:border-blue-400' },
-                      { type: 'library' as const, icon: FileText, label: 'المكتبة الرقمية', desc: 'ارفع ملفاً أو مرجعاً', color: 'bg-violet-50 text-violet-600 border-violet-200 hover:border-violet-400' },
-                      { type: 'video' as const, icon: Video, label: 'ورش ومحاضرات', desc: 'شارك فيديو أو محاضرة', color: 'bg-amber-50 text-amber-600 border-amber-200 hover:border-amber-400' },
-                      { type: 'event' as const, icon: Calendar, label: 'فعالية في التقويم', desc: 'أضف موعداً في الكاليندر', color: 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:border-emerald-400' },
-                    ].map(({ type, icon: Icon, label, desc, color }) => (
-                      <button key={type} onClick={() => { setPostType(type); setPostModalStep('form'); }} className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 ${color} transition text-center`}>
-                        <Icon size={28} />
-                        <div>
-                          <div className="font-bold text-sm">{label}</div>
-                          <div className="text-xs opacity-70 mt-0.5">{desc}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               ) : (
                 <div className="p-5 space-y-4">
-                  {/* Discussion / Edit form */}
-                  {(postType === 'discussion' || editingPostId) && (
-                    <>
+                  <>
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-1.5">تصنيف المشاركة</label>
                         <div className="flex flex-wrap gap-2">
@@ -635,114 +613,10 @@ const Community: React.FC = () => {
                         <label className="block text-xs font-bold text-gray-600 mb-1.5">تفاصيل المشاركة <span className="text-red-500">*</span></label>
                         <textarea value={editingPostId ? editPostDraft.body : newPost.body} onChange={e => editingPostId ? setEditPostDraft(p => ({ ...p, body: e.target.value })) : setNewPost(p => ({ ...p, body: e.target.value }))} rows={5} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400 resize-none" placeholder="شارك أفكارك أو أسئلتك بالتفصيل..." />
                       </div>
-                      <button onClick={editingPostId ? handleUpdatePost : handleSubmitPost} disabled={editingPostId ? (!editPostDraft.title.trim() || !editPostDraft.body.trim()) : (!newPost.title.trim() || !newPost.body.trim())} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
-                        <Send size={16} />{editingPostId ? 'تحديث المشاركة' : 'نشر المشاركة'}
+                      <button onClick={editingPostId ? handleUpdatePost : handleSubmitPost} disabled={actionPending || (editingPostId ? (!editPostDraft.title.trim() || !editPostDraft.body.trim()) : (!newPost.title.trim() || !newPost.body.trim()))} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+                        <Send size={16} />{actionPending ? 'جارٍ الحفظ...' : editingPostId ? 'تحديث المشاركة' : 'نشر المشاركة'}
                       </button>
-                    </>
-                  )}
-
-                  {/* Library form */}
-                  {postType === 'library' && !editingPostId && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">عنوان الملف <span className="text-red-500">*</span></label>
-                        <input value={newLibrary.title} onChange={e => setNewLibrary(p => ({ ...p, title: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="اسم الملف أو الكتاب" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">نوع الملف</label>
-                          <select value={newLibrary.fileType} onChange={e => setNewLibrary(p => ({ ...p, fileType: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400">
-                            {['PDF', 'Word', 'Excel', 'PowerPoint', 'كتاب', 'مذكرة', 'أخرى'].map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">الحجم</label>
-                          <input value={newLibrary.fileSize} onChange={e => setNewLibrary(p => ({ ...p, fileSize: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="2.4 MB" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">وصف</label>
-                        <input value={newLibrary.description} onChange={e => setNewLibrary(p => ({ ...p, description: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="وصف مختصر للملف" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">رابط التحميل <span className="text-red-500">*</span></label>
-                        <input value={newLibrary.downloadUrl} onChange={e => setNewLibrary(p => ({ ...p, downloadUrl: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="https://drive.google.com/..." />
-                      </div>
-                      <button onClick={handleSubmitLibrary} disabled={!newLibrary.title.trim() || !newLibrary.downloadUrl.trim()} className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
-                        <Upload size={16} />رفع الملف في المكتبة
-                      </button>
-                    </>
-                  )}
-
-                  {/* Video form */}
-                  {postType === 'video' && !editingPostId && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">عنوان الفيديو <span className="text-red-500">*</span></label>
-                        <input value={newVideo.title} onChange={e => setNewVideo(p => ({ ...p, title: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="عنوان الورشة أو المحاضرة" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">رابط الفيديو <span className="text-red-500">*</span></label>
-                        <input value={newVideo.videoUrl} onChange={e => setNewVideo(p => ({ ...p, videoUrl: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="رابط YouTube أو Vimeo" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">المدة</label>
-                          <input value={newVideo.duration} onChange={e => setNewVideo(p => ({ ...p, duration: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="45:00" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">صورة الغلاف</label>
-                          <input value={newVideo.thumbnail} onChange={e => setNewVideo(p => ({ ...p, thumbnail: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="رابط الصورة" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">وصف</label>
-                        <textarea value={newVideo.description} onChange={e => setNewVideo(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400 resize-none" placeholder="نبذة عن محتوى الفيديو..." />
-                      </div>
-                      <button onClick={handleSubmitVideo} disabled={!newVideo.title.trim() || !newVideo.videoUrl.trim()} className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
-                        <Video size={16} />إضافة الفيديو
-                      </button>
-                    </>
-                  )}
-
-                  {/* Event form */}
-                  {postType === 'event' && !editingPostId && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">عنوان الفعالية <span className="text-red-500">*</span></label>
-                        <input value={newEvent.title} onChange={e => setNewEvent(p => ({ ...p, title: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="اسم الفعالية أو الورشة" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">تاريخ الفعالية <span className="text-red-500">*</span></label>
-                          <input type="date" value={newEvent.eventDate} onChange={e => setNewEvent(p => ({ ...p, eventDate: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">نوع الفعالية</label>
-                          <select value={newEvent.eventType} onChange={e => setNewEvent(p => ({ ...p, eventType: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400">
-                            {['ندوة', 'ورشة عمل', 'محاضرة', 'دورة', 'مؤتمر', 'حفل تخرج', 'أخرى'].map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">المتحدث / المنظم</label>
-                          <input value={newEvent.speaker} onChange={e => setNewEvent(p => ({ ...p, speaker: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="اسم المتحدث" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 mb-1.5">المنصة / المكان</label>
-                          <input value={newEvent.platform} onChange={e => setNewEvent(p => ({ ...p, platform: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400" placeholder="زووم / حضوري..." />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">تفاصيل إضافية</label>
-                        <textarea value={newEvent.description} onChange={e => setNewEvent(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400 resize-none" placeholder="تفاصيل الفعالية، شروط الحضور، رابط التسجيل..." />
-                      </div>
-                      <button onClick={handleSubmitEvent} disabled={!newEvent.title.trim()} className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
-                        <Calendar size={16} />إضافة الفعالية للتقويم
-                      </button>
-                    </>
-                  )}
+                  </>
                 </div>
               )}
             </div>

@@ -411,7 +411,7 @@ type BranchEntry = { id: string; label: string; rooms?: BranchRoom[] };
 
 function BranchAddForm({ instituteBranches, setContentValue }: {
   instituteBranches: BranchEntry[];
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
 }) {
   const [newBranchId, setNewBranchId] = React.useState('');
   const [newBranchLabel, setNewBranchLabel] = React.useState('');
@@ -570,6 +570,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   testimonials:       'manage_testimonials',
   discounts:          'manage_discounts',
   quizzes:            'manage_courses',
+  course_waitlist:    'manage_courses',
   live_streams:       'manage_courses',
   orders:             'view_orders',
   financial:          'view_financial',
@@ -584,6 +585,9 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   revenue_sources:    'view_reports',
   expense_analytics:  'view_reports',
   hr:                 'view_hr',
+  hr_analytics:       'view_hr',
+  staff_applications: 'view_join_us',
+  lecturer_applications: 'view_join_us',
   customer_inbox:     'manage_inbox',
   join_us:            'view_join_us',
   contacts:           'view_contacts',
@@ -596,10 +600,20 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   enps_dashboard:      'view_hr',
   offboarding:         'manage_hr',
   activity:           'view_activity',
+  staff_performance:  'view_reports',
+  forecast:           'view_reports',
+  sales_team:         'view_staff',
+  sales_reports:      'view_reports',
+  sales_goals:        'manage_leads',
+  online_team:        'view_staff',
+  subscriptions:     'view_financial',
+  lead_scoring:       'manage_leads',
+  consultation_calendar: 'view_consultations',
   automation:         'manage_automation',
   admin_ai_settings:  'manage_ai_settings',
   messaging_agent:    'manage_channel_settings',
   system_settings:    'manage_settings',
+  settings_hub:       'view_settings',
   payment_settings:   'manage_settings',
   lead_sources_settings: 'manage_settings',
   otp_settings:       'manage_security',
@@ -607,9 +621,17 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   server_monitor:     'view_security',
   webhooks:           'manage_settings',
   security_dashboard: 'view_security',
+  ip_whitelist:       'manage_security',
+  sms_settings:       'manage_channel_settings',
+  notif_inbox:        'manage_notifications',
+  email_campaigns:    'manage_channel_settings',
+  sms_campaigns:      'manage_channel_settings',
+  drip_campaigns:     'manage_channel_settings',
+  hub_advanced:       'manage_settings',
   pg_migrate:         'manage_settings',
   // Staff personal portal — accessible by any authenticated staff
   staff_home:         'view_dashboard',
+  staff_settings:     'view_dashboard',
   my_hr:              'view_dashboard',
   home_offer:         'manage_content',
   about_page:         'manage_content',

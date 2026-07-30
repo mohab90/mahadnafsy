@@ -6,7 +6,9 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 
 function isValidIP(ip: string) {
-  const parts = ip.split('.');
+  const [address, prefix, extra] = ip.split('/');
+  if (extra !== undefined || (prefix !== undefined && (!/^\d{1,2}$/.test(prefix) || Number(prefix) > 32))) return false;
+  const parts = address.split('.');
   if (parts.length !== 4) return false;
   return parts.every(p => /^\d{1,3}$/.test(p) && Number(p) >= 0 && Number(p) <= 255);
 }
@@ -26,20 +28,13 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
       if (res.ok) {
         const data = await res.json();
         setWhitelist(data.whitelist || []);
+        setMyIp(data.currentIp || '');
       }
     } catch {}
     setLoading(false);
   }
 
-  async function fetchMyIp() {
-    try {
-      const res = await fetch('https://api.ipify.org?format=json');
-      const d = await res.json();
-      setMyIp(d.ip);
-    } catch {}
-  }
-
-  useEffect(() => { loadWhitelist(); fetchMyIp(); }, []);
+  useEffect(() => { loadWhitelist(); }, []);
 
   async function addIp() {
     if (!newIp.trim()) { notify('error', 'أدخل IP صحيح'); return; }
@@ -102,7 +97,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
         <AlertCircle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
         <div className="text-amber-800 text-sm">
-          <strong>تحذير:</strong> إضافة IP لا يعني تلقائياً تفعيل قيود الوصول. هذه القائمة مرجعية وستُربط بإعدادات الأمان من خلال API لاحقاً.
+          <strong>تنبيه:</strong> القائمة متصلة بالخادم فعلياً، ويبدأ فرضها على مسارات الإدارة عند تفعيل <code>IP_WHITELIST_ENFORCE=true</code> في بيئة التشغيل.
         </div>
       </div>
 
@@ -110,7 +105,7 @@ export default function IpWhitelistTab({ notify }: { notify: NotifyFn }) {
       <div className="bg-white border border-gray-200 rounded-2xl p-5">
         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Plus size={16} className="text-slate-500" />إضافة IP جديد</h3>
         <div className="flex flex-wrap gap-3">
-          <input value={newIp} onChange={e => setNewIp(e.target.value)} placeholder="192.168.1.1"
+          <input value={newIp} onChange={e => setNewIp(e.target.value)} placeholder="192.168.1.1 أو 10.0.0.0/24"
             className="border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono flex-1 min-w-[150px] focus:outline-none focus:ring-2 focus:ring-slate-300"
             onKeyDown={e => e.key === 'Enter' && addIp()} />
           <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="وصف (اختياري)"

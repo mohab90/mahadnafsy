@@ -3,6 +3,7 @@
 // Requires dotenv to be loaded BEFORE this module is required.
 const mysql  = require('mysql2/promise');
 const logger = require('./logger');
+const { getDbSslConfig } = require('./dbSsl');
 
 const pool = mysql.createPool({
   host:               process.env.DB_HOST     || '127.0.0.1',
@@ -10,6 +11,7 @@ const pool = mysql.createPool({
   user:               process.env.DB_USER,
   password:           process.env.DB_PASSWORD,
   database:           process.env.DB_NAME,
+  ssl:                getDbSslConfig(),
   waitForConnections: true,
   // Default sized for the dedicated VPS target (100 concurrent staff). MySQL's
   // default max_connections (151) comfortably absorbs this with headroom for
@@ -19,6 +21,9 @@ const pool = mysql.createPool({
   queueLimit:         parseInt(process.env.DB_QUEUE_LIMIT || '200'),
   connectTimeout:     parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '3000'),
   charset:            'UTF8MB4_UNICODE_CI',
+  // MySQL DATE has no time zone. Returning it as a JavaScript Date shifts Cairo
+  // midnight to the previous UTC day and corrupts due dates/period boundaries.
+  dateStrings:        ['DATE'],
   enableKeepAlive:    true,
   keepAliveInitialDelay: 10000,
 });
@@ -30,13 +35,8 @@ pool.on('connection', (conn) => {
   });
 });
 
-// Pool-level error handler — critical on shared hosting where MySQL drops idle connections.
-pool.on('error', (err) => {
-  logger.error('[Pool] Connection error (will auto-recover):', err.message, err.code);
-});
-
-// ── DB state tracker — fast-fail when tunnel is known down ───────────────────
-// ECONNREFUSED = tunnel not running (port closed) — no point retrying immediately
+// ── DB state tracker — fast-fail while the database endpoint is down ──────────
+// ECONNREFUSED = endpoint unavailable — no point retrying immediately.
 // Other errors (ECONNRESET, ETIMEDOUT) = stale/dropped connections — worth one retry
 let _dbDown = false;
 let _dbDownAt = 0;
@@ -62,13 +62,13 @@ function requireDb(req, res, next) {
         path: req.path,
       });
     } catch (_) {}
-    return res.status(503).json({ error: 'DB unavailable — tunnel is down', db: 'disconnected' });
+    return res.status(503).json({ error: 'Database unavailable', db: 'disconnected' });
   }
   next();
 }
 
 // ── DB Query Helper with auto-retry on stale-connection errors ────────────────
-// ECONNREFUSED excluded: tunnel is closed → retrying won't help, propagate immediately
+// ECONNREFUSED excluded: the endpoint is unavailable, so retrying immediately will not help.
 const RETRYABLE = new Set(['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'ETIMEDOUT', 'ER_SERVER_LOST', 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR']);
 const _origQuery   = pool.query.bind(pool);
 const _origExecute = pool.execute.bind(pool);
@@ -85,7 +85,7 @@ function _isSchemaDdl(sql) {
 }
 
 function _schemaDdlAllowed() {
-  return process.env.ALLOW_RUNTIME_SCHEMA_DDL === '1' || process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE === '1';
+  return process.env.MAHAD_SCHEMA_MIGRATION_ACTIVE === '1';
 }
 
 function _skipSchemaDdl(sql) {
@@ -182,7 +182,7 @@ function releaseDb() {
 const _origGetConn = pool.getConnection.bind(pool);
 const CONN_TIMEOUT_MS = 4000;
 pool.getConnection = async () => {
-  if (isDbDown()) throw Object.assign(new Error('DB unavailable — tunnel is down'), { code: 'ECONNREFUSED' });
+  if (isDbDown()) throw Object.assign(new Error('Database unavailable'), { code: 'ECONNREFUSED' });
   await acquireDb();
   try {
     const conn = await Promise.race([
@@ -251,35 +251,4 @@ async function autoAssignStaff(role, tenantId = 'tenant-default') {
   }
 }
 
-// Ensures the users auth table exists. Called from the register/login/OTP
-// request handlers (self-healing if the table is ever missing), but the actual
-// DDL only runs once per process — every request after the first successful
-// check is a single in-memory boolean read, not a CREATE TABLE round-trip on
-// the hottest, most latency-sensitive path in the app.
-let _usersTableEnsured = false;
-async function ensureUsersTable(conn) {
-  if (_usersTableEnsured) return;
-  if (process.env.ALLOW_RUNTIME_SCHEMA_DDL !== '1') {
-    _usersTableEnsured = true;
-    logger.warn('[schema] ensureUsersTable skipped; run api/migrations/054_v25_auth_refund_monitoring_hardening.sql before production');
-    return;
-  }
-  await conn.execute(`
-    CREATE TABLE IF NOT EXISTS users (
-      id VARCHAR(100) PRIMARY KEY,
-      tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
-      email VARCHAR(255) NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      name VARCHAR(255),
-      role VARCHAR(50) DEFAULT 'user',
-      is_active TINYINT DEFAULT 1,
-      login_count INT DEFAULT 0,
-      last_login DATETIME DEFAULT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_users_tenant_email (tenant_id, email(191))
-    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-  `);
-  _usersTableEnsured = true;
-}
-
-module.exports = { pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, autoAssignStaff, ensureUsersTable, requireDb, isDbDown };
+module.exports = { pool, cached, cacheInvalidate, dbQuery, dbExecute, getStaffIdByEmail, autoAssignStaff, requireDb, isDbDown };

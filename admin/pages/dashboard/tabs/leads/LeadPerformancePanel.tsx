@@ -55,7 +55,7 @@ export function LeadPerformancePanel({
         totalLeads={visibleLeads.length}
         conversionRate={visibleLeads.length > 0 ? `${Math.round((totalConverted / visibleLeads.length) * 100)}%` : '0%'}
         convertedCount={totalConverted}
-        totalCommunications={leads.reduce((s, l) => s + (l.communications?.length || 0), 0)}
+        totalCommunications={leads.reduce((s, l) => s + (l.communicationCount ?? l.communications?.length ?? 0), 0)}
         monthlyLeads={leads.filter(l => (l.createdAt || '').startsWith(new Date().toISOString().slice(0, 7))).length}
       />
 

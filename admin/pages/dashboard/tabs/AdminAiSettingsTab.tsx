@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Settings2, Bot, FileText, AlertCircle, Zap, Save, CheckCircle, Code2, Video } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -8,47 +9,19 @@ interface Props {
   notify: NotifyFn;
 }
 
-export default function AdminAiSettingsTab({ notify: _notify }: Props) {
+export default function AdminAiSettingsTab({ notify }: Props) {
   const { adminAiConfig, setAdminAiConfig, content, setContentValue } = useSiteData();
-
-  const DEPRECATED_MODELS = ['gemini-2.0-flash'];
 
   const [adminAiDraft, setAdminAiDraft] = useState<{
     provider: string; apiKey: string; model: string; temperature: number; maxTokens: number; systemPrompt: string;
-  }>(() => {
-    try {
-      const raw = localStorage.getItem('mahad-admin-ai-config');
-      if (raw) {
-        const saved = JSON.parse(raw) as { provider: string; apiKey: string; model: string; temperature: number; maxTokens: number; systemPrompt?: string };
-        if (saved.provider === 'gemini' && DEPRECATED_MODELS.includes(saved.model)) {
-          saved.model = 'gemini-2.0-flash-lite';
-          localStorage.setItem('mahad-admin-ai-config', JSON.stringify(saved));
-        }
-        return { ...saved, systemPrompt: saved.systemPrompt || '' };
-      }
-    } catch {}
-    return { provider: 'gemini', apiKey: '', model: 'gemini-2.0-flash-lite', temperature: 0.7, maxTokens: 1500, systemPrompt: '' };
-  });
+  }>({ provider: 'gemini', apiKey: '', model: 'gemini-2.0-flash-lite', temperature: 0.7, maxTokens: 1500, systemPrompt: '' });
   const [adminAiSaved, setAdminAiSaved] = useState(false);
   const [aiPromptSuggestion, setAiPromptSuggestion] = useState('');
   const [aiPromptImproving, setAiPromptImproving] = useState(false);
 
   const [zaiDraft, setZaiDraft] = useState<{
     apiKey: string; model: string; baseUrl: string; systemPrompt: string; autoContext: boolean;
-  }>(() => {
-    try {
-      const raw = localStorage.getItem('mahad-zai-config');
-      if (raw) {
-        const saved = JSON.parse(raw) as { apiKey: string; model: string; baseUrl: string; systemPrompt: string; autoContext: boolean };
-        const oldModels = ['z1-mini', 'z1', 'z1-reasoning-mini', 'z1-reasoning'];
-        if (oldModels.includes(saved.model)) saved.model = 'GLM-4.7';
-        if (!saved.baseUrl || saved.baseUrl.includes('api.z.ai')) saved.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
-        return saved;
-      }
-    } catch {}
-    return { apiKey: '', model: 'GLM-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', systemPrompt: '', autoContext: false };
-  });
-  const [zaiSaved, setZaiSaved] = useState(false);
+  }>({ apiKey: '', model: 'GLM-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', systemPrompt: '', autoContext: false });
 
   // ── Video unlock settings ──────────────────────────────────────────────────
   const [videoUnlockDraft, setVideoUnlockDraft] = useState({
@@ -65,11 +38,17 @@ export default function AdminAiSettingsTab({ notify: _notify }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content['access.videos_on_deposit'], content['access.videos_per_payment']]);
 
-  const handleSaveVideoUnlock = () => {
+  const handleSaveVideoUnlock = async () => {
     const dep = Math.max(1, Number(videoUnlockDraft.onDeposit) || 20);
     const per = Math.max(1, Number(videoUnlockDraft.perPayment) || 15);
-    setContentValue('access.videos_on_deposit', String(dep));
-    setContentValue('access.videos_per_payment', String(per));
+    const saved = await Promise.all([
+      setContentValue('access.videos_on_deposit', String(dep)),
+      setContentValue('access.videos_per_payment', String(per)),
+    ]);
+    if (!saved.every(Boolean)) {
+      notify('error', 'تعذر حفظ إعدادات فتح الفيديوهات');
+      return;
+    }
     setVideoUnlockSaved(true);
     setTimeout(() => setVideoUnlockSaved(false), 2500);
   };
@@ -90,9 +69,11 @@ export default function AdminAiSettingsTab({ notify: _notify }: Props) {
     }
   }, [adminAiConfig]);
 
-  const handleSaveAdminAi = () => {
-    localStorage.setItem('mahad-admin-ai-config', JSON.stringify(adminAiDraft));
-    setAdminAiConfig(adminAiDraft);
+  const handleSaveAdminAi = async () => {
+    if (!await setAdminAiConfig(adminAiDraft)) {
+      notify('error', 'تعذر حفظ إعدادات الذكاء الاصطناعي على السيرفر');
+      return;
+    }
     setAdminAiSaved(true);
     setTimeout(() => setAdminAiSaved(false), 2500);
   };
@@ -103,30 +84,12 @@ export default function AdminAiSettingsTab({ notify: _notify }: Props) {
     setAiPromptImproving(true);
     setAiPromptSuggestion('');
     try {
-      const provider = adminAiDraft.provider || 'gemini';
-      const model = adminAiDraft.model || 'gemini-2.0-flash-lite';
-      const apiKey = adminAiDraft.apiKey || '';
-      if (!apiKey) throw new Error('مفتاح API غير متوفر. أضفه في الإعدادات أولاً.');
       const improveInstruction = `أنت خبير في كتابة تعليمات الذكاء الاصطناعي. حسِّن البرومبت التالي ليكون أكثر وضوحاً ودقةً واختصاراً مع الحفاظ على نفس الغرض. أعطني فقط النص المحسَّن بدون مقدمة أو شرح.\n\nالبرومبت الحالي:\n---\n${currentPrompt}\n---`;
-      if (provider === 'gemini') {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: improveInstruction }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 600 } }),
-        });
-        if (!res.ok) { const e = await res.json() as { error?: { message?: string } }; throw new Error(e.error?.message || `HTTP ${res.status}`); }
-        const d = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-        setAiPromptSuggestion(d.candidates?.[0]?.content?.parts?.[0]?.text || '');
-      } else {
-        const baseUrl = provider === 'claude' ? 'https://api.anthropic.com/v1/messages' : 'https://api.openai.com/v1/chat/completions';
-        const res = await fetch(baseUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}`, ...(provider === 'claude' ? { 'anthropic-version': '2023-06-01' } : {}) },
-          body: JSON.stringify({ model, messages: [{ role: 'user', content: improveInstruction }], temperature: 0.6, max_tokens: 600 }),
-        });
-        if (!res.ok) { const e = await res.json() as { error?: { message?: string } }; throw new Error(e.error?.message || `HTTP ${res.status}`); }
-        const d = await res.json() as { choices?: { message?: { content?: string } }[] };
-        setAiPromptSuggestion(d.choices?.[0]?.message?.content || '');
-      }
+      const { text } = await mysqlAdmin.generateAdminAi({
+        messages: [{ role: 'user', content: improveInstruction }],
+        maxTokens: 600,
+      });
+      setAiPromptSuggestion(text || '');
     } catch (err) {
       setAiPromptSuggestion(`⚠️ خطأ: ${err instanceof Error ? err.message : 'حدث خطأ غير متوقع'}`);
     } finally {
@@ -325,9 +288,9 @@ export default function AdminAiSettingsTab({ notify: _notify }: Props) {
                 className="w-4 h-4 accent-emerald-600" />
               <span className="text-xs text-gray-700">أضف معلومات بنية الموقع تلقائياً (Tech Stack Context)</span>
             </label>
-            <button onClick={() => { localStorage.setItem('mahad-zai-config', JSON.stringify(zaiDraft)); setZaiSaved(true); setTimeout(() => setZaiSaved(false), 2500); }}
-              className="w-full py-2.5 bg-emerald-700 text-white rounded-xl text-sm font-bold hover:bg-emerald-800 transition flex items-center justify-center gap-2">
-              {zaiSaved ? <><CheckCircle size={15} />تم الحفظ! ✅</> : <><Save size={15} />حفظ إعدادات Z.AI</>}
+            <button onClick={() => notify('info', 'إعدادات Z.AI مؤقتة داخل الجلسة ولا تُحفظ حتى ربطها بخادم أسرار آمن')}
+              className="w-full py-2.5 bg-gray-600 text-white rounded-xl text-sm font-bold hover:bg-gray-700 transition flex items-center justify-center gap-2">
+              <AlertCircle size={15} />إعدادات جلسة فقط — الحفظ معطّل
             </button>
           </div>
         </article>

@@ -33,9 +33,10 @@ test('[static contract, not behavioral] the dead duplicate refund-approval route
   assert.doesNotMatch(adminUtils, /router\.patch\('\/api\/admin\/refund-requests\/:id'/);
 });
 
-test('[static contract, not behavioral] refund financial reports use the same refunded payment status string', () => {
-  const financialAnalytics = fs.readFileSync(path.join(root, 'routes', 'analytics', 'financial.js'), 'utf8');
+test('[static contract, not behavioral] refunds reverse the ledger and use the canonical refunded payment status', () => {
+  const refunds = fs.readFileSync(path.join(root, 'lib', 'refunds.js'), 'utf8');
   const financePay = fs.readFileSync(path.join(root, 'routes', 'core', 'financepay.js'), 'utf8');
-  assert.match(financialAnalytics, /status='refunded'/);
+  assert.match(refunds, /postJournalEntry\(\s*'refund'/);
+  assert.match(refunds, /status='refunded'/);
   assert.match(financePay, /'refunded'/);
 });

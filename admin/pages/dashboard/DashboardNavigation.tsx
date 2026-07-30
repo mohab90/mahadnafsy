@@ -220,6 +220,15 @@ export function DashboardNavigation(props: Props) {
 
               {/* Controls */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
+                {currentStaff && ['instructor', 'trainer'].includes(currentStaff.role) && (
+                  <button
+                    onClick={() => navigate('/therapist-portal')}
+                    className="w-8 h-8 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 grid place-items-center transition"
+                    title="بوابة المحاضر وجلساتي"
+                  >
+                    <UserCheck size={15} />
+                  </button>
+                )}
                 <button
                   onClick={() => setActiveTab(currentStaff ? 'staff_home' : 'my_hr')}
                   className={`w-8 h-8 rounded-xl grid place-items-center transition ${
@@ -233,12 +242,17 @@ export function DashboardNavigation(props: Props) {
                 </button>
                 <div className="relative flex-shrink-0" ref={notifRef}>
                   <button
-                    onClick={() => {
-                      setNotifOpen(o => !o);
-                      if (!notifOpen && notifUnread > 0) {
-                        mysqlAdmin.markAllNotificationsRead().catch(() => {});
-                        setNotifUnread(0);
-                        setNotifRows(rows => rows.map(r => ({ ...r, read_at: r.read_at ?? new Date().toISOString() })));
+                    onClick={async () => {
+                      const opening = !notifOpen;
+                      setNotifOpen(opening);
+                      if (opening && notifUnread > 0) {
+                        try {
+                          await mysqlAdmin.markAllNotificationsRead();
+                          setNotifUnread(0);
+                          setNotifRows(rows => rows.map(r => ({ ...r, read_at: r.read_at ?? new Date().toISOString() })));
+                        } catch {
+                          // Keep the unread state intact; polling will retry.
+                        }
                       }
                     }}
                     className="relative w-8 h-8 rounded-xl bg-gray-100 hover:bg-primary-50 hover:text-primary-600 text-gray-500 grid place-items-center transition"

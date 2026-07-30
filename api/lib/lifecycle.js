@@ -206,7 +206,8 @@ async function scanScheduled() {
       FROM subscribers s
       JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id = s.tenant_id
       LEFT JOIN lecture_completions lp ON lp.subscriber_id = s.id AND lp.tenant_id = s.tenant_id
-      WHERE e.enrolled_at < (NOW() - INTERVAL 7 DAY)
+      WHERE e.status='active'
+        AND e.enrolled_at < (NOW() - INTERVAL 7 DAY)
         AND e.enrolled_at > (NOW() - INTERVAL 60 DAY)
         AND lp.id IS NULL
         AND (s.email IS NOT NULL OR s.phone IS NOT NULL)

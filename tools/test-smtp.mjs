@@ -11,14 +11,16 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiRequire = createRequire(join(ROOT, 'api', 'package.json'));
 apiRequire('dotenv').config({ path: join(ROOT, 'api', '.env') });
 const nodemailer = apiRequire('nodemailer');
+const { resolveSecret } = apiRequire('./lib/secretResolver');
 
 const host = process.env.SMTP_HOST || 'smtp.hostinger.com';
 const port = parseInt(process.env.SMTP_PORT || '465');
 const user = process.env.SMTP_USER || 'info@mahadnafsy.com';
 const to = process.argv[2];
+const password = resolveSecret('SMTP_PASS');
 
-console.log(`SMTP: ${user} @ ${host}:${port} (secure=${port === 465})  pass=${process.env.SMTP_PASS ? 'SET' : 'EMPTY'}`);
-const mailer = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass: process.env.SMTP_PASS || '' } });
+console.log(`SMTP: ${user} @ ${host}:${port} (secure=${port === 465})  pass=${password ? 'SET' : 'EMPTY'}`);
+const mailer = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass: password } });
 
 try {
   await mailer.verify();

@@ -17,7 +17,9 @@ export type FinancialSubTab =
   | 'review'
   | 'period_closing'
   | 'budget'
-  | 'refunds';
+  | 'refunds'
+  | 'advances'
+  | 'operations';
 
 export const paymentTypeLabels: Record<PaymentItemType, string> = {
   course: 'كورس',

@@ -6,7 +6,6 @@ import {
   Cpu,
   HardDrive,
   RefreshCw,
-  RotateCcw,
   Server,
   Terminal,
   Wifi,
@@ -85,8 +84,6 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
   const [financialAudit, setFinancialAudit] = useState<FinancialAuditData | null>(null);
   const [auditRows, setAuditRows] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(false);
-  const [restarting, setRestarting] = useState(false);
-  const [restartConfirm, setRestartConfirm] = useState(false);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -126,22 +123,6 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [data?.watchdogLog]);
 
-  const handleRestart = async () => {
-    if (!restartConfirm) { setRestartConfirm(true); return; }
-    setRestartConfirm(false);
-    setRestarting(true);
-    try {
-      await mysqlAdmin.adminPost('/admin/server-restart', {});
-      notify('info', 'جاري إعادة التشغيل... سيعود خلال ثوانٍ');
-      setTimeout(() => { fetchStatus(); setRestarting(false); }, 5000);
-    } catch (e: unknown) {
-      notify('error', 'فشل إعادة التشغيل: ' + (e instanceof Error ? e.message : String(e)));
-      setRestarting(false);
-    }
-  };
-
-  const cancelRestart = () => setRestartConfirm(false);
-
   const isOnline = data?.pm2?.status === 'online';
   const memMB = data?.pm2?.memory ? data.pm2.memory / 1024 / 1024 : 0;
   const memColor = memMB > 180 ? 'text-red-600 bg-red-50' : memMB > 120 ? 'text-amber-600 bg-amber-50' : 'text-emerald-700 bg-emerald-50';
@@ -173,26 +154,9 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             تحديث
           </button>
-          <button
-            onClick={handleRestart}
-            disabled={restarting || loading}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition disabled:opacity-50 ${
-              restartConfirm
-                ? 'border-red-400 bg-red-600 text-white hover:bg-red-700 animate-pulse'
-                : 'border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700'
-            }`}
-          >
-            <RotateCcw size={14} className={restarting ? 'animate-spin' : ''} />
-            {restarting ? 'جاري الإعادة...' : restartConfirm ? '⚠️ تأكيد الإعادة! اضغط مرة ثانية' : 'إعادة التشغيل'}
-          </button>
-          {restartConfirm && (
-            <button
-              onClick={cancelRestart}
-              className="flex items-center gap-1 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-sm text-gray-500 transition"
-            >
-              إلغاء
-            </button>
-          )}
+          <span className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-600">
+            إعادة التشغيل من منصة الاستضافة فقط
+          </span>
         </div>
       </div>
 

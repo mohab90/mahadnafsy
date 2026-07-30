@@ -1,5 +1,4 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
 
 import { ContentHubPoliciesEditor, ContentHubSimpleEditor } from './ContentHubEditors';
 import { DashboardContentHubAdvancedPanel } from './DashboardContentHubAdvancedPanel';
@@ -22,7 +21,7 @@ interface Props {
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: React.Dispatch<React.SetStateAction<ContentMap>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   notify: NotifyFn;
   instituteBranches: InstituteBranch[];
   homeOfferFields: ContentField[];
@@ -34,11 +33,11 @@ interface Props {
   setNewContentKey: React.Dispatch<React.SetStateAction<string>>;
   newContentValue: string;
   setNewContentValue: React.Dispatch<React.SetStateAction<string>>;
-  addContentKey: (key: string, value: string) => void;
+  addContentKey: (key: string, value: string) => Promise<boolean>;
   searchText: string;
   setSearchText: React.Dispatch<React.SetStateAction<string>>;
   filteredContent: [string, string][];
-  removeContentKey: (key: string) => void;
+  removeContentKey: (key: string) => Promise<boolean>;
 }
 
 export function DashboardContentHubRoutes({
@@ -78,21 +77,6 @@ export function DashboardContentHubRoutes({
             )}
 
             <GeneralDashboardTabs activeTab={activeTab} notify={notify} />
-
-            {/* -- Placeholder tabs (coming soon) -- */}
-            {([] as TabKey[]).includes(activeTab) && (
-              <article className="bg-white border border-gray-200 rounded-2xl p-12 shadow-sm flex flex-col items-center justify-center text-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center">
-                  <Sparkles size={32} className="text-primary-500" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-xl mb-2">قريباً</h3>
-                  <p className="text-gray-500 text-sm">هذا القسم قيد التطوير وسيكون متاحاً قريباً</p>
-                </div>
-              </article>
-            )}
-
-
 
             {(activeTab === 'footer_settings' || (activeTab === 'content_hub' && contentHubSubTab === 'footer_settings')) && (
               <DashboardFooterSettingsPanel

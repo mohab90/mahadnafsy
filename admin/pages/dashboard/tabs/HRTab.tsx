@@ -1,8 +1,18 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, Trash2, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload } from 'lucide-react';
+import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
-import type { LeadItem, OrderItem, StaffMember, StaffRole, StaffAbsence } from '../../../types';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import type { StaffMember, StaffRole } from '../../../types';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
+import HrPolicyPanel from './hr-sections/HrPolicyPanel';
+import HrCompensationApprovals from './hr-sections/HrCompensationApprovals';
+import HrAppraisalsPanel from './hr-sections/HrAppraisalsPanel';
+import HrAdvancesPanel from './hr-sections/HrAdvancesPanel';
+
+const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
+const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
+const OnboardingPanel = React.lazy(() => import('./hr-sections/OnboardingPanel'));
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -19,7 +29,7 @@ type AttendanceSummaryRow = {
 type LeaveRecord = {
   id: string;
   staff_name?: string;
-  leave_type: string;
+  type: string;
   status: string;
   start_date?: string;
   end_date?: string;
@@ -56,6 +66,18 @@ type PayrollItem = {
   instructor_earnings?: number;
   bonus_amount?: number;
   net_salary?: number;
+};
+type PerformanceRow = {
+  staff_id: string;
+  revenue: number;
+  commission: number;
+  orders_count: number;
+  leads_count: number;
+  converted_count: number;
+  conversion_rate: number;
+  target_pct: number;
+  target_hit: boolean;
+  bonus: number;
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -118,25 +140,21 @@ function getMonthsOfService(joinedAt: string) {
 const fmt = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 const fmtMoney = (n: number) => `${fmt(n)} ج.م`;
 
-function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
-  member: StaffMember; orders: OrderItem[]; leads: LeadItem[]; onClose: () => void; onSave: (u: StaffMember) => void;
+function EmployeeProfileModal({ member, performance, period, onClose, onSave }: {
+  member: StaffMember;
+  performance?: PerformanceRow;
+  period: string;
+  onClose: () => void;
+  onSave: (u: StaffMember) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState<StaffMember>({ ...member });
   const [subTab, setSubTab] = useState<'info' | 'performance' | 'salary' | 'absences'>('info');
   const [editing, setEditing] = useState(false);
-  const [newAbs, setNewAbs] = useState<{ open: boolean; type: StaffAbsence['type']; date: string; notes: string }>({ open: false, type: 'absence', date: new Date().toISOString().slice(0, 10), notes: '' });
-  const [perfMonth, setPerfMonth] = useState(new Date().toISOString().slice(0, 7));
-
-  const monthOrders = useMemo(() => {
-    const start = perfMonth + '-01';
-    const end = new Date(new Date(start).getTime() + 32 * 86400000).toISOString().slice(0, 7) + '-01';
-    return orders.filter(o => o.staffId === member.id && o.status === 'paid' && (o.paidAt || o.createdAt) >= start && (o.paidAt || o.createdAt) < end);
-  }, [orders, member.id, perfMonth]);
-
-  const monthRev = useMemo(() => monthOrders.reduce((s, o) => s + (o.amount || 0), 0), [monthOrders]);
-  const monthLeads = useMemo(() => leads.filter(l => l.assignedSalesId === member.id), [leads, member.id]);
-  const converted = useMemo(() => monthLeads.filter(l => l.status === 'converted').length, [monthLeads]);
-  const commission = monthRev * (draft.commissionRate || 0) / 100;
+  const monthRev = performance?.revenue || 0;
+  const monthOrders = performance?.orders_count || 0;
+  const monthLeads = performance?.leads_count || 0;
+  const converted = performance?.converted_count || 0;
+  const commission = performance?.commission || 0;
   const targetType = draft.monthlyTargetType || 'egp';
   const progress = targetType === 'egp' ? monthRev : converted;
   const targetValue = draft.monthlyTarget || 0;
@@ -144,12 +162,7 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
   const targetHit = targetValue > 0 && progress >= targetValue;
   const absences = draft.absences || [];
 
-  const save = () => { onSave(draft); setEditing(false); };
-  const addAbs = () => {
-    if (!newAbs.date) return;
-    setDraft(d => ({ ...d, absences: [...(d.absences || []), { id: `abs-${Date.now()}`, date: newAbs.date, type: newAbs.type, notes: newAbs.notes || undefined }] }));
-    setNewAbs(a => ({ ...a, open: false, notes: '' }));
-  };
+  const save = async () => { if (await onSave(draft)) setEditing(false); };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
@@ -184,8 +197,8 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
             {[
               { label: 'مبيعات الشهر', v: fmtMoney(monthRev) },
               { label: 'عمولة', v: fmtMoney(commission) },
-              { label: 'ليدات', v: String(monthLeads.length) },
-              { label: 'تحويل', v: monthLeads.length > 0 ? `${Math.round(converted / monthLeads.length * 100)}%` : '—' },
+              { label: 'ليدات', v: String(monthLeads) },
+              { label: 'تحويل', v: monthLeads > 0 ? `${Math.round(converted / monthLeads * 100)}%` : '—' },
             ].map(s => (
               <div key={s.label} className="bg-white/10 rounded-xl p-2 text-center">
                 <div className="font-black text-sm">{s.v}</div>
@@ -208,7 +221,7 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
                 ['name', 'الاسم', 'text'], ['email', 'البريد الإلكتروني', 'email'],
                 ['phone', 'الهاتف', 'text'], ['joinedAt', 'تاريخ الانضمام', 'date'],
                 ['specialization', 'التخصص', 'text'], ['nationalId', 'الرقم القومي', 'text'],
-                ['address', 'العنوان', 'text'], ['department', 'القسم', 'text'],
+                ['address', 'العنوان', 'text'],
               ] as [keyof StaffMember, string, string][]).map(([field, label, type]) => (
                 <div key={field}>
                   <label className="text-xs font-bold text-gray-500 mb-1 block">{label}</label>
@@ -225,7 +238,7 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-1 block">الحالة</label>
-                <select disabled={!editing} value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value as 'active' | 'inactive' }))}
+                <select disabled value={draft.status}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-gray-50">
                   <option value="active">نشط</option>
                   <option value="inactive">غير نشط</option>
@@ -251,7 +264,7 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <label className="text-sm font-bold text-gray-700">شهر التقرير:</label>
-                <input type="month" value={perfMonth} onChange={e => setPerfMonth(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
+                <span className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-gray-50">{period}</span>
               </div>
               {targetValue > 0 && (
                 <div className={`p-4 rounded-2xl border ${targetHit ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -270,10 +283,10 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
                 {[
                   { l: 'إجمالي المبيعات', v: fmtMoney(monthRev), c: 'text-green-600' },
                   { l: 'العمولة', v: fmtMoney(commission), c: 'text-amber-600' },
-                  { l: 'عدد الطلبات', v: String(monthOrders.length), c: 'text-blue-600' },
-                  { l: 'ليدات', v: String(monthLeads.length), c: 'text-indigo-600' },
+                  { l: 'عدد الطلبات', v: String(monthOrders), c: 'text-blue-600' },
+                  { l: 'ليدات', v: String(monthLeads), c: 'text-indigo-600' },
                   { l: 'محولون', v: String(converted), c: 'text-teal-600' },
-                  { l: 'معدل التحويل', v: monthLeads.length > 0 ? `${Math.round(converted / monthLeads.length * 100)}%` : '—', c: 'text-gray-700' },
+                  { l: 'معدل التحويل', v: monthLeads > 0 ? `${Math.round(converted / monthLeads * 100)}%` : '—', c: 'text-gray-700' },
                 ].map(s => (
                   <div key={s.l} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
                     <div className={`text-xl font-black ${s.c}`}>{s.v}</div>
@@ -338,19 +351,9 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
                   </div>
                 ))}
               </div>
-              {editing && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
-                  <h4 className="text-sm font-bold text-blue-700 flex items-center gap-1"><Plus size={13}/> إضافة سجل</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <select value={newAbs.type} onChange={e => setNewAbs(a => ({ ...a, type: e.target.value as StaffAbsence['type'] }))} className="border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white">
-                      {Object.entries(ABSENCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
-                    <input type="date" value={newAbs.date} onChange={e => setNewAbs(a => ({ ...a, date: e.target.value }))} className="border border-blue-200 rounded-lg px-3 py-2 text-sm" />
-                    <input className="col-span-2 border border-blue-200 rounded-lg px-3 py-2 text-sm" placeholder="ملاحظة" value={newAbs.notes} onChange={e => setNewAbs(a => ({ ...a, notes: e.target.value }))} />
-                  </div>
-                  <button onClick={addAbs} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition">إضافة</button>
-                </div>
-              )}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+                إضافة أو تعديل سجل حضور تتم من تبويب «الحضور والانصراف» لضمان دخوله في احتساب الرواتب.
+              </div>
               <div className="space-y-2">
                 {absences.length === 0 ? <p className="text-center text-gray-400 text-sm py-8">لا سجلات غياب</p> :
                   absences.sort((a, b) => b.date.localeCompare(a.date)).map(a => (
@@ -358,7 +361,6 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${ABSENCE_COLORS[a.type]}`}>{ABSENCE_LABELS[a.type]}</span>
                       <span className="text-sm font-mono text-gray-700">{a.date}</span>
                       {a.notes && <span className="text-xs text-gray-400 flex-1 truncate">{a.notes}</span>}
-                      {editing && <button onClick={() => setDraft(d => ({ ...d, absences: (d.absences || []).filter(x => x.id !== a.id) }))} className="text-red-400 hover:text-red-600 ml-auto"><Trash2 size={13}/></button>}
                     </div>
                   ))}
               </div>
@@ -377,13 +379,23 @@ function EmployeeProfileModal({ member, orders, leads, onClose, onSave }: {
 }
 
 const HrTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, orders, leads, updateStaffMember } = useSiteData();
-  const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll'>('directory');
+  const { staffMembers, reloadStaffMembers, authUser, isAdmin } = useSiteData();
+  const currentStaff = useMemo(
+    () => staffMembers.find(row => row.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
+    [staffMembers, authUser?.email],
+  );
+  const canManageFinance = isAdmin || Boolean(currentStaff && hasPermission({
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  }, 'manage_financial'));
+  const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('directory');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedMember, setSelectedMember] = useState<StaffMember | null>(null);
   const [perfMonth, setPerfMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [serverPerformance, setServerPerformance] = useState<PerformanceRow[]>([]);
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
 
   // ── Attendance state ────────────────────────────────────────
   const [attMonth, setAttMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -409,6 +421,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
   const [loadingPayroll, setLoadingPayroll] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [payrollBranch, setPayrollBranch] = useState('branch-all');
 
   // ── Fetch functions ─────────────────────────────────────────
   const fetchAttendanceSummary = useCallback(async (month?: string) => {
@@ -418,8 +431,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     try {
       const res = await fetch(`/api/admin/hr/attendance/summary?month=${parseInt(mo)}&year=${y}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setAttSummary(await res.json());
-    } catch { /* silently fail */ } finally { setLoadingAtt(false); }
-  }, [attMonth]);
+    } catch { notify('error', 'تعذر تحميل تقرير الحضور'); } finally { setLoadingAtt(false); }
+  }, [attMonth, notify]);
 
   const fetchLeaves = useCallback(async () => {
     setLoadingLeaves(true);
@@ -427,28 +440,49 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       const url = leavesFilter === 'all' ? '/api/admin/hr/leaves' : `/api/admin/hr/leaves?status=${leavesFilter}`;
       const res = await fetch(url, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setLeaves(await res.json());
-    } catch { /* silently fail */ } finally { setLoadingLeaves(false); }
-  }, [leavesFilter]);
+    } catch { notify('error', 'تعذر تحميل طلبات الإجازة'); } finally { setLoadingLeaves(false); }
+  }, [leavesFilter, notify]);
 
   const fetchPayrollRuns = useCallback(async () => {
     setLoadingPayroll(true);
     try {
       const res = await fetch('/api/admin/hr/payroll', { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) setPayrollRuns(await res.json());
-    } catch { /* silently fail */ } finally { setLoadingPayroll(false); }
-  }, []);
+    } catch { notify('error', 'تعذر تحميل مسيرات الرواتب'); } finally { setLoadingPayroll(false); }
+  }, [notify]);
 
   const fetchRunItems = useCallback(async (runId: string) => {
     try {
       const res = await fetch(`/api/admin/hr/payroll/${runId}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (res.ok) { const data = await res.json(); setPayrollItems(data.items || []); }
-    } catch { /* silently fail */ }
-  }, []);
+    } catch { notify('error', 'تعذر تحميل تفاصيل مسير الرواتب'); }
+  }, [notify]);
+
+  const fetchPerformance = useCallback(async () => {
+    setLoadingPerformance(true);
+    try {
+      const response = await fetch(`/api/admin/hr/reports/performance?month=${encodeURIComponent(perfMonth)}`, {
+        credentials: 'include',
+        headers: adminAuthHeaders(),
+      });
+      const payload = await response.json().catch(() => []);
+      if (!response.ok) throw new Error(payload.error || 'تعذر تحميل تقرير الأداء');
+      setServerPerformance(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحميل تقرير الأداء');
+      setServerPerformance([]);
+    } finally {
+      setLoadingPerformance(false);
+    }
+  }, [notify, perfMonth]);
 
   // ── Side effects ─────────────────────────────────────────────
   useEffect(() => { if (subTab === 'attendance') fetchAttendanceSummary(); }, [subTab, fetchAttendanceSummary]);
   useEffect(() => { if (subTab === 'leaves') fetchLeaves(); }, [subTab, leavesFilter, fetchLeaves]);
   useEffect(() => { if (subTab === 'payroll') fetchPayrollRuns(); }, [subTab, fetchPayrollRuns]);
+  useEffect(() => {
+    if (subTab === 'directory' || subTab === 'performance') fetchPerformance();
+  }, [subTab, fetchPerformance]);
 
   // ── Actions ──────────────────────────────────────────────────
   const submitManualAttendance = useCallback(async () => {
@@ -506,7 +540,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       const res = await fetch('/api/admin/hr/leaves', {
         method: 'POST', credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify({ ...leaveForm, leave_type: leaveForm.type }),
+        body: JSON.stringify(leaveForm),
       });
       if (res.ok) {
         notify('success', 'تم إرسال طلب الإجازة ✅');
@@ -524,7 +558,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       const res = await fetch('/api/admin/hr/payroll/calculate', {
         method: 'POST', credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify({ month: parseInt(mo), year: parseInt(y) }),
+        body: JSON.stringify({ month: parseInt(mo), year: parseInt(y), branch_id: payrollBranch }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -535,7 +569,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         if ((data.run || data).id) fetchRunItems((data.run || data).id);
       } else { const d = await res.json(); notify('error', d.error || 'فشل الاحتساب'); }
     } catch { notify('error', 'خطأ في الاتصال'); } finally { setCalculating(false); }
-  }, [payrollMonth, notify, fetchPayrollRuns, fetchRunItems]);
+  }, [payrollMonth, payrollBranch, notify, fetchPayrollRuns, fetchRunItems]);
 
   const updatePayrollRunStatus = useCallback(async (runId: string, status: string) => {
     try {
@@ -552,8 +586,6 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     } catch { notify('error', 'خطأ في الاتصال'); }
   }, [notify, fetchPayrollRuns, selectedRun]);
 
-  const safeOrders = orders || [];
-  const safeLeads = leads || [];
   const safeStaff: StaffMember[] = staffMembers || [];
 
   const filtered = useMemo(() => safeStaff.filter(s => {
@@ -570,30 +602,77 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     return { total: safeStaff.length, active: active.length, inactive: safeStaff.length - active.length, byRole };
   }, [safeStaff]);
 
-  const getPerfData = useCallback((month: string) => {
-    const start = month + '-01';
-    const end = new Date(new Date(start).getTime() + 32 * 86400000).toISOString().slice(0, 7) + '-01';
-    return safeStaff.map(s => {
-      const myOrders = safeOrders.filter((order) => order.staffId === s.id && order.status === 'paid' && (order.paidAt || order.createdAt) >= start && (order.paidAt || order.createdAt) < end);
-      const revenue = myOrders.reduce((sum, order) => sum + (order.amount || 0), 0);
-      const myLeads = safeLeads.filter((lead) => lead.assignedSalesId === s.id);
-      const converted = myLeads.filter((lead) => lead.status === 'converted').length;
-      const commission = revenue * (s.commissionRate || 0) / 100;
-      const tType = s.monthlyTargetType || 'egp';
-      const prog = tType === 'egp' ? revenue : converted;
-      const targetHit = (s.monthlyTarget || 0) > 0 && prog >= (s.monthlyTarget || 0);
-      const tPct = (s.monthlyTarget || 0) > 0 ? Math.min(100, Math.round(prog / s.monthlyTarget! * 100)) : 0;
-      return { member: s, revenue, commission, converted, leadsCount: myLeads.length, convRate: myLeads.length > 0 ? Math.round(converted / myLeads.length * 100) : 0, targetPct: tPct, targetHit, bonus: targetHit ? (s.monthlyBonus || 0) : 0 };
-    }).filter(x => x.revenue > 0 || x.leadsCount > 0 || x.member.salary).sort((a, b) => b.revenue - a.revenue);
-  }, [safeStaff, safeOrders, safeLeads]);
+  const perfByStaff = useMemo(
+    () => new Map(serverPerformance.map(row => [row.staff_id, row])),
+    [serverPerformance],
+  );
+  const perfData = useMemo(() => serverPerformance
+    .map(row => {
+      const member = safeStaff.find(staff => staff.id === row.staff_id);
+      return member ? {
+        member,
+        revenue: row.revenue,
+        commission: row.commission,
+        converted: row.converted_count,
+        leadsCount: row.leads_count,
+        convRate: row.conversion_rate,
+        targetPct: row.target_pct,
+        targetHit: row.target_hit,
+        bonus: row.bonus,
+      } : null;
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .filter(row => row.revenue > 0 || row.leadsCount > 0 || row.member.salary),
+  [safeStaff, serverPerformance]);
 
-  const perfData = useMemo(() => getPerfData(perfMonth), [getPerfData, perfMonth]);
-
-  const handleSave = useCallback((updated: StaffMember) => {
-    if (updateStaffMember) updateStaffMember(updated);
-    notify('success', `تم حفظ بيانات ${updated.name} ✅`);
-    setSelectedMember(updated);
-  }, [updateStaffMember, notify]);
+  const handleSave = useCallback(async (updated: StaffMember): Promise<boolean> => {
+    const salaryChanged = Number(updated.salary || 0) !== Number(selectedMember?.salary || 0);
+    if (salaryChanged && currentStaff?.id === updated.id) {
+      notify('error', 'لا يمكنك تعديل راتبك بنفسك؛ يلزم موظف HR آخر');
+      return false;
+    }
+    try {
+      await mysqlAdmin.updateHrEmployee(updated.id, {
+        name: updated.name.trim(),
+        email: updated.email.trim().toLowerCase(),
+        phone: updated.phone.trim(),
+        specialization: updated.specialization || null,
+        joined_at: updated.joinedAt?.slice(0, 10) || null,
+        notes: updated.notes || null,
+        national_id: updated.nationalId || null,
+        address: updated.address || null,
+        hr_notes: updated.hrNotes || null,
+        commission_rate: Number(updated.commissionRate) || 0,
+        monthly_target: Number(updated.monthlyTarget) || 0,
+        monthly_target_type: updated.monthlyTargetType || 'egp',
+        monthly_bonus: Number(updated.monthlyBonus) || 0,
+        ...(isAdmin ? { role: updated.role } : {}),
+      });
+      let salaryPending = false;
+      if (salaryChanged) {
+        const effectiveDate = new Date();
+        effectiveDate.setUTCDate(1);
+        effectiveDate.setUTCMonth(effectiveDate.getUTCMonth() + 1);
+        await mysqlAdmin.adminPost('/admin/hr/salary', {
+          staff_id: updated.id,
+          base_salary: Number(updated.salary) || 0,
+          currency: 'EGP',
+          effective_from: effectiveDate.toISOString().slice(0, 10),
+        });
+        salaryPending = true;
+      }
+      await reloadStaffMembers();
+      setSelectedMember(salaryPending ? { ...updated, salary: selectedMember?.salary } : updated);
+      notify(salaryPending ? 'info' : 'success',
+        salaryPending
+          ? `تم حفظ بيانات ${updated.name} وإرسال تعديل الراتب للاعتماد`
+          : `تم حفظ بيانات ${updated.name} ✅`);
+      return true;
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حفظ بيانات الموظف');
+      return false;
+    }
+  }, [currentStaff?.id, isAdmin, notify, reloadStaffMembers, selectedMember?.salary]);
 
   const uniqueRoles = [...new Set(safeStaff.map(s => s.role))];
 
@@ -624,6 +703,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           ['attendance', 'الحضور والغياب'],
           ['leaves', 'الإجازات'],
           ['payroll', 'كشف الرواتب'],
+          ['recruitment', 'التوظيف'],
         ] as const).map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${subTab === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-gray-600 border-gray-200 hover:border-slate-400'}`}>{l}</button>
         ))}
@@ -651,12 +731,11 @@ const HrTab: React.FC<Props> = ({ notify }) => {
             {filtered.length === 0 ? (
               <div className="col-span-3 text-center py-16 text-gray-400"><Users size={40} className="mx-auto mb-3 opacity-20"/><p>لا نتائج</p></div>
             ) : filtered.map(member => {
-              const myRev = safeOrders.filter((order) => order.staffId === member.id && order.status === 'paid').reduce((sum, order) => sum + (order.amount || 0), 0);
-              const myLeads = safeLeads.filter((lead) => lead.assignedSalesId === member.id).length;
-              const myConverted = safeLeads.filter((lead) => lead.assignedSalesId === member.id && lead.status === 'converted').length;
+              const performance = perfByStaff.get(member.id);
+              const myRev = performance?.revenue || 0;
+              const myLeads = performance?.leads_count || 0;
               const tType = member.monthlyTargetType || 'egp';
-              const prog = tType === 'egp' ? myRev : myConverted;
-              const tPct = (member.monthlyTarget || 0) > 0 ? Math.min(100, Math.round(prog / member.monthlyTarget! * 100)) : 0;
+              const tPct = performance?.target_pct || 0;
               return (
                 <button key={member.id} onClick={() => setSelectedMember(member)} className="bg-white border border-gray-200 rounded-2xl p-4 text-right hover:shadow-md hover:border-slate-400 transition-all group">
                   <div className="flex items-start gap-3 mb-3">
@@ -691,13 +770,26 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         </div>
       )}
 
+      {subTab === 'recruitment' && (
+        <React.Suspense fallback={<div className="py-12 text-center text-sm text-gray-400">جاري تحميل قسم التوظيف...</div>}>
+          <div className="space-y-4">
+            <JobPostingsPanel notify={notify} />
+            <RecruitmentPipelinePanel notify={notify} />
+            <OnboardingPanel notify={notify} />
+          </div>
+        </React.Suspense>
+      )}
+
       {subTab === 'performance' && (
         <div className="space-y-4">
+          <HrAppraisalsPanel staff={staffMembers} notify={notify} />
           <div className="flex items-center gap-3">
             <label className="text-sm font-bold text-gray-700">شهر التقرير:</label>
             <input type="month" value={perfMonth} onChange={e => setPerfMonth(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm"/>
           </div>
-          {perfData.length === 0 ? (
+          {loadingPerformance ? (
+            <div className="text-center py-16 text-gray-400"><span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"/></div>
+          ) : perfData.length === 0 ? (
             <div className="text-center py-16 text-gray-400"><BarChart3 size={40} className="mx-auto mb-3 opacity-20"/><p className="text-sm">لا بيانات أداء لهذا الشهر</p></div>
           ) : (
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -747,6 +839,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
       {subTab === 'attendance' && (
         <div className="space-y-4">
+          <HrPolicyPanel notify={notify} />
           {/* Controls */}
           <div className="flex flex-wrap gap-3 items-center">
             <label className="text-sm font-bold text-gray-700">الشهر:</label>
@@ -825,7 +918,6 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                     <option value="PRESENT">حاضر</option>
                     <option value="ABSENT">غائب</option>
                     <option value="LATE">متأخر</option>
-                    <option value="LEAVE">إجازة</option>
                     <option value="HALF_DAY">نصف يوم</option>
                   </select>
                   <input placeholder="ملاحظة (اختياري)" value={manualEntry.notes} onChange={e => setManualEntry(m => ({ ...m, notes: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"/>
@@ -899,7 +991,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-0.5">
                       <span className="font-bold text-sm text-gray-800">{leave.staff_name || 'موظف'}</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${LEAVE_TYPE_COLORS[leave.leave_type] || 'bg-gray-100 text-gray-600'}`}>{LEAVE_TYPE_LABELS[leave.leave_type] || leave.leave_type}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${LEAVE_TYPE_COLORS[leave.type] || 'bg-gray-100 text-gray-600'}`}>{LEAVE_TYPE_LABELS[leave.type] || leave.type}</span>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${LEAVE_STATUS_COLORS[leave.status] || ''}`}>{LEAVE_STATUS_LABELS[leave.status] || leave.status}</span>
                     </div>
                     <p className="text-xs text-gray-500">{leave.start_date?.slice(0, 10)} — {leave.end_date?.slice(0, 10)} · <strong>{leave.total_days}</strong> {leave.total_days === 1 ? 'يوم' : 'أيام'}</p>
@@ -951,6 +1043,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
       {subTab === 'payroll' && (
         <div className="space-y-4">
+          <HrCompensationApprovals notify={notify} />
+          <HrAdvancesPanel notify={notify} canDisburse={canManageFinance} />
           {/* Server payroll section */}
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Wallet size={16}/> كشوف الرواتب الرسمية</h3>
@@ -958,6 +1052,19 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">شهر الاحتساب</label>
                 <input type="month" value={payrollMonth} onChange={e => setPayrollMonth(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm"/>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">نطاق المسير</label>
+                <select value={payrollBranch} onChange={event => setPayrollBranch(event.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                  <option value="branch-all">كل الفروع</option>
+                  <option value="branch-daqqi">الدقي</option>
+                  <option value="branch-tagamoa">التجمع</option>
+                  <option value="branch-online-egypt">أونلاين مصر</option>
+                  <option value="branch-online-saudi">أونلاين السعودية</option>
+                  <option value="branch-online-abroad">أونلاين دولي</option>
+                  <option value="branch-other">أخرى / غير مصنف</option>
+                </select>
               </div>
               <button onClick={calculatePayroll} disabled={calculating} className="px-5 py-2 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-800 transition disabled:opacity-50 flex items-center gap-2">
                 {calculating ? <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"/> : <Award size={15}/>}
@@ -995,13 +1102,13 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        {run.status === 'CALCULATED' && (
+                        {run.status === 'CALCULATED' && canManageFinance && (
                           <button onClick={e => { e.stopPropagation(); updatePayrollRunStatus(run.id, 'APPROVED'); }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition">اعتماد</button>
                         )}
-                        {run.status === 'APPROVED' && (
+                        {run.status === 'APPROVED' && canManageFinance && (
                           <button onClick={e => { e.stopPropagation(); updatePayrollRunStatus(run.id, 'PAID'); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition">تأكيد الصرف</button>
                         )}
-                        {(run.status === 'CALCULATED' || run.status === 'APPROVED') && (
+                        {(run.status === 'CALCULATED' || (run.status === 'APPROVED' && canManageFinance)) && (
                           <button onClick={e => { e.stopPropagation(); updatePayrollRunStatus(run.id, 'CANCELLED'); }} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-red-100 hover:text-red-700 transition">إلغاء</button>
                         )}
                       </div>
@@ -1063,62 +1170,14 @@ const HrTab: React.FC<Props> = ({ notify }) => {
             )}
           </div>
 
-          {/* Quick estimate (local) */}
-          <details className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-            <summary className="px-5 py-3 cursor-pointer font-bold text-sm text-gray-600 flex items-center gap-2 select-none hover:bg-gray-50">
-              <BarChart3 size={14}/> تقدير سريع (من بيانات النظام المحلية)
-            </summary>
-            <div className="px-0 overflow-x-auto">
-              <div className="px-4 py-2 border-t border-gray-100">
-                <div className="flex items-center gap-3 mb-3">
-                  <label className="text-xs text-gray-500">شهر التقدير:</label>
-                  <input type="month" value={perfMonth} onChange={e => setPerfMonth(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs"/>
-                </div>
-              </div>
-              <table className="w-full text-sm">
-                <thead><tr className="bg-gray-50 border-b border-gray-100 text-right text-xs font-bold text-gray-500">
-                  <th className="px-4 py-2">الموظف</th>
-                  <th className="px-4 py-2">الراتب الأساسي</th>
-                  <th className="px-4 py-2">العمولة</th>
-                  <th className="px-4 py-2">المكافأة</th>
-                  <th className="px-4 py-2">الإجمالي</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-50">
-                  {safeStaff.filter(s => s.status === 'active').map(s => {
-                    const start = perfMonth + '-01';
-                    const end = new Date(new Date(start).getTime() + 32 * 86400000).toISOString().slice(0, 7) + '-01';
-                    const rev = safeOrders.filter((order) => order.staffId === s.id && order.status === 'paid' && (order.paidAt || order.createdAt) >= start && (order.paidAt || order.createdAt) < end).reduce((sum, order) => sum + (order.amount || 0), 0);
-                    const comm = rev * (s.commissionRate || 0) / 100;
-                    const conv = safeLeads.filter((lead) => lead.assignedSalesId === s.id && lead.status === 'converted').length;
-                    const prog = (s.monthlyTargetType || 'egp') === 'egp' ? rev : conv;
-                    const bon = (s.monthlyTarget || 0) > 0 && prog >= (s.monthlyTarget || 0) ? (s.monthlyBonus || 0) : 0;
-                    return (
-                      <tr key={s.id} className="hover:bg-gray-50 cursor-pointer text-xs" onClick={() => setSelectedMember(s)}>
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-[10px] shrink-0">{s.name.charAt(0)}</div>
-                            <span className="font-bold text-gray-800">{s.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2">{s.salary ? fmtMoney(s.salary) : <span className="text-gray-300">—</span>}</td>
-                        <td className="px-4 py-2 text-amber-700 font-bold">{comm > 0 ? fmtMoney(comm) : <span className="text-gray-300">—</span>}</td>
-                        <td className="px-4 py-2 text-emerald-700 font-bold">{bon > 0 ? fmtMoney(bon) : <span className="text-gray-300">—</span>}</td>
-                        <td className="px-4 py-2 font-black text-slate-700">{(s.salary || 0) + comm + bon > 0 ? fmtMoney((s.salary || 0) + comm + bon) : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </details>
         </div>
       )}
 
       {selectedMember && (
         <EmployeeProfileModal
           member={selectedMember}
-          orders={safeOrders}
-          leads={safeLeads}
+          performance={perfByStaff.get(selectedMember.id)}
+          period={perfMonth}
           onClose={() => setSelectedMember(null)}
           onSave={handleSave}
         />

@@ -1,13 +1,6 @@
 import type { CommunicationRecord, SubscriberItem } from '../../../types';
 import { normBranchId } from '../dashboardShared';
 
-export type SubInstDraft = {
-  courseId: string; currency: 'EGP'|'SAR'|'USD';
-  amountPerInst: string; numInstallments: string;
-  inputMode: 'count'|'amount'; startDate: string;
-  intervalDays: string; notes: string; overrideExpected: string;
-};
-
 export type SubContactDraft = {
   type: CommunicationRecord['type']; date: string;
   notes: string; outcome: string; nextFollowUp: string;

@@ -18,10 +18,12 @@ async function subscriberIdForUser(req) {
   const uid = req.user?.uid || '';
   const [[row]] = await pool.query(
     `SELECT id FROM subscribers
-     WHERE firebase_uid = ? OR LOWER(TRIM(email)) = ?
+     WHERE tenant_id = ?
+       AND deleted_at IS NULL
+       AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?)
      ORDER BY created_at DESC
      LIMIT 1`,
-    [uid, email]
+    [req.tenantId, uid, email]
   );
   return row?.id || null;
 }
@@ -32,8 +34,8 @@ router.get('/api/me/loyalty', requireAuth, async (req, res) => {
     const subscriberId = await subscriberIdForUser(req);
     if (!subscriberId) return res.status(404).json({ error: 'subscriber not found' });
     const [balance, ledger] = await Promise.all([
-      getBalance(subscriberId),
-      listLedger(subscriberId, req.query.limit),
+      getBalance(req.tenantId, subscriberId),
+      listLedger(req.tenantId, subscriberId, req.query.limit),
     ]);
     res.json({ ok: true, subscriberId, balance, ledger });
   } catch (e) {
@@ -45,8 +47,8 @@ router.get('/api/me/loyalty', requireAuth, async (req, res) => {
 router.get('/api/admin/subscribers/:id/loyalty', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [balance, ledger] = await Promise.all([
-      getBalance(req.params.id),
-      listLedger(req.params.id, req.query.limit),
+      getBalance(req.tenantId, req.params.id),
+      listLedger(req.tenantId, req.params.id, req.query.limit),
     ]);
     res.json({ ok: true, subscriberId: req.params.id, balance, ledger });
   } catch (e) {
@@ -57,7 +59,7 @@ router.get('/api/admin/subscribers/:id/loyalty', requireAuth, requireAdmin, asyn
 // POST /api/admin/subscribers/:id/loyalty/award
 router.post('/api/admin/subscribers/:id/loyalty/award', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const result = await awardPoints(req.params.id, req.body?.points, {
+    const result = await awardPoints(req.tenantId, req.params.id, req.body?.points, {
       reason: req.body?.reason || 'admin_award',
       referenceType: req.body?.referenceType || 'admin',
       referenceId: req.body?.referenceId || null,
@@ -72,7 +74,7 @@ router.post('/api/admin/subscribers/:id/loyalty/award', requireAuth, requireAdmi
 // POST /api/admin/subscribers/:id/loyalty/redeem
 router.post('/api/admin/subscribers/:id/loyalty/redeem', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const result = await redeemPoints(req.params.id, req.body?.points, {
+    const result = await redeemPoints(req.tenantId, req.params.id, req.body?.points, {
       reason: req.body?.reason || 'admin_redeem',
       referenceType: req.body?.referenceType || 'admin',
       referenceId: req.body?.referenceId || null,

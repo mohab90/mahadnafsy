@@ -8,13 +8,21 @@ const { uuidv4 } = require('../lib/id');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { resolveFinancialScope } = require('../lib/financialScope');
 
-async function loadOutstandingBalances(tenantId, subscriberIds = null) {
+async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = null) {
   const params = [tenantId, tenantId];
   let subscriberFilter = '';
   if (subscriberIds) {
     subscriberFilter = ' AND s.id IN (?)';
     params.push(subscriberIds);
+  }
+  if (scope?.branchId) {
+    subscriberFilter += ' AND s.branch_id=?';
+    params.push(scope.branchId);
+  } else if (scope?.kind === 'assigned_sales' || scope?.kind === 'assigned_cs') {
+    subscriberFilter += ` AND s.${scope.kind === 'assigned_sales' ? 'assigned_sales_id' : 'assigned_cs_id'}=?`;
+    params.push(scope.staffId);
   }
   const [rows] = await pool.query(
     `SELECT s.id, s.name, s.email, s.phone, s.client_code, s.assigned_sales_name, s.assigned_cs_name,
@@ -27,18 +35,18 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null) {
                     CASE
                       WHEN course_id IS NOT NULL THEN CONCAT(COALESCE(payment_type,'COURSE'), ':course:', course_id)
                       WHEN bundle_id IS NOT NULL THEN CONCAT(COALESCE(payment_type,'COURSE'), ':bundle:', bundle_id)
-                      ELSE CONCAT(COALESCE(payment_type,'OTHER'), ':payment:', id)
-                    END AS entitlement_key,
-                    MAX(COALESCE(course_expected,0)) AS expected,
-                    SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) AS paid
-               FROM payments
-              WHERE tenant_id=? AND deleted_at IS NULL
-              GROUP BY tenant_id, subscriber_id, entitlement_key
-             HAVING expected > 0
+                     ELSE CONCAT(COALESCE(payment_type,'OTHER'), ':payment:', id)
+                     END AS entitlement_key,
+                     MAX(COALESCE(course_expected,0) * COALESCE(fx_rate_to_egp,0)) AS expected,
+                     SUM(CASE WHEN status='paid' THEN COALESCE(amount_egp,0) ELSE 0 END) AS paid
+                FROM payments
+               WHERE tenant_id=? AND deleted_at IS NULL
+               GROUP BY tenant_id, subscriber_id, entitlement_key, currency
+              HAVING expected > 0
            ) entitlement_balances
           GROUP BY tenant_id, subscriber_id
        ) b ON b.subscriber_id=s.id AND b.tenant_id=s.tenant_id
-      WHERE s.tenant_id=? AND s.is_active=1${subscriberFilter}
+      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL${subscriberFilter}
         AND b.total_expected > b.total_paid
       ORDER BY outstanding DESC
       LIMIT 300`,
@@ -50,7 +58,8 @@ async function loadOutstandingBalances(tenantId, subscriberIds = null) {
 router.get('/api/admin/payments/outstanding', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const tenantId = req.tenantId;
-    const rows = await loadOutstandingBalances(tenantId);
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null, allowAssigned: true });
+    const rows = await loadOutstandingBalances(tenantId, null, scope);
     res.json({ subscribers: rows, total_outstanding: rows.reduce((sum, row) => sum + (Number(row.outstanding) || 0), 0), count: rows.length });
   } catch (error) {
     logger.error('[outstanding-payments]', error.message);
@@ -61,14 +70,17 @@ router.get('/api/admin/payments/outstanding', requireAuth, requireAdminOrStaff, 
 router.post('/api/admin/payments/send-reminder', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
   try {
     const tenantId = req.tenantId;
+    const scope = resolveFinancialScope(req, { requestedBranch: req.body?.branch || null, allowAssigned: true });
     const ids = Array.isArray(req.body?.subscriberIds) ? req.body.subscriberIds.slice(0, 200) : [];
     if (!req.body?.all && !ids.length) return res.status(400).json({ error: 'subscriberIds or all=true required' });
-    const rows = await loadOutstandingBalances(tenantId, req.body?.all ? null : ids);
+    const customMessage = String(req.body?.message || '').trim();
+    if (customMessage.length > 1000) return res.status(400).json({ error: 'message is too long' });
+    const rows = await loadOutstandingBalances(tenantId, req.body?.all ? null : ids, scope);
     const results = [];
     for (const subscriber of rows) {
       const amount = Number(subscriber.outstanding) || 0;
-      const message = req.body?.message
-        ? String(req.body.message).replaceAll('{name}', subscriber.name || '').replaceAll('{amount}', amount.toFixed(0))
+      const message = customMessage
+        ? customMessage.replaceAll('{name}', subscriber.name || '').replaceAll('{amount}', amount.toFixed(0))
         : `أهلاً ${subscriber.name || ''}، لديك رصيد مستحق ${amount.toFixed(0)} ج.م. يرجى التواصل معنا لتسوية الرصيد.`;
       try {
         await sendWhatsApp(String(subscriber.phone || '').replace(/\D/g, ''), message, { tenantId: req.tenantId });
@@ -82,17 +94,19 @@ router.post('/api/admin/payments/send-reminder', requireAuth, requireAdminOrStaf
   }
 });
 
-router.post('/api/admin/payments/bulk-stub', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), bulkOperationLimiter, async (req, res) => {
+router.post('/api/admin/payments/bulk-stub', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), bulkOperationLimiter, async (req, res) => {
   try {
     const tenantId = req.tenantId;
+    const scope = resolveFinancialScope(req, { requestedBranch: req.body?.branch || null });
+    const branchSql = scope.branchId ? ' AND e.branch_id=?' : '';
     const [rows] = await pool.query(
       `SELECT e.id, e.subscriber_id, e.course_id, e.bundle_id, e.enrolled_at, e.branch_id
          FROM enrollments e
-        WHERE e.tenant_id=? AND NOT EXISTS (
+        WHERE e.tenant_id=? AND e.status='active' AND NOT EXISTS (
           SELECT 1 FROM payments p WHERE p.tenant_id=e.tenant_id AND p.subscriber_id=e.subscriber_id
             AND (p.course_id=e.course_id OR (e.course_id IS NULL AND p.bundle_id=e.bundle_id))
-        ) LIMIT 1000`,
-      [tenantId]
+        )${branchSql} LIMIT 1000`,
+      scope.branchId ? [tenantId, scope.branchId] : [tenantId]
     );
     if (req.body?.dryRun !== false) return res.json({ dryRun: true, count: rows.length, sample: rows.slice(0, 5) });
     const conn = await pool.getConnection();

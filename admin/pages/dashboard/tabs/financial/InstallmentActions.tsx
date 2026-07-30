@@ -4,7 +4,7 @@ import type { SubscriberItem } from '../../../../types';
 interface InstallmentActionsProps {
   subscribersWithPlans: SubscriberItem[];
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
-  onNewPlan: () => void;
+  onNewPlan?: () => void;
 }
 
 export function InstallmentActions({
@@ -29,10 +29,12 @@ export function InstallmentActions({
         className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl px-3 py-2 text-sm font-bold transition">
         <Download size={14} /> تصدير ديون CSV
       </button>
-      <button onClick={onNewPlan}
-        className="flex items-center gap-1.5 bg-primary-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-700 transition">
-        <Plus size={14} /> إضافة خطة أقساط جديدة
-      </button>
+      {onNewPlan && (
+        <button onClick={onNewPlan}
+          className="flex items-center gap-1.5 bg-primary-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-700 transition">
+          <Plus size={14} /> إضافة خطة أقساط جديدة
+        </button>
+      )}
     </div>
   );
 }

@@ -21,7 +21,7 @@ interface OnlineClientCourseDetailsModalProps {
   setSaving: (saving: boolean) => void;
   courses: Course[];
   bundles: Bundle[];
-  updateSubscriber: (subscriber: SubscriberItem) => void;
+  reloadSubscribers: () => Promise<void>;
   isNonAdminStaff: boolean;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
   notify: NotifyFn;
@@ -36,7 +36,7 @@ export function OnlineClientCourseDetailsModal({
   setSaving,
   courses,
   bundles,
-  updateSubscriber,
+  reloadSubscribers,
   isNonAdminStaff,
   setSalesOwnSubscribers,
   notify,
@@ -61,52 +61,19 @@ export function OnlineClientCourseDetailsModal({
   const saveDetails = async () => {
     setSaving(true);
     try {
-      const newPayHistory = [...(row.paymentHistory || [])];
-      draft.forEach((item) => {
-        const cid = item.courseId;
-        const exp = Number(item.expected) || 0;
-        const paid = Number(item.paid) || 0;
-        if (cid.startsWith('multi:')) return;
-        if (cid.startsWith('bundle:')) {
-          const bundleId = cid.replace('bundle:', '');
-          const bundleCourseIds = bundles.find((bundle) => bundle.id === bundleId)?.courses.map((course) => course.id) || [];
-          const existingBundleIdx = newPayHistory.findIndex((payment) => payment.courseId === cid && !payment.isInstallment);
-          if (existingBundleIdx >= 0) {
-            newPayHistory[existingBundleIdx] = { ...newPayHistory[existingBundleIdx], courseExpected: exp, ...(item.paid !== '' ? { amount: paid } : {}) };
-            return;
-          }
-          const firstCoursePayIdx = newPayHistory.findIndex((payment) => payment.courseId && bundleCourseIds.includes(payment.courseId) && !payment.isInstallment);
-          if (firstCoursePayIdx >= 0) {
-            const toRemove = new Set(newPayHistory
-              .map((_payment, index) => index)
-              .filter((index) => index !== firstCoursePayIdx && newPayHistory[index].courseId && bundleCourseIds.includes(newPayHistory[index].courseId as string) && !newPayHistory[index].isInstallment));
-            newPayHistory.splice(0, newPayHistory.length, ...newPayHistory.filter((_payment, index) => !toRemove.has(index)));
-            const newIdx = newPayHistory.findIndex((payment) => payment.courseId && bundleCourseIds.includes(payment.courseId) && !payment.isInstallment);
-            if (newIdx >= 0) newPayHistory[newIdx] = { ...newPayHistory[newIdx], courseId: cid, courseExpected: exp, ...(item.paid !== '' ? { amount: paid } : {}) };
-          } else if (exp > 0 || paid > 0) {
-            newPayHistory.push({ id: `det-${Date.now()}-${cid}`, courseId: cid, amount: paid, courseExpected: exp, paymentType: 'course', currency: 'EGP', at: new Date().toISOString(), isInstallment: false });
-          }
-          return;
-        }
-        const idx = newPayHistory.findIndex((payment) => payment.courseId === cid && !payment.isInstallment);
-        if (idx >= 0) {
-          newPayHistory[idx] = { ...newPayHistory[idx], courseExpected: exp, ...(item.paid !== '' ? { amount: paid } : {}) };
-        } else if (exp > 0 || paid > 0) {
-          newPayHistory.push({ id: `det-${Date.now()}-${cid}`, courseId: cid, amount: paid, courseExpected: exp, paymentType: 'course', currency: 'EGP', at: new Date().toISOString(), isInstallment: false });
-        }
-      });
-
-      const newCreatedAt = draft.map((item) => item.createdAt).filter(Boolean).sort()[0] || row.createdAt;
       const updatedCustomPrices: Record<string, number> = { ...((row as SubscriberWithCustomPrices).customPrices || {}) };
       draft.forEach((item) => {
         if (item.expected !== '' && Number(item.expected) > 0) updatedCustomPrices[item.courseId] = Number(item.expected);
       });
 
-      const updated = { ...row, customPrices: updatedCustomPrices, paymentHistory: newPayHistory, createdAt: newCreatedAt };
-      updateSubscriber(updated);
-      if (isNonAdminStaff) setSalesOwnSubscribers((prev) => prev.map((subscriber) => subscriber.id === updated.id ? updated : subscriber));
+      const updated = { ...row, customPrices: updatedCustomPrices };
       const { updatedAt: _occ, ...savePayload } = updated as SubscriberWithCustomPrices & { updatedAt?: string };
       await mysqlAdmin.saveSubscriber(savePayload);
+      await reloadSubscribers();
+      if (isNonAdminStaff) {
+        const fresh = await mysqlAdmin.listStaffSubscribers() as unknown as SubscriberItem[];
+        setSalesOwnSubscribers(fresh);
+      }
       notify('success', 'تم حفظ التفاصيل بنجاح ✅');
       onClose();
     } catch {
@@ -137,12 +104,13 @@ export function OnlineClientCourseDetailsModal({
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">المبلغ المدفوع (ج.م)</label>
-                  <input type="number" value={item.paid} onChange={(event) => setDraft((prev) => prev.map((entry, i) => i === index ? { ...entry, paid: event.target.value } : entry))} className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" placeholder="0" />
+                  <input type="number" value={item.paid} readOnly disabled className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-gray-100 text-gray-500" placeholder="0" />
+                  <p className="mt-1 text-[10px] text-gray-400">يتغير فقط من تسجيل/اعتماد دفعة أو استرداد مالي.</p>
                 </div>
               </div>
               <div className="mt-3">
                 <label className="block text-xs text-gray-500 mb-1">تاريخ الاشتراك</label>
-                <input type="date" value={item.createdAt} onChange={(event) => setDraft((prev) => prev.map((entry, i) => i === index ? { ...entry, createdAt: event.target.value } : entry))} className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                <input type="date" value={item.createdAt} readOnly disabled className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-gray-100 text-gray-500" />
               </div>
             </div>
           ))}

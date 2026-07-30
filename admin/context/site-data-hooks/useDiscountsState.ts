@@ -12,29 +12,27 @@ export function useDiscountsState(
 ) {
   const [discounts, setDiscounts] = useState<DiscountRule[]>(initialDiscounts);
 
-  const persistDiscountsToConfig = (items: DiscountRule[]) => void mysqlAdmin.saveDiscounts(items as unknown[]).catch(() => {});
-
-  const addDiscount = (item: DiscountRule) => {
+  const addDiscount = async (item: DiscountRule) => {
     lastLocalConfigWriteRef.current = Date.now();
     const next = [item, ...discounts];
+    await mysqlAdmin.saveDiscounts(next as unknown[]);
     setDiscounts(next);
-    persistDiscountsToConfig(next);
     track('create', 'discount', item.label || `${item.discountPercent}%`);
   };
 
-  const updateDiscount = (item: DiscountRule) => {
+  const updateDiscount = async (item: DiscountRule) => {
     lastLocalConfigWriteRef.current = Date.now();
     const next = discounts.map((d) => (d.id === item.id ? item : d));
+    await mysqlAdmin.saveDiscounts(next as unknown[]);
     setDiscounts(next);
-    persistDiscountsToConfig(next);
     track('update', 'discount', item.label || `${item.discountPercent}%`);
   };
 
-  const deleteDiscount = (id: string) => {
+  const deleteDiscount = async (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
     const next = discounts.filter((d) => d.id !== id);
+    await mysqlAdmin.saveDiscounts(next as unknown[]);
     setDiscounts(next);
-    persistDiscountsToConfig(next);
     track('delete', 'discount', id);
   };
 

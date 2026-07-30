@@ -6,7 +6,7 @@ export const staffStatusFromWire = (staff: StaffWire): StaffMember['status'] =>
   staff.status === 'active' || staff.is_active === 1 || staff.is_active === true ? 'active' : 'inactive';
 
 export const priceForCurrency = (price: Price | undefined, currency: keyof Price): number =>
-  Number(price?.[currency] ?? price?.EGP ?? 0) || 0;
+  Number(price?.[currency] ?? 0) || 0;
 
 export const translatePayMethod = (method: string | undefined): string => {
   if (!method) return 'غير محدد';

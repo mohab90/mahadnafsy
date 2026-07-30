@@ -5,6 +5,7 @@ import { LeadReminderList } from './LeadReminderList';
 import { LeadRemindersHeader } from './LeadRemindersHeader';
 import { LeadStaleLeadsPanel, type StaleLeadRow } from './LeadStaleLeadsPanel';
 import type { ReminderLead } from './useLeadRemindersData';
+import { CrmWorkQueuePanel } from './CrmWorkQueuePanel';
 
 type ReminderView = 'list' | 'kanban';
 
@@ -91,6 +92,8 @@ export function LeadRemindersPanel({
         dueTodayLoading={dueTodayLoading}
         onRefreshDueToday={onRefreshDueToday}
       />
+
+      <CrmWorkQueuePanel onOpenLead={onOpenLead} />
 
       {reminderView === 'kanban' && (
         <LeadReminderKanban

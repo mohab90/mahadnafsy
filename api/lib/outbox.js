@@ -26,6 +26,15 @@ async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAUL
 }
 
 async function finalizeCampaign(row, sent, dead) {
+  if (row.ref_type === 'crm_sequence_step' && row.ref_id) {
+    await pool.query(
+      `UPDATE crm_sequence_step_executions
+          SET status=?,sent_at=IF(?,NOW(),sent_at)
+        WHERE id=? AND tenant_id=?`,
+      [dead ? 'failed' : 'sent', sent ? 1 : 0, row.ref_id, row.tenant_id]
+    );
+    return;
+  }
   const table = row.ref_type === 'email_campaign' ? 'email_campaigns' : row.ref_type === 'sms_campaign' ? 'sms_campaigns' : null;
   if (!table || !row.ref_id) return;
   if (sent) await pool.query(`UPDATE ${table} SET sent_count=sent_count+1 WHERE id=? AND tenant_id=?`, [row.ref_id, row.tenant_id]);
@@ -76,10 +85,26 @@ async function drain(senders, limit = 20) {
       const payload = typeof m.payload_json === 'string' ? JSON.parse(m.payload_json) : (m.payload_json || {});
       const send = senders[m.channel];
       if (typeof send !== 'function') throw new Error('no sender for channel ' + m.channel);
-      await send({ recipient: m.recipient, subject: m.subject, tenantId: m.tenant_id, ...payload });
+      const delivery = await send({ recipient: m.recipient, subject: m.subject, tenantId: m.tenant_id, ...payload });
+      if (delivery?.ok === false) {
+        const reason = typeof delivery.reason === 'string' ? delivery.reason : JSON.stringify(delivery.reason);
+        throw new Error(reason || `${m.channel} provider rejected the message`);
+      }
       await pool.query(
-        "UPDATE message_outbox SET status='sent',sent_at=NOW(),locked_at=NULL,locked_by=NULL,last_error=NULL WHERE id=? AND tenant_id=? AND locked_by=?",
-        [m.id, m.tenant_id, workerId]
+        `UPDATE message_outbox
+            SET status='sent',sent_at=NOW(),locked_at=NULL,locked_by=NULL,last_error=NULL,
+                provider=?,provider_message_id=?,delivery_status=?,
+                provider_status_at=IF(? IS NULL,provider_status_at,NOW()),provider_error=NULL
+          WHERE id=? AND tenant_id=? AND locked_by=?`,
+        [
+          delivery?.provider || null,
+          delivery?.idMessage || null,
+          delivery?.idMessage ? 'accepted' : null,
+          delivery?.idMessage || null,
+          m.id,
+          m.tenant_id,
+          workerId,
+        ]
       );
       await finalizeCampaign(m, true, false);
       sent++;

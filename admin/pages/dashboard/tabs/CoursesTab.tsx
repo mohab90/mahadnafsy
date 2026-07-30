@@ -11,6 +11,8 @@ import { compressImageFile } from '../../../lib/imageBudget';
 import { sanitizeRichHtml } from '../../../../shared/ui/sanitizeHtml';
 import type { LessonAnalyticsRow } from './courses/LessonAnalyticsModal';
 import { DiscountsView } from './courses/DiscountsView';
+import { CoursePrerequisitesPanel } from './courses/CoursePrerequisitesPanel';
+import { CourseCohortsPanel } from './courses/CourseCohortsPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type RichField = 'shortDescription' | 'description';
@@ -83,7 +85,7 @@ export default function CoursesTab({
     bundles, addBundle, updateBundle, deleteBundle,
     testimonials, addTestimonial, updateTestimonial, deleteTestimonial,
     
-    subscribers, consultations,
+    subscribers, consultations, staffMembers,
     
     isAdmin,
   } = useSiteData();
@@ -129,6 +131,11 @@ export default function CoursesTab({
   const [editingChapterId, setEditingChapterId] = useState('');
   const [isChapterFormOpen, setIsChapterFormOpen] = useState(false);
   const [chapterDraft, setChapterDraft] = useState({ title: '', order: 1 });
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [liveSessionDraft, setLiveSessionDraft] = useState('');
+  useEffect(() => {
+    setLiveSessionDraft(courses.find(course => course.id === lectureCourseId)?.liveSessionUrl || '');
+  }, [lectureCourseId, courses]);
   // ── Lesson Analytics ─────────────────────────────────────────────────────
   const [analyticsRows, setAnalyticsRows] = useState<LessonAnalyticsRow[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -226,7 +233,7 @@ const startEditCourse = (course: Course) => {
   setActiveTab('courses');
 };
 
-const saveCourse = () => {
+const saveCourse = async () => {
   // Use DOM to reliably extract plain text (handles spans, encoded entities, br tags, etc.)
   const stripHtmlTags = (html: string): string => {
     try {
@@ -253,8 +260,13 @@ const saveCourse = () => {
     notify('error', 'اختر المحاضر من قائمة المحاضرين قبل الحفظ.');
     return;
   }
-  if (!therapists.some((row) => row.name === courseDraft.instructor)) {
+  const selectedInstructor = therapists.find((row) => row.name === courseDraft.instructor);
+  if (!selectedInstructor) {
     notify('error', 'المحاضر المختار غير موجود في قائمة المحاضرين.');
+    return;
+  }
+  if (!selectedInstructor.staffId) {
+    notify('error', 'اربط المحاضر بحساب موظف محاضر/مدرب أولاً لضمان الصلاحيات والتحليلات.');
     return;
   }
   let parsedDetails: Record<string, string> = {};
@@ -292,7 +304,10 @@ const saveCourse = () => {
     certificateTemplateName: courseDraft.certificateTemplateName || '',
     materials: courseMaterialsDraft.filter(m => m.title.trim() && m.url.trim()),
   };
-  if (editingCourseId) updateCourse(payload); else addCourse(payload);
+  setCatalogSaving(true);
+  const saved = editingCourseId ? await updateCourse(payload) : await addCourse(payload);
+  setCatalogSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ الكورس.'); return; }
   setEditingCourseId('');
   setCourseDraft(blankCourse());
   setCourseDetailsJson('{}');
@@ -323,7 +338,7 @@ const startEditTherapist = (row: Therapist) => {
   setActiveTab('instructors');
 };
 
-const saveTherapist = () => {
+const saveTherapist = async () => {
   if (!therapistDraft.name.trim()) {
     notify('error', 'لا يمكن حفظ المحاضر بدون اسم.');
     return;
@@ -354,7 +369,10 @@ const saveTherapist = () => {
         }
       : undefined,
   };
-  if (editingTherapistId) updateTherapist(payload); else addTherapist(payload);
+  setCatalogSaving(true);
+  const saved = editingTherapistId ? await updateTherapist(payload) : await addTherapist(payload);
+  setCatalogSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ المحاضر.'); return; }
   setEditingTherapistId('');
   setIsTherapistFormOpen(false);
   setTherapistDraft(blankTherapist());
@@ -377,7 +395,7 @@ const startEditBundle = (row: Bundle) => {
   setActiveTab('bundles');
 };
 
-const saveBundle = () => {
+const saveBundle = async () => {
   if (!bundleTitle.trim()) {
     notify('error', 'لا يمكن حفظ المسار بدون عنوان.');
     return;
@@ -410,7 +428,10 @@ const saveBundle = () => {
     originalPrice: { ...bundleOriginalPrice },
     detailsContent: parsedDetails,
   };
-  if (editingBundleId) updateBundle(payload); else addBundle(payload);
+  setCatalogSaving(true);
+  const saved = editingBundleId ? await updateBundle(payload) : await addBundle(payload);
+  setCatalogSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ المسار.'); return; }
   setEditingBundleId('');
   setIsBundleFormOpen(false);
   setBundleTitle('');
@@ -433,14 +454,17 @@ const startEditTestimonial = (row: { id: number; name: string; role: string; tex
   setActiveTab('testimonials');
 };
 
-const saveTestimonial = () => {
+const saveTestimonial = async () => {
   if (!testimonialDraft.name || !testimonialDraft.text) return;
   const payload = {
     ...testimonialDraft,
     id: testimonialDraft.id || Date.now(),
     image: testimonialDraft.image || '',
   };
-  if (editingTestimonialId) updateTestimonial(payload); else addTestimonial(payload);
+  setCatalogSaving(true);
+  const saved = editingTestimonialId ? await updateTestimonial(payload) : await addTestimonial(payload);
+  setCatalogSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ رأي العميل.'); return; }
   setEditingTestimonialId(null);
   setIsTestimonialFormOpen(false);
   setTestimonialDraft({ id: 0, name: '', role: '', text: '', image: '' });
@@ -462,7 +486,7 @@ const startEditLecture = (row: typeof lectures[number]) => {
   setActiveTab('lectures');
 };
 
-const saveLecture = () => {
+const saveLecture = async () => {
   if (!lectureCourseId || !lectureDraft.title) return;
   const payload: import('../../../types').CourseLectureItem = {
     id: editingLectureId || `lec-${Date.now()}`,
@@ -475,13 +499,17 @@ const saveLecture = () => {
     thumbnail: lectureDraft.thumbnail || '',
     chapterId: lectureDraft.chapterId || undefined,
   };
-  if (editingLectureId) updateLecture(payload); else addLecture(payload);
+  setCatalogSaving(true);
+  const saved = editingLectureId ? await updateLecture(payload) : await addLecture(payload);
+  setCatalogSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ المحاضرة.'); return; }
   setEditingLectureId('');
   setIsLectureFormOpen(false);
   setLectureDraft({ title: '', lectureType: 'recorded', videoUrl: '', duration: '', order: 1, thumbnail: '', chapterId: '' });
+  notify('success', 'تم حفظ المحاضرة.');
 };
 
-const saveChapter = () => {
+const saveChapter = async () => {
   if (!lectureCourseId || !chapterDraft.title.trim()) { notify('error', 'اختر الكورس وأدخل عنوان الفصل.'); return; }
   const payload: CourseChapterItem = {
     id: editingChapterId || `ch-${Date.now()}`,
@@ -489,7 +517,10 @@ const saveChapter = () => {
     title: chapterDraft.title,
     order: Number(chapterDraft.order) || 1,
   };
-  if (editingChapterId) updateChapter(payload); else addChapter(payload);
+  setCatalogSaving(true);
+  const saved = editingChapterId ? await updateChapter(payload) : await addChapter(payload);
+  setCatalogSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ الفصل.'); return; }
   setEditingChapterId('');
   setIsChapterFormOpen(false);
   setChapterDraft({ title: '', order: 1 });
@@ -618,7 +649,10 @@ const saveChapter = () => {
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">المحاضر (من قائمة المحاضرين)</label>
-              <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.instructor} onChange={(e) => setCourseDraft({ ...courseDraft, instructor: e.target.value })}>
+              <select className="w-full border border-gray-300 rounded-xl px-4 py-2.5" value={courseDraft.instructor} onChange={(e) => {
+                const therapist = therapists.find(row => row.name === e.target.value);
+                setCourseDraft({ ...courseDraft, instructor: e.target.value, instructorId: therapist?.staffId });
+              }}>
                 <option value="">اختر المحاضر</option>
                 {therapists.map((row) => <option key={row.id} value={row.name}>{row.name}</option>)}
               </select>
@@ -888,7 +922,7 @@ const saveChapter = () => {
             </div>
           </div>
 
-          <button onClick={saveCourse} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">
+          <button onClick={() => void saveCourse()} disabled={catalogSaving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">
             <Save size={16} className="inline ml-2" />
             {editingCourseId ? 'تحديث الكورس' : 'إضافة الكورس'}
           </button>
@@ -911,7 +945,11 @@ const saveChapter = () => {
             notify('info', `إحصائيات وصول ${course.title}: Full ${accessStats.full} / Preview ${accessStats.preview} / Limited ${accessStats.limited}`);
           }}
           onOpenAnalytics={(courseId) => { setAnalyticsCourseId(courseId); loadLessonAnalytics(courseId); }}
-          onDeleteCourse={deleteCourse}
+          onDeleteCourse={async (id) => {
+            const deleted = await deleteCourse(id);
+            notify(deleted ? 'success' : 'error', deleted ? 'تم حذف الكورس.' : 'تعذر حذف الكورس.');
+            return deleted;
+          }}
           notifyMissingLiveUrl={() => notify('error', 'لا يوجد رابط لايف محفوظ لهذا الكورس.')}
         />
       )}
@@ -978,7 +1016,7 @@ const saveChapter = () => {
             <input type="number" className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="الترتيب" value={lectureDraft.order} onChange={(e) => setLectureDraft({ ...lectureDraft, order: Number(e.target.value) })} />
             <input className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط صورة غلاف المحاضرة (اختياري)" value={lectureDraft.thumbnail} onChange={(e) => setLectureDraft({ ...lectureDraft, thumbnail: e.target.value })} />
           </div>
-            <button onClick={saveLecture} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingLectureId ? 'تحديث المحاضرة' : 'إضافة محاضرة'}</button>
+            <button onClick={() => void saveLecture()} disabled={catalogSaving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingLectureId ? 'تحديث المحاضرة' : 'إضافة محاضرة'}</button>
         </div>
       )}
 
@@ -993,7 +1031,7 @@ const saveChapter = () => {
             <div className="flex flex-wrap gap-2 items-center mb-3 bg-white border border-purple-200 rounded-xl p-3">
               <input className="flex-1 min-w-[180px] border border-purple-200 rounded-lg px-3 py-2 text-sm" placeholder="عنوان الفصل" value={chapterDraft.title} onChange={(e) => setChapterDraft({ ...chapterDraft, title: e.target.value })} />
               <input type="number" className="w-20 border border-purple-200 rounded-lg px-3 py-2 text-sm" placeholder="الترتيب" value={chapterDraft.order} onChange={(e) => setChapterDraft({ ...chapterDraft, order: Number(e.target.value) })} />
-              <button type="button" onClick={saveChapter} className="px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold">حفظ</button>
+              <button type="button" onClick={() => void saveChapter()} disabled={catalogSaving} className="px-3 py-2 rounded-lg bg-purple-600 disabled:opacity-50 text-white text-sm font-bold">حفظ</button>
               <button type="button" onClick={() => { setIsChapterFormOpen(false); setEditingChapterId(''); setChapterDraft({ title: '', order: 1 }); }} className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-bold">إلغاء</button>
             </div>
           )}
@@ -1004,12 +1042,18 @@ const saveChapter = () => {
                 <p className="text-sm text-gray-800 font-medium">{ch.order}. {ch.title}</p>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => { setEditingChapterId(ch.id); setChapterDraft({ title: ch.title, order: ch.order }); setIsChapterFormOpen(true); }} className="text-xs px-2 py-1 rounded-lg bg-purple-50 text-purple-700 font-bold">تعديل</button>
-                  <button type="button" onClick={() => { deleteChapter(ch.id); notify('success', 'تم حذف الفصل.'); }} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-700 font-bold">حذف</button>
+                  <button type="button" onClick={() => { void deleteChapter(ch.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف الفصل.' : 'تعذر حذف الفصل.')); }} className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-700 font-bold">حذف</button>
                 </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+      {lectureCourseId && isAdmin && (
+        <>
+          <CoursePrerequisitesPanel courseId={lectureCourseId} courses={courses} notify={notify} />
+          <CourseCohortsPanel courseId={lectureCourseId} courses={courses} subscribers={subscribers} notify={notify} />
+        </>
       )}
       <CourseLectureList
         courses={courses}
@@ -1023,7 +1067,11 @@ const saveChapter = () => {
         getCourseLectures={getCourseLectures}
         getCourseChapters={getCourseChapters}
         startEditLecture={startEditLecture}
-        deleteLecture={deleteLecture}
+        deleteLecture={async (id) => {
+          const deleted = await deleteLecture(id);
+          notify(deleted ? 'success' : 'error', deleted ? 'تم حذف المحاضرة.' : 'تعذر حذف المحاضرة.');
+          return deleted;
+        }}
       />
 
       {lectureCourseId && (
@@ -1034,13 +1082,23 @@ const saveChapter = () => {
             <input
               className="flex-1 min-w-[220px] border border-rose-200 rounded-lg px-3 py-2 text-sm"
               placeholder="رابط اللايف"
-              value={courses.find((c) => c.id === lectureCourseId)?.liveSessionUrl || ''}
-              onChange={(e) => {
-                const targetCourse = courses.find((c) => c.id === lectureCourseId);
-                if (!targetCourse) return;
-                updateCourse({ ...targetCourse, liveSessionUrl: e.target.value });
-              }}
+              value={liveSessionDraft}
+              onChange={(e) => setLiveSessionDraft(e.target.value)}
             />
+            <button
+              disabled={catalogSaving}
+              onClick={() => {
+                const targetCourse = courses.find(course => course.id === lectureCourseId);
+                if (!targetCourse) return;
+                setCatalogSaving(true);
+                void updateCourse({ ...targetCourse, liveSessionUrl: liveSessionDraft })
+                  .then(saved => notify(saved ? 'success' : 'error', saved ? 'تم حفظ رابط البث.' : 'تعذر حفظ رابط البث.'))
+                  .finally(() => setCatalogSaving(false));
+              }}
+              className="px-3 py-2 rounded-lg bg-white border border-rose-300 text-rose-700 disabled:opacity-50 text-sm font-bold"
+            >
+              <Save size={14} className="inline ml-1" />حفظ الرابط
+            </button>
             <button
               onClick={() => {
                 const url = courses.find((c) => c.id === lectureCourseId)?.liveSessionUrl;
@@ -1064,6 +1122,7 @@ const saveChapter = () => {
     activeTab={activeTab}
     isAdmin={isAdmin}
     therapists={therapists}
+    staffMembers={staffMembers}
     consultations={consultations}
     isTherapistFormOpen={isTherapistFormOpen}
     setIsTherapistFormOpen={setIsTherapistFormOpen}
@@ -1162,7 +1221,7 @@ const saveChapter = () => {
               onChange={(e) => setBundleDetailsJson(e.target.value)}
             />
           </div>
-          <button onClick={saveBundle} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingBundleId ? 'تحديث المسار' : 'إضافة مسار'}</button>
+          <button onClick={() => void saveBundle()} disabled={catalogSaving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingBundleId ? 'تحديث المسار' : 'إضافة مسار'}</button>
         </div>
       )}
       <div className="mt-5 border-t pt-4 space-y-2 max-h-80 overflow-auto">
@@ -1172,7 +1231,7 @@ const saveChapter = () => {
             <div className="flex gap-2">
               <button onClick={() => window.open(`https://mahadnafsy.com/bundle/${row.id}`, '_blank')} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">عرض</button>
               <button onClick={() => startEditBundle(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button>
-              <button onClick={() => deleteBundle(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
+              <button onClick={() => { void deleteBundle(row.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف المسار.' : 'تعذر حذف المسار.')); }} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
             </div>
           </div>
         ))}
@@ -1209,14 +1268,14 @@ const saveChapter = () => {
             <input className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط الصورة" value={testimonialDraft.image} onChange={(e) => setTestimonialDraft({ ...testimonialDraft, image: e.target.value })} />
             <textarea className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" rows={3} placeholder="نص الرأي" value={testimonialDraft.text} onChange={(e) => setTestimonialDraft({ ...testimonialDraft, text: e.target.value })} />
           </div>
-          <button onClick={saveTestimonial} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTestimonialId ? 'تحديث الرأي' : 'إضافة رأي'}</button>
+          <button onClick={() => void saveTestimonial()} disabled={catalogSaving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTestimonialId ? 'تحديث الرأي' : 'إضافة رأي'}</button>
         </div>
       )}
       <div className="mt-5 border-t pt-4 space-y-2 max-h-80 overflow-auto">
         {testimonials.map((row) => (
           <div key={row.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl p-3">
             <div><p className="font-bold text-gray-800">{row.name}</p><p className="text-xs text-gray-500">{row.role}</p></div>
-            <div className="flex gap-2"><button onClick={() => startEditTestimonial(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button><button onClick={() => deleteTestimonial(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button></div>
+            <div className="flex gap-2"><button onClick={() => startEditTestimonial(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button><button onClick={() => { void deleteTestimonial(row.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف الرأي.' : 'تعذر حذف الرأي.')); }} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button></div>
           </div>
         ))}
       </div>

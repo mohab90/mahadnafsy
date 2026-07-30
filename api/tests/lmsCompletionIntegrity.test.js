@@ -70,19 +70,33 @@ test('completeCourse: requireFullProgress=true rejects when lectures are incompl
   );
 });
 
+test('completeCourse: rejects certificate issuance until every required quiz is passed', async () => {
+  const conn = mockConn([
+    { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', enrollment_id: 'e1' }] },
+    { match: 'FROM course_lectures', rows: [{ total: 3, completed: 3 }] },
+    { match: 'FROM course_quizzes q', rows: [{ required_count: 2, passed_count: 1 }] },
+  ]);
+  await assert.rejects(
+    () => completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1' }, conn),
+    (error) => error.statusCode === 409 && /required course quizzes/.test(error.message)
+  );
+});
+
 test('completeCourse: requireFullProgress=true succeeds once all lectures are done, and records tenant_id on the completion row', async () => {
   const conn = mockConn([
     { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
     { match: 'FROM course_lectures', rows: [{ total: 5, completed: 5 }] },
+    { match: 'FROM course_quizzes q', rows: [{ required_count: 1, passed_count: 1 }] },
     { match: 'FROM course_completions', rows: [] }, // not already completed
-    { match: 'INSERT INTO course_completions', rows: [] },
+    { match: 'INSERT IGNORE INTO course_completions', rows: { affectedRows: 1 } },
+    { match: 'INSERT INTO certificate_lifecycle_events', rows: { affectedRows: 1 } },
     { match: 'INSERT INTO message_outbox', rows: [] },
   ]);
   const result = await completeCourse({ tenantId: 'tenant-x', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn);
   assert.equal(result.alreadyCompleted, false);
   assert.ok(result.certificate_code);
 
-  const insertCall = conn.calls.find(c => c.sql.includes('INSERT INTO course_completions'));
+  const insertCall = conn.calls.find(c => c.sql.includes('INSERT IGNORE INTO course_completions'));
   assert.ok(insertCall, 'must actually write a course_completions row, not just return success');
   assert.equal(insertCall.params[1], 's1');
   assert.equal(insertCall.params[2], 'c1');
@@ -100,7 +114,7 @@ test('completeCourse: already-completed is idempotent — returns the existing c
   const result = await completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1', requireFullProgress: false }, conn);
   assert.equal(result.alreadyCompleted, true);
   assert.equal(result.certificate_code, 'MHAD-EXISTING');
-  assert.ok(!conn.calls.some(c => c.sql.includes('INSERT INTO course_completions')), 'must not write a second completion row');
+  assert.ok(!conn.calls.some(c => c.sql.includes('INSERT IGNORE INTO course_completions')), 'must not write a second completion row');
 });
 
 test('completeCourses: rejects out-of-bounds batch sizes (0 or >500) before touching the database', async () => {

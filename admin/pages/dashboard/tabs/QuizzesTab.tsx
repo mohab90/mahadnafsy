@@ -3,6 +3,7 @@ import { BookOpen, Download, FileText, Save, Sparkles } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import type { Course, CourseLectureItem, CourseQuiz, QuizAttempt, QuizQuestion } from '../../../types';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -17,17 +18,12 @@ const safeStoredImageSrc = (image: string | undefined) => {
 };
 
 // ─── AI helper ───────────────────────────────────────────────────────────────
-async function callAI(apiKey: string, model: string, prompt: string, maxTokens = 6000): Promise<string> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: maxTokens } }),
-    }
-  );
-  if (!res.ok) { const e = await res.json() as { error?: { message?: string } }; throw new Error(e.error?.message || `HTTP ${res.status}`); }
-  const d = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+async function callAI(prompt: string, maxTokens = 6000): Promise<string> {
+  const { text } = await mysqlAdmin.generateAdminAi({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens,
+  });
+  return text;
 }
 
 // ─── PDF download helper ──────────────────────────────────────────────────────
@@ -85,7 +81,7 @@ ${htmlContent}
 // ─── Main component ───────────────────────────────────────────────────────────
 const QuizzesTab: React.FC<Props> = ({ notify }) => {
   const { courses, lectures: allLectures, courseQuizzes, quizAttempts,
-    addCourseQuiz, updateCourseQuiz, deleteCourseQuiz, updateLecture, adminAiConfig } = useSiteData();
+    addCourseQuiz, updateCourseQuiz, deleteCourseQuiz, updateLecture } = useSiteData();
 
   const [mainTab, setMainTab] = useState<'quiz' | 'content'>('quiz');
   const [selectedCourseId, setSelectedCourseId] = useState('');
@@ -100,7 +96,6 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
   // ── Content/PDF state ──
   const [selectedLectureId, setSelectedLectureId] = useState('');
   const [generatingLectureId, setGeneratingLectureId] = useState('');
-  // localStorage key: `lecture_notes:<lectureId>`
   const [notesCache, setNotesCache] = useState<Record<string, string>>({});
   const [savingLectureId, setSavingLectureId] = useState('');
 
@@ -129,19 +124,14 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
     return mat;
   };
 
-  const getApiKey = () => adminAiConfig?.apiKey || '';
-  const getModel = () => adminAiConfig?.model || 'gemini-2.0-flash-lite';
-
   // ── Generate quiz ──
   const handleGenerateQuiz = async () => {
     if (!selectedCourse) return;
-    const apiKey = getApiKey();
-    if (!apiKey) { alert('لم يتم ضبط مفتاح API. يرجى الذهاب إلى إعدادات الذكاء الاصطناعي.'); return; }
     setQuizGenerating(true);
     try {
       const material = quizMaterial || buildMaterial();
       const prompt = `أنت خبير في تصميم الاختبارات التعليمية. بناءً على المادة العلمية التالية، أنشئ 20 سؤال اختيار من متعدد باللغة العربية.\n\nالمادة:\n${material}\n\nأعطني فقط JSON array بالتنسيق التالي بدون أي نص إضافي:\n[{"question":"...","options":["أ: ...","ب: ...","ج: ...","د: ..."],"correctIndex":0,"explanation":"..."}]`;
-      const text = await callAI(apiKey, getModel(), prompt, 5000);
+      const text = await callAI(prompt, 5000);
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('لم يتم إرجاع JSON صحيح من الذكاء الاصطناعي');
       const raw = JSON.parse(jsonMatch[0]) as { question: string; options: string[]; correctIndex: number; explanation?: string }[];
@@ -158,10 +148,14 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
     setQuizGenerating(false);
   };
 
-  const handleSaveQuiz = () => {
+  const handleSaveQuiz = async () => {
     if (!quizDraft) return;
     const updated = { ...quizDraft, passingScore: quizPassingScore, updatedAt: new Date().toISOString() };
-    if (existingQuiz) updateCourseQuiz(updated); else addCourseQuiz(updated);
+    const saved = existingQuiz ? await updateCourseQuiz(updated) : await addCourseQuiz(updated);
+    if (!saved) {
+      notify('error', 'تعذر حفظ الاختبار في قاعدة البيانات');
+      return;
+    }
     setQuizDraft(null);
     notify('success', 'تم حفظ الاختبار');
   };
@@ -170,8 +164,6 @@ const QuizzesTab: React.FC<Props> = ({ notify }) => {
   const handleGenerateNotes = async (lectureId: string) => {
     const lecture = courseLectures.find((l: CourseLectureItem) => l.id === lectureId);
     if (!lecture || !selectedCourse) return;
-    const apiKey = getApiKey();
-    if (!apiKey) { alert('لم يتم ضبط مفتاح API.'); return; }
     setGeneratingLectureId(lectureId);
     try {
       const lectureList = courseLectures.map((l: CourseLectureItem, i: number) => `${i + 1}. ${l.title}`).join('\n');
@@ -192,11 +184,9 @@ ${lectureList}
 5. خلاصة المحاضرة
 
 أعطني HTML مباشرة بدون أي نص إضافي خارج الـ HTML.`;
-      const html = await callAI(apiKey, getModel(), prompt, 8000);
+      const html = await callAI(prompt, 8000);
       // Strip possible code fences
       const clean = html.replace(/^```html\n?/i, '').replace(/\n?```$/i, '').trim();
-      const key = `lecture_notes:${lectureId}`;
-      localStorage.setItem(key, clean);
       setNotesCache(prev => ({ ...prev, [lectureId]: clean }));
       setSelectedLectureId(lectureId);
       notify('success', `تم توليد محتوى محاضرة "${lecture.title}"`);
@@ -206,9 +196,7 @@ ${lectureList}
 
   const getLectureNotes = (lectureId: string): string => {
     if (notesCache[lectureId]) return notesCache[lectureId];
-    const stored = localStorage.getItem(`lecture_notes:${lectureId}`);
-    if (stored) { setNotesCache(prev => ({ ...prev, [lectureId]: stored })); return stored; }
-    return '';
+    return courseLectures.find(lecture => lecture.id === lectureId)?.aiNotes || '';
   };
 
   const handleSaveLectureNotes = async (lectureId: string) => {
@@ -218,10 +206,10 @@ ${lectureList}
     if (!notes) return;
     setSavingLectureId(lectureId);
     try {
-      await updateLecture({ ...lecture, aiNotes: notes });
+      if (!await updateLecture({ ...lecture, aiNotes: notes })) throw new Error('Lecture save failed');
       notify('success', 'تم حفظ المحتوى في قاعدة البيانات');
     } catch {
-      notify('info', 'تم الحفظ محلياً (سيتزامن عند الاتصال)');
+      notify('error', 'تعذر حفظ المحتوى في قاعدة البيانات');
     }
     setSavingLectureId('');
   };
@@ -232,7 +220,7 @@ ${lectureList}
       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pb-1.5">الكورسات ({courses.length})</p>
       {courses.map((course: Course) => {
         const hasQuiz = courseQuizzes.some((q: CourseQuiz) => q.courseId === String(course.id));
-        const notesCount = allLectures.filter((l: CourseLectureItem) => String(l.courseId) === String(course.id) && (localStorage.getItem(`lecture_notes:${l.id}`) || l.aiNotes)).length;
+        const notesCount = allLectures.filter((l: CourseLectureItem) => String(l.courseId) === String(course.id) && l.aiNotes).length;
         const isSel = selectedCourseId === String(course.id);
         const thumbnailSrc = safeStoredImageSrc(course.thumbnail);
         return (

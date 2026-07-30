@@ -14,10 +14,24 @@ function normalizePoints(points) {
   return n;
 }
 
-async function getBalance(subscriberId) {
+function requireTenantId(tenantId) {
+  const value = String(tenantId || '').trim();
+  if (!value) {
+    const err = new Error('tenant id is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  return value;
+}
+
+async function getBalance(tenantId, subscriberId) {
+  const scopedTenantId = requireTenantId(tenantId);
   const [[row]] = await pool.query(
-    'SELECT id, loyalty_points FROM subscribers WHERE id = ? LIMIT 1',
-    [subscriberId]
+    `SELECT id, loyalty_points
+     FROM subscribers
+     WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
+     LIMIT 1`,
+    [subscriberId, scopedTenantId]
   );
   if (!row) {
     const err = new Error('subscriber not found');
@@ -46,14 +60,18 @@ async function addLedger(conn, data) {
   );
 }
 
-async function awardPoints(subscriberId, points, options = {}) {
+async function awardPoints(tenantId, subscriberId, points, options = {}) {
+  const scopedTenantId = requireTenantId(tenantId);
   const amount = normalizePoints(points);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [[subscriber]] = await conn.query(
-      'SELECT id, tenant_id, loyalty_points FROM subscribers WHERE id = ? FOR UPDATE',
-      [subscriberId]
+      `SELECT id, tenant_id, loyalty_points
+       FROM subscribers
+       WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
+       FOR UPDATE`,
+      [subscriberId, scopedTenantId]
     );
     if (!subscriber) {
       const err = new Error('subscriber not found');
@@ -62,13 +80,16 @@ async function awardPoints(subscriberId, points, options = {}) {
     }
 
     const balanceAfter = Number(subscriber.loyalty_points || 0) + amount;
-    await conn.query('UPDATE subscribers SET loyalty_points = ? WHERE id = ?', [balanceAfter, subscriberId]);
+    await conn.query(
+      'UPDATE subscribers SET loyalty_points = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+      [balanceAfter, subscriberId, scopedTenantId]
+    );
     await addLedger(conn, {
-      tenantId: subscriber.tenant_id,
+      ...options,
+      tenantId: scopedTenantId,
       subscriberId,
       points: amount,
       balanceAfter,
-      ...options,
     });
     await conn.commit();
     return { subscriberId, points: amount, balance: balanceAfter };
@@ -81,14 +102,18 @@ async function awardPoints(subscriberId, points, options = {}) {
   }
 }
 
-async function redeemPoints(subscriberId, points, options = {}) {
+async function redeemPoints(tenantId, subscriberId, points, options = {}) {
+  const scopedTenantId = requireTenantId(tenantId);
   const amount = normalizePoints(points);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [[subscriber]] = await conn.query(
-      'SELECT id, tenant_id, loyalty_points FROM subscribers WHERE id = ? FOR UPDATE',
-      [subscriberId]
+      `SELECT id, tenant_id, loyalty_points
+       FROM subscribers
+       WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
+       FOR UPDATE`,
+      [subscriberId, scopedTenantId]
     );
     if (!subscriber) {
       const err = new Error('subscriber not found');
@@ -104,13 +129,16 @@ async function redeemPoints(subscriberId, points, options = {}) {
     }
 
     const balanceAfter = current - amount;
-    await conn.query('UPDATE subscribers SET loyalty_points = ? WHERE id = ?', [balanceAfter, subscriberId]);
+    await conn.query(
+      'UPDATE subscribers SET loyalty_points = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+      [balanceAfter, subscriberId, scopedTenantId]
+    );
     await addLedger(conn, {
-      tenantId: subscriber.tenant_id,
+      ...options,
+      tenantId: scopedTenantId,
       subscriberId,
       points: -amount,
       balanceAfter,
-      ...options,
     });
     await conn.commit();
     return { subscriberId, points: -amount, balance: balanceAfter };
@@ -123,15 +151,16 @@ async function redeemPoints(subscriberId, points, options = {}) {
   }
 }
 
-async function listLedger(subscriberId, limit = 100) {
+async function listLedger(tenantId, subscriberId, limit = 100) {
+  const scopedTenantId = requireTenantId(tenantId);
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 300);
   const [rows] = await pool.query(
     `SELECT id, points, balance_after, reason, reference_type, reference_id, created_by, created_at
      FROM loyalty_ledger
-     WHERE subscriber_id = ?
+     WHERE subscriber_id = ? AND tenant_id = ?
      ORDER BY created_at DESC
      LIMIT ?`,
-    [subscriberId, safeLimit]
+    [subscriberId, scopedTenantId, safeLimit]
   );
   return rows;
 }
@@ -151,7 +180,17 @@ async function awardPointsForPayment(payment) {
   if (points <= 0) return { skipped: true, reason: 'amount below threshold' };
 
   try {
-    return await awardPoints(subscriberId, points, {
+    let tenantId = payment.tenantId || payment.tenant_id || null;
+    if (!tenantId) {
+      // Compatibility for trusted payment producers that predate tenant-aware
+      // loyalty calls. Subscriber ids are global primary keys.
+      const [[subscriber]] = await pool.query(
+        'SELECT tenant_id FROM subscribers WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+        [subscriberId]
+      );
+      tenantId = subscriber?.tenant_id || null;
+    }
+    return await awardPoints(tenantId, subscriberId, points, {
       reason: payment.reason || 'paid_payment',
       referenceType: 'payment',
       referenceId,

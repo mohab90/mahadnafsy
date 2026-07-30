@@ -6,7 +6,7 @@ const { safeDateOnly } = require('./dates');
 
 // ── Column lists for hot-path queries ────────────────────────────────────────
 const COURSE_COLS = `id, course_code, slug, title, title_en, title_ar, description,
-  short_description, instructor, thumbnail, category, type,
+  short_description, instructor, instructor_id, thumbnail, category, type,
   price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
   rating, students, duration, level, hours, promo_video_url, live_session_url,
   certificate_template_url, certificate_template_name, is_published, sort_order,
@@ -17,7 +17,7 @@ const COURSE_COLS = `id, course_code, slug, title, title_en, title_ar, descripti
 // CourseDetails.tsx renders and which it fetches itself via GET /api/courses/:id.
 // Cuts the catalog payload roughly in half on every fresh session load.
 const COURSE_LIST_COLS = `id, course_code, slug, title, title_en, title_ar,
-  short_description, instructor, thumbnail, category, type,
+  short_description, instructor, instructor_id, thumbnail, category, type,
   price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
   rating, students, duration, level, hours, is_published, sort_order, created_at`;
 
@@ -32,6 +32,7 @@ function mapCourse(r) {
     description: r.description,
     shortDescription: r.short_description,
     instructor: r.instructor,
+    instructorId: r.instructor_id || undefined,
     thumbnail: r.thumbnail,
     category: r.category,
     type: r.type,
@@ -83,6 +84,7 @@ function mapTherapist(r) {
   const mp = (r.meeting_provider || 'GOOGLE_MEET').toLowerCase();
   return {
     id: r.id,
+    staffId: r.staff_id || undefined,
     name: r.name,
     specialty: r.specialty || '',
     image: r.image || '',
@@ -148,39 +150,43 @@ function mapChapter(r) {
 
 function mapSubscriber(r) {
   const crm = parseCrm(r.crm_json);
-  const enrolledFromTable = (r.enrollments || []).map(e => String(e.course_id || e.c_id)).filter(Boolean);
-  const enrolledFromCrm   = Array.isArray(crm.enrolledCourseIds) ? crm.enrolledCourseIds.map(String) : [];
-
-  // Build set of course IDs backed by a real payment (payment-based enrollments are always valid)
-  const paidCourseIds = new Set(
-    (r.payments || [])
-      .filter(p => (p.status === 'paid' || !p.status) && p.course_id)
-      .map(p => String(p.course_id))
-  );
-  void paidCourseIds; // Used for courseAccess logic below — enrollment table is source of truth
-
-  // Trust the DB enrollments table as the authoritative source (admin manages enrollments there).
-  // crm_json.enrolledCourseIds supplements for backward compatibility (older records).
-  const mergedEnrolledIds = [...new Set([...enrolledFromTable, ...enrolledFromCrm])];
-
-  // Build courseAccess from DB (authoritative after my admin.js sync fix),
-  // but let crm_json override for admin-managed courses (crm_json = admin's explicit intent)
+  const activeEnrollments = (r.enrollments || []).filter(e => !e.status || e.status === 'active');
+  const enrolledCourseIds = [...new Set(activeEnrollments.map(e => String(e.course_id || e.c_id)).filter(Boolean))];
+  const paymentHistory = Array.isArray(r.payments) ? r.payments.map(p => {
+    const dateStr = safeDateOnly(p.date);
+    return {
+      id: p.id,
+      amount: Number(p.amount) || 0,
+      currency: p.currency || 'EGP',
+      paymentType: (p.payment_type || p.paymentType || 'other').toLowerCase(),
+      paymentMethod: p.payment_method || p.paymentMethod || null,
+      transactionId: p.transaction_id || p.transactionId || null,
+      isInstallment: !!(p.is_installment || p.isInstallment),
+      courseId: p.course_id || p.courseId || null,
+      bundleId: p.bundle_id || p.bundleId || null,
+      courseExpected: p.course_expected != null ? Number(p.course_expected) : (p.courseExpected != null ? Number(p.courseExpected) : undefined),
+      note: p.note || null,
+      at: p.at || dateStr,
+      status: p.status || 'paid',
+      staffId: p.staff_id || p.staffId || null,
+      staffName: p.staff_name || p.staffName || null,
+      fromAccountNumber: p.from_account || p.fromAccountNumber || null,
+      source: p.source || null,
+      itemTitle: p.item_title || p.itemTitle || null,
+      certType: p.cert_type || p.certType || null,
+      certId: p.certificate_request_id || p.certId || null,
+      branch: p.branch || null,
+      invoiceNumber: p.document_number || p.invoiceNumber || null,
+    };
+  }) : [];
   const dbCourseAccess = {};
-  for (const e of (r.enrollments || [])) {
+  for (const e of activeEnrollments) {
     const cid = String(e.course_id || e.c_id || '');
     if (!cid) continue;
     if (e.access_type === 'limited' && e.lecture_limit) {
       dbCourseAccess[cid] = { mode: 'limited', lectureLimit: Number(e.lecture_limit) };
     } else {
       dbCourseAccess[cid] = 'full';
-    }
-  }
-  // crm_json courseAccess takes priority for admin-managed courses (fixes stale DB access_type)
-  const crmAccess = crm.courseAccess || {};
-  const mergedCourseAccess = { ...dbCourseAccess };
-  for (const cid of enrolledFromCrm) {
-    if (crmAccess[cid] !== undefined) {
-      mergedCourseAccess[cid] = crmAccess[cid]; // admin's intent overrides stale DB row
     }
   }
   return {
@@ -193,11 +199,11 @@ function mapSubscriber(r) {
     source: r.source || null,
     notes: r.notes,
     createdAt: r.created_at,
-    enrolledCourseIds: mergedEnrolledIds,
-    courseAccess: mergedCourseAccess,
-    lectureProgress: crm.lectureProgress || {},
+    enrolledCourseIds,
+    courseAccess: dbCourseAccess,
+    lectureProgress: {},
     clientCode: r.client_code || crm.clientCode || null,
-    enrollments: (r.enrollments || []).map(e => ({
+    enrollments: activeEnrollments.map(e => ({
       id: e.id,
       courseId: e.course_id || e.c_id,
       courseTitle: e.c_title,
@@ -207,28 +213,9 @@ function mapSubscriber(r) {
       accessLevel: e.access_level,
       enrolledAt: e.enrolled_at,
     })),
-    payments: Array.isArray(r.payments) ? r.payments.map(p => {
-      const dateStr = safeDateOnly(p.date);
-      return {
-        id: p.id,
-        amount: Number(p.amount) || 0,
-        currency: p.currency || 'EGP',
-        paymentType: (p.payment_type || p.paymentType || 'other').toLowerCase(),
-        paymentMethod: p.payment_method || p.paymentMethod || null,
-        transactionId: p.transaction_id || p.transactionId || null,
-        isInstallment: !!(p.is_installment || p.isInstallment),
-        courseId: p.course_id || p.courseId || null,
-        bundleId: p.bundle_id || p.bundleId || null,
-        note: p.note || null,
-        at: p.at || dateStr,
-        status: p.status || 'paid',
-        staffId: p.staff_id || p.staffId || null,
-        staffName: p.staff_name || p.staffName || null,
-        fromAccountNumber: p.from_account || p.fromAccountNumber || null,
-        source: p.source || null,
-        itemTitle: p.item_title || p.itemTitle || null,
-      };
-    }) : [],
+    paymentHistory,
+    // Temporary compatibility alias for callers that adopted the raw API name.
+    payments: paymentHistory,
     certRequests: (r.certRequests || []).map(cr => ({
       id: cr.id,
       type: cr.type || null,
@@ -255,6 +242,7 @@ function mapSubscriber(r) {
       idNumber: cr.id_number || undefined,
       status: String(cr.status || 'pending').toLowerCase(),
       price: cr.price != null ? Number(cr.price) : undefined,
+      paidAmount: cr.paid_amount != null ? Number(cr.paid_amount) : (cr.paidAmount != null ? Number(cr.paidAmount) : 0),
       currency: cr.currency || undefined,
       requestedAt: cr.requested_at || cr.requestedAt || null,
       note: cr.note || null,
@@ -287,6 +275,7 @@ function mapQuiz(r, { includeAnswers = false } = {}) {
     title: r.title,
     questions,
     passingScore: Number(r.passing_score) || 70,
+    requiredForCompletion: r.required_for_completion !== 0 && r.required_for_completion !== false,
     generatedByAI: !!r.generated_by_ai,
     sourceMaterial: r.source_material || undefined,
     createdAt: r.created_at,

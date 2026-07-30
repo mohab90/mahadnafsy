@@ -4,7 +4,6 @@ import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
 import {
   AnalyticsTab,
-  AutomationDashboardTab,
   BalanceSheetTab,
   BranchWorkspacesTab,
   BudgetTrackerTab,
@@ -120,7 +119,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'my_hr', Component: MyHrTab, spinner: 'indigo' },
   { key: 'enps_dashboard', Component: EnpsDashboardTab, spinner: 'indigo' },
   { key: 'offboarding', Component: OffboardingTab, spinner: 'indigo' },
-  { key: 'automation_dashboard', Component: AutomationDashboardTab, spinner: 'indigo' },
   { key: 'settings_hub', Component: SettingsHubTab, spinner: 'indigo' },
   { key: 'ip_whitelist', Component: IpWhitelistTab, spinner: 'indigo' },
   { key: 'payment_settings', Component: PaymentSettingsTab, spinner: 'emerald' },

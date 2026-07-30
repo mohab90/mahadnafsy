@@ -9,13 +9,14 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getNextClientCode } = require('../lib/mappers');
 const { normalizePhone } = require('../lib/helpers');
-const { branchIdForBranch, defaultDigitalBranch, normalizeBranch } = require('../lib/branches');
+const { branchIdForBranch, normalizeBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
 const { getNextSalesRep } = require('../lib/leadAssignment');
+const { resolveClientContext } = require('../lib/clientContext');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -27,7 +28,7 @@ function scopedTenantId(req) {
 }
 
 router.post('/api/registrations', publicLimiter, async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn;
   let transactionStarted = false;
   let registrationLock = null;
   try {
@@ -36,6 +37,11 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     const phone = String(item.phone || '').trim().slice(0, 30);
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
     const tenantId = scopedTenantId(req);
+    const clientContext = await resolveClientContext(req);
+    if (!clientContext.locationResolved) {
+      return res.status(503).json({ error: 'Customer location could not be verified', code: 'LOCATION_UNAVAILABLE' });
+    }
+    conn = await pool.getConnection();
     const normPhone = normalizePhone(item.phone);
     registrationLock = `registration:${crypto.createHash('sha256').update(`${tenantId}:${normPhone || phone}`).digest('hex').slice(0, 40)}`;
     const [[lock]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [registrationLock]);
@@ -58,12 +64,12 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     }
     let code = existing?.client_code || null;
     if (!code) code = await getNextClientCode(conn);
-    const { id: _id, email, source, status, notes, branch, createdAt, created_at, ...crmData } = item;
-    const branchVal = defaultDigitalBranch(branch || crmData.branch);
+    const { id: _id, email, source, status, notes, branch: _branch, createdAt, created_at, ...crmData } = item;
+    const branchVal = clientContext.branch;
     let salesId = existing?.assigned_sales_id || null;
     let salesName = existing?.assigned_sales_name || null;
     if (!salesId) {
-      const rep = await getNextSalesRep(tenantId, conn);
+      const rep = await getNextSalesRep(tenantId, conn, { branch: branchVal });
       salesId = rep?.id || null;
       salesName = rep?.name || null;
     }
@@ -101,8 +107,8 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     if (transactionStarted) await conn.rollback().catch(() => {});
     routeError(res, e);
   } finally {
-    if (registrationLock) await conn.query('SELECT RELEASE_LOCK(?)', [registrationLock]).catch(() => {});
-    conn.release();
+    if (registrationLock && conn) await conn.query('SELECT RELEASE_LOCK(?)', [registrationLock]).catch(() => {});
+    if (conn) conn.release();
   }
 });
 
@@ -142,8 +148,8 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     const id = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     let code = null;
     try { code = await getNextClientCode(conn); } catch (_) {}
-    const rep = await getNextSalesRep(tenantId, conn);
     const normalizedBranch = normalizeBranch(branch, 'OTHER');
+    const rep = await getNextSalesRep(tenantId, conn, { branch: normalizedBranch });
     await conn.execute(
       `INSERT INTO leads (id, tenant_id, client_code, name, phone, notes, status, interest_level, source, lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, created_at, hidden)
        VALUES (?, ?, ?, ?, ?, ?, 'new', 'medium', ?, 'general', ?, ?, ?, ?, NOW(), 0)`,
@@ -163,7 +169,7 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
   }
 });
 
-router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, requirePermission('view_settings'), async (req, res) => {
   try {
     res.json(await getTenantSetting('crm_settings', { tenantId: req.tenantId, fallback: {} }));
   } catch (e) { routeError(res, e); }
@@ -238,11 +244,14 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
 });
 
 router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn;
   let transactionStarted = false;
   let checkoutLock = null;
   try {
-    const { itemId, itemType, itemTitle, customerName, customerEmail, customerPhone } = req.body || {};
+    const {
+      itemId, itemType, itemTitle, customerName, customerEmail, customerPhone,
+      paymentLinkToken,
+    } = req.body || {};
     const { uid, email } = req.user;
     if (!email || !uid) return res.status(401).json({ error: 'Authenticated customer required' });
     const normalizedType = String(itemType || '').toLowerCase();
@@ -255,23 +264,51 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     const tenantId = scopedTenantId(req);
     const normalizedEmail = String(customerEmail || email).toLowerCase().trim();
     if (normalizedEmail !== email.toLowerCase().trim()) return res.status(403).json({ error: 'Checkout email must match the authenticated account' });
-    const branch = defaultDigitalBranch(req.body?.branch || 'ONLINE_EGYPT');
+    const clientContext = await resolveClientContext(req);
+    if (!clientContext.locationResolved) {
+      return res.status(503).json({ error: 'Customer location could not be verified', code: 'LOCATION_UNAVAILABLE' });
+    }
+    conn = await pool.getConnection();
+    const branch = clientContext.branch;
     const branchId = branchIdForBranch(branch);
+    let paymentLink = null;
+    if (paymentLinkToken) {
+      [[paymentLink]] = await conn.query(
+        `SELECT id,item_type,item_id,amount,currency,subscriber_id,expires_at,used_at
+           FROM payment_links
+          WHERE tenant_id=? AND token=? LIMIT 1`,
+        [tenantId, String(paymentLinkToken)]
+      );
+      if (!paymentLink) return res.status(404).json({ error: 'Payment link not found' });
+      if (paymentLink.used_at) return res.status(409).json({ error: 'Payment link already used' });
+      if (new Date(paymentLink.expires_at).getTime() <= Date.now()) {
+        return res.status(410).json({ error: 'Payment link expired' });
+      }
+      if (paymentLink.item_type !== normalizedType || String(paymentLink.item_id) !== String(itemId)) {
+        return res.status(409).json({ error: 'Payment link item does not match checkout' });
+      }
+    }
 
     // Product prices are authoritative on the server. Never trust a price sent
     // by the browser, even on the manually reviewed transfer path.
     let expectedAmount = 0;
-    let expectedCurrency = 'EGP';
+    let expectedCurrency = clientContext.currency;
     let canonicalTitle = String(itemTitle || '').trim().slice(0, 500);
     if (normalizedType === 'course') {
-      const [[course]] = await conn.query('SELECT id, title, title_ar, price_egp FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [itemId, tenantId]);
+      const [[course]] = await conn.query(
+        'SELECT id, title, title_ar, price_egp, price_sar, price_usd FROM courses WHERE id=? AND tenant_id=? LIMIT 1',
+        [itemId, tenantId]
+      );
       if (!course) return res.status(404).json({ error: 'Course not found' });
-      expectedAmount = Number(course.price_egp) || 0;
+      expectedAmount = Number(course[`price_${expectedCurrency.toLowerCase()}`]) || 0;
       canonicalTitle = course.title_ar || course.title || canonicalTitle;
     } else if (normalizedType === 'bundle') {
-      const [[bundle]] = await conn.query('SELECT id, title, price_egp FROM bundles WHERE id=? AND tenant_id=? LIMIT 1', [itemId, tenantId]);
+      const [[bundle]] = await conn.query(
+        'SELECT id, title, price_egp, price_sar, price_usd FROM bundles WHERE id=? AND tenant_id=? LIMIT 1',
+        [itemId, tenantId]
+      );
       if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
-      expectedAmount = Number(bundle.price_egp) || 0;
+      expectedAmount = Number(bundle[`price_${expectedCurrency.toLowerCase()}`]) || 0;
       canonicalTitle = bundle.title || canonicalTitle;
     } else if (normalizedType === 'certificate') {
       const [[certificate]] = await conn.query(
@@ -284,22 +321,44 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       );
       if (!certificate) return res.status(404).json({ error: 'Eligible certificate request not found' });
       expectedAmount = Number(certificate.price) || 0;
-      expectedCurrency = ['EGP', 'SAR', 'USD'].includes(String(certificate.currency || '').toUpperCase())
-        ? String(certificate.currency).toUpperCase() : 'EGP';
+      const certificateCurrency = String(certificate.currency || '').toUpperCase();
+      if (certificateCurrency !== expectedCurrency) {
+        return res.status(409).json({
+          error: 'Certificate price currency does not match the verified customer location',
+          code: 'CURRENCY_CONTEXT_MISMATCH',
+        });
+      }
       canonicalTitle = certificate.custom_name || certificate.type || canonicalTitle;
     } else if (normalizedType === 'consultation') {
       const therapistId = String(req.body?.therapistId || '').trim();
-      if (therapistId) {
+      if (paymentLink) {
+        const [[consultation]] = await conn.query(
+          `SELECT c.id,c.client_email,c.amount,c.currency,t.name AS therapist_name
+             FROM consultations c
+             JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
+            WHERE c.id=? AND c.tenant_id=? AND c.deleted_at IS NULL
+              AND c.status IN ('PENDING','CONFIRMED') LIMIT 1`,
+          [itemId, tenantId]
+        );
+        if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+        if (consultation.client_email
+          && String(consultation.client_email).toLowerCase().trim() !== normalizedEmail) {
+          return res.status(403).json({ error: 'Consultation belongs to another customer' });
+        }
+        expectedAmount = Number(consultation.amount) || Number(paymentLink.amount) || 0;
+        canonicalTitle = `Consultation - ${consultation.therapist_name}`;
+      } else if (therapistId) {
         const [[therapist]] = await conn.query(
-          'SELECT id, name, price_egp FROM therapists WHERE id=? AND tenant_id=? AND is_active=1 AND is_consultation_enabled=1 LIMIT 1',
+          `SELECT id, name, price_egp, price_sar, price_usd FROM therapists
+            WHERE id=? AND tenant_id=? AND is_active=1 AND is_consultation_enabled=1 LIMIT 1`,
           [therapistId, tenantId]
         );
         if (!therapist) return res.status(404).json({ error: 'Therapist not available' });
-        expectedAmount = Number(therapist.price_egp) || 0;
+        expectedAmount = Number(therapist[`price_${expectedCurrency.toLowerCase()}`]) || 0;
         canonicalTitle = `Consultation - ${therapist.name}`;
       } else if (String(req.body?.subtype || '').toLowerCase() === 'express') {
         const content = await getTenantSetting('content', { tenantId, fallback: {}, db: conn });
-        const configured = Number(content['express.price.EGP']) || 0;
+        const configured = Number(content[`express.price.${expectedCurrency}`]) || 0;
         expectedAmount = configured;
         canonicalTitle = 'Express consultation';
       } else {
@@ -307,8 +366,21 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       }
     }
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) return res.status(400).json({ error: 'A positive server-verifiable amount is required' });
+    if (paymentLink) {
+      const linkCurrency = String(paymentLink.currency || '').toUpperCase();
+      if (linkCurrency !== expectedCurrency) {
+        return res.status(409).json({
+          error: 'Payment link currency does not match the verified customer location',
+          code: 'CURRENCY_CONTEXT_MISMATCH',
+        });
+      }
+      expectedAmount = Number(paymentLink.amount);
+      if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
+        return res.status(409).json({ error: 'Payment link amount is invalid' });
+      }
+    }
 
-    const checkoutDiscriminator = [tenantId, uid, normalizedEmail, normalizedType, itemId || '', req.body?.therapistId || '', req.body?.sessionDate || '', req.body?.subtype || ''].join(':');
+    const checkoutDiscriminator = [tenantId, uid, normalizedEmail, normalizedType, itemId || '', paymentLink?.id || '', req.body?.therapistId || '', req.body?.sessionDate || '', req.body?.subtype || ''].join(':');
     checkoutLock = `checkout:${crypto.createHash('sha256').update(checkoutDiscriminator).digest('hex').slice(0, 48)}`;
     const [[lockResult]] = await conn.query('SELECT GET_LOCK(?,5) AS acquired', [checkoutLock]);
     if (Number(lockResult?.acquired) !== 1) return res.status(409).json({ error: 'Checkout is already being processed' });
@@ -319,6 +391,23 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       'SELECT id, lead_id FROM subscribers WHERE LOWER(TRIM(email))=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [normalizedEmail, tenantId]
     );
+    if (paymentLink) {
+      const [[lockedLink]] = await conn.query(
+        `SELECT id,subscriber_id,expires_at,used_at
+           FROM payment_links WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
+        [paymentLink.id, tenantId]
+      );
+      if (!lockedLink || lockedLink.used_at || new Date(lockedLink.expires_at).getTime() <= Date.now()) {
+        const error = new Error('Payment link is no longer available');
+        error.status = 409;
+        throw error;
+      }
+      if (lockedLink.subscriber_id && String(lockedLink.subscriber_id) !== String(subscriber?.id || '')) {
+        const error = new Error('Payment link belongs to another customer');
+        error.status = 403;
+        throw error;
+      }
+    }
     const [[existingLead]] = await conn.query(
       'SELECT id FROM leads WHERE LOWER(TRIM(email))=? AND tenant_id=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
       [normalizedEmail, tenantId]
@@ -335,13 +424,16 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       [leadId, tenantId, String(customerName || email.split('@')[0]).trim().slice(0, 255), normalizedEmail,
        String(customerPhone || '').trim().slice(0, 50), branch, branchId, crmJson]
     );
-    const [[pendingOrder]] = await conn.query(
-      `SELECT id FROM orders
-       WHERE tenant_id=? AND customer_email=? AND type=? AND item_id=? AND status='pending'
-         AND created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
-       ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-      [tenantId, normalizedEmail, normalizedType.toUpperCase(), itemId || normalizedType]
-    );
+    let pendingOrder = null;
+    if (!paymentLink) {
+      [[pendingOrder]] = await conn.query(
+        `SELECT id FROM orders
+         WHERE tenant_id=? AND customer_email=? AND type=? AND item_id=? AND status='pending'
+           AND created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
+         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        [tenantId, normalizedEmail, normalizedType.toUpperCase(), itemId || normalizedType]
+      );
+    }
     const orderId = pendingOrder?.id || uuidv4();
     const notes = JSON.stringify({
       checkout: 'manual_transfer',
@@ -349,13 +441,15 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       sessionDate: req.body?.sessionDate || null,
       sessionType: req.body?.sessionType || null,
       subtype: req.body?.subtype || null,
+      paymentLinkId: paymentLink?.id || null,
     });
     await conn.query(
       `INSERT INTO orders
          (id, subscriber_id, item_id, item_title, type, status, amount, currency, payment_method,
           customer_name, customer_email, customer_phone, course_id, bundle_id, notes, tenant_id, branch_id, created_at)
        VALUES (?,?,?,?,?,'pending',?,?, 'TRANSFER',?,?,?,?,?,?,?,?,NOW())
-       ON DUPLICATE KEY UPDATE amount=VALUES(amount), item_title=VALUES(item_title), customer_name=VALUES(customer_name),
+       ON DUPLICATE KEY UPDATE amount=VALUES(amount), currency=VALUES(currency),
+         item_title=VALUES(item_title), customer_name=VALUES(customer_name),
          customer_phone=VALUES(customer_phone), notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, subscriber?.id || null, itemId || normalizedType, canonicalTitle || normalizedType,
        normalizedType.toUpperCase(), expectedAmount, expectedCurrency,
@@ -363,16 +457,25 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
        normalizedType === 'course' ? itemId : null, normalizedType === 'bundle' ? itemId : null,
        notes, tenantId, branchId]
     );
+    if (paymentLink) {
+      const [consumed] = await conn.query(
+        `UPDATE payment_links
+            SET used_at=NOW(),used_by_order_id=?
+          WHERE id=? AND tenant_id=? AND used_at IS NULL AND expires_at>NOW()`,
+        [orderId, paymentLink.id, tenantId]
+      );
+      if (Number(consumed.affectedRows) !== 1) throw new Error('Payment link redemption conflict');
+    }
     await conn.commit();
     transactionStarted = false;
     res.json({ ok: true, orderId, amount: expectedAmount, currency: expectedCurrency });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[checkout-intent]', e.message);
-    res.status(500).json({ error: 'Could not create checkout order' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not create checkout order' });
   } finally {
-    if (checkoutLock) await conn.query('SELECT RELEASE_LOCK(?)', [checkoutLock]).catch(() => {});
-    conn.release();
+    if (checkoutLock && conn) await conn.query('SELECT RELEASE_LOCK(?)', [checkoutLock]).catch(() => {});
+    if (conn) conn.release();
   }
 });
 

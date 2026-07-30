@@ -83,9 +83,7 @@ export function StudentQuizTab({
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {enrolledCourses.map(course => {
-            const quiz = courseQuizzes.find(item => item.courseId === String(course.id));
-            const attempts = quizAttempts.filter(attempt => attempt.courseId === String(course.id) && attempt.subscriberId === subscriber.id);
-            const bestAttempt = attempts.length > 0 ? attempts.reduce((best, attempt) => attempt.score > best.score ? attempt : best) : null;
+            const quizzes = courseQuizzes.filter(item => item.courseId === String(course.id));
 
             return (
               <div key={course.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -93,30 +91,43 @@ export function StudentQuizTab({
                   {course.thumbnail && <img src={course.thumbnail} alt="" className="h-12 w-12 flex-shrink-0 rounded-xl object-cover" />}
                   <div>
                     <p className="text-sm font-bold leading-snug text-gray-800">{course.title}</p>
-                    {quiz && <p className="mt-0.5 text-xs text-gray-400">{quiz.questions.length} سؤال - النجاح {quiz.passingScore}%</p>}
+                    {quizzes.length > 0 && <p className="mt-0.5 text-xs text-gray-400">{quizzes.length} اختبار</p>}
                   </div>
                 </div>
 
-                {bestAttempt && (
-                  <div className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${bestAttempt.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                    {bestAttempt.passed ? 'ناجح' : 'راسب'} - أفضل نتيجة: {bestAttempt.score}%
-                    <span className="mr-auto font-normal text-gray-500">{attempts.length} محاولة</span>
-                  </div>
-                )}
-
-                {quiz ? (
-                  <button
-                    onClick={() => {
-                      setQuizModal({ courseId: String(course.id), quizId: quiz.id });
-                      setQuizAnswers(new Array(quiz.questions.length).fill(-1));
-                      setQuizSubmitted(false);
-                      setQuizScore(0);
-                    }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-bold text-white transition hover:bg-primary-700"
-                  >
-                    <CheckCircle size={15} /> {bestAttempt ? 'إعادة الاختبار' : 'ابدأ الاختبار'}
-                  </button>
-                ) : (
+                {quizzes.length ? quizzes.map(quiz => {
+                  const attempts = quizAttempts.filter(attempt =>
+                    attempt.quizId === quiz.id && attempt.subscriberId === subscriber.id);
+                  const bestAttempt = attempts.length
+                    ? attempts.reduce((best, attempt) => attempt.score > best.score ? attempt : best)
+                    : null;
+                  return (
+                    <div key={quiz.id} className="mt-3 rounded-xl border border-gray-100 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-gray-700">{quiz.title}</p>
+                          <p className="text-[11px] text-gray-400">{quiz.questions.length} سؤال - النجاح {quiz.passingScore}%</p>
+                        </div>
+                        {bestAttempt && (
+                          <span className={`rounded-lg px-2 py-1 text-[11px] font-bold ${bestAttempt.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                            {bestAttempt.score}% · {attempts.length} محاولة
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setQuizModal({ courseId: String(course.id), quizId: quiz.id });
+                          setQuizAnswers(new Array(quiz.questions.length).fill(-1));
+                          setQuizSubmitted(false);
+                          setQuizScore(0);
+                        }}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-bold text-white transition hover:bg-primary-700"
+                      >
+                        <CheckCircle size={15} /> {bestAttempt ? 'إعادة الاختبار' : 'ابدأ الاختبار'}
+                      </button>
+                    </div>
+                  );
+                }) : (
                   <div className="rounded-xl bg-gray-50 py-2 text-center text-xs text-gray-400">لا يوجد اختبار لهذا الكورس بعد</div>
                 )}
               </div>

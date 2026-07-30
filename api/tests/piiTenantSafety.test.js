@@ -5,24 +5,28 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'admin-utils.js'), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const route = read('routes/privacy.js');
+const service = read('lib/privacyService.js');
+const legacy = read('routes/admin-utils.js');
 
 test('subscriber PII export scopes every business dataset to the request tenant and audits access', () => {
-  const section = source.slice(source.indexOf("router.get('/api/admin/subscribers/:id/export-data'"), source.indexOf("router.delete('/api/admin/subscribers/:id/delete-data'"));
-  assert.match(section, /subscribers WHERE id=\? AND tenant_id=\?/);
+  assert.match(service, /subscribers WHERE tenant_id=\? AND id=\? LIMIT 1/);
   for (const table of ['payments', 'enrollments', 'course_completions', 'support_tickets', 'nps_responses']) {
-    assert.match(section, new RegExp(`FROM ${table} WHERE subscriber_id=\\? AND tenant_id=\\?`), table);
+    assert.match(service, new RegExp(`FROM ${table} WHERE tenant_id=\\? AND subscriber_id=\\?`), table);
   }
-  assert.match(section, /subscriber_data_exported/);
+  assert.match(route, /subscriber_data_exported/);
+  assert.match(route, /SET TRANSACTION ISOLATION LEVEL REPEATABLE READ/);
+  assert.match(route, /requirePermission\('export_subscribers'\)/);
 });
 
-test('subscriber anonymization is tenant locked, transactional and audited', () => {
-  const section = source.slice(source.indexOf("router.delete('/api/admin/subscribers/:id/delete-data'"), source.indexOf('// ═', source.indexOf("router.delete('/api/admin/subscribers/:id/delete-data'") + 10));
-  assert.match(section, /WHERE id=\? AND tenant_id=\? LIMIT 1 FOR UPDATE/);
-  assert.match(section, /UPDATE subscribers[\s\S]*WHERE id=\? AND tenant_id=\?/);
-  assert.match(section, /support_tickets WHERE subscriber_id=\? AND tenant_id=\?/);
-  assert.match(section, /lecture_progress WHERE subscriber_id=\? AND tenant_id=\?/);
-  assert.match(section, /subscriber_data_anonymized/);
-  assert.match(section, /await conn\.commit\(\)/);
-  assert.match(section, /await conn\.rollback\(\)/);
+test('subscriber anonymization is tenant locked, transactional, verified and audited', () => {
+  assert.match(service, /WHERE tenant_id=\? AND id=\? LIMIT 1 FOR UPDATE/);
+  assert.match(service, /UPDATE subscribers[\s\S]*WHERE tenant_id=\? AND id=\?/);
+  assert.match(service, /UPDATE support_tickets[\s\S]*WHERE tenant_id=\? AND subscriber_id=\?/);
+  assert.match(service, /Privacy erasure verification failed/);
+  assert.match(route, /privacy_erasure_completed/);
+  assert.match(route, /await conn\.commit\(\)/);
+  assert.match(route, /await conn\.rollback\(\)/);
+  assert.match(legacy, /PRIVACY_WORKFLOW_REQUIRED/);
 });

@@ -26,6 +26,7 @@ type Props = {
   isNonAdminStaff: boolean;
   salesOwnDaqqiRounds: DaqqiRound[] | null;
   isReceptionDaqqi: boolean;
+  canDeleteSubscriber: boolean;
   leadsSalesTargets: SalesTarget[];
   setStaffProfileModalId: (staffId: string) => void;
 };
@@ -49,6 +50,7 @@ export function DashboardGrowthOpsTabs({
   isNonAdminStaff,
   salesOwnDaqqiRounds,
   isReceptionDaqqi,
+  canDeleteSubscriber,
   leadsSalesTargets,
   setStaffProfileModalId,
 }: Props) {
@@ -81,6 +83,7 @@ export function DashboardGrowthOpsTabs({
             roundsOverride={isNonAdminStaff && salesOwnDaqqiRounds ? salesOwnDaqqiRounds : undefined}
             hideCreateRound={isReceptionDaqqi}
             requirePaymentApproval={isReceptionDaqqi}
+            canDeleteSubscriber={canDeleteSubscriber}
             branchFilter={branchFilter}
           />
         </TabErrorBoundary>

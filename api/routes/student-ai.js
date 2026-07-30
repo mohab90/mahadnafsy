@@ -1,20 +1,12 @@
 'use strict';
 
 const express = require('express');
-const rateLimit = require('express-rate-limit');
 const { pool } = require('../lib/db');
 const logger = require('../lib/logger').child({ module: 'student-ai-route' });
 const { requireAuth } = require('../middleware/auth');
+const { aiLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
-
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 12,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (_req, res) => res.status(429).json({ error: 'طلبات كثيرة، انتظر دقيقة وحاول مرة أخرى.' }),
-});
 
 function normalizeMessage(value) {
   return String(value || '').trim().slice(0, 1200);

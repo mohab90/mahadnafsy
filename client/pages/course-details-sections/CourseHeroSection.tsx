@@ -74,6 +74,8 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
           <div className="hidden lg:block w-96 relative">
              <div className="bg-white text-gray-900 rounded-2xl p-6 shadow-2xl border-t-8 border-primary-600 sticky top-24">
                 <div className="mb-6 text-center border-b pb-4 border-gray-100">
+                  {currentPrice > 0 ? (
+                  <>
                   <p className="text-gray-400 text-sm line-through mb-1">{content['courseDetails.price.originalLabel'] || 'السعر الرسمي:'} {discountedPrice !== null ? currentPrice : oldPrice} {currencySymbol}</p>
                   <div className="flex justify-center items-center gap-3">
                       <span className="text-4xl font-extrabold text-primary-600">{discountedPrice !== null ? discountedPrice : currentPrice} <span className="text-xl">{currencySymbol}</span></span>
@@ -85,6 +87,10 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                   ) : (
                     <span className="bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block">{content['courseDetails.price.discountBadge'] || 'خصم لفترة محدودة'}</span>
                   )}
+                  </>
+                  ) : (
+                    <p className="font-bold text-amber-700">السعر غير متاح في دولتك حاليًا</p>
+                  )}
                 </div>
 
                 {isSubscribed ? (
@@ -92,13 +98,17 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                     <Check size={22} className="text-green-600" />
                     أنت مشترك في هذا الكورس
                   </div>
-                ) : (
+                ) : currentPrice > 0 ? (
                   <>
                     <button onClick={onBuyNow} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl mb-3 transition shadow-lg shadow-primary-500/30 text-lg flex justify-center items-center gap-2">
                       {content['courseDetails.price.cta'] || 'احجز الآن واستفد بخصم إضافي'}
                       <Check size={20} />
                     </button>
                   </>
+                ) : (
+                  <div className="w-full bg-amber-50 border border-amber-300 text-amber-800 font-bold py-3 px-4 rounded-xl mb-3 text-center">
+                    تواصل معنا لتجهيز سعر دولتك
+                  </div>
                 )}
                 <button
                   onClick={() => setTimeout(() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' }), 100)}

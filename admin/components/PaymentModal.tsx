@@ -188,7 +188,7 @@ interface PaymentModalProps {
   draft: PaymentDraft;
   setDraft: (d: PaymentDraft) => void;
   /** Parent should save data here. Component handles closing. */
-  onSubmit: (draft: PaymentDraft, shouldPrint: boolean) => void;
+  onSubmit: (draft: PaymentDraft, shouldPrint: boolean) => void | Promise<void>;
   /** Called when the modal should close (user cancelled or finished) */
   onClose: () => void;
   requirePaymentApproval?: boolean;
@@ -211,6 +211,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const { courses, bundles, content, authUser } = useSiteData();
   const [printData, setPrintData] = useState<PrintData | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const d = draft;
   const set = (partial: Partial<PaymentDraft>) => setDraft({ ...d, ...partial });
@@ -361,15 +363,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   // ── Submit handler ─────────────────────────────────────────────────────
-  const handleSubmit = (shouldPrint: boolean) => {
-    if (!isValid) return;
-    if (shouldPrint) {
-      const pd = buildPrintData();
-      onSubmit(d, true);
-      setPrintData(pd);
-    } else {
-      onSubmit(d, false);
-      onClose();
+  const handleSubmit = async (shouldPrint: boolean) => {
+    if (!isValid || submitting) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const printPayload = shouldPrint ? buildPrintData() : null;
+      await onSubmit(d, shouldPrint);
+      if (printPayload) setPrintData(printPayload);
+      else onClose();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'تعذر حفظ الدفعة. حاول مرة أخرى.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -963,23 +969,29 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           })()}
 
           {/* ── 10: Submit buttons ── */}
+          {submitError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+              {submitError}
+            </div>
+          )}
           <div className="flex gap-2 pb-2">
             <button
-              onClick={() => handleSubmit(false)}
-              disabled={!isValid}
+              onClick={() => { void handleSubmit(false); }}
+              disabled={!isValid || submitting}
               className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-extrabold disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2 shadow-lg shadow-red-100"
             >
-              <CreditCard size={16} /> تسجيل الدفعة
+              <CreditCard size={16} /> {submitting ? 'جارٍ الحفظ...' : 'تسجيل الدفعة'}
             </button>
             <button
-              onClick={() => handleSubmit(true)}
-              disabled={!isValid}
+              onClick={() => { void handleSubmit(true); }}
+              disabled={!isValid || submitting}
               className="flex-1 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-2xl text-sm font-extrabold disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2"
             >
-              🖨️ تسجيل وطباعة
+              🖨️ {submitting ? 'جارٍ الحفظ...' : 'تسجيل وطباعة'}
             </button>
             <button
               onClick={onClose}
+              disabled={submitting}
               className="px-4 py-3 bg-gray-100 text-gray-700 rounded-2xl text-sm font-bold hover:bg-gray-200 transition"
             >إلغاء</button>
           </div>

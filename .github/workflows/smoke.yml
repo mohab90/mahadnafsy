@@ -1,28 +1,29 @@
-name: Smoke (DB-backed)
+name: Smoke (staging only)
 
-# The smoke test hits the running API (health, public catalog, auth guards) and
-# needs the live SSH-tunnelled production DB. GitHub-hosted runners have neither,
-# so this targets a SELF-HOSTED runner on the server where the API + tunnel run.
-# Enable by registering a self-hosted runner; until then this workflow simply
-# stays manual (workflow_dispatch) and never blocks CI.
+# Manual verification is restricted to the protected staging environment.
+# Never point this workflow at production.
 on:
   workflow_dispatch:
     inputs:
-      api_port:
-        description: 'API port to probe'
-        required: false
-        default: '3001'
+      staging_api_url:
+        description: 'HTTPS staging origin (for example https://staging.example.com)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   smoke:
-    name: API smoke test
-    runs-on: [self-hosted]
+    name: Staging API smoke test
+    runs-on: ubuntu-latest
+    environment: staging
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Run smoke test against running API
+          node-version: '22'
+      - name: Run read-only and validation smoke against staging
         env:
-          API_PORT: ${{ github.event.inputs.api_port || '3001' }}
+          SMOKE_BASE_URL: ${{ github.event.inputs.staging_api_url }}
         run: node tools/mahad-api-smoke.mjs

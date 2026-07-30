@@ -47,6 +47,7 @@ interface DbPayment {
   transactionId: string | null;
   note: string | null;
   at: string;
+  status?: string;
 }
 
 interface UseFinancialOrdersDataArgs {
@@ -79,6 +80,11 @@ export function useFinancialOrdersData({
   getMethod,
 }: UseFinancialOrdersDataArgs) {
   return useMemo(() => {
+    const onlinePaymentRefs = new Set<string>();
+    paidOrders.forEach(order => {
+      onlinePaymentRefs.add(String(order.id));
+      if (order.transactionId) onlinePaymentRefs.add(String(order.transactionId));
+    });
     const onlineRows: FinancialOrderRow[] = paidOrders.map((row) => ({
       key: `o-${row.id}`,
       title: row.itemTitle || '—',
@@ -100,7 +106,9 @@ export function useFinancialOrdersData({
     const contextManualRows: FinancialOrderRow[] = subscribers.flatMap((subscriber) =>
       (subscriber.paymentHistory ?? [])
         .filter((payment) =>
-          (payment.paymentMethod || '') !== 'online_paymob' &&
+          !String(payment.paymentMethod || '').toLowerCase().includes('paymob') &&
+          !onlinePaymentRefs.has(String(payment.id)) &&
+          !(payment.transactionId && onlinePaymentRefs.has(String(payment.transactionId))) &&
           (!payment.status || payment.status === 'paid')
         )
         .map((payment, index) => ({
@@ -124,7 +132,13 @@ export function useFinancialOrdersData({
 
     const contextIds = new Set(contextManualRows.map((row) => row.key.replace('m-', '')));
     const dbExtraRows: FinancialOrderRow[] = dbPayments
-      ? dbPayments.filter((payment) => (payment.paymentMethod || '') !== 'online_paymob' && !contextIds.has(payment.id)).map((payment) => ({
+      ? dbPayments.filter((payment) =>
+          !String(payment.paymentMethod || '').toLowerCase().includes('paymob')
+          && (!payment.status || payment.status === 'paid')
+          && !contextIds.has(payment.id)
+          && !onlinePaymentRefs.has(String(payment.id))
+          && !(payment.transactionId && onlinePaymentRefs.has(String(payment.transactionId)))
+        ).map((payment) => ({
           key: `db-${payment.id}`,
           title: (payment.paymentType ? paymentTypeLabels[payment.paymentType as keyof typeof paymentTypeLabels] : undefined) ?? 'دفعة',
           name: payment.subscriberName || '—',

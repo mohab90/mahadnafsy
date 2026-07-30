@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import {
   Activity, AlertCircle, BarChart3, BookOpen, Briefcase,
   CalendarCheck2, Clock, CreditCard, MessageSquareText, Percent,
@@ -7,6 +7,7 @@ import {
 import type { ConsultationItem, Course, LeadItem, OrderItem, StaffMember, SubscriberItem, Therapist } from '../../../types';
 import { AnalyticsTab } from '../lazyTabs';
 import { formatWaPhone } from '../dashboardShared';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -64,6 +65,15 @@ export default function OverviewTab({
   onlineTeamMembers, onlineUsers, kpiModal, setKpiModal,
   notify, setActiveTab, navigate,
 }: Props) {
+              const targetPeriod = new Date().toISOString().slice(0, 7);
+              const [collectionMonthlyTarget, setCollectionMonthlyTarget] = useState(160000);
+              useEffect(() => {
+                mysqlAdmin.listSalesTargets(targetPeriod).then((rows) => {
+                  const target = rows.find((row) => row.staffId === '__collection__');
+                  if (target) setCollectionMonthlyTarget(Math.max(1, Number(target.revenueTarget) || 160000));
+                }).catch(() => notify('error', 'تعذر تحميل هدف التحصيل الشهري'));
+              }, [notify, targetPeriod]);
+
               const { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue } = overviewStats;
 
               // ── Sales-only personal overview ───────────────────────────
@@ -100,7 +110,7 @@ export default function OverviewTab({
                 }));
                 const maxCalls = Math.max(...callsByDay.map(d => d.count), 1);
                 const todayCalls = callsByDay.find(d => d.day === todayStr)?.count ?? 0;
-                const monthlyTarget = Number(localStorage.getItem('sales.monthlyTarget') || 10);
+                const monthlyTarget = Number(currentStaff.monthlyLeadsTarget || 10);
 
                 // Top sources for my leads
                 const mySourceMap = myLeads.reduce((m, l) => { if (l.source) { m[l.source] = (m[l.source] || 0) + 1; } return m; }, {} as Record<string, number>);
@@ -385,8 +395,8 @@ export default function OverviewTab({
                   const paid=hist.reduce((a,p)=>a+toEGP(p),0);
                   return sum+Math.max(0,exp-paid);
                 },0);
-                // Monthly target from localStorage (default 160000)
-                const collMonthlyTarget = Math.max(1, Number(localStorage.getItem('coll.monthlyTarget') || '160000'));
+                // Organization collection target loaded from the tenant sales-target record.
+                const collMonthlyTarget = collectionMonthlyTarget;
                 const collPct = Math.min(100, Math.round((collMonthRevOv / collMonthlyTarget) * 100));
                 const daysInMonthOv = new Date(now2.getFullYear(), now2.getMonth()+1, 0).getDate();
                 const dayOfMonthOv = now2.getDate();
@@ -397,8 +407,8 @@ export default function OverviewTab({
                 const overdueInstSubs = allSubs.filter(s =>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<todayStr2)));
                 const dueTodaySubs = allSubs.filter(s =>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate===todayStr2)));
                 const dueThisWeekSubs = allSubs.filter(s=>(s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate>todayStr2&&e.dueDate<=new Date(Date.now()+7*86400000).toISOString().slice(0,10))));
-                // Commission estimate (assume 1% of monthly collections)
-                const commissionRate = 0.01;
+                // Estimate uses the employee's configured commission rate; no browser-local assumption.
+                const commissionRate = Math.max(0, Number(currentStaff.commissionRate || 0)) / 100;
                 const estCommission = Math.round(collMonthRevOv * commissionRate);
                 const commissionTarget = Math.round(collMonthlyTarget * commissionRate);
                 const fmtM = (n:number) => n>=1000000 ? `${(n/1000000).toFixed(1)}M` : n>=1000 ? `${(n/1000).toFixed(0)}K` : String(Math.round(n));
@@ -445,7 +455,7 @@ export default function OverviewTab({
                         { label:'تحصيل الأسبوع',  value:`${fmtM(collWeekRevOv)} ج`,   sub:'هذا الأسبوع',            icon:'📆', cls:'border-blue-200 bg-blue-50 text-blue-800' },
                         { label:'تحصيل الشهر',    value:`${fmtM(collMonthRevOv)} ج`,  sub:`من هدف ${fmtM(collMonthlyTarget)} ج`, icon:'💰', cls:'border-violet-200 bg-violet-50 text-violet-800' },
                         { label:'متبقي في الشيت', value:`${fmtM(collTotalRemOv)} ج`,  sub:'إجمالي مديونيات',        icon:'⏳', cls:'border-red-200 bg-red-50 text-red-800' },
-                        { label:'عمولة الشهر',    value:`${fmtM(estCommission)} ج`,   sub:`هدف العمولة ${fmtM(commissionTarget)} ج`, icon:'💎', cls:'border-amber-200 bg-amber-50 text-amber-800' },
+                        { label:'عمولة تقديرية', value:`${fmtM(estCommission)} ج`, sub: commissionRate ? `هدف العمولة ${fmtM(commissionTarget)} ج` : 'لا توجد نسبة عمولة معتمدة', icon:'💎', cls:'border-amber-200 bg-amber-50 text-amber-800' },
                         { label:'أقساط متأخرة',   value:overdueInstSubs.length,        sub:'عميل متأخر',             icon:'🔴', cls:'border-red-200 bg-red-50 text-red-800' },
                         { label:'مستحق اليوم',    value:dueTodaySubs.length,           sub:'عميل مستحق',             icon:'🟡', cls:'border-amber-200 bg-amber-50 text-amber-800' },
                         { label:'مستحق هذا الأسبوع', value:dueThisWeekSubs.length,     sub:'خلال 7 أيام',            icon:'📋', cls:'border-cyan-200 bg-cyan-50 text-cyan-800' },
@@ -571,11 +581,21 @@ export default function OverviewTab({
                     <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
                       <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Settings2 size={15} className="text-gray-400" />إعداد هدف التحصيل الشهري</h3>
                       <div className="flex items-center gap-3">
-                        <input type="number" defaultValue={collMonthlyTarget}
-                          onBlur={e=>{ localStorage.setItem('coll.monthlyTarget', e.target.value); }}
-                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-teal-300" placeholder="160000" dir="ltr" />
+                        <input type="number" defaultValue={collMonthlyTarget} readOnly={!isAdmin && !isOnlineManager}
+                          onBlur={async e => {
+                            if (!isAdmin && !isOnlineManager) return;
+                            const value = Math.max(1, Number(e.target.value) || 160000);
+                            try {
+                              await mysqlAdmin.saveSalesTarget({ staffId: '__collection__', period: targetPeriod, revenueTarget: value });
+                              setCollectionMonthlyTarget(value);
+                              notify('success', 'تم حفظ هدف التحصيل في قاعدة البيانات');
+                            } catch {
+                              notify('error', 'تعذر حفظ هدف التحصيل');
+                            }
+                          }}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-teal-300 read-only:bg-gray-50 read-only:text-gray-500" placeholder="160000" dir="ltr" />
                         <span className="text-xs text-gray-500">ج.م / شهر</span>
-                        <span className="text-xs text-gray-400">(يُحفظ تلقائياً عند المغادرة)</span>
+                        <span className="text-xs text-gray-400">{isAdmin || isOnlineManager ? '(يُحفظ في قاعدة البيانات عند المغادرة)' : '(يحدده المدير)'}</span>
                       </div>
                     </div>
                   </div>

@@ -13,6 +13,7 @@ interface UnifiedClientPaymentDetailModalProps {
   courses: Course[];
   paidTotals: PaidTotals;
   remainingEGP: number;
+  settlementLabel: string;
   bookingMap: BookingMap;
   confirmedHistory: PaymentHistoryEntry[];
   onClose: () => void;
@@ -25,6 +26,7 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
   courses,
   paidTotals,
   remainingEGP,
+  settlementLabel,
   bookingMap,
   confirmedHistory,
   onClose,
@@ -57,7 +59,7 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
             {remainingEGP > 0 && (
               <div className="bg-red-50 rounded-xl p-3 border border-red-100">
                 <p className="font-extrabold text-red-600 text-base">{remainingEGP.toLocaleString()}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">متبقي ج.م</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">متبقي {settlementLabel}</p>
               </div>
             )}
             {paidTotals.SAR > 0 && (
@@ -80,13 +82,13 @@ export const UnifiedClientPaymentDetailModal: React.FC<UnifiedClientPaymentDetai
                     {booking?.expectedEGP != null && (
                       <div>
                         <p className="text-gray-400">السعر</p>
-                        <p className="font-bold text-gray-700">{booking.expectedEGP.toLocaleString()}</p>
+                        <p className="font-bold text-gray-700">{booking.expectedEGP.toLocaleString()} {settlementLabel}</p>
                       </div>
                     )}
                     {booking && (
                       <div>
                         <p className="text-gray-400">مدفوع</p>
-                        <p className="font-bold text-emerald-700">{booking.paidEGP.toLocaleString()}</p>
+                        <p className="font-bold text-emerald-700">{booking.paidEGP.toLocaleString()} {settlementLabel}</p>
                       </div>
                     )}
                     {remaining !== null && (

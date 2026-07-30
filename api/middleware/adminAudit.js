@@ -1,6 +1,6 @@
 'use strict';
 
-function createAdminAuditMiddleware({ pool, uuidv4 }) {
+function createAdminAuditMiddleware({ pool, uuidv4, publishRealtimeEvent }) {
   return function auditAdmin(req, res, next) {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
     res.on('finish', () => {
@@ -13,9 +13,14 @@ function createAdminAuditMiddleware({ pool, uuidv4 }) {
           const entityId = (req.params?.id || req.body?.id || '').toString().substring(0, 36) || null;
           const label = `${action} ${rawPath}`.substring(0, 255);
           pool.query(
-            'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
-            [uuidv4(), action, entity, entityId || null, label, actor]
+            'INSERT INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?,?)',
+            [uuidv4(), req.tenantId, action, entity, entityId || null, label, actor]
           ).catch(() => {});
+          if (publishRealtimeEvent) {
+            publishRealtimeEvent('admin:mutation', {
+              action, entity, entityId, label, actor, path: rawPath, at: new Date().toISOString(),
+            }).catch(() => {});
+          }
         } catch (_) {}
       }
     });

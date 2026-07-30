@@ -6,10 +6,11 @@ interface ExpenseTableProps {
   totalEGP: number;
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
   onEdit: (expense: ExpenseItem) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
+  deletingId?: string;
 }
 
-export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, onDelete }: ExpenseTableProps) {
+export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, onDelete, deletingId }: ExpenseTableProps) {
   return (
     <>
       <div className="mr-auto flex items-center gap-3 flex-wrap">
@@ -35,7 +36,9 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
               <td className="py-2.5 text-gray-500 text-xs">{expense.date}</td>
               <td className="py-2.5 flex gap-2">
                 <button onClick={() => onEdit(expense)} className="text-primary-600 text-xs font-bold">تعديل</button>
-                <button onClick={() => onDelete(expense.id)} className="text-red-500 text-xs">حذف</button>
+                <button disabled={deletingId === expense.id} onClick={() => void onDelete(expense.id)} className="text-red-500 disabled:opacity-50 text-xs">
+                  {deletingId === expense.id ? 'جاري...' : 'حذف'}
+                </button>
               </td>
             </tr>
           ))}

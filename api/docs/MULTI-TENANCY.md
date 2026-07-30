@@ -1,43 +1,36 @@
-# Multi-Tenancy Rollout Plan (Critical Issue #2)
+# Multi-tenancy status and rollout boundary
 
-**Status:** Mahad is currently **single-tenant** (one institute). There is no
-`tenant_id` anywhere in the 90-table schema. This document is the migration path
-to a sellable multi-tenant SaaS. It is a **multi-week project** — do NOT attempt
-it in a single change against the production DB.
+**Current status:** the application has an operational multi-tenant control
+plane and tenant-scoped runtime suitable for controlled pilot use. It is not yet
+a sellable enterprise SaaS product.
 
-## What already exists (≈60% of the SaaS shell)
-- ✅ Feature flags (`admin/pages/dashboard/featureFlags.ts`)
-- ✅ Dynamic branding engine (`admin/lib/brandTheme.ts`)
-- ✅ Settings-driven config via runtime loaders (`rbacOverrides.js`, `messageTemplates.js`)
-- ✅ RBAC enforced backend (`constants/permissions.js` + `requirePermission`)
-- ✅ Tenant resolver seam (`middleware/tenantContext.js` → `req.tenantId`)
+## Implemented and verified
 
-## What is missing
-1. **`tenant_id` column** on every tenant-owned table (subscribers, leads, payments,
-   courses, staff, journal_*, daqqi_*, etc.) + composite indexes `(tenant_id, …)`.
-2. **Query scoping** — every read/write filtered by `req.tenantId`.
-3. **Tenant provisioning** — create-tenant flow, per-tenant settings blob row.
-4. **Plans & billing** — subscription plans for the institutes (not students).
-5. **Per-tenant isolation tests**.
+- Canonical tenant resolver with fail-closed unknown/suspended tenant handling.
+- Tenant-scoped JWT identities, users and same-email accounts across tenants.
+- Tenant-scoped CRM, HR, LMS, finance, support and operations paths covered by
+  automated tests and a live Tenant A/B staging smoke.
+- Tenant provisioning, plan assignment, feature flags, quotas, branding and
+  custom-domain verification.
+- One current plan-backed subscription enforced for each active tenant.
 
-## Recommended approach (phased, low-risk)
-**Phase 1 — Schema (additive, safe):** add nullable `tenant_id VARCHAR(36)` to each
-table, backfill all existing rows to `DEFAULT_TENANT_ID` (= `mahad`), add
-`(tenant_id, …)` indexes. App still ignores it → zero behavior change.
+## Required before enterprise SaaS claims
 
-**Phase 2 — Resolver:** mount `resolveTenant` in `server.js` (before routes). Every
-request now has `req.tenantId` (= `mahad` for the existing install).
+1. Usage metering tied to billable dimensions and immutable monthly snapshots.
+2. Institute invoicing, collection, dunning, credits, taxes and reconciliation.
+3. Provider-backed subscription charging after the payment-gateway review.
+4. Managed MySQL/Redis, regional backups, observability and incident routing.
+5. Contractual data-residency evidence and tenant restore/export drills.
+6. Capacity, noisy-neighbour and failover tests on the actual production topology.
 
-**Phase 3 — Scoping:** introduce a thin DB wrapper `tenantQuery(req, sql, params)`
-that injects `AND tenant_id = ?`. Migrate routes module-by-module behind a feature
-flag. Write isolation tests per module before flipping it on.
+Until those gates pass, product and sales material must use “controlled
+multi-tenant pilot” and must not use “enterprise SaaS ready”.
 
-**Phase 4 — Provisioning + billing:** create-tenant API, per-tenant settings row,
-plan/subscription tables, Paymob/Stripe subscription billing.
+## Rollout
 
-**Phase 5 — Hardening:** make `tenant_id` NOT NULL, add it to composite FKs, add a
-quality-check guard that fails if any tenant table query omits a tenant filter.
-
-## Effort estimate
-~6–10 weeks for a single engineer. Phases 1–2 are safe to land early; phase 3 is
-the bulk of the risk and must be tested per-module.
+- Pilot: named tenants, capped users, manual billing, monitored migrations and
+  a documented rollback window.
+- Limited availability: metering and tenant billing enabled, restore/failover
+  drills passed, support runbooks staffed.
+- General availability: contractual SLOs, regional evidence, scale results and
+  independent security review accepted.

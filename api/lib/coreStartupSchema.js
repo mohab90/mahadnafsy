@@ -45,14 +45,17 @@ function installCoreStartupSchema({ pool, logger }) {
         tags TEXT, created_at VARCHAR(50)
       ) CHARACTER SET utf8mb4`);
       await pool.query(`CREATE TABLE IF NOT EXISTS inbox_conversations (
-        id VARCHAR(100) PRIMARY KEY, channel VARCHAR(50),
+        id VARCHAR(100) PRIMARY KEY, tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+        channel VARCHAR(50),
         contact_name VARCHAR(200), contact_id VARCHAR(200), contact_avatar TEXT,
         last_message TEXT, last_message_at VARCHAR(50), unread_count INT DEFAULT 0,
         status VARCHAR(50) DEFAULT 'open', assigned_to_staff_id VARCHAR(100),
         assigned_to_staff_name VARCHAR(200), tags TEXT, messages LONGTEXT,
         linked_lead_id VARCHAR(100), linked_subscriber_id VARCHAR(100),
         created_at VARCHAR(50),
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_inbox_tenant_updated (tenant_id, updated_at),
+        INDEX idx_inbox_tenant_lead (tenant_id, linked_lead_id)
       ) CHARACTER SET utf8mb4`);
       await pool.query(`CREATE TABLE IF NOT EXISTS client_code_counter (
         id INT PRIMARY KEY DEFAULT 1, next_value INT DEFAULT 10001

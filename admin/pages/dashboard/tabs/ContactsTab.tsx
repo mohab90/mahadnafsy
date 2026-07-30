@@ -6,6 +6,7 @@ const ContactsTab: React.FC = () => {
 
   const [cSearch, setCSearch] = useState('');
   const [cStatusFilter, setCStatusFilter] = useState<'all' | 'new' | 'read' | 'replied'>('all');
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
 
   const filtered = contactMessages.filter(m =>
     (cStatusFilter === 'all' || m.status === cStatusFilter) &&
@@ -64,7 +65,18 @@ const ContactsTab: React.FC = () => {
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">ملاحظة الإدارة</label>
-                <textarea rows={2} value={msg.adminNote || ''} onChange={e => updateContactMessage({ ...msg, adminNote: e.target.value })}
+                <textarea rows={2} value={noteDrafts[msg.id] ?? msg.adminNote ?? ''}
+                  onChange={e => setNoteDrafts(prev => ({ ...prev, [msg.id]: e.target.value }))}
+                  onBlur={async e => {
+                    if (e.target.value === (msg.adminNote || '')) return;
+                    if (await updateContactMessage({ ...msg, adminNote: e.target.value })) {
+                      setNoteDrafts(prev => {
+                        const next = { ...prev };
+                        delete next[msg.id];
+                        return next;
+                      });
+                    }
+                  }}
                   placeholder="أضف ملاحظة داخلية..."
                   className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none" />
               </div>

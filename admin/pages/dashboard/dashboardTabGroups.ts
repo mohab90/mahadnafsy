@@ -50,7 +50,6 @@ export const contentHubRouteTabs = new Set<string>([
   'expense_analytics',
   'revenue_sources',
   'my_hr',
-  'automation_dashboard',
   'settings_hub',
   'ip_whitelist',
   'payment_settings',

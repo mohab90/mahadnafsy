@@ -5,7 +5,8 @@ const router  = express.Router();
 
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
-const { sendEmail: sendEmailBase } = require('../../lib/email');
+const { leadScope } = require('../../lib/leadAccess');
+const { hasPermission } = require('../../constants/permissions');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -15,62 +16,71 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 
 // GET /api/admin/reports/campaign?from=&to=
 // Returns: leads by source, utm_campaign performance, monthly trend, conversion funnel
-router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), requirePermission('view_reports'), async (req, res) => {
   try {
     const from = req.query.from || `${new Date().getFullYear()}-01-01`;
     const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.json({
+      period: { from, to },
+      summary: { total_leads: 0, converted: 0, conversion_rate: 0 },
+      by_source: [], by_campaign: [], monthly_trend: [], revenue_by_source: [], top_courses: [],
+    });
 
     // By referral source
     const [bySource] = await pool.query(`
       SELECT
-        COALESCE(source, 'غير محدد') AS source,
+        COALESCE(l.source, 'غير محدد') AS source,
         COUNT(*) AS total_leads,
-        SUM(CASE WHEN status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted,
-        SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END) AS lost
-      FROM leads
-      WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
-      GROUP BY source ORDER BY total_leads DESC
-    `, [req.tenantId, from, to]);
+        SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted,
+        SUM(CASE WHEN l.status = 'lost' THEN 1 ELSE 0 END) AS lost
+      FROM leads l
+      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
+      GROUP BY l.source ORDER BY total_leads DESC
+    `, [req.tenantId, from, to, ...scope.params]);
 
     // By UTM campaign
     const [byCampaign] = await pool.query(`
       SELECT
-        COALESCE(utm_campaign, 'بدون حملة') AS campaign,
-        COALESCE(utm_source,   'غير محدد')   AS utm_source,
-        COALESCE(utm_medium,   'غير محدد')   AS utm_medium,
+        COALESCE(l.utm_campaign, 'بدون حملة') AS campaign,
+        COALESCE(l.utm_source,   'غير محدد')   AS utm_source,
+        COALESCE(l.utm_medium,   'غير محدد')   AS utm_medium,
         COUNT(*) AS total_leads,
-        SUM(CASE WHEN status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
-      FROM leads
-      WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
-      GROUP BY utm_campaign, utm_source, utm_medium
+        SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
+      FROM leads l
+      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
+      GROUP BY l.utm_campaign, l.utm_source, l.utm_medium
       ORDER BY total_leads DESC
       LIMIT 100
-    `, [req.tenantId, from, to]);
+    `, [req.tenantId, from, to, ...scope.params]);
 
     // Monthly new leads + conversions trend
     const [monthlyTrend] = await pool.query(`
       SELECT
-        DATE_FORMAT(created_at, '%Y-%m') AS month,
+        DATE_FORMAT(l.created_at, '%Y-%m') AS month,
         COUNT(*) AS new_leads,
-        SUM(CASE WHEN status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
-      FROM leads
-      WHERE tenant_id=? AND DATE(created_at) BETWEEN ? AND ?
+        SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
+      FROM leads l
+      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
       GROUP BY month ORDER BY month ASC
-    `, [req.tenantId, from, to]);
+    `, [req.tenantId, from, to, ...scope.params]);
 
     // Revenue by source (joins leads → subscribers → payments)
-    const [revenueBySource] = await pool.query(`
-      SELECT
-        COALESCE(l.source, 'غير محدد') AS source,
-        COUNT(DISTINCT p.id)            AS payment_count,
-        COALESCE(SUM(p.amount_egp), 0)  AS revenue
-      FROM payments p
-      JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
-      LEFT JOIN leads l ON l.id = s.lead_id AND l.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.status IN ('paid','confirmed')
-        AND DATE(p.date) BETWEEN ? AND ?
-      GROUP BY l.source ORDER BY revenue DESC
-    `, [req.tenantId, from, to]);
+    let revenueBySource = [];
+    if (req.isSuperAdmin || hasPermission(req.staffRecord, 'view_financial')) {
+      [revenueBySource] = await pool.query(`
+        SELECT
+          COALESCE(l.source, 'غير محدد') AS source,
+          COUNT(DISTINCT p.id)            AS payment_count,
+          COALESCE(SUM(p.amount_egp), 0)  AS revenue
+        FROM payments p
+        JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        JOIN leads l ON l.id = s.lead_id AND l.tenant_id = p.tenant_id
+        WHERE p.tenant_id=? AND p.status IN ('paid','confirmed')
+          AND DATE(p.date) BETWEEN ? AND ?${scope.sql}
+        GROUP BY l.source ORDER BY revenue DESC
+      `, [req.tenantId, from, to, ...scope.params]);
+    }
 
     // Top interested courses
     const [topCourses] = await pool.query(`
@@ -79,9 +89,9 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
         SUM(CASE WHEN l.status IN ('CONVERTED','converted','won') THEN 1 ELSE 0 END) AS converted
       FROM leads l
       JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
-      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?
+      WHERE l.tenant_id=? AND DATE(l.created_at) BETWEEN ? AND ?${scope.sql}
       GROUP BY l.enrolled_course_id, c.title ORDER BY interested_count DESC LIMIT 20
-    `, [req.tenantId, from, to]);
+    `, [req.tenantId, from, to, ...scope.params]);
 
     const totalLeads     = bySource.reduce((s, r) => s + Number(r.total_leads), 0);
     const totalConverted = bySource.reduce((s, r) => s + Number(r.converted), 0);
@@ -112,18 +122,19 @@ router.get('/api/admin/reports/campaign', requireAuth, requireAdminOrStaff, requ
 router.patch('/api/admin/leads/:id/utm', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
   try {
     const { utm_source, utm_medium, utm_campaign, utm_content, utm_term, referral_url } = req.body;
+    const scope = leadScope(req, 'l');
     const [result] = await pool.query(
-      `UPDATE leads SET
+      `UPDATE leads l SET
          utm_source   = COALESCE(?, utm_source),
          utm_medium   = COALESCE(?, utm_medium),
          utm_campaign = COALESCE(?, utm_campaign),
          utm_content  = COALESCE(?, utm_content),
          utm_term     = COALESCE(?, utm_term),
          referral_url = COALESCE(?, referral_url)
-       WHERE id = ? AND tenant_id = ?${req.staffRecord?.role === 'SALES' ? ' AND assigned_sales_id = ?' : ''}`,
+       WHERE l.id = ? AND l.tenant_id = ?${scope.sql}`,
       [utm_source || null, utm_medium || null, utm_campaign || null,
        utm_content || null, utm_term || null, referral_url || null, req.params.id, req.tenantId,
-       ...(req.staffRecord?.role === 'SALES' ? [req.staffRecord.id] : [])]
+       ...scope.params]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Lead not found' });
     res.json({ ok: true });
@@ -172,34 +183,85 @@ router.delete('/api/admin/drip-sequences/:id', requireAuth, requireAdmin, async 
   finally { conn.release(); }
 });
 router.post('/api/admin/drip-sequences/:id/enroll', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const { lead_id, subscriber_id, email } = req.body;
-    const [[seq]] = await pool.query(
-      'SELECT id, name, description, trigger_status, is_active, steps, created_at, created_by FROM drip_sequences WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1',
+    if (Boolean(lead_id) === Boolean(subscriber_id)) {
+      return res.status(400).json({ error: 'Exactly one lead_id or subscriber_id is required' });
+    }
+    await conn.beginTransaction();
+    const [[seq]] = await conn.query(
+      `SELECT id,name,description,trigger_status,is_active,steps,created_at,created_by
+         FROM drip_sequences
+        WHERE id=? AND tenant_id=? AND is_active=1
+        LIMIT 1 FOR UPDATE`,
       [req.params.id, req.tenantId]
     );
-    if (!seq) return res.status(404).json({ error: 'Sequence not found' });
+    if (!seq) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Sequence not found' });
+    }
     const steps = tryJson(seq.steps, []);
-    if (!steps.length) return res.status(400).json({ error: 'No steps defined' });
+    if (!steps.length) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'No steps defined' });
+    }
     let recipientEmail = String(email || '').trim();
     if (lead_id) {
-      const [[lead]] = await pool.query('SELECT email FROM leads WHERE id=? AND tenant_id=? AND hidden=0 LIMIT 1', [lead_id, req.tenantId]);
-      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      const [[lead]] = await conn.query(
+        'SELECT email FROM leads WHERE id=? AND tenant_id=? AND hidden=0 LIMIT 1 FOR UPDATE',
+        [lead_id, req.tenantId]
+      );
+      if (!lead) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Lead not found' });
+      }
       recipientEmail = lead.email || recipientEmail;
     }
     if (subscriber_id) {
-      const [[subscriber]] = await pool.query('SELECT email FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriber_id, req.tenantId]);
-      if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
+      const [[subscriber]] = await conn.query(
+        'SELECT email FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+        [subscriber_id, req.tenantId]
+      );
+      if (!subscriber) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Subscriber not found' });
+      }
       recipientEmail = subscriber.email || recipientEmail;
     }
-    if (!recipientEmail) return res.status(400).json({ error: 'email required' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) return res.status(400).json({ error: 'Invalid email' });
-    const nextSend = new Date(Date.now() + (steps[0].delay_days||0) * 86400000);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'A valid CRM email is required' });
+    }
+    const [[active]] = await conn.query(
+      `SELECT id FROM drip_enrollments
+        WHERE tenant_id=? AND sequence_id=?
+          AND ((lead_id=? AND ? IS NOT NULL) OR (subscriber_id=? AND ? IS NOT NULL))
+          AND completed_at IS NULL AND unsubscribed_at IS NULL AND failed_at IS NULL
+        LIMIT 1 FOR UPDATE`,
+      [req.tenantId, req.params.id, lead_id || null, lead_id || null, subscriber_id || null, subscriber_id || null]
+    );
+    if (active) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'CRM subject is already active in this sequence', enrollment_id: active.id });
+    }
+    const delayDays = Math.max(Number(steps[0].delay_days) || 0, 0);
     const id = require('crypto').randomUUID();
-    await pool.query('INSERT INTO drip_enrollments (id,tenant_id,sequence_id,lead_id,subscriber_id,email,current_step,next_send_at) VALUES (?,?,?,?,?,?,?,?)',
-      [id, req.tenantId, req.params.id, lead_id||null, subscriber_id||null, recipientEmail, 0, nextSend]);
-    res.json({ ok: true, enrollment_id: id, next_send_at: nextSend });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+    await conn.query(
+      `INSERT INTO drip_enrollments
+         (id,tenant_id,sequence_id,lead_id,subscriber_id,email,current_step,next_send_at)
+       VALUES (?,?,?,?,?,?,0,DATE_ADD(NOW(),INTERVAL ? DAY))`,
+      [id, req.tenantId, req.params.id, lead_id || null, subscriber_id || null, recipientEmail, delayDays]
+    );
+    await conn.commit();
+    res.json({ ok: true, enrollment_id: id });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
+  }
 });
 router.get('/api/admin/drip-enrollments', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -212,40 +274,4 @@ router.get('/api/admin/drip-enrollments', requireAuth, requireAdmin, async (req,
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
-// Cron: process drip email queue every 15 minutes
-setInterval(async () => {
-  try {
-    const [pending] = await pool.query(`
-      SELECT de.*, ds.steps, ds.name AS seq_name
-      FROM drip_enrollments de JOIN drip_sequences ds ON ds.id=de.sequence_id AND ds.tenant_id=de.tenant_id
-      WHERE de.next_send_at <= NOW() AND de.completed_at IS NULL AND de.unsubscribed_at IS NULL AND de.failed_at IS NULL AND ds.is_active=1
-      LIMIT 50`);
-    for (const enr of pending) {
-      const steps = tryJson(enr.steps, []);
-      const step  = steps[enr.current_step];
-      if (!step) { await pool.query('UPDATE drip_enrollments SET completed_at=NOW() WHERE id=? AND tenant_id=?', [enr.id, enr.tenant_id]); continue; }
-      const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId: enr.tenant_id });
-      try {
-        await sendEmail(enr.email, step.subject || 'رسالة من معهد الدراسات النفسية', step.body_html || '');
-      } catch (error) {
-        const retryCount = Number(enr.retry_count || 0) + 1;
-        const retryMinutes = Math.min(1440, 15 * (2 ** Math.min(retryCount, 6)));
-        await pool.query(
-          'UPDATE drip_enrollments SET retry_count=?, last_error=?, next_send_at=DATE_ADD(NOW(), INTERVAL ? MINUTE), failed_at=IF(? >= 5, NOW(), NULL) WHERE id=? AND tenant_id=?',
-          [retryCount, String(error.message || 'send failed').slice(0, 500), retryMinutes, retryCount, enr.id, enr.tenant_id]
-        );
-        continue;
-      }
-      const next = steps[enr.current_step + 1];
-      if (next) {
-        const ns = new Date(Date.now() + (next.delay_days||1) * 86400000);
-        await pool.query('UPDATE drip_enrollments SET current_step=?,next_send_at=?,retry_count=0,last_error=NULL WHERE id=? AND tenant_id=?', [enr.current_step+1, ns, enr.id, enr.tenant_id]);
-      } else {
-        await pool.query('UPDATE drip_enrollments SET completed_at=NOW(),retry_count=0,last_error=NULL WHERE id=? AND tenant_id=?', [enr.id, enr.tenant_id]);
-      }
-    }
-    if (pending.length > 0) logger.info(`[cron drip] processed ${pending.length}`);
-  } catch (e) { logger.warn('[cron drip]', e.message); }
-}, 15 * 60 * 1000);
-
 module.exports = router;

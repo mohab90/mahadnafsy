@@ -2,13 +2,11 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import { User, FileText, Activity, Calendar, Star, Plus, X, CheckCircle, XCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
-import type { ActivityLogItem, AuthUser, LeadItem, OrderItem, PaymentHistoryEntry, StaffMember, SubscriberItem } from '../../../types';
+import type { ActivityLogItem, AuthUser, StaffMember } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves';
 
-type StaffOrderSummary = Pick<OrderItem, 'id' | 'staffId' | 'amount' | 'currency' | 'status' | 'createdAt'>;
-type ScopedSubscriber = SubscriberItem & { createdAt?: string };
 type ActivityLogRecord = ActivityLogItem & {
   staffId?: string;
   userId?: string;
@@ -31,6 +29,12 @@ type Profile = {
   email?: string;
   role?: string;
 };
+type HrSnapshot = {
+  kpi: { leads_assigned: number; leads_converted: number; revenue_generated: number };
+  commission: { thisMonth: { total: number; count: number } | null };
+  attendance: { present_days: number; absent_days: number; late_days: number; total_late_minutes: number };
+  leaveBalance: { annualEntitlement: number; usedDays: number; remaining: number };
+};
 
 const authProfile = (authUser?: AuthUser | null): Profile => ({
   id: authUser?.uid,
@@ -47,20 +51,35 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default function MyHrTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, activityLogs, leads, orders, authUser, staffScopedLeads, staffScopedSubscribers } = useSiteData();
+  const { staffMembers, activityLogs, authUser } = useSiteData();
   const [activeSection, setActiveSection] = useState<MyHrSection>('overview');
+  const [hrSnapshot, setHrSnapshot] = useState<HrSnapshot | null>(null);
 
-  // ── eNPS (staff satisfaction — anonymous, one response per month) ────────
+  useEffect(() => {
+    fetch('/api/staff/me/hr', { credentials: 'include', headers: adminAuthHeaders() })
+      .then(async response => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'تعذر تحميل الملف الوظيفي');
+        setHrSnapshot(payload);
+      })
+      .catch(error => notify('error', error instanceof Error ? error.message : 'تعذر تحميل الملف الوظيفي'));
+  }, [notify]);
+
+  // ── eNPS (confidential staff satisfaction, one response per month) ───────
   const [enpsResponded, setEnpsResponded] = useState<boolean | null>(null);
   const [enpsScore, setEnpsScore] = useState<number | null>(null);
   const [enpsComment, setEnpsComment] = useState('');
   const [enpsSubmitting, setEnpsSubmitting] = useState(false);
   useEffect(() => {
     fetch('/api/staff/me/enps', { credentials: 'include', headers: adminAuthHeaders() })
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) { setEnpsResponded(!!d.responded); if (d.responded) setEnpsScore(d.score); } })
-      .catch(() => {});
-  }, []);
+      .then(async response => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || 'تعذر تحميل استبيان الرضا');
+        setEnpsResponded(!!payload.responded);
+        if (payload.responded) setEnpsScore(payload.score);
+      })
+      .catch(error => notify('error', error instanceof Error ? error.message : 'تعذر تحميل استبيان الرضا'));
+  }, [notify]);
   const submitEnps = useCallback(async () => {
     if (enpsScore === null) { notify('error', 'اختر درجة من 0 إلى 10'); return; }
     setEnpsSubmitting(true);
@@ -74,30 +93,6 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     } catch { notify('error', 'تعذر إرسال التقييم'); }
     finally { setEnpsSubmitting(false); }
   }, [enpsScore, enpsComment, notify]);
-
-  // Use scoped data for non-admin staff; fall back to full context for admins
-  const effectiveLeads = (staffScopedLeads.length > 0 ? staffScopedLeads : leads) || [];
-  const effectiveOrders = useMemo(() => {
-    if (orders.length > 0) return orders.map((order): StaffOrderSummary => ({
-      id: order.id,
-      staffId: order.staffId,
-      amount: order.amount,
-      currency: order.currency,
-      status: order.status,
-      createdAt: order.createdAt,
-    }));
-    // Build synthetic orders from scoped subscribers payment history
-    return (staffScopedSubscribers as ScopedSubscriber[]).flatMap((subscriber) =>
-      (subscriber.paymentHistory || []).map((payment: PaymentHistoryEntry): StaffOrderSummary => ({
-        id: payment.id,
-        staffId: payment.staffId,
-        amount: Number(payment.amount) || 0,
-        currency: payment.currency || 'EGP',
-        status: 'paid',
-        createdAt: payment.at || subscriber.createdAt || '',
-      }))
-    );
-  }, [orders, staffScopedSubscribers]);
 
   // ── Leaves state ─────────────────────────────────────────────
   const [myLeavesList, setMyLeavesList] = useState<MyLeave[]>([]);
@@ -123,9 +118,6 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     [staffMembers, authUser]
   );
 
-  const MONTH = new Date().toISOString().slice(0, 7);
-  const monthStart = `${MONTH}-01`;
-
   const myLogs = useMemo(() =>
     (activityLogs as ActivityLogRecord[]).filter((log) => log.staffId === me?.id || log.userId === me?.id)
                  .sort((a, b) => ((b.createdAt || b.at || '').localeCompare(a.createdAt || a.at || '')))
@@ -133,18 +125,9 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     [activityLogs, me]
   );
 
-  const myLeads = useMemo(() =>
-    effectiveLeads.filter((lead: LeadItem) => lead.assignedSalesId === me?.id || effectiveLeads.length === staffScopedLeads.length),
-    [effectiveLeads, me, staffScopedLeads]
-  );
-
-  const myMonthLeads = myLeads.filter((lead) => (lead.createdAt || '') >= monthStart);
-  const myMonthConverted = myMonthLeads.filter((lead) => lead.status === 'converted');
-  const myMonthRevenue = useMemo(() =>
-    effectiveOrders.filter((order) => order.staffId === me?.id && (order.createdAt || '') >= monthStart && order.status === 'paid')
-          .reduce((acc, order) => acc + (Number(order.amount) || 0), 0),
-    [effectiveOrders, me, monthStart]
-  );
+  const monthLeads = hrSnapshot?.kpi.leads_assigned || 0;
+  const monthConverted = hrSnapshot?.kpi.leads_converted || 0;
+  const monthRevenue = hrSnapshot?.kpi.revenue_generated || 0;
 
   const ROLE_LABEL: Record<string, string> = {
     sales: 'سيلز', collection: 'تحصيل', support: 'خدمة عملاء',
@@ -160,9 +143,13 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
       // requires view_hr, which 403'd for every non-HR/admin employee viewing their OWN
       // leave history (HR-01).
       const res = await fetch('/api/staff/me/leaves', { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) setMyLeavesList(await res.json());
-    } catch { /* silently fail */ } finally { setLoadingMyLeaves(false); }
-  }, [me?.id]);
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.error || 'تعذر تحميل سجل الإجازات');
+      setMyLeavesList(payload);
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحميل سجل الإجازات');
+    } finally { setLoadingMyLeaves(false); }
+  }, [me?.id, notify]);
 
   useEffect(() => { if (activeSection === 'leaves') fetchMyLeaves(); }, [activeSection, fetchMyLeaves]);
 
@@ -240,10 +227,10 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'ليداتي (الكل)', val: myLeads.length, color: 'blue' },
-              { label: 'الشهر الحالي', val: myMonthLeads.length, color: 'indigo' },
-              { label: 'تحويلات الشهر', val: myMonthConverted.length, color: 'emerald' },
-              { label: 'إيراد الشهر', val: `${(myMonthRevenue / 1000).toFixed(1)}ك ج`, color: 'violet' },
+              { label: 'ليدات الشهر', val: monthLeads, color: 'blue' },
+              { label: 'تحويلات الشهر', val: monthConverted, color: 'emerald' },
+              { label: 'حضور الشهر', val: hrSnapshot?.attendance.present_days || 0, color: 'indigo' },
+              { label: 'إيراد الشهر', val: `${(monthRevenue / 1000).toFixed(1)}ك ج`, color: 'violet' },
             ].map(k => (
               <div key={k.label} className={`bg-${k.color}-50 border border-${k.color}-100 rounded-2xl p-4 text-center`}>
                 <div className="text-xl font-extrabold text-gray-900">{k.val}</div>
@@ -281,7 +268,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
               </div>
             ) : (
               <div className="mt-2 space-y-3">
-                <p className="text-xs text-gray-500">ما مدى احتمال أن ترشّح العمل هنا لصديق؟ (0 = مطلقاً، 10 = بالتأكيد) — استبيان مجهول</p>
+                <p className="text-xs text-gray-500">ما مدى احتمال أن ترشّح العمل هنا لصديق؟ (0 = مطلقاً، 10 = بالتأكيد) — الرد سري ويظهر للإدارة مجمّعاً فقط عند اكتمال حد الخصوصية.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {Array.from({ length: 11 }, (_, i) => i).map(n => (
                     <button key={n} onClick={() => setEnpsScore(n)}
@@ -338,9 +325,9 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Star size={16} className="text-amber-500" />أدائي هذا الشهر</h3>
             <div className="space-y-4">
               {[
-                { label: 'ليدات مُسندة', current: myMonthLeads.length, max: 30 },
-                { label: 'تحويلات', current: myMonthConverted.length, max: myMonthLeads.length || 1 },
-                { label: 'معدل التحويل', current: myMonthLeads.length > 0 ? Math.round((myMonthConverted.length / myMonthLeads.length) * 100) : 0, max: 100, isPercent: true },
+                { label: 'ليدات مُسندة', current: monthLeads, max: 30 },
+                { label: 'تحويلات', current: monthConverted, max: monthLeads || 1 },
+                { label: 'معدل التحويل', current: monthLeads > 0 ? Math.round((monthConverted / monthLeads) * 100) : 0, max: 100, isPercent: true },
               ].map(m => (
                 <div key={m.label}>
                   <div className="flex items-center justify-between mb-1 text-sm">
@@ -356,7 +343,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
             </div>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-800 text-sm">
-            <strong>ملاحظة:</strong> بيانات الأداء تعكس الليدات والطلبات المسندة لك شخصياً في النظام.
+            <strong>ملاحظة:</strong> بيانات الأداء محسوبة من MySQL لنفس الشهر؛ الإيراد من المدفوعات المؤكدة والـleads من الإسناد المسجل.
           </div>
         </div>
       )}

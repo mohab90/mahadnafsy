@@ -7,6 +7,7 @@ interface ExpenseFormProps {
   expenseCategories: string[];
   editingExpenseId: string;
   onSubmit: () => void;
+  saving?: boolean;
 }
 
 export function ExpenseForm({
@@ -15,6 +16,7 @@ export function ExpenseForm({
   expenseCategories,
   editingExpenseId,
   onSubmit,
+  saving = false,
 }: ExpenseFormProps) {
   return (
     <div className="border border-gray-200 rounded-2xl p-4 bg-gray-50 space-y-3">
@@ -30,7 +32,7 @@ export function ExpenseForm({
         <input placeholder="رابط الإيصال (اختياري)" className="border border-gray-300 rounded-xl px-3 py-2" value={expenseDraft.receiptUrl || ''} onChange={(event) => setExpenseDraft((draft) => ({ ...draft, receiptUrl: event.target.value }))} />
         <input placeholder="وصف المصروف *" className="border border-gray-300 rounded-xl px-3 py-2" value={expenseDraft.description} onChange={(event) => setExpenseDraft((draft) => ({ ...draft, description: event.target.value }))} />
       </div>
-      <button onClick={onSubmit} className="bg-primary-600 text-white px-5 py-2 rounded-xl font-bold">
+      <button disabled={saving} onClick={onSubmit} className="bg-primary-600 disabled:opacity-60 text-white px-5 py-2 rounded-xl font-bold">
         {editingExpenseId ? 'تحديث' : 'إضافة مصروف'}
       </button>
     </div>

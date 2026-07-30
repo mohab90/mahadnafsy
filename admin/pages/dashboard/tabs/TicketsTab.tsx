@@ -26,6 +26,7 @@ interface SupportTicket {
   updatedAt: string;
   resolvedAt?: string;
   respondedAt?: string;
+  slaDueAt?: string;
   slaHours?: number;
   slaBreached?: boolean;
   escalatedTo?: string;
@@ -35,7 +36,7 @@ interface SupportTicket {
 }
 
 // Default SLA hours per priority
-const SLA_BY_PRIORITY: Record<TicketPriority, number> = { urgent: 4, high: 12, medium: 24, low: 72 };
+const SLA_BY_PRIORITY: Record<TicketPriority, number> = { urgent: 2, high: 4, medium: 24, low: 72 };
 
 type CannedResponse = { id: string; title: string; body: string; category: string };
 
@@ -121,16 +122,17 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
       createdAt,
       updatedAt: row.updated_at || row.updatedAt || createdAt,
       resolvedAt: row.resolved_at || row.resolvedAt || undefined,
-      respondedAt: row.responded_at || row.respondedAt || undefined,
+      respondedAt: row.first_response_at || row.responded_at || row.respondedAt || undefined,
+      slaDueAt: row.sla_due_at || row.slaDueAt || undefined,
       slaHours: row.sla_hours || row.slaHours || SLA_BY_PRIORITY[priority],
-      slaBreached: !!(row.sla_breached || row.slaBreached),
+      slaBreached: row.sla === 'overdue' || !!(row.sla_breached || row.slaBreached),
       escalatedTo: row.escalated_to || row.escalatedTo || undefined,
       escalatedAt: row.escalated_at || row.escalatedAt || undefined,
       messages: replies.map((reply: any) => ({
         id: String(reply.id),
         text: reply.body || '',
-        author: reply.author_name || (reply.author_type === 'subscriber' ? 'العميل' : 'الإدارة'),
-        isStaff: reply.author_type !== 'subscriber',
+        author: reply.author_name || (['client', 'subscriber'].includes(String(reply.author_type || '').toLowerCase()) ? 'العميل' : 'الإدارة'),
+        isStaff: !['client', 'subscriber'].includes(String(reply.author_type || '').toLowerCase()),
         at: reply.created_at || new Date().toISOString(),
       })),
     };
@@ -158,7 +160,11 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     }
   }, [tickets]);
 
-  const supportTeam = staffMembers.filter(s => s.status === 'active' && (s.role === 'support' || s.role === 'manager' || s.role === 'admin'));
+  const supportTeam = staffMembers.filter(member =>
+    member.status === 'active'
+    && ['support', 'online_manager', 'collection', 'sales_collection_manager', 'accountant', 'sales', 'manager', 'admin']
+      .includes(member.role)
+  );
 
   const filtered = useMemo(() => tickets.filter(t => {
     if (statusFilter !== 'all' && t.status !== statusFilter) return false;
@@ -189,8 +195,11 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     const check = () => {
       setTickets(prev => prev.map(t => {
         if (t.status === 'resolved' || t.status === 'closed') return t;
-        const slaMs = (t.slaHours ?? SLA_BY_PRIORITY[t.priority]) * 3600 * 1000;
-        const breached = Date.now() - new Date(t.createdAt).getTime() > slaMs;
+        if (t.respondedAt) return t.slaBreached ? { ...t, slaBreached: false } : t;
+        const dueAt = t.slaDueAt
+          ? new Date(t.slaDueAt).getTime()
+          : new Date(t.createdAt).getTime() + (t.slaHours ?? SLA_BY_PRIORITY[t.priority]) * 3600 * 1000;
+        const breached = Date.now() > dueAt;
         if (breached !== !!t.slaBreached) return { ...t, slaBreached: breached };
         return t;
       }));
@@ -202,7 +211,10 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
 
 
   const createTicketApi = async () => {
-    if (!draft.title?.trim() || !draft.clientName?.trim()) { notify('error', 'أدخل العنوان واسم العميل'); return; }
+    if (!draft.title?.trim() || !draft.description?.trim() || !draft.clientName?.trim()) {
+      notify('error', 'أدخل العنوان ووصف المشكلة واسم العميل');
+      return;
+    }
     try {
       const { id } = await mysqlAdmin.adminPost<{ id: string }>('/admin/cs/tickets', {
         subject: draft.title,
@@ -225,7 +237,12 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
 
   const updateStatusApi = async (id: string, status: TicketStatus) => {
     try {
-      await mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, { status: statusToApi(status) });
+      const closedReason = status === 'closed' ? window.prompt('اكتب سبب إغلاق التذكرة:')?.trim() : undefined;
+      if (status === 'closed' && !closedReason) return;
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, {
+        status: statusToApi(status),
+        ...(closedReason ? { closed_reason: closedReason } : {}),
+      });
       setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString(), ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}) } : t));
       notify('success', `تم تحديث الحالة إلى "${STATUS_CFG[status].label}"`);
     } catch (error) {
@@ -274,9 +291,17 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     notify(ok === ids.length ? 'success' : 'error', `${label}: ${ok}/${ids.length} تذكرة`);
   };
 
-  const bulkSetStatus = (status: TicketStatus) => runBulk('تحديث الحالة', id =>
-    mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, { status: statusToApi(status) })
-      .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString() } : t))));
+  const bulkSetStatus = (status: TicketStatus) => {
+    const closedReason = status === 'closed' ? window.prompt('اكتب سبب إغلاق التذاكر المحددة:')?.trim() : undefined;
+    if (status === 'closed' && !closedReason) return;
+    return runBulk('تحديث الحالة', id =>
+      mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, {
+        status: statusToApi(status),
+        ...(closedReason ? { closed_reason: closedReason } : {}),
+      }).then(() => setTickets(prev => prev.map(t =>
+        t.id === id ? { ...t, status, updatedAt: new Date().toISOString() } : t
+      ))));
+  };
   const bulkAssign = (staffId: string) => runBulk('التحويل', id =>
     mysqlAdmin.adminPut(`/admin/tickets/${id}/assign`, { staff_id: staffId || null })
       .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, assigneeId: staffId || undefined, updatedAt: new Date().toISOString() } : t))));

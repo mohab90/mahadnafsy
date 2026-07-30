@@ -21,7 +21,7 @@ interface Props {
   onOpenSubscribers: (courseId: string) => void;
   onShowAccessStats: (course: Course, stats: AccessStats) => void;
   onOpenAnalytics: (courseId: string) => void;
-  onDeleteCourse: (courseId: string) => void;
+  onDeleteCourse: (courseId: string) => Promise<boolean>;
   notifyMissingLiveUrl: () => void;
 }
 
@@ -167,7 +167,7 @@ export function CourseListPanel({
                 }} className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-sm font-medium"><Radio size={14} className="inline ml-1" />بث مباشر</button>
                 <button onClick={() => onShowAccessStats(course, accessStats)} className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium"><BarChart3 size={14} className="inline ml-1" />إحصائيات</button>
                 <button onClick={() => onOpenAnalytics(course.id)} className="px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-sm font-medium"><TrendingUp size={14} className="inline ml-1" />مشاهدات المحاضرات</button>
-                <button onClick={() => onDeleteCourse(course.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm font-medium">حذف</button>
+                <button onClick={() => void onDeleteCourse(course.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm font-medium">حذف</button>
               </div>
             </div>
           );

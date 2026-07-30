@@ -17,8 +17,12 @@ test('reserved sub-domains (www/app/api/admin) are NOT tenants', () => {
   }
 });
 
-test('apex/2-label host yields no candidate (single-tenant)', () => {
+test('configured SaaS apex yields no candidate while a custom domain is explicit', () => {
   assert.equal(extractCandidate(req({ headers: { host: 'mahad.app' } })), null);
+  assert.deepEqual(
+    extractCandidate(req({ headers: { host: 'academy.example.com' } })),
+    { value: 'academy.example.com', source: 'domain' }
+  );
   assert.equal(extractCandidate(req({ headers: { host: 'localhost:3001' } })), null);
 });
 

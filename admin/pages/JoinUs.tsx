@@ -16,10 +16,12 @@ const JoinUs: React.FC = () => {
     message: '',
   });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    addJoinUsApplication({
+    setSubmitting(true);
+    const saved = await addJoinUsApplication({
       id: `ju-${Date.now()}`,
       name: form.name,
       email: form.email,
@@ -31,8 +33,8 @@ const JoinUs: React.FC = () => {
       message: form.message || undefined,
       status: 'new',
       createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-    });
-    setSubmitted(true);
+    }).finally(() => setSubmitting(false));
+    if (saved) setSubmitted(true);
   };
 
   const benefits = [
@@ -209,9 +211,9 @@ const JoinUs: React.FC = () => {
                   <textarea rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="أخبرنا عن نفسك وماذا تريد أن تقدم للطلاب..." className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
                 </div>
 
-                <button type="submit" className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition text-lg">
+                <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition text-lg">
                   <Send size={20} />
-                  إرسال الطلب
+                  {submitting ? 'جارٍ الإرسال…' : 'إرسال الطلب'}
                 </button>
                 <p className="text-center text-xs text-gray-400">بالإرسال توافق على شروط الاستخدام وسياسة الخصوصية الخاصة بالمعهد.</p>
               </form>

@@ -11,7 +11,21 @@ const { postPaymentJournal, postExpenseJournal, postJournalEntry } = require('..
 // Mock pool that records every INSERT (sql + params).
 function recordingDb() {
   const inserts = [];
-  return { inserts, async query(sql, params) { inserts.push({ sql, params }); return [{}]; } };
+  return {
+    inserts,
+    async query(sql, params) {
+      if (sql.includes('FROM accounting_periods')) return [[]];
+      if (sql.includes('SELECT code,is_active FROM tenant_chart_of_accounts')) {
+        return [params.slice(1).map(code => ({ code, is_active: 1 }))];
+      }
+      if (sql.includes('FROM financial_documents')) return [[]];
+      if (sql.includes('SELECT next_number FROM finance_document_sequences')) {
+        return [[{ next_number: 2 }]];
+      }
+      inserts.push({ sql, params });
+      return [{}];
+    },
+  };
 }
 
 test('postPaymentJournal posts a tenant-scoped balanced double entry (cash debit = revenue credit)', async () => {
@@ -24,15 +38,15 @@ test('postPaymentJournal posts a tenant-scoped balanced double entry (cash debit
   assert.ok(header, 'posts a journal_entries header');
   assert.equal(lines.length, 2, 'posts exactly two lines');
 
-  // header params: [id, tenant_id, ref_type, ref_id, date, desc, total_debit, total_credit, posted_by]
-  const totalDebit = header.params[6];
-  const totalCredit = header.params[7];
+  // header params: [id, tenant_id, branch, branch_id, ref_type, ref_id, date, desc, total_debit, total_credit, posted_by]
+  const totalDebit = header.params[8];
+  const totalCredit = header.params[9];
   assert.equal(totalDebit, 1500);
   assert.equal(totalCredit, 1500);
   assert.equal(totalDebit, totalCredit, 'debits must equal credits');
   assert.equal(header.params[1], 'tenant-a');
-  assert.equal(header.params[2], 'payment');
-  assert.equal(header.params[3], 'PAY1');
+  assert.equal(header.params[4], 'payment');
+  assert.equal(header.params[5], 'PAY1');
 
   // line params: [id, entry_id, account_code, account_name, debit, credit]
   const cash = lines.find(l => l.params[2] === '1100');
@@ -54,7 +68,15 @@ test('postPaymentJournal skips zero/negative amounts (no posting)', async () => 
 test('postPaymentJournal returns null when a caller-owned transaction cannot post the journal', async () => {
   let calls = 0;
   const conn = {
-    async query() { calls++; if (calls === 2) throw new Error('line insert failed'); return [{}]; },
+    async query(sql) {
+      if (sql.includes('FROM accounting_periods')) return [[]];
+      if (sql.includes('SELECT code,is_active FROM tenant_chart_of_accounts')) {
+        return [[{ code: '1100', is_active: 1 }, { code: '4100', is_active: 1 }]];
+      }
+      calls++;
+      if (calls === 2) throw new Error('line insert failed');
+      return [{}];
+    },
     commit() { throw new Error('must NOT commit an injected connection'); },
     rollback() { throw new Error('must NOT rollback an injected connection'); },
     release() { throw new Error('must NOT release an injected connection'); },
@@ -74,7 +96,15 @@ test('postJournalEntry never manages an INJECTED connection (caller owns the tra
   // Mock connection that throws on the 2nd insert (a journal_entry_lines row).
   let calls = 0;
   const conn = {
-    async query() { calls++; if (calls === 2) throw new Error('line insert failed'); return [{}]; },
+    async query(sql) {
+      if (sql.includes('FROM accounting_periods')) return [[]];
+      if (sql.includes('SELECT code,is_active FROM tenant_chart_of_accounts')) {
+        return [[{ code: '1100', is_active: 1 }, { code: '4100', is_active: 1 }]];
+      }
+      calls++;
+      if (calls === 2) throw new Error('line insert failed');
+      return [{}];
+    },
     commit()   { throw new Error('must NOT commit an injected connection'); },
     rollback() { throw new Error('must NOT rollback an injected connection'); },
     release()  { throw new Error('must NOT release an injected connection'); },
@@ -95,8 +125,19 @@ test('postJournalEntry sums arbitrary lines into the header totals', async () =>
     { account_code: '1100', account_name: 'نقدية', debit: 300, credit: 0 },
   ], 'tester', db);
   const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
-  assert.equal(header.params[6], 300); // total debit
-  assert.equal(header.params[7], 300); // total credit
+  assert.equal(header.params[8], 300); // total debit
+  assert.equal(header.params[9], 300); // total credit
+});
+
+test('postJournalEntry normalizes MySQL DATE objects before period validation and storage', async () => {
+  const db = recordingDb();
+  const result = await postJournalEntry('manual', 'DATE-OBJECT', new Date('2026-07-29T00:00:00.000Z'), 'date object', [
+    { account_code: '1100', account_name: 'Cash', debit: 25, credit: 0 },
+    { account_code: '4900', account_name: 'Revenue', debit: 0, credit: 25 },
+  ], 'tester', db);
+  assert.ok(result);
+  const header = db.inserts.find(item => item.sql.includes('INSERT INTO journal_entries'));
+  assert.equal(header.params[6], '2026-07-29');
 });
 
 test('expense reversal uses the original EGP snapshot instead of revaluing history', async () => {
@@ -107,7 +148,56 @@ test('expense reversal uses the original EGP snapshot instead of revaluing histo
   }, -1, 'tester', db, 'tenant-a');
   assert.ok(journalId);
   const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
-  assert.equal(header.params[6], 650);
-  assert.equal(header.params[7], 650);
+  assert.equal(header.params[8], 650);
+  assert.equal(header.params[9], 650);
   assert.equal(db.inserts.some(i => i.sql.includes('UPDATE expenses SET fx_rate_to_egp')), false);
+});
+
+test('postJournalEntry rejects unbalanced or malformed money lines before writing', async () => {
+  const db = recordingDb();
+  const unbalanced = await postJournalEntry('manual', null, '2026-06-01', 'bad', [
+    { account_code: '1100', account_name: 'Cash', debit: 100, credit: 0 },
+    { account_code: '4100', account_name: 'Revenue', debit: 0, credit: 99 },
+  ], 'tester', db);
+  const bothSides = await postJournalEntry('manual', null, '2026-06-01', 'bad', [
+    { account_code: '1100', account_name: 'Cash', debit: 100, credit: 1 },
+    { account_code: '4100', account_name: 'Revenue', debit: 0, credit: 99 },
+  ], 'tester', db);
+  assert.equal(unbalanced, null);
+  assert.equal(bothSides, null);
+  assert.equal(db.inserts.length, 0);
+});
+
+test('postJournalEntry rejects posting into an inactive chart account', async () => {
+  const db = recordingDb();
+  const baseQuery = db.query.bind(db);
+  db.query = async (sql, params) => {
+    if (sql.includes('SELECT code,is_active FROM tenant_chart_of_accounts')) {
+      return [[{ code: '1100', is_active: 1 }, { code: '4100', is_active: 0 }]];
+    }
+    return baseQuery(sql, params);
+  };
+  const result = await postJournalEntry('payment', 'inactive-account', '2026-06-01', 'bad account', [
+    { account_code: '1100', account_name: 'Cash', debit: 100, credit: 0 },
+    { account_code: '4100', account_name: 'Revenue', debit: 0, credit: 100 },
+  ], 'tester', db);
+  assert.equal(result, null);
+  assert.equal(db.inserts.some(item => item.sql.includes('INSERT INTO journal_entry_lines')), false);
+});
+
+test('payment journal persists branch scope on its header', async () => {
+  const db = recordingDb();
+  const journalId = await postPaymentJournal({
+    paymentId: 'PAY-BRANCH',
+    amount: 250,
+    currency: 'EGP',
+    payType: 'COURSE',
+    tenantId: 'tenant-a',
+    branch: 'DAQQI',
+    branchId: 'branch-daqqi',
+  }, db);
+  assert.ok(journalId);
+  const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
+  assert.equal(header.params[2], 'DAQQI');
+  assert.equal(header.params[3], 'branch-daqqi');
 });

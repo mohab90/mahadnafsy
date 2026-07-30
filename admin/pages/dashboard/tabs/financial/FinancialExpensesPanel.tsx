@@ -23,9 +23,10 @@ interface Props {
   filteredExpenses: ExpenseItem[];
   toEGP: (amount: number, currency: string) => number;
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
-  addExpense: (expense: ExpenseItem) => void;
-  updateExpense: (expense: ExpenseItem) => void;
-  deleteExpense: (id: string) => void;
+  addExpense: (expense: ExpenseItem) => Promise<void>;
+  updateExpense: (expense: ExpenseItem) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  notify: (type: 'success' | 'error' | 'info', text: string) => void;
 }
 
 export function FinancialExpensesPanel({
@@ -48,7 +49,41 @@ export function FinancialExpensesPanel({
   addExpense,
   updateExpense,
   deleteExpense,
+  notify,
 }: Props) {
+  const [saving, setSaving] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState('');
+  const submitExpense = async () => {
+    if (!expenseDraft.description.trim() || expenseDraft.amount <= 0 || saving) return;
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      if (editingExpenseId) {
+        await updateExpense({ ...expenseDraft, id: editingExpenseId, createdAt: now });
+        setEditingExpenseId('');
+      } else {
+        await addExpense({ ...expenseDraft, id: `exp-${Date.now()}`, createdAt: now });
+      }
+      setIsExpenseFormOpen(false);
+      notify('success', 'تم حفظ المصروف وقيده المحاسبي');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حفظ المصروف');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const removeExpense = async (id: string) => {
+    if (deletingId || !window.confirm('هل تؤكد حذف المصروف وعكس قيده المحاسبي؟')) return;
+    setDeletingId(id);
+    try {
+      await deleteExpense(id);
+      notify('success', 'تم حذف المصروف وعكس القيد');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حذف المصروف');
+    } finally {
+      setDeletingId('');
+    }
+  };
   return (
   <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between gap-2">
@@ -61,17 +96,8 @@ export function FinancialExpensesPanel({
                 setExpenseDraft={setExpenseDraft}
                 expenseCategories={expenseCategories}
                 editingExpenseId={editingExpenseId}
-                onSubmit={() => {
-                  if (!expenseDraft.description || expenseDraft.amount <= 0) return;
-                  const now = new Date().toISOString();
-                  if (editingExpenseId) {
-                    updateExpense({ ...expenseDraft, id: editingExpenseId, createdAt: now });
-                    setEditingExpenseId('');
-                  } else {
-                    addExpense({ ...expenseDraft, id: `exp-${Date.now()}`, createdAt: now });
-                  }
-                  setIsExpenseFormOpen(false);
-                }}
+                onSubmit={() => void submitExpense()}
+                saving={saving}
               />
             )}
             {/* Filters */}
@@ -88,7 +114,8 @@ export function FinancialExpensesPanel({
               totalEGP={filteredExpenses.reduce((sum, expense) => sum + toEGP(expense.amount, expense.currency), 0)}
               exportCSV={exportCSV}
               onEdit={(expense) => { setExpenseDraft({ category: expense.category, description: expense.description, amount: expense.amount, currency: expense.currency, date: expense.date, receiptUrl: expense.receiptUrl || '' }); setEditingExpenseId(expense.id); setIsExpenseFormOpen(true); }}
-              onDelete={deleteExpense}
+              onDelete={removeExpense}
+              deletingId={deletingId}
             />
           </article>
   );

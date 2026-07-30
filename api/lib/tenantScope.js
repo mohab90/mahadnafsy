@@ -13,6 +13,7 @@ const DEFAULT_FEATURES = Object.freeze({
   payments: true,
   leads: true,
   client_portal: true,
+  lms: true,
   branch_workspaces: true,
   hr: true,
   marketing: true,
@@ -49,7 +50,7 @@ async function loadTenantContext(tenantId = DEFAULT_TENANT_ID) {
   const [[tenant]] = await pool.query(
     'SELECT id, slug, name, status, plan_key FROM tenants WHERE id=? LIMIT 1',
     [key],
-  ).catch(() => [[null]]);
+  );
 
   const [[subscription]] = await pool.query(`
     SELECT ts.id, ts.status, ts.starts_at, ts.ends_at, ts.trial_ends_at,
@@ -59,28 +60,54 @@ async function loadTenantContext(tenantId = DEFAULT_TENANT_ID) {
     WHERE ts.tenant_id=?
     ORDER BY FIELD(ts.status,'active','trialing','past_due','expired','cancelled'), ts.created_at DESC
     LIMIT 1
-  `, [key]).catch(() => [[null]]);
+  `, [key]);
 
   const [flagRows] = await pool.query(
-    'SELECT flag_key, is_enabled, config_json FROM feature_flags WHERE tenant_id=? OR tenant_id IS NULL',
+    `SELECT flag_key, is_enabled, config_json
+     FROM feature_flags
+     WHERE tenant_id=? OR tenant_id IS NULL
+     ORDER BY tenant_id IS NOT NULL ASC`,
     [key],
-  ).catch(() => [[]]);
+  );
 
-  const features = { ...DEFAULT_FEATURES };
+  const planLimits = tryJson(subscription?.feature_limits_json, {});
+  const explicitPlanFeatures = planLimits.features && typeof planLimits.features === 'object'
+    ? planLimits.features
+    : null;
+  const features = {
+    ...(explicitPlanFeatures
+      ? Object.fromEntries(Object.keys(DEFAULT_FEATURES).map(feature => [feature, false]))
+      : DEFAULT_FEATURES),
+    ...(explicitPlanFeatures || {}),
+  };
   const featureConfig = {};
   for (const row of flagRows) {
-    features[row.flag_key] = !!row.is_enabled;
+    if (Object.prototype.hasOwnProperty.call(DEFAULT_FEATURES, row.flag_key)) {
+      features[row.flag_key] = !!row.is_enabled;
+    }
     featureConfig[row.flag_key] = tryJson(row.config_json, {});
   }
 
+  const now = Date.now();
+  const startsAt = subscription?.starts_at ? new Date(subscription.starts_at).getTime() : null;
+  const entitlementEnd = subscription?.status === 'trialing'
+    ? subscription?.trial_ends_at
+    : subscription?.ends_at;
+  const endsAt = entitlementEnd ? new Date(entitlementEnd).getTime() : null;
+  const entitlementIsCurrent = Boolean(
+    subscription
+    && ['active', 'trialing'].includes(subscription.status)
+    && (!startsAt || startsAt <= now)
+    && (!endsAt || endsAt >= now)
+  );
   const value = {
     tenantId: key,
     tenant: tenant || { id: key, status: 'unknown' },
     subscription: subscription || null,
-    planLimits: tryJson(subscription?.feature_limits_json, {}),
+    planLimits,
     features,
     featureConfig,
-    isActive: (tenant?.status || 'active') === 'active' && ['active', 'trialing'].includes(subscription?.status || 'active'),
+    isActive: tenant?.status === 'active' && entitlementIsCurrent,
   };
   cache.set(key, { ts: Date.now(), value });
   return value;
@@ -100,7 +127,12 @@ function requireTenantFeature(featureKey) {
       req.tenantId = tenantId;
       if (!context.isActive) return res.status(402).json({ error: 'Tenant subscription is not active', tenant_id: tenantId });
       if (context.features[featureKey] === false) {
-        return res.status(403).json({ error: 'Feature disabled for tenant', feature: featureKey, tenant_id: tenantId });
+        return res.status(403).json({
+          error: 'Feature disabled for tenant plan',
+          code: 'PLAN_FEATURE_DISABLED',
+          feature: featureKey,
+          tenant_id: tenantId,
+        });
       }
       next();
     } catch (error) {
@@ -111,6 +143,7 @@ function requireTenantFeature(featureKey) {
 }
 
 module.exports = {
+  DEFAULT_FEATURES,
   DEFAULT_TENANT_ID,
   clearTenantContextCache,
   loadTenantContext,

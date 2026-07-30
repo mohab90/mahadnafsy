@@ -1,27 +1,38 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Shield, AlertTriangle, Lock, Search, RefreshCw, Activity, Globe, Plus, Trash2 } from 'lucide-react';
+import { Shield, AlertTriangle, Search, RefreshCw, Activity, Save, Download } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { ActivityLogItem } from '../../../types';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import IpWhitelistTab from './IpWhitelistTab';
+import PrivacyOperationsPanel from './PrivacyOperationsPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
-const LS_IP_KEY = 'mahad_ip_whitelist_v1';
-
-interface IpEntry { id: string; ip: string; label: string; addedAt: string; active: boolean; }
-
-function loadIPs(): IpEntry[] {
-  try { return JSON.parse(localStorage.getItem(LS_IP_KEY) || '[]'); }
-  catch { return []; }
+interface MfaPolicy {
+  enabled: boolean;
+  required_roles: string[];
+  required_permissions: string[];
 }
-function saveIPs(items: IpEntry[]) { localStorage.setItem(LS_IP_KEY, JSON.stringify(items)); }
 
-function defaultIPs(): IpEntry[] {
-  return [
-    { id: '1', ip: '127.0.0.1', label: 'Localhost', addedAt: new Date().toISOString(), active: true },
-    { id: '2', ip: '192.168.1.0/24', label: 'الشبكة المحلية', addedAt: new Date().toISOString(), active: true },
-  ];
-}
+const MFA_ROLES = [
+  ['admin', 'مدير النظام'],
+  ['manager', 'مدير عام'],
+  ['accountant', 'محاسب'],
+] as const;
+const MFA_PERMISSIONS = [
+  ['manage_financial', 'إدارة المالية'],
+  ['manage_payments', 'إدارة المدفوعات'],
+  ['approve_refunds', 'اعتماد المرتجعات'],
+  ['manage_staff', 'إدارة الموظفين'],
+  ['manage_security', 'إدارة الأمان'],
+  ['manage_settings', 'إدارة الإعدادات'],
+] as const;
+const DEFAULT_MFA_POLICY: MfaPolicy = {
+  enabled: false,
+  required_roles: MFA_ROLES.map(([key]) => key),
+  required_permissions: MFA_PERMISSIONS.map(([key]) => key),
+};
 
 const SECURITY_ACTIONS = ['login', 'logout', 'login_failed', 'password_changed', 'role_changed', 'permission_granted', 'permission_revoked', 'account_locked', 'account_unlocked', 'bulk_delete', 'export_data', 'settings_changed'];
 const SENSITIVE_ACTIONS = ['bulk_delete', 'export_data', 'role_changed', 'account_locked', 'settings_changed', 'permission_granted', 'permission_revoked'];
@@ -33,18 +44,23 @@ function isSuspicious(logs: ActivityLogItem[], actorId: string, windowHours = 1)
 
 const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
   const { activityLogs, staffMembers } = useSiteData();
-  const [subTab, setSubTab] = useState<'overview' | 'activity' | 'ip' | 'access'>('overview');
-  const [ipList, setIpList] = useState<IpEntry[]>(() => {
-    const stored = loadIPs();
-    return stored.length > 0 ? stored : defaultIPs();
-  });
-  const [newIp, setNewIp] = useState('');
-  const [newIpLabel, setNewIpLabel] = useState('');
+  const [subTab, setSubTab] = useState<'overview' | 'activity' | 'ip' | 'access' | 'mfa' | 'privacy'>('overview');
+  const [mfaPolicy, setMfaPolicy] = useState<MfaPolicy>(DEFAULT_MFA_POLICY);
+  const [mfaSaving, setMfaSaving] = useState(false);
+  const [auditExporting, setAuditExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [eventFilter, setEventFilter] = useState<string>('all');
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => { saveIPs(ipList); }, [ipList]);
+  useEffect(() => {
+    fetch('/api/admin/security/mfa-policy', { credentials: 'include', headers: adminAuthHeaders() })
+      .then(async response => {
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'فشل تحميل سياسة MFA');
+        return response.json();
+      })
+      .then(policy => setMfaPolicy({ ...DEFAULT_MFA_POLICY, ...policy }))
+      .catch(() => {});
+  }, []);
 
   const securityLogs = useMemo(() =>
     activityLogs.filter(l => SECURITY_ACTIONS.includes(l.action) || SENSITIVE_ACTIONS.includes(l.action))
@@ -95,12 +111,57 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
     account_locked: 'text-red-700', settings_changed: 'text-indigo-600',
   };
 
-  const addIp = () => {
-    if (!newIp.trim()) { notify('error', 'أدخل عنوان IP'); return; }
-    const entry: IpEntry = { id: Date.now().toString(), ip: newIp.trim(), label: newIpLabel.trim() || 'غير محدد', addedAt: new Date().toISOString(), active: true };
-    setIpList(prev => [...prev, entry]);
-    setNewIp(''); setNewIpLabel('');
-    notify('success', 'تم إضافة IP');
+  const togglePolicyValue = (field: 'required_roles' | 'required_permissions', key: string) => {
+    setMfaPolicy(current => ({
+      ...current,
+      [field]: current[field].includes(key)
+        ? current[field].filter(value => value !== key)
+        : [...current[field], key],
+    }));
+  };
+
+  const saveMfaPolicy = async () => {
+    setMfaSaving(true);
+    try {
+      const response = await fetch('/api/admin/security/mfa-policy', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: adminAuthHeaders(true),
+        body: JSON.stringify(mfaPolicy),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'فشل حفظ سياسة MFA');
+      setMfaPolicy(body.policy);
+      notify('success', 'تم حفظ وتطبيق سياسة المصادقة الثنائية');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'فشل حفظ سياسة MFA');
+    } finally {
+      setMfaSaving(false);
+    }
+  };
+
+  const exportAudit = async () => {
+    setAuditExporting(true);
+    try {
+      const response = await fetch('/api/admin/security/audit-export?limit=10000', {
+        credentials: 'include',
+        headers: adminAuthHeaders(),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'فشل تصدير سجل التدقيق');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `audit-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      notify('success', 'تم تصدير سجل التدقيق مع نتيجة التحقق من سلامته');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'فشل تصدير سجل التدقيق');
+    } finally { setAuditExporting(false); }
   };
 
   return (
@@ -159,6 +220,8 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
           ['activity', '📋 سجل الأنشطة'],
           ['ip', '🌐 قائمة IP'],
           ['access', '👤 مراجعة الوصول'],
+          ['mfa', '🔐 سياسة MFA'],
+          ['privacy', '🗂️ الخصوصية والاحتفاظ'],
         ] as const).map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)}
             className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${subTab === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-gray-600 border-gray-200 hover:border-slate-400'}`}>
@@ -234,6 +297,10 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
               ))}
             </select>
             <span className="text-sm text-gray-400 self-center">{allAuditLogs.length} سجل</span>
+            <button onClick={exportAudit} disabled={auditExporting}
+              className="flex items-center gap-1.5 bg-slate-700 text-white px-3 py-2 rounded-xl text-sm disabled:opacity-50">
+              <Download size={14}/> {auditExporting ? 'جاري التصدير...' : 'تصدير موثّق'}
+            </button>
           </div>
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="divide-y divide-gray-50">
@@ -263,49 +330,7 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
 
       {/* IP Whitelist */}
       {subTab === 'ip' && (
-        <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700 flex items-start gap-2">
-            <Globe size={15} className="shrink-0 mt-0.5" />
-            <p>قائمة عناوين IP المصرح لها بالوصول للنظام. هذه بيانات للمراجعة فقط — التطبيق الفعلي يتم على مستوى الخادم.</p>
-          </div>
-          {/* Add form */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-            <h3 className="font-bold text-gray-800 mb-3">إضافة IP جديد</h3>
-            <div className="flex flex-wrap gap-3">
-              <input value={newIp} onChange={e => setNewIp(e.target.value)} placeholder="192.168.1.1 أو 10.0.0.0/24"
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 flex-1 min-w-[150px]" dir="ltr" />
-              <input value={newIpLabel} onChange={e => setNewIpLabel(e.target.value)} placeholder="وصف (مكتب، منزل...)"
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 flex-1 min-w-[150px]" />
-              <button onClick={addIp} className="bg-slate-700 text-white px-5 py-2 rounded-xl font-bold text-sm hover:bg-slate-800 flex items-center gap-1.5">
-                <Plus size={14} /> إضافة
-              </button>
-            </div>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="divide-y divide-gray-100">
-              {ipList.map(entry => (
-                <div key={entry.id} className={`flex items-center gap-3 px-4 py-3 ${!entry.active ? 'opacity-50' : ''}`}>
-                  <Globe size={14} className={entry.active ? 'text-green-500' : 'text-gray-400'} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-gray-700">{entry.ip}</span>
-                      <span className="text-xs text-gray-500">{entry.label}</span>
-                    </div>
-                    <p className="text-xs text-gray-400">أضيف {entry.addedAt.slice(0, 10)}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border ${entry.active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                    {entry.active ? '● نشط' : 'معطل'}
-                  </span>
-                  <button onClick={() => setIpList(prev => prev.map(e => e.id === entry.id ? { ...e, active: !e.active } : e))}
-                    className="text-gray-400 hover:text-amber-500"><Lock size={14} /></button>
-                  <button onClick={() => { setIpList(prev => prev.filter(e => e.id !== entry.id)); notify('success', 'تم حذف IP'); }}
-                    className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
-                </div>
-              ))}
-              {ipList.length === 0 && <div className="py-8 text-center text-gray-400 text-sm">لا إدخالات</div>}
-            </div>
-          </div>
-        </div>
+        <IpWhitelistTab notify={notify} />
       )}
 
       {/* Access Review */}
@@ -347,6 +372,54 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
           </div>
         </div>
       )}
+
+      {subTab === 'mfa' && (
+        <div className="space-y-4">
+          <div className={`rounded-2xl border p-5 ${mfaPolicy.enabled ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mfaPolicy.enabled}
+                onChange={event => setMfaPolicy(policy => ({ ...policy, enabled: event.target.checked }))}
+                className="mt-1 h-4 w-4"
+              />
+              <span>
+                <strong className="block text-gray-800">فرض المصادقة الثنائية على العمليات الحساسة</strong>
+                <span className="text-xs text-gray-600">
+                  فعّل 2FA لحسابك أولاً من إعدادات النظام قبل تشغيل السياسة حتى لا تفقد صلاحية الإدارة.
+                </span>
+              </span>
+            </label>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4">
+              <h3 className="font-bold text-gray-800 mb-3">الأدوار الملزمة</h3>
+              {MFA_ROLES.map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 py-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={mfaPolicy.required_roles.includes(key)}
+                    onChange={() => togglePolicyValue('required_roles', key)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div className="bg-white border border-gray-200 rounded-2xl p-4">
+              <h3 className="font-bold text-gray-800 mb-3">الصلاحيات المالية والإدارية الملزمة</h3>
+              {MFA_PERMISSIONS.map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 py-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={mfaPolicy.required_permissions.includes(key)}
+                    onChange={() => togglePolicyValue('required_permissions', key)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <button onClick={saveMfaPolicy} disabled={mfaSaving}
+            className="flex items-center gap-2 bg-slate-800 text-white px-5 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50">
+            <Save size={15} /> {mfaSaving ? 'جاري الحفظ...' : 'حفظ وتطبيق السياسة'}
+          </button>
+        </div>
+      )}
+      {subTab === 'privacy' && <PrivacyOperationsPanel notify={notify} />}
     </div>
   );
 };

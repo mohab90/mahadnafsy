@@ -26,6 +26,8 @@ logs/
 npm-debug.log*
 pids/
 *.pid
+.staging/
+.local-logs/
 .img-cache/
 **/.img-cache/
 

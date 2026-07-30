@@ -28,8 +28,10 @@ const ROLES = Object.freeze({
   HR:                       'hr',
   ACCOUNTANT:               'accountant',
   CONSULTANT:               'consultant',
+  EXPERT:                   'expert',
   TRAINER:                  'trainer',
   INSTRUCTOR:               'instructor',
+  OTHER:                    'other',
 });
 
 // ── 2. PERMISSIONS ────────────────────────────────────────────────────────────
@@ -138,6 +140,7 @@ const ROLE_PERMS = Object.freeze({
     'view_reports', 'view_activity',
     'view_staff',
     'view_client_db',
+    'manage_inbox', 'manage_notifications',
     'bulk_whatsapp',
     'ask_ai',
   ],
@@ -148,6 +151,7 @@ const ROLE_PERMS = Object.freeze({
     'view_subscribers',
     'view_orders',
     'view_consultations',
+    'manage_inbox', 'manage_notifications',
     'ask_ai',
   ],
 
@@ -158,6 +162,7 @@ const ROLE_PERMS = Object.freeze({
     'view_financial', 'manage_financial',
     'view_reports',
     'view_client_db',
+    'manage_inbox', 'manage_notifications',
     'bulk_whatsapp',
     'ask_ai',
   ],
@@ -197,6 +202,7 @@ const ROLE_PERMS = Object.freeze({
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports',
+    'manage_inbox', 'manage_notifications',
   ],
 
   [ROLES.CONSULTANT]: [
@@ -210,12 +216,25 @@ const ROLE_PERMS = Object.freeze({
   [ROLES.TRAINER]: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
+    'view_consultations', 'manage_consultations',
+  ],
+
+  [ROLES.EXPERT]: [
+    'view_dashboard',
+    'view_courses',
     'view_consultations',
+    'view_subscribers',
+    'view_reports',
   ],
 
   [ROLES.INSTRUCTOR]: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
+    'view_consultations', 'manage_consultations',
+  ],
+
+  [ROLES.OTHER]: [
+    'view_dashboard',
   ],
 });
 
@@ -249,8 +268,10 @@ const DATA_SCOPE = Object.freeze({
   [ROLES.HR]:          'none',
   [ROLES.ACCOUNTANT]:  'all',
   [ROLES.CONSULTANT]:  'assigned_sales',
+  [ROLES.EXPERT]:      'none',
   [ROLES.TRAINER]:     'none',
   [ROLES.INSTRUCTOR]:  'none',
+  [ROLES.OTHER]:       'none',
 });
 
 // ── 6. HELPER: resolve permissions for a staff record ─────────────────────────

@@ -11,6 +11,7 @@ type UnifiedClientLegacyPaymentModalProps = {
   courses: Course[];
   bundles: Bundle[];
   legacyPayDraft: LegacyPaymentDraft;
+  settlementLabel: string;
   setLegacyPayDraft: Dispatch<SetStateAction<LegacyPaymentDraft>>;
   onSubmit: () => void;
   onClose: () => void;
@@ -22,6 +23,7 @@ export function UnifiedClientLegacyPaymentModal({
   courses,
   bundles,
   legacyPayDraft,
+  settlementLabel,
   setLegacyPayDraft,
   onSubmit,
   onClose,
@@ -86,7 +88,7 @@ export function UnifiedClientLegacyPaymentModal({
           <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
             <span className="text-blue-600">متبقي</span>
             <span className="font-extrabold text-red-600">
-              {Math.max(0, Number(legacyPayDraft.courseExpected) - Number(legacyPayDraft.amountPaid)).toLocaleString()} ج.م
+              {Math.max(0, Number(legacyPayDraft.courseExpected) - Number(legacyPayDraft.amountPaid)).toLocaleString()} {settlementLabel}
             </span>
           </div>
         )}

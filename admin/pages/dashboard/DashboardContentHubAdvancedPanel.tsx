@@ -8,7 +8,7 @@ interface DashboardContentHubAdvancedPanelProps {
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   notify: NotifyFn;
   contentEdits: ContentMap;
   setContentEdits: Dispatch<SetStateAction<ContentMap>>;
@@ -16,11 +16,11 @@ interface DashboardContentHubAdvancedPanelProps {
   setNewContentKey: Dispatch<SetStateAction<string>>;
   newContentValue: string;
   setNewContentValue: Dispatch<SetStateAction<string>>;
-  addContentKey: (key: string, value: string) => void;
+  addContentKey: (key: string, value: string) => Promise<boolean>;
   searchText: string;
   setSearchText: Dispatch<SetStateAction<string>>;
   filteredContent: [string, string][];
-  removeContentKey: (key: string) => void;
+  removeContentKey: (key: string) => Promise<boolean>;
 }
 
 export function DashboardContentHubAdvancedPanel({
@@ -58,8 +58,11 @@ export function DashboardContentHubAdvancedPanel({
               onChange={(event) => setPolicyDrafts((prev) => ({ ...prev, 'institute.logo': event.target.value }))}
             />
             <button
-              onClick={() => {
-                setContentValue('institute.logo', policyDrafts['institute.logo'] ?? content['institute.logo'] ?? '');
+              onClick={async () => {
+                if (!await setContentValue('institute.logo', policyDrafts['institute.logo'] ?? content['institute.logo'] ?? '')) {
+                  notify('error', 'تعذر حفظ الشعار على السيرفر.');
+                  return;
+                }
                 setPolicyDrafts((prev) => { const next = { ...prev }; delete next['institute.logo']; return next; });
                 notify('success', 'تم حفظ الشعار بنجاح.');
               }}
@@ -99,10 +102,13 @@ export function DashboardContentHubAdvancedPanel({
             </div>
           ))}
           <button
-            onClick={() => {
-              videoKeys.forEach((key) => {
-                if (policyDrafts[key] !== undefined) setContentValue(key, policyDrafts[key]);
-              });
+            onClick={async () => {
+              const keys = videoKeys.filter((key) => policyDrafts[key] !== undefined);
+              const saved = await Promise.all(keys.map((key) => setContentValue(key, policyDrafts[key])));
+              if (!saved.every(Boolean)) {
+                notify('error', 'تعذر حفظ بعض إعدادات الفيديو.');
+                return;
+              }
               setPolicyDrafts((prev) => {
                 const next = { ...prev };
                 videoKeys.forEach((key) => delete next[key]);
@@ -122,10 +128,15 @@ export function DashboardContentHubAdvancedPanel({
           <h3 className="font-bold text-gray-900">محرر المحتوى المتقدم (جميع المفاتيح)</h3>
           {Object.keys(contentEdits).length > 0 && (
             <button
-              onClick={() => {
-                Object.entries(contentEdits).forEach(([key, value]) => setContentValue(key, value));
+              onClick={async () => {
+                const entries = Object.entries(contentEdits);
+                const saved = await Promise.all(entries.map(([key, value]) => setContentValue(key, value)));
+                if (!saved.every(Boolean)) {
+                  notify('error', 'تعذر حفظ بعض تعديلات المحتوى.');
+                  return;
+                }
                 setContentEdits({});
-                notify('success', `تم حفظ ${Object.keys(contentEdits).length} تعديل بنجاح.`);
+                notify('success', `تم حفظ ${entries.length} تعديل بنجاح.`);
               }}
               className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-700 transition"
             >
@@ -136,7 +147,7 @@ export function DashboardContentHubAdvancedPanel({
         <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-3 mb-4">
           <input value={newContentKey} onChange={(event) => setNewContentKey(event.target.value)} placeholder="مثال: new.key" className="border border-gray-300 rounded-xl px-3 py-2" />
           <input value={newContentValue} onChange={(event) => setNewContentValue(event.target.value)} placeholder="القيمة" className="border border-gray-300 rounded-xl px-3 py-2" />
-          <button onClick={() => { if (!newContentKey) return; addContentKey(newContentKey, newContentValue); setNewContentKey(''); setNewContentValue(''); }} className="bg-primary-600 text-white rounded-xl px-4 py-2 font-bold">
+          <button onClick={async () => { if (!newContentKey) return; if (await addContentKey(newContentKey, newContentValue)) { setNewContentKey(''); setNewContentValue(''); } }} className="bg-primary-600 text-white rounded-xl px-4 py-2 font-bold">
             <Plus size={16} className="inline ml-1" />إضافة
           </button>
         </div>
@@ -170,8 +181,8 @@ export function DashboardContentHubAdvancedPanel({
                     <div className="flex flex-col gap-1">
                       {isDirty && (
                         <button
-                          onClick={() => {
-                            setContentValue(key, contentEdits[key]);
+                          onClick={async () => {
+                            if (!await setContentValue(key, contentEdits[key])) return;
                             setContentEdits((prev) => { const next = { ...prev }; delete next[key]; return next; });
                           }}
                           className="flex items-center gap-1 px-2 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-bold hover:bg-primary-700 transition whitespace-nowrap"

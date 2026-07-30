@@ -1,6 +1,7 @@
 import React from 'react';
 import { ExternalLink, Eye, EyeOff, Phone, Trash2, Wallet } from 'lucide-react';
 import { useResizableCols } from '../../../components/useResizableCols';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
 import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
@@ -31,20 +32,22 @@ type LeadTableProps = {
   courses: { id: string; title: string; price?: { EGP: number } }[];
   bundles: Bundle[];
   navigate: (path: string) => void;
-  updateLead: (item: LeadItem) => void;
+  updateLead: (item: LeadItem) => void | Promise<boolean>;
+  reloadLeads: () => void | Promise<void>;
   deleteLead: (id: string) => void;
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
   updateSubscriber: (item: SubscriberItem) => void;
   subscribers: SubscriberItem[];
   salesStaff: { id: string; name: string }[];
   isSalesOnly: boolean;
+  canManageLeads: boolean;
   onSalesClick?: (salesId: string) => void;
   onBook: (row: LeadItem) => void;
   branchOptions: { id: string; label: string }[];
   sources: string[];
 };
 
-export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, deleteLead, subscribers, salesStaff, isSalesOnly, onSalesClick, onBook, branchOptions, sources }) => {
+export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, courses, bundles, navigate, updateLead, reloadLeads, deleteLead, subscribers, salesStaff, isSalesOnly, canManageLeads, onSalesClick, onBook, branchOptions, sources }) => {
   // Deduplicated branch options: merge instituteBranches with ENUM fallbacks without duplicates
   const mergedBranchOpts = React.useMemo(() => {
     const enumEntries = Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => ({ id, label }));
@@ -61,30 +64,55 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   const [historyRow, setHistoryRow] = React.useState<LeadItem | null>(null);
   const [waMenuRow, setWaMenuRow] = React.useState<LeadItem | null>(null);
 
-  const handleSaveContact = () => {
+  const handleSaveContact = async () => {
     if (!contactRow || !contactDraft.notes.trim()) return;
-    // Always use the FRESHEST version of the lead from `rows` to avoid stale-snapshot overwrites
     const freshLead = rows.find(r => r.id === contactRow.id) || contactRow;
     const lostReason = contactDraft.lostReason;
     const notesWithReason = lostReason
       ? `[سبب الخسارة: ${lostReason}] ${contactDraft.notes}`
       : contactDraft.notes;
-    const rec = { id: `comm-${Date.now()}`, type: contactDraft.type, date: contactDraft.date.replace('T', ' '), notes: notesWithReason, outcome: contactDraft.outcome || undefined, nextFollowUp: contactDraft.nextFollowUp || undefined };
-    const updatedComms = [...(freshLead.communications || []), rec];
     const newStatus: LeadStatus = (contactDraft.newStatus as LeadStatus) || (freshLead.status === 'new' ? 'contacted' : freshLead.status);
-    const autoHide = newStatus === 'not_interested_hidden';
-    updateLead({
-      ...freshLead,
-      communications: updatedComms,
-      status: newStatus,
-      hidden: autoHide ? true : freshLead.hidden,
-      lastFollowUp: rec.date,
-      lastContactNote: notesWithReason,
-      notes: notesWithReason,
-      nextFollowUpDate: contactDraft.nextFollowUp || freshLead.nextFollowUpDate,
-    });
-    setContactRow(null);
-    setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' });
+    try {
+      await mysqlAdmin.addLeadInteraction(freshLead.id, {
+        type: contactDraft.type,
+        date: contactDraft.date.replace('T', ' '),
+        notes: notesWithReason,
+        outcome: contactDraft.outcome || undefined,
+        nextFollowUp: contactDraft.nextFollowUp || undefined,
+        newStatus,
+      });
+      await reloadLeads();
+      setContactRow(null);
+      setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' });
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: {
+          field: 'lead-interaction',
+          name: error instanceof Error ? error.message : freshLead.id,
+        },
+      }));
+    }
+  };
+
+  const openHistory = async (row: LeadItem) => {
+    setHistoryRow(row);
+    try {
+      const result = await mysqlAdmin.getLeadInteractions(row.id);
+      setHistoryRow(current => current?.id === row.id
+        ? {
+            ...current,
+            communications: result.communications as LeadItem['communications'],
+            communicationCount: Math.max(current.communicationCount || 0, result.communications.length),
+          }
+        : current);
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: {
+          field: 'lead-interactions-read',
+          name: error instanceof Error ? error.message : row.id,
+        },
+      }));
+    }
   };
 
   // ─── Bulk selection state ───────────────────────────────────────────
@@ -107,8 +135,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleSelectAll = () =>
     setSelectedIds(prev => prev.length === pageRows.length ? [] : pageRows.map(r => r.id));
-  const handleBulkApply = () => {
-    rows.filter(r => selectedIds.includes(r.id)).forEach(r => {
+  const handleBulkApply = async () => {
+    const updates = rows.filter(r => selectedIds.includes(r.id)).map(r => {
       const updates: Partial<typeof r> = {};
       if (bulkStatus) updates.status = bulkStatus;
       if (bulkSalesId) {
@@ -116,8 +144,10 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
         updates.assignedSalesId = bulkSalesId;
         updates.assignedSalesName = s?.name || '';
       }
-      if (Object.keys(updates).length > 0) updateLead({ ...r, ...updates });
+      return Object.keys(updates).length > 0 ? updateLead({ ...r, ...updates }) : Promise.resolve(true);
     });
+    const results = await Promise.all(updates);
+    if (results.some(result => result === false)) return;
     setSelectedIds([]);
     setBulkStatus('');
     setBulkSalesId('');
@@ -125,7 +155,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
   return (
     <>
       {/* ─── Bulk Action Bar ─── */}
-      {selectedIds.length > 0 && (
+      {canManageLeads && selectedIds.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 bg-primary-50 border border-primary-200 rounded-xl px-4 py-3 mb-3">
           <span className="text-sm font-bold text-primary-700">{selectedIds.length} عميل محدد</span>
           <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value as LeadStatus | '')}
@@ -164,8 +194,10 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
           <thead>
             <tr className="bg-gray-50 text-gray-700 text-xs">
               <th className="px-3 py-2.5 border border-gray-200 w-8 relative">
-                <input type="checkbox" checked={pageRows.length > 0 && pageRows.every(r => selectedIds.includes(r.id))}
-                  onChange={toggleSelectAll} className="cursor-pointer" />
+                {canManageLeads && (
+                  <input type="checkbox" checked={pageRows.length > 0 && pageRows.every(r => selectedIds.includes(r.id))}
+                    onChange={toggleSelectAll} className="cursor-pointer" />
+                )}
               </th>
               <th style={{ width: leadsCol.colWidth('name') }} className="text-right px-3 py-2.5 border border-gray-200 font-semibold relative">الاسم<span className="resize-handle" onMouseDown={e => leadsCol.startResize('name', e)} /></th>
               <th style={{ width: leadsCol.colWidth('createdAt') }} className="text-right px-3 py-2.5 border border-gray-200 font-semibold relative">تاريخ التسجيل<span className="resize-handle" onMouseDown={e => leadsCol.startResize('createdAt', e)} /></th>
@@ -181,7 +213,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
           </thead>
           <tbody>
             {pageRows.map((row, idx) => {
-              const commCount = row.communications?.length || 0;
+              const commCount = row.communicationCount ?? row.communications?.length ?? 0;
               const interestedCourseIds = [...new Set([...(row.interestedCourseIds || []), ...(row.enrolledCourseId ? [row.enrolledCourseId] : [])])];
               const sourceMeta = crmSourceLabels[row.source] || null;
               // ── CRM metrics ──
@@ -202,7 +234,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   key={row.id}
                   className={`hover:bg-primary-50/30 transition-colors ${row.hidden ? 'opacity-50' : ''} ${selectedIds.includes(row.id) ? 'bg-primary-50/50' : idx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'} ${rottenLv >= 3 ? 'border-r-[3px] border-r-red-500' : rottenLv === 2 ? 'border-r-[3px] border-r-orange-500' : rottenLv === 1 ? 'border-r-[3px] border-r-yellow-400' : isStale ? 'border-r-2 border-r-orange-300' : ''}`}>
                   <td className="px-3 py-2 border border-gray-200 text-center">
-                    <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelect(row.id)} className="cursor-pointer" />
+                    {canManageLeads && (
+                      <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelect(row.id)} className="cursor-pointer" />
+                    )}
                   </td>
                   {/* ── Name ── */}
                   <td className="px-3 py-2 border border-gray-200">
@@ -255,14 +289,16 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                         <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">🔵 FB</span>
                       )}
                     </div>
-                    <select
-                      value={row.source || ''}
-                      onChange={(e) => updateLead({ ...row, source: e.target.value })}
-                      className="mt-1 block border-0 bg-transparent text-[10px] text-gray-400 cursor-pointer focus:ring-0 focus:outline-none w-full"
-                    >
-                      <option value="">تغيير المصدر...</option>
-                      {sources.map(src => <option key={src} value={src}>{src}</option>)}
-                    </select>
+                    {canManageLeads && (
+                      <select
+                        value={row.source || ''}
+                        onChange={(e) => updateLead({ ...row, source: e.target.value })}
+                        className="mt-1 block border-0 bg-transparent text-[10px] text-gray-400 cursor-pointer focus:ring-0 focus:outline-none w-full"
+                      >
+                        <option value="">تغيير المصدر...</option>
+                        {sources.map(src => <option key={src} value={src}>{src}</option>)}
+                      </select>
+                    )}
                   </td>
                   {/* ── Courses (multiselect) — renamed to الكورسات ── */}
                   {showCourseCol && (
@@ -286,8 +322,10 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                                 return (
                                   <span key={cid} className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
                                     <span className="truncate max-w-[90px]">{displayTitle}</span>
-                                    <button onClick={() => updateLead({ ...row, interestedCourseIds: interestedCourseIds.filter(x => x !== cid) })}
-                                      className="text-blue-400 hover:text-red-500 font-bold leading-none">×</button>
+                                    {canManageLeads && (
+                                      <button onClick={() => updateLead({ ...row, interestedCourseIds: interestedCourseIds.filter(x => x !== cid) })}
+                                        className="text-blue-400 hover:text-red-500 font-bold leading-none">×</button>
+                                    )}
                                   </span>
                                 );
                               })}
@@ -300,7 +338,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                           </>
                         );
                       })()}
-                      {interestedCourseIds.length < 10 && (
+                      {canManageLeads && interestedCourseIds.length < 10 && (
                         <select
                           value=""
                           onChange={(e) => {
@@ -344,7 +382,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                         b.label === row.branch ||
                         normBranchId(b.label) === normBranchId(row.branch)
                       )?.id ?? '';
-                      return (
+                      return canManageLeads ? (
                         <select
                           value={selectedId}
                           onChange={(e) => updateLead({ ...row, branch: (e.target.value || undefined) as BranchType | undefined })}
@@ -352,6 +390,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                           <option value="">— الفرع —</option>
                           {mergedBranchOpts.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
                         </select>
+                      ) : (
+                        <span>{mergedBranchOpts.find(b => b.id === selectedId)?.label || row.branch || '—'}</span>
                       );
                     })()}
                   </td>
@@ -372,13 +412,15 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                         </span>
                       )
                     )}
-                    <select value={row.assignedSalesId || ''} onChange={(e) => {
-                      const s = salesStaff.find((x) => x.id === e.target.value);
-                      updateLead({ ...row, assignedSalesId: e.target.value || undefined, assignedSalesName: s?.name || '' });
-                    }} className="border-0 bg-transparent text-xs w-full cursor-pointer text-gray-500 focus:ring-0 focus:outline-none">
-                      <option value="">— تغيير السيلز —</option>
-                      {salesStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
+                    {canManageLeads && (
+                      <select value={row.assignedSalesId || ''} onChange={(e) => {
+                        const s = salesStaff.find((x) => x.id === e.target.value);
+                        updateLead({ ...row, assignedSalesId: e.target.value || undefined, assignedSalesName: s?.name || '' });
+                      }} className="border-0 bg-transparent text-xs w-full cursor-pointer text-gray-500 focus:ring-0 focus:outline-none">
+                        <option value="">— تغيير السيلز —</option>
+                        {salesStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    )}
                   </td>
                   )}
                   {/* ── Status ── */}
@@ -387,7 +429,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                       {crmStatusLabels[row.status] || row.status}
                     </span>
                     {commCount > 0 && (
-                      <button onClick={() => setHistoryRow(row)}
+                      <button onClick={() => { void openHistory(row); }}
                         className="text-[10px] text-blue-600 hover:underline mt-1 block">
                         📋 {commCount} تواصل
                       </button>
@@ -424,15 +466,15 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                   <td className={`px-0.5 py-1 border border-gray-200 sticky left-0 z-10 shadow-[3px_0_5px_-2px_rgba(0,0,0,0.08)] w-[64px] ${selectedIds.includes(row.id) ? 'bg-primary-50/50' : idx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'}`}>
                     <div className="grid grid-cols-3 gap-0.5">
                       <button onClick={() => navigate(`/client/${row.clientCode || row.id}`)} title="ملف العميل" className="h-6 w-6 rounded-md text-gray-400 hover:text-primary-600 flex items-center justify-center transition"><ExternalLink size={13}/></button>
-                      <button onClick={() => { setContactRow(row); setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }} title="تسجيل تواصل" className="h-6 w-6 rounded-md text-gray-400 hover:text-blue-600 flex items-center justify-center transition"><Phone size={13}/></button>
+                      {canManageLeads && <button onClick={() => { setContactRow(row); setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }} title="تسجيل تواصل" className="h-6 w-6 rounded-md text-gray-400 hover:text-blue-600 flex items-center justify-center transition"><Phone size={13}/></button>}
                       <button onClick={() => setWaMenuRow(row)} title="واتساب" className="h-6 w-6 rounded-md text-gray-400 hover:text-green-600 flex items-center justify-center transition">
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
                       </button>
-                      <button onClick={() => onBook(row)} title="حجز ودفع" className="h-6 w-6 rounded-md text-gray-400 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={13}/></button>
-                      <button onClick={() => updateLead({ ...row, hidden: !row.hidden })} title={row.hidden ? 'إظهار' : 'إخفاء'} className={`h-6 w-6 rounded-md flex items-center justify-center transition ${row.hidden ? 'text-amber-500' : 'text-gray-300 hover:text-gray-500'}`}>
+                      {canManageLeads && <button onClick={() => onBook(row)} title="حجز ودفع" className="h-6 w-6 rounded-md text-gray-400 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={13}/></button>}
+                      {canManageLeads && <button onClick={() => updateLead({ ...row, hidden: !row.hidden })} title={row.hidden ? 'إظهار' : 'إخفاء'} className={`h-6 w-6 rounded-md flex items-center justify-center transition ${row.hidden ? 'text-amber-500' : 'text-gray-300 hover:text-gray-500'}`}>
                         {row.hidden ? <Eye size={13}/> : <EyeOff size={13}/>}
-                      </button>
-                      {!isSalesOnly ? (
+                      </button>}
+                      {canManageLeads && !isSalesOnly ? (
                         <button onClick={() => deleteLead(row.id)} title="حذف" className="h-6 w-6 rounded-md text-gray-300 hover:text-red-500 flex items-center justify-center transition"><Trash2 size={13}/></button>
                       ) : <span />}
                     </div>
@@ -578,7 +620,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
       {/* ── Contact History modal ── */}
       {historyRow && (() => {
         // Use the live version of the lead from rows to always show fresh data
-        const liveHistoryRow = rows.find(r => r.id === historyRow.id) || historyRow;
+        const liveHistoryRow = historyRow;
         const typeMeta: Record<string, { label: string; icon: string; color: string }> = {
           call: { label: 'اتصال هاتفي', icon: '📞', color: 'bg-blue-50 border-blue-200 text-blue-700' },
           whatsapp: { label: 'واتس أب', icon: '💬', color: 'bg-green-50 border-green-200 text-green-700' },
@@ -606,16 +648,25 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                           <span className="text-xs font-bold">{meta.icon} {meta.label}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-gray-400">{c.date.slice(0, 16)}</span>
-                            <button
-                              onClick={() => {
-                                const updatedComms = (liveHistoryRow.communications || []).filter(c2 => c2.id !== c.id);
-                                updateLead({ ...liveHistoryRow, communications: updatedComms });
-                                // Update historyRow pointer so the list refreshes immediately
-                                setHistoryRow({ ...liveHistoryRow, communications: updatedComms });
+                            {canManageLeads && <button
+                              onClick={async () => {
+                                if (!window.confirm('حذف سجل التواصل؟ سيظل حدث الحذف ظاهرًا في سجل التدقيق.')) return;
+                                try {
+                                  await mysqlAdmin.deleteLeadInteraction(liveHistoryRow.id, c.id);
+                                  await reloadLeads();
+                                  await openHistory(liveHistoryRow);
+                                } catch (error) {
+                                  window.dispatchEvent(new CustomEvent('site-persist-error', {
+                                    detail: {
+                                      field: 'lead-interaction',
+                                      name: error instanceof Error ? error.message : c.id,
+                                    },
+                                  }));
+                                }
                               }}
                               className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold transition"
                               title="حذف هذا التواصل"
-                            >✕</button>
+                            >✕</button>}
                           </div>
                         </div>
                         <p className="text-sm text-gray-700 leading-relaxed">{c.notes}</p>
@@ -627,10 +678,10 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                 </div>
               )}
               <div className="mt-4 flex gap-2">
-                <button onClick={() => { setContactRow(liveHistoryRow); setHistoryRow(null); setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }}
+                {canManageLeads && <button onClick={() => { setContactRow(liveHistoryRow); setHistoryRow(null); setContactDraft({ type: 'call', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '', lostReason: '' }); }}
                   className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700">
                   <Phone size={13} className="inline ml-1" />إضافة تواصل جديد
-                </button>
+                </button>}
                 <button onClick={() => setHistoryRow(null)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-300">إغلاق</button>
               </div>
             </div>

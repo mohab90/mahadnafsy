@@ -14,6 +14,8 @@ test('money rows freeze their EGP value and financial reports consume the snapsh
   assert.match(migration, /ALTER TABLE payments[\s\S]*amount_egp/);
   assert.match(migration, /ALTER TABLE expenses[\s\S]*amount_egp/);
   assert.match(finance, /UPDATE payments SET fx_rate_to_egp=\?,amount_egp=\?/);
+  assert.match(finance, /source = 'static-fallback'/);
+  assert.match(finance, /fx\.source, paymentId, tenantId/);
   assert.match(finance, /sign < 0[\s\S]*snapshottedEgp/);
   assert.match(reports, /SUM\(amount_egp\)/);
   assert.match(dashboard, /SUM\(amount_egp\)/);

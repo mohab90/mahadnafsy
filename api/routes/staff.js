@@ -12,10 +12,102 @@ function routeError(res, error, message = 'route failed') {
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { hasPermission, PERMISSIONS } = require('../constants/permissions');
+const { requireTenantQuota } = require('../middleware/tenantQuota');
+const { mapTherapist } = require('../lib/mappers');
 
-router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
+  try {
+    const staffId = req.staffRecord?.id;
+    if (!staffId) return res.status(403).json({ error: 'A linked staff account is required' });
+    const [[therapist]] = await pool.query(
+      `SELECT t.* FROM therapists t
+        WHERE t.tenant_id=? AND t.staff_id=? AND t.is_active=1
+        LIMIT 1`,
+      [req.tenantId, staffId]
+    );
+    if (!therapist) return res.status(404).json({ error: 'No active therapist profile is linked to this account' });
+    const [slots] = await pool.query(
+      `SELECT id, therapist_id, day, start_time, end_time, timezone, label, meeting_link, is_active
+         FROM therapist_slots WHERE therapist_id=? ORDER BY day, start_time`,
+      [therapist.id]
+    );
+    therapist.slots = slots;
+    const [consultations] = await pool.query(
+      `SELECT id, client_name, client_email, client_phone, therapist_id, session_type,
+              session_date, slot_id, timezone, status, notes, amount, currency,
+              session_duration_minutes, meeting_link, created_at
+         FROM consultations
+        WHERE tenant_id=? AND therapist_id=? AND deleted_at IS NULL
+        ORDER BY session_date DESC LIMIT 500`,
+      [req.tenantId, therapist.id]
+    );
+    res.json({
+      therapist: mapTherapist(therapist),
+      consultations: consultations.map(row => ({
+        id: row.id,
+        clientName: row.client_name,
+        clientEmail: row.client_email || undefined,
+        clientPhone: row.client_phone || undefined,
+        therapistId: row.therapist_id,
+        therapistName: therapist.name,
+        sessionType: String(row.session_type || 'INDIVIDUAL').toLowerCase(),
+        sessionDate: row.session_date,
+        slotId: row.slot_id || undefined,
+        timezone: row.timezone || undefined,
+        status: String(row.status || 'PENDING').toLowerCase(),
+        notes: row.notes || '',
+        amount: row.amount === null ? undefined : Number(row.amount),
+        currency: row.currency || undefined,
+        sessionDurationMinutes: row.session_duration_minutes || undefined,
+        meetingLink: row.meeting_link || undefined,
+        createdAt: row.created_at,
+      })),
+    });
+  } catch (e) {
+    routeError(res, e, 'therapist portal load failed');
+  }
+});
+
+router.patch('/api/staff/therapist-portal/consultations/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
+  try {
+    const staffId = req.staffRecord?.id;
+    if (!staffId) return res.status(403).json({ error: 'A linked staff account is required' });
+    const fields = [];
+    const params = [];
+    if (req.body?.status !== undefined) {
+      const status = String(req.body.status).toUpperCase();
+      if (!['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid consultation status' });
+      }
+      fields.push('c.status=?');
+      params.push(status);
+    }
+    if (req.body?.notes !== undefined) {
+      if (typeof req.body.notes !== 'string' || req.body.notes.length > 5000) {
+        return res.status(400).json({ error: 'Notes must be at most 5000 characters' });
+      }
+      fields.push('c.notes=?');
+      params.push(req.body.notes);
+    }
+    if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+    const [result] = await pool.query(
+      `UPDATE consultations c
+         JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
+          SET ${fields.join(', ')}
+        WHERE c.id=? AND c.tenant_id=? AND c.deleted_at IS NULL
+          AND t.staff_id=? AND t.is_active=1`,
+      [...params, req.params.id, req.tenantId, staffId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Assigned consultation not found' });
+    res.json({ ok: true });
+  } catch (e) {
+    routeError(res, e, 'therapist consultation update failed');
+  }
+});
+
+router.post('/api/admin/staff', requireAuth, requireSuperAdmin, requireTenantQuota('staff'), async (req, res) => {
   try {
     const s = req.body;
     const id = s.id || uuidv4();
@@ -61,11 +153,24 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, async (req, res)
 // view_staff (HR-04/05). req.isAdmin was never actually set anywhere (only
 // req.isSuperAdmin is), so this check was always false and hid these fields
 // from real admins too.
-router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermission('view_staff'), async (req, res) => {
   try {
     const canViewSensitive = req.isSuperAdmin === true || hasPermission(req.staffRecord, PERMISSIONS.VIEW_STAFF);
     const [rows] = await pool.query(
-      'SELECT id, firebase_uid, name, email, phone, role, is_active, image, specialization, joined_at, created_at, notes, commission_rate, permissions_json FROM staff WHERE tenant_id=? ORDER BY name ASC',
+      `SELECT s.id,s.firebase_uid,s.name,s.email,s.phone,s.role,s.is_active,s.image,
+              s.specialization,s.joined_at,s.created_at,s.notes,s.commission_rate,s.permissions_json,
+              s.monthly_target,s.monthly_target_type,s.monthly_leads_target,s.monthly_bonus,
+              s.national_id,s.address,s.hr_notes,s.department_id,d.name AS department_name,
+              ss.base_salary
+         FROM staff s
+         LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
+         LEFT JOIN salary_structures ss ON ss.id=(
+           SELECT x.id FROM salary_structures x
+            WHERE x.tenant_id=s.tenant_id AND x.staff_id=s.id AND x.status='APPROVED'
+              AND x.effective_from<=CURDATE() AND (x.effective_to IS NULL OR x.effective_to>=CURDATE())
+            ORDER BY x.effective_from DESC LIMIT 1
+         )
+        WHERE s.tenant_id=? AND s.deleted_at IS NULL ORDER BY s.name ASC`,
       [req.tenantId]
     );
     res.json(rows.map(r => ({
@@ -81,6 +186,16 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, async (req, res
       firebaseUid: canViewSensitive ? (r.firebase_uid || null) : null,
       commissionRate: canViewSensitive ? (r.commission_rate || null) : null,
       notes: canViewSensitive ? (r.notes || null) : null,
+      salary: canViewSensitive ? Number(r.base_salary || 0) : undefined,
+      monthlyTarget: canViewSensitive ? Number(r.monthly_target || 0) : undefined,
+      monthlyTargetType: canViewSensitive ? (r.monthly_target_type || 'egp') : undefined,
+      monthlyLeadsTarget: canViewSensitive ? Number(r.monthly_leads_target || 0) : undefined,
+      monthlyBonus: canViewSensitive ? Number(r.monthly_bonus || 0) : undefined,
+      nationalId: canViewSensitive ? (r.national_id || '') : undefined,
+      address: canViewSensitive ? (r.address || '') : undefined,
+      hrNotes: canViewSensitive ? (r.hr_notes || '') : undefined,
+      departmentId: canViewSensitive ? (r.department_id || null) : undefined,
+      department: canViewSensitive ? (r.department_name || '') : undefined,
       permissions: canViewSensitive ? (r.permissions_json ? tryJson(r.permissions_json, []) : []) : [],
     })));
   } catch (e) {

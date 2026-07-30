@@ -76,14 +76,23 @@ export const mysqlClient = {
   heartbeat: (name?: string) => apiFetch<{ ok: boolean }>('/me/heartbeat', { method: 'POST', body: JSON.stringify({ name: name || '' }) }, true),
   getMySubscriber: () => apiFetch<AR | null>('/me/subscriber', {}, true),
   getMyConsultations: () => apiFetch<AR[]>('/me/consultations', {}, true),
-  getMyQuizAttempts: (sid: string) => apiFetch<AR[]>(`/me/quiz-attempts?subscriberId=${sid}`, {}, true),
+  getMyQuizAttempts: () => apiFetch<AR[]>('/me/quiz-attempts', {}, true),
   checkIsStaff: () => apiFetch<{ isStaff: boolean; isAdmin: boolean; role?: string; staffId?: string }>('/me/is-staff', {}, true),
   getStaffSelf: () => apiFetch<AR>('/staff/me', {}, true),
+  getTherapistPortal: () => apiFetch<{ therapist: AR; consultations: AR[] }>('/staff/therapist-portal', {}, true),
+  updateTherapistConsultation: (id: string, patch: { status?: string; notes?: string }) =>
+    apiFetch<{ ok: boolean }>(`/staff/therapist-portal/consultations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }, true),
   saveLectureProgress: (lectureId: string, pct: number) =>
     apiFetch<{ ok: boolean }>('/me/progress', { method: 'PATCH', body: JSON.stringify({ lectureId, pct }) }, true),
   // Payment proofs
-  submitPaymentProof: (data: { order_id: string; payment_method: string; proof_image?: string | null; note?: string }) =>
-    apiFetch<{ ok: boolean; id: string }>('/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true),
+  createPaymentIntent: (data: { order_id: string; provider?: 'manual'; idempotency_key?: string }) =>
+    apiFetch<{ ok: boolean; id: string; order_id: string; amount: number; currency: string; status: string }>(
+      '/me/payment-intents', { method: 'POST', body: JSON.stringify(data) }, true
+    ),
+  submitPaymentProof: (data: { order_id: string; payment_intent_id?: string; payment_method: string; proof_image?: string | null; note?: string }) =>
+    apiFetch<{ ok: boolean; id: string; payment_intent_id: string; payment_attempt_id: string }>(
+      '/me/payment-proof', { method: 'POST', body: JSON.stringify(data) }, true
+    ),
   getMyPaymentProofs: () => apiFetch<AR[]>('/me/payment-proofs', {}, true),
   getMyOrders: () => apiFetch<Array<{ id: string; item_id: string | null; item_title: string; type: string; status: string; amount: number; currency: string }>>('/me/orders', {}, true),
   // Course ratings
@@ -114,11 +123,19 @@ export const mysqlAdmin = {
   adminPatch: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, A),
   adminPut: <T = AR>(path: string, body: unknown) => apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) }, A),
   adminDelete: <T = AR>(path: string) => apiFetch<T>(path, { method: 'DELETE' }, A),
+  revokeCourseCompletion: (id: string, reason: string) =>
+    apiFetch<AR>(`/admin/completions/${encodeURIComponent(id)}/revoke`, {
+      method: 'POST', body: JSON.stringify({ reason }),
+    }, A),
+  reissueCourseCompletion: (id: string, reason: string) =>
+    apiFetch<AR>(`/admin/completions/${encodeURIComponent(id)}/reissue`, {
+      method: 'POST', body: JSON.stringify({ reason }),
+    }, A),
   // ── Users management ──
   listAllUsers:  () => apiFetch<AR[]>('/admin/users', {}, A),
   deactivateUser: (id: string) => apiFetch<{ ok: boolean }>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
   checkAccount: (email: string) => apiFetch<AR>(`/admin/check-account?email=${encodeURIComponent(email)}`, {}, A),
-  createAccount: (params: { email: string; name?: string; password?: string; phone?: string; courses?: {courseId:string;accessType:string;videoCount?:string}[]; referredBy?: string; firstPayment?: { amount: number; currency: string; paymentMethod?: string; date?: string; transactionId?: string; note?: string; courseId?: string } }) => apiFetch<AR>('/admin/create-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) }, A),
+  createAccount: (params: { email: string; name?: string; password?: string; phone?: string; courses?: {courseId:string;accessType:string;videoCount?:string}[]; referredBy?: string; firstPayment?: { amount: number; currency: string; paymentMethod?: string; date?: string; transactionId?: string; note?: string; courseId?: string; courseExpected?: number } }) => apiFetch<AR>('/admin/create-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) }, A),
   getMissingAccountsCount: () => apiFetch<{ total: number }>('/admin/missing-accounts', {}, A),
   bulkCreateAccounts: (limit: number) => apiFetch<AR>('/admin/bulk-create-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit }) }, A),
   // ── List (read) ──
@@ -198,6 +215,7 @@ export const mysqlAdmin = {
   bulkAssignCollection: () =>
     apiFetch<{ ok: boolean; assigned: number; staffCount: number; staff: string[] }>('/admin/bulk-assign-collection', { method: 'POST', body: '{}' }, A),
   getClientByCode:         (code: string) => apiFetch<{ type: 'subscriber' | 'lead'; data: AR }>(`/staff/client/${encodeURIComponent(code)}`, {}, A),
+  getCustomerTimeline:     (subscriberId: string) => apiFetch<AR[]>(`/staff/subscribers/${encodeURIComponent(subscriberId)}/timeline`, {}, A),
   enrollmentWelcome:       (payload: { email: string; name: string; courseTitle: string; branch: string; courseIds: string[]; phone?: string }) =>
     apiFetch<{ ok: boolean; newAccount: boolean }>('/staff/enrollment-welcome', { method: 'POST', body: JSON.stringify(payload) }, A),
   updateMyProfile:         (data: { name?: string; phone?: string; image?: string | null }) => apiFetch<AR>('/staff/me', { method: 'PATCH', body: JSON.stringify(data) }, A),
@@ -224,20 +242,52 @@ export const mysqlAdmin = {
   listAllJoinUs:           ()             => apiFetch<AR[]>('/admin/join-us', {}, A),
   listAllContactMessages:  ()             => apiFetch<AR[]>('/admin/contact-messages', {}, A),
   listAllCertificateRequests: (limit = 500) => apiFetch<AR[]>(`/admin/certificate-requests?limit=${limit}`, {}, A),
+  createCertificateRequest: (body: AR) => post('/admin/certificate-requests', body),
   updateCertificateRequest: (id: string | number, status: string, notes?: string) =>
     patch(`/admin/certificate-requests/${id}`, { status, notes }),
   deleteCertificateRequest: (id: string | number) => del(`/admin/certificate-requests/${id}`),
+  getFinancialPnl: (from: string, to: string, branch?: string) =>
+    apiFetch<{ from: string; to: string; branch: string | null; branchId: string | null; totalRevenue: number; totalExpenses: number; netProfit: number; margin: number }>(
+      `/admin/financial/pnl?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`,
+      {},
+      A,
+    ),
+  getFinancialBalanceSheet: (asOf: string) =>
+    apiFetch<{
+      asOf: string;
+      branch: string | null;
+      assets: { cashAndEquivalents: number; totalRevenue: number; totalAssets: number };
+      liabilities: { outstandingReceivables: number; totalLiabilities: number };
+      equity: { retainedEarnings: number; contributedEquity: number; totalEquity: number };
+      summary: { totalRevenue: number; totalExpenses: number; totalRefunds: number; netPosition: number; ledgerImbalance: number };
+    }>(`/admin/financial/balance-sheet?asOf=${encodeURIComponent(asOf)}`, {}, A),
+  getFinancialCashFlow: (from: string, to: string) =>
+    apiFetch<{
+      period: { from: string; to: string };
+      branch: string | null;
+      operating: { inflows: number; outflows: number; refunds: number; netOperatingCashFlow: number };
+      monthly: Array<{ month: string; revenue: number; refunds: number; expenses: number; netCashFlow: number }>;
+    }>(`/admin/financial/cash-flow?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {}, A),
   listAllInbox:            ()             => apiFetch<AR[]>('/admin/inbox', {}, A),
   listAllAutomationWorkflows: ()          => apiFetch<AR[]>('/admin/automation-workflows', {}, A),
   listAllQuizAttempts:     (limit = 500)  => apiFetch<AR[]>(`/admin/quiz-attempts?limit=${limit}`, {}, A),
   getSettings:             ()             => apiFetch<AR>('/admin/settings', {}, A),
+  generateAdminAi: (body: { systemPrompt?: string; messages: Array<{ role: 'user' | 'assistant'; content: string }>; maxTokens?: number }) =>
+    apiFetch<{ text: string }>('/admin/ai/generate', { method: 'POST', body: JSON.stringify(body) }, A),
   getContent:              ()             => apiFetch<AR>('/admin/content', {}, A),
   getDiscounts:            ()             => apiFetch<AR[]>('/admin/discounts', {}, A),
-  getPayments:             (startDate?: string, endDate?: string) => {
-    const p = new URLSearchParams();
-    if (startDate) p.set('startDate', startDate);
-    if (endDate)   p.set('endDate', endDate);
-    return apiFetch<AR[]>(`/admin/payments?${p}`, {}, A);
+  getPayments:             async (startDate?: string, endDate?: string, maxRows = 50000) => {
+    const all: AR[] = [];
+    const pageSize = 5000;
+    while (all.length < maxRows) {
+      const p = new URLSearchParams({ limit: String(pageSize), offset: String(all.length) });
+      if (startDate) p.set('startDate', startDate);
+      if (endDate)   p.set('endDate', endDate);
+      const page = await apiFetch<AR[]>(`/admin/payments?${p}`, {}, A);
+      all.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return all.slice(0, maxRows);
   },
 
   // ── Courses ──
@@ -260,6 +310,12 @@ export const mysqlAdmin = {
   // ── Subscribers ──
   saveSubscriber:   (o: AR) => post('/admin/subscribers', o),
   deleteSubscriber: (id: string) => del(`/admin/subscribers/${id}`),
+  convertSubscriberToLead: (id: string) =>
+    apiFetch<{ ok: boolean; leadId: string; subscriberId: string }>(
+      `/admin/subscribers/${encodeURIComponent(id)}/convert-to-lead`,
+      { method: 'POST', body: '{}' },
+      A
+    ),
 
   // ── Leads ──
   saveLead:   (o: AR) => post('/admin/leads', o),
@@ -270,9 +326,14 @@ export const mysqlAdmin = {
     ),
   deleteLead: (id: string) => del(`/admin/leads/${id}`),
   getLeadTimeline: (id: string) => apiFetch<AR[]>(`/admin/leads/${id}/timeline`, {}, A),
+  listLeadDuplicates: () => apiFetch<{ groups: AR[]; count: number }>('/admin/leads/duplicates', {}, A),
+  listLeadMergeHistory: (limit = 50) => apiFetch<AR[]>(`/admin/leads/merge-history?limit=${limit}`, {}, A),
+  mergeLeads: (targetId: string, sourceIds: string[]) => post('/admin/leads/merge', { targetId, sourceIds }),
+  unmergeLead: (sourceId: string) => post('/admin/leads/unmerge', { sourceId }),
 
   // ── Staff ──
   saveStaff:        (o: AR) => post('/admin/staff', o),
+  updateHrEmployee: (id: string, o: AR) => put(`/admin/hr/employees/${encodeURIComponent(id)}`, o),
   deleteStaff:      (id: string) => del(`/admin/staff/${id}`),
   createStaffAccount: (o: AR) => post('/admin/staff-account', o),
 
@@ -303,6 +364,25 @@ export const mysqlAdmin = {
 
   // ── Subscriber Payments (payments table) ──
   saveSubscriberPayment: (subscriber_id: string, payment: AR) => post('/admin/subscriber-payments', { subscriber_id, payment }),
+  saveLeadPayment: (lead_id: string, payment: AR, subscriber?: { email?: string; nationalId?: string }) =>
+    apiFetch<{
+      ok: boolean;
+      id: string;
+      subscriberId: string;
+      subscriberCreated: boolean;
+      status: string;
+      approvalRequired?: boolean;
+    }>(
+      '/admin/subscriber-payments',
+      { method: 'POST', body: JSON.stringify({ lead_id, payment, subscriber }) },
+      A,
+    ),
+  updatePaymentStatus: (id: string, status: 'paid' | 'failed' | 'pending', reviewNote?: string) =>
+    apiFetch<{ ok: boolean; id: string; status: string }>(
+      `/admin/payments/${encodeURIComponent(id)}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status, reviewNote }) },
+      A,
+    ),
   backfillPayments:      () => post('/admin/backfill-payments', {}),
 
   // ── Credentials (admin reset) ──
@@ -325,6 +405,8 @@ export const mysqlAdmin = {
   // ── Daqqi Rounds ──
   saveDaqqiRound:   (o: AR) => post('/admin/daqqi-rounds', o),
   deleteDaqqiRound: (id: string) => del(`/admin/daqqi-rounds/${id}`),
+  transferDaqqiAttendee: (data: { subscriberId: string; fromRoundId: string; toRoundId: string }) =>
+    post('/admin/daqqi-rounds/transfer-attendee', data),
 
   // ── Join-Us applications ──
   updateJoinUs: (id: string, status: string, notes?: string) => patch(`/admin/join-us/${id}`, { status, notes }),
@@ -368,13 +450,23 @@ export const mysqlAdmin = {
   saveContent:       (data: AR) => put('/admin/content', data),
   saveDiscounts:     (data: unknown[]) => put('/admin/discounts', data),
   saveNotifications: (data: unknown[]) => put('/admin/notification-settings', data),
+  getNotificationSettings: () => apiFetch<AR[]>('/admin/notification-settings', {}, A),
 
   // ── Payment Proofs ──
-  listPaymentProofs: (status?: 'PENDING' | 'APPROVED' | 'REJECTED') =>
-    apiFetch<AR[]>(`/admin/payment-proofs${status ? '?status=' + status : ''}`, {}, A),
-  getPaymentProofImage: (id: string) => apiFetch<{ image: string }>(`/admin/payment-proofs/${id}/image`, {}, A),
-  reviewPaymentProof: (id: string, action: 'approve' | 'reject', reviewer_note?: string) =>
-    apiFetch<{ ok: boolean; status: string }>(`/admin/payment-proofs/${id}`, { method: 'PATCH', body: JSON.stringify({ action, reviewer_note }) }, A),
+  listPaymentProofs: (status?: 'PENDING' | 'APPROVED' | 'REJECTED', branch?: string) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (branch) params.set('branch', branch);
+    const query = params.toString();
+    return apiFetch<AR[]>(`/admin/payment-proofs${query ? `?${query}` : ''}`, {}, A);
+  },
+  getPaymentProofImage: (id: string, branch?: string) =>
+    apiFetch<{ image: string }>(`/admin/payment-proofs/${id}/image${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`, {}, A),
+  reviewPaymentProof: (id: string, action: 'approve' | 'reject', reviewer_note?: string, branch?: string) =>
+    apiFetch<{ ok: boolean; status: string; pendingSecondApproval?: boolean; review_due_at?: string }>(`/admin/payment-proofs/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action, reviewer_note, branch }),
+    }, A),
 
   // ── Atomic client-code counter ──
   issueClientCode: () => apiFetch<{ ok: boolean; code: string }>('/admin/client-code', { method: 'POST', body: '{}' }, A),
@@ -421,11 +513,67 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; assigned: number; reps?: number }>(
       '/admin/leads/distribute', { method: 'POST', body: JSON.stringify({ mode }) }, A
     ),
+  migrateLeadBranches: () =>
+    apiFetch<{ ok: boolean; updated: number; unresolved: number; total: number }>(
+      '/admin/leads/migrate-branches', { method: 'POST', body: '{}' }, A
+    ),
 
   // ── CRM Settings (sources, auto-assign, google sheets) ──
   getCrmSettings: () => apiFetch<Record<string, unknown>>('/admin/crm-settings', {}, A),
   saveCrmSettings: (data: Record<string, unknown>) =>
     apiFetch<{ ok: boolean }>('/admin/crm-settings', { method: 'PUT', body: JSON.stringify(data) }, A),
+  getCrmPipeline: () => apiFetch<{ stages: Array<{
+    status: string; label: string; position: number; showInPipeline: boolean;
+    isTerminal: boolean; allowedNext: string[];
+  }> }>('/admin/crm/pipeline', {}, A),
+  saveCrmPipeline: (stages: Array<Record<string, unknown>>) =>
+    apiFetch<{ ok: boolean; stages: Array<Record<string, unknown>> }>(
+      '/admin/crm/pipeline', { method: 'PUT', body: JSON.stringify({ stages }) }, A
+    ),
+  getCrmAssignmentMembers: () => apiFetch<{ members: Array<Record<string, unknown>> }>(
+    '/admin/crm/assignment-members', {}, A
+  ),
+  saveCrmAssignmentMembers: (members: Array<Record<string, unknown>>) =>
+    apiFetch<{ ok: boolean; members: Array<Record<string, unknown>> }>(
+      '/admin/crm/assignment-members', { method: 'PUT', body: JSON.stringify({ members }) }, A
+    ),
+  deleteLeadInteraction: (leadId: string, interactionId: string) =>
+    apiFetch<{ ok: boolean; id: string; deleted: boolean }>(
+      `/admin/crm/leads/${encodeURIComponent(leadId)}/interactions/${encodeURIComponent(interactionId)}`,
+      { method: 'DELETE' },
+      A,
+    ),
+  addLeadInteraction: (leadId: string, interaction: {
+    type: string;
+    notes: string;
+    outcome?: string;
+    date?: string;
+    nextFollowUp?: string;
+    newStatus?: string;
+  }) =>
+    apiFetch<{ ok: boolean; id: string; leadId: string; status: string }>(
+      `/admin/crm/leads/${encodeURIComponent(leadId)}/interactions`,
+      { method: 'POST', body: JSON.stringify(interaction) },
+      A,
+    ),
+  getLeadInteractions: (leadId: string, limit = 300) =>
+    apiFetch<{
+      ok: boolean;
+      communications: Array<{
+        id: string;
+        type: string;
+        date: string;
+        notes: string;
+        outcome?: string;
+        nextFollowUp?: string;
+        staffId?: string;
+      }>;
+      timeline: Array<Record<string, unknown>>;
+    }>(
+      `/admin/crm/leads/${encodeURIComponent(leadId)}/interactions?limit=${Math.min(Math.max(limit, 1), 300)}`,
+      {},
+      A,
+    ),
   syncGoogleSheet: (sheetId: string, gid: string, autoAssign: string) =>
     apiFetch<{ ok: boolean; imported: number; skipped: number; total: number; message?: string }>(
       '/admin/leads/gsheet-sync', { method: 'POST', body: JSON.stringify({ sheetId, gid, autoAssign }) }, A
@@ -456,13 +604,13 @@ export const mysqlAdmin = {
   saveFbLeadConfig: (cfg: Record<string, unknown>) =>
     apiFetch<{ ok: boolean }>('/admin/facebook-lead-ads-config', { method: 'PUT', body: JSON.stringify(cfg) }, A),
 
-  // ── WhatsApp rep proxy (per-rep personal WA instances) ──
-  waProxyChats: (instanceId: string, apiToken: string) =>
-    apiFetch<unknown[]>('/admin/whatsapp-proxy/chats', { method: 'POST', body: JSON.stringify({ instanceId, apiToken }) }, A),
-  waProxyChatHistory: (instanceId: string, apiToken: string, chatId: string, count = 30) =>
-    apiFetch<unknown[]>('/admin/whatsapp-proxy/history', { method: 'POST', body: JSON.stringify({ instanceId, apiToken, chatId, count }) }, A),
-  waProxySend: (instanceId: string, apiToken: string, phone: string, message: string) =>
-    apiFetch<{ ok: boolean; idMessage?: string }>('/admin/whatsapp-proxy/send', { method: 'POST', body: JSON.stringify({ instanceId, apiToken, phone, message }) }, A),
+  // WhatsApp credentials remain server-side; the browser never receives or stores tokens.
+  waProxyChats: () =>
+    apiFetch<unknown[]>('/admin/whatsapp-proxy/chats', { method: 'POST', body: '{}' }, A),
+  waProxyChatHistory: (chatId: string, count = 30) =>
+    apiFetch<unknown[]>('/admin/whatsapp-proxy/history', { method: 'POST', body: JSON.stringify({ chatId, count }) }, A),
+  waProxySend: (phone: string, message: string) =>
+    apiFetch<{ ok: boolean; idMessage?: string }>('/admin/whatsapp-proxy/send', { method: 'POST', body: JSON.stringify({ phone, message }) }, A),
 
   // ── Refresh Token ──
   refreshToken: () => apiFetch<{ ok: boolean; token: string }>('/auth/refresh', { method: 'POST', body: '{}' }, A),
@@ -510,7 +658,13 @@ export const mysqlPaymob = {
 // ── Custom Auth ───────────────────────────────────────────────────────────────
 export const mysqlAuth = {
   login: (email: string, password: string) =>
-    apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    apiFetch<{
+      ok: boolean;
+      token?: string;
+      user?: AuthUser;
+      totpRequired?: boolean;
+      pendingToken?: string;
+    }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string }) =>
     apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
@@ -520,6 +674,8 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/update-password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }, true),
   resetPassword: (resetToken: string, newPassword: string) =>
     apiFetch<{ ok: boolean }>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ resetToken, newPassword }) }),
+  forceResetPassword: (email: string) =>
+    apiFetch<{ ok: boolean; temporaryPassword: string }>('/admin/force-reset-password', { method: 'POST', body: JSON.stringify({ email }) }, true),
   updateSubscriberCredentials: (subscriberId: string, currentEmail: string, opts: { newEmail?: string; newPassword?: string }) =>
     apiFetch<{ ok: boolean }>(`/admin/subscribers/${subscriberId}/credentials`, { method: 'PUT', body: JSON.stringify({ currentEmail, ...opts }) }, true),
   forgotPassword: (email: string) =>
@@ -533,9 +689,9 @@ export const mysqlAuth = {
   setup2fa: () =>
     apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
   enable2fa: (token: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
   disable2fa: (token?: string) =>
-    apiFetch<{ ok: boolean }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
+    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
 };
 

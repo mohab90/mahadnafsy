@@ -11,6 +11,7 @@ interface UnifiedClientExtraCertificateModalProps {
   clientName: string;
   courses: Course[];
   draft: ExtraCertificateDraft;
+  settlementLabel: string;
   setDraft: React.Dispatch<React.SetStateAction<ExtraCertificateDraft>>;
   onSubmit: () => void;
   onClose: () => void;
@@ -22,6 +23,7 @@ export const UnifiedClientExtraCertificateModal: React.FC<UnifiedClientExtraCert
   clientName,
   courses,
   draft,
+  settlementLabel,
   setDraft,
   onSubmit,
   onClose,
@@ -70,36 +72,22 @@ export const UnifiedClientExtraCertificateModal: React.FC<UnifiedClientExtraCert
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div>
             <div>
               <label className="text-xs text-gray-600 mb-1 block">سعر الشهادة (اختياري)</label>
               <input
                 type="number"
                 min="0"
-                placeholder="0 ج.م"
+                placeholder={`0 ${settlementLabel}`}
                 value={draft.certExpected}
                 onChange={e => setDraft({ ...draft, certExpected: e.target.value })}
                 className="w-full border border-gray-200 bg-white rounded-lg px-2 py-1.5 text-sm"
               />
             </div>
-            <div>
-              <label className="text-xs text-gray-600 mb-1 block">مدفوع منها (اختياري)</label>
-              <input
-                type="number"
-                min="0"
-                placeholder="0 ج.م"
-                value={draft.certPaid}
-                onChange={e => setDraft({ ...draft, certPaid: e.target.value })}
-                className="w-full border border-gray-200 bg-white rounded-lg px-2 py-1.5 text-sm"
-              />
-            </div>
           </div>
-          {draft.certExpected && Number(draft.certExpected) > 0 && (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
-              <span className="text-blue-600">متبقي</span>
-              <span className="font-extrabold text-red-600">{Math.max(0, Number(draft.certExpected) - Number(draft.certPaid || 0)).toLocaleString()} ج.م</span>
-            </div>
-          )}
+          <p className="text-[11px] text-gray-400">
+            تسجيل المدفوع يتم من شاشة الدفع حتى يظهر في الحسابات ويرتبط بطلب الشهادة.
+          </p>
           <div className="flex gap-2 pt-1">
             <button
               onClick={onSubmit}

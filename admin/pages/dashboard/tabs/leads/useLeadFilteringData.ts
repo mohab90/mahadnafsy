@@ -9,7 +9,7 @@ import {
   getLeadBranchRaw,
   getRottenLevel,
 } from '../leadUtils';
-import { normBranchId } from './LeadSubcomponents';
+import { normBranchId } from './leadBranchUtils';
 
 type FollowupFilter =
   | 'all'
@@ -41,6 +41,7 @@ type UseLeadFilteringDataArgs = {
   leadsFollowupFilter: FollowupFilter;
   statusFilter: Set<LeadStatus>;
   instituteBranches: BranchOption[];
+  pipelineColumns?: LeadStatus[];
 };
 
 export function useLeadFilteringData({
@@ -62,6 +63,7 @@ export function useLeadFilteringData({
   leadsFollowupFilter,
   statusFilter,
   instituteBranches,
+  pipelineColumns = PIPELINE_COLS,
 }: UseLeadFilteringDataArgs) {
   const today = new Date().toISOString().slice(0, 10);
   const activeLead = selectedId ? (leads.find((lead) => lead.id === selectedId) ?? null) : null;
@@ -142,9 +144,9 @@ export function useLeadFilteringData({
   const activeStatusCols = useMemo(() => {
     const alwaysOn: LeadStatus[] = ['new', 'interested_booking', 'interested_followup', 'no_answer_wa', 'no_answer_nowa', 'not_interested'];
     const inUse = new Set(visibleLeads.map((lead) => lead.status));
-    const baseCols = PIPELINE_COLS.filter((status) => alwaysOn.includes(status) || inUse.has(status));
+    const baseCols = pipelineColumns.filter((status) => alwaysOn.includes(status) || inUse.has(status));
     return statusFilter.size === 0 ? baseCols : baseCols.filter((status) => statusFilter.has(status));
-  }, [visibleLeads, statusFilter]);
+  }, [visibleLeads, statusFilter, pipelineColumns]);
 
   const overdueLeads = useMemo(() =>
     leads

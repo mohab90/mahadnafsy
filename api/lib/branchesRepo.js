@@ -7,9 +7,10 @@
  */
 const { pool, cached } = require('./db');
 const { BRANCHES, BRANCH_LABELS_AR } = require('../constants/branches');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 // Returns [{ branch_key, label, branch_type, timezone, currency }], cached 5 min.
-async function listBranches(tenantId = 'mahad') {
+async function listBranches(tenantId = DEFAULT_TENANT) {
   try {
     return await cached(`branches:${tenantId}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
@@ -29,7 +30,7 @@ async function listBranches(tenantId = 'mahad') {
   }
 }
 
-async function branchKeys(tenantId = 'mahad') {
+async function branchKeys(tenantId = DEFAULT_TENANT) {
   return (await listBranches(tenantId)).map((b) => b.branch_key);
 }
 

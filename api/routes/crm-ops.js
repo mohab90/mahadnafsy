@@ -5,11 +5,11 @@ const router = express.Router();
 
 const logger = require('../lib/logger').child({ module: 'crm-ops-route' });
 const { pool } = require('../lib/db');
-const { uuidv4 } = require('../lib/id');
-const { logLeadEvent } = require('../lib/crm');
+const { queueLeadWhatsAppBatch } = require('../lib/leadInteractions');
+const { leadScope } = require('../lib/leadAccess');
+const { buildWorkQueue } = require('../lib/crmWorkQueue');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { whatsappSendLimiter } = require('../middleware/rateLimits');
-const outbox = require('../lib/outbox');
 
 function routeError(res, error, message = 'crm ops route failed') {
   logger.error(message, error);
@@ -17,7 +17,7 @@ function routeError(res, error, message = 'crm ops route failed') {
 }
 
 router.get('/api/admin/crm/stale-leads', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
-  const days = Math.min(parseInt(req.query.days || '7'), 90);
+  const days = Math.min(Math.max(parseInt(req.query.days || '7', 10) || 7, 1), 90);
   try {
     let sql = `
       SELECT
@@ -27,19 +27,12 @@ router.get('/api/admin/crm/stale-leads', requireAuth, requireAdminOrStaff, requi
         COALESCE(MAX(c.date), l.last_follow_up, l.created_at) AS last_comm_date,
         DATEDIFF(NOW(), COALESCE(MAX(c.date), l.last_follow_up, l.created_at)) AS days_silent
       FROM leads l
-      LEFT JOIN communications c ON c.lead_id = l.id
+      LEFT JOIN communications c ON c.tenant_id = l.tenant_id AND c.lead_id = l.id
       WHERE l.tenant_id=? AND l.hidden=0 AND l.status NOT IN ('converted','lost','not_interested')`;
     const params = [req.tenantId];
-    const staffRole = (req.staffRecord?.role || '').toUpperCase();
-    if (req.staffRecord && !req.isSuperAdmin) {
-      if (staffRole === 'SALES') {
-        sql += ' AND l.assigned_sales_id = ?';
-        params.push(req.staffRecord.id);
-      } else if (staffRole === 'COLLECTION' || staffRole === 'CS') {
-        sql += ' AND l.id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL)';
-        params.push(req.tenantId, req.staffRecord.id);
-      }
-    }
+    const scope = leadScope(req, 'l');
+    sql += scope.sql;
+    params.push(...scope.params);
     sql += `
       GROUP BY l.id
       HAVING
@@ -63,19 +56,12 @@ router.get('/api/admin/crm/follow-up-due', requireAuth, requireAdminOrStaff, req
       FROM leads l
       WHERE l.tenant_id=? AND l.hidden=0
         AND l.next_follow_up_date IS NOT NULL
-        AND l.next_follow_up_date <= DATE_ADD(CURDATE(), INTERVAL 1 DAY)
+        AND l.next_follow_up_date <= CURDATE()
         AND l.status NOT IN ('converted','lost')`;
     const params = [req.tenantId];
-    const fuRole = (req.staffRecord?.role || '').toUpperCase();
-    if (req.staffRecord && !req.isSuperAdmin) {
-      if (fuRole === 'SALES') {
-        sql += ' AND l.assigned_sales_id = ?';
-        params.push(req.staffRecord.id);
-      } else if (fuRole === 'COLLECTION' || fuRole === 'CS') {
-        sql += ' AND l.id IN (SELECT lead_id FROM subscribers WHERE tenant_id=? AND assigned_cs_id=? AND lead_id IS NOT NULL)';
-        params.push(req.tenantId, req.staffRecord.id);
-      }
-    }
+    const scope = leadScope(req, 'l');
+    sql += scope.sql;
+    params.push(...scope.params);
     sql += ' ORDER BY l.next_follow_up_date ASC LIMIT 100';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
@@ -83,47 +69,58 @@ router.get('/api/admin/crm/follow-up-due', requireAuth, requireAdminOrStaff, req
 });
 
 router.post('/api/admin/crm/bulk-whatsapp', requireAuth, requireAdminOrStaff, requirePermission('bulk_whatsapp'), whatsappSendLimiter, async (req, res) => {
-  const { leads = [], message } = req.body || {};
-  if (!message || !leads.length) return res.status(400).json({ error: 'leads[] and message required' });
-  if (leads.length > 100) return res.status(400).json({ error: 'max 100 leads per batch' });
-  const leadIds = [...new Set(leads.map(lead => String(lead.id || '')).filter(Boolean))];
-  if (!leadIds.length) return res.status(400).json({ error: 'valid lead ids required' });
-  const params = [req.tenantId, ...leadIds];
-  let ownership = '';
-  if (req.staffRecord?.role === 'SALES') {
-    ownership = ' AND assigned_sales_id=?';
-    params.push(req.staffRecord.id);
-  }
-  const [ownedLeads] = await pool.query(
-    `SELECT id, name, phone FROM leads WHERE tenant_id=? AND id IN (${leadIds.map(() => '?').join(',')}) AND hidden=0${ownership}`,
-    params
-  );
-  // Enqueued via the durable outbox (drained by the background worker) instead of
-  // sent inline — the previous loop awaited sendWhatsApp() plus 3 sequential DB
-  // queries per lead, blocking the request for the full batch's real API latency
-  // with no retry on failure (PERF-02).
-  const results = [];
-  for (const lead of ownedLeads) {
-    const phone = (lead.phone || '').replace(/\D/g, '');
-    const personalMsg = message.replace(/\{name\}/g, lead.name || '');
-    await outbox.enqueue({
-      channel: 'whatsapp', recipient: phone,
-      payload: { message: personalMsg },
-      tenantId: req.tenantId, refType: 'lead', refId: lead.id,
+  try {
+    const { leads = [], message } = req.body || {};
+    if (!message || !leads.length) return res.status(400).json({ error: 'leads[] and message required' });
+    if (leads.length > 100) return res.status(400).json({ error: 'max 100 leads per batch' });
+    const results = await queueLeadWhatsAppBatch({
+      tenantId: req.tenantId,
+      leadIds: leads.map(lead => lead.id),
+      message,
+      actor: { email: req.user?.email || null, name: req.staffRecord?.name || null },
+      staffId: req.staffRecord?.id || null,
+      accessScope: leadScope(req, 'l'),
     });
-    await pool.query(
-      `INSERT INTO communications (id, lead_id, type, date, notes, staff_id)
-       VALUES (?, ?, 'WHATSAPP', NOW(), ?, ?)`,
-      [uuidv4(), lead.id, `رسالة جماعية: ${personalMsg.substring(0, 100)}`, req.user?.uid || null]
-    );
-    await pool.query('UPDATE leads SET last_follow_up=NOW() WHERE id=? AND tenant_id=?', [lead.id, req.tenantId]);
-    await logLeadEvent(lead.id, 'WHATSAPP_QUEUED', `جدولة رسالة جماعية للرقم ${phone}`,
-      { msg: personalMsg.substring(0, 200), sender: req.user?.email }, req.tenantId);
-    results.push({ id: lead.id, phone, ok: true, err: null });
+    res.json({ ok: true, sent: results.length, failed: 0, queued: results.length, results });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    routeError(res, error, 'crm whatsapp batch failed');
   }
-  // `sent`/`failed` kept for the existing frontend caller (LeadsTab.tsx) — matches
-  // the already-established "queued now means sent" wording used for email/SMS campaigns.
-  res.json({ ok: true, sent: results.length, failed: 0, queued: results.length, results });
+});
+
+router.get('/api/admin/crm/work-queue', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.json(buildWorkQueue([]));
+    const sourceLimit = Math.min(Math.max(parseInt(req.query.limit || '100', 10) || 100, 1), 250);
+    const [rows] = await pool.query(
+      `SELECT l.id,l.name,l.phone,l.email,l.status,l.source,l.branch,l.interest_level,
+              l.score,l.deal_value,l.forecast_category,l.expected_close_date,
+              l.next_follow_up_date,l.created_at,l.assigned_sales_id,l.assigned_sales_name,
+              comm.communication_count,comm.last_communication_at,
+              seq.active_sequence_id
+         FROM leads l
+         LEFT JOIN (
+           SELECT tenant_id,lead_id,COUNT(*) AS communication_count,MAX(date) AS last_communication_at
+             FROM communications WHERE tenant_id=? GROUP BY tenant_id,lead_id
+         ) comm ON comm.tenant_id=l.tenant_id AND comm.lead_id=l.id
+         LEFT JOIN (
+           SELECT tenant_id,lead_id,MIN(sequence_id) AS active_sequence_id
+             FROM drip_enrollments
+            WHERE tenant_id=? AND status IN ('active','paused') AND lead_id IS NOT NULL
+            GROUP BY tenant_id,lead_id
+         ) seq ON seq.tenant_id=l.tenant_id AND seq.lead_id=l.id
+        WHERE l.tenant_id=? AND l.hidden=0 AND l.deleted_at IS NULL
+          AND LOWER(l.status) NOT IN ('converted','lost','archived','disqualified','not_interested','wrong_number','junk')
+          ${scope.sql}
+        ORDER BY l.score DESC,l.created_at ASC
+        LIMIT ?`,
+      [req.tenantId, req.tenantId, req.tenantId, ...scope.params, Math.max(sourceLimit * 4, 250)]
+    );
+    res.json(buildWorkQueue(rows, { limit: sourceLimit }));
+  } catch (error) {
+    routeError(res, error, 'CRM work queue failed');
+  }
 });
 
 module.exports = router;

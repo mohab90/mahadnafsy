@@ -39,6 +39,8 @@ type LeadCommunicationsTimelineProps = {
   setCommFilter: React.Dispatch<React.SetStateAction<LeadCommunicationFilter>>;
   salesReps: StaffMember[];
   isSalesOnly: boolean;
+  canManageLeads: boolean;
+  canExportLeads: boolean;
   showAddComm: boolean;
   setShowAddComm: React.Dispatch<React.SetStateAction<boolean>>;
   addCommDraft: QuickCommunicationDraft;
@@ -66,6 +68,8 @@ export function LeadCommunicationsTimeline({
   setCommFilter,
   salesReps,
   isSalesOnly,
+  canManageLeads,
+  canExportLeads,
   showAddComm,
   setShowAddComm,
   addCommDraft,
@@ -97,6 +101,8 @@ export function LeadCommunicationsTimeline({
                   setCommFilter={setCommFilter}
                   salesReps={salesReps}
                   isSalesOnly={isSalesOnly}
+                  canManageLeads={canManageLeads}
+                  canExportLeads={canExportLeads}
                   showAddComm={showAddComm}
                   setShowAddComm={setShowAddComm}
                   addCommDraft={addCommDraft}
@@ -146,7 +152,7 @@ export function LeadCommunicationsTimeline({
                             <div className="flex flex-col items-end gap-1.5 flex-shrink-0">    
                               <span className="text-[10px] text-gray-400" dir="ltr">{dateStr}</span>    
                               <div className="flex gap-1">    
-                                {lead && (    
+                                {lead && canManageLeads && (
                                   <a href={`https://wa.me/${formatWaPhone(c.leadPhone)}`} target="_blank" rel="noreferrer"    
                                     className="h-6 w-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 text-xs transition" title="واتساب">    
                                     💬    

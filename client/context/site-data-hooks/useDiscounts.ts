@@ -1,40 +1,18 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DiscountRule } from '../../types';
-import { mysqlAdmin } from '../../lib/mysqlapi';
+import { mysqlCatalog } from '../../lib/mysqlapi';
 
-type Track = (action: string, entity: string, label: string) => void;
-
-export function useDiscounts(initialDiscounts: DiscountRule[], track: Track) {
+/** Public pricing rules; admin mutations belong exclusively to the admin app. */
+export function useDiscounts(initialDiscounts: DiscountRule[]) {
   const [discounts, setDiscounts] = useState<DiscountRule[]>(initialDiscounts);
-  const lastLocalConfigWriteRef = useRef(0);
 
-  const persistDiscountsToConfig = (items: DiscountRule[]) => void mysqlAdmin.saveDiscounts(items as unknown[]).catch(() => {});
+  useEffect(() => {
+    let cancelled = false;
+    void mysqlCatalog.listDiscounts().then((rows) => {
+      if (!cancelled) setDiscounts(rows as unknown as DiscountRule[]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
-  const addDiscount = (item: DiscountRule) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...discounts];
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('create', 'discount', item.label || `${item.discountPercent}%`);
-  };
-
-  const updateDiscount = (item: DiscountRule) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = discounts.map((d) => (d.id === item.id ? item : d));
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('update', 'discount', item.label || `${item.discountPercent}%`);
-  };
-
-  const deleteDiscount = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = discounts.filter((d) => d.id !== id);
-    setDiscounts(next);
-    persistDiscountsToConfig(next);
-    track('delete', 'discount', id);
-  };
-
-  const resetDiscounts = () => setDiscounts([]);
-
-  return { discounts, addDiscount, updateDiscount, deleteDiscount, resetDiscounts };
+  return { discounts };
 }

@@ -16,9 +16,9 @@ interface Props {
   communityLibraryItems: CommunityLibraryItem[];
   communityVideos: CommunityVideoItem[];
   communityEvents: CommunityEventItem[];
-  updateCommunityPost: (post: CommunityPostItem) => void;
-  deleteCommunityPost: (id: string) => void;
-  addCommunityPost: (post: CommunityPostItem) => void;
+  updateCommunityPost: (post: CommunityPostItem) => Promise<boolean>;
+  deleteCommunityPost: (id: string) => Promise<boolean>;
+  addCommunityPost: (post: CommunityPostItem) => Promise<boolean>;
   communityPostDraft: CommunityPostDraft;
   setCommunityPostDraft: React.Dispatch<React.SetStateAction<CommunityPostDraft>>;
   isCommunityPostFormOpen: boolean;
@@ -31,27 +31,27 @@ interface Props {
   setIsCommunityLibraryFormOpen: (open: boolean) => void;
   editingCommunityLibraryId: string;
   setEditingCommunityLibraryId: (id: string) => void;
-  addCommunityLibraryItem: (item: CommunityLibraryItem) => void;
-  updateCommunityLibraryItem: (item: CommunityLibraryItem) => void;
-  deleteCommunityLibraryItem: (id: string) => void;
+  addCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
+  updateCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
+  deleteCommunityLibraryItem: (id: string) => Promise<boolean>;
   communityVideoDraft: CommunityVideoDraft;
   setCommunityVideoDraft: React.Dispatch<React.SetStateAction<CommunityVideoDraft>>;
   isCommunityVideoFormOpen: boolean;
   setIsCommunityVideoFormOpen: (open: boolean) => void;
   editingCommunityVideoId: string;
   setEditingCommunityVideoId: (id: string) => void;
-  addCommunityVideo: (video: CommunityVideoItem) => void;
-  updateCommunityVideo: (video: CommunityVideoItem) => void;
-  deleteCommunityVideo: (id: string) => void;
+  addCommunityVideo: (video: CommunityVideoItem) => Promise<boolean>;
+  updateCommunityVideo: (video: CommunityVideoItem) => Promise<boolean>;
+  deleteCommunityVideo: (id: string) => Promise<boolean>;
   communityEventDraft: CommunityEventDraft;
   setCommunityEventDraft: React.Dispatch<React.SetStateAction<CommunityEventDraft>>;
   isCommunityEventFormOpen: boolean;
   setIsCommunityEventFormOpen: (open: boolean) => void;
   editingCommunityEventId: string;
   setEditingCommunityEventId: (id: string) => void;
-  addCommunityEvent: (event: CommunityEventItem) => void;
-  updateCommunityEvent: (event: CommunityEventItem) => void;
-  deleteCommunityEvent: (id: string) => void;
+  addCommunityEvent: (event: CommunityEventItem) => Promise<boolean>;
+  updateCommunityEvent: (event: CommunityEventItem) => Promise<boolean>;
+  deleteCommunityEvent: (id: string) => Promise<boolean>;
 }
 
 export function DashboardCommunityAdminPanel({
@@ -203,15 +203,16 @@ export function DashboardCommunityAdminPanel({
                             <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={communityPostDraft.pinned} onChange={e => setCommunityPostDraft(d => ({ ...d, pinned: e.target.checked }))} className="w-4 h-4 accent-teal-600" /><span className="text-sm">تثبيت المنشور</span></label>
                           </div>
                           <div className="flex gap-3 mt-4">
-                            <button onClick={() => {
+                            <button onClick={async () => {
                               if (!communityPostDraft.title.trim() || !communityPostDraft.body.trim()) return;
+                              let saved: boolean;
                               if (editingCommunityPostId) {
                                 const existing = communityPosts.find(p => p.id === editingCommunityPostId);
-                                updateCommunityPost({ ...existing!, ...communityPostDraft });
+                                saved = await updateCommunityPost({ ...existing!, ...communityPostDraft });
                               } else {
-                                addCommunityPost({ id: `post-${Date.now()}`, ...communityPostDraft, likes: 0, comments: 0, createdAt: new Date().toISOString().slice(0,10), status: 'approved' });
+                                saved = await addCommunityPost({ id: `post-${Date.now()}`, ...communityPostDraft, likes: 0, comments: 0, createdAt: new Date().toISOString().slice(0,10), status: 'approved' });
                               }
-                              setIsCommunityPostFormOpen(false);
+                              if (saved) setIsCommunityPostFormOpen(false);
                             }} disabled={!communityPostDraft.title.trim() || !communityPostDraft.body.trim()}
                               className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 disabled:opacity-50">حفظ</button>
                             <button onClick={() => setIsCommunityPostFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
@@ -263,11 +264,12 @@ export function DashboardCommunityAdminPanel({
                             <div><label className="text-xs text-gray-600 mb-1 block">رابط التحميل</label><input value={communityLibraryDraft.downloadUrl} onChange={e => setCommunityLibraryDraft(d => ({ ...d, downloadUrl: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" dir="ltr" /></div>
                           </div>
                           <div className="flex gap-3 mt-4">
-                            <button onClick={() => {
+                            <button onClick={async () => {
                               if (!communityLibraryDraft.title.trim()) return;
-                              if (editingCommunityLibraryId) updateCommunityLibraryItem({ id: editingCommunityLibraryId, ...communityLibraryDraft });
-                              else addCommunityLibraryItem({ id: `lib-${Date.now()}`, ...communityLibraryDraft });
-                              setIsCommunityLibraryFormOpen(false);
+                              const saved = editingCommunityLibraryId
+                                ? await updateCommunityLibraryItem({ id: editingCommunityLibraryId, ...communityLibraryDraft })
+                                : await addCommunityLibraryItem({ id: `lib-${Date.now()}`, ...communityLibraryDraft });
+                              if (saved) setIsCommunityLibraryFormOpen(false);
                             }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
                             <button onClick={() => setIsCommunityLibraryFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>
@@ -317,11 +319,12 @@ export function DashboardCommunityAdminPanel({
                             <div><label className="text-xs text-gray-600 mb-1 block">الصورة المصغرة</label><input value={communityVideoDraft.thumbnail} onChange={e => setCommunityVideoDraft(d => ({ ...d, thumbnail: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" dir="ltr" /></div>
                           </div>
                           <div className="flex gap-3 mt-4">
-                            <button onClick={() => {
+                            <button onClick={async () => {
                               if (!communityVideoDraft.title.trim()) return;
-                              if (editingCommunityVideoId) updateCommunityVideo({ id: editingCommunityVideoId, ...communityVideoDraft });
-                              else addCommunityVideo({ id: `vid-${Date.now()}`, ...communityVideoDraft });
-                              setIsCommunityVideoFormOpen(false);
+                              const saved = editingCommunityVideoId
+                                ? await updateCommunityVideo({ id: editingCommunityVideoId, ...communityVideoDraft })
+                                : await addCommunityVideo({ id: `vid-${Date.now()}`, ...communityVideoDraft });
+                              if (saved) setIsCommunityVideoFormOpen(false);
                             }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
                             <button onClick={() => setIsCommunityVideoFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>
@@ -376,11 +379,12 @@ export function DashboardCommunityAdminPanel({
                             <div><label className="text-xs text-gray-600 mb-1 block">وصف الفعالية</label><textarea value={communityEventDraft.description} onChange={e => setCommunityEventDraft(d => ({ ...d, description: e.target.value }))} rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" /></div>
                           </div>
                           <div className="flex gap-3 mt-4">
-                            <button onClick={() => {
+                            <button onClick={async () => {
                               if (!communityEventDraft.title.trim()) return;
-                              if (editingCommunityEventId) updateCommunityEvent({ id: editingCommunityEventId, ...communityEventDraft });
-                              else addCommunityEvent({ id: `ev-${Date.now()}`, ...communityEventDraft });
-                              setIsCommunityEventFormOpen(false);
+                              const saved = editingCommunityEventId
+                                ? await updateCommunityEvent({ id: editingCommunityEventId, ...communityEventDraft })
+                                : await addCommunityEvent({ id: `ev-${Date.now()}`, ...communityEventDraft });
+                              if (saved) setIsCommunityEventFormOpen(false);
                             }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
                             <button onClick={() => setIsCommunityEventFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>

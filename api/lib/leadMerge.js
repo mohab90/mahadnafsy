@@ -3,6 +3,7 @@
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { normalizePhone, tryJson } = require('./helpers');
+const { logLeadEventStrict } = require('./crm');
 
 function normalizedEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -11,13 +12,9 @@ function normalizedEmail(value) {
 function mergeJson(targetRaw, sourceRows) {
   const target = tryJson(targetRaw, {});
   const sources = sourceRows.map(row => tryJson(row.crm_json, {}));
-  const communications = [];
-  const seen = new Set();
-  for (const item of [target, ...sources].flatMap(crm => Array.isArray(crm.communications) ? crm.communications : [])) {
-    const key = item?.id || `${item?.date || ''}|${item?.type || ''}|${String(item?.notes || '').slice(0, 120)}`;
-    if (!seen.has(key)) { seen.add(key); communications.push(item); }
-  }
-  return { ...sources.reduce((acc, crm) => ({ ...acc, ...crm }), {}), ...target, communications };
+  const merged = { ...sources.reduce((acc, crm) => ({ ...acc, ...crm }), {}), ...target };
+  delete merged.communications;
+  return merged;
 }
 
 function duplicateGroups(rows) {
@@ -63,6 +60,22 @@ async function findLeadDuplicateGroups(tenantId, db = pool) {
   return duplicateGroups(rows);
 }
 
+async function listLeadMergeHistory(tenantId, limit = 50, db = pool) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const [rows] = await db.query(
+    `SELECT a.id,a.target_lead_id AS targetId,a.source_lead_id AS sourceId,a.actor,
+            a.created_at AS createdAt,a.reverted_at AS revertedAt,a.reverted_by AS revertedBy,
+            target.name AS targetName,source.name AS sourceName
+       FROM lead_merge_audit a
+       JOIN leads target ON target.id=a.target_lead_id AND target.tenant_id=a.tenant_id
+       JOIN leads source ON source.id=a.source_lead_id AND source.tenant_id=a.tenant_id
+      WHERE a.tenant_id=?
+      ORDER BY a.created_at DESC LIMIT ?`,
+    [tenantId, safeLimit]
+  );
+  return rows;
+}
+
 async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
   const sources = [...new Set((sourceIds || []).map(String))].filter(id => id && id !== String(targetId));
   if (!tenantId || !targetId || !sources.length || sources.length > 100) {
@@ -105,8 +118,17 @@ async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
       ['tasks', 'related_lead_id'],
     ];
     for (const source of sourceRows) {
+      const relations = {};
       for (const [table, column] of relationUpdates) {
-        await conn.query(`UPDATE ${table} SET ${column}=? WHERE ${column}=?`, [targetId, source.id]);
+        const [related] = await conn.query(
+          `SELECT id FROM ${table} WHERE tenant_id=? AND ${column}=? FOR UPDATE`,
+          [tenantId, source.id]
+        );
+        relations[table] = related.map(row => row.id);
+        await conn.query(
+          `UPDATE ${table} SET ${column}=? WHERE tenant_id=? AND ${column}=?`,
+          [targetId, tenantId, source.id]
+        );
       }
       await conn.query(
         'UPDATE leads SET hidden=1, merged_into_lead_id=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
@@ -115,7 +137,7 @@ async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
       await conn.query(
         `INSERT INTO lead_merge_audit (id,tenant_id,target_lead_id,source_lead_id,actor,snapshot_json)
          VALUES (?,?,?,?,?,?)`,
-        [uuidv4(), tenantId, targetId, source.id, actor, JSON.stringify(source)]
+        [uuidv4(), tenantId, targetId, source.id, actor, JSON.stringify({ lead: source, relations })]
       );
     }
     await conn.query(
@@ -131,4 +153,75 @@ async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
   } finally { conn.release(); }
 }
 
-module.exports = { duplicateGroups, findLeadDuplicateGroups, mergeLeads };
+async function unmergeLead({ tenantId, sourceId, actor = null }) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[audit]] = await conn.query(
+      `SELECT * FROM lead_merge_audit
+       WHERE tenant_id=? AND source_lead_id=? AND reverted_at IS NULL
+       LIMIT 1 FOR UPDATE`,
+      [tenantId, sourceId]
+    );
+    if (!audit) {
+      const error = new Error('Active merge audit not found'); error.statusCode = 404; throw error;
+    }
+    const snapshot = tryJson(audit.snapshot_json, {});
+    if (!snapshot.relations || !snapshot.lead) {
+      const error = new Error('Legacy merge cannot be safely reversed automatically'); error.statusCode = 409; throw error;
+    }
+    const [[source]] = await conn.query(
+      `SELECT id,merged_into_lead_id FROM leads
+       WHERE tenant_id=? AND id=? AND hidden=1 LIMIT 1 FOR UPDATE`,
+      [tenantId, sourceId]
+    );
+    if (!source || String(source.merged_into_lead_id) !== String(audit.target_lead_id)) {
+      const error = new Error('Merged source lead state is inconsistent'); error.statusCode = 409; throw error;
+    }
+    const relationColumns = {
+      communications: 'lead_id',
+      lead_timeline: 'lead_id',
+      automation_log: 'lead_id',
+      drip_enrollments: 'lead_id',
+      inbox_conversations: 'linked_lead_id',
+      retargeting_log: 'lead_id',
+      subscribers: 'lead_id',
+      support_tickets: 'lead_id',
+      tasks: 'related_lead_id',
+    };
+    for (const [table, ids] of Object.entries(snapshot.relations)) {
+      const column = relationColumns[table];
+      if (!column || !Array.isArray(ids) || !ids.length) continue;
+      await conn.query(
+        `UPDATE ${table} SET ${column}=?
+         WHERE tenant_id=? AND ${column}=? AND id IN (${ids.map(() => '?').join(',')})`,
+        [sourceId, tenantId, audit.target_lead_id, ...ids]
+      );
+    }
+    await conn.query(
+      'UPDATE leads SET hidden=0,merged_into_lead_id=NULL,updated_at=NOW() WHERE id=? AND tenant_id=?',
+      [sourceId, tenantId]
+    );
+    await conn.query(
+      'UPDATE lead_merge_audit SET reverted_at=NOW(),reverted_by=? WHERE id=? AND tenant_id=?',
+      [actor, audit.id, tenantId]
+    );
+    await logLeadEventStrict(
+      sourceId, 'merge_reverted', 'Duplicate merge reverted',
+      { targetId: audit.target_lead_id, actor }, tenantId, conn
+    );
+    await conn.commit();
+    return { sourceId, targetId: audit.target_lead_id, reverted: true };
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    throw error;
+  } finally { conn.release(); }
+}
+
+module.exports = {
+  duplicateGroups,
+  findLeadDuplicateGroups,
+  listLeadMergeHistory,
+  mergeLeads,
+  unmergeLead,
+};

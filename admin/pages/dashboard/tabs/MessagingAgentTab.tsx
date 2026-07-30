@@ -17,8 +17,11 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
   });
   const [chSaved, setChSaved] = React.useState(false);
 
-  const handleSaveChannels = () => {
-    setMessagingChannels({ ...chDraft, updatedAt: new Date().toISOString() });
+  const handleSaveChannels = async () => {
+    if (!await setMessagingChannels({ ...chDraft, updatedAt: new Date().toISOString() })) {
+      notify('error', 'تعذر حفظ إعدادات قنوات الرسائل على السيرفر');
+      return;
+    }
     setChSaved(true);
     notify('success', 'تم حفظ إعدادات قنوات الرسائل');
     setTimeout(() => setChSaved(false), 3000);
@@ -336,8 +339,8 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
               </div>
             </div>
             <button
-              onClick={() => {
-                setAiAgentConfig({
+              onClick={async () => {
+                const saved = await setAiAgentConfig({
                   id: aiAgentConfig?.id || `agent-${Date.now()}`,
                   name: agentDraft.name || 'وكيل المعهد',
                   provider: (agentDraft.provider || 'gemini') as import('../../../types').AiProvider,
@@ -351,7 +354,9 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
                   knowledgeBase: agentDraft.knowledgeBase || [],
                   updatedAt: new Date().toISOString(),
                 });
-                notify('success', 'تم حفظ إعدادات وكيل AI');
+                notify(saved ? 'success' : 'error', saved
+                  ? 'تم حفظ إعدادات وكيل AI'
+                  : 'تعذر حفظ إعدادات وكيل AI على السيرفر');
               }}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-bold px-5 py-2.5 rounded-xl transition text-sm"
             >

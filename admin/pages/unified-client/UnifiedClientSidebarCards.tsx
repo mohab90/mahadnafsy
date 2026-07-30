@@ -1,6 +1,7 @@
 import { Activity, Award, BookOpen, CalendarDays, CheckCircle, Clock, Copy, CreditCard, DollarSign, Edit2, MessageSquare, Phone, Tag } from 'lucide-react';
 
 import type { BranchType, CommunicationRecord, Course, ExtraCertificateRequest, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem, UserSessionData } from '../../types';
+import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { branchLabels, EXTRA_TYPE_LABELS, normBranchKey, statusLabels } from './constants';
 
 type ProfileCardProps = {
@@ -98,6 +99,7 @@ type FinancialCardProps = {
   bookingMap: Record<string, { expectedEGP?: number | null; paidEGP: number }>;
   subPaidTotals: { EGP: number; SAR: number; USD: number };
   subRemainingEGP: number;
+  settlementLabel: string;
   onOpenDetails: () => void;
 };
 
@@ -107,6 +109,7 @@ export function UnifiedClientSidebarFinancialCard({
   bookingMap,
   subPaidTotals,
   subRemainingEGP,
+  settlementLabel,
   onOpenDetails,
 }: FinancialCardProps) {
   if (subscriber.enrolledCourseIds.length === 0) return null;
@@ -127,7 +130,7 @@ export function UnifiedClientSidebarFinancialCard({
         {subRemainingEGP > 0 && (
           <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
             <p className="font-extrabold text-red-600 text-sm">{subRemainingEGP.toLocaleString()}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">متبقي ج.م</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">متبقي {settlementLabel}</p>
           </div>
         )}
         {subPaidTotals.SAR > 0 && (
@@ -147,7 +150,7 @@ export function UnifiedClientSidebarFinancialCard({
               <p className="font-semibold text-gray-800 text-xs truncate flex-1">{c?.title || cId}</p>
               {bm ? (
                 <div className="flex-shrink-0 text-left">
-                  <p className="text-[11px] font-bold text-emerald-700">{bm.paidEGP.toLocaleString()} ج.م</p>
+                  <p className="text-[11px] font-bold text-emerald-700">{bm.paidEGP.toLocaleString()} {settlementLabel}</p>
                   {remaining !== null && remaining > 0 && <p className="text-[10px] text-red-600">باقي {remaining.toLocaleString()}</p>}
                   {remaining === 0 && <p className="text-[10px] text-emerald-600 font-bold">✅ مكتمل</p>}
                 </div>
@@ -159,7 +162,7 @@ export function UnifiedClientSidebarFinancialCard({
       {subscriber.discount != null && subscriber.discount > 0 && (
         <div className="mt-2 flex items-center justify-between bg-orange-50 border border-orange-100 rounded-xl px-3 py-1.5">
           <span className="text-xs text-orange-600">🏷️ خصم</span>
-          <span className="font-extrabold text-orange-700 text-xs">{subscriber.discount.toLocaleString()} ج.م</span>
+          <span className="font-extrabold text-orange-700 text-xs">{subscriber.discount.toLocaleString()} {settlementLabel}</span>
         </div>
       )}
     </div>
@@ -261,6 +264,7 @@ type LeadCourseCardProps = {
   enrolledCourse?: Course | null;
   leadPaidEGP: number;
   leadRemaining: number;
+  settlementLabel: string;
 };
 
 export function UnifiedClientSidebarLeadCourseCard({
@@ -268,6 +272,7 @@ export function UnifiedClientSidebarLeadCourseCard({
   enrolledCourse,
   leadPaidEGP,
   leadRemaining,
+  settlementLabel,
 }: LeadCourseCardProps) {
   if (!lead || !enrolledCourse) return null;
 
@@ -278,8 +283,8 @@ export function UnifiedClientSidebarLeadCourseCard({
         <p className="font-bold text-blue-800 text-xs">{enrolledCourse.title}</p>
         {leadPaidEGP > 0 && (
           <div className="flex items-center justify-between mt-1.5 flex-wrap gap-1">
-            <span className="text-[10px] text-emerald-700 font-bold">{leadPaidEGP.toLocaleString()} ج.م مدفوع</span>
-            {leadRemaining > 0 && <span className="text-[10px] text-red-600 font-bold">متبقي {leadRemaining.toLocaleString()}</span>}
+            <span className="text-[10px] text-emerald-700 font-bold">{leadPaidEGP.toLocaleString()} {settlementLabel} مدفوع</span>
+            {leadRemaining > 0 && <span className="text-[10px] text-red-600 font-bold">متبقي {leadRemaining.toLocaleString()} {settlementLabel}</span>}
           </div>
         )}
       </div>
@@ -359,6 +364,8 @@ type ActivityCardProps = {
   allComms: CommunicationRecord[];
   installmentPlans: InstallmentPlan[];
   todayStr: string;
+  settlementCurrency: SettlementCurrency;
+  settlementLabel: string;
 };
 
 export function UnifiedClientSidebarActivityCard({
@@ -368,6 +375,8 @@ export function UnifiedClientSidebarActivityCard({
   allComms,
   installmentPlans,
   todayStr,
+  settlementCurrency,
+  settlementLabel,
 }: ActivityCardProps) {
   if (!subscriber || !(sessionData || subscriber.lectureProgress)) return null;
 
@@ -375,6 +384,7 @@ export function UnifiedClientSidebarActivityCard({
   const completedLectures = Object.values(subscriber.lectureProgress || {}).filter((p) => (p as number) > 0).length;
   const completionPct = totalLectures > 0 ? Math.round((completedLectures / totalLectures) * 100) : null;
   const overdueAmount = installmentPlans
+    .filter(plan => plan.currency === settlementCurrency)
     .flatMap(p => p.entries.filter(e => !e.paidAt && e.dueDate < todayStr))
     .reduce((sum, entry) => sum + entry.amount, 0);
 
@@ -404,7 +414,7 @@ export function UnifiedClientSidebarActivityCard({
       )}
       {overdueAmount > 0 && (
         <div className="mt-2 flex items-center justify-between text-xs bg-red-50 rounded-xl px-2.5 py-1.5 border border-red-100">
-          <span className="text-red-600 font-bold">🔴 أقساط متأخرة</span><span className="text-red-700 font-extrabold">{overdueAmount.toLocaleString()} ج.م</span>
+          <span className="text-red-600 font-bold">🔴 أقساط متأخرة</span><span className="text-red-700 font-extrabold">{overdueAmount.toLocaleString()} {settlementLabel}</span>
         </div>
       )}
     </div>
@@ -467,10 +477,12 @@ export function UnifiedClientSidebarPromoCard({
 export function UnifiedClientSidebarDiscountCard({
   subscriber,
   discountBase,
+  settlementLabel,
   onUpdateDiscount,
 }: {
   subscriber?: SubscriberItem;
   discountBase: number;
+  settlementLabel: string;
   onUpdateDiscount: (discount: number) => void;
 }) {
   if (!subscriber || discountBase <= 0) return null;
@@ -492,10 +504,10 @@ export function UnifiedClientSidebarDiscountCard({
       </div>
       {subscriber.discount != null && subscriber.discount > 0 && (
         <button onClick={() => onUpdateDiscount(0)} className="w-full py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-xl transition">
-          ✕ إلغاء الخصم ({subscriber.discount.toLocaleString()} ج.م)
+          ✕ إلغاء الخصم ({subscriber.discount.toLocaleString()} {settlementLabel})
         </button>
       )}
-      <p className="text-[10px] text-gray-400 mt-1.5 text-center">محسوبة من {discountBase.toLocaleString()} ج.م</p>
+      <p className="text-[10px] text-gray-400 mt-1.5 text-center">محسوبة من {discountBase.toLocaleString()} {settlementLabel}</p>
     </div>
   );
 }

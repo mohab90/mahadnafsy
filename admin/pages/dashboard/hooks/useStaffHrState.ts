@@ -12,13 +12,9 @@ import { blankStaffMember } from '../dashboardShared';
  * useState lines.
  */
 export function useStaffHrState() {
-  const [staffWaTemplates, setStaffWaTemplates] = useState<{ id: string; title: string; body: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('sales.waTemplates') || '[]'); } catch { return []; }
-  });
+  const [staffWaTemplates, setStaffWaTemplates] = useState<{ id: string; title: string; body: string }[]>([]);
   const [staffWaTemplateEdit, setStaffWaTemplateEdit] = useState<{ id: string; title: string; body: string } | null>(null);
-  const [staffContactTags, setStaffContactTags] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('sales.customTags') || '[]'); } catch { return []; }
-  });
+  const [staffContactTags, setStaffContactTags] = useState<string[]>([]);
   const [staffNewTagInput, setStaffNewTagInput] = useState('');
   const [staffSettingsDraft, setStaffSettingsDraft] = useState<{ name: string; phone: string; image: string; waNumber: string; monthlyTarget: string } | null>(null);
   const [staffSettingsSaving, setStaffSettingsSaving] = useState(false);
@@ -34,6 +30,11 @@ export function useStaffHrState() {
   } | null>(null);
   const [loadingMyHr, setLoadingMyHr] = useState(false);
   const [myAdvances, setMyAdvances] = useState<{ id: string; amount: number; currency: string; reason: string | null; status: string; created_at: string }[]>([]);
+  const [myDisciplinary, setMyDisciplinary] = useState<{
+    id: string; type: string; severity: string; title: string; description: string | null;
+    incident_date: string | null; action_taken: string | null; appeal_note: string | null;
+    acknowledged_at: string | null; status: string; created_at: string;
+  }[]>([]);
   const [showAdvanceForm, setShowAdvanceForm] = useState(false);
   const [advanceDraft, setAdvanceDraft] = useState({ amount: '', reason: '' });
   const [submittingAdvance, setSubmittingAdvance] = useState(false);
@@ -59,6 +60,7 @@ export function useStaffHrState() {
     myHrData, setMyHrData,
     loadingMyHr, setLoadingMyHr,
     myAdvances, setMyAdvances,
+    myDisciplinary, setMyDisciplinary,
     showAdvanceForm, setShowAdvanceForm,
     advanceDraft, setAdvanceDraft,
     submittingAdvance, setSubmittingAdvance,

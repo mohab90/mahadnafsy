@@ -1,5 +1,6 @@
 'use strict';
 const logger = require('../lib/logger');
+const { listCustomerTimeline } = require('../lib/customerTimeline');
 const { Router } = require('express');
 const QRCode = require('qrcode');
 const router = Router();
@@ -14,9 +15,10 @@ const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLe
 const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
-const { ADMIN_EMAILS, ADMIN_UIDS, optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
-const { onlineMap } = require('../lib/onlineUsers');
+const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
+const { resolveClientContext } = require('../lib/clientContext');
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ROUTES (no auth required)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,6 +26,26 @@ const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
 // GET /api/search?q=... — tenant-safe public catalogue search.
 // Community content is deliberately excluded until the legacy community tables
 // have explicit tenant ownership; returning it here would bypass SaaS isolation.
+router.get('/api/public/client-context', publicLimiter, optionalAuth, async (req, res) => {
+  const clientContext = await resolveClientContext(req);
+  res.set('Cache-Control', 'private, no-store');
+  res.set('Vary', 'CF-IPCountry, X-Vercel-IP-Country, CloudFront-Viewer-Country');
+  if (!clientContext.locationResolved) {
+    return res.status(503).json({
+      error: 'Customer location could not be verified',
+      code: 'LOCATION_UNAVAILABLE',
+    });
+  }
+  if (req.user?.uid) {
+    pool.query(
+      `UPDATE users SET last_country_code=?, preferred_currency=?, last_geo_at=NOW()
+        WHERE id=? AND tenant_id=? AND active_session_id=?`,
+      [clientContext.countryCode, clientContext.currency, req.user.uid, req.tenantId, req.user.session_id]
+    ).catch(error => logger.warn('[client-context] user context update failed', error.message));
+  }
+  res.json(clientContext);
+});
+
 router.get('/api/search', publicLimiter, async (req, res) => {
   try {
     const query = sanitize(String(req.query.q || '').trim(), 80);
@@ -159,7 +181,7 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
     if (!ratingNum || ratingNum < 1 || ratingNum > 5) return res.status(400).json({ error: 'rating must be 1–5' });
     const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
     if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً للتقييم' });
-    const [[enroll]] = await pool.query('SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1', [sub.id, courseId, req.tenantId]);
+    const [[enroll]] = await pool.query("SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? AND status='active' LIMIT 1", [sub.id, courseId, req.tenantId]);
     if (!enroll) return res.status(403).json({ error: 'يجب أن تكون مسجلاً في الدورة' });
     await pool.query(
       `INSERT INTO course_ratings (id, course_id, subscriber_id, rating, comment, tenant_id, created_at)
@@ -202,8 +224,17 @@ router.post('/api/lectures/:id/view', publicLimiter, optionalAuth, async (req, r
 });
 
 // ── Admin: GET /api/admin/lesson-analytics/:courseId ─────────────────────────
-router.get('/api/admin/lesson-analytics/:courseId', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/lesson-analytics/:courseId', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
+    const [[course]] = await pool.query(
+      'SELECT id,instructor_id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      [req.params.courseId, req.tenantId]
+    );
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    const role = String(req.staffRecord?.role || '').toLowerCase();
+    if (['instructor', 'trainer'].includes(role) && String(course.instructor_id || '') !== String(req.staffRecord.id)) {
+      return res.status(403).json({ error: 'Instructor analytics are limited to assigned courses' });
+    }
     const [rows] = await pool.query(
       `SELECT cl.id, cl.title, cl.sort_order, cl.view_count
        FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
@@ -221,10 +252,10 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
     const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
     if (!sub) return res.json([]);
     const [rows] = await pool.query(
-      `SELECT cc.*, c.title AS course_title, c.thumbnail_url AS course_thumbnail
+      `SELECT cc.*, c.title AS course_title, c.thumbnail AS course_thumbnail
        FROM course_completions cc
        LEFT JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
-       WHERE cc.subscriber_id = ? AND cc.tenant_id=?
+       WHERE cc.subscriber_id = ? AND cc.tenant_id=? AND cc.status='active'
        ORDER BY cc.completed_at DESC`,
       [sub.id, req.tenantId]
     );
@@ -243,10 +274,25 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
 // req.tenantId here would 404 every certificate that isn't on the default
 // tenant. The join columns still carry tenant_id=tenant_id so a result can
 // never straddle two tenants' subscriber/course rows even without the filter.
+router.get('/api/me/timeline', requireAuth, async (req, res) => {
+  try {
+    const email = String(req.user.email || '').toLowerCase().trim();
+    const [[subscriber]] = await pool.query(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
+      [req.tenantId, email]
+    );
+    res.json(subscriber ? await listCustomerTimeline(req.tenantId, subscriber.id) : []);
+  } catch (error) {
+    logger.error('[customer-timeline]', error.message);
+    res.status(500).json({ error: 'Unable to load customer timeline' });
+  }
+});
+
 router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
   try {
     const [[row]] = await pool.query(
-      `SELECT cc.certificate_code, cc.completed_at, s.name AS subscriber_name, c.title AS course_title
+      `SELECT cc.certificate_code,cc.completed_at,cc.status,cc.version,
+              s.name AS subscriber_name,c.title AS course_title
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id = cc.tenant_id
        JOIN courses c ON c.id = cc.course_id AND c.tenant_id = cc.tenant_id
@@ -254,6 +300,7 @@ router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
       [req.params.code]
     );
     if (!row) return res.status(404).json({ error: 'الشهادة غير موجودة' });
+    if (row.status !== 'active') return res.status(410).json({ valid: false, status: row.status, error: 'Certificate revoked' });
     res.json(row);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -264,7 +311,7 @@ router.get('/api/completions/verify/:code', publicLimiter, async (req, res) => {
 router.get('/api/completions/:code/certificate', publicLimiter, async (req, res) => {
   try {
     const [[row]] = await pool.query(
-      `SELECT cc.certificate_code, cc.completed_at,
+      `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
               s.name AS subscriber_name, s.client_code,
               c.title AS course_title, c.hours_count,
               u.name AS instructor_name
@@ -272,8 +319,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id=cc.tenant_id
        JOIN courses c ON c.id = cc.course_id AND c.tenant_id=cc.tenant_id
        LEFT JOIN users u ON u.id = c.instructor_id AND u.tenant_id=cc.tenant_id
-       WHERE cc.certificate_code = ? AND cc.tenant_id=?`,
-      [req.params.code, req.tenantId]
+       WHERE cc.certificate_code = ? AND cc.status='active'`,
+      [req.params.code]
     );
     if (!row) return res.status(404).send('<h3>الشهادة غير موجودة</h3>');
 
@@ -285,8 +332,8 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
       : new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
     // Identity from the central brand (Settings → الهوية): logo, colour, name.
     const [brand, content] = await Promise.all([
-      getBrandSettings(req.tenantId),
-      getTenantSetting('content', { tenantId: req.tenantId, fallback: {} }),
+      getBrandSettings(row.tenant_id),
+      getTenantSetting('content', { tenantId: row.tenant_id, fallback: {} }),
     ]);
     const instituteName = brand.instituteName || 'Psychology Institute';
     const trainingMgr   = content['training_manager_name'] || content['institute.trainingManager'] || 'WALID ABDRAHMAN';
@@ -510,7 +557,7 @@ router.get('/api/bundles', publicLimiter, async (req, res) => {
       const [rows] = await pool.query(
         `SELECT b.*, GROUP_CONCAT(bc.course_id ORDER BY bc.sort_order) AS course_ids_csv
          FROM bundles b
-         LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id
+         LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id AND bc.tenant_id=b.tenant_id
          WHERE b.is_published = 1 AND b.tenant_id=?
          GROUP BY b.id
          ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
@@ -635,12 +682,28 @@ router.get('/api/content', publicLimiter, async (req, res) => {
 // anyone could otherwise read the answer key straight out of the network tab.
 // Grading happens server-side in POST /api/me/quiz-attempts, against the full
 // (unstripped) row read directly from the DB.
-router.get('/api/quizzes', publicLimiter, async (req, res) => {
+router.get('/api/quizzes', publicLimiter, requireAuth, async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
+    const email = String(req.user?.email || '').toLowerCase().trim();
+    const [[subscriber]] = await pool.query(
+      `SELECT id FROM subscribers
+        WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) AND deleted_at IS NULL LIMIT 1`,
+      [req.tenantId, req.user?.uid || '', email]
+    );
+    if (!subscriber) return res.json([]);
     const [rows] = await pool.query(
-      `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, source_material, created_at, updated_at
-       FROM course_quizzes WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
+      `SELECT id, course_id, title, questions_json, passing_score, required_for_completion,
+              generated_by_ai, source_material, created_at, updated_at
+         FROM course_quizzes q
+        WHERE q.tenant_id=? AND EXISTS (
+          SELECT 1 FROM enrollments e
+           WHERE e.tenant_id=q.tenant_id AND e.subscriber_id=? AND e.course_id=q.course_id
+             AND e.status='active'
+        )
+        ORDER BY q.created_at DESC LIMIT ?`,
+      [req.tenantId, subscriber.id, limit]
+    );
     res.json(rows.map(r => mapQuiz(r, { includeAnswers: false })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -665,7 +728,7 @@ router.get('/api/live-streams', requireAuth, async (req, res) => {
        description, created_at
        FROM live_streams WHERE tenant_id=? ORDER BY scheduled_at DESC LIMIT 200`, [req.tenantId]);
     const [enrollRows] = await pool.query(
-      'SELECT course_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND course_id IS NOT NULL',
+      "SELECT course_id FROM enrollments WHERE tenant_id=? AND subscriber_id=? AND status='active' AND course_id IS NOT NULL",
       [req.tenantId, sub.id]
     );
     const enrolledCourseIds = new Set(enrollRows.map(r => r.course_id));
@@ -704,22 +767,19 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     const id = uuidv4();
     const safeType = ['INSTRUCTOR', 'CONSULTANT', 'EMPLOYEE'].includes(String(type || '').toUpperCase())
       ? String(type).toUpperCase() : 'INSTRUCTOR';
-    await pool.query(
-      'INSERT INTO join_us_applications (id, tenant_id, branch_id, name, email, phone, specialty, experience, type, linkedin, message) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-      [id, req.tenantId, req.tenantBranchId || null, name, email, phone, specialty, experience || '', safeType, linkedin || null, message || null]
-    );
-    // Lifecycle: instant acknowledgment to the applicant.
+    const { applicantId } = await require('./hr/talent').createJoinApplication({
+      id, tenant_id: req.tenantId, branch_id: req.tenantBranchId || null,
+      name, email, phone, specialty, experience, type: safeType, linkedin, message,
+    });
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
-    require('../lib/lifecycle').trigger('join_us_received', { name, email, phone, roleLabel, tenantId: req.tenantId });
-    // Flow the applicant straight into the HR recruiting funnel (best-effort) +
-    // alert HR, so a website candidate is never a dead-end. See routes/hr/talent.js.
-    (async () => {
-      try {
-        await require('./hr/talent').convertJoinUs({ id, tenant_id: req.tenantId, name, email, phone, specialty, experience, type: safeType, linkedin, message });
-        await require('../lib/notification').createNotification('hr', 'متقدم جديد من الموقع', `${name} — ${roleLabel || safeType}`, { joinUsId: id }, req.tenantId);
-      } catch (err) { logger.warn('[join-us→pipeline]', err.message); }
-    })();
-    res.json({ ok: true, id });
+    await Promise.all([
+      require('../lib/lifecycle').trigger('join_us_received', { name, email, phone, roleLabel, tenantId: req.tenantId }),
+      require('../lib/notification').createNotification(
+        'hr', 'متقدم جديد من الموقع', `${name} — ${roleLabel || safeType}`,
+        { joinUsId: id, applicantId }, req.tenantId
+      ),
+    ]);
+    res.json({ ok: true, id, applicantId });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -758,12 +818,18 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
               c.thumbnail AS c_thumb, c.instructor AS c_instructor
        FROM enrollments e
        LEFT JOIN courses c ON c.id = e.course_id
-       WHERE e.subscriber_id = ? AND e.tenant_id=?`, [sub.id, req.tenantId]);
+       WHERE e.subscriber_id = ? AND e.tenant_id=? AND e.status='active'`, [sub.id, req.tenantId]);
     const [payments] = await pool.query(
-      `SELECT id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
-       payment_method, transaction_id, is_installment, \`date\`, note, status,
-       staff_id, staff_name, from_account, source, item_title, cert_type, created_at
-       FROM payments WHERE subscriber_id = ? AND tenant_id=? AND deleted_at IS NULL ORDER BY date DESC LIMIT 200`, [sub.id, req.tenantId]);
+      `SELECT p.id, p.subscriber_id, p.course_id, p.bundle_id, p.amount, p.currency, p.payment_type,
+       p.payment_method, p.transaction_id, p.is_installment, p.\`date\`, p.note, p.status,
+       p.staff_id, p.staff_name, p.from_account, p.source, p.item_title, p.cert_type,
+       p.certificate_request_id, p.course_expected, p.branch, p.created_at,
+       fd.document_number
+       FROM payments p
+       LEFT JOIN financial_documents fd ON fd.tenant_id=p.tenant_id
+         AND fd.document_type='invoice' AND fd.source_type='payment' AND fd.source_id=p.id
+       WHERE p.subscriber_id = ? AND p.tenant_id=? AND p.deleted_at IS NULL
+       ORDER BY p.date DESC LIMIT 200`, [sub.id, req.tenantId]);
     const [certRequests] = await pool.query(
       `SELECT cr.*, c.id AS c_id, c.title AS c_title
        FROM certificate_requests cr
@@ -782,17 +848,6 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
     let mapped = mapSubscriber({ ...sub, enrollments, payments, certRequests });
     // Merge DB completions over any crm_json values (DB table is the source of truth).
     mapped = { ...mapped, lectureProgress: { ...(mapped.lectureProgress || {}), ...lectureProgressMap } };
-    // Backward-compat: expand any bundle:xxx keys in enrolledCourseIds to individual course UUIDs
-    // (handles subscribers enrolled before the bundle-expansion fix was deployed)
-    const bundleKeys = (mapped.enrolledCourseIds || []).filter(id => String(id).startsWith('bundle:'));
-    if (bundleKeys.length > 0) {
-      const bIds = bundleKeys.map(k => String(k).replace('bundle:', ''));
-      const ph = bIds.map(() => '?').join(',');
-      const [bRows] = await pool.query(`SELECT course_id FROM bundle_courses WHERE bundle_id IN (${ph})`, bIds).catch(() => [[]]);
-      const expandedIds = bRows.map(r => r.course_id);
-      const plainIds = (mapped.enrolledCourseIds || []).filter(id => !String(id).startsWith('bundle:'));
-      mapped = { ...mapped, enrolledCourseIds: [...new Set([...plainIds, ...expandedIds])] };
-    }
     // Fetch full course objects for all enrolled courses (incl. unpublished) so
     // the client can display them even when GET /api/courses filters by is_published
     const allEnrolledIds = mapped.enrolledCourseIds || [];
@@ -823,44 +878,32 @@ router.get('/api/me/consultations', requireAuth, async (req, res) => {
 });
 
 // POST /api/me/heartbeat — تسجيل العميل كـ"متصل الآن"
-router.post('/api/me/heartbeat', requireAuth, (req, res) => {
-  onlineMap.set(String(req.user.uid), {
-    name: (req.body?.name || '').slice(0, 100),
-    email: req.user.email || '',
-    lastSeen: Date.now(),
-  });
-  res.json({ ok: true });
+router.post('/api/me/heartbeat', requireAuth, async (req, res) => {
+  try {
+    await setOnlineUser(req.tenantId, String(req.user.uid), {
+      name: req.user.name || req.user.email?.split('@')[0] || '',
+      email: req.user.email || '',
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('[heartbeat]', error.message);
+    res.status(503).json({ error: 'Presence service unavailable' });
+  }
 });
 
-// GET /api/me/quiz-attempts?subscriberId=xxx
+// GET /api/me/quiz-attempts - always resolves the subscriber from the token.
 router.get('/api/me/quiz-attempts', requireAuth, async (req, res) => {
   try {
-    const { subscriberId } = req.query;
-    if (!subscriberId) return res.status(400).json({ error: 'subscriberId required' });
-    // Admins and active staff can view any subscriber's quiz attempts
-    const isAdmin = ADMIN_EMAILS.includes(req.user.email) || ADMIN_UIDS.includes(req.user.uid);
-    if (!isAdmin) {
-      // Regular users: verify the subscriber belongs to them (IDOR prevention)
-      let isStaff = false;
-      try {
-        const [[staffRow]] = await pool.query(
-          'SELECT id FROM staff WHERE email = ? AND tenant_id=? AND is_active = 1 LIMIT 1',
-          [(req.user.email || '').toLowerCase().trim(), req.tenantId]
-        );
-        isStaff = !!staffRow;
-      } catch (_) {}
-      if (!isStaff) {
-        const [[ownerCheck]] = await pool.query(
-          'SELECT id FROM subscribers WHERE id = ? AND tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
-          [subscriberId, req.tenantId, req.user.uid || '', (req.user.email || '').toLowerCase().trim()]
-        );
-        if (!ownerCheck) return res.status(403).json({ error: 'Access denied' });
-      }
-    }
+    const [[subscriber]] = await pool.query(
+      `SELECT id FROM subscribers
+        WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) AND deleted_at IS NULL LIMIT 1`,
+      [req.tenantId, req.user.uid || '', String(req.user.email || '').toLowerCase().trim()]
+    );
+    if (!subscriber) return res.json([]);
     const [rows] = await pool.query(
       `SELECT id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at
        FROM quiz_attempts WHERE subscriber_id = ? AND tenant_id=? ORDER BY taken_at DESC LIMIT 200`,
-      [subscriberId, req.tenantId]
+      [subscriber.id, req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
@@ -891,14 +934,26 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
     if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
     const [[enrolled]] = await pool.query(
-      'SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1',
+      "SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? AND status='active' LIMIT 1",
       [sub.id, quiz.course_id, req.tenantId]
     );
     if (!enrolled) return res.status(403).json({ error: 'Active enrollment is required' });
 
+    const [[attempts]] = await pool.query(
+      `SELECT COUNT(*) AS count FROM quiz_attempts
+        WHERE tenant_id=? AND subscriber_id=? AND quiz_id=?
+          AND taken_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)`,
+      [req.tenantId, sub.id, quiz.id]
+    );
+    if (Number(attempts?.count) >= 10) {
+      return res.status(429).json({ error: 'Maximum 10 attempts per quiz within 24 hours' });
+    }
     const result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor: emailNorm }, pool);
     res.json({ ok: true, ...result });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[quiz-attempt]', e.message);
+    res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
+  }
 });
 
 // Public FAQ knowledge base — self-service, reduces support ticket volume.

@@ -44,11 +44,28 @@ export function DaqqiHousingModal({
       return item.id === round.id ? { ...item, attendees: [...attendees, newAttendee] } : { ...item, attendees };
     });
 
-    await mysqlAdmin.saveDaqqiRound(updatedRounds.find((item) => item.id === round.id) as unknown as Record<string, unknown>);
-    setRounds(updatedRounds);
-    notify('success', `✅ تم تسكين ${subscriber.name} في روند ${round.code}`);
-    setRoundId('');
-    onClose();
+    const currentRoundId = housingMap.get(subscriber.id)?.roundId;
+    if (currentRoundId === round.id) {
+      notify('info', `${subscriber.name} مُسكَّن بالفعل في روند ${round.code}`);
+      return;
+    }
+    try {
+      if (currentRoundId) {
+        await mysqlAdmin.transferDaqqiAttendee({
+          subscriberId: subscriber.id,
+          fromRoundId: currentRoundId,
+          toRoundId: round.id,
+        });
+      } else {
+        await mysqlAdmin.saveDaqqiRound(updatedRounds.find((item) => item.id === round.id) as unknown as Record<string, unknown>);
+      }
+      setRounds(updatedRounds);
+      notify('success', `✅ تم تسكين ${subscriber.name} في روند ${round.code}`);
+      setRoundId('');
+      onClose();
+    } catch {
+      notify('error', 'تعذر حفظ التسكين؛ لم يتم تغيير الروندات.');
+    }
   };
 
   return (

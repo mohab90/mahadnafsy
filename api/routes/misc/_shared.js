@@ -1,6 +1,5 @@
 'use strict';
 const logger = require('../../lib/logger');
-const bcrypt   = require('bcryptjs');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');

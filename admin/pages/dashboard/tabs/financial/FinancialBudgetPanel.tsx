@@ -22,7 +22,7 @@ function pctColor(pct: number) {
   return { bar: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
 }
 
-export default function FinancialBudgetPanel({ notify }: { notify: (msg: string, t?: 'success' | 'error') => void }) {
+export default function FinancialBudgetPanel({ notify, branch }: { notify: (msg: string, t?: 'success' | 'error') => void; branch?: string }) {
   const curMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(curMonth);
   const [rows, setRows] = useState<BudgetRow[]>([]);
@@ -34,7 +34,8 @@ export default function FinancialBudgetPanel({ notify }: { notify: (msg: string,
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/admin/finance/budgets?month=${month}`, { credentials: 'include', headers: adminAuthHeaders() });
+      const branchQuery = branch ? `&branch=${encodeURIComponent(branch)}` : '';
+      const r = await fetch(`/api/admin/finance/budgets?month=${month}${branchQuery}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error(await r.text());
       const data: BudgetRow[] = await r.json();
 
@@ -57,7 +58,7 @@ export default function FinancialBudgetPanel({ notify }: { notify: (msg: string,
     } finally {
       setLoading(false);
     }
-  }, [month, notify]);
+  }, [branch, month, notify]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -74,7 +75,7 @@ export default function FinancialBudgetPanel({ notify }: { notify: (msg: string,
         method: 'PUT',
         credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify({ month, budgets }),
+        body: JSON.stringify({ month, budgets, branch }),
       });
       if (!r.ok) throw new Error(await r.text());
       notify('تم حفظ الميزانية', 'success');

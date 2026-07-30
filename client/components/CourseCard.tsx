@@ -65,8 +65,14 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, currency }) => {
 
         <div className="mt-auto border-t pt-4 flex justify-between items-center">
           <div className="flex flex-col">
-            <span className="text-xs text-gray-400 line-through">{oldPrice} {currencySymbol}</span>
-            <span className="text-lg font-bold text-primary-700">{currentPrice} {currencySymbol}</span>
+            {currentPrice > 0 ? (
+              <>
+                {oldPrice > currentPrice && <span className="text-xs text-gray-400 line-through">{oldPrice} {currencySymbol}</span>}
+                <span className="text-lg font-bold text-primary-700">{currentPrice} {currencySymbol}</span>
+              </>
+            ) : (
+              <span className="text-sm font-bold text-amber-700">السعر غير متاح في دولتك حاليًا</span>
+            )}
           </div>
           <Link to={`/c/${course.slug || course.id}`} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
             التفاصيل

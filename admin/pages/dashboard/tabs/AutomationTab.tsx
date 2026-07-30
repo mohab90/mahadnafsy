@@ -18,7 +18,7 @@ type WorkflowDraft = {
 };
 
 // Only triggers with a matching execution branch in both engines
-// (api/routes/automation.js's manual "run" AND api/lib/serverCronJobs.js's
+// (api/routes/automation.js's manual "run" AND api/server.js's
 // daily cron) are listed — 11 were shown here with zero implementation
 // anywhere, so picking them silently did nothing forever (MKT-02). Removed
 // rather than stubbing 11 real feature builds (payment/refund/certificate/
@@ -74,6 +74,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
   const [waApiToken, setWaApiToken] = useState('');
   const [waHasToken, setWaHasToken] = useState(false);
   const [waSaving, setWaSaving] = useState(false);
+  const [workflowSaving, setWorkflowSaving] = useState(false);
   const [waLoaded, setWaLoaded] = useState(false);
 
   // Facebook Webhook state
@@ -139,39 +140,50 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
     }
   };
 
-  const handleSaveWorkflow = () => {
+  const handleSaveWorkflow = async () => {
     if (!workflowDraft.name.trim()) return;
-    if (editingWorkflowId) {
-      const existing = automationWorkflows.find(w => w.id === editingWorkflowId);
-      if (existing) {
-        updateAutomationWorkflow({
-          ...existing,
+    setWorkflowSaving(true);
+    try {
+      let saved = false;
+      if (editingWorkflowId) {
+        const existing = automationWorkflows.find(w => w.id === editingWorkflowId);
+        if (existing) {
+          saved = await updateAutomationWorkflow({
+            ...existing,
+            name: workflowDraft.name,
+            description: workflowDraft.description,
+            trigger: workflowDraft.trigger as AutomationTrigger,
+            action: workflowDraft.action as AutomationAction,
+            actionConfig: workflowDraft.actionConfig,
+            enabled: workflowDraft.enabled,
+          });
+        }
+      } else {
+        saved = await addAutomationWorkflow({
+          id: `wf-${Date.now()}`,
           name: workflowDraft.name,
           description: workflowDraft.description,
           trigger: workflowDraft.trigger as AutomationTrigger,
           action: workflowDraft.action as AutomationAction,
           actionConfig: workflowDraft.actionConfig,
           enabled: workflowDraft.enabled,
+          createdAt: new Date().toISOString().slice(0, 10),
+          triggerCount: 0,
         });
-        notify('success', `تم تحديث الوركفلو "${workflowDraft.name}"`);
       }
-    } else {
-      addAutomationWorkflow({
-        id: `wf-${Date.now()}`,
-        name: workflowDraft.name,
-        description: workflowDraft.description,
-        trigger: workflowDraft.trigger as AutomationTrigger,
-        action: workflowDraft.action as AutomationAction,
-        actionConfig: workflowDraft.actionConfig,
-        enabled: workflowDraft.enabled,
-        createdAt: new Date().toISOString().slice(0, 10),
-        triggerCount: 0,
-      });
-      notify('success', `تم إنشاء الوركفلو "${workflowDraft.name}"`);
+      if (!saved) {
+        notify('error', 'فشل حفظ الوركفلو. لم يتم اعتماد التغيير.');
+        return;
+      }
+      notify('success', editingWorkflowId
+        ? `تم تحديث الوركفلو "${workflowDraft.name}"`
+        : `تم إنشاء الوركفلو "${workflowDraft.name}"`);
+      setAutomationFormOpen(false);
+      setEditingWorkflowId('');
+      setWorkflowDraft(blankWf());
+    } finally {
+      setWorkflowSaving(false);
     }
-    setAutomationFormOpen(false);
-    setEditingWorkflowId('');
-    setWorkflowDraft(blankWf());
   };
 
   const handleEditWorkflow = (wf: AutomationWorkflow) => {
@@ -198,7 +210,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
     setRunning(true);
     setRunResults(null);
     try {
-      const data = await mysqlAdmin.adminPost<{ ok: boolean; ran: number; results: any[] }>('/api/admin/automation-workflows/run', {});
+      const data = await mysqlAdmin.adminPost<{ ok: boolean; ran: number; results: any[] }>('/admin/automation-workflows/run', {});
       setRunResults(data.results);
       const acted = data.results.reduce((s: number, r: any) => s + r.actionsRun, 0);
       notify('success', `✅ تم تشغيل ${data.ran} وركفلو — ${acted} إجراء تم تنفيذه`);
@@ -381,7 +393,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
             </div>
           </div>
           <div className="flex gap-3 pt-2">
-            <button onClick={handleSaveWorkflow} disabled={!workflowDraft.name.trim()}
+            <button onClick={handleSaveWorkflow} disabled={workflowSaving || !workflowDraft.name.trim()}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white font-bold px-5 py-2.5 rounded-xl transition text-sm">
               <Save size={15} /> {editingWorkflowId ? 'حفظ التعديلات' : 'إنشاء الوركفلو'}
             </button>
@@ -411,7 +423,11 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
           {automationWorkflows.map(wf => (
             <div key={wf.id} className={`bg-white rounded-2xl border shadow-sm p-4 flex items-start gap-4 hover:shadow-md transition ${wf.enabled ? 'border-gray-100' : 'border-gray-100 opacity-70'}`}>
               {/* Toggle */}
-              <button onClick={() => updateAutomationWorkflow({ ...wf, enabled: !wf.enabled })}
+              <button onClick={async () => {
+                if (!await updateAutomationWorkflow({ ...wf, enabled: !wf.enabled })) {
+                  notify('error', 'فشل تغيير حالة الوركفلو.');
+                }
+              }}
                 className={`relative mt-0.5 w-11 h-6 rounded-full transition-colors flex-shrink-0 ${wf.enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${wf.enabled ? 'translate-x-5' : ''}`} />
               </button>
@@ -444,7 +460,11 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
                   className="p-2 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition">
                   <Edit2 size={15} />
                 </button>
-                <button onClick={() => { if (confirm(`حذف "${wf.name}"؟`)) { deleteAutomationWorkflow(wf.id); notify('info', `تم حذف "${wf.name}"`); } }}
+                <button onClick={async () => {
+                  if (!confirm(`حذف "${wf.name}"؟`)) return;
+                  const deleted = await deleteAutomationWorkflow(wf.id);
+                  notify(deleted ? 'info' : 'error', deleted ? `تم حذف "${wf.name}"` : 'فشل حذف الوركفلو.');
+                }}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
                   <Trash2 size={15} />
                 </button>
@@ -457,7 +477,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
       {/* Info box */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">
         <p className="font-bold mb-1 flex items-center gap-2"><AlertCircle size={15} /> ملاحظة هامة</p>
-        <p className="text-xs leading-relaxed">الوركفلو تُحفظ في MySQL وتُفعَل من خلال كود الـ context عند وقوع الحدث. بعض الأكشنات (مثل إرسال واتساب) تحتاج إلى ربط قنوات الرسائل من تبويب <button className="underline font-bold" onClick={() => setActiveTab('messaging_agent')}>وكيل المراسلة</button>.</p>
+        <p className="text-xs leading-relaxed">الوركفلو تُحفظ في MySQL ويشغّلها محرك الـBackend فقط؛ الواجهة لا تغيّر بيانات العملاء محليًا. بعض الأكشنات (مثل إرسال واتساب) تحتاج إلى ربط قنوات الرسائل من تبويب <button className="underline font-bold" onClick={() => setActiveTab('messaging_agent')}>وكيل المراسلة</button>.</p>
       </div>
 
       {/* ── WhatsApp Config ──────────────────────────────────────────── */}

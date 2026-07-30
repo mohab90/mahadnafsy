@@ -1,6 +1,5 @@
 'use strict';
 const logger = require('../../lib/logger');
-const bcrypt   = require('bcryptjs');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
@@ -203,14 +202,14 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
              DATEDIFF(NOW(), MAX(p.created_at)) AS days_since_payment
       FROM subscribers s
       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.status = 'paid'
-      WHERE s.tenant_id=? AND s.status NOT IN ('inactive','cancelled')
+      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
       GROUP BY s.id
       HAVING (last_payment_date IS NULL OR last_payment_date < ?)
       ORDER BY days_since_payment DESC NULLS LAST
       LIMIT 500`, [req.tenantId, cutoffStr]);
 
     // Retention rate: active clients with recent payment / all active
-    const [[{ total_active }]] = await pool.query(`SELECT COUNT(*) AS total_active FROM subscribers WHERE tenant_id=? AND status NOT IN ('inactive','cancelled')`, [req.tenantId]);
+    const [[{ total_active }]] = await pool.query(`SELECT COUNT(*) AS total_active FROM subscribers WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL`, [req.tenantId]);
     const atRisk = inactive.length;
     const retentionRate = total_active > 0 ? Math.round((1 - atRisk / parseInt(total_active)) * 100) : 100;
 
@@ -218,7 +217,7 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
     const [cohorts] = await pool.query(`
       SELECT DATE_FORMAT(created_at, '%Y-%m') AS cohort,
              COUNT(*) AS total,
-             SUM(CASE WHEN status NOT IN ('inactive','cancelled') THEN 1 ELSE 0 END) AS still_active
+             SUM(CASE WHEN is_active=1 AND deleted_at IS NULL THEN 1 ELSE 0 END) AS still_active
       FROM subscribers
       WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
       GROUP BY cohort ORDER BY cohort`, [req.tenantId]);
@@ -245,7 +244,7 @@ router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdmin, async (
              (SELECT MAX(p.created_at) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='paid') AS last_payment,
              (SELECT COUNT(*) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='pending') AS pending_count
       FROM subscribers s
-      WHERE s.tenant_id=? AND s.status NOT IN ('inactive','cancelled')
+      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
       HAVING (last_payment IS NULL OR DATEDIFF(NOW(), last_payment) > 45) OR pending_count > 0
       ORDER BY pending_count DESC, last_payment ASC
       LIMIT 200`, [req.tenantId]);
@@ -385,23 +384,20 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
       }
 
       const [[{ at_risk }]] = await pool.query(
-        `SELECT COUNT(*) AS at_risk FROM subscribers s WHERE s.tenant_id=? AND s.status NOT IN ('inactive','cancelled') AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id AND p.status='paid' AND p.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY))`,
+        `SELECT COUNT(*) AS at_risk FROM subscribers s WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id AND p.status='paid' AND p.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY))`,
         [tenantId]
       );
       if (parseInt(at_risk) >= 5) {
         await createNotification('alert', 'خطر انسحاب العملاء', `${at_risk} عميل لم يدفع منذ 60 يوماً`, { link: '/dashboard?tab=retention' }, tenantId);
       }
-    }
-
-    // Check for failed login spikes
-    const [[{ fail_count }]] = await pool.query(
-      `SELECT COUNT(*) AS fail_count FROM login_history WHERE status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`
-    ).catch(() => [[{ fail_count: 0 }]]);
-    if (parseInt(fail_count) >= 10) {
-      // Deliberately not tenant-scoped: the underlying query counts failed
-      // logins across ALL tenants, so there is no single tenantId to pass —
-      // same reasoning as lib/reconcileJob.js's system-wide integrity alert.
-      await createNotification('alert', 'تنبيه أمني', `${fail_count} محاولة دخول فاشلة خلال آخر ساعة`, {}, undefined);
+      const [[{ fail_count }]] = await pool.query(
+        `SELECT COUNT(*) AS fail_count FROM login_history
+         WHERE tenant_id=? AND status='failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+        [tenantId]
+      ).catch(() => [[{ fail_count: 0 }]]);
+      if (parseInt(fail_count) >= 10) {
+        await createNotification('alert', 'تنبيه أمني', `${fail_count} محاولة دخول فاشلة خلال آخر ساعة`, {}, tenantId);
+      }
     }
   } catch (e) { /* non-critical */ }
 }, 6 * 60 * 60 * 1000); // every 6 hours

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   TrendingUp, Users, Target, Award, Phone, Mail, Calendar, ChevronRight,
   BarChart3, Star, Clock, CheckCircle, AlertCircle, 
@@ -87,23 +87,12 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
   const [postText, setPostText] = useState('');
   const [postEmoji, setPostEmoji] = useState('🔥');
   const [posts, setPosts] = useState<MotivPost[]>([]);
-  const postsLoaded = useRef(false);
-  const savePostsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     mysqlAdmin.adminGet<{ ok: boolean; data: MotivPost[] | null }>('/admin/kv/sales_motiv_posts')
       .then(res => { if (res.data) setPosts(res.data); })
-      .catch(() => {})
-      .finally(() => { postsLoaded.current = true; });
-  }, []);
-
-  useEffect(() => {
-    if (!postsLoaded.current) return;
-    if (savePostsTimer.current) clearTimeout(savePostsTimer.current);
-    savePostsTimer.current = setTimeout(() => {
-      mysqlAdmin.adminPut('/admin/kv/sales_motiv_posts', posts).catch(() => {});
-    }, 800);
-  }, [posts]);
+      .catch(() => notify('error', 'تعذر تحميل رسائل الفريق من السيرفر'));
+  }, [notify]);
 
   // ── Per-staff stats ────────────────────────────────────────────────────
   const staffStats = useMemo(() => {
@@ -162,7 +151,18 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
   }, [staffStats]);
 
   // ── Motivational Posts ─────────────────────────────────────────────────
-  const addPost = () => {
+  const persistPosts = async (updated: MotivPost[]) => {
+    try {
+      await mysqlAdmin.adminPut('/admin/kv/sales_motiv_posts', updated);
+      setPosts(updated);
+      return true;
+    } catch {
+      notify('error', 'فشل حفظ رسائل الفريق على السيرفر');
+      return false;
+    }
+  };
+
+  const addPost = async () => {
     if (!postText.trim()) return;
     const newPost: MotivPost = {
       id: `mp-${Date.now()}`,
@@ -174,22 +174,23 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
       likes: [],
     };
     const updated = [newPost, ...posts];
-    setPosts(updated);
-    setPostText('');
-    notify('success', 'تم نشر الرسالة التحفيزية ✨');
+    if (await persistPosts(updated)) {
+      setPostText('');
+      notify('success', 'تم نشر الرسالة التحفيزية ✨');
+    }
   };
 
-  const toggleLike = (postId: string) => {
+  const toggleLike = async (postId: string) => {
     const updated = posts.map(p =>
       p.id === postId
         ? { ...p, likes: p.likes.includes('admin') ? p.likes.filter(x => x !== 'admin') : [...p.likes, 'admin'] }
         : p
     );
-    setPosts(updated);
+    await persistPosts(updated);
   };
 
-  const deletePost = (postId: string) => {
-    setPosts(prev => prev.filter(p => p.id !== postId));
+  const deletePost = async (postId: string) => {
+    await persistPosts(posts.filter(p => p.id !== postId));
   };
 
   const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [

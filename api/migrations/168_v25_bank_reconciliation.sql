@@ -1,0 +1,41 @@
+CREATE TABLE IF NOT EXISTS bank_reconciliations (
+  id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(64) NOT NULL,
+  branch_id VARCHAR(36) NULL,
+  account_code VARCHAR(20) NOT NULL,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  opening_balance DECIMAL(18,2) NOT NULL,
+  ledger_movement DECIMAL(18,2) NOT NULL,
+  ledger_closing_balance DECIMAL(18,2) NOT NULL,
+  statement_closing_balance DECIMAL(18,2) NOT NULL,
+  difference_amount DECIMAL(18,2) NOT NULL,
+  status ENUM('draft','ready','approved','rejected') NOT NULL DEFAULT 'draft',
+  note VARCHAR(1000) NULL,
+  created_by VARCHAR(100) NOT NULL,
+  approved_by VARCHAR(100) NULL,
+  approved_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_bank_reconciliation_period (tenant_id,account_code,branch_id,period_start,period_end),
+  KEY idx_bank_reconciliation_status (tenant_id,status,period_end),
+  CONSTRAINT chk_bank_reconciliation_dates CHECK (period_end >= period_start)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS bank_reconciliation_items (
+  id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(64) NOT NULL,
+  reconciliation_id VARCHAR(36) NOT NULL,
+  item_date DATE NOT NULL,
+  description VARCHAR(500) NOT NULL,
+  amount DECIMAL(18,2) NOT NULL,
+  item_type ENUM('deposit_in_transit','outstanding_payment','bank_fee','interest','other') NOT NULL,
+  ledger_entry_id VARCHAR(36) NULL,
+  created_by VARCHAR(100) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_bank_reconciliation_items (tenant_id,reconciliation_id,item_date),
+  CONSTRAINT fk_bank_reconciliation_item FOREIGN KEY (reconciliation_id) REFERENCES bank_reconciliations(id) ON DELETE RESTRICT,
+  CONSTRAINT chk_bank_reconciliation_item_amount CHECK (amount <> 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

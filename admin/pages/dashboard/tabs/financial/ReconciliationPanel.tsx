@@ -19,23 +19,30 @@ interface ReconciliationData {
 const labels: Record<string, string> = {
   paid_without_journal: 'مدفوعات بلا قيد محاسبي',
   unbalanced_journal: 'قيود غير متوازنة',
+  paid_without_fx_snapshot: 'مدفوعات بلا تثبيت سعر صرف',
+  payment_ledger_amount_mismatch: 'فرق بين الدفعة والقيد',
   paid_without_enrollment: 'مدفوعات بلا اشتراك في الكورس',
   converted_without_subscriber: 'Leads محولة بلا عميل',
   paid_order_without_payment: 'طلبات مدفوعة بلا حركة دفع',
+  approved_proof_without_payment: 'إيصالات معتمدة بلا دفعة',
+  paid_without_audit: 'مدفوعات بلا سجل تدقيق',
+  commission_missing: 'عمولات مفقودة',
+  instructor_fee_missing: 'حصص محاضرين مفقودة',
   dead_customer_messages: 'رسائل عملاء فشلت نهائيًا',
   failed_finance_events: 'أحداث مالية فشلت وتحتاج إعادة محاولة',
 };
 
-export default function ReconciliationPanel() {
+export default function ReconciliationPanel({ branchFilter }: { branchFilter?: string }) {
   const [data, setData] = useState<ReconciliationData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { setData(await mysqlAdmin.adminGet<ReconciliationData>('/api/admin/reconciliation-dashboard')); }
+    const query = branchFilter ? `?branch=${encodeURIComponent(branchFilter)}` : '';
+    try { setData(await mysqlAdmin.adminGet<ReconciliationData>(`/admin/reconciliation-dashboard${query}`)); }
     catch (err) { setError(err instanceof Error ? err.message : 'تعذر تشغيل المطابقة'); }
     finally { setLoading(false); }
-  }, []);
+  }, [branchFilter]);
   useEffect(() => { void load(); }, [load]);
 
   return (

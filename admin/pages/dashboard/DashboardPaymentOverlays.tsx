@@ -14,7 +14,7 @@ interface DashboardPaymentOverlaysProps {
   subscriber: SubscriberItem | null;
   subscriberDraft: PaymentDraft;
   setSubscriberDraft: (draft: PaymentDraft) => void;
-  submitSubscriberPayment: (draft: PaymentDraft) => void;
+  submitSubscriberPayment: (draft: PaymentDraft) => void | Promise<void>;
   closeSubscriberPayment: () => void;
   branchOptions: BranchOption[];
   instituteName: string;
@@ -52,7 +52,7 @@ export function DashboardPaymentOverlays({
             }}
             draft={leadDraft}
             setDraft={setLeadDraft}
-            onSubmit={(draft) => { void submitLeadPayment(draft); }}
+            onSubmit={(draft) => submitLeadPayment(draft)}
             onClose={closeLeadPayment}
             branchOptions={branchOptions}
             instituteName={instituteName}
@@ -76,7 +76,7 @@ export function DashboardPaymentOverlays({
             }}
             draft={subscriberDraft}
             setDraft={setSubscriberDraft}
-            onSubmit={(draft) => { submitSubscriberPayment(draft); }}
+            onSubmit={(draft) => submitSubscriberPayment(draft)}
             onClose={closeSubscriberPayment}
             instituteName={instituteName}
             requirePaymentApproval={requireSubscriberApproval}

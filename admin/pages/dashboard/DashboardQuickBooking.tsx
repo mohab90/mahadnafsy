@@ -4,7 +4,7 @@ import type { NavigateFunction } from 'react-router-dom';
 import type { LeadItem, SubscriberItem } from '../../types';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
-import { normBranchId } from './dashboardShared';
+import { currencyForBranch } from '../../lib/branchCurrency';
 
 type DashboardQuickBookingProps = {
   open: boolean;
@@ -181,7 +181,7 @@ function LeadResults({
               setLeadPayRow(lead);
               setLeadPayDraft(createClientPaymentDraft({
                 courseId: lead.interestedCourseIds?.[0] || lead.enrolledCourseId || '',
-                currency: ['ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(normBranchId(lead.branch)) ? 'SAR' : 'EGP',
+                currency: currencyForBranch(lead.branch),
                 branch: lead.branch || '',
                 email: lead.email || '',
               }));
@@ -234,7 +234,7 @@ function SubscriberResults({
               onClose();
               setSubPayRow(subscriber);
               setSubPayDraft(createClientPaymentDraft({
-                currency: normBranchId(subscriber.branch) === 'ONLINE_ABROAD' ? 'SAR' : 'EGP',
+                currency: currencyForBranch(subscriber.branch),
                 courseId: subscriber.enrolledCourseIds?.[0] || '',
               }));
               setSubPayDraft((previous) => ({ ...previous, bookingType: (subscriber.enrolledCourseIds || []).length > 0 ? 'installment' : 'new_booking' }));

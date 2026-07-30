@@ -8,13 +8,14 @@ const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
-router.get('/api/admin/inbox', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, channel, contact_name, contact_id, contact_avatar, last_message, last_message_at,
        unread_count, status, assigned_to_staff_id, assigned_to_staff_name, tags, messages,
        linked_lead_id, linked_subscriber_id, created_at
-       FROM inbox_conversations ORDER BY last_message_at DESC LIMIT 500`
+       FROM inbox_conversations WHERE tenant_id=? ORDER BY last_message_at DESC LIMIT 500`,
+      [req.tenantId]
     );
     res.json(rows.map(r => ({ ...r, tags: tryJson(r.tags, []), messages: tryJson(r.messages, []) })));
   } catch (e) {
@@ -28,10 +29,10 @@ router.post('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
     const c = req.body;
     const id = c.id || uuidv4();
     await pool.query(
-      `INSERT INTO inbox_conversations (id, channel, contact_name, contact_id, contact_avatar,
+      `INSERT INTO inbox_conversations (id, tenant_id, channel, contact_name, contact_id, contact_avatar,
          last_message, last_message_at, unread_count, status, assigned_to_staff_id,
          assigned_to_staff_name, tags, messages, linked_lead_id, linked_subscriber_id, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          last_message=VALUES(last_message), last_message_at=VALUES(last_message_at),
          unread_count=VALUES(unread_count), status=VALUES(status),
@@ -39,7 +40,7 @@ router.post('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
          assigned_to_staff_name=VALUES(assigned_to_staff_name),
          tags=VALUES(tags), messages=VALUES(messages)`,
       [
-        id, c.channel || 'whatsapp', c.contactName || c.contact_name || '',
+        id, req.tenantId, c.channel || 'whatsapp', c.contactName || c.contact_name || '',
         c.contactId || c.contact_id || '', c.contactAvatar || null,
         c.lastMessage || c.last_message || '', c.lastMessageAt || c.last_message_at || '',
         c.unreadCount || 0, c.status || 'open',
@@ -59,7 +60,7 @@ router.post('/api/admin/inbox', requireAuth, requireAdmin, async (req, res) => {
 
 router.delete('/api/admin/inbox/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM inbox_conversations WHERE id = ?', [req.params.id]);
+    await pool.query('DELETE FROM inbox_conversations WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);

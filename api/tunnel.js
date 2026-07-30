@@ -1,97 +1,89 @@
 'use strict';
-// Local dev SSH tunnel: forwards 127.0.0.1:3306 → remote MySQL via SSH
-// Usage: node tunnel.js
-const net    = require('net');
-const Client = require('ssh2').Client;
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
-const SSH_HOST = process.env.SSH_HOST;
-const SSH_PORT = parseInt(process.env.SSH_PORT || '22');
-const SSH_USER = process.env.SSH_USER;
-const SSH_PASS = process.env.SSH_PASS;
+// Local-development SSH tunnel. Production connects directly to managed MySQL.
+// Authentication is limited to an SSH agent or a private-key file.
+const fs = require('node:fs');
+const net = require('node:net');
+const path = require('node:path');
+const { Client } = require('ssh2');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const LOCAL_PORT  = 3306;
-const REMOTE_HOST = '127.0.0.1';
-const REMOTE_PORT = 3306;
+const integer = (name, fallback) => {
+  const value = Number.parseInt(process.env[name] || String(fallback), 10);
+  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`${name} must be a valid port`);
+  return value;
+};
+const required = name => {
+  const value = String(process.env[name] || '').trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+};
 
-console.log(`[tunnel] Connecting SSH → ${SSH_USER}@${SSH_HOST}:${SSH_PORT}`);
+const sshHost = required('SSH_HOST');
+const sshUser = required('SSH_USER');
+const sshPort = integer('SSH_PORT', 22);
+const localPort = integer('SSH_TUNNEL_LOCAL_PORT', 3306);
+const remoteHost = String(process.env.SSH_TUNNEL_REMOTE_HOST || '127.0.0.1').trim();
+const remotePort = integer('SSH_TUNNEL_REMOTE_PORT', 3306);
+const privateKeyFile = String(process.env.SSH_PRIVATE_KEY_FILE || '').trim();
+const agent = String(process.env.SSH_AUTH_SOCK || '').trim();
 
-// Defense-in-depth: a stray error must NEVER kill the tunnel process. The supervisor
-// restarts it on exit, but that leaves a ~3s window where the DB is unreachable.
-// Keeping the process alive here avoids that window for non-fatal errors.
-process.on('uncaughtException', (e) => {
-  if (e && e.code === 'EADDRINUSE') return; // handled by server.on('error')
-  console.error('[tunnel] uncaughtException (keeping alive):', e && e.message);
-});
-process.on('unhandledRejection', (e) => {
-  console.error('[tunnel] unhandledRejection (keeping alive):', e && (e.message || e));
-});
+if (!privateKeyFile && !agent) throw new Error('SSH_PRIVATE_KEY_FILE or SSH_AUTH_SOCK is required');
+if (privateKeyFile && !path.isAbsolute(privateKeyFile)) throw new Error('SSH_PRIVATE_KEY_FILE must be absolute');
 
-// Keep track of active SSH connections
-const sshClients = new Set();
+const auth = privateKeyFile
+  ? { privateKey: fs.readFileSync(privateKeyFile) }
+  : { agent };
+let connection;
+let localServer;
+let reconnectTimer;
+let shuttingDown = false;
 
-const server = net.createServer((localSocket) => {
-  const conn = new Client();
-  sshClients.add(conn);
-
-  // A per-connection reset (idle MySQL/SSH drop) must NOT crash the whole tunnel.
-  // Without these handlers an 'error' event on the socket/stream is unhandled → process exit.
-  localSocket.on('error', (err) => {
-    if (err.code !== 'ECONNRESET' && err.code !== 'EPIPE') console.warn('[tunnel] local socket error:', err.message);
-    conn.end();
-    sshClients.delete(conn);
-  });
-
-  conn.on('ready', () => {
-    conn.forwardOut('127.0.0.1', LOCAL_PORT, REMOTE_HOST, REMOTE_PORT, (err, stream) => {
-      if (err) {
-        console.error('[tunnel] forwardOut error:', err.message);
-        localSocket.destroy();
-        conn.end();
-        return;
-      }
-      stream.on('error', (e) => {
-        if (e.code !== 'ECONNRESET' && e.code !== 'EPIPE') console.warn('[tunnel] stream error:', e.message);
-        localSocket.destroy();
+function connect() {
+  connection = new Client();
+  connection
+    .once('ready', () => {
+      console.log(`[tunnel] connected to ${sshHost}:${sshPort}`);
+      if (localServer) return;
+      localServer = net.createServer(localSocket => {
+        localSocket.on('error', () => localSocket.destroy());
+        connection.forwardOut('127.0.0.1', localPort, remoteHost, remotePort, (error, stream) => {
+          if (error) return localSocket.destroy();
+          stream.on('error', () => localSocket.destroy());
+          localSocket.pipe(stream).pipe(localSocket);
+        });
       });
-      localSocket.pipe(stream).pipe(localSocket);
-      localSocket.on('close', () => { conn.end(); sshClients.delete(conn); });
-      stream.on('close', () => { localSocket.destroy(); });
+      localServer.on('error', error => {
+        console.error(`[tunnel] local listener failed: ${error.message}`);
+        process.exitCode = 1;
+        shutdown();
+      });
+      localServer.listen(localPort, '127.0.0.1', () => {
+        console.log(`[tunnel] 127.0.0.1:${localPort} -> ${remoteHost}:${remotePort}`);
+      });
+    })
+    .on('error', error => console.error(`[tunnel] SSH error: ${error.message}`))
+    .once('close', () => {
+      if (!shuttingDown) reconnectTimer = setTimeout(connect, 3000);
+    })
+    .connect({
+      host: sshHost,
+      port: sshPort,
+      username: sshUser,
+      ...auth,
+      readyTimeout: 20_000,
+      keepaliveInterval: 10_000,
+      keepaliveCountMax: 3,
     });
-  });
+}
 
-  conn.on('error', (err) => {
-    console.error('[tunnel] SSH error:', err.message);
-    localSocket.destroy();
-    sshClients.delete(conn);
-  });
+function shutdown() {
+  shuttingDown = true;
+  clearTimeout(reconnectTimer);
+  if (connection) connection.end();
+  if (localServer) localServer.close(() => process.exit()); else process.exit();
+}
 
-  conn.connect({
-    host:     SSH_HOST,
-    port:     SSH_PORT,
-    username: SSH_USER,
-    password: SSH_PASS,
-    readyTimeout: 15000,
-  });
-});
-
-server.listen(LOCAL_PORT, '127.0.0.1', () => {
-  console.log(`[tunnel] Listening on 127.0.0.1:${LOCAL_PORT} → ${REMOTE_HOST}:${REMOTE_PORT} via SSH`);
-  console.log('[tunnel] Ready — now start the API: node server.js');
-});
-
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.log(`[tunnel] Port ${LOCAL_PORT} already in use — MySQL might already be available locally. Exiting tunnel.`);
-    process.exit(0);
-  } else {
-    console.error('[tunnel] Server error:', err.message);
-    process.exit(1);
-  }
-});
-
-process.on('SIGINT', () => {
-  console.log('\n[tunnel] Shutting down...');
-  sshClients.forEach(c => c.end());
-  server.close(() => process.exit(0));
-});
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
+connect();

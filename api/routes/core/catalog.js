@@ -20,6 +20,9 @@ const { ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin, 
 const { paymobLimiter, whatsappSendLimiter, publicLimiter, contactLimiter } = require('../../middleware/rateLimits');
 const { safeDateOnly } = require('../../lib/dates');
 const { isString, validateBody } = require('../../middleware/validate');
+const { getNextSalesRep } = require('../../lib/leadAssignment');
+const { branchIdForBranch } = require('../../lib/branches');
+const { normalizeQuizDefinition } = require('../../lib/quizValidation');
 
 // ── Initialize extra tables on startup ───────────────────────────────────────
 // ── Initialize extra tables on startup ───────────────────────────────────────
@@ -27,7 +30,7 @@ const { isString, validateBody } = require('../../middleware/validate');
 
 
 // ── DELETE endpoints for basic entities ───────────────────────────────────────
-router.delete('/api/admin/subscribers/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, requirePermission('delete_subscribers'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -43,7 +46,7 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdmin, async (re
     // Preserve payments, orders, enrollments and audit history. "Delete" is an
     // archive/deactivation operation; legal erasure remains a separate workflow.
     await conn.query(
-      'UPDATE subscribers SET is_active=0, updated_at=NOW() WHERE id=? AND tenant_id=?',
+      'UPDATE subscribers SET is_active=0, deleted_at=NOW(), updated_at=NOW() WHERE id=? AND tenant_id=?',
       [req.params.id, req.tenantId]
     );
 
@@ -64,10 +67,6 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdmin, async (re
   }
   finally { conn.release(); }
 });
-router.delete('/api/admin/leads/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('UPDATE leads SET hidden=1 WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]); res.json({ ok: true }); }
-  catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -80,7 +79,7 @@ router.delete('/api/admin/chapters/:id', requireAuth, requireAdmin, async (req, 
 router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [therapists] = await pool.query(
-      `SELECT id, name, specialty, image, experience, rating, title, bio,
+      `SELECT id, staff_id, name, specialty, image, experience, rating, title, bio,
        price_egp, price_sar, price_usd, is_consultation_enabled, session_duration_minutes,
        meeting_provider, provider_base_url, featured, sort_order, show_on_home, show_on_about,
        is_active, languages_json, focus_areas_json, qualifications_json, created_at
@@ -95,7 +94,10 @@ router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) 
       therapists.forEach(t => { t.slots = slotMap[t.id] || []; });
     }
     res.json(therapists.map(mapTherapist));
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
+  }
 });
 router.delete('/api/admin/therapists/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -121,7 +123,7 @@ router.get('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => 
     const [rows] = await pool.query(
       `SELECT b.*, GROUP_CONCAT(bc.course_id ORDER BY bc.sort_order) AS course_ids_csv
        FROM bundles b
-       LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id
+       LEFT JOIN bundle_courses bc ON bc.bundle_id = b.id AND bc.tenant_id=b.tenant_id
        WHERE b.tenant_id = ?
        GROUP BY b.id
        ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
@@ -172,11 +174,12 @@ router.post('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) =>
     );
     // Sync courses into bundle_courses join table
     if (Array.isArray(courseIds)) {
-      await pool.query('DELETE FROM bundle_courses WHERE bundle_id = ?', [id]);
+      await pool.query('DELETE FROM bundle_courses WHERE tenant_id=? AND bundle_id = ?', [req.tenantId, id]);
       for (let i = 0; i < courseIds.length; i++) {
         await pool.query(
-          'INSERT IGNORE INTO bundle_courses (bundle_id, course_id, sort_order) VALUES (?,?,?)',
-          [id, courseIds[i], i]
+          `INSERT IGNORE INTO bundle_courses (bundle_id, course_id, tenant_id, sort_order)
+           SELECT ?,c.id,?,? FROM courses c WHERE c.id=? AND c.tenant_id=? AND c.deleted_at IS NULL`,
+          [id, req.tenantId, i, courseIds[i], req.tenantId]
         );
       }
     }
@@ -188,7 +191,7 @@ router.delete('/api/admin/bundles/:id', requireAuth, requireAdmin, async (req, r
   try {
     const [r] = await pool.query('DELETE FROM bundles WHERE id = ? AND tenant_id = ?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Bundle not found' });
-    await pool.query('DELETE FROM bundle_courses WHERE bundle_id = ?', [req.params.id]);
+    await pool.query('DELETE FROM bundle_courses WHERE tenant_id=? AND bundle_id = ?', [req.tenantId, req.params.id]);
     cacheInvalidate('bundles');
     res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -202,7 +205,8 @@ router.get('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) => 
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
     const [rows] = await pool.query(
-      `SELECT id, course_id, title, questions_json, passing_score, generated_by_ai, source_material, created_at, updated_at
+      `SELECT id, course_id, title, questions_json, passing_score, required_for_completion,
+              generated_by_ai, source_material, created_at, updated_at
        FROM course_quizzes WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?`, [req.tenantId, limit]);
     res.json(rows.map(r => mapQuiz(r, { includeAnswers: true })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -212,8 +216,8 @@ router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) =>
     const q = req.body;
     const id = q.id || uuidv4();
     const courseId     = q.course_id    ?? q.courseId    ?? null;
-    const passingScore = q.passing_score ?? q.passingScore ?? 70;
-    const questions    = q.questions || [];
+    const { title, passingScore, questions } = normalizeQuizDefinition(q);
+    const requiredForCompletion = (q.required_for_completion ?? q.requiredForCompletion) !== false;
     // course_id has FK constraint — only insert if a valid course_id is provided
     if (!courseId) return res.status(400).json({ error: 'course_id is required' });
     const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, req.tenantId]);
@@ -223,16 +227,22 @@ router.post('/api/admin/quizzes', requireAuth, requireAdmin, async (req, res) =>
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Quiz not found' });
     }
     await pool.query(
-      `INSERT INTO course_quizzes (id, tenant_id, course_id, title, questions_json, passing_score, created_at)
-       VALUES (?,?,?,?,?,?,?)
+      `INSERT INTO course_quizzes
+       (id,tenant_id,course_id,title,questions_json,passing_score,required_for_completion,created_at)
+       VALUES (?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), questions_json=VALUES(questions_json),
-         passing_score=VALUES(passing_score), updated_at=CURRENT_TIMESTAMP`,
-      [id, req.tenantId, courseId, q.title||'', JSON.stringify(questions), passingScore,
+         passing_score=VALUES(passing_score),required_for_completion=VALUES(required_for_completion),
+         updated_at=CURRENT_TIMESTAMP`,
+      [id, req.tenantId, courseId, title, JSON.stringify(questions), passingScore,
+       requiredForCompletion ? 1 : 0,
        q.created_at||new Date().toISOString()]
     );
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[quiz-save]', e.message);
+    res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
+  }
 });
 router.delete('/api/admin/quizzes/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -291,31 +301,99 @@ router.delete('/api/admin/live-streams/:id', requireAuth, requireAdmin, async (r
 
 // ── Consultations CRUD ────────────────────────────────────────────────────────
 router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, res) => {
+  let conn;
+  let transactionStarted = false;
   try {
+    conn = await pool.getConnection();
     const c = req.body;
     const id = c.id || uuidv4();
-    if (c.therapist_id) {
-      const [[therapist]] = await pool.query('SELECT id FROM therapists WHERE id=? AND tenant_id=? LIMIT 1', [c.therapist_id, req.tenantId]);
+    const therapistId = c.therapistId || c.therapist_id;
+    const clientName = String(c.clientName || c.client_name || '').trim();
+    const clientEmail = String(c.clientEmail || c.client_email || '').trim().toLowerCase();
+    const clientPhone = String(c.clientPhone || c.client_phone || '').trim();
+    const sessionDate = c.sessionDate || c.session_date;
+    const sessionType = String(c.sessionType || c.session_type || 'individual').toUpperCase();
+    const status = String(c.status || 'pending').toUpperCase();
+    if (!clientName || !therapistId || !sessionDate) return res.status(400).json({ error: 'Client, therapist and session date are required' });
+    if (!['INDIVIDUAL', 'COUPLE', 'FAMILY'].includes(sessionType)) return res.status(400).json({ error: 'Invalid session type' });
+    if (!['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].includes(status)) return res.status(400).json({ error: 'Invalid consultation status' });
+    {
+      const [[therapist]] = await conn.query('SELECT id, name FROM therapists WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1', [therapistId, req.tenantId]);
       if (!therapist) return res.status(404).json({ error: 'Therapist not found' });
     }
+    let existing = null;
     if (c.id) {
-      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM consultations WHERE id=? LIMIT 1', [req.tenantId, c.id]);
-      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Consultation not found' });
+      [[existing]] = await conn.query('SELECT tenant_id FROM consultations WHERE id=? LIMIT 1', [c.id]);
+      if (existing && existing.tenant_id !== req.tenantId) return res.status(404).json({ error: 'Consultation not found' });
     }
-    await pool.query(
-      `INSERT INTO consultations (id, tenant_id, therapist_id, client_name, client_email, client_phone,
-         session_date, session_type, status, notes, meeting_link, amount, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    await conn.beginTransaction();
+    transactionStarted = true;
+    await conn.query(
+      `INSERT INTO consultations
+         (id, tenant_id, therapist_id, client_name, client_email, client_phone,
+          session_date, session_type, slot_id, timezone, status, notes, meeting_link,
+          amount, currency, session_duration_minutes, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
+         therapist_id=VALUES(therapist_id), client_name=VALUES(client_name),
+         client_email=VALUES(client_email), client_phone=VALUES(client_phone),
          status=VALUES(status), notes=VALUES(notes), meeting_link=VALUES(meeting_link),
-         session_date=VALUES(session_date), updated_at=CURRENT_TIMESTAMP`,
-      [id, req.tenantId, c.therapist_id||null, c.client_name||'', c.client_email||null,
-       c.client_phone||null, c.session_date||null, c.session_type||'online',
-       c.status||'pending', c.notes||null, c.meeting_link||null, c.amount||0,
-       c.created_at||new Date().toISOString()]
+         session_date=VALUES(session_date), session_type=VALUES(session_type),
+         slot_id=VALUES(slot_id), timezone=VALUES(timezone), amount=VALUES(amount),
+         currency=VALUES(currency), session_duration_minutes=VALUES(session_duration_minutes),
+         updated_at=CURRENT_TIMESTAMP`,
+      [
+        id, req.tenantId, therapistId, clientName, clientEmail || null, clientPhone || null,
+        sessionDate, sessionType, c.slotId || c.slot_id || null, c.timezone || 'Africa/Cairo',
+        status, String(c.notes || '').slice(0, 5000), c.meetingLink || c.meeting_link || null,
+        Number(c.amount) || 0, ['EGP', 'SAR', 'USD'].includes(c.currency) ? c.currency : 'EGP',
+        Number(c.sessionDurationMinutes || c.session_duration_minutes) || null,
+        String(c.createdAt || c.created_at || new Date().toISOString()).slice(0, 19).replace('T', ' '),
+      ]
     );
-    res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+    let leadId = null;
+    if (!existing && (clientEmail || clientPhone)) {
+      const normalizedPhone = clientPhone.replace(/\D/g, '');
+      const [[knownSubscriber]] = await conn.query(
+        `SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL
+          AND ((? <> '' AND RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''),10)=RIGHT(?,10))
+            OR (? <> '' AND LOWER(TRIM(email))=?)) LIMIT 1 FOR UPDATE`,
+        [req.tenantId, normalizedPhone, normalizedPhone, clientEmail, clientEmail]
+      );
+      const [[knownLead]] = await conn.query(
+        `SELECT id FROM leads WHERE tenant_id=? AND hidden=0
+          AND ((? <> '' AND RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''),10)=RIGHT(?,10))
+            OR (? <> '' AND LOWER(TRIM(email))=?)) LIMIT 1 FOR UPDATE`,
+        [req.tenantId, normalizedPhone, normalizedPhone, clientEmail, clientEmail]
+      );
+      if (!knownSubscriber && !knownLead) {
+        leadId = uuidv4();
+        const clientCode = await getNextClientCode(conn);
+        const rep = await getNextSalesRep(req.tenantId, conn, { branch: 'OTHER' });
+        await conn.query(
+          `INSERT INTO leads
+             (id, tenant_id, client_code, name, email, phone, source, status, interest_level,
+              lead_type, branch, branch_id, assigned_sales_id, assigned_sales_name, notes, created_at, hidden)
+           VALUES (?,?,?,?,?,?,?,'new','medium','consultation','OTHER',?,?,?,?,NOW(),0)`,
+          [
+            leadId, req.tenantId, clientCode, clientName, clientEmail || null, clientPhone || null,
+            'consultation', branchIdForBranch('OTHER'), rep?.id || null, rep?.name || null,
+            `Consultation booking with ${String(c.therapistName || '').slice(0, 200)}`,
+          ]
+        );
+        await logLeadEvent(leadId, 'created', 'Consultation booking created lead', { consultationId: id }, req.tenantId, conn);
+      }
+    }
+    await conn.commit();
+    transactionStarted = false;
+    res.json({ ok: true, id, leadId });
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn?.release();
+  }
 });
 router.patch('/api/admin/consultations/:id', requireAuth, requireAdmin, async (req, res) => {
   try {

@@ -14,7 +14,7 @@ export function BulkStubPanel({ notify }: { notify: NotifyFn }) {
     setLoading(true);
     try {
       const r = await mysqlAdmin.adminPost<{ count: number; sample: { name: string; email: string }[] }>(
-        '/api/admin/payments/bulk-stub', { dryRun: true }
+        '/admin/payments/bulk-stub', { dryRun: true }
       );
       setPreview(r as { count: number; sample: { name: string; email: string }[] });
     } catch (e: unknown) { notify('error', (e as Error).message || 'خطأ'); }
@@ -27,7 +27,7 @@ export function BulkStubPanel({ notify }: { notify: NotifyFn }) {
     setRunning(true);
     try {
       const r = await mysqlAdmin.adminPost<{ created: number }>(
-        '/api/admin/payments/bulk-stub', { dryRun: false }
+        '/admin/payments/bulk-stub', { dryRun: false }
       );
       notify('success', `تم إنشاء ${(r as { created: number }).created} سجل تاريخي ✅`);
       setPreview(null);
@@ -89,17 +89,31 @@ type AccountingPeriod = {
   summary_json: string | null;
   status: 'open' | 'closed';
 };
+type CloseRequest = {
+  id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'consumed';
+  requested_by: string;
+  reviewed_by?: string | null;
+  created_at: string;
+  checklist_snapshot?: { items?: Array<{ key: string; count: number; blocking: boolean }> } | string;
+};
 
 export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   const [periods, setPeriods] = useState<AccountingPeriod[]>([]);
+  const [closeRequests, setCloseRequests] = useState<CloseRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await mysqlAdmin.adminGet<AccountingPeriod[]>('/api/admin/accounting-periods');
-      setPeriods(Array.isArray(data) ? data : []);
+      const data = await mysqlAdmin.adminGet<AccountingPeriod[]>('/admin/accounting-periods');
+      const rows = Array.isArray(data) ? data : [];
+      setPeriods(rows);
+      const open = rows.find(period => period.status === 'open');
+      setCloseRequests(open
+        ? await mysqlAdmin.adminGet<CloseRequest[]>(`/admin/accounting-periods/${open.id}/close-requests`)
+        : []);
     } catch { notify('error', 'فشل تحميل الفترات المحاسبية'); }
     finally { setLoading(false); }
   };
@@ -111,7 +125,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
     if (!window.confirm(`إنشاء فترة محاسبية جديدة للشهر ${label}؟`)) return;
     setActionLoading('create');
     try {
-      await mysqlAdmin.adminPost('/api/admin/accounting-periods', { label });
+      await mysqlAdmin.adminPost('/admin/accounting-periods', { label });
       notify('success', 'تم إنشاء الفترة المحاسبية');
       await load();
     } catch (e: unknown) { notify('error', (e as Error).message || 'فشل الإنشاء'); }
@@ -122,18 +136,44 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
     if (!window.confirm(`إقفال الفترة المحاسبية ${label}؟ لن يمكن التراجع إلا بصلاحية المدير.`)) return;
     setActionLoading(id + '_close');
     try {
-      await mysqlAdmin.adminPost(`/api/admin/accounting-periods/${id}/close`, {});
+      await mysqlAdmin.adminPost(`/admin/accounting-periods/${id}/close`, {});
       notify('success', `تم إقفال الفترة ${label}`);
       await load();
     } catch (e: unknown) { notify('error', (e as Error).message || 'فشل الإقفال'); }
     finally { setActionLoading(''); }
   };
 
+  const requestClose = async (id: string, label: string) => {
+    const note = window.prompt(`ملاحظة طلب إقفال الفترة ${label}:`)?.trim() || '';
+    setActionLoading(id + '_request');
+    try {
+      await mysqlAdmin.adminPost(`/admin/accounting-periods/${id}/close-request`, { note });
+      notify('success', 'تم إنشاء طلب الإقفال بعد اجتياز قائمة الفحص');
+      await load();
+    } catch (e: unknown) { notify('error', (e as Error).message || 'تعذر إنشاء طلب الإقفال'); }
+    finally { setActionLoading(''); }
+  };
+
+  const reviewClose = async (periodId: string, requestId: string, decision: 'approve' | 'reject') => {
+    const note = window.prompt(decision === 'approve' ? 'ملاحظة الاعتماد:' : 'سبب الرفض:')?.trim() || '';
+    setActionLoading(requestId + '_review');
+    try {
+      await mysqlAdmin.adminPost(`/admin/accounting-periods/${periodId}/close-request/${requestId}/review`, { decision, note });
+      notify('success', decision === 'approve' ? 'تم اعتماد طلب الإقفال' : 'تم رفض طلب الإقفال');
+      await load();
+    } catch (e: unknown) { notify('error', (e as Error).message || 'تعذرت مراجعة الطلب'); }
+    finally { setActionLoading(''); }
+  };
+
   const reopenPeriod = async (id: string, label: string) => {
-    if (!window.confirm(`إعادة فتح الفترة ${label}؟`)) return;
+    const reason = window.prompt(`اكتب سبب إعادة فتح الفترة ${label}:`)?.trim();
+    if (!reason) {
+      notify('info', 'تم إلغاء إعادة الفتح: السبب إلزامي لأغراض المراجعة.');
+      return;
+    }
     setActionLoading(id + '_reopen');
     try {
-      await mysqlAdmin.adminPost(`/api/admin/accounting-periods/${id}/reopen`, {});
+      await mysqlAdmin.adminPost(`/admin/accounting-periods/${id}/reopen`, { reason });
       notify('success', `تم إعادة فتح الفترة ${label}`);
       await load();
     } catch (e: unknown) { notify('error', (e as Error).message || 'فشل إعادة الفتح'); }
@@ -141,6 +181,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   };
 
   const openPeriod = periods.find(p => p.status === 'open');
+  const activeCloseRequest = closeRequests.find(request => ['pending', 'approved'].includes(request.status));
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -169,14 +210,51 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
               <p className="text-xs text-emerald-600">فُتحت في {openPeriod.opened_at?.slice(0, 10)}</p>
             </div>
           </div>
-          <button onClick={() => closePeriod(openPeriod.id, openPeriod.period_label)}
-            disabled={actionLoading === openPeriod.id + '_close'}
+          <button
+            onClick={() => activeCloseRequest?.status === 'approved'
+              ? closePeriod(openPeriod.id, openPeriod.period_label)
+              : requestClose(openPeriod.id, openPeriod.period_label)}
+            disabled={!!actionLoading || activeCloseRequest?.status === 'pending'}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition disabled:opacity-50">
-            {actionLoading === openPeriod.id + '_close'
+            {actionLoading
               ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               : <XCircle size={14} />}
-            إقفال الفترة
+            {activeCloseRequest?.status === 'approved'
+              ? 'تنفيذ الإقفال المعتمد'
+              : activeCloseRequest?.status === 'pending'
+                ? 'طلب الإقفال بانتظار المراجعة'
+                : 'طلب إقفال الفترة'}
           </button>
+        </div>
+      )}
+
+      {openPeriod && closeRequests.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <h4 className="mb-3 font-bold text-gray-800">طلبات إقفال الفترة</h4>
+          <div className="space-y-2">
+            {closeRequests.map(request => (
+              <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 p-3 text-sm">
+                <div>
+                  <p className="font-bold text-gray-800">{request.status} — {request.created_at?.slice(0, 16)}</p>
+                  <p className="text-xs text-gray-500">طالب الإقفال: {request.requested_by}</p>
+                </div>
+                {request.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => reviewClose(openPeriod.id, request.id, 'approve')}
+                      disabled={!!actionLoading}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+                      اعتماد
+                    </button>
+                    <button onClick={() => reviewClose(openPeriod.id, request.id, 'reject')}
+                      disabled={!!actionLoading}
+                      className="rounded-lg bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50">
+                      رفض
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

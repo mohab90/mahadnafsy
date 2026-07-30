@@ -4,14 +4,7 @@ import type {
   CourseLectureItem, CourseChapterItem,
   CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem,
 } from '../../types';
-import { mysqlCatalog, mysqlAdmin } from '../../lib/mysqlapi';
-
-type Track = (action: string, entity: string, label: string) => void;
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const persistCourseToCollection = (_course: Course) => { /* PG-only — no Firestore write */ };
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const persistBundleToCollection = (_bundle: Bundle) => { /* PG-only — no Firestore write */ };
+import { mysqlCatalog } from '../../lib/mysqlapi';
 
 interface CatalogDataArgs {
   initialCourses: Course[];
@@ -20,7 +13,6 @@ interface CatalogDataArgs {
   initialTestimonials: TestimonialItem[];
   isAdmin: boolean;
   authUserUid: string | undefined;
-  track: Track;
   mergeContent: (data: Record<string, string>) => void;
   setLectures: React.Dispatch<React.SetStateAction<CourseLectureItem[]>>;
   setChapters: React.Dispatch<React.SetStateAction<CourseChapterItem[]>>;
@@ -38,7 +30,7 @@ interface CatalogDataArgs {
  */
 export function useCatalogData({
   initialCourses, initialBundles, initialTherapists, initialTestimonials,
-  isAdmin, authUserUid, track, mergeContent,
+  isAdmin, authUserUid, mergeContent,
   setLectures, setChapters,
   setCommunityPosts, setCommunityLibraryItems, setCommunityVideos, setCommunityEvents,
 }: CatalogDataArgs) {
@@ -47,8 +39,6 @@ export function useCatalogData({
   const [therapists, setTherapists] = useState<Therapist[]>(initialTherapists);
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>(initialTestimonials);
   const [remoteReady, setRemoteReady] = useState(false);
-  const isHydratingRef = useRef(true);
-  const lastLocalConfigWriteRef = useRef(0);
   // Guards the public catalog/community load (below) so it fires its ~12 API
   // calls exactly ONCE per page load. authUser resolves asynchronously and
   // its identity can change (undefined -> null, or null -> a real uid) several
@@ -61,7 +51,6 @@ export function useCatalogData({
   // ── Community + catalog loader (public, non-admin) ──────────────────────────
   // Admin catalog is loaded by the bootstrap above. Non-admin guests load via MySQL.
   useEffect(() => {
-    isHydratingRef.current = false;
     setRemoteReady(true);
 
     // authUser resolves asynchronously (undefined -> null/uid), which can re-fire this
@@ -184,196 +173,8 @@ export function useCatalogData({
     };
   }, [isAdmin]);
 
-  const addCourse = (course: Course) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    let resolvedCourse = course;
-    setCourses((prev) => {
-      if (course.courseCode) {
-        resolvedCourse = course;
-        return [course, ...prev];
-      }
-      const maxCode = prev
-        .map((c) => parseInt(c.courseCode || '0', 10))
-        .filter((n) => !isNaN(n) && n >= 3000);
-      const nextCode = maxCode.length > 0 ? Math.max(...maxCode) + 1 : 3000;
-      resolvedCourse = { ...course, courseCode: String(nextCode) };
-      return [resolvedCourse, ...prev];
-    });
-    // Write after state update so resolvedCourse is fully set
-    setTimeout(() => persistCourseToCollection(resolvedCourse), 0);
-    void mysqlAdmin.saveCourse(resolvedCourse as unknown as Record<string, unknown>);
-    track('create', 'course', resolvedCourse.title);
-  };
-
-  const updateCourse = (course: Course) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setCourses((prev) => prev.map((item) => (item.id === course.id ? course : item)));
-    // Update all bundles that embed this course
-    setBundles((prev) => {
-      const updated = prev.map((bundle) => {
-        const hasCourse = bundle.courses.some(c => c.id === course.id);
-        if (!hasCourse) return bundle;
-        const newBundle = { ...bundle, courses: bundle.courses.map((c) => (c.id === course.id ? course : c)) };
-        persistBundleToCollection(newBundle);
-        return newBundle;
-      });
-      return updated;
-    });
-    persistCourseToCollection(course);
-    void mysqlAdmin.saveCourse(course as unknown as Record<string, unknown>);
-    track('update', 'course', course.title);
-  };
-
-  const deleteCourse = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setCourses((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteCourse(id);
-    // Remove course from bundles that embed it
-    setBundles((prev) => {
-      return prev.map((bundle) => {
-        if (!bundle.courses.some(c => c.id === id)) return bundle;
-        const newBundle = { ...bundle, courses: bundle.courses.filter((c) => c.id !== id) };
-        persistBundleToCollection(newBundle);
-        return newBundle;
-      });
-    });
-    track('delete', 'course', id);
-  };
-
-  const addTherapist = (therapist: Therapist) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const nextTherapists = [therapist, ...therapists];
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string, unknown>);
-    track('create', 'therapist', therapist.name);
-  };
-
-  const updateTherapist = (therapist: Therapist) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const old = therapists.find((item) => item.id === therapist.id);
-    const nextTherapists = therapists.map((item) => (item.id === therapist.id ? therapist : item));
-    if (old && old.name !== therapist.name) {
-      setCourses((coursesPrev) => {
-        const updated = coursesPrev.map((c) => (c.instructor === old.name ? { ...c, instructor: therapist.name } : c));
-        // Persist any courses that changed instructor name to their collection documents
-        updated.filter(c => c.instructor === therapist.name && coursesPrev.find(oc => oc.id === c.id)?.instructor === old.name)
-          .forEach(c => persistCourseToCollection(c));
-        return updated;
-      });
-    }
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.saveTherapist(therapist as unknown as Record<string, unknown>);
-    track('update', 'therapist', therapist.name);
-  };
-
-  const deleteTherapist = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const target = therapists.find((item) => item.id === id);
-    const nextTherapists = therapists.filter((item) => item.id !== id);
-    setTherapists(nextTherapists);
-    persistTherapistsToConfig(nextTherapists);
-    void mysqlAdmin.deleteTherapist(id);
-    if (target) {
-      track('delete', 'therapist', target.name);
-    }
-  };
-
-  const bundleToServerPayload = (bundle: Bundle): Record<string, unknown> => ({
-    id: bundle.id,
-    title: bundle.title,
-    title_en: bundle.titleEn || null,
-    slug: bundle.slug || null,
-    short_description: bundle.shortDescription || '',
-    description: bundle.description,
-    thumbnail: bundle.thumbnail || '',
-    video_url: bundle.videoUrl || null,
-    price_egp: bundle.price?.EGP || 0,
-    price_sar: bundle.price?.SAR || 0,
-    price_usd: bundle.price?.USD || 0,
-    orig_price_egp: bundle.originalPrice?.EGP || 0,
-    orig_price_sar: bundle.originalPrice?.SAR || 0,
-    orig_price_usd: bundle.originalPrice?.USD || 0,
-    details_content_json: bundle.detailsContent ? JSON.stringify(bundle.detailsContent) : null,
-    is_published: bundle.isPublished !== false ? 1 : 0,
-    sort_order: bundle.sortOrder ?? 0,
-    course_ids: bundle.courses.map((c) => c.id),
-  });
-
-  const addBundle = (bundle: Bundle) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => [bundle, ...prev]);
-    persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
-    track('create', 'bundle', bundle.title);
-  };
-
-  const updateBundle = (bundle: Bundle) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => prev.map((item) => (item.id === bundle.id ? bundle : item)));
-    persistBundleToCollection(bundle);
-    void mysqlAdmin.saveBundle(bundleToServerPayload(bundle));
-    track('update', 'bundle', bundle.title);
-  };
-
-  const deleteBundle = (id: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    setBundles((prev) => prev.filter((item) => item.id !== id));
-    void mysqlAdmin.deleteBundle(id);
-    track('delete', 'bundle', id);
-  };
-
-  const addTestimonial = (item: TestimonialItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = [item, ...testimonials];
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string, unknown>);
-    track('create', 'testimonial', item.name);
-  };
-
-  const updateTestimonial = (item: TestimonialItem) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = testimonials.map((row) => (row.id === item.id ? item : row));
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.saveTestimonial(item as unknown as Record<string, unknown>);
-    track('update', 'testimonial', item.name);
-  };
-
-  const deleteTestimonial = (id: number) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = testimonials.filter((row) => row.id !== id);
-    setTestimonials(next);
-    persistTestimonialsToConfig(next);
-    void mysqlAdmin.deleteTestimonial(String(id));
-    track('delete', 'testimonial', String(id));
-  };
-
-  // ── Direct-write helpers for siteData/config fields ──────────────────────────────────────────
-  // Each of these writes a SINGLE field immediately on mutation, bypassing the debounce.
-  // This ensures the website sees changes instantly even if the echo-loop guard skips the debounce.
-  const _persistConfigField = (field: string, value: unknown) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    void mysqlAdmin.saveSettings({ [field]: JSON.parse(JSON.stringify(value)) } as Record<string, unknown>).catch(() => {});
-  };
-  const persistTherapistsToConfig = (updatedTherapists: Therapist[]) => _persistConfigField('therapists', updatedTherapists);
-  const persistTestimonialsToConfig = (items: TestimonialItem[]) => _persistConfigField('testimonials', items);
-
-  const resetCatalog = (defaults: { courses: Course[]; bundles: Bundle[]; therapists: Therapist[]; testimonials: TestimonialItem[] }) => {
-    setCourses(defaults.courses);
-    setBundles(defaults.bundles);
-    setTherapists(defaults.therapists);
-    setTestimonials(defaults.testimonials);
-  };
-
   return {
     courses, setCourses, bundles, therapists, testimonials,
-    addCourse, updateCourse, deleteCourse,
-    addTherapist, updateTherapist, deleteTherapist,
-    addBundle, updateBundle, deleteBundle,
-    addTestimonial, updateTestimonial, deleteTestimonial,
-    remoteReady, isHydratingRef, resetCatalog,
+    remoteReady,
   };
 }

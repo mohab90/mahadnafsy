@@ -12,45 +12,51 @@ export function useContentState(
 ) {
   const [content, setContent] = useState<Record<string, string>>(initialContent);
   const contentRef = useRef<Record<string, string>>(initialContent);
-
-  const persistContentToConfig = (c: Record<string, string>) => void mysqlAdmin.saveContent(c as Record<string,unknown>).catch(() => {});
+  const contentWriteQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
 
   const mergeContent = (incoming: Record<string, string>) => {
     contentRef.current = { ...contentRef.current, ...incoming };
     setContent(contentRef.current);
   };
 
-  const setContentValue = (key: string, value: string) => {
+  const queueContentMutation = (
+    key: string,
+    action: 'create' | 'update' | 'delete',
+    mutate: (current: Record<string, string>) => Record<string, string>,
+  ) => {
     lastLocalConfigWriteRef.current = Date.now();
-    // Use contentRef (not the stale `content` state) so that calling setContentValue
-    // multiple times in the same event handler accumulates all keys correctly instead
-    // of each call overwriting the previous one with the same stale base.
-    contentRef.current = { ...contentRef.current, [key]: value };
-    const next = contentRef.current;
-    setContent(next);
-    persistContentToConfig(next);
-    if (BRAND_KEYS.includes(key)) applyBrandTheme(next); // live brand preview on save
-    track('update', 'content', key);
+    const queued = contentWriteQueueRef.current.then(async () => {
+      const next = mutate(contentRef.current);
+      try {
+        await mysqlAdmin.saveContent(next as Record<string, unknown>);
+        contentRef.current = next;
+        setContent(next);
+        if (BRAND_KEYS.includes(key)) applyBrandTheme(next);
+        track(action, 'content', key);
+        return true;
+      } catch {
+        window.dispatchEvent(new CustomEvent('site-persist-error', {
+          detail: { field: 'content', name: key },
+        }));
+        return false;
+      }
+    });
+    contentWriteQueueRef.current = queued;
+    return queued;
   };
 
-  const addContentKey = (key: string, value: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    contentRef.current = { ...contentRef.current, [key]: value };
-    const next = contentRef.current;
-    setContent(next);
-    persistContentToConfig(next);
-    track('create', 'content', key);
-  };
+  const setContentValue = (key: string, value: string) =>
+    queueContentMutation(key, 'update', (current) => ({ ...current, [key]: value }));
 
-  const removeContentKey = (key: string) => {
-    lastLocalConfigWriteRef.current = Date.now();
-    const next = { ...contentRef.current };
-    delete next[key];
-    contentRef.current = next;
-    setContent(next);
-    persistContentToConfig(next);
-    track('delete', 'content', key);
-  };
+  const addContentKey = (key: string, value: string) =>
+    queueContentMutation(key, 'create', (current) => ({ ...current, [key]: value }));
+
+  const removeContentKey = (key: string) =>
+    queueContentMutation(key, 'delete', (current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
 
   return { content, setContent, contentRef, setContentValue, mergeContent, addContentKey, removeContentKey };
 }

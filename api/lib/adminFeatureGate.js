@@ -16,7 +16,7 @@ const featureRules = [
   { feature: 'marketing', prefixes: ['/api/admin/email-campaigns', '/api/admin/sms-campaigns', '/api/admin/drip-sequences', '/api/admin/drip-enrollments', '/api/admin/webhooks', '/api/admin/nps', '/api/admin/notifications', '/api/admin/inbox'] },
   { feature: 'support', prefixes: ['/api/admin/tasks', '/api/admin/tickets'] },
   { feature: 'daqqi', prefixes: ['/api/admin/daqqi', '/api/admin/waitlist'] },
-  { feature: 'settings', prefixes: ['/api/admin/settings', '/api/admin/sys-config', '/api/admin/content', '/api/admin/kv', '/api/admin/ip-whitelist', '/api/admin/payment-gateway', '/api/admin/lead-sources', '/api/admin/otp-provider'] },
+  { feature: 'settings', prefixes: ['/api/admin/settings', '/api/admin/sys-config', '/api/admin/content', '/api/admin/kv', '/api/admin/ip-whitelist', '/api/admin/tenant-domain', '/api/admin/payment-gateway', '/api/admin/lead-sources', '/api/admin/otp-provider'] },
   { feature: 'security', prefixes: ['/api/admin/security', '/api/admin/backup', '/api/admin/backups'] },
   { feature: 'analytics', prefixes: ['/api/admin/analytics', '/api/admin/kpi', '/api/admin/dashboard/kpi', '/api/admin/forecast'] },
 ];
@@ -42,4 +42,5 @@ function adminFeatureGate(req, res, next) {
 module.exports = {
   adminFeatureGate,
   featureForPath,
+  isPublicAdminPath,
 };

@@ -6,6 +6,21 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cacheInvalidate } = require('../lib/db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
+const mediaUrlIsValid = value => {
+  const url = String(value || '').trim();
+  if (url.startsWith('/uploads/videos/')) return true;
+  try { return ['http:', 'https:'].includes(new URL(url).protocol); } catch { return false; }
+};
+const durationSeconds = (value, explicit) => {
+  const direct = Number(explicit);
+  if (Number.isInteger(direct) && direct >= 0 && direct <= 86400) return direct;
+  const parts = String(value || '').split(':').map(Number);
+  if (parts.some(part => !Number.isFinite(part) || part < 0)) return 0;
+  if (parts.length === 2) return Math.min(86400, parts[0] * 60 + parts[1]);
+  if (parts.length === 3) return Math.min(86400, parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  return 0;
+};
+
 router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) => {
   try {
     const l = req.body;
@@ -13,16 +28,22 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
     // Support both camelCase (frontend) and snake_case field names
     const courseId      = l.courseId      || l.course_id      || null;
     const chapterId     = l.chapterId     || l.chapter_id     || null;
-    if (courseId) {
-      const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, req.tenantId]);
-      if (!course) return res.status(404).json({ error: 'Course not found' });
+    const title = String(l.title || '').trim();
+    if (!courseId || !title || title.length > 500) {
+      return res.status(400).json({ error: 'Valid courseId and title (1-500 characters) are required' });
     }
+    const [[course]] = await pool.query(
+      'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      [courseId, req.tenantId]
+    );
+    if (!course) return res.status(404).json({ error: 'Course not found' });
     if (chapterId) {
       const [[chapter]] = await pool.query(
-        'SELECT ch.id FROM course_chapters ch JOIN courses c ON c.id = ch.course_id WHERE ch.id=? AND c.tenant_id=? LIMIT 1',
-        [chapterId, req.tenantId]
+        `SELECT ch.id FROM course_chapters ch JOIN courses c ON c.id=ch.course_id
+          WHERE ch.id=? AND ch.course_id=? AND c.tenant_id=? LIMIT 1`,
+        [chapterId, courseId, req.tenantId]
       );
-      if (!chapter) return res.status(404).json({ error: 'Chapter not found' });
+      if (!chapter) return res.status(404).json({ error: 'Chapter not found in the selected course' });
     }
     if (l.id) {
       // The ON DUPLICATE KEY UPDATE below matches by id alone. If this id already
@@ -40,21 +61,33 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
     const videoUrl      = l.videoUrl      || l.video_url      || '';
     const sortOrder     = l.order         ?? l.sortOrder      ?? l.sort_order     ?? 0;
     const lectureType   = (l.lectureType  || l.lecture_type   || 'RECORDED').toUpperCase();
-    const description   = l.description   || '';
+    const description   = String(l.description || '').slice(0, 10000);
+    if (!['RECORDED', 'LIVE'].includes(lectureType)) return res.status(400).json({ error: 'Invalid lectureType' });
+    if (lectureType === 'RECORDED' && !mediaUrlIsValid(videoUrl)) return res.status(400).json({ error: 'A valid HTTPS/HTTP or tenant upload videoUrl is required' });
+    const normalizedSortOrder = Number(sortOrder);
+    const normalizedDripDays = Number(l.dripUnlockDays ?? l.drip_unlock_days ?? 0);
+    if (!Number.isInteger(normalizedSortOrder) || normalizedSortOrder < 0 || normalizedSortOrder > 100000
+      || !Number.isInteger(normalizedDripDays) || normalizedDripDays < 0 || normalizedDripDays > 3650) {
+      return res.status(400).json({ error: 'Invalid sort order or drip days' });
+    }
     const isPreview     = l.isPreview     != null ? (l.isPreview     ? 1 : 0) : (l.is_preview     != null ? (l.is_preview     ? 1 : 0) : 0);
     const isPublished   = l.isPublished   != null ? (l.isPublished   ? 1 : 0) : (l.is_published   != null ? (l.is_published   ? 1 : 0) : 1);
-    const dripUnlockDays = l.dripUnlockDays ?? l.drip_unlock_days ?? 0;
+    const duration = String(l.duration || '').slice(0, 50);
+    const normalizedDurationSeconds = durationSeconds(duration, l.durationSeconds ?? l.duration_seconds);
     await pool.query(
-      `INSERT INTO course_lectures (id, course_id, chapter_id, title, lecture_type, video_url, duration, sort_order, description, is_preview, is_published, drip_unlock_days)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO course_lectures
+       (id,course_id,chapter_id,title,lecture_type,video_url,duration,duration_seconds,
+        sort_order,description,is_preview,is_published,drip_unlock_days)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), video_url=VALUES(video_url),
          chapter_id=VALUES(chapter_id), course_id=VALUES(course_id),
-         lecture_type=VALUES(lecture_type), duration=VALUES(duration),
+         lecture_type=VALUES(lecture_type),duration=VALUES(duration),duration_seconds=VALUES(duration_seconds),
          sort_order=VALUES(sort_order), description=VALUES(description),
          is_preview=VALUES(is_preview), is_published=VALUES(is_published),
          drip_unlock_days=VALUES(drip_unlock_days)`,
-      [id, courseId, chapterId, l.title||'Untitled', lectureType, videoUrl, l.duration||'', sortOrder, description, isPreview, isPublished, dripUnlockDays]
+      [id, courseId, chapterId, title, lectureType, videoUrl, duration, normalizedDurationSeconds,
+        normalizedSortOrder, description, isPreview, isPublished, normalizedDripDays]
     );
     cacheInvalidate('courses');
     res.json({ ok: true, id });
@@ -72,10 +105,13 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
     // Support both camelCase (frontend) and snake_case field names
     const courseId  = c.courseId  || c.course_id  || null;
     const sortOrder = c.order     ?? c.sortOrder  ?? c.sort_order ?? 0;
-    if (courseId) {
-      const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, req.tenantId]);
-      if (!course) return res.status(404).json({ error: 'Course not found' });
+    const title = String(c.title || '').trim();
+    if (!courseId || !title || title.length > 500 || !Number.isInteger(Number(sortOrder))
+      || Number(sortOrder) < 0 || Number(sortOrder) > 100000) {
+      return res.status(400).json({ error: 'Valid courseId, title and sort order are required' });
     }
+    const [[course]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [courseId, req.tenantId]);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
     if (c.id) {
       const [[anyChapter]] = await pool.query(
         `SELECT ch.id, (co.tenant_id = ?) AS owned
@@ -89,7 +125,7 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
       `INSERT INTO course_chapters (id, course_id, title, sort_order)
        VALUES (?,?,?,?)
        ON DUPLICATE KEY UPDATE title=VALUES(title), sort_order=VALUES(sort_order)`,
-      [id, courseId, c.title||'', sortOrder]
+      [id, courseId, title, Number(sortOrder)]
     );
     cacheInvalidate('courses');
     res.json({ ok: true, id });
@@ -101,7 +137,9 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
 
 // POST /api/admin/therapists
 router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) => {
+  let conn;
   try {
+    conn = await pool.getConnection();
     const t = req.body;
     const id = t.id || uuidv4();
     const cs = t.consultationSettings || {};
@@ -119,21 +157,47 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
     const qualJson = Array.isArray(t.qualifications) ? JSON.stringify(t.qualifications) : (t.qualifications_json || null);
     const showHome = t.showOnHome !== undefined ? (t.showOnHome ? 1 : 0) : (t.show_on_home || 0);
     const showAbout = t.showOnAbout !== undefined ? (t.showOnAbout ? 1 : 0) : (t.show_on_about || 0);
+    const staffId = t.staffId ?? t.staff_id ?? null;
+    let oldName = null;
     if (t.id) {
-      const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM therapists WHERE id=? LIMIT 1', [req.tenantId, t.id]);
-      if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Therapist not found' });
+      const [[anyRow]] = await conn.query('SELECT tenant_id, name FROM therapists WHERE id=? LIMIT 1', [t.id]);
+      if (anyRow && anyRow.tenant_id !== req.tenantId) return res.status(404).json({ error: 'Therapist not found' });
+      oldName = anyRow?.name || null;
     }
-    await pool.query(
+    if (staffId) {
+      const [[staff]] = await conn.query(
+        `SELECT id FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL
+          AND LOWER(role) IN ('instructor','trainer') LIMIT 1`,
+        [req.tenantId, staffId]
+      );
+      if (!staff) return res.status(400).json({ error: 'Linked staff instructor is not active in this tenant' });
+    }
+    const slots = cs.availableSlots;
+    if (slots !== undefined && !Array.isArray(slots)) return res.status(400).json({ error: 'availableSlots must be an array' });
+    if (Array.isArray(slots)) {
+      for (const slot of slots) {
+        if (!slot || !/^[a-z]{3,12}$/i.test(String(slot.day || ''))
+          || !/^\d{2}:\d{2}$/.test(String(slot.startTime || ''))
+          || !/^\d{2}:\d{2}$/.test(String(slot.endTime || ''))
+          || String(slot.timezone || '').length > 100
+          || String(slot.label || '').length > 255
+          || String(slot.meetingLink || '').length > 2000) {
+          return res.status(400).json({ error: 'Invalid therapist availability slot' });
+        }
+      }
+    }
+    await conn.beginTransaction();
+    await conn.query(
       `INSERT INTO therapists
-         (id, tenant_id, name, specialty, image, experience, rating, title, bio,
+         (id, tenant_id, staff_id, name, specialty, image, experience, rating, title, bio,
           price_egp, price_sar, price_usd,
           is_consultation_enabled, session_duration_minutes,
           meeting_provider, provider_base_url,
           featured, sort_order, show_on_home, show_on_about, is_active,
           languages_json, focus_areas_json, qualifications_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
-         name=VALUES(name), specialty=VALUES(specialty), image=VALUES(image),
+         staff_id=VALUES(staff_id), name=VALUES(name), specialty=VALUES(specialty), image=VALUES(image),
          bio=VALUES(bio), title=VALUES(title),
          price_egp=VALUES(price_egp), price_sar=VALUES(price_sar), price_usd=VALUES(price_usd),
          is_consultation_enabled=VALUES(is_consultation_enabled),
@@ -145,7 +209,7 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
          languages_json=VALUES(languages_json), focus_areas_json=VALUES(focus_areas_json),
          qualifications_json=VALUES(qualifications_json)`,
       [
-        id, req.tenantId, t.name||'', t.specialty||'', t.image||'', t.experience||0, t.rating||5,
+        id, req.tenantId, staffId, t.name||'', t.specialty||'', t.image||'', t.experience||0, t.rating||5,
         t.title||null, t.bio||null,
         priceEgp, priceSar, priceUsd,
         isConsult, sessionDur,
@@ -156,9 +220,38 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
         langJson, focusJson, qualJson,
       ]
     );
+    if (oldName && oldName !== (t.name || '')) {
+      await conn.query(
+        'UPDATE courses SET instructor=? WHERE tenant_id=? AND instructor=?',
+        [t.name || '', req.tenantId, oldName]
+      );
+    }
+    if (Array.isArray(slots)) {
+      await conn.query('DELETE FROM therapist_slots WHERE therapist_id=?', [id]);
+      for (const slot of slots) {
+        await conn.query(
+          `INSERT INTO therapist_slots
+             (id, therapist_id, day, start_time, end_time, timezone, label, meeting_link, is_active)
+           VALUES (?,?,?,?,?,?,?,?,?)`,
+          [
+            String(slot.id || uuidv4()).slice(0, 36), id, String(slot.day).toLowerCase(),
+            slot.startTime, slot.endTime, slot.timezone || 'Africa/Cairo',
+            slot.label || null, slot.meetingLink || null, slot.isActive === false ? 0 : 1,
+          ]
+        );
+      }
+    }
+    await conn.commit();
     cacheInvalidate('therapists');
+    cacheInvalidate('courses');
     res.json({ ok: true, id });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (conn) await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn?.release();
+  }
 });
 
 // POST /api/admin/testimonials

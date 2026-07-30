@@ -22,9 +22,34 @@ const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { branchIdForBranch } = require('../lib/branches');
 const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/installmentMath');
+const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+
+async function requireScopedSubscriber(req, subscriberId, db = pool) {
+  const [[subscriber]] = await db.query(
+    `SELECT id, branch_id, assigned_cs_id, assigned_sales_id
+       FROM subscribers
+      WHERE id=? AND tenant_id=? AND deleted_at IS NULL
+      LIMIT 1`,
+    [subscriberId, req.tenantId]
+  );
+  const scope = resolveFinancialScope(req, { allowAssigned: true });
+  return subscriber && financialRecordMatches(scope, subscriber) ? subscriber : null;
+}
+
+function planMatchesScope(req, plan) {
+  return financialRecordMatches(resolveFinancialScope(req, { allowAssigned: true }), plan);
+}
+
+function requireInstallmentWritesEnabled(_req, res, next) {
+  if (process.env.INSTALLMENT_WRITES_ENABLED === 'true') return next();
+  return res.status(409).json({
+    error: 'Installment changes are temporarily disabled pending payment-model approval',
+    code: 'INSTALLMENT_WRITES_DISABLED',
+  });
+}
 
 // POST /api/admin/subscribers/:subscriberId/installment-plans — create a plan
-router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), requireInstallmentWritesEnabled, async (req, res) => {
   try {
     const { subscriberId } = req.params;
     const { courseId, bundleId, title, totalAmount, currency, entries, notes } = req.body || {};
@@ -32,7 +57,7 @@ router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAut
     const total = Number(totalAmount);
     if (!total || total <= 0) return res.status(400).json({ error: 'totalAmount must be positive' });
 
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriberId, req.tenantId]);
+    const sub = await requireScopedSubscriber(req, subscriberId);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
 
     const id = `ip-${uuidv4()}`;
@@ -56,6 +81,9 @@ router.post('/api/admin/subscribers/:subscriberId/installment-plans', requireAut
 // GET /api/admin/subscribers/:subscriberId/installment-plans — list plans for one subscriber
 router.get('/api/admin/subscribers/:subscriberId/installment-plans', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    if (!await requireScopedSubscriber(req, req.params.subscriberId)) {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
     const [rows] = await pool.query(
       `SELECT id, course_id, bundle_id, title, total_amount, currency, installments_count, paid_count,
               installment_amounts, due_dates, paid_dates, payment_ids, paid_amounts, status, notes, created_at
@@ -67,7 +95,7 @@ router.get('/api/admin/subscribers/:subscriberId/installment-plans', requireAuth
 });
 
 // POST /api/admin/installment-plans/:planId/entries/:index/pay — confirm one scheduled payment
-router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), requireInstallmentWritesEnabled, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const { planId } = req.params;
@@ -78,12 +106,16 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
 
     await conn.beginTransaction();
     const [[plan]] = await conn.query(
-      `SELECT ip.*, s.branch, s.branch_id
+      `SELECT ip.*, s.branch, s.branch_id, s.assigned_cs_id, s.assigned_sales_id
          FROM installment_plans ip JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id = ip.tenant_id
         WHERE ip.id=? AND ip.tenant_id=? LIMIT 1 FOR UPDATE`,
       [planId, req.tenantId]
     );
     if (!plan) { await conn.rollback(); return res.status(404).json({ error: 'Plan not found' }); }
+    if (!planMatchesScope(req, plan)) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Plan not found' });
+    }
 
     const payId = `inst-${uuidv4()}`;
     let update;
@@ -133,10 +165,16 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
 });
 
 // DELETE /api/admin/installment-plans/:planId — only if nothing has been paid yet
-router.delete('/api/admin/installment-plans/:planId', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.delete('/api/admin/installment-plans/:planId', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), requireInstallmentWritesEnabled, async (req, res) => {
   try {
-    const [[plan]] = await pool.query('SELECT paid_count FROM installment_plans WHERE id=? AND tenant_id=? LIMIT 1', [req.params.planId, req.tenantId]);
-    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    const [[plan]] = await pool.query(
+      `SELECT ip.paid_count, s.branch_id, s.assigned_cs_id, s.assigned_sales_id
+         FROM installment_plans ip
+         JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
+        WHERE ip.id=? AND ip.tenant_id=? AND s.deleted_at IS NULL LIMIT 1`,
+      [req.params.planId, req.tenantId]
+    );
+    if (!plan || !planMatchesScope(req, plan)) return res.status(404).json({ error: 'Plan not found' });
     if (Number(plan.paid_count) > 0) return res.status(409).json({ error: 'Cannot delete a plan with recorded payments — it has real financial history' });
     const [r] = await pool.query('DELETE FROM installment_plans WHERE id=? AND tenant_id=? AND paid_count=0', [req.params.planId, req.tenantId]);
     if (!r.affectedRows) return res.status(409).json({ error: 'Plan changed concurrently — refresh and retry' });
@@ -145,12 +183,18 @@ router.delete('/api/admin/installment-plans/:planId', requireAuth, requireAdminO
 });
 
 // DELETE /api/admin/installment-plans/:planId/entries/:index — remove one not-yet-paid entry
-router.delete('/api/admin/installment-plans/:planId/entries/:index', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.delete('/api/admin/installment-plans/:planId/entries/:index', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), requireInstallmentWritesEnabled, async (req, res) => {
   try {
     const { planId } = req.params;
     const index = parseInt(req.params.index, 10);
-    const [[plan]] = await pool.query('SELECT * FROM installment_plans WHERE id=? AND tenant_id=? LIMIT 1', [planId, req.tenantId]);
-    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    const [[plan]] = await pool.query(
+      `SELECT ip.*, s.branch_id, s.assigned_cs_id, s.assigned_sales_id
+         FROM installment_plans ip
+         JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
+        WHERE ip.id=? AND ip.tenant_id=? AND s.deleted_at IS NULL LIMIT 1`,
+      [planId, req.tenantId]
+    );
+    if (!plan || !planMatchesScope(req, plan)) return res.status(404).json({ error: 'Plan not found' });
 
     let update;
     try {

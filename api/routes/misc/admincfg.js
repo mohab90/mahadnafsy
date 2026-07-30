@@ -1,17 +1,23 @@
 'use strict';
 const logger = require('../../lib/logger');
-const bcrypt   = require('bcryptjs');
+const { isIP } = require('node:net');
+const bcrypt   = require('../../lib/passwordHash');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { hasPermission } = require('../../constants/permissions');
+const {
+  requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff,
+  requirePermission, invalidateIdentity,
+} = require('../../middleware/auth');
+const { hasPermission, PERMISSIONS, ROLES } = require('../../constants/permissions');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 const { isPlainJsonObject, preserveStoredSecrets, redactSecrets } = require('../../lib/configSecrets');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
+const { getMfaPolicy, saveMfaPolicy } = require('../../lib/mfaPolicy');
+const { invalidateIpWhitelist } = require('../../middleware/ipWhitelist');
 
 function validateConfigSection(section, value) {
   if (!Object.prototype.hasOwnProperty.call(SYS_DEFAULTS, section)) return `Unknown section: ${section}`;
@@ -36,6 +42,17 @@ function sectionMeta(section) {
     defaultRows: Array.isArray(value) ? value.length : undefined,
     keys: isPlainJsonObject(value) ? Object.keys(value) : undefined,
   };
+}
+
+function normalizeRequestIp(value) {
+  return String(value || '').split(',')[0].trim().replace(/^::ffff:/, '');
+}
+
+function isValidIpOrCidr(value) {
+  const [address, prefix, extra] = String(value || '').trim().split('/');
+  if (extra !== undefined || isIP(address) !== 4) return false;
+  if (prefix === undefined) return true;
+  return /^\d{1,2}$/.test(prefix) && Number(prefix) >= 0 && Number(prefix) <= 32;
 }
 
 async function publishConfigEvent(req, section) {
@@ -124,8 +141,8 @@ router.get('/api/admin/sys-config/public', async (req, res) => {
 router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { password } = req.body;
-    if (!password || password.length < 6) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
-    const hash = await bcrypt.hash(password, 10);
+    if (!password || password.length < 8) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' });
+    const hash = await bcrypt.hash(password, 12);
 
     // Check if staff already has a login in users table
     const [[staff]] = await pool.query('SELECT id, email, name FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
@@ -134,9 +151,12 @@ router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin,
     // Upsert into users table (staff use email as username)
     await pool.query(
       `INSERT INTO users (id, tenant_id, email, password_hash, role, name) VALUES (UUID(),?,?,?,'staff',?)
-       ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash)`,
+       ON DUPLICATE KEY UPDATE
+         password_hash=VALUES(password_hash),
+         session_version=session_version+1`,
       [req.tenantId, staff.email, hash, staff.name || staff.email]
     );
+    invalidateIdentity(req.tenantId, '', staff.email);
     res.json({ ok: true, message: 'تم تعيين كلمة المرور بنجاح' });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -149,7 +169,11 @@ router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin
     const newActive = staff.is_active ? 0 : 1;
     await pool.query('UPDATE staff SET is_active=? WHERE id=? AND tenant_id=?', [newActive, req.params.id, req.tenantId]);
     // Also update users table
-    await pool.query('UPDATE users SET is_active=? WHERE tenant_id=? AND email=?', [newActive, req.tenantId, staff.email]).catch(() => {});
+    await pool.query(
+      'UPDATE users SET is_active=?, session_version=session_version+1 WHERE tenant_id=? AND email=?',
+      [newActive, req.tenantId, staff.email]
+    );
+    invalidateIdentity(req.tenantId, '', staff.email);
     // When deactivating: un-assign all leads and subscribers so they go to the pool
     if (!newActive) {
       await pool.query(
@@ -178,7 +202,7 @@ router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin
 router.get('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT id, ip, label, created_at FROM ip_whitelist WHERE tenant_id=? ORDER BY created_at DESC', [req.tenantId]);
-    res.json({ whitelist: rows });
+    res.json({ whitelist: rows, currentIp: normalizeRequestIp(req.ip) });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -186,8 +210,7 @@ router.post('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, re
   try {
     const { ip, label } = req.body;
     if (!ip) return res.status(400).json({ error: 'ip required' });
-    // Basic validation: IPv4 or CIDR
-    if (!/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(ip.trim())) {
+    if (!isValidIpOrCidr(ip)) {
       return res.status(400).json({ error: 'Invalid IP format' });
     }
     await pool.query(
@@ -195,6 +218,7 @@ router.post('/api/admin/ip-whitelist', requireAuth, requireAdmin, async (req, re
       [req.tenantId, ip.trim(), label || null, req.user?.uid || null]
     );
     const [[row]] = await pool.query('SELECT id, ip, label, created_at FROM ip_whitelist WHERE tenant_id=? AND ip=?', [req.tenantId, ip.trim()]);
+    invalidateIpWhitelist(req.tenantId);
     res.json({ ok: true, entry: row });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -203,9 +227,53 @@ router.delete('/api/admin/ip-whitelist/:id', requireAuth, requireAdmin, async (r
   try {
     const [r] = await pool.query('DELETE FROM ip_whitelist WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Entry not found' });
+    invalidateIpWhitelist(req.tenantId);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
+
+router.get(
+  '/api/admin/security/mfa-policy',
+  requireAuth, requireAdminOrStaff, requirePermission('view_security'),
+  async (req, res) => {
+    try {
+      res.json(await getMfaPolicy(req.tenantId, { fresh: true }));
+    } catch (error) {
+      logger.error('[security/mfa-policy get]', error);
+      res.status(500).json({ error: 'Failed to load MFA policy' });
+    }
+  }
+);
+
+router.put(
+  '/api/admin/security/mfa-policy',
+  requireAuth, requireAdminOrStaff, requirePermission('manage_security'),
+  async (req, res) => {
+    try {
+      const roles = Array.isArray(req.body?.required_roles) ? req.body.required_roles : [];
+      const permissions = Array.isArray(req.body?.required_permissions) ? req.body.required_permissions : [];
+      const knownRoles = new Set(Object.values(ROLES));
+      const knownPermissions = new Set(Object.values(PERMISSIONS));
+      if (
+        roles.length > 25 || permissions.length > 50
+        || roles.some(role => !knownRoles.has(String(role).toLowerCase()))
+        || permissions.some(permission => !knownPermissions.has(String(permission).toLowerCase()))
+      ) {
+        return res.status(400).json({ error: 'Invalid MFA policy roles or permissions' });
+      }
+      const policy = await saveMfaPolicy(req.tenantId, {
+        enabled: req.body?.enabled === true,
+        required_roles: roles,
+        required_permissions: permissions,
+      }, req.user?.uid || req.user?.email);
+      await publishConfigEvent(req, 'security_mfa_policy');
+      res.json({ ok: true, policy });
+    } catch (error) {
+      logger.error('[security/mfa-policy put]', error);
+      res.status(500).json({ error: 'Failed to save MFA policy' });
+    }
+  }
+);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Generic Key-Value Store (for frontend tabs persistence) ───────

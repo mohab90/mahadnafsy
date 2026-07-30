@@ -7,9 +7,24 @@ const { pool } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { completeCourse, completeCourses } = require('../lib/courseCompletion');
+const { reissueCertificate, revokeCertificate } = require('../lib/certificateLifecycle');
+const { resolveLectureAccess } = require('../lib/learningAccess');
+const { createMediaTicket, mediaKind, playableRedirect, verifyMediaTicket } = require('../lib/mediaAccess');
+const { streamTenantMedia } = require('../lib/uploadSafety');
+const {
+  addCohortMember,
+  listCohortMembers,
+  listCohorts,
+  removeCohortMember,
+  saveCohort,
+} = require('../lib/learningCohorts');
+const {
+  listLearningPrerequisites,
+  replaceLearningPrerequisites,
+} = require('../lib/learningPrerequisites');
 const outbox = require('../lib/outbox');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { bulkOperationLimiter, publicLimiter } = require('../middleware/rateLimits');
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -18,6 +33,199 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character =>
 function validHttpUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(String(value)).protocol); } catch { return false; }
 }
+const LIVE_PLATFORMS = new Set(['zoom', 'google_meet', 'youtube', 'other']);
+const LIVE_STATUSES = new Set(['scheduled', 'live', 'ended', 'cancelled']);
+const LIVE_TRANSITIONS = {
+  scheduled: new Set(['live', 'cancelled']),
+  live: new Set(['ended', 'cancelled']),
+  ended: new Set(),
+  cancelled: new Set(),
+};
+
+function validateLiveSessionPatch(body, currentStatus = null) {
+  const patch = {};
+  for (const key of ['title','platform','meeting_url','meeting_id','meeting_pass','starts_at','duration_min','status','recording_url','notes']) {
+    if (body[key] !== undefined) patch[key] = body[key];
+  }
+  if (!Object.keys(patch).length) {
+    const error = new Error('Nothing to update'); error.statusCode = 400; throw error;
+  }
+  if (patch.title !== undefined && (!String(patch.title).trim() || String(patch.title).length > 255)) {
+    const error = new Error('title must contain 1-255 characters'); error.statusCode = 400; throw error;
+  }
+  if (patch.platform !== undefined) {
+    patch.platform = String(patch.platform).toLowerCase().replace('-', '_');
+    if (!LIVE_PLATFORMS.has(patch.platform)) {
+      const error = new Error('Invalid live session platform'); error.statusCode = 400; throw error;
+    }
+  }
+  for (const key of ['meeting_url', 'recording_url']) {
+    if (patch[key] !== undefined && patch[key] !== null && patch[key] !== '' && !validHttpUrl(patch[key])) {
+      const error = new Error(`${key} must be a valid HTTP(S) URL`); error.statusCode = 400; throw error;
+    }
+  }
+  if (patch.starts_at !== undefined && Number.isNaN(Date.parse(patch.starts_at))) {
+    const error = new Error('starts_at must be a valid date'); error.statusCode = 400; throw error;
+  }
+  if (patch.duration_min !== undefined) {
+    patch.duration_min = Number(patch.duration_min);
+    if (!Number.isInteger(patch.duration_min) || patch.duration_min < 5 || patch.duration_min > 1440) {
+      const error = new Error('duration_min must be an integer from 5 to 1440'); error.statusCode = 400; throw error;
+    }
+  }
+  if (patch.status !== undefined) {
+    patch.status = String(patch.status).toLowerCase();
+    if (!LIVE_STATUSES.has(patch.status)
+      || (currentStatus && patch.status !== currentStatus && !LIVE_TRANSITIONS[currentStatus]?.has(patch.status))) {
+      const error = new Error('Invalid live session status transition'); error.statusCode = 409; throw error;
+    }
+  }
+  if (patch.meeting_id !== undefined) patch.meeting_id = String(patch.meeting_id || '').slice(0, 200) || null;
+  if (patch.meeting_pass !== undefined) patch.meeting_pass = String(patch.meeting_pass || '').slice(0, 100) || null;
+  if (patch.notes !== undefined) patch.notes = String(patch.notes || '').slice(0, 10000) || null;
+  return patch;
+}
+
+async function requireAssignedAnalyticsCourse(req, res, next) {
+  try {
+    const [[course]] = await pool.query(
+      'SELECT id,instructor_id FROM courses WHERE tenant_id=? AND id=? AND deleted_at IS NULL LIMIT 1',
+      [req.tenantId, req.params.courseId]
+    );
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+    const role = String(req.staffRecord?.role || '').toLowerCase();
+    if (['instructor', 'trainer'].includes(role) && String(course.instructor_id || '') !== String(req.staffRecord.id)) {
+      return res.status(403).json({ error: 'Instructor analytics are limited to assigned courses' });
+    }
+    req.analyticsCourse = course;
+    next();
+  } catch {
+    res.status(500).json({ error: 'Unable to authorize course analytics' });
+  }
+}
+
+router.get('/api/admin/lms/prerequisites', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+  try {
+    res.json({ rules: await listLearningPrerequisites(req.tenantId) });
+  } catch {
+    res.status(500).json({ error: 'Unable to load learning prerequisites' });
+  }
+});
+
+router.put('/api/admin/lms/prerequisites', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const rules = await replaceLearningPrerequisites({
+      tenantId: req.tenantId,
+      subjectType: req.body?.subjectType,
+      subjectId: req.body?.subjectId,
+      rules: req.body?.rules,
+      actor: req.user?.email || 'admin',
+    }, conn);
+    await conn.commit();
+    res.json({ ok: true, rules });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to save learning prerequisites' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.get('/api/admin/lms/cohorts', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+  try {
+    res.json(await listCohorts(req.tenantId, req.query.course_id || null));
+  } catch {
+    res.status(500).json({ error: 'Unable to load cohorts' });
+  }
+});
+
+router.post('/api/admin/lms/cohorts', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const id = await saveCohort({
+      ...req.body,
+      tenantId: req.tenantId,
+      actor: req.staffRecord?.id || req.user?.email,
+    }, conn);
+    await conn.commit();
+    res.status(req.body?.id ? 200 : 201).json({ ok: true, id });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to save cohort' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.get('/api/admin/lms/cohorts/:id/members', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+  try {
+    res.json(await listCohortMembers(req.tenantId, req.params.id));
+  } catch {
+    res.status(500).json({ error: 'Unable to load cohort members' });
+  }
+});
+
+router.post('/api/admin/lms/cohorts/:id/members', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await addCohortMember({
+      tenantId: req.tenantId,
+      cohortId: req.params.id,
+      subscriberId: req.body?.subscriberId,
+      actor: req.staffRecord?.id || req.user?.email,
+    }, conn);
+    await conn.commit();
+    res.status(result.changed ? 201 : 200).json({ ok: true, ...result });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to add cohort member' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.delete('/api/admin/lms/cohorts/:id/members/:subscriberId', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await removeCohortMember({
+      tenantId: req.tenantId,
+      cohortId: req.params.id,
+      subscriberId: req.params.subscriberId,
+      actor: req.staffRecord?.id || req.user?.email,
+    }, conn);
+    await conn.commit();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to remove cohort member' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.get('/api/me/cohorts', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ch.id,ch.title,ch.course_id AS courseId,c.title AS courseTitle,
+              ch.starts_at AS startsAt,ch.ends_at AS endsAt,ch.status
+         FROM cohort_members cm
+         JOIN subscribers s ON s.id=cm.subscriber_id AND s.tenant_id=cm.tenant_id
+         JOIN course_cohorts ch ON ch.id=cm.cohort_id AND ch.tenant_id=cm.tenant_id
+         JOIN courses c ON c.id=ch.course_id AND c.tenant_id=ch.tenant_id
+        WHERE cm.tenant_id=? AND LOWER(TRIM(s.email))=? AND cm.status='active'
+        ORDER BY ch.starts_at DESC`,
+      [req.tenantId, String(req.user.email || '').toLowerCase().trim()]
+    );
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: 'Unable to load cohorts' });
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── FEATURE v23: Progress Tracking ───────────────────────────────────────────
@@ -43,7 +251,7 @@ router.get('/api/me/progress', requireAuth, async (req, res) => {
 });
 
 // GET /api/admin/courses/:courseId/progress — admin: completion stats per lecture
-router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), requireAssignedAnalyticsCourse, async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT lc.lecture_id, l.title AS lecture_title,
@@ -68,76 +276,57 @@ router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrS
 router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) => {
   try {
     const email = req.user.email?.toLowerCase().trim();
-    // crm_json.courseAccess is the SOURCE OF TRUTH the client (CourseDetails +
-    // UserDashboardVideoPlayer) uses to unlock the "first N" lectures. The server
-    // MUST read the same source, else it strands lectures the UI shows unlocked
-    // ("جاري تحميل الفيديو..." forever). See memory: partial-access-video-truth.
-    const [[sub]] = await pool.query('SELECT id, crm_json FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
+    // enrollments is the shared access authority for the API and both frontends.
+    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
     if (!sub) return res.status(403).json({ accessible: false, reason: 'not_subscribed' });
-    // Lecture + its chapter's sort order (for chapter-grouped positioning).
-    const [[lecture]] = await pool.query(
-      `SELECT cl.id, cl.course_id, cl.sort_order, cl.drip_unlock_days, cl.video_url,
-              COALESCE(cc.sort_order, 999999) AS chapter_sort
-        FROM course_lectures cl
-        JOIN courses c ON c.id=cl.course_id
-        LEFT JOIN course_chapters cc ON cc.id = cl.chapter_id
-        WHERE cl.id=? AND c.tenant_id=? LIMIT 1`,
-      [req.params.lectureId, req.tenantId]
-    );
-    if (!lecture) return res.status(404).json({ accessible: false, reason: 'not_found' });
-    const [[enrolled]] = await pool.query(
-       'SELECT enrolled_at, access_type, lecture_limit FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1',
-      [sub.id, lecture.course_id, req.tenantId]
-    );
-    // Resolve access mode + limit the SAME way the client does: crm_json.courseAccess
-    // wins; enrollments is the fallback for older records.
-    let mode = null, limit = null;
-    try {
-      const crm = typeof sub.crm_json === 'string' ? JSON.parse(sub.crm_json) : (sub.crm_json || {});
-      const ca = crm && crm.courseAccess ? crm.courseAccess[lecture.course_id] : undefined;
-      if (ca && typeof ca === 'object') { mode = ca.mode || (ca.lectureLimit ? 'limited' : null); if (ca.lectureLimit != null) limit = Number(ca.lectureLimit); }
-      else if (ca === 'full' || ca === 'limited' || ca === 'preview') mode = ca;
-    } catch { /* malformed crm_json → fall through to enrollment */ }
-    if (!mode) {
-      if (!enrolled) return res.json({ accessible: false, reason: 'not_enrolled' });
-      if (enrolled.access_type === 'limited') { mode = 'limited'; if (limit == null) limit = Number(enrolled.lecture_limit) || null; }
-      else mode = 'full'; // enrolled, no explicit limit = full
+    const access = await resolveLectureAccess({
+      tenantId: req.tenantId, subscriberId: sub.id, lectureId: req.params.lectureId,
+    });
+    if (!access.accessible) {
+      if (access.reason === 'not_found') return res.status(404).json({ accessible: false, reason: access.reason });
+      return res.json({
+        accessible: false, reason: access.reason,
+        allowed: access.allowed, position: access.position, unlocks_at: access.unlocksAt,
+      });
     }
-    // Limited access: grant if the lecture is within the first N by EITHER the flat
-    // sort_order order (CourseDetails) OR the chapter-grouped order (dashboard player).
-    // Using the more permissive of the two guarantees we never lock a lecture the UI
-    // presents as unlocked — killing the "stuck loading" bug regardless of ordering.
-    if (mode === 'limited') {
-      const lim = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 1;
-      const [[flatRow]] = await pool.query(
-        'SELECT COUNT(*) AS pos FROM course_lectures WHERE course_id=? AND sort_order < ?',
-        [lecture.course_id, lecture.sort_order]
-      );
-      const [[chapRow]] = await pool.query(
-        `SELECT COUNT(*) AS pos FROM course_lectures cl LEFT JOIN course_chapters cc ON cc.id = cl.chapter_id
-         WHERE cl.course_id=? AND ( COALESCE(cc.sort_order,999999) < ?
-           OR (COALESCE(cc.sort_order,999999) = ? AND cl.sort_order < ?) )`,
-        [lecture.course_id, lecture.chapter_sort, lecture.chapter_sort, lecture.sort_order]
-      );
-      const position = Math.min(Number(flatRow?.pos ?? 0), Number(chapRow?.pos ?? 0)); // 0-based, most permissive
-      if (position >= lim) {
-        return res.json({ accessible: false, reason: 'access_limited', allowed: lim, position: position + 1 });
-      }
-    } else if (mode === 'preview') {
-      return res.json({ accessible: false, reason: 'preview_only' });
-    }
-    // Drip check (only when we have an enrollment date to anchor from)
-    const dripDays = Number(lecture.drip_unlock_days) || 0;
-    if (dripDays > 0 && enrolled?.enrolled_at) {
-      const enrolledAt = new Date(enrolled.enrolled_at);
-      const unlockAt = new Date(enrolledAt.getTime() + dripDays * 86400000);
-      if (Date.now() < unlockAt.getTime()) {
-        return res.json({ accessible: false, reason: 'drip_locked', unlocks_at: unlockAt.toISOString() });
-      }
-    }
+    const lecture = access.lecture;
     // Access granted → return the video URL (the public catalog withholds it for paid lectures).
-    res.json({ accessible: true, video_url: lecture.video_url || '' });
+    const kind = mediaKind(lecture.video_url);
+    const ticket = createMediaTicket({
+      tenantId: req.tenantId, subscriberId: sub.id, lectureId: lecture.id,
+    });
+    res.json({
+      accessible: true,
+      video_url: `/api/media/lectures/${encodeURIComponent(lecture.id)}?ticket=${encodeURIComponent(ticket)}&kind=${kind}`,
+      video_kind: kind,
+      expires_in: 300,
+    });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.get('/api/media/lectures/:lectureId', publicLimiter, async (req, res) => {
+  try {
+    const ticket = verifyMediaTicket(req.query.ticket, req.params.lectureId);
+    if (!ticket) return res.status(401).json({ error: 'Media ticket is invalid or expired' });
+    const [[lecture]] = await pool.query(
+      `SELECT cl.video_url FROM course_lectures cl
+       JOIN courses c ON c.id=cl.course_id AND c.tenant_id=?
+       JOIN enrollments e ON e.course_id=cl.course_id AND e.tenant_id=? AND e.subscriber_id=? AND e.status='active'
+       WHERE cl.id=? AND cl.is_published=1 LIMIT 1`,
+      [ticket.tenantId, ticket.tenantId, ticket.subscriberId, ticket.lectureId]
+    );
+    const target = playableRedirect(lecture?.video_url);
+    if (!target) return res.status(404).json({ error: 'Media is unavailable' });
+    if (target.startsWith('/uploads/videos/')) {
+      if (await streamTenantMedia(req, res, target, ticket.tenantId)) return;
+      return res.status(404).json({ error: 'Media is unavailable' });
+    }
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Referrer-Policy', 'no-referrer');
+    return res.redirect(302, target);
+  } catch {
+    return res.status(500).json({ error: 'Unable to resolve media' });
+  }
 });
 
 // PATCH /api/admin/lectures/:lectureId/drip — set drip_unlock_days
@@ -159,7 +348,7 @@ router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, a
 // ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/live-sessions?course_id=
-router.get('/api/admin/live-sessions', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/live-sessions', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
     const { course_id } = req.query;
     let sql = `SELECT ls.*, c.title AS course_title FROM live_sessions ls LEFT JOIN courses c ON c.id=ls.course_id AND c.tenant_id=ls.tenant_id WHERE ls.tenant_id=?`;
@@ -176,7 +365,11 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
   let conn;
   try {
     const { course_id, title, platform, meeting_url, meeting_id, meeting_pass, starts_at, duration_min, notes } = req.body;
-    if (!validHttpUrl(meeting_url) || !starts_at || Number.isNaN(Date.parse(starts_at))) return res.status(400).json({ error: 'Valid meeting_url and starts_at required' });
+    const normalized = validateLiveSessionPatch({
+      title, platform: platform || 'zoom', meeting_url, meeting_id, meeting_pass,
+      starts_at, duration_min: duration_min ?? 60, notes,
+    });
+    if (!validHttpUrl(normalized.meeting_url) || !normalized.starts_at) return res.status(400).json({ error: 'Valid meeting_url and starts_at required' });
     conn = await pool.getConnection();
     await conn.beginTransaction();
     if (course_id) {
@@ -187,14 +380,15 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
     await conn.query(
       `INSERT INTO live_sessions (id, tenant_id, course_id, title, platform, meeting_url, meeting_id, meeting_pass, starts_at, duration_min, notes, created_by)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, req.tenantId, course_id||null, title||'', platform||'zoom', meeting_url, meeting_id||null, meeting_pass||null,
-       starts_at, duration_min||60, notes||null, req.user?.email||'admin']
+      [id, req.tenantId, course_id||null, normalized.title, normalized.platform,
+       normalized.meeting_url, normalized.meeting_id, normalized.meeting_pass,
+       normalized.starts_at, normalized.duration_min, normalized.notes, req.user?.email||'admin']
     );
     if (course_id) {
       const [enrolled] = await conn.query(
         `SELECT s.id,s.email,s.name,s.phone FROM enrollments e
           JOIN subscribers s ON s.id=e.subscriber_id AND s.tenant_id=e.tenant_id
-         WHERE e.course_id=? AND e.tenant_id=? AND e.status<>'cancelled'`, [course_id, req.tenantId]
+         WHERE e.course_id=? AND e.tenant_id=? AND e.status='active'`, [course_id, req.tenantId]
       );
       const sessionDate = new Date(starts_at).toLocaleString('ar-EG', { dateStyle: 'full', timeStyle: 'short' });
       for (const student of enrolled) {
@@ -217,16 +411,23 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
     );
     await conn.commit(); conn.release(); conn = null;
     res.status(201).json(row);
-  } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
+  }
 });
 
 // PATCH /api/admin/live-sessions/:id — update status/recording
 router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const allowed = ['title','platform','meeting_url','meeting_id','meeting_pass','starts_at','duration_min','status','recording_url','notes'];
-    const sets = []; const vals = [];
-    for (const k of allowed) { if (req.body[k] !== undefined) { sets.push(`${k}=?`); vals.push(req.body[k]); } }
-    if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+    const [[current]] = await pool.query(
+      'SELECT status FROM live_sessions WHERE id=? AND tenant_id=? LIMIT 1',
+      [req.params.id, req.tenantId]
+    );
+    if (!current) return res.status(404).json({ error: 'Live session not found' });
+    const patch = validateLiveSessionPatch(req.body || {}, String(current.status).toLowerCase());
+    const sets = Object.keys(patch).map(key => `${key}=?`);
+    const vals = Object.values(patch);
     vals.push(req.params.id, req.tenantId);
     const [updated] = await pool.query(`UPDATE live_sessions SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, vals);
     if (!updated.affectedRows) return res.status(404).json({ error: 'Live session not found' });
@@ -236,7 +437,7 @@ router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (r
        FROM live_sessions WHERE id=? AND tenant_id=?`, [req.params.id, req.tenantId]
     );
     res.json(row);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // GET /api/me/live-sessions — get upcoming live sessions for enrolled courses
@@ -252,7 +453,7 @@ router.get('/api/me/live-sessions', requireAuth, async (req, res) => {
       FROM live_sessions ls
        JOIN courses c ON c.id=ls.course_id AND c.tenant_id=ls.tenant_id
        JOIN enrollments e ON e.course_id=ls.course_id AND e.subscriber_id=? AND e.tenant_id=ls.tenant_id
-       WHERE ls.tenant_id=? AND ls.starts_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
+       WHERE ls.tenant_id=? AND e.status='active' AND ls.starts_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
         AND ls.status IN ('scheduled','live')
       ORDER BY ls.starts_at ASC
     `, [sub.id, req.tenantId]);
@@ -354,7 +555,7 @@ router.post('/api/admin/email-sequences/trigger-test', requireAuth, requireAdmin
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/staff/:staffId/schedule — get weekly schedule
-router.get('/api/admin/staff/:staffId/schedule', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/staff/:staffId/schedule', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       'SELECT id, staff_id, day_of_week, start_time, end_time, grace_minutes, is_off_day FROM work_schedules WHERE staff_id = ? AND tenant_id=? ORDER BY day_of_week ASC',
@@ -401,7 +602,7 @@ router.put('/api/admin/staff/:staffId/schedule', requireAuth, requireAdmin, asyn
 });
 
 // GET /api/admin/schedules — all staff schedules overview (for weekly roster view)
-router.get('/api/admin/schedules', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/schedules', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT ws.*, u.name AS staff_name, u.email AS staff_email, u.role AS staff_role
@@ -422,7 +623,7 @@ router.get('/api/admin/schedules', requireAuth, requireAdminOrStaff, async (req,
 });
 
 // GET /api/admin/attendance?staff_id=&from=&to=&status= — attendance log
-router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id, from, to, status } = req.query;
     const fromDate = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -453,7 +654,7 @@ router.get('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (req
 });
 
 // POST /api/admin/attendance — log a single attendance record
-router.post('/api/admin/attendance', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
   try {
     const { staff_id, date, check_in, check_out, status, notes } = req.body;
     if (!staff_id || !date) return res.status(400).json({ error: 'staff_id and date required' });
@@ -610,7 +811,7 @@ router.get('/api/admin/courses/:courseId/waitlist', requireAuth, requireAdminOrS
       [courseId, req.tenantId]
     );
     const [[{ enrolled }]] = await pool.query(
-      "SELECT COUNT(*) AS enrolled FROM enrollments WHERE course_id = ? AND tenant_id=? AND status != 'cancelled'",
+      "SELECT COUNT(*) AS enrolled FROM enrollments WHERE course_id = ? AND tenant_id=? AND status='active'",
       [courseId, req.tenantId]
     );
     const [[course]] = await pool.query('SELECT title, max_students FROM courses WHERE id = ? AND tenant_id=? AND deleted_at IS NULL', [courseId, req.tenantId]);
@@ -742,9 +943,12 @@ router.patch('/api/admin/courses/:courseId/capacity', requireAuth, requireAdmin,
 // completeCourse() strict by default; this is the deliberate, audited exception).
 router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
   try {
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason || reason.length > 500) return res.status(400).json({ error: 'A manual completion reason (1-500 characters) is required' });
     const completionResult = await completeCourse({
       tenantId: req.tenantId, subscriberId: req.body?.subscriber_id, courseId: req.body?.course_id,
       actor: req.user?.email || req.staffRecord?.name || 'admin', requireFullProgress: false,
+      reason,
     });
     res.status(completionResult.alreadyCompleted ? 200 : 201).json(completionResult);
   } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
@@ -753,16 +957,56 @@ router.post('/api/admin/completions', requireAuth, requireAdminOrStaff, requireP
 // POST /api/admin/completions/bulk — bulk mark multiple subscribers as completed
 router.post('/api/admin/completions/bulk', requireAuth, requireAdmin, requirePermission('manage_courses'), bulkOperationLimiter, async (req, res) => {
   try {
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason || reason.length > 500) return res.status(400).json({ error: 'A bulk completion reason (1-500 characters) is required' });
     const completionResults = await completeCourses({
       tenantId: req.tenantId, subscriberIds: req.body?.subscriber_ids, courseId: req.body?.course_id,
       actor: req.user?.email || 'admin', requireFullProgress: false,
+      reason,
     });
     res.json({ results: completionResults, created: completionResults.filter(item => !item.alreadyCompleted).length, skipped: completionResults.filter(item => item.alreadyCompleted).length, total: completionResults.length });
   } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
 // GET /api/admin/completions?course_id=&subscriber_id= — list completions
-router.get('/api/admin/completions', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/completions/:id/revoke', requireAuth, requireAdmin, requirePermission('manage_courses'), async (req, res) => {
+  try {
+    res.json(await revokeCertificate({
+      tenantId: req.tenantId, completionId: req.params.id,
+      actor: req.user?.email || 'admin', reason: req.body?.reason,
+    }));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to revoke certificate' });
+  }
+});
+
+router.post('/api/admin/completions/:id/reissue', requireAuth, requireAdmin, requirePermission('manage_courses'), async (req, res) => {
+  try {
+    res.json(await reissueCertificate({
+      tenantId: req.tenantId, completionId: req.params.id,
+      actor: req.user?.email || 'admin', reason: req.body?.reason,
+    }));
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to reissue certificate' });
+  }
+});
+
+router.get('/api/admin/completions/:id/events', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT e.* FROM certificate_lifecycle_events e
+       JOIN course_completions cc ON cc.id=e.completion_id AND cc.tenant_id=e.tenant_id
+       WHERE e.completion_id=? AND e.tenant_id=?
+       ORDER BY e.created_at DESC,e.id DESC`,
+      [req.params.id, req.tenantId]
+    );
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: 'Unable to load certificate history' });
+  }
+});
+
+router.get('/api/admin/completions', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
     const { course_id, subscriber_id } = req.query;
     let sql = `
@@ -778,7 +1022,8 @@ router.get('/api/admin/completions', requireAuth, requireAdminOrStaff, async (re
     if (subscriber_id) { sql += ' AND cc.subscriber_id = ?'; params.push(subscriber_id); }
     sql += ' ORDER BY cc.completed_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
-    res.json(rows.map(r => ({ ...r, certificate_url: `https://mahadnafsy.com/certificate/${r.certificate_code}` })));
+    const clientBase = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
+    res.json(rows.map(r => ({ ...r, certificate_url: `${clientBase}/certificate/${encodeURIComponent(r.certificate_code)}` })));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

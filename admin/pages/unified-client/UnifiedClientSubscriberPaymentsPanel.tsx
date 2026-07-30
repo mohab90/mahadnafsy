@@ -1,10 +1,12 @@
 import React, { Suspense, type Dispatch, type SetStateAction } from 'react';
-import { AlertCircle, CreditCard, Plus, Printer, RefreshCw, Trash2 } from 'lucide-react';
+import { CreditCard, Plus, Printer, RefreshCw } from 'lucide-react';
 
 import type { PaymentDraft } from '../../components/PaymentModal';
 import type { Course, PaymentHistoryEntry, PaymentProof, SubscriberItem } from '../../types';
+import { escapeHtml } from '../../lib/safeHtml';
 import { ptLabels } from './constants';
 import { UnifiedClientPaymentSummaryPanel } from './UnifiedClientPaymentSummaryPanel';
+import type { SettlementCurrency } from '../../lib/branchCurrency';
 
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
 
@@ -16,20 +18,20 @@ type UnifiedClientSubscriberPaymentsPanelProps = {
   subscriber: SubscriberItem;
   courses: Course[];
   clientName: string;
-  isAdmin: boolean;
   showSubPayForm: boolean;
   payModalDraft: PaymentDraft;
   setPayModalDraft: Dispatch<SetStateAction<PaymentDraft>>;
   onShowPaymentForm: () => void;
   onClosePaymentForm: () => void;
-  onPaymentSubmit: (draft: PaymentDraft) => void;
+  onPaymentSubmit: (draft: PaymentDraft) => void | Promise<void>;
   subPaidTotals: PaidTotals;
   subRemainingEGP: number;
+  settlementCurrency: SettlementCurrency;
+  settlementLabel: string;
   bookedCourseIds: string[];
   bookingMap: BookingMap;
   confirmedHistory: PaymentHistoryEntry[];
   subHistory: PaymentHistoryEntry[];
-  onUpdateSubscriber: (subscriber: SubscriberItem) => void;
   clientProofs: PaymentProof[];
   clientProofsLoaded: boolean;
   reviewingProofId: string | null;
@@ -47,7 +49,6 @@ export function UnifiedClientSubscriberPaymentsPanel({
   subscriber,
   courses,
   clientName,
-  isAdmin,
   showSubPayForm,
   payModalDraft,
   setPayModalDraft,
@@ -56,11 +57,12 @@ export function UnifiedClientSubscriberPaymentsPanel({
   onPaymentSubmit,
   subPaidTotals,
   subRemainingEGP,
+  settlementCurrency,
+  settlementLabel,
   bookedCourseIds,
   bookingMap,
   confirmedHistory,
   subHistory,
-  onUpdateSubscriber,
   clientProofs,
   clientProofsLoaded,
   reviewingProofId,
@@ -73,8 +75,6 @@ export function UnifiedClientSubscriberPaymentsPanel({
   loadProofImage,
   handleReviewProof,
 }: UnifiedClientSubscriberPaymentsPanelProps) {
-  const updateSubscriber = onUpdateSubscriber;
-
   return (
     <>
       <button onClick={onShowPaymentForm}
@@ -95,8 +95,9 @@ export function UnifiedClientSubscriberPaymentsPanel({
       )}
       {/* ── Financial Summary Strip ── */}
       <UnifiedClientPaymentSummaryPanel
-        totalPaidEGP={subPaidTotals.EGP}
+        totalPaidEGP={subPaidTotals[settlementCurrency]}
         remainingEGP={subRemainingEGP}
+        settlementLabel={settlementLabel}
         transactionCount={subHistory.length}
       />
 
@@ -114,7 +115,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                 <div className="flex items-center justify-between mb-1.5 gap-2">
                   <p className="text-sm font-bold text-gray-800 truncate flex-1">{course?.title || cId}</p>
                   {remaining > 0
-                    ? <span className="text-xs font-bold text-red-600 shrink-0">متبقي {remaining.toLocaleString()} ج.م</span>
+                    ? <span className="text-xs font-bold text-red-600 shrink-0">متبقي {remaining.toLocaleString()} {settlementLabel}</span>
                     : <span className="text-xs font-bold text-emerald-600 shrink-0">✅ مكتمل</span>}
                 </div>
                 {expected > 0 && (
@@ -122,7 +123,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{bm.paidEGP.toLocaleString()} من {expected.toLocaleString()} ج.م ({pct}%)</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{bm.paidEGP.toLocaleString()} من {expected.toLocaleString()} {settlementLabel} ({pct}%)</p>
                   </>
                 )}
               </div>
@@ -167,37 +168,12 @@ export function UnifiedClientSubscriberPaymentsPanel({
                       const w = window.open('', '_blank', 'width=700,height=900');
                       if (!w) return;
                       const courseName = p.itemTitle || courses.find(c => c.id === p.courseId)?.title || '';
-                      w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال دفع</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #d97706;padding-bottom:20px;margin-bottom:30px}h1{color:#d97706;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#fffbeb;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال دفع — ${p.at?.slice(0, 10) || ''}</p></div><h3>العميل: ${clientName}${p.staffName ? ` | بواسطة: ${p.staffName}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${courseName || ptLabels[p.paymentType || ''] || 'دفعة'}</td><td>${ptLabels[p.paymentType || ''] || '—'}</td><td>${p.paymentMethod || '—'}</td><td>${Number(p.amount).toLocaleString()} ${p.currency || 'EGP'}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${Number(p.amount).toLocaleString()} ${p.currency || 'EGP'}</td></tr></tfoot></table>${p.transactionId ? `<p style="margin-top:16px;font-size:12px;color:#888;">رقم المعاملة: ${p.transactionId}</p>` : ''}<div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
+                      w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>إيصال دفع</title><style>body{font-family:Arial,sans-serif;padding:40px;direction:rtl;color:#111}.header{text-align:center;border-bottom:3px solid #d97706;padding-bottom:20px;margin-bottom:30px}h1{color:#d97706;margin:0;font-size:24px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:12px 16px;border:1px solid #e5e7eb;text-align:right}th{background:#fffbeb;font-weight:700}tfoot td{font-weight:700;background:#f0fdf4}.footer{margin-top:40px;text-align:center;color:#888;font-size:12px;border-top:1px solid #e5e7eb;padding-top:16px}</style></head><body><div class="header"><h1>معهد الدراسات النفسية</h1><p style="color:#888;font-size:12px">إيصال دفع — ${escapeHtml(p.at?.slice(0, 10) || '')}</p></div><h3>العميل: ${escapeHtml(clientName)}${p.staffName ? ` | بواسطة: ${escapeHtml(p.staffName)}` : ''}</h3><table><thead><tr><th>الخدمة</th><th>النوع</th><th>وسيلة الدفع</th><th>المبلغ</th></tr></thead><tbody><tr><td>${escapeHtml(courseName || ptLabels[p.paymentType || ''] || 'دفعة')}</td><td>${escapeHtml(ptLabels[p.paymentType || ''] || '—')}</td><td>${escapeHtml(p.paymentMethod || '—')}</td><td>${escapeHtml(Number(p.amount).toLocaleString())} ${escapeHtml(p.currency || 'EGP')}</td></tr></tbody><tfoot><tr><td colspan="3">الإجمالي</td><td>${escapeHtml(Number(p.amount).toLocaleString())} ${escapeHtml(p.currency || 'EGP')}</td></tr></tfoot></table>${p.transactionId ? `<p style="margin-top:16px;font-size:12px;color:#888;">رقم المعاملة: ${escapeHtml(p.transactionId)}</p>` : ''}<div class="footer">معهد الدراسات النفسية — mahadnafsy.com</div></body></html>`);
                       w.document.close(); setTimeout(() => w.print(), 500);
                     }}
                     className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded-lg transition">
                     <Printer size={14} />
                   </button>
-                  {/* Mark as failed - admin only */}
-                  {isAdmin && (
-                    <button
-                      title="تحديد كفشل"
-                      onClick={() => {
-                        if (!window.confirm('هل تريد تحديد هذه الدفعة كـ "فشل"؟')) return;
-                        const updated = subHistory.map(x => x.id === p.id ? { ...x, status: 'failed' as const } : x);
-                        updateSubscriber({ ...subscriber!, paymentHistory: updated });
-                      }}
-                      className="text-orange-400 hover:text-orange-600 hover:bg-orange-50 p-1 rounded-lg transition">
-                      <AlertCircle size={14} />
-                    </button>
-                  )}
-                  {/* Delete - admin only */}
-                  {isAdmin && (
-                    <button
-                      title="حذف الدفعة"
-                      onClick={() => {
-                        if (!window.confirm('هل تريد حذف هذه الدفعة؟ لا يمكن التراجع.')) return;
-                        updateSubscriber({ ...subscriber!, paymentHistory: subHistory.filter(x => x.id !== p.id) });
-                      }}
-                      className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg transition">
-                      <Trash2 size={14} />
-                    </button>
-                  )}
                 </div>
               </div>
             ))}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   CheckSquare, Plus, X, Trash2, 
   User, Calendar, Check,
@@ -8,7 +8,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Priority = 'low' | 'medium' | 'high' | 'urgent';
-type Column = 'todo' | 'inprogress' | 'review' | 'done';
+type Column = 'todo' | 'inprogress' | 'done';
 
 interface Task {
   id: string;
@@ -33,7 +33,6 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; bg: stri
 const COLUMNS: { key: Column; label: string; color: string; dotColor: string }[] = [
   { key: 'todo',       label: 'للتنفيذ',     color: 'border-gray-300',   dotColor: 'bg-gray-400' },
   { key: 'inprogress', label: 'جارٍ التنفيذ', color: 'border-blue-400',  dotColor: 'bg-blue-500' },
-  { key: 'review',     label: 'قيد المراجعة', color: 'border-amber-400', dotColor: 'bg-amber-500' },
   { key: 'done',       label: 'مكتمل',        color: 'border-green-400', dotColor: 'bg-green-500' },
 ];
 
@@ -45,65 +44,86 @@ const TasksBoardTab: React.FC<Props> = ({ notify }) => {
   const { staffMembers } = useSiteData();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialLoadDone = useRef(false);
   const [view, setView] = useState<'kanban' | 'list'>('kanban');
   const [addingColumn, setAddingColumn] = useState<Column | null>(null);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterPriority, setFilterPriority] = useState<Priority | 'all'>('all');
   const [filterAssignee, setFilterAssignee] = useState<string>('all');
   const [draft, setDraft] = useState<Partial<Task>>({});
 
-  useEffect(() => {
-    mysqlAdmin.adminGet<{ ok: boolean; data: Task[] | null }>('/admin/kv/tasks_board')
-      .then(res => {
-        if (res.data) setTasks(res.data);
-      })
-      .catch(() => {})
-      .finally(() => { setLoading(false); initialLoadDone.current = true; });
-  }, []);
+  const loadTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await mysqlAdmin.adminGet<Array<Record<string, unknown>>>('/admin/tasks');
+      setTasks(rows.map((row) => ({
+        id: String(row.id),
+        title: String(row.title || ''),
+        description: row.description ? String(row.description) : undefined,
+        column: row.status === 'in_progress' ? 'inprogress' : row.status === 'done' ? 'done' : 'todo',
+        priority: (row.priority || 'medium') as Priority,
+        assigneeId: row.assigned_to ? String(row.assigned_to) : undefined,
+        dueDate: row.due_date ? String(row.due_date).slice(0, 10) : undefined,
+        createdAt: String(row.created_at || ''),
+        completedAt: row.completed_at ? String(row.completed_at) : undefined,
+      })));
+    } catch {
+      notify('error', 'تعذر تحميل المهام من السيرفر');
+    } finally {
+      setLoading(false);
+    }
+  }, [notify]);
 
-  // Debounced save to API whenever tasks change (skip first render)
-  useEffect(() => {
-    if (!initialLoadDone.current) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      mysqlAdmin.adminPut('/admin/kv/tasks_board', tasks).catch(() => {});
-    }, 800);
-  }, [tasks]);
+  useEffect(() => { void loadTasks(); }, [loadTasks]);
 
   const teamMembers = staffMembers.filter(s => s.status === 'active');
 
-  const addTask = useCallback(() => {
+  const addTask = useCallback(async () => {
     if (!draft.title?.trim()) { notify('error', 'اكتب عنوان المهمة'); return; }
-    const task: Task = {
-      id: Date.now().toString(),
-      title: draft.title.trim(),
-      description: draft.description,
-      column: addingColumn!,
-      priority: draft.priority || 'medium',
-      assigneeId: draft.assigneeId,
-      dueDate: draft.dueDate,
-      tags: draft.tags,
-      createdAt: new Date().toISOString(),
-    };
-    setTasks(prev => [task, ...prev]);
-    setDraft({});
-    setAddingColumn(null);
-    notify('success', 'تمت إضافة المهمة');
-  }, [draft, addingColumn, notify]);
+    try {
+      await mysqlAdmin.adminPost('/admin/tasks', {
+        title: draft.title.trim(),
+        description: draft.description || null,
+        status: addingColumn === 'inprogress' ? 'in_progress' : addingColumn || 'todo',
+        priority: draft.priority || 'medium',
+        assigned_to: draft.assigneeId || null,
+        due_date: draft.dueDate || null,
+      });
+      await loadTasks();
+      setDraft({});
+      setAddingColumn(null);
+      notify('success', 'تمت إضافة المهمة');
+    } catch {
+      notify('error', 'فشل حفظ المهمة على السيرفر');
+    }
+  }, [draft, addingColumn, loadTasks, notify]);
 
 
-  const deleteTask = useCallback((id: string) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
-    notify('success', 'تم حذف المهمة');
+  const deleteTask = useCallback(async (id: string) => {
+    try {
+      await mysqlAdmin.adminDelete(`/admin/tasks/${encodeURIComponent(id)}`);
+      setTasks(prev => prev.filter(t => t.id !== id));
+      notify('success', 'تم حذف المهمة');
+    } catch {
+      notify('error', 'فشل حذف المهمة');
+    }
   }, [notify]);
 
-  const moveTask = useCallback((id: string, col: Column) => {
-    const updates: Partial<Task> = { column: col };
-    if (col === 'done') updates.completedAt = new Date().toISOString();
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  }, []);
+  const moveTask = useCallback(async (id: string, col: Column) => {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+    try {
+      await mysqlAdmin.adminPut(`/admin/tasks/${encodeURIComponent(id)}`, {
+        title: task.title,
+        description: task.description || null,
+        assigned_to: task.assigneeId || null,
+        priority: task.priority,
+        status: col === 'inprogress' ? 'in_progress' : col,
+        due_date: task.dueDate || null,
+      });
+      setTasks(prev => prev.map(item => item.id === id ? { ...item, column: col } : item));
+    } catch {
+      notify('error', 'فشل تحديث حالة المهمة');
+    }
+  }, [tasks, notify]);
 
   const filtered = tasks.filter(t => {
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false;

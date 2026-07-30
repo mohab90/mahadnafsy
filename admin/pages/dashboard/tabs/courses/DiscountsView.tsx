@@ -21,6 +21,7 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoForm, setPromoForm] = useState({ code: '', discount_type: 'percent' as 'percent' | 'fixed', discount_value: 10, min_order_amount: 0, max_uses: '', expires_at: '' });
   const [promoFormOpen, setPromoFormOpen] = useState(false);
+  const [discountSaving, setDiscountSaving] = useState(false);
 
   const loadPromoCodes = async () => {
     setPromoLoading(true);
@@ -38,14 +39,28 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
       setDiscountDraft({ type: d.type, targetId: d.targetId || '', discountPercent: d.discountPercent, label: d.label || '', promoCode: d.promoCode || '', active: d.active, expiresAt: d.expiresAt || '' });
     };
     const cancelEdit = () => { setEditingDiscountId(''); setDiscountDraft({ type: 'course', targetId: '', discountPercent: 10, label: '', promoCode: '', active: true, expiresAt: '' }); };
-    const saveDiscount = () => {
+    const saveDiscount = async () => {
       if (!discountDraft.discountPercent || discountDraft.discountPercent <= 0 || discountDraft.discountPercent > 100) { alert('نسبة الخصم يجب أن تكون بين 1 و 100'); return; }
-      if (editingDiscountId) {
-        updateDiscount({ ...discountDraft, id: editingDiscountId, createdAt: discounts.find(d => d.id === editingDiscountId)?.createdAt || new Date().toISOString() } as DiscountRule);
-      } else {
-        addDiscount({ ...discountDraft, id: `disc-${Date.now()}`, createdAt: new Date().toISOString() } as DiscountRule);
+      setDiscountSaving(true);
+      try {
+        if (editingDiscountId) {
+          await updateDiscount({ ...discountDraft, id: editingDiscountId, createdAt: discounts.find(d => d.id === editingDiscountId)?.createdAt || new Date().toISOString() } as DiscountRule);
+        } else {
+          await addDiscount({ ...discountDraft, id: `disc-${Date.now()}`, createdAt: new Date().toISOString() } as DiscountRule);
+        }
+        cancelEdit();
+        notify('success', 'تم حفظ قاعدة الخصم ونشرها للموقع.');
+      } catch {
+        notify('error', 'تعذر حفظ الخصم. لم تتغير الأسعار المنشورة.');
+      } finally {
+        setDiscountSaving(false);
       }
-      cancelEdit();
+    };
+    const mutateDiscount = async (action: () => Promise<void>) => {
+      setDiscountSaving(true);
+      try { await action(); }
+      catch { notify('error', 'تعذر تحديث الخصم. لم تتغير الأسعار المنشورة.'); }
+      finally { setDiscountSaving(false); }
     };
     const typeLabel: Record<string, string> = { course: 'كورس بعينه', bundle: 'مسار/باقة', all_courses: 'كل الكورسات', therapist_consultation: 'مستشار بعينه', all_consultations: 'كل الاستشارات' };
     return (
@@ -179,8 +194,8 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
             </div>
           </div>
           <div className="flex gap-3 mt-4">
-            <button onClick={saveDiscount} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition">
-              {editingDiscountId ? 'حفظ التعديل' : 'إضافة الكوبون'}
+            <button onClick={() => void saveDiscount()} disabled={discountSaving} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-xl text-sm font-bold transition">
+              {discountSaving ? 'جارٍ الحفظ...' : editingDiscountId ? 'حفظ التعديل' : 'إضافة الكوبون'}
             </button>
             {editingDiscountId && (
               <button onClick={cancelEdit} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-bold transition">إلغاء</button>
@@ -236,11 +251,11 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
                         <td className="py-3">
                           <div className="flex gap-2">
                             <button onClick={() => startEdit(d)} className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition">تعديل</button>
-                            <button onClick={() => updateDiscount({ ...d, active: !d.active })}
+                            <button disabled={discountSaving} onClick={() => void mutateDiscount(() => updateDiscount({ ...d, active: !d.active }))}
                               className={`px-3 py-1 rounded-lg text-xs font-bold transition ${d.active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
                               {d.active ? 'وقف' : 'تفعيل'}
                             </button>
-                            <button onClick={() => { if (window.confirm('حذف هذا الكوبون؟')) deleteDiscount(d.id); }}
+                            <button disabled={discountSaving} onClick={() => { if (window.confirm('حذف هذا الكوبون؟')) void mutateDiscount(() => deleteDiscount(d.id)); }}
                               className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition">حذف</button>
                           </div>
                         </td>

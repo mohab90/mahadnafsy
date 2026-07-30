@@ -8,20 +8,28 @@ const { pool } = require('../../lib/db');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { logPaymentAudit, postPaymentJournal, toEgp } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
+const { transitionLead } = require('../../lib/leadState');
+const { enqueueFinanceEvent } = require('../../lib/financeOutbox');
+const { applyCertificatePayment } = require('../../lib/certificatePayments');
+const { grantCourseEntitlement } = require('../../lib/entitlements');
+const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
+const { resolvePaymentAccess } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 // This is the only manual status transition endpoint for an existing payment.
 // Refunds are deliberately handled by the refund workflow because they require
 // approval and a reversing journal entry.
-router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
+router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
     const { id } = req.params;
     const { status, reviewNote } = req.body || {};
+    const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     if (!['paid', 'failed', 'pending'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status; use the refund workflow for refunds' });
     }
+    if (String(reviewNote || '').length > 2000) return res.status(400).json({ error: 'reviewNote is too long' });
     const tenantId = req.tenantId;
     const actor = req.user?.email || req.user?.uid || 'admin';
     await conn.beginTransaction();
@@ -29,7 +37,8 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     const [[payment]] = await conn.query(
       `SELECT id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
               payment_method, transaction_id, is_installment, course_expected, \`date\`,
-              note, status, staff_id, staff_name, branch_id, source, item_title, cert_type
+              note, status, staff_id, staff_name, branch_id, source, item_title, cert_type,
+              certificate_request_id
        FROM payments
        WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE`,
       [id, tenantId]
@@ -37,6 +46,11 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     if (!payment) {
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Payment not found' });
+    }
+    if (!financialRecordMatches(scope, payment)) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(403).json({ error: 'Payment is outside your financial scope' });
     }
     await assertWritable(payment.date, conn, tenantId);
     const oldStatus = payment.status || 'pending';
@@ -78,8 +92,8 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       if (payment.bundle_id) {
         const [bundleCourses] = await conn.query(
           `SELECT bc.course_id FROM bundle_courses bc
-           JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=?
-           WHERE bc.bundle_id=?`,
+           JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=bc.tenant_id
+           WHERE bc.tenant_id=? AND bc.bundle_id=?`,
           [tenantId, payment.bundle_id]
         );
         courseIds.push(...bundleCourses.map(row => row.course_id));
@@ -87,33 +101,37 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       for (const courseId of [...new Set(courseIds)]) {
         let accessType = 'full';
         if (payment.is_installment && Number(payment.course_expected) > 0) {
-          const [[paid]] = await conn.query(
-            `SELECT COALESCE(SUM(amount),0) AS total_paid FROM payments
-             WHERE subscriber_id=? AND tenant_id=? AND deleted_at IS NULL
-               AND status='paid' AND (course_id=? OR bundle_id=?)`,
-            [payment.subscriber_id, tenantId, payment.course_id || null, payment.bundle_id || null]
-          );
-          accessType = Number(paid.total_paid) >= Number(payment.course_expected) ? 'full' : 'limited';
+          accessType = await resolvePaymentAccess({
+            db: conn,
+            tenantId,
+            subscriberId: payment.subscriber_id,
+            courseId: payment.course_id || null,
+            bundleId: payment.bundle_id || null,
+            currentPaymentId: id,
+            currentAmount: payment.amount,
+            currency: payment.currency,
+            expectedAmount: payment.course_expected,
+          });
         }
-        await conn.query(
-          `INSERT INTO enrollments
-             (id, subscriber_id, course_id, bundle_id, enrolled_at, access_type, tenant_id, branch_id)
-           VALUES (?,?,?,?,NOW(),?,?,?)
-           ON DUPLICATE KEY UPDATE
-             access_type=IF(VALUES(access_type)='full','full',access_type),
-             tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
-          [uuidv4(), payment.subscriber_id, courseId, payment.bundle_id || null,
-            accessType, tenantId, payment.branch_id || 'branch-other']
-        );
+        await grantCourseEntitlement({
+          tenantId, subscriberId: payment.subscriber_id, courseId,
+          bundleId: payment.bundle_id || null, accessType,
+          lectureLimit: accessType === 'limited' ? 2 : null,
+          branchId: payment.branch_id || 'branch-other',
+          source: 'payment_status_review', actor,
+        }, conn);
       }
       await conn.query(
         `UPDATE subscribers SET is_active=1, updated_at=NOW()
          WHERE id=? AND tenant_id=?`,
         [payment.subscriber_id, tenantId]
       );
+      if (String(payment.payment_type || '').toUpperCase() === 'CERTIFICATE') {
+        await applyCertificatePayment(payment, conn, tenantId);
+      }
 
       const [[subscriber]] = await conn.query(
-        'SELECT assigned_sales_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+        'SELECT assigned_sales_id, lead_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
         [payment.subscriber_id, tenantId]
       );
       const finalStaffId = payment.staff_id || subscriber?.assigned_sales_id || null;
@@ -140,16 +158,35 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
           );
         }
       }
+      if (subscriber?.lead_id) {
+        await transitionLead({
+          tenantId,
+          leadId: subscriber.lead_id,
+          toStatus: 'converted',
+          db: conn,
+          actor,
+          reason: 'Lead converted after manual payment approval',
+          metadata: { subscriberId: payment.subscriber_id, paymentId: id },
+        });
+      }
+      await enqueueFinanceEvent({
+        tenantId,
+        eventType: 'sync_lead_deal_value',
+        refType: 'payment',
+        refId: id,
+        payload: { subscriberId: payment.subscriber_id },
+      }, conn);
     }
 
     await conn.query(
       `UPDATE orders SET status=?, updated_at=NOW()
-       WHERE (id=? OR transaction_id=?) AND tenant_id=? AND deleted_at IS NULL`,
-      [status.toUpperCase(), id, payment.transaction_id || id, tenantId]
+       WHERE (id=? OR transaction_id=?) AND tenant_id=? AND deleted_at IS NULL
+         AND branch_id <=> ?`,
+      [status, id, payment.transaction_id || id, tenantId, payment.branch_id || null]
     );
+    await logPaymentAudit(id, 'update', oldStatus, status, payment.amount, payment.subscriber_id, actor, tenantId, conn, true);
     await conn.commit();
     transactionStarted = false;
-    await logPaymentAudit(id, 'update', oldStatus, status, payment.amount, payment.subscriber_id, actor);
 
     if (becomingPaid && payment.subscriber_id) {
       setImmediate(async () => {
@@ -171,7 +208,8 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[patch-payment]', error.message);
-    res.status(error.status || 500).json({ error: error.status ? error.message : 'Internal server error' });
+    const statusCode = error.statusCode || error.status || 500;
+    res.status(statusCode).json({ error: statusCode < 500 ? error.message : 'Internal server error' });
   } finally {
     conn.release();
   }

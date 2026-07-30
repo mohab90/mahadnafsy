@@ -88,7 +88,7 @@ export default function LeadSourcesSettingsTab({ notify }: { notify: NotifyFn })
     <div className="space-y-5" dir="rtl">
       <SectionHeader
         title="مصادر الداتا والليد"
-        subtitle="تجميع Facebook Lead Ads وGoogle Sheets ونماذج الموقع والـ API في شاشة SaaS واحدة."
+        subtitle="تجميع Facebook Lead Ads وGoogle Sheets ونماذج الموقع والـ API في شاشة تشغيل موحدة."
         icon={<UserPlus size={22} />}
         tone="blue"
       />

@@ -1,6 +1,5 @@
 'use strict';
 const logger = require('../../lib/logger');
-const bcrypt   = require('bcryptjs');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
@@ -79,8 +78,12 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
     }
 
     // Log to activity
-    await pool.query('INSERT INTO activity_logs (id, action, label, at) VALUES (UUID(),?,?,NOW())',
-      ['sms_sent', JSON.stringify({ to, provider: cfg.provider })]).catch(() => {});
+    await pool.query(
+      `INSERT INTO activity_logs
+         (id, tenant_id, action, entity, entity_id, label, actor, at)
+       VALUES (UUID(),?,'sms_sent','messaging',NULL,?,?,NOW())`,
+      [req.tenantId, `SMS sent via ${cfg.provider}`, req.user?.email || req.user?.uid || 'admin']
+    ).catch(() => {});
 
     res.json({ ok: true, result });
   } catch (e) { logger.error(e); res.status(500).json({ error: 'Internal server error' }); }

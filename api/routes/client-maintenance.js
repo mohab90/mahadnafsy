@@ -4,6 +4,9 @@ const express = require('express');
 const router = express.Router();
 
 const { pool } = require('../lib/db');
+const { branchIdForBranch } = require('../lib/branches');
+const { listBranches } = require('../lib/branchesRepo');
+const { buildBranchCandidates, inferBranchFromLead } = require('../lib/branchInference');
 const { getNextClientCode } = require('../lib/mappers');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { ADMIN_EMAILS, requireAuth, requireAdmin } = require('../middleware/auth');
@@ -16,51 +19,41 @@ function scopedTenantId(req) {
 
 // POST /api/admin/leads/migrate-branches — fill branch column from rawBranch (crm_json) or notes for branchless leads
 router.post('/api/admin/leads/migrate-branches', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
-    const normB = (v) => {
-      if (!v) return null;
-      const s = v.trim().toLowerCase().replace(/[\s_\-]/g, '');
-      if (s.includes('دقي') || s.includes('daqqi') || s.includes('dokki')) return 'DAQQI';
-      if (s.includes('تجمع') || s.includes('tagamoa') || s.includes('tagamo') || s.includes('قاهرةالجديدة') || s.includes('cairo') || s.includes('قاطميه') || s.includes('قطاميه') || s.includes('qatat')) return 'TAGAMOA';
-      if (s.includes('online') || s.includes('اونلاين') || s.includes('أونلاين') || s.includes('اون')) {
-        if (s.includes('سعودي') || s.includes('saudi')) return 'ONLINE_SAUDI';
-        if (s.includes('خارج') || s.includes('abroad')) return 'ONLINE_ABROAD';
-        return 'ONLINE_EGYPT';
-      }
-      if (s.length >= 2) return 'OTHER';
-      return null;
-    };
-
-    const tryParseJson = (s, def) => { try { return JSON.parse(s); } catch { return def; } };
-
     const tenantId = scopedTenantId(req);
-    const [rows] = await pool.query(
-      `SELECT id, notes, crm_json FROM leads WHERE hidden=0 AND tenant_id=? AND (branch IS NULL OR branch='')`,
+    const candidates = buildBranchCandidates(await listBranches(tenantId));
+    await conn.beginTransaction();
+    transactionStarted = true;
+    const [rows] = await conn.query(
+      `SELECT id, notes, source, crm_json
+       FROM leads
+       WHERE hidden=0 AND tenant_id=? AND (branch IS NULL OR branch='')
+       FOR UPDATE`,
       [tenantId]
     );
-
-    let updated = 0;
-    const results = [];
-    for (const row of rows) {
-      const crm = tryParseJson(row.crm_json, {});
-      // 1. Try rawBranch from crm_json first
-      let raw = (crm.rawBranch || '').trim();
-      // 2. Try crm_json.branch (stored as e.g. "online-egypt", "other", "daqqi")
-      if (!raw && crm.branch) raw = String(crm.branch).trim();
-      // 3. Fallback: extract from notes "الفرع: X"
-      if (!raw && row.notes) {
-        const m = /الفرع:\s*([^|\n]+)/.exec(row.notes);
-        if (m) raw = m[1].trim();
-      }
-      if (!raw) continue;
-      const branch = normB(raw);
-      if (!branch) { results.push({ id: row.id, raw, branch: null }); continue; }
-      await pool.query('UPDATE leads SET branch=? WHERE id=? AND tenant_id=?', [branch, row.id, tenantId]);
-      updated++;
-      results.push({ id: row.id, raw, branch });
+    const matches = rows
+      .map((row) => ({ id: row.id, branch: inferBranchFromLead(row, candidates) }))
+      .filter((row) => row.branch);
+    for (const { id, branch } of matches) {
+      await conn.query(
+        `UPDATE leads
+         SET branch=?, branch_id=?, updated_at=NOW()
+         WHERE id=? AND tenant_id=? AND (branch IS NULL OR branch='')`,
+        [branch, branchIdForBranch(branch), id, tenantId]
+      );
     }
-    res.json({ ok: true, updated, total: rows.length, results });
-  } catch (e) { logger.error('client maintenance route failed', { error: e.message }); res.status(500).json({ error: 'Internal server error' }); }
+    await conn.commit();
+    transactionStarted = false;
+    res.json({ ok: true, updated: matches.length, unresolved: rows.length - matches.length, total: rows.length });
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    logger.error('client maintenance route failed', { error: e.message });
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
+  }
 });
 
 // POST /api/admin/cleanup-junk-leads — hides leads with no phone AND no real name (e.g. 'lead-123')
@@ -85,13 +78,26 @@ router.post('/api/admin/cleanup-junk-leads', requireAuth, requireAdmin, async (r
 router.post('/api/admin/cleanup-staff-subscribers', requireAuth, requireAdmin, async (req, res) => {
   try {
     const tenantId = scopedTenantId(req);
-    const [staffRows] = await pool.query('SELECT LOWER(email) AS email FROM staff WHERE is_active = 1');
+    const [staffRows] = await pool.query(
+      'SELECT LOWER(TRIM(email)) AS email FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL',
+      [tenantId]
+    );
     const staffEmails = staffRows.map(r => r.email).filter(Boolean);
     const allExcluded = [...new Set([...staffEmails, ...ADMIN_EMAILS.map(e => e.toLowerCase())])];
     if (allExcluded.length === 0) return res.json({ ok: true, deleted: 0, hidden: 0, emails: [] });
     const ph = allExcluded.map(() => '?').join(',');
-    const [del] = await pool.query(`DELETE FROM subscribers WHERE tenant_id=? AND LOWER(email) IN (${ph})`, [tenantId, ...allExcluded]);
-    const [hid] = await pool.query(`UPDATE leads SET hidden = 1 WHERE tenant_id=? AND LOWER(email) IN (${ph})`, [tenantId, ...allExcluded]);
+    const [del] = await pool.query(
+      `UPDATE subscribers
+       SET deleted_at=NOW(), is_active=0
+       WHERE tenant_id=? AND deleted_at IS NULL AND LOWER(TRIM(email)) IN (${ph})`,
+      [tenantId, ...allExcluded]
+    );
+    const [hid] = await pool.query(
+      `UPDATE leads
+       SET hidden=1, deleted_at=COALESCE(deleted_at, NOW())
+       WHERE tenant_id=? AND LOWER(TRIM(email)) IN (${ph})`,
+      [tenantId, ...allExcluded]
+    );
     res.json({ ok: true, deleted: del.affectedRows, hidden: hid.affectedRows, emails: allExcluded });
   } catch (e) { logger.error('client maintenance route failed', { error: e.message }); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -107,14 +113,14 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
   try {
     await conn.beginTransaction();
     const tenantId = scopedTenantId(req);
-    let deleted = 0, merged = 0, coded = 0, branchFixed = 0;
+    let deleted = 0, merged = 0, coded = 0, branchFixed = 0, duplicatesPending = 0;
 
     // 1. Delete ghost auto-subscribers: source=auto, no code, no enrollments, no payments
     const [ghosts] = await conn.query(
       `SELECT s.id FROM subscribers s
-       LEFT JOIN enrollments e ON e.subscriber_id = s.id
-       LEFT JOIN payments p ON p.subscriber_id = s.id
-       WHERE s.tenant_id=? AND (s.crm_json LIKE '%"source":"auto"%' OR s.crm_json IS NULL OR s.crm_json LIKE '%"enrolledCourseIds":[]%')
+       LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id
+       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id
+       WHERE s.tenant_id=? AND (s.crm_json LIKE '%"source":"auto"%' OR s.crm_json IS NULL)
          AND (s.client_code IS NULL OR s.client_code NOT REGEXP '^C[0-9]+$')
          AND e.id IS NULL AND p.id IS NULL`,
       [tenantId]
@@ -122,7 +128,12 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
     if (ghosts.length > 0) {
       const ids = ghosts.map(r => r.id);
       const ph = ids.map(() => '?').join(',');
-      const [d] = await conn.query(`DELETE FROM subscribers WHERE tenant_id=? AND id IN (${ph})`, [tenantId, ...ids]);
+      const [d] = await conn.query(
+        `UPDATE subscribers
+         SET deleted_at=NOW(), is_active=0
+         WHERE tenant_id=? AND deleted_at IS NULL AND id IN (${ph})`,
+        [tenantId, ...ids]
+      );
       deleted = d.affectedRows;
     }
 
@@ -137,16 +148,11 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
     );
     for (const dup of dups) {
       const ids = dup.ids.split(',');
-      const keepId = ids[0]; // first = has code if any
-      const removeIds = ids.slice(1);
-      // Move enrollments and payments to keepId
-      for (const rid of removeIds) {
-        await conn.query(`UPDATE enrollments SET subscriber_id = ? WHERE subscriber_id = ? AND tenant_id=?`, [keepId, rid, tenantId]);
-        await conn.query(`UPDATE payments SET subscriber_id = ? WHERE subscriber_id = ? AND tenant_id=?`, [keepId, rid, tenantId]);
-      }
-      const rph = removeIds.map(() => '?').join(',');
-      await conn.query(`DELETE FROM subscribers WHERE tenant_id=? AND id IN (${rph})`, [tenantId, ...removeIds]);
-      merged++;
+      // A subscriber owns far more than enrollments and payments (certificates,
+      // tickets, loyalty, orders, check-ins, etc.). The former two-table merge
+      // deleted that history via FK cascades. Report duplicates for reviewed,
+      // domain-aware merging instead of destroying data.
+      duplicatesPending += Math.max(ids.length - 1, 0);
     }
 
     // 3. Sync counter then assign codes to subscribers missing them
@@ -185,7 +191,7 @@ router.post('/api/admin/fix-auto-subscribers', requireAuth, requireAdmin, async 
     }
 
     await conn.commit();
-    res.json({ ok: true, deleted, merged, coded, branchFixed });
+    res.json({ ok: true, deleted, merged, coded, branchFixed, duplicatesPending });
   } catch (e) {
     await conn.rollback().catch(() => {});
     logger.error('client maintenance route failed', { error: e.message }); res.status(500).json({ error: 'Internal server error' });
@@ -315,6 +321,7 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, async (req, r
       SELECT email, COUNT(*) AS cnt FROM subscribers WHERE tenant_id=? AND email IS NOT NULL AND email != '' GROUP BY email HAVING cnt > 1
     `, [tenantId]);
     let mergedSubs = 0;
+    let duplicateSubscribersPending = 0;
     for (const { email } of dupEmailSubs) {
       const [group] = await conn.query(`
         SELECT s.id, COUNT(e.id) AS enroll_count
@@ -322,16 +329,8 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, async (req, r
         WHERE s.email=? AND s.tenant_id=? GROUP BY s.id ORDER BY enroll_count DESC, s.id ASC
       `, [email, tenantId]);
       if (group.length < 2) continue;
-      const keepId = group[0].id;
       const dupIds = group.slice(1).map(r => r.id);
-      // move enrollments and payments to keepId
-      for (const dupId of dupIds) {
-        await conn.query(`UPDATE enrollments SET subscriber_id=? WHERE subscriber_id=? AND tenant_id=? AND NOT EXISTS (SELECT 1 FROM enrollments e2 WHERE e2.subscriber_id=? AND e2.course_id=(SELECT course_id FROM enrollments WHERE id=enrollments.id))`, [keepId, dupId, tenantId, keepId]);
-        await conn.query(`DELETE FROM enrollments WHERE subscriber_id=? AND tenant_id=?`, [dupId, tenantId]);
-        await conn.query(`UPDATE payments SET subscriber_id=? WHERE subscriber_id=? AND tenant_id=?`, [keepId, dupId, tenantId]);
-        await conn.query(`DELETE FROM subscribers WHERE id=? AND tenant_id=?`, [dupId, tenantId]);
-      }
-      mergedSubs += dupIds.length;
+      duplicateSubscribersPending += dupIds.length;
     }
 
     // 6. Fix cross-table duplicate codes: if a code appears in both tables, re-assign subscriber
@@ -358,6 +357,7 @@ router.post('/api/admin/fix-all-codes', requireAuth, requireAdmin, async (req, r
       assigned_subs: badSubs.length,
       merged_leads: mergedLeads,
       merged_subs: mergedSubs,
+      duplicate_subscribers_pending: duplicateSubscribersPending,
       dup_codes_fixed: dupCodesFixed
     });
   } catch (e) {

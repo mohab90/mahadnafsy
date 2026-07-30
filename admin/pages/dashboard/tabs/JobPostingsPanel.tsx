@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2 } from 'lucide-react';
 import { BRANCHES, BRANCH_LABELS_AR } from '../../../constants/branches';
+import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
-interface Job { id: string; title: string; branch: string | null; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; created_at?: string; }
-const EMP_TYPES: [string, string][] = [['full_time', 'دوام كامل'], ['part_time', 'دوام جزئي'], ['contract', 'عقد'], ['remote', 'عن بُعد'], ['internship', 'تدريب']];
+interface Job { id: string; title: string; branch: string | null; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; applicant_count?: number; created_at?: string; }
+const EMP_TYPES: [string, string][] = [['full_time', 'دوام كامل'], ['part_time', 'دوام جزئي'], ['contract', 'عقد'], ['intern', 'تدريب']];
 const blank = (): Partial<Job> => ({ title: '', branch: null, employment_type: 'full_time', description: '', requirements: '', salary_min: null, salary_max: null, status: 'open' });
 
 export default function JobPostingsPanel({ notify }: { notify: Notify }) {
@@ -15,10 +16,14 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch('/api/admin/hr/jobs', { credentials: 'include' }).then(r => r.json())
-      .then(d => setJobs(Array.isArray(d) ? d.filter((j: Job) => j.id !== 'job-talent-pool') : []))
-      .catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    fetch('/api/admin/hr/jobs', { credentials: 'include', headers: adminAuthHeaders() })
+      .then(async r => {
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || 'تعذر تحميل الوظائف');
+        return r.json();
+      })
+      .then(d => setJobs(Array.isArray(d) ? d.filter((j: Job) => !j.id.startsWith('talent-')) : []))
+      .catch(error => notify('error', error.message)).finally(() => setLoading(false));
+  }, [notify]);
   useEffect(() => { load(); }, [load]);
 
   const save = async () => {
@@ -27,16 +32,19 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
     try {
       const isNew = !editing.id;
       const r = await fetch(isNew ? '/api/admin/hr/jobs' : `/api/admin/hr/jobs/${editing.id}`, {
-        method: isNew ? 'POST' : 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing),
+        method: isNew ? 'POST' : 'PUT', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify(editing),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || 'فشل الحفظ');
       notify('success', isNew ? 'تم نشر الوظيفة' : 'تم التحديث'); setEditing(null); load();
-    } catch { notify('error', 'فشل الحفظ'); } finally { setBusy(false); }
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'فشل الحفظ'); } finally { setBusy(false); }
   };
   const del = async (id: string) => {
     if (!window.confirm('حذف هذه الوظيفة؟')) return;
-    try { const r = await fetch(`/api/admin/hr/jobs/${id}`, { method: 'DELETE', credentials: 'include' }); if (!r.ok) throw new Error(); notify('success', 'تم الحذف'); load(); }
-    catch { notify('error', 'فشل الحذف'); }
+    try {
+      const r = await fetch(`/api/admin/hr/jobs/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
+      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || 'فشل الحذف');
+      notify('success', 'تم الحذف'); load();
+    } catch (error) { notify('error', error instanceof Error ? error.message : 'فشل الحذف'); }
   };
 
   const inp = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2';
@@ -58,6 +66,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{EMP_TYPES.find(e => e[0] === j.employment_type)?.[1] || j.employment_type}</span>
                     {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{BRANCH_LABELS_AR[j.branch as keyof typeof BRANCH_LABELS_AR] || j.branch}</span>}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{j.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
+                    <span className="text-[10px] text-gray-500">{Number(j.applicant_count || 0)} متقدم</span>
                     {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
                   </div>
                   {j.description && <p className="text-xs text-gray-500 truncate">{j.description}</p>}

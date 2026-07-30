@@ -14,29 +14,27 @@ export function useNotificationsState(
 ) {
   const [notifications, setNotifications] = useState<NotificationBroadcast[]>(initialNotifications);
 
-  const persistNotificationsToConfig = (items: NotificationBroadcast[]) => void mysqlAdmin.saveNotifications(items as unknown[]).catch(() => {});
-
-  const addNotification = (item: NotificationBroadcast) => {
+  const addNotification = async (item: NotificationBroadcast) => {
     lastLocalConfigWriteRef.current = Date.now();
     const next = [item, ...notifications];
+    await mysqlAdmin.saveNotifications(next as unknown[]);
     setNotifications(next);
-    persistNotificationsToConfig(next);
     track('create', 'notification', item.title);
   };
 
-  const updateNotification = (item: NotificationBroadcast) => {
+  const updateNotification = async (item: NotificationBroadcast) => {
     lastLocalConfigWriteRef.current = Date.now();
     const next = notifications.map((n) => (n.id === item.id ? item : n));
+    await mysqlAdmin.saveNotifications(next as unknown[]);
     setNotifications(next);
-    persistNotificationsToConfig(next);
     track('update', 'notification', item.title);
   };
 
-  const deleteNotification = (id: string) => {
+  const deleteNotification = async (id: string) => {
     lastLocalConfigWriteRef.current = Date.now();
     const next = notifications.filter((n) => n.id !== id);
+    await mysqlAdmin.saveNotifications(next as unknown[]);
     setNotifications(next);
-    persistNotificationsToConfig(next);
     track('delete', 'notification', id);
   };
 

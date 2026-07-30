@@ -21,16 +21,26 @@ function currencyForPriceKey(priceKey) {
   return 'EGP';
 }
 
+function priceKeyForCountry(countryCode, nationality) {
+  if (countryCode === 'EG') return nationality === 'EGYPTIAN' ? 'egyptianEGP' : 'residentEGP';
+  if (countryCode === 'SA') return 'residentSAR';
+  return 'foreignUSD';
+}
+
 // `pricingConfig` is the parsed content['extra_cert_pricing'] JSON blob:
 // { [certTypeLowercase]: { egyptianEGP, residentEGP, residentSAR, foreignUSD } }
-function resolveCertificatePrice({ type, nationality, pricingConfig }) {
+function resolveCertificatePrice({ type, nationality, countryCode, pricingConfig }) {
   const typeKey = String(type || '').toLowerCase();
   const priceRow = (pricingConfig && pricingConfig[typeKey]) || {};
-  const priceKey = priceKeyForNationality(nationality);
+  const priceKey = countryCode
+    ? priceKeyForCountry(countryCode, nationality)
+    : priceKeyForNationality(nationality);
   const rawPrice = Number(priceRow[priceKey]);
   const price = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : null;
   const currency = price ? currencyForPriceKey(priceKey) : null;
   return { price, currency, status: price ? 'PRICED' : 'PENDING' };
 }
 
-module.exports = { resolveCertificatePrice, priceKeyForNationality, currencyForPriceKey };
+module.exports = {
+  resolveCertificatePrice, priceKeyForNationality, priceKeyForCountry, currencyForPriceKey,
+};

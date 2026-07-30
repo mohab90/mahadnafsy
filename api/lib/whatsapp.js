@@ -7,6 +7,20 @@ const logger = require('./logger');
 // env vars as fallback so nothing has to be edited on the server.
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
+const { resolveSecret } = require('./secretResolver');
+
+function envSecret(name) {
+  try { return resolveSecret(name); } catch (_) { return ''; }
+}
+
+function providerCredentialState(cfg = {}) {
+  return {
+    metaReady: Boolean(cfg.metaToken || envSecret('WHATSAPP_TOKEN'))
+      && Boolean(cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID),
+    greenReady: Boolean(cfg.instanceId || process.env.WA_INSTANCE_ID)
+      && Boolean(cfg.apiToken || envSecret('WA_API_TOKEN')),
+  };
+}
 
 // Config cached in memory — refreshes every 5min. Avoids one DB query per notification.
 const waCfgCache = new Map();
@@ -34,7 +48,7 @@ function resolveProvider(cfg) {
   if (cfg.provider === 'meta' || cfg.provider === 'green-api') return cfg.provider;
   if (cfg.metaToken || cfg.metaPhoneId) return 'meta';
   if (cfg.instanceId || cfg.apiToken) return 'green-api';
-  if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID) return 'meta';
+  if (providerCredentialState(cfg).metaReady) return 'meta';
   return 'green-api';
 }
 
@@ -42,11 +56,11 @@ function resolveProvider(cfg) {
 // window Meta only allows pre-approved TEMPLATE messages; free-form text there is
 // rejected (handled as a normal API error). Matches the format the watchdog uses.
 async function _sendMeta(normalized, message, cfg) {
-  const token   = cfg.metaToken   || process.env.WHATSAPP_TOKEN;
+  const token   = cfg.metaToken   || envSecret('WHATSAPP_TOKEN');
   const phoneId = cfg.metaPhoneId || process.env.WHATSAPP_PHONE_ID;
   if (!token || !phoneId) {
     logger.warn('[WhatsApp] Meta not configured — skipping notification');
-    return { ok: false, reason: 'not_configured' };
+    return { ok: false, provider: 'meta', reason: 'not_configured' };
   }
   const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
     method: 'POST',
@@ -54,16 +68,16 @@ async function _sendMeta(normalized, message, cfg) {
     body: JSON.stringify({ messaging_product: 'whatsapp', to: normalized, type: 'text', text: { body: message } }),
   });
   const data = await res.json();
-  if (!res.ok) { logger.warn('[WhatsApp] Meta API error:', data); return { ok: false, reason: data }; }
-  return { ok: true, idMessage: data.messages?.[0]?.id };
+  if (!res.ok) { logger.warn('[WhatsApp] Meta API error:', data); return { ok: false, provider: 'meta', reason: data }; }
+  return { ok: true, provider: 'meta', idMessage: data.messages?.[0]?.id };
 }
 
 async function _sendGreenApi(normalized, message, cfg) {
   const instanceId = cfg.instanceId || process.env.WA_INSTANCE_ID;
-  const apiToken   = cfg.apiToken   || process.env.WA_API_TOKEN;
+  const apiToken   = cfg.apiToken   || envSecret('WA_API_TOKEN');
   if (!instanceId || !apiToken) {
     logger.warn('[WhatsApp] Green-API not configured — skipping notification');
-    return { ok: false, reason: 'not_configured' };
+    return { ok: false, provider: 'green-api', reason: 'not_configured' };
   }
   const chatId = normalized.includes('@') ? normalized : `${normalized}@c.us`;
   const url = `https://api.green-api.com/waInstance${instanceId}/sendMessage/${apiToken}`;
@@ -73,8 +87,8 @@ async function _sendGreenApi(normalized, message, cfg) {
     body: JSON.stringify({ chatId, message }),
   });
   const data = await res.json();
-  if (!res.ok) { logger.warn('[WhatsApp] Green-API error:', data); return { ok: false, reason: data }; }
-  return { ok: true, idMessage: data.idMessage };
+  if (!res.ok) { logger.warn('[WhatsApp] Green-API error:', data); return { ok: false, provider: 'green-api', reason: data }; }
+  return { ok: true, provider: 'green-api', idMessage: data.idMessage };
 }
 
 async function sendWhatsApp(phone, message, options = {}) {
@@ -92,4 +106,4 @@ async function sendWhatsApp(phone, message, options = {}) {
   }
 }
 
-module.exports = { getWaCfg, invalidateWaCfg, sendWhatsApp, resolveProvider };
+module.exports = { getWaCfg, invalidateWaCfg, providerCredentialState, sendWhatsApp, resolveProvider };

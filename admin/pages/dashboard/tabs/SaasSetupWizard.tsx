@@ -165,14 +165,20 @@ export default function SaasSetupWizard({
     <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" dir="rtl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">SaaS setup wizard</p>
-          <h3 className="text-lg font-extrabold text-slate-900">تصطيب النظام كمنصة SaaS تشغيلية</h3>
-          <p className="mt-1 text-xs text-slate-500">كل خطوة هنا تقود لإعداد فعلي يؤثر على الواجهة، الفروع، الدفع، الليد، الأمان، والتكاملات.</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">Multi-tenant pilot setup</p>
+          <h3 className="text-lg font-extrabold text-slate-900">إعداد مؤسسة للتشغيل التجريبي المنضبط</h3>
+          <p className="mt-1 text-xs text-slate-500">النسبة تقيس اكتمال الإعداد التشغيلي فقط، ولا تعني جاهزية المنتج للبيع كمنصة SaaS مؤسسية.</p>
         </div>
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-center">
           <p className="text-2xl font-black text-indigo-700">{progress}%</p>
           <p className="text-[11px] font-bold text-indigo-500">جاهزية التصطيب</p>
         </div>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-relaxed text-rose-800">
+        <strong>حدود المنتج الحالية:</strong> التشغيل متعدد المؤسسات في مرحلة Pilot. لا يُسوّق كـSaaS مؤسسي كامل
+        قبل استكمال metering وفوترة المؤسسات ودورة التحصيل، ولا كـERP كامل قبل AP/AR وإدارة الأصول
+        والضرائب والإقفال المالي المعتمد. Paymob يظل موقوفًا لحين انتهاء مراجعة المزود.
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
@@ -230,7 +236,7 @@ export default function SaasSetupWizard({
 
       <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[220px_1fr]">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-bold text-slate-500">جاهزية التشغيل الفعلي</p>
+          <p className="text-xs font-bold text-slate-500">اكتمال إعداد المؤسسة (ليس Gate إطلاق)</p>
           <p className={`mt-1 text-3xl font-black ${productionScore >= 80 ? 'text-emerald-700' : productionScore >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
             {productionScore}%
           </p>

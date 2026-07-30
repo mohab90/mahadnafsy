@@ -33,4 +33,49 @@ function monthRange(yyyyMm) {
   return { startDate, endDate };
 }
 
-module.exports = { safeIsoString, safeDateOnly, monthRange };
+function zonedDateTimeParts(value = new Date(), timeZone = 'Africa/Cairo') {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(value);
+  const result = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') result[part.type] = Number(part.value);
+  }
+  return result;
+}
+
+function dateOnlyInTimeZone(value = new Date(), timeZone = 'Africa/Cairo') {
+  const { year, month, day } = zonedDateTimeParts(value, timeZone);
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function addDaysToDateOnly(dateOnly, days) {
+  if (!isValidDateOnly(dateOnly) || !Number.isInteger(days)) return '';
+  const value = new Date(`${dateOnly}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function isValidDateOnly(value) {
+  const raw = String(value || '');
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime())
+    && parsed.getUTCFullYear() === Number(match[1])
+    && parsed.getUTCMonth() + 1 === Number(match[2])
+    && parsed.getUTCDate() === Number(match[3]);
+}
+
+module.exports = {
+  safeIsoString,
+  safeDateOnly,
+  monthRange,
+  zonedDateTimeParts,
+  dateOnlyInTimeZone,
+  addDaysToDateOnly,
+  isValidDateOnly,
+};

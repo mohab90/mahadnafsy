@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Activity, BookOpen, CheckCircle, Clock, CreditCard, Info, MessageSquare } from 'lucide-react';
 
-import type { Bundle, CommunicationRecord, Course, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
+import { mysqlAdmin } from '../../lib/mysqlapi';
+import type { Bundle, CommunicationRecord, Course, CustomerTimelineEvent, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
 import { commTypeMeta } from './constants';
+import type { SettlementCurrency } from '../../lib/branchCurrency';
 
 type BookingMapEntry = {
   expectedEGP?: number;
@@ -25,6 +28,8 @@ type UnifiedClientOverviewTabProps = {
   bookingMap: Record<string, BookingMapEntry>;
   enrolledCourse?: Course;
   leadRemaining: number;
+  settlementCurrency: SettlementCurrency;
+  settlementLabel: string;
   setActiveTab: (tab: string) => void;
   subConsults: Array<{
     id: string;
@@ -51,9 +56,24 @@ export function UnifiedClientOverviewTab({
   bookingMap,
   enrolledCourse,
   leadRemaining,
+  settlementCurrency,
+  settlementLabel,
   setActiveTab,
   subConsults,
 }: UnifiedClientOverviewTabProps) {
+  const [timeline, setTimeline] = useState<CustomerTimelineEvent[]>([]);
+  useEffect(() => {
+    if (!isSub || !subscriber?.id) {
+      setTimeline([]);
+      return;
+    }
+    let active = true;
+    mysqlAdmin.getCustomerTimeline(subscriber.id)
+      .then(rows => { if (active) setTimeline(rows as unknown as CustomerTimelineEvent[]); })
+      .catch(() => { if (active) setTimeline([]); });
+    return () => { active = false; };
+  }, [isSub, subscriber?.id]);
+
   return (
     <div className="space-y-5">    
                       {/* ─── Client Pulse ─── */}    
@@ -65,7 +85,7 @@ export function UnifiedClientOverviewTab({
                         const totalLec = isSub ? subscriber!.enrolledCourseIds.reduce((acc, cId) => acc + getCourseLectures(cId).length, 0) : 0;    
                         const doneLec = isSub ? Object.values(subscriber!.lectureProgress || {}).filter(p => (p as number) > 0).length : 0;    
                         const pulsePct = totalLec > 0 ? Math.round((doneLec / totalLec) * 100) : null;    
-                        const overdueAmt = isSub ? subInstallmentPlans.flatMap(p => p.entries.filter(e => !e.paidAt && e.dueDate < _todayStr)).reduce((s, e) => s + e.amount, 0) : 0;    
+                        const overdueAmt = isSub ? subInstallmentPlans.filter(p => p.currency === settlementCurrency).flatMap(p => p.entries.filter(e => !e.paidAt && e.dueDate < _todayStr)).reduce((s, e) => s + e.amount, 0) : 0;
                         return (    
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">    
                             {/* Days since registration */}    
@@ -124,7 +144,7 @@ export function UnifiedClientOverviewTab({
                                   {overdueAmt > 0 ? overdueAmt.toLocaleString() : '✓'}    
                                 </p>    
                                 <p className={`text-[11px] mt-1 font-semibold ${overdueAmt > 0 ? 'text-red-400' : 'text-emerald-500'}`}>    
-                                  {overdueAmt > 0 ? 'ج.م متأخر' : 'لا متأخرات'}    
+                                  {overdueAmt > 0 ? `${settlementLabel} متأخر` : 'لا متأخرات'}
                                 </p>    
                               </div>    
                             ) : (    
@@ -137,7 +157,30 @@ export function UnifiedClientOverviewTab({
                         );    
                       })()}    
         
-                      {/* ─── Lead Status + Follow-up Banner (leads only) ─── */}    
+                      {isSub && timeline.length > 0 && (
+                        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-slate-800">
+                            <Activity size={16} className="text-indigo-500" />
+                            رحلة العميل الموحّدة
+                          </h3>
+                          <div className="space-y-2">
+                            {timeline.slice(0, 12).map(event => (
+                              <div key={`${event.category}:${event.entity_id}:${event.occurred_at}`} className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-bold text-slate-700">{event.title}</p>
+                                  <p className="text-[10px] text-slate-400">{event.event_type.replace(/_/g, ' ')}</p>
+                                </div>
+                                <div className="shrink-0 text-left">
+                                  {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString()} {event.currency}</p>}
+                                  <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG')}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {/* ─── Lead Status + Follow-up Banner (leads only) ─── */}
                       {!isSub && lead && (    
                         <div className="rounded-2xl border overflow-hidden shadow-sm">    
                           {/* header */}    
@@ -268,7 +311,7 @@ export function UnifiedClientOverviewTab({
                           </div>    
                           <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between">    
                             <span className="font-bold text-emerald-700 text-sm">الإجمالي المدفوع</span>    
-                            <span className="font-extrabold text-emerald-800 text-lg">{leadPaidEGP.toLocaleString()} ج.م</span>    
+                            <span className="font-extrabold text-emerald-800 text-lg">{leadPaidEGP.toLocaleString()} {settlementLabel}</span>
                           </div>    
                         </div>    
                       )}    
@@ -288,7 +331,7 @@ export function UnifiedClientOverviewTab({
                               const watched = Number(subscriber!.lectureProgress?.[courseId]) || 0;    
                               const pct = totalLec > 0 ? Math.round((watched / totalLec) * 100) : 0;    
                               // Use recorded expectedEGP → else fall back to course catalogue price    
-                              const expectedForCourse = bm?.expectedEGP ?? (courses.find(c => c.id === courseId)?.price?.EGP ?? 0);    
+                              const expectedForCourse = bm?.expectedEGP ?? (courses.find(c => c.id === courseId)?.price?.[settlementCurrency] ?? 0);
                               const paidForCourse = bm?.paidEGP ?? 0;    
                               const remaining = expectedForCourse > 0 ? Math.max(0, expectedForCourse - paidForCourse) : null;    
                               return (    
@@ -310,24 +353,24 @@ export function UnifiedClientOverviewTab({
                                       <div className="grid grid-cols-3 gap-2 mb-3">    
                                         <div className="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">    
                                           <p className="font-extrabold text-green-700 text-sm">{paidForCourse.toLocaleString()}</p>    
-                                          <p className="text-[10px] text-gray-400">مدفوع (ج.م)</p>    
+                                          <p className="text-[10px] text-gray-400">مدفوع ({settlementLabel})</p>
                                         </div>    
                                         {expectedForCourse > 0 && (    
                                           <div className="bg-blue-50 rounded-xl p-2.5 text-center border border-blue-100">    
                                             <p className="font-extrabold text-blue-700 text-sm">{expectedForCourse.toLocaleString()}</p>    
-                                            <p className="text-[10px] text-gray-400">الإجمالي (ج.م)</p>    
+                                            <p className="text-[10px] text-gray-400">الإجمالي ({settlementLabel})</p>
                                           </div>    
                                         )}    
                                         {remaining != null && (    
                                           <div className={`rounded-xl p-2.5 text-center border ${remaining === 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>    
                                             <p className={`font-extrabold text-sm ${remaining === 0 ? 'text-green-700' : 'text-red-600'}`}>{remaining === 0 ? '✅' : remaining.toLocaleString()}</p>    
-                                            <p className="text-[10px] text-gray-400">{remaining === 0 ? 'مكتمل' : 'متبقي (ج.م)'}</p>    
+                                            <p className="text-[10px] text-gray-400">{remaining === 0 ? 'مكتمل' : `متبقي (${settlementLabel})`}</p>
                                           </div>    
                                         )}    
                                         {bm?.discount && bm.discount > 0 && (    
                                           <div className="col-span-3 bg-orange-50 rounded-xl px-3 py-1.5 flex items-center justify-between border border-orange-100">    
                                             <span className="text-[10px] text-orange-600 font-semibold">🏷️ خصم مطبّق</span>    
-                                            <span className="font-bold text-orange-700 text-sm">{bm.discount.toLocaleString()} ج.م</span>    
+                                            <span className="font-bold text-orange-700 text-sm">{bm.discount.toLocaleString()} {settlementLabel}</span>
                                           </div>    
                                         )}    
                                       </div>    
@@ -364,12 +407,12 @@ export function UnifiedClientOverviewTab({
                             {leadPaidEGP > 0 && (    
                               <div className="grid grid-cols-2 gap-2">    
                                 <div className="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">    
-                                  <p className="font-extrabold text-green-700">{leadPaidEGP.toLocaleString()} ج.م</p>    
+                                  <p className="font-extrabold text-green-700">{leadPaidEGP.toLocaleString()} {settlementLabel}</p>
                                   <p className="text-[10px] text-gray-400">مدفوع</p>    
                                 </div>    
                                 {leadRemaining > 0 && (    
                                   <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">    
-                                    <p className="font-extrabold text-red-600">{leadRemaining.toLocaleString()} ج.م</p>    
+                                    <p className="font-extrabold text-red-600">{leadRemaining.toLocaleString()} {settlementLabel}</p>
                                     <p className="text-[10px] text-gray-400">متبقي</p>    
                                   </div>    
                                 )}    

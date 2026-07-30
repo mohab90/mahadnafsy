@@ -36,6 +36,7 @@ interface Props {
   isOnlineManager: boolean;
   isDaqqiManager: boolean;
   isAdmin: boolean;
+  canManageFinancial: boolean;
   notify: NotifyFn;
   courses: Course[];
   bundles: Bundle[];
@@ -48,7 +49,6 @@ interface Props {
   setDaqqiAccDateFrom: (v: string) => void;
   daqqiAccDateTo: string;
   setDaqqiAccDateTo: (v: string) => void;
-  updateSubscriber: (s: SubscriberItem) => void;
 
   // OM only
   omOrdReviewTab: 'review' | 'accepted' | 'failed';
@@ -85,21 +85,21 @@ interface Props {
   currentStaff: StaffMember | null;
   authUser: { displayName?: string | null; email?: string | null; uid?: string } | null;
   content: Record<string, string>;
-  updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => void;
-  addOrder: (order: OrderItem) => void;
-  deleteOrder: (id: string) => void;
+  updateOrderStatus: (id: string, status: 'paid' | 'failed' | 'refunded') => Promise<boolean>;
+  addOrder: (order: OrderItem) => Promise<boolean>;
+  deleteOrder: (id: string) => Promise<boolean>;
   reloadOrders: () => Promise<void>;
+  reloadSubscribers: () => Promise<void>;
   exportFilteredOrdersCsv: (rows: OrderItem[]) => void;
 }
 
 export default function OrdersTab({
-  isOnlineManager, isDaqqiManager, isAdmin,
+  isOnlineManager, isDaqqiManager, isAdmin, canManageFinancial,
   notify, courses, bundles,
   salesOwnSubscribers,
   daqqiSubSearch, setDaqqiSubSearch,
   daqqiAccDateFrom, setDaqqiAccDateFrom,
   daqqiAccDateTo, setDaqqiAccDateTo,
-  updateSubscriber,
   omOrdReviewTab, setOmOrdReviewTab,
   effectiveOrders, filteredOrders, ordersStats,
   orderSearch, setOrderSearch,
@@ -115,13 +115,13 @@ export default function OrdersTab({
   linkOrderModal, setLinkOrderModal,
   transferForm, setTransferForm,
   currentStaff, authUser, content,
-  updateOrderStatus, addOrder, deleteOrder, reloadOrders, exportFilteredOrdersCsv,
+  updateOrderStatus, addOrder, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv,
 }: Props) {
   const navigate = useNavigate();
 
   const handleConfirmOrder = async (row: OrderItem) => {
-    if (!isAdmin && currentStaff?.role !== 'manager') {
-      notify('error', 'تأكيد المدفوعات للإدارة فقط.');
+    if (!canManageFinancial) {
+      notify('error', 'تأكيد المدفوعات يتطلب صلاحية الإدارة المالية.');
       return;
     }
     if (!isAdmin && row.staffId && row.staffId === currentStaff?.id) {
@@ -130,7 +130,7 @@ export default function OrdersTab({
     }
     try {
       await mysqlAdmin.adminPost(`/admin/orders/${row.id}/confirm-payment`, {});
-      await reloadOrders();
+      await Promise.all([reloadOrders(), reloadSubscribers()]);
       notify('success', `✅ تم تأكيد دفعة ${row.customerName} بنجاح`);
     } catch {
       notify('error', 'تعذر تأكيد الدفعة — تحقق من أن الطلب لسه قيد المراجعة.');
@@ -263,26 +263,26 @@ export default function OrdersTab({
                                       :<span className="text-[10px] bg-green-100 text-green-700 border border-green-200 rounded-full px-1.5 py-0.5 font-bold">✅ مؤكد</span>}
                                 </td>
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-400 max-w-[100px] truncate">{(p as {note?:string}).note||'—'}</td>
-                                {omOrdReviewTab==='review' && (
+                                {omOrdReviewTab==='review' && canManageFinancial && (
                                   <td className="px-2 py-2 border border-gray-200 text-center">
                                     <div className="flex items-center justify-center gap-1">
-                                      <button onClick={async()=>{
-                                        const sub = omSubs.find(s=>s.id===p.clientId);
-                                        if(!sub) return;
-                                        const newPH = (sub.paymentHistory||[]).map(ph=>ph.id===payId?{...ph,status:'paid' as const}:ph);
-                                        const updated = {...sub, paymentHistory: newPH};
-                                        updateSubscriber(updated);
-                                        await mysqlAdmin.saveSubscriber(updated as unknown as Record<string, unknown>);
-                                        notify('success', 'تم قبول الدفعة ✅');
-                                      }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg font-bold">قبول</button>
-                                      <button onClick={async()=>{
-                                        const sub = omSubs.find(s=>s.id===p.clientId);
-                                        if(!sub) return;
-                                        const newPH = (sub.paymentHistory||[]).map(ph=>ph.id===payId?{...ph,status:'failed' as const}:ph);
-                                        const updated = {...sub, paymentHistory: newPH};
-                                        updateSubscriber(updated);
-                                        await mysqlAdmin.saveSubscriber(updated as unknown as Record<string, unknown>);
-                                        notify('info', 'تم رفض الدفعة');
+                                       <button onClick={async()=>{
+                                         try {
+                                           await mysqlAdmin.updatePaymentStatus(payId, 'paid');
+                                           await Promise.all([reloadSubscribers(), reloadOrders()]);
+                                           notify('success', 'تم اعتماد الدفعة وإنشاء القيد المحاسبي ✅');
+                                         } catch (error) {
+                                           notify('error', error instanceof Error ? error.message : 'تعذر اعتماد الدفعة');
+                                         }
+                                       }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg font-bold">قبول</button>
+                                       <button onClick={async()=>{
+                                         try {
+                                           await mysqlAdmin.updatePaymentStatus(payId, 'failed');
+                                           await Promise.all([reloadSubscribers(), reloadOrders()]);
+                                           notify('info', 'تم رفض الدفعة');
+                                         } catch (error) {
+                                           notify('error', error instanceof Error ? error.message : 'تعذر رفض الدفعة');
+                                         }
                                       }} className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold">رفض</button>
                                     </div>
                                   </td>
@@ -750,22 +750,26 @@ export default function OrdersTab({
                                       </td>
                                       <td className="px-3 py-2.5 text-center">
                                         <div className="flex items-center justify-center gap-1">
-                                          {isPending && (
+                                          {isPending && canManageFinancial && (
                                             <>
-                                              <button onClick={() => updateOrderStatus(row.id, 'paid')}
+                                              <button onClick={() => handleConfirmOrder(row)}
                                                 className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg font-bold transition">✓</button>
                                               <button onClick={() => updateOrderStatus(row.id, 'failed')}
                                                 className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold transition">✕</button>
                                             </>
                                           )}
-                                          <button onClick={() => setLinkTransferModal({ row })}
-                                            className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
-                                            🔗 ربط
-                                          </button>
-                                          <button onClick={() => deleteOrder(row.id)}
-                                            className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
-                                            <Trash2 size={11} />
-                                          </button>
+                                          {canManageFinancial && (
+                                            <button onClick={() => setLinkTransferModal({ row })}
+                                              className="text-[10px] bg-violet-600 hover:bg-violet-700 text-white px-2 py-1 rounded-lg font-bold transition" title="ربط بدفعة عميل">
+                                              🔗 ربط
+                                            </button>
+                                          )}
+                                          {isAdmin && (
+                                            <button onClick={() => deleteOrder(row.id)}
+                                              className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
+                                              <Trash2 size={11} />
+                                            </button>
+                                          )}
                                         </div>
                                       </td>
                                     </tr>
@@ -875,7 +879,7 @@ export default function OrdersTab({
                                 </td>
                                 <td className="px-3 py-2.5 text-center">
                                   <div className="flex items-center justify-center gap-1">
-                                    {isPending && (
+                                    {isPending && canManageFinancial && (
                                       <>
                                         <button onClick={() => handleConfirmOrder(row)}
                                           className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg font-bold transition">
@@ -891,18 +895,12 @@ export default function OrdersTab({
                                         </button>
                                       </>
                                     )}
-                                    {!isPending && (
-                                      <select value={row.status} onChange={e => updateOrderStatus(row.id, e.target.value as 'paid'|'failed'|'refunded')}
-                                        className="border border-gray-200 rounded-lg px-1.5 py-0.5 text-[10px] bg-white focus:outline-none focus:ring-1 focus:ring-emerald-300">
-                                        <option value="paid">مؤكد</option>
-                                        <option value="failed">فاشلة</option>
-                                        <option value="refunded">مرتجع</option>
-                                      </select>
+                                    {isAdmin && (
+                                      <button onClick={() => deleteOrder(row.id)}
+                                        className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
+                                        <Trash2 size={11} />
+                                      </button>
                                     )}
-                                    <button onClick={() => deleteOrder(row.id)}
-                                      className="text-red-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition" title="حذف">
-                                      <Trash2 size={11} />
-                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -969,7 +967,7 @@ export default function OrdersTab({
                                 onClick={async () => {
                                   try {
                                     await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
-                                    await reloadOrders();
+                                    await Promise.all([reloadOrders(), reloadSubscribers()]);
                                     notify('success', `✅ تم ربط التحويل بدفعة ${order.customerName} (${order.itemTitle}) وتأكيدها`);
                                     setLinkTransferModal(null);
                                     setOrderReviewTab('accepted');
@@ -1035,7 +1033,7 @@ export default function OrdersTab({
                                 onClick={async () => {
                                   try {
                                     await mysqlAdmin.adminPost(`/admin/orders/${order.id}/confirm-payment`, { linkedTransferId: transfer.id });
-                                    await reloadOrders();
+                                    await Promise.all([reloadOrders(), reloadSubscribers()]);
                                     notify('success', `✅ تم ربط دفعة ${order.customerName} بتحويل ${transfer.customerName} وتأكيدها`);
                                     setLinkOrderModal(null);
                                     setOrderReviewTab('accepted');
@@ -1186,7 +1184,7 @@ export default function OrdersTab({
                           </button>
                           <button
                             disabled={!transferForm.amount || Number(transferForm.amount) <= 0}
-                            onClick={() => {
+                            onClick={async () => {
                               if (!transferForm.amount || Number(transferForm.amount) <= 0) return;
                               const timeStr = transferForm.time || new Date().toTimeString().slice(0,5);
                               const now = new Date(`${transferForm.date}T${timeStr}`).toISOString();
@@ -1206,7 +1204,11 @@ export default function OrdersTab({
                                 staffId: currentStaff?.id,
                                 staffName: currentStaff?.name || authUser?.displayName || 'Admin',
                               };
-                              addOrder(newTransfer);
+                              const saved = await addOrder(newTransfer);
+                              if (!saved) {
+                                notify('error', 'تعذر حفظ التحويل في قاعدة البيانات.');
+                                return;
+                              }
                               setShowAddTransfer(false);
                               setOrderReviewTab('transfers');
                               notify('success', `تم تسجيل التحويل بنجاح (${Number(transferForm.amount).toLocaleString()} ${transferForm.currency}) ✓`);

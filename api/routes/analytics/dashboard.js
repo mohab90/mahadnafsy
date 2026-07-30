@@ -4,7 +4,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool, cached } = require('../../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Admin Dashboard KPI Snapshot ────────────────────────────────
@@ -12,7 +12,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../../middle
 
 // GET /api/admin/dashboard/kpi — single endpoint with all key metrics
 // Optimized: parallel queries, cached totals, month-over-month delta
-router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
   try {
     const now    = new Date();
     const ym     = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -52,7 +52,7 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, async (
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN DATE_FORMAT(enrolled_at,'%Y-%m')=? THEN 1 ELSE 0 END) AS this_month
-        FROM enrollments WHERE tenant_id=? AND status NOT IN ('cancelled','refunded')`, [curM, req.tenantId]),
+        FROM enrollments WHERE tenant_id=? AND status='active'`, [curM, req.tenantId]),
       pool.query(`
         SELECT COUNT(*) AS total,
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending

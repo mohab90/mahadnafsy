@@ -9,9 +9,34 @@ const CONCURRENCY = Number(process.env.LOAD_SMOKE_CONCURRENCY || 8);
 const LOGIN_RUNS = Number(process.env.LOAD_SMOKE_LOGIN_RUNS || 24);
 const LEADS_RUNS = Number(process.env.LOAD_SMOKE_LEADS_RUNS || 24);
 const PAYMENT_RUNS = Number(process.env.LOAD_SMOKE_PAYMENT_RUNS || 3);
+const PROFILE_INTERVAL_MS = Number(process.env.LOAD_SMOKE_PROFILE_INTERVAL_MS || 250);
+const MAX_P95 = {
+  login: Number(process.env.LOAD_SMOKE_LOGIN_MAX_P95_MS || 3000),
+  admin: Number(process.env.LOAD_SMOKE_API_MAX_P95_MS || 500),
+  payment: Number(process.env.LOAD_SMOKE_PAYMENT_MAX_P95_MS || 1000),
+};
+const LOGIN_ACCOUNTS = String(process.env.LOAD_SMOKE_LOGIN_ACCOUNTS || [
+  'uat.manager@mahad.test',
+  'uat.online-manager@mahad.test',
+  'uat.sales-manager@mahad.test',
+  'uat.sales@mahad.test',
+  'uat.collection@mahad.test',
+  'uat.support-online@mahad.test',
+  'uat.support-daqqi@mahad.test',
+  'uat.reception-daqqi@mahad.test',
+  'uat.daqqi-manager@mahad.test',
+  'uat.hr-manager@mahad.test',
+  'uat.recruiter@mahad.test',
+  'uat.consultant@mahad.test',
+  'uat.expert@mahad.test',
+  'uat.trainer@mahad.test',
+  'uat.instructor@mahad.test',
+  'uat.other@mahad.test',
+].join(',')).split(',').map(value => value.trim()).filter(Boolean);
 
 const timings = [];
 const errors = [];
+const profileSamples = [];
 
 async function timed(name, fn) {
   const t0 = Date.now();
@@ -47,10 +72,20 @@ async function api(path, { method = 'GET', token, body, expected = [200] } = {})
 }
 
 async function login(email) {
-  const data = await timed(`login:${email}`, () => api('/api/auth/login', {
-    method: 'POST',
-    body: { email, password: PASSWORD },
-  }));
+  const data = await timed(`login:${email}`, async () => {
+    const first = await api('/api/auth/login', {
+      method: 'POST',
+      body: { email, password: PASSWORD },
+    });
+    if (!first?.totpRequired) return first;
+    const secret = String(process.env.UAT_TOTP_SECRET || '');
+    if (secret.length < 16) throw new Error(`MFA challenge received for ${email} without UAT_TOTP_SECRET`);
+    const { generate } = require('otplib');
+    return api('/api/auth/2fa/verify', {
+      method: 'POST',
+      body: { pendingToken: first.pendingToken, token: await generate({ secret }) },
+    });
+  });
   if (!data?.token) throw new Error(`No token for ${email}`);
   return data.token;
 }
@@ -74,24 +109,47 @@ function percentile(values, p) {
 }
 
 (async () => {
+  const profileTimer = setInterval(async () => {
+    try {
+      profileSamples.push(await api('/api/health/detailed'));
+    } catch {
+      // The request-level error counters remain authoritative for the load gate.
+    }
+  }, PROFILE_INTERVAL_MS);
+  profileTimer.unref?.();
+
   const adminToken = await login('uat.admin@mahad.test');
   const accountantToken = await login('uat.accountant@mahad.test');
+  const configuredSubscriberIds = String(process.env.LOAD_SMOKE_SUBSCRIBER_IDS || '')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  const subscriberRows = configuredSubscriberIds.length
+    ? []
+    : await api('/api/admin/subscribers?limit=100', { token: adminToken });
+  const subscriberIds = configuredSubscriberIds.length
+    ? configuredSubscriberIds
+    : (Array.isArray(subscriberRows) ? subscriberRows : subscriberRows?.items || [])
+      .map(row => row?.id).filter(Boolean);
+  if (!subscriberIds.length) subscriberIds.push('uat-student-client');
 
-  await runPool(Array.from({ length: LOGIN_RUNS }, (_, i) => i), async (i) => {
-    const email = i % 3 === 0 ? 'uat.sales@mahad.test' : i % 3 === 1 ? 'uat.collection@mahad.test' : 'uat.online-manager@mahad.test';
-    await login(email);
+  // One account cannot complete two MFA challenges concurrently: the first
+  // successful login deliberately rotates its single active session. Run
+  // accounts concurrently, while keeping attempts for each account serial.
+  await runPool(LOGIN_ACCOUNTS, async (email) => {
+    const attempts = Math.floor(LOGIN_RUNS / LOGIN_ACCOUNTS.length)
+      + (LOGIN_ACCOUNTS.indexOf(email) < LOGIN_RUNS % LOGIN_ACCOUNTS.length ? 1 : 0);
+    for (let index = 0; index < attempts; index += 1) await login(email);
   });
 
   await runPool(Array.from({ length: LEADS_RUNS }, (_, i) => i), async () => {
     await timed('admin:leads', () => api('/api/admin/leads?limit=25', { token: adminToken }));
   });
 
-  for (let i = 0; i < PAYMENT_RUNS; i++) {
+  await runPool(Array.from({ length: PAYMENT_RUNS }, (_, i) => i), async (i) => {
     await timed('payment:create', () => api('/api/admin/subscriber-payments', {
       method: 'POST',
       token: accountantToken,
       body: {
-        subscriber_id: 'uat-student-client',
+        subscriber_id: subscriberIds[i % subscriberIds.length],
         payment: {
           id: `load-pay-${Date.now().toString(36)}-${i}`,
           amount: 1,
@@ -105,7 +163,9 @@ function percentile(values, p) {
         },
       },
     }));
-  }
+  });
+  clearInterval(profileTimer);
+  try { profileSamples.push(await api('/api/health/detailed')); } catch {}
 
   const byName = timings.reduce((acc, timing) => {
     const key = timing.name.split(':')[0];
@@ -124,8 +184,21 @@ function percentile(values, p) {
     }];
   }));
 
-  console.log(JSON.stringify({ ok: errors.length === 0, summary, errors }, null, 2));
-  if (errors.length) process.exit(1);
+  const thresholdFailures = Object.entries(MAX_P95)
+    .filter(([name, max]) => summary[name] && summary[name].p95 > max)
+    .map(([name, max]) => ({ name, p95: summary[name].p95, max }));
+  const ok = errors.length === 0 && thresholdFailures.length === 0;
+  const profile = {
+    samples: profileSamples.length,
+    cpuAveragePercentMax: Math.max(0, ...profileSamples.map(sample => Number(sample.cpuAveragePercent || 0))),
+    eventLoopP95MsMax: Math.max(0, ...profileSamples.map(sample => Number(sample.eventLoop?.p95Ms || 0))),
+    eventLoopMaxMs: Math.max(0, ...profileSamples.map(sample => Number(sample.eventLoop?.maxMs || 0))),
+    dbPoolActiveMax: Math.max(0, ...profileSamples.map(sample => Number(sample.dbPool?.active || 0))),
+    dbPoolQueuedMax: Math.max(0, ...profileSamples.map(sample => Number(sample.dbPool?.queued || 0))),
+    rssMBMax: Math.max(0, ...profileSamples.map(sample => Number(sample.rssMB || 0))),
+  };
+  console.log(JSON.stringify({ ok, summary, thresholds: MAX_P95, thresholdFailures, profile, errors }, null, 2));
+  if (!ok) process.exit(1);
 })().catch((error) => {
   console.error(JSON.stringify({ ok: false, error: error.message, errors }, null, 2));
   process.exit(1);

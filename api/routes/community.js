@@ -27,19 +27,51 @@ const mapPost = (r) => ({
   authorName: r.author || '',
   authorRole: r.author_role || '',
   authorImage: r.image_url || '',
+  createdAt: r.created_at || '',
+  comments: Number(r.comments || 0),
   status: r.status || 'approved',
 });
+
+async function attachComments(rows, tenantId) {
+  if (!rows.length) return [];
+  const ids = rows.map((row) => row.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const [comments] = await pool.query(
+    `SELECT id, post_id, author, body, created_at
+     FROM community_post_comments
+     WHERE tenant_id=? AND post_id IN (${placeholders})
+     ORDER BY created_at ASC LIMIT 1000`,
+    [tenantId, ...ids]
+  );
+  const grouped = new Map();
+  for (const comment of comments) {
+    const list = grouped.get(comment.post_id) || [];
+    list.push({
+      id: comment.id,
+      author: comment.author,
+      body: comment.body,
+      at: comment.created_at,
+    });
+    grouped.set(comment.post_id, list);
+  }
+  return rows.map((row) => ({
+    ...mapPost(row),
+    commentsList: grouped.get(row.id) || [],
+  }));
+}
 
 // Admin moderation list — returns ALL posts incl. pending/rejected so they can be reviewed.
 router.get('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requirePermission('view_community'), async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, title, category, body, author, author_role, subscriber_id, image_url, tags,
-              featured, pinned, likes, status, created_at
+              featured, pinned, likes, status, created_at,
+              (SELECT COUNT(*) FROM community_post_comments c
+               WHERE c.tenant_id=community_posts.tenant_id AND c.post_id=community_posts.id) AS comments
        FROM community_posts WHERE tenant_id=? ORDER BY (status='pending') DESC, created_at DESC LIMIT 500`,
       [req.tenantId]
     );
-    res.json(rows.map(mapPost));
+    res.json(await attachComments(rows, req.tenantId));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -51,11 +83,13 @@ router.get('/api/community/posts', publicLimiter, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'posts'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at
-         FROM community_posts WHERE tenant_id=? AND status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`,
+        `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at,
+                (SELECT COUNT(*) FROM community_post_comments c
+                 WHERE c.tenant_id=p.tenant_id AND c.post_id=p.id) AS comments
+         FROM community_posts p WHERE tenant_id=? AND status = 'approved' ORDER BY pinned DESC, created_at DESC LIMIT 200`,
         [req.tenantId]
       );
-      return rows.map(mapPost);
+      return attachComments(rows, req.tenantId);
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -91,17 +125,13 @@ router.post('/api/community/posts', requireAuth, communityPostLimiter, async (re
   }
 });
 
-// Customer edit of THEIR OWN post (MKT-16). Editing title/body/category resends the
-// post to moderation (status → pending); an engagement-only update (likes) leaves the
-// current status untouched so liking an approved post doesn't hide it from the feed.
-// Note: comments/commentsList are NOT persisted — community_posts has no such column,
-// so the client's comment feature is currently session-local only.
+// Customer edit of THEIR OWN post. Editing content resends it to moderation.
 router.patch('/api/community/posts/:id', requireAuth, async (req, res) => {
   try {
     const subscriber = await findOwnSubscriber(req);
     if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
     const [[existing]] = await pool.query(
-      'SELECT title, category, body, subscriber_id, likes FROM community_posts WHERE tenant_id=? AND id=?',
+      'SELECT title, category, body, subscriber_id FROM community_posts WHERE tenant_id=? AND id=?',
       [req.tenantId, req.params.id]
     );
     if (!existing) return res.status(404).json({ error: 'Post not found' });
@@ -111,18 +141,12 @@ router.patch('/api/community/posts/:id', requireAuth, async (req, res) => {
     const nextTitle = p.title != null ? String(p.title).trim().slice(0, 200) : existing.title;
     const nextCategory = p.tag || p.category || existing.category;
     const nextBody = p.body != null ? String(p.body).trim().slice(0, 5000) : existing.body;
-    const nextLikes = Number.isFinite(p.likes) ? Math.max(0, Math.trunc(p.likes)) : existing.likes;
     const contentChanged = nextTitle !== existing.title || nextCategory !== existing.category || nextBody !== existing.body;
 
     if (contentChanged) {
       await pool.query(
-        'UPDATE community_posts SET title=?, category=?, body=?, likes=?, status=\'pending\' WHERE tenant_id=? AND id=?',
-        [nextTitle, nextCategory, nextBody, nextLikes, req.tenantId, req.params.id]
-      );
-    } else {
-      await pool.query(
-        'UPDATE community_posts SET title=?, category=?, body=?, likes=? WHERE tenant_id=? AND id=?',
-        [nextTitle, nextCategory, nextBody, nextLikes, req.tenantId, req.params.id]
+        'UPDATE community_posts SET title=?, category=?, body=?, status=\'pending\' WHERE tenant_id=? AND id=?',
+        [nextTitle, nextCategory, nextBody, req.tenantId, req.params.id]
       );
     }
     invalidate(req, 'posts');
@@ -133,23 +157,124 @@ router.patch('/api/community/posts/:id', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/api/community/posts/:id/like', requireAuth, communityPostLimiter, async (req, res) => {
+  let connection;
+  try {
+    const subscriber = await findOwnSubscriber(req);
+    if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [[post]] = await connection.query(
+      "SELECT id FROM community_posts WHERE tenant_id=? AND id=? AND status='approved' FOR UPDATE",
+      [req.tenantId, req.params.id]
+    );
+    if (!post) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    const [[existingLike]] = await connection.query(
+      'SELECT post_id FROM community_post_likes WHERE tenant_id=? AND post_id=? AND subscriber_id=? FOR UPDATE',
+      [req.tenantId, req.params.id, subscriber.id]
+    );
+    const liked = !existingLike;
+    if (liked) {
+      await connection.query(
+        'INSERT INTO community_post_likes (tenant_id, post_id, subscriber_id) VALUES (?,?,?)',
+        [req.tenantId, req.params.id, subscriber.id]
+      );
+      await connection.query(
+        'UPDATE community_posts SET likes=likes+1 WHERE tenant_id=? AND id=?',
+        [req.tenantId, req.params.id]
+      );
+    } else {
+      await connection.query(
+        'DELETE FROM community_post_likes WHERE tenant_id=? AND post_id=? AND subscriber_id=?',
+        [req.tenantId, req.params.id, subscriber.id]
+      );
+      await connection.query(
+        'UPDATE community_posts SET likes=GREATEST(likes-1,0) WHERE tenant_id=? AND id=?',
+        [req.tenantId, req.params.id]
+      );
+    }
+    const [[countRow]] = await connection.query(
+      'SELECT likes FROM community_posts WHERE tenant_id=? AND id=?',
+      [req.tenantId, req.params.id]
+    );
+    const likes = Number(countRow.likes || 0);
+    await connection.commit();
+    invalidate(req, 'posts');
+    res.json({ ok: true, liked, likes });
+  } catch (e) {
+    if (connection) await connection.rollback().catch(() => {});
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    connection?.release();
+  }
+});
+
+router.post('/api/community/posts/:id/comments', requireAuth, communityPostLimiter, async (req, res) => {
+  try {
+    const body = String(req.body?.body || '').trim().slice(0, 2000);
+    if (!body) return res.status(400).json({ error: 'Comment body is required' });
+    const subscriber = await findOwnSubscriber(req);
+    if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
+    const [[post]] = await pool.query(
+      "SELECT id FROM community_posts WHERE tenant_id=? AND id=? AND status='approved'",
+      [req.tenantId, req.params.id]
+    );
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    const id = uuidv4();
+    const author = String(subscriber.name || 'عضو').slice(0, 200);
+    await pool.query(
+      `INSERT INTO community_post_comments
+       (id, tenant_id, post_id, subscriber_id, author, body, created_at)
+       VALUES (?,?,?,?,?,?,NOW())`,
+      [id, req.tenantId, req.params.id, subscriber.id, author, body]
+    );
+    invalidate(req, 'posts');
+    res.json({ ok: true, comment: { id, author, body, at: new Date().toISOString() } });
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Customer delete of THEIR OWN post (MKT-16). Previously the client's delete button
 // called the admin-only DELETE endpoint, which 403'd for regular subscribers while the
 // UI still optimistically removed the post locally — it silently reappeared on reload.
 router.delete('/api/community/posts/:id', requireAuth, async (req, res) => {
+  let connection;
   try {
     const subscriber = await findOwnSubscriber(req);
     if (!subscriber) return res.status(403).json({ error: 'Subscriber required' });
-    const [result] = await pool.query(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [result] = await connection.query(
       'DELETE FROM community_posts WHERE tenant_id=? AND id=? AND subscriber_id=?',
       [req.tenantId, req.params.id, subscriber.id]
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'Post not found' });
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    await connection.query(
+      'DELETE FROM community_post_likes WHERE tenant_id=? AND post_id=?',
+      [req.tenantId, req.params.id]
+    );
+    await connection.query(
+      'DELETE FROM community_post_comments WHERE tenant_id=? AND post_id=?',
+      [req.tenantId, req.params.id]
+    );
+    await connection.commit();
     invalidate(req, 'posts');
     res.json({ ok: true });
   } catch (e) {
+    if (connection) await connection.rollback().catch(() => {});
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    connection?.release();
   }
 });
 
@@ -184,14 +309,26 @@ router.post('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requ
 });
 
 router.delete('/api/admin/community/posts/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
+  let connection;
   try {
-    const [result] = await pool.query('DELETE FROM community_posts WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
-    if (!result.affectedRows) return res.status(404).json({ error: 'Post not found' });
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [result] = await connection.query('DELETE FROM community_posts WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    await connection.query('DELETE FROM community_post_likes WHERE tenant_id=? AND post_id=?', [req.tenantId, req.params.id]);
+    await connection.query('DELETE FROM community_post_comments WHERE tenant_id=? AND post_id=?', [req.tenantId, req.params.id]);
+    await connection.commit();
     invalidate(req, 'posts');
     res.json({ ok: true });
   } catch (e) {
+    if (connection) await connection.rollback().catch(() => {});
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    connection?.release();
   }
 });
 

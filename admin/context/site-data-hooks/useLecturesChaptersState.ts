@@ -4,23 +4,14 @@ import type { CourseLectureItem, CourseChapterItem } from '../../types';
 import { mysqlAdmin, mysqlCatalog } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
-type PersistOrRevert = (apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => void;
-
 export function useLecturesChaptersState(
   initialLectures: CourseLectureItem[],
   initialChapters: CourseChapterItem[],
   lastLocalConfigWriteRef: MutableRefObject<number>,
-  persistOrRevert: PersistOrRevert,
   track: Track,
 ) {
   const [lectures, setLectures] = useState<CourseLectureItem[]>(initialLectures);
   const [chapters, setChapters] = useState<CourseChapterItem[]>(initialChapters);
-
-  // Write a single lecture/chapter document to its Firestore collection.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistLectureToCollection = (_lecture: CourseLectureItem) => { /* PG-only — no Firestore write */ };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistChapterToCollection = (_chapter: CourseChapterItem) => { /* PG-only — no Firestore write */ };
 
   // Reload lectures + chapters from API (called when VideoPlayer opens without lectures loaded)
   const reloadLectures = useCallback(async () => {
@@ -36,86 +27,66 @@ export function useLecturesChaptersState(
     } catch { /* silent */ }
   }, []);
 
-  const addLecture = (item: CourseLectureItem) => {
+  const persistError = (field: string, name?: string) => {
+    window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field, name } }));
+    return false;
+  };
+
+  const addLecture = async (item: CourseLectureItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
-    setLectures((prev) => [item, ...prev]);
-    persistLectureToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>),
-      () => setLectures((prev) => prev.filter((row) => row.id !== item.id)),
-      { field: 'lecture', name: item.title }
-    );
+    try { await mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>); }
+    catch { return persistError('lecture', item.title); }
+    setLectures((prev) => [item, ...prev.filter(row => row.id !== item.id)]);
     track('create', 'lecture', item.title);
+    return true;
   };
 
-  const updateLecture = (item: CourseLectureItem) => {
+  const updateLecture = async (item: CourseLectureItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
-    const prevLecture = lectures.find((row) => row.id === item.id);
+    try { await mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>); }
+    catch { return persistError('lecture', item.title); }
     setLectures((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistLectureToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>),
-      () => { if (prevLecture) setLectures((prev) => prev.map((row) => (row.id === item.id ? prevLecture : row))); },
-      { field: 'lecture', name: item.title }
-    );
     track('update', 'lecture', item.title);
+    return true;
   };
 
-  const deleteLecture = (id: string) => {
+  const deleteLecture = async (id: string): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
     const removed = lectures.find((row) => row.id === id);
+    try { await mysqlAdmin.deleteLecture(id); }
+    catch { return persistError('lecture', removed?.title); }
     setLectures((prev) => prev.filter((row) => row.id !== id));
-    persistOrRevert(
-      mysqlAdmin.deleteLecture(id),
-      () => { if (removed) setLectures((prev) => [removed, ...prev]); },
-      { field: 'lecture', name: removed?.title }
-    );
     track('delete', 'lecture', id);
+    return true;
   };
 
-  const addChapter = (item: CourseChapterItem) => {
+  const addChapter = async (item: CourseChapterItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
+    try { await mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>); }
+    catch { return persistError('chapter', item.title); }
     setChapters((prev) => [...prev, item]);
-    persistChapterToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>),
-      () => setChapters((prev) => prev.filter((row) => row.id !== item.id)),
-      { field: 'chapter', name: item.title }
-    );
     track('create', 'chapter', item.title);
+    return true;
   };
 
-  const updateChapter = (item: CourseChapterItem) => {
+  const updateChapter = async (item: CourseChapterItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
-    const prevChapter = chapters.find((row) => row.id === item.id);
+    try { await mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>); }
+    catch { return persistError('chapter', item.title); }
     setChapters((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistChapterToCollection(item);
-    persistOrRevert(
-      mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>),
-      () => { if (prevChapter) setChapters((prev) => prev.map((row) => (row.id === item.id ? prevChapter : row))); },
-      { field: 'chapter', name: item.title }
-    );
     track('update', 'chapter', item.title);
+    return true;
   };
 
-  const deleteChapter = (id: string) => {
+  const deleteChapter = async (id: string): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
-    const prevChapters = chapters;
-    const prevLectures = lectures;
+    const removed = chapters.find(row => row.id === id);
+    try { await mysqlAdmin.deleteChapter(id); }
+    catch { return persistError('chapter', removed?.title); }
     setChapters((prev) => prev.filter((row) => row.id !== id));
-    persistOrRevert(
-      mysqlAdmin.deleteChapter(id),
-      () => { setChapters(prevChapters); setLectures(prevLectures); },
-      { field: 'chapter', name: id }
-    );
-    // Unlink lectures belonging to deleted chapter and persist updated lectures
-    setLectures((prev) => {
-      const updated = prev.map((row) => (row.chapterId === id ? { ...row, chapterId: undefined } : row));
-      updated.filter(r => r.chapterId === undefined && prev.find(p => p.id === r.id)?.chapterId === id)
-        .forEach(r => persistLectureToCollection(r));
-      return updated;
-    });
+    setLectures((prev) => prev.map((row) => (row.chapterId === id ? { ...row, chapterId: undefined } : row)));
     track('delete', 'chapter', id);
+    return true;
   };
 
   const getCourseChapters = (courseId: string) =>

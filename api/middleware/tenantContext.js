@@ -14,7 +14,9 @@
  */
 const logger = require('../lib/logger');
 const jwt = require('jsonwebtoken');
+const { resolveSecret } = require('../lib/secretResolver');
 const net = require('net');
+const { domainToASCII } = require('node:url');
 const { pool, cached } = require('../lib/db');
 
 // Canonical tenant id 'tenant-default' — matches the prod DB (every row's
@@ -23,6 +25,10 @@ const DEFAULT_TENANT = process.env.DEFAULT_TENANT_ID || 'tenant-default';
 
 // Sub-domain labels that are never a tenant slug (marketing/app/root hosts).
 const RESERVED_SUBS = new Set(['www', 'mahad', 'app', 'api', 'admin', 'staging', 'dev', 'localhost']);
+const BASE_DOMAINS = new Set(
+  String(process.env.SAAS_BASE_DOMAINS || 'mahadnafsy.com,mahad.app')
+    .split(',').map(value => domainToASCII(value.trim().toLowerCase())).filter(Boolean)
+);
 const TENANTS_TTL_MS = 60 * 1000;
 
 /**
@@ -33,7 +39,11 @@ const TENANTS_TTL_MS = 60 * 1000;
  */
 async function loadTenantIndex() {
   return cached('tenant_index', TENANTS_TTL_MS, async () => {
-    const index = { byId: Object.create(null), bySlug: Object.create(null) };
+    const index = {
+      byId: Object.create(null),
+      bySlug: Object.create(null),
+      byDomain: Object.create(null),
+    };
     try {
       const [rows] = await pool.query(
         "SELECT id, slug, name, status, plan_key FROM tenants WHERE status <> 'archived'"
@@ -41,6 +51,16 @@ async function loadTenantIndex() {
       for (const r of rows) {
         index.byId[r.id] = r;
         if (r.slug) index.bySlug[String(r.slug).toLowerCase()] = r;
+      }
+      const [domains] = await pool.query(
+        "SELECT tenant_id, domain FROM tenant_domains WHERE status='verified'"
+      ).catch(error => {
+        if (/doesn't exist|Unknown table|no such table/i.test(error.message || '')) return [[]];
+        throw error;
+      });
+      for (const domain of domains) {
+        const tenant = index.byId[domain.tenant_id];
+        if (tenant) index.byDomain[String(domain.domain).toLowerCase()] = tenant;
       }
     } catch (e) {
       // Table missing (pre-027) or transient DB error → single-tenant fallback.
@@ -60,12 +80,17 @@ function extractCandidate(req) {
   // 2) explicit header (internal/admin tools)
   if (req.headers['x-tenant-id']) return { value: String(req.headers['x-tenant-id']), source: 'header' };
   // 1) sub-domain  (acme.mahad.app → "acme")
-  const host = (req.headers.host || '').split(':')[0];
+  const rawHost = String(req.headers.host || '').trim().replace(/:\d+$/, '').replace(/\.$/, '');
+  const host = domainToASCII(rawHost.toLowerCase());
   if (net.isIP(host)) return null;
-  const labels = host.split('.');
-  const sub = (labels[0] || '').toLowerCase();
-  if (sub && labels.length > 2 && !RESERVED_SUBS.has(sub)) return { value: sub, source: 'subdomain' };
-  return null;
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || BASE_DOMAINS.has(host)) return null;
+  for (const base of BASE_DOMAINS) {
+    if (!host.endsWith(`.${base}`)) continue;
+    const prefix = host.slice(0, -(base.length + 1));
+    if (!prefix || prefix.includes('.') || RESERVED_SUBS.has(prefix)) return null;
+    return { value: prefix, source: 'subdomain' };
+  }
+  return host.includes('.') ? { value: host, source: 'domain' } : null;
 }
 
 // tenantContext is mounted before route-level requireAuth. Decode only a valid,
@@ -80,7 +105,7 @@ function extractSignedTenant(req) {
     if (header.startsWith('Bearer ')) token = header.slice(7);
   }
   if (!token) return null;
-  const jwtSecret = process.env.JWT_SECRET;
+  const jwtSecret = resolveSecret('JWT_SECRET');
   if (!jwtSecret) return null;
   try {
     const payload = jwt.verify(token, jwtSecret);
@@ -109,7 +134,7 @@ async function resolveTenant(req, res, next) {
 
     const index = await loadTenantIndex();
     const key = candidate.value.toLowerCase();
-    const match = index.byId[candidate.value] || index.bySlug[key];
+    const match = index.byId[candidate.value] || index.bySlug[key] || index.byDomain[key];
 
     if (!match) return res.status(400).json({ error: 'Unknown tenant', code: 'TENANT_UNKNOWN' });
     if (match.status !== 'active') {

@@ -19,7 +19,7 @@ async function notifyWaitlistForFreedSeats(tenantId, courseId, conn) {
   const [[course]] = await conn.query('SELECT title, max_students FROM courses WHERE id=? AND tenant_id=?', [courseId, tenantId]);
   if (!course || !course.max_students) return 0;
   const [[{ enrolled }]] = await conn.query(
-    "SELECT COUNT(*) AS enrolled FROM enrollments WHERE course_id=? AND tenant_id=? AND status != 'cancelled'",
+    "SELECT COUNT(*) AS enrolled FROM enrollments WHERE course_id=? AND tenant_id=? AND status='active'",
     [courseId, tenantId]
   );
   const availableSpots = Math.max(0, Number(course.max_students) - Number(enrolled));

@@ -4,8 +4,9 @@ const express = require('express');
 const router  = express.Router();
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { safeDateOnly } = require('../lib/dates');
+const { addDaysToDateOnly, isValidDateOnly, safeDateOnly } = require('../lib/dates');
 const { BRANCHES, normalizeBranch } = require('../constants/branches');
+const { resolveFinancialScope } = require('../lib/financialScope');
 
 router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -71,26 +72,36 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
 router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const { startDate, endDate, channel, paymentType } = req.query;
+    const limit = Math.min(5000, Math.max(1, Number.parseInt(req.query.limit, 10) || 2000));
+    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
     // Non-super-admin staff who are not managers/accountants can only see their own payments
-    const managerRoles = new Set(['MANAGER','ADMIN','ACCOUNTANT','DAQQI_MANAGER']);
-    const isManagerRole = req.staffRecord && managerRoles.has((req.staffRecord.role || '').toUpperCase());
+    const requestedBranch = req.query.branch && req.query.branch !== 'all' ? req.query.branch : null;
+    const scope = resolveFinancialScope(req, { requestedBranch, allowAssigned: true });
     let sql = `SELECT p.*, s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code AS subscriber_client_code
-               FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id WHERE p.tenant_id = ?`;
+               FROM payments p
+               LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
+               WHERE p.tenant_id = ? AND p.deleted_at IS NULL`;
     const params = [req.tenantId];
     if (startDate)   { sql += ' AND p.date >= ?';           params.push(startDate); }
     if (endDate)     { sql += ' AND p.date <= ?';           params.push(endDate); }
     if (channel)     { sql += ' AND p.payment_method = ?';  params.push(channel); }
     if (paymentType) { sql += ' AND p.payment_type = ?';    params.push(String(paymentType).toUpperCase()); }
-    const { branch: branchFilter } = req.query;
-    if (branchFilter) { sql += ' AND p.branch = ?'; params.push(String(branchFilter).toUpperCase()); }
-    if (req.staffRecord && !req.isSuperAdmin && !isManagerRole) {
+    if (scope.branchId) {
+      sql += ' AND p.branch_id = ?';
+      params.push(scope.branchId);
+    } else if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
+      const assignmentColumn = scope.kind === 'assigned_cs' ? 'assigned_cs_id' : 'assigned_sales_id';
       // Show payments where this staff is recorded as the seller (staff_id match),
       // OR where the subscriber is assigned to this staff — covers the 76% of payments
       // that were entered without staff_id but belong to assigned clients.
-      sql += ' AND (p.staff_id = ? OR p.subscriber_id IN (SELECT id FROM subscribers WHERE assigned_sales_id = ? OR assigned_cs_id = ?))';
-      params.push(req.staffRecord.id, req.staffRecord.id, req.staffRecord.id);
+      sql += ` AND (p.staff_id = ? OR p.subscriber_id IN (
+        SELECT id FROM subscribers
+        WHERE tenant_id=? AND deleted_at IS NULL AND ${assignmentColumn} = ?
+      ))`;
+      params.push(scope.staffId, req.tenantId, scope.staffId);
     }
-    sql += ' ORDER BY p.date DESC LIMIT 2000';
+    sql += ' ORDER BY p.date DESC, p.id DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
     const [rows] = await pool.query(sql, params);
     res.json(rows.map(p => {
       const dateStr = safeDateOnly(p.date);
@@ -103,6 +114,7 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
         courseId: p.course_id || null,
         bundleId: p.bundle_id || null,
         amount: Number(p.amount) || 0,
+        amountEgp: Number(p.amount_egp) || 0,
         currency: p.currency || 'EGP',
         paymentType: (p.payment_type || 'other').toLowerCase(),
         paymentMethod: p.payment_method || null,
@@ -117,10 +129,14 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
         source: p.source || null,
         itemTitle: p.item_title || null,
         certType: p.cert_type || null,
+        certId: p.certificate_request_id || null,
         branch: p.branch || null,
       };
     }));
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // GET /api/admin/payments/review — Central payment review: all payments with full details
@@ -128,11 +144,20 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
 router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const { status, paymentType, staffId, source, branch, dateFrom, dateTo, search, page = 1, limit: qLimit = 100 } = req.query;
+    if ((dateFrom && !isValidDateOnly(dateFrom)) || (dateTo && !isValidDateOnly(dateTo)) || (dateFrom && dateTo && dateFrom > dateTo)) {
+      return res.status(400).json({ error: 'Invalid date range' });
+    }
+    if (status && !['all', 'pending', 'paid', 'failed', 'refunded'].includes(String(status))) {
+      return res.status(400).json({ error: 'Invalid payment status' });
+    }
+    if (String(search || '').length > 120) return res.status(400).json({ error: 'Search is too long' });
+    const requestedBranch = branch && branch !== 'all' ? branch : null;
+    const scope = resolveFinancialScope(req, { requestedBranch, allowAssigned: true });
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const pageSize = Math.min(200, parseInt(qLimit) || 100);
+    const pageSize = Math.min(200, Math.max(1, parseInt(qLimit) || 100));
     const offset = (pageNum - 1) * pageSize;
 
-    let where = 'p.tenant_id = ?';
+    let where = 'p.tenant_id = ? AND p.deleted_at IS NULL';
     const params = [req.tenantId];
 
     if (status && status !== 'all') {
@@ -155,22 +180,17 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       where += ` AND p.source = ?`;
       params.push(source);
     }
-    if (branch && branch !== 'all') {
-      const branchId = String(branch).trim().toUpperCase().replace(/[-\s]/g, '_');
-      if (branchId === 'DAQQI') {
-        where += ` AND p.branch IN ('DAQQI','DQI')`;
-      } else {
-        where += ` AND p.branch = ?`;
-        params.push(branchId);
-      }
+    if (scope.branchId) {
+      where += ' AND p.branch_id = ?';
+      params.push(scope.branchId);
     }
     if (dateFrom) {
       where += ` AND p.date >= ?`;
       params.push(dateFrom);
     }
     if (dateTo) {
-      where += ` AND p.date <= ?`;
-      params.push(dateTo);
+      where += ` AND p.date < ?`;
+      params.push(addDaysToDateOnly(dateTo, 1));
     }
     if (search) {
       where += ` AND (s.name LIKE ? OR s.phone LIKE ? OR p.transaction_id LIKE ? OR p.item_title LIKE ?)`;
@@ -180,19 +200,21 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
 
     // Restrict non-admin staff to their own payments
     // EXCEPTION: manager/accountant roles see ALL payments regardless of who entered them
-    const managerRoles = new Set(['MANAGER','ADMIN','ACCOUNTANT','DAQQI_MANAGER','RECEPTION_DAQQI']);
-    const isManagerRole = req.staffRecord && managerRoles.has((req.staffRecord.role || '').toUpperCase());
-    if (req.staffRecord && !req.isSuperAdmin && !isManagerRole) {
+    if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
+      const assignmentColumn = scope.kind === 'assigned_cs' ? 'assigned_cs_id' : 'assigned_sales_id';
       // Show: payments directly attributed to this staff, OR payments for their assigned subscribers
       // Do NOT include random NULL-staff_id payments that belong to other staff's clients
       where += ` AND (p.staff_id = ? OR p.subscriber_id IN
-        (SELECT id FROM subscribers WHERE assigned_sales_id = ? OR assigned_cs_id = ?))`;
-      params.push(req.staffRecord.id, req.staffRecord.id, req.staffRecord.id);
+        (SELECT id FROM subscribers
+         WHERE tenant_id=? AND deleted_at IS NULL AND ${assignmentColumn} = ?))`;
+      params.push(scope.staffId, req.tenantId, scope.staffId);
     }
 
     const countParams = [...params];
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id WHERE ${where}`,
+      `SELECT COUNT(*) AS total FROM payments p
+       LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
+       WHERE ${where}`,
       countParams
     );
 
@@ -213,8 +235,8 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
               s.client_code AS subscriber_client_code, s.email AS subscriber_email,
               c.title_ar AS course_title_ar, c.title AS course_title
        FROM payments p
-       LEFT JOIN subscribers s ON s.id = p.subscriber_id
-       LEFT JOIN courses c ON c.id = p.course_id
+       LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
+       LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id=p.tenant_id
        WHERE ${pagWhere}
        ORDER BY p.date DESC, p.id DESC
        ${pagTail}`,
@@ -225,37 +247,38 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
     // Also get paymob/online orders (from orders table) for unified view
     // Only when not filtering by staffId (those are online/automatic)
     let onlineOrders = [];
-    if ((!staffId || source === 'paymob') && (!branch || branch === 'all')) {
-      let oWhere = `tenant_id = ? AND status = 'paid'`;
+    if (scope.kind === 'all' && !scope.branchId && (!staffId || source === 'paymob')) {
+      let oFilters = '';
       const oParams = [req.tenantId];
       // Dedupe: a successful paymob order is ALSO written into `payments`
       // (id = 'paymob-' + order.id, same transaction_id). Without this guard the
       // same online sale appears twice in the unified list (once as a payment,
       // once as an order) and inflates any client-side total. Only surface orders
       // that have NO twin payment row (e.g. legacy orders predating the sync).
-      oWhere += ` AND NOT EXISTS (
+      oFilters += ` AND NOT EXISTS (
         SELECT 1 FROM payments pp
-        WHERE pp.id = CONCAT('paymob-', orders.id)
+        WHERE pp.tenant_id=orders.tenant_id AND pp.deleted_at IS NULL
+          AND (pp.id = CONCAT('paymob-', orders.id)
            OR (orders.transaction_id IS NOT NULL AND orders.transaction_id <> ''
-               AND pp.transaction_id = orders.transaction_id)
+               AND pp.transaction_id = orders.transaction_id))
       )`;
-      if (dateFrom) { oWhere += ` AND DATE(created_at) >= ?`; oParams.push(dateFrom); }
-      if (dateTo)   { oWhere += ` AND DATE(created_at) <= ?`; oParams.push(dateTo); }
-      if (search)   { oWhere += ` AND (customer_name LIKE ? OR customer_email LIKE ?)`; oParams.push(`%${search}%`, `%${search}%`); }
+      if (dateFrom) { oFilters += ` AND created_at >= ?`; oParams.push(dateFrom); }
+      if (dateTo)   { oFilters += ` AND created_at < ?`; oParams.push(addDaysToDateOnly(dateTo, 1)); }
+      if (search)   { oFilters += ` AND (customer_name LIKE ? OR customer_email LIKE ?)`; oParams.push(`%${search}%`, `%${search}%`); }
       if (paymentType && paymentType !== 'all') {
-        oWhere += ` AND type = ?`; oParams.push(paymentType.toLowerCase());
+        oFilters += ` AND type = ?`; oParams.push(paymentType.toLowerCase());
       }
       // Only include online orders on page 1 when no status/source filter that excludes them
       const includeOnline = (!status || status === 'all' || status === 'paid') && (!source || source === 'all' || source === 'paymob');
       if (includeOnline && pageNum === 1) {
-        try {
-          const [oRows] = await pool.query(
-            `SELECT id, customer_name, customer_email, customer_phone, amount, currency, type AS payment_type,
-                    item_title, transaction_id, payment_method, created_at AS date, 'paid' AS status, 'paymob' AS source
-             FROM orders WHERE ${oWhere} ORDER BY created_at DESC LIMIT 200`,
+        const [oRows] = await pool.query(
+             `SELECT id, customer_name, customer_email, customer_phone, amount, currency, type AS payment_type,
+                     item_title, transaction_id, payment_method, created_at AS date, 'paid' AS status, 'paymob' AS source
+              FROM orders WHERE tenant_id=? AND status='paid' ${oFilters}
+              ORDER BY created_at DESC LIMIT 200`,
             oParams
-          );
-          onlineOrders = oRows.map(o => ({
+        );
+        onlineOrders = oRows.map(o => ({
             id: o.id, subscriberId: null, subscriberName: o.customer_name || '',
             subscriberPhone: o.customer_phone || '', subscriberEmail: o.customer_email || '',
             subscriberClientCode: null, courseId: null, bundleId: null,
@@ -267,8 +290,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
             status: 'paid', staffId: null, staffName: 'موقع (أونلاين)', fromAccountNumber: null,
             source: 'paymob', itemTitle: o.item_title || null, certType: null,
             courseTitleAr: null, courseTitle: null,
-          }));
-        } catch (_) {}
+        }));
       }
     }
 
@@ -289,6 +311,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
         fromAccountNumber: p.from_account || null,
         source: p.source || null,
         itemTitle: p.item_title || null, certType: p.cert_type || null,
+        certId: p.certificate_request_id || null,
         courseTitleAr: p.course_title_ar || null, courseTitle: p.course_title || null,
       };
     });
@@ -299,7 +322,7 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
               SUM(CASE WHEN (p.status='paid' OR p.status IS NULL) AND p.currency='EGP' THEN p.amount ELSE 0 END) AS total_egp,
               COUNT(*) AS count,
               SUM(CASE WHEN p.status='pending' THEN 1 ELSE 0 END) AS pending_count
-       FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id
+       FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
        WHERE ${where}
        GROUP BY p.payment_type`,
       countParams
@@ -317,7 +340,10 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
         pendingCount: Number(t.pending_count) || 0,
       })),
     });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 module.exports = router;

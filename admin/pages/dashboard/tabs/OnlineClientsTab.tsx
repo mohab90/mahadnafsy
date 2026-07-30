@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 import type {
   BranchType, Bundle, Course,
-  DaqqiRound, DaqqiRoundAttendee, LeadItem, LeadStatus,
-  PaymentHistoryEntry, StaffMember, SubscriberItem,
+  DaqqiRound, DaqqiRoundAttendee, LeadItem,
+  StaffMember, SubscriberItem,
 } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { normBranchId } from '../dashboardShared';
@@ -28,7 +28,6 @@ import {
   isInternationalSubscriber,
   subscriberRemainingEGP,
   type SubContactDraft,
-  type SubInstDraft,
   type SubscriberSavePayload,
 } from './onlineClientsUtils';
 
@@ -46,10 +45,11 @@ interface Props {
   salesOwnDaqqiRounds: DaqqiRound[];
   setSalesOwnDaqqiRounds: React.Dispatch<React.SetStateAction<DaqqiRound[] | null>>;
   salesOwnLeads: LeadItem[];
-  updateSubscriber: (s: SubscriberItem) => void;
-  addSubscriber: (s: SubscriberItem) => void;
-  addLead: (lead: LeadItem) => void;
-  deleteSubscriber: (id: string) => void;
+  updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  addSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  reloadSubscribers: () => Promise<void>;
+  reloadLeads: () => Promise<void>;
+  deleteSubscriber: (id: string) => Promise<boolean>;
   notify: NotifyFn;
   isDaqqiManager: boolean;
   isReceptionDaqqi: boolean;
@@ -69,8 +69,6 @@ interface Props {
   setSubPayDraft: React.Dispatch<React.SetStateAction<PaymentDraft>>;
   setSubContactRow: (row: SubscriberItem | null) => void;
   setSubContactDraft: React.Dispatch<React.SetStateAction<SubContactDraft>>;
-  setSubInstRow: (row: SubscriberItem | null) => void;
-  setSubInstDraft: React.Dispatch<React.SetStateAction<SubInstDraft>>;
   setSubWaRow: (row: SubscriberItem | null) => void;
   branchFilter?: string;
 }
@@ -78,12 +76,12 @@ interface Props {
 export default function OnlineClientsTab({
   activeTab, subscribers, salesOwnSubscribers, setSalesOwnSubscribers,
   courses, bundles, staffMembers, content, salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
-  salesOwnLeads, updateSubscriber, addSubscriber, addLead, deleteSubscriber, notify,
+  salesOwnLeads, updateSubscriber, addSubscriber, reloadSubscribers, reloadLeads, deleteSubscriber, notify,
   isDaqqiManager, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
   setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
-  setSubInstRow, setSubInstDraft, setSubWaRow, branchFilter,
+  setSubWaRow, branchFilter,
 }: Props) {
   // Collection role — online clients tab state
   const [collOnlineSubTab, setCollOnlineSubTab] = useState<'all' | 'local' | 'intl' | 'mine'>('all');
@@ -119,7 +117,7 @@ export default function OnlineClientsTab({
   const [daqqiHousingRoundId, setDaqqiHousingRoundId] = useState('');
   // Bulk selection
   const [collOnlineSelected, setCollOnlineSelected] = useState<Set<string>>(new Set());
-  const [collOnlineBulkConfirm, setCollOnlineBulkConfirm] = useState<null|'pause'|'finish'|'delete'|'refund'|'assign'>(null);
+  const [collOnlineBulkConfirm, setCollOnlineBulkConfirm] = useState<null|'pause'|'finish'|'delete'|'assign'>(null);
   const [collOnlineBulkAssignTo, setCollOnlineBulkAssignTo] = useState('');
   // Convert client modal
   const [convertRow, setConvertRow] = useState<SubscriberItem | null>(null);
@@ -199,9 +197,11 @@ export default function OnlineClientsTab({
                 // View tab filter — use clientStatus field (set by convert button)
                 const clientSt = s.clientStatus || '';
                 if (collOnlineViewTab === 'active') {
+                  if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
                 } else if (collOnlineViewTab === 'real-local' || collOnlineViewTab === 'real-intl') {
                   // فعلي = active + has at least one enrolled course
+                  if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
                   if ((s.enrolledCourseIds||[]).length === 0) return false;
                 } else {
@@ -321,7 +321,7 @@ export default function OnlineClientsTab({
                     subCsDistributing={subCsDistributing}
                     setSubCsDistributing={setSubCsDistributing}
                     actionSubscribers={actionSubscribers}
-                    updateSubscriber={updateSubscriber}
+                    reloadSubscribers={reloadSubscribers}
                     notify={notify}
                   />
 
@@ -422,7 +422,7 @@ export default function OnlineClientsTab({
                           <button disabled={daqqiOldDistributing || daqqiOldDistribPlan.every(e=>!e.staffId||!e.count)}
                             onClick={async () => {
                               const unassigned = filtered.filter(s => !s.assignedCsId);
-                              let offset = 0; let totalDone = 0;
+                              let offset = 0; let totalDone = 0; let totalFailed = 0;
                               setDaqqiOldDistributing(true);
                               try {
                                 for (const entry of daqqiOldDistribPlan) {
@@ -438,10 +438,16 @@ export default function OnlineClientsTab({
                                       await mysqlAdmin.saveSubscriber(updatedSub as SubscriberSavePayload);
                                       setSalesOwnSubscribers(prev => prev.map(s => s.id === sub.id ? updatedSub : s));
                                       totalDone++;
-                                    } catch {}
+                                    } catch { totalFailed++; }
                                   }
                                 }
-                                notify('success', `✅ تم توزيع ${totalDone} عميل على ${isDaqqiClientsTab ? 'فريق الدقي' : 'مسئولي التحصيل'}`);
+                                await reloadSubscribers();
+                                notify(
+                                  totalFailed > 0 ? 'error' : 'success',
+                                  totalFailed > 0
+                                    ? `تم توزيع ${totalDone} عميل وفشل ${totalFailed}. لم تُخفَ العمليات الفاشلة.`
+                                    : `✅ تم توزيع ${totalDone} عميل على ${isDaqqiClientsTab ? 'فريق الدقي' : 'مسئولي التحصيل'}`
+                                );
                                 setDaqqiOldDistribPlan([{staffId:'',count:''}]);
                               } finally { setDaqqiOldDistributing(false); }
                             }}
@@ -477,14 +483,13 @@ export default function OnlineClientsTab({
                     isDaqqiManager={isDaqqiManager}
                     shouldUseScopedSubscribers={shouldUseScopedSubscribers}
                     updateSubscriber={updateSubscriber}
+                    reloadSubscribers={reloadSubscribers}
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                     deleteSubscriber={deleteSubscriber}
                     setSubPayRow={setSubPayRow}
                     setSubPayDraft={setSubPayDraft}
                     setSubContactRow={setSubContactRow}
                     setSubContactDraft={setSubContactDraft}
-                    setSubInstRow={setSubInstRow}
-                    setSubInstDraft={setSubInstDraft}
                     setSubWaRow={setSubWaRow}
                     setDaqqiHousingModal={setDaqqiHousingModal}
                     setDaqqiHousingRoundId={setDaqqiHousingRoundId}
@@ -645,28 +650,80 @@ export default function OnlineClientsTab({
                           </div>
                           <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
                             <button onClick={()=>{setOmNewSubOpen(false);daqqiBranchNewSubReset();}} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
-                            <button disabled={daqqiBranchNewSubSaving || !daqqiBranchNewSubDraft.name.trim() || !daqqiBranchNewSubDraft.phone.trim()}
+                            <button disabled={daqqiBranchNewSubSaving || !daqqiBranchNewSubDraft.name.trim() || !daqqiBranchNewSubDraft.phone.trim() || (Number(daqqiBranchNewSubDraft.amount) > 0 && (!daqqiBranchNewSubDraft.paymentMethod || daqqiBranchNewSubDraft.courseIds.length === 0))}
                               onClick={async()=>{
                                 if (!daqqiBranchNewSubDraft.name.trim() || !daqqiBranchNewSubDraft.phone.trim()) return;
                                 setDaqqiBranchNewSubSaving(true);
                                 try {
                                   const amount = Number(daqqiBranchNewSubDraft.amount);
-                                  const courseExpected = Number(daqqiBranchNewSubDraft.courseExpected);
-                                  const primaryCourseId = daqqiBranchNewSubDraft.courseIds.find(id=>!id.startsWith('bundle:')) || daqqiBranchNewSubDraft.courseIds[0] || '';
-                                  const payHistory: PaymentHistoryEntry[] = [];
-                                  if (amount > 0 && daqqiBranchNewSubDraft.courseIds.length > 0) {
-                                    payHistory.push({ id:`dq-pay-${Date.now()}`, amount, currency:daqqiBranchNewSubDraft.currency, paymentType:'course', isInstallment:false, courseId:primaryCourseId, courseExpected:courseExpected||undefined, paymentMethod:daqqiBranchNewSubDraft.paymentMethod||undefined, transactionId:daqqiBranchNewSubDraft.transactionId||undefined, at:daqqiBranchNewSubDraft.date, note:daqqiBranchNewSubDraft.note||undefined });
+                                  if (!Number.isFinite(amount) || amount < 0) throw new Error('قيمة الدفعة غير صحيحة');
+                                  if (amount > 0 && (!daqqiBranchNewSubDraft.paymentMethod || daqqiBranchNewSubDraft.courseIds.length === 0)) {
+                                    throw new Error('اختر الكورس وطريقة الدفع قبل تسجيل الدفعة');
                                   }
-                                  const enrolledCourseIds = daqqiBranchNewSubDraft.courseIds.filter(id=>!id.startsWith('bundle:'));
-                                  const courseAccess: Record<string,{mode:string}> = {};
-                                  enrolledCourseIds.forEach(id=>{ courseAccess[id]={mode:'full'}; });
-                                  const newSub = { id:`daqqi-${Date.now()}`, name:daqqiBranchNewSubDraft.name.trim(), phone:daqqiBranchNewSubDraft.phone.trim(), email:daqqiBranchNewSubDraft.email.trim(), branch:'DAQQI' as BranchType, status:'active', enrolledCourseIds, courseAccess, paymentHistory:payHistory, createdAt:new Date().toISOString().slice(0,10), clientCode:'', notes:daqqiBranchNewSubDraft.note||'' } as unknown as SubscriberItem;
-                                  await addSubscriber(newSub);
-                                  setSalesOwnSubscribers(prev=>[newSub,...prev]);
-                                  notify('success', `✅ تم إضافة ${daqqiBranchNewSubDraft.name.trim()} بنجاح`);
+                                  const courseExpected = Number(daqqiBranchNewSubDraft.courseExpected);
+                                  const primarySelection = daqqiBranchNewSubDraft.courseIds[0] || '';
+                                  let approvalRequired = false;
+                                  if (amount > 0) {
+                                    if (!primarySelection) throw new Error('اختر كورس أو باقة لربط الدفعة');
+                                    if (daqqiBranchNewSubDraft.courseIds.length !== 1) {
+                                      throw new Error('كل دفعة جديدة لازم ترتبط بكورس أو باقة واحدة فقط');
+                                    }
+                                    const result = await mysqlAdmin.adminPost<{
+                                      ok: boolean; subscriberId: string; approvalRequired?: boolean;
+                                    }>('/admin/subscriber-payments', {
+                                      subscriber: {
+                                        name: daqqiBranchNewSubDraft.name.trim(),
+                                        phone: daqqiBranchNewSubDraft.phone.trim(),
+                                        email: daqqiBranchNewSubDraft.email.trim(),
+                                        branch: 'DAQQI',
+                                        notes: daqqiBranchNewSubDraft.note || undefined,
+                                        source: 'reception',
+                                      },
+                                      payment: {
+                                        amount,
+                                        currency: daqqiBranchNewSubDraft.currency,
+                                        paymentType: 'course',
+                                        isInstallment: false,
+                                        ...(primarySelection.startsWith('bundle:')
+                                          ? { bundleId: primarySelection.slice(7) }
+                                          : { courseId: primarySelection }),
+                                        courseExpected: courseExpected || undefined,
+                                        paymentMethod: daqqiBranchNewSubDraft.paymentMethod || undefined,
+                                        transactionId: daqqiBranchNewSubDraft.transactionId || undefined,
+                                        at: daqqiBranchNewSubDraft.date,
+                                        note: daqqiBranchNewSubDraft.note || undefined,
+                                        source: 'reception',
+                                        branch: 'DAQQI',
+                                      },
+                                    });
+                                    approvalRequired = !!result.approvalRequired;
+                                  } else {
+                                    const newSub = {
+                                      id:`daqqi-${Date.now()}`,
+                                      name:daqqiBranchNewSubDraft.name.trim(),
+                                      phone:daqqiBranchNewSubDraft.phone.trim(),
+                                      email:daqqiBranchNewSubDraft.email.trim(),
+                                      branch:'DAQQI' as BranchType,
+                                      status:'active',
+                                      enrolledCourseIds:[],
+                                      courseAccess:{},
+                                      paymentHistory:[],
+                                      createdAt:new Date().toISOString().slice(0,10),
+                                      clientCode:'',
+                                      notes:daqqiBranchNewSubDraft.note||'',
+                                    } as unknown as SubscriberItem;
+                                    const added = await addSubscriber(newSub);
+                                    if (!added) throw new Error('العميل موجود بالفعل');
+                                  }
+                                  const fresh = await mysqlAdmin.listAllSubscribers();
+                                  setSalesOwnSubscribers(fresh as unknown as SubscriberItem[]);
+                                  notify('success', approvalRequired
+                                    ? `✅ تم إضافة ${daqqiBranchNewSubDraft.name.trim()} والدفعة بانتظار اعتماد المالية`
+                                    : `✅ تم إضافة ${daqqiBranchNewSubDraft.name.trim()} بنجاح`);
                                   setOmNewSubOpen(false); daqqiBranchNewSubReset();
                                 } catch(err:unknown) {
-                                  notify('error', '❌ فشل الإضافة: '+(err instanceof Error?err.message:String(err)));
+                                  const message = err instanceof Error ? err.message : String(err);
+                                  notify('error', '❌ فشل الإضافة: ' + message);
                                 } finally { setDaqqiBranchNewSubSaving(false); }
                               }}
                               className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition">
@@ -822,7 +879,7 @@ export default function OnlineClientsTab({
                         </div>
                         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
                           <button onClick={()=>{setOmNewSubOpen(false);omNewSubReset();}} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
-                          <button disabled={omNewSubSaving || !omNewSubDraft.name.trim() || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim()}
+                          <button disabled={omNewSubSaving || !omNewSubDraft.name.trim() || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim() || (Number(omNewSubDraft.amount) > 0 && !omNewSubDraft.paymentMethod)}
                             onClick={async()=>{
                               if (!omNewSubDraft.name.trim() || !omNewSubDraft.email.trim() || !omNewSubDraft.password.trim()) return;
                               setOmNewSubSaving(true);
@@ -834,17 +891,36 @@ export default function OnlineClientsTab({
                                   ...(c.customPrice ? {customPrice: Number(c.customPrice)} : {}),
                                   ...(c.discount ? {discount: Number(c.discount)} : {}),
                                 }));
-                                await mysqlAdmin.createAccount({
+                                const firstCourse = validCourses[0];
+                                const firstPaymentAmount = Number(omNewSubDraft.amount);
+                                const accountResult = await mysqlAdmin.createAccount({
                                   name: omNewSubDraft.name.trim(),
                                   email: omNewSubDraft.email.trim(),
                                   password: omNewSubDraft.password,
                                   phone: omNewSubDraft.phone.trim(),
                                   ...(validCourses.length > 0 ? { courses: validCourses } : {}),
                                   ...(omNewSubDraft.referredBy.trim() ? { referredBy: omNewSubDraft.referredBy.trim() } : {}),
+                                  ...(firstPaymentAmount > 0 ? {
+                                    firstPayment: {
+                                      amount: firstPaymentAmount,
+                                      currency: omNewSubDraft.currency,
+                                      paymentMethod: omNewSubDraft.paymentMethod || undefined,
+                                      date: omNewSubDraft.date,
+                                      transactionId: omNewSubDraft.transactionId || undefined,
+                                      note: omNewSubDraft.note || undefined,
+                                      courseId: firstCourse?.courseId || undefined,
+                                      courseExpected: firstCourse?.customPrice ? Number(firstCourse.customPrice) : undefined,
+                                    },
+                                  } : {}),
                                 });
                                 setOmNewSubOpen(false);
                                 omNewSubReset();
-                                notify('success', `✅ تم إنشاء حساب ${omNewSubDraft.name.trim()} بنجاح`);
+                                notify(
+                                  'success',
+                                  accountResult.approvalRequired
+                                    ? `✅ تم إنشاء حساب ${omNewSubDraft.name.trim()} والدفعة بانتظار اعتماد المالية`
+                                    : `✅ تم إنشاء حساب ${omNewSubDraft.name.trim()} بنجاح`
+                                );
                               } catch (err: unknown) {
                                 notify('error', '❌ فشل إنشاء الحساب: ' + (err instanceof Error ? err.message : String(err)));
                               } finally {
@@ -894,43 +970,26 @@ export default function OnlineClientsTab({
                                       if (convertType === 'online') {
                                         const { crm_json: _dropCrm2, ...onlineRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
                                         const onlineUpdated: SubscriberItem = { ...onlineRowClean, branch: 'ONLINE_EGYPT' as const, clientStatus: 'active' as const, transferDate: new Date().toISOString().slice(0,10) };
-                                        updateSubscriber(onlineUpdated);
+                                        if (!await updateSubscriber(onlineUpdated)) throw new Error('فشل حفظ تحويل العميل');
                                         setSalesOwnSubscribers(prev => prev.map(s => s.id === onlineUpdated.id ? onlineUpdated : s));
-                                        await mysqlAdmin.saveSubscriber(onlineUpdated as unknown as Record<string,unknown>);
                                         setConvertRow(null);
                                         notify('success', `✅ تم تحويل ${convertRow.name} إلى الأونلاين`);
-                                        setConvertSaving(false);
                                         return;
                                       }
-                                      if (convertType === 'leads') {
-                                        // Create a real lead from this subscriber
-                                        const subAsLead: LeadItem = {
-                                          id: `lead-${convertRow.id}-${Date.now()}`,
-                                          name: convertRow.name || '',
-                                          email: convertRow.email || '',
-                                          phone: convertRow.phone || '',
-                                          source: isDaqqiClientsTab ? 'محول من الدقي' : 'محول من أونلاين',
-                                          status: 'new' as LeadStatus,
-                                          leadType: 'course',
-                                          enrolledCourseId: (convertRow.enrolledCourseIds||[])[0] || '',
-                                          branch: convertRow.branch || 'other',
-                                          interestLevel: 'medium',
-                                          assignedSalesId: convertRow.assignedCsId || '',
-                                          assignedSalesName: '',
-                                          communications: [],
-                                          notes: convertRow.notes || '',
-                                          createdAt: new Date().toISOString().slice(0,10),
-                                        };
-                                        // Delete subscriber FIRST so addLead doesn't get blocked by isSubscriber check
-                                        deleteSubscriber(convertRow.id);
+                                       if (convertType === 'leads') {
+                                        await mysqlAdmin.convertSubscriberToLead(convertRow.id);
+                                        await Promise.all([reloadSubscribers(), reloadLeads()]);
                                         setSalesOwnSubscribers(prev => prev.filter(s => s.id !== convertRow.id));
-                                        await addLead(subAsLead);
                                         setConvertRow(null);
                                         notify('success', `✅ تم تحويل ${convertRow.name} إلى العملاء المحتملين`);
-                                        setConvertSaving(false);
-                                        return;
-                                      }
-                                      // Strip any stale crm_json property to prevent nesting in DB
+                                         return;
+                                       }
+                                       if (convertType === 'refunded') {
+                                         notify('error', 'لازم تبدأ الاسترداد من دفعة محددة داخل القسم المالي. لم يتم تغيير حالة العميل.');
+                                         setConvertSaving(false);
+                                         return;
+                                       }
+                                       // Strip any stale crm_json property to prevent nesting in DB
                                       const { crm_json: _dropCrm, ...convertRowClean } = convertRow as SubscriberItem & { crm_json?: unknown };
                                       const updated: SubscriberItem = {
                                         ...convertRowClean,
@@ -939,26 +998,10 @@ export default function OnlineClientsTab({
                                         transferDate: new Date().toISOString().slice(0,10),
                                         ...(convertType === 'daqqi' ? { branch: 'DAQQI' as const } : {}),
                                       };
-                                      // Update local state immediately for snappy UI
-                                      updateSubscriber(updated);
+                                      if (!await updateSubscriber(updated)) throw new Error('فشل حفظ حالة العميل');
                                       setSalesOwnSubscribers(prev => prev.map(s => s.id === updated.id ? updated : s));
-                                      // Await explicit server save so errors are caught and shown
-                                      await mysqlAdmin.saveSubscriber(updated as unknown as Record<string,unknown>);
-                                      // Moving a client to "استرداد" only ever updated their subscriber
-                                      // status locally — it never created an actual row in refund_requests,
-                                      // so it could never reach the Customer Service "طلبات الاسترداد" page.
-                                      // Create the real request here so that page picks it up.
-                                      if (convertType === 'refunded') {
-                                        await mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
-                                          subscriber_id: convertRow.id,
-                                          amount: convertRefundAmount || 0,
-                                          currency: 'EGP',
-                                          reason: convertRefundReason || 'تحويل من صفحة العملاء',
-                                          refund_method: convertRefundMethod || null,
-                                        }).catch((err: unknown) => notify('error', 'تم تحويل حالة العميل لكن فشل إنشاء طلب الاسترداد في خدمة العملاء: ' + (err instanceof Error ? err.message : String(err))));
-                                      }
-                                      setConvertRow(null);
-                                      const typeLabel = convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : convertType === 'refunded' ? 'قائمة طلبات الاسترداد (ينتظر موافقة)' : 'فرع الدقي';
+                                       setConvertRow(null);
+                                       const typeLabel = convertType === 'finished' ? 'منتهي' : convertType === 'paused' ? 'متوقف' : 'فرع الدقي';
                                       notify('success', `✅ تم تحويل العميل إلى ${typeLabel}`);
                                     } catch (err: unknown) {
                                       notify('error', '❌ فشل التحويل: ' + (err instanceof Error ? err.message : String(err)));
@@ -977,7 +1020,7 @@ export default function OnlineClientsTab({
                     setSaving={setCollDetailsSaving}
                     courses={courses}
                     bundles={bundles}
-                    updateSubscriber={updateSubscriber}
+                    reloadSubscribers={reloadSubscribers}
                     isNonAdminStaff={isNonAdminStaff}
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                     notify={notify}

@@ -1,7 +1,7 @@
 import React, { FormEvent, useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BookOpen, CheckCircle, Banknote, Plus, Loader2, Shield, ChevronDown, Trash2, Zap, Award, MessageCircle, AlertCircle, CreditCard } from 'lucide-react';
-import { mysqlAuth } from '../lib/mysqlapi';
+import { mysqlAuth, mysqlForms } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
 
@@ -16,7 +16,7 @@ const INSTALL_DISCOUNT = 0.07;   // 7% off base price on installment payments
 const authAr: Record<string, string> = {
   'Email already registered': 'هذا البريد الإلكتروني مستخدم بالفعل، يرجى تسجيل الدخول.',
   'Invalid credentials': 'كلمة المرور غير صحيحة.',
-  'Password must be at least 6 characters': 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.',
+  'Password must be at least 8 characters': 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.',
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -72,7 +72,9 @@ const Enrollment: React.FC = () => {
   const whatsappNumber = (content['footer.whatsapp'] || '201096203090').replace(/\D/g, '');
 
   const getItem = (key: string) => allOptions.find(x => x.key === key) ?? null;
-  const getBasePrice = (item: SelItem) => item.price[currency] || item.price.EGP;
+  // Never fall back to Egypt pricing for a Saudi/international visitor.
+  // The server independently resolves and validates the same location currency.
+  const getBasePrice = (item: SelItem) => Number(item.price[currency]) || 0;
   const getInstallPrice = (item: SelItem) => Math.round(getBasePrice(item) * (1 - INSTALL_DISCOUNT));
 
   // cash → 15% off; installment → 7% off total, then 25% first installment
@@ -94,6 +96,7 @@ const Enrollment: React.FC = () => {
   const totalFinal       = chosenCourses.reduce((s, c) => s + getCharged(c), 0);
   const totalInstallTotal = payType === 'installment' ? chosenCourses.reduce((s, c) => s + getInstallPrice(c), 0) : 0;
   const totalSaving      = payType === 'cash' ? totalOriginal - totalFinal : Math.round(totalOriginal * INSTALL_DISCOUNT);
+  const pricesAvailable = chosenCourses.every(item => getBasePrice(item) > 0);
 
   // Keys already chosen (to prevent duplicates in dropdowns)
   const chosenIds = new Set(selectedIds.filter(Boolean));
@@ -113,6 +116,10 @@ const Enrollment: React.FC = () => {
   const handlePay = async (e: FormEvent) => {
     e.preventDefault();
     if (chosenCourses.length === 0) return;
+    if (!pricesAvailable) {
+      setError('السعر غير متاح في دولتك حاليًا. تواصل مع الدعم لتجهيز السعر قبل التسجيل.');
+      return;
+    }
     setError('');
     setLoading(true);
 
@@ -120,13 +127,20 @@ const Enrollment: React.FC = () => {
       // Create or sign in to MySQL account
       let uid = '';
       try {
-        const result = await mysqlAuth.register({ email: email.trim(), password, name: fullName.trim() });
+        const result = await mysqlAuth.register({
+          email: email.trim(),
+          password,
+          name: fullName.trim(),
+          phone: phone.trim(),
+          interest: chosenCourses.map(item => item.title).join('، '),
+        });
         uid = result.user.uid;
       } catch (authErr) {
         const msg = authErr instanceof Error ? authErr.message : '';
         if (msg === 'Email already registered') {
           try {
             const result = await mysqlAuth.login(email.trim(), password);
+            if (!result.user) throw new Error('تعذر إنشاء جلسة المستخدم.');
             uid = result.user.uid;
           } catch {
             throw new Error('البريد الإلكتروني مسجل بكلمة مرور مختلفة. أدخل نفس كلمة المرور التي استخدمتها من قبل، أو سجّل الدخول من صفحة الدخول.');
@@ -135,6 +149,25 @@ const Enrollment: React.FC = () => {
           throw new Error(authAr[msg] || 'تعذر إنشاء الحساب، حاول مرة أخرى.');
         }
       }
+
+      // Persist the selected products and sales context on the same CRM lead.
+      // This is a registration request only; no payment or enrollment is claimed
+      // until the normal manual-payment workflow creates and settles an order.
+      await mysqlForms.submitRegistration({
+        name: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        source: 'صفحة التسجيل في البرامج',
+        branch: branch || 'ONLINE_EGYPT',
+        interestedCourseIds: [...new Set(chosenCourses.flatMap(item => item.courseIds))],
+        selectedItems: chosenCourses.map(item => ({
+          id: item.key.replace(/^(course|bundle):/, ''),
+          type: item.kind,
+          title: item.title,
+        })),
+        preferredPaymentType: payType,
+        notes: `طلب تسجيل: ${chosenCourses.map(item => item.title).join('، ')}. طريقة السداد المفضلة: ${payType === 'cash' ? 'كامل' : 'تقسيط'}.`,
+      });
 
       // Build WhatsApp message with order details
       const firstItem = chosenCourses[0];
@@ -150,7 +183,8 @@ const Enrollment: React.FC = () => {
     }
   };
 
-  const canPay = chosenCourses.length > 0 && fullName.trim() && phone.trim() && email.trim() && password.length >= 6;
+  const canPay = chosenCourses.length > 0 && pricesAvailable
+    && fullName.trim() && phone.trim() && email.trim() && password.length >= 8;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-primary-950 to-slate-900" dir="rtl">

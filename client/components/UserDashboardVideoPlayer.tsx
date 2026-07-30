@@ -39,7 +39,7 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
       }, { once: true });
     };
 
-    const isHls = src.includes('.m3u8') || src.includes('/hls/');
+    const isHls = src.includes('.m3u8') || src.includes('/hls/') || src.includes('kind=hls');
     if (isHls) {
       // hls.js (~500KB) is loaded on demand ONLY when an HLS stream actually
       // plays, so it never ships in the initial student-dashboard bundle.
@@ -86,7 +86,7 @@ interface VideoPlayerProps {
   onClose: () => void;
 }
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) => {
-  const { getCourseLectures, getCourseChapters, subscribers, authUser, updateSubscriber } = useSiteData();
+  const { getCourseLectures, getCourseChapters, subscribers, authUser, refreshMySubscriber } = useSiteData();
   const [selectedId, setSelectedId] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -95,6 +95,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   // Resolved playable URL for the selected lecture. Paid lectures no longer ship their URL in
   // the public catalog — it's fetched on demand from the auth-gated access endpoint.
   const [resolvedUrl, setResolvedUrl] = useState('');
+  const [accessError, setAccessError] = useState('');
 
   const subscriber = authUser?.email
     ? subscribers.find(s =>
@@ -102,24 +103,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
       )
     : undefined;
 
-  // ── Per-lecture notes (localStorage) ──────────────────────────────────────
-  const notesKey = (lectureId: string) =>
-    subscriber ? `notes:${subscriber.id}:${lectureId}` : null;
-  const getNotes = (lectureId: string) => {
-    const k = notesKey(lectureId);
-    if (!k) return '';
-    try { return localStorage.getItem(k) || ''; } catch { return ''; }
-  };
-  const saveNotes = (lectureId: string, text: string) => {
-    const k = notesKey(lectureId);
-    if (!k) return;
-    try { localStorage.setItem(k, text); } catch { /* quota */ }
-  };
   const [noteText, setNoteText] = useState('');
-  useEffect(() => { setNoteText(getNotes(selectedId)); }, [selectedId, subscriber?.id]);
+  const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setNoteText('');
+    if (selectedId && subscriber) {
+      mysqlClient.getLectureNote(selectedId)
+        .then(({ note }) => { if (!cancelled) setNoteText(note || ''); })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [selectedId, subscriber?.id]);
   const handleNoteChange = (v: string) => {
     setNoteText(v);
-    if (selectedId) saveNotes(selectedId, v);
+    if (!selectedId) return;
+    if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
+    const lectureId = selectedId;
+    noteTimerRef.current = setTimeout(() => {
+      void mysqlClient.saveLectureNote(lectureId, v).catch(() => {});
+    }, 600);
   };
   // Prevent saving progress more than once per lecture per session
   const markedRef = useRef<Set<string>>(new Set());
@@ -195,27 +198,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   useEffect(() => {
     let cancelled = false;
     setResolvedUrl('');
+    setAccessError('');
     if (!selected || selected.locked) return;
     if (selected.videoUrl) { setResolvedUrl(selected.videoUrl); return; }
     mysqlClient.getLectureAccess(selected.id)
-      .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedUrl(r.video_url); })
-      .catch(() => {});
+      .then(r => {
+        if (cancelled) return;
+        if (r.accessible && r.video_url) setResolvedUrl(r.video_url);
+        else if (r.reason === 'drip_locked') {
+          const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG') : '';
+          setAccessError(`المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`);
+        } else setAccessError('المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية');
+      })
+      .catch(() => { if (!cancelled) setAccessError('تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى'); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selected?.locked, selected?.videoUrl]);
 
-  // Mark a lecture as 100% complete and persist to subscriber record
-  const markLectureComplete = (lectureId: string) => {
+  // Persist completion through the canonical LMS progress endpoint.
+  const markLectureComplete = (lectureId: string, watchSeconds?: number) => {
     if (markedRef.current.has(lectureId)) return;
     markedRef.current.add(lectureId);
-    const sub = subscribers.find(s =>
-      authUser?.email && s.email.toLowerCase().trim() === authUser.email.toLowerCase().trim()
-    );
-    if (!sub) return;
-    // Update local state immediately
-    updateSubscriber({ ...sub, lectureProgress: { ...(sub.lectureProgress || {}), [lectureId]: 100 } });
-    // Persist to DB via client endpoint (works for non-admin users too)
-    void mysqlClient.saveLectureProgress(lectureId, 100).catch(() => {});
+    void mysqlClient.saveLectureProgress(lectureId, 100, watchSeconds ?? getSavedTime(lectureId))
+      .then(result => {
+        if (result.ok) refreshMySubscriber();
+      })
+      .catch(() => {});
   };
 
   // ── Video time save/restore (resume within video) ──────────────────────────
@@ -226,7 +234,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   const saveTime = (lectureId: string, seconds: number) => {
     if (!subscriber || seconds < 3) return;
     try { localStorage.setItem(`vt:${subscriber.id}:${lectureId}`, String(Math.floor(seconds))); } catch { /* quota */ }
+    const bucket = Math.floor(seconds / 15);
+    const lastBucket = watchSyncRef.current.get(lectureId);
+    if (bucket > 0 && bucket !== lastBucket) {
+      watchSyncRef.current.set(lectureId, bucket);
+      void mysqlClient.saveLectureProgress(lectureId, subscriber.lectureProgress?.[lectureId] || 0, seconds).catch(() => {});
+    }
   };
+  const watchSyncRef = useRef(new Map<string, number>());
   // Ref to avoid double-seeking on native video remount
   const timeSeekedRef = useRef<Set<string>>(new Set());
   useEffect(() => { timeSeekedRef.current.delete(selectedId); }, [selectedId]);
@@ -234,6 +249,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   // Listen for YouTube messages — ended + time tracking via infoDelivery
   useEffect(() => {
     const handleMsg = (ev: MessageEvent) => {
+      if (!['https://www.youtube.com', 'https://www.youtube-nocookie.com'].includes(ev.origin)) return;
       try {
         const data = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
         // YouTube Iframe API sends {event:'onStateChange', info:0} when video ends
@@ -294,7 +310,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         >
           <NotebookPen size={15} />
           <span className="text-xs hidden sm:inline">ملاحظات</span>
-          {selectedId && getNotes(selectedId) && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" />}
+          {selectedId && noteText && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0" />}
         </button>
         <button
           onClick={() => setSidebarOpen(p => !p)}
@@ -309,12 +325,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         {/* Video panel */}
         <div className="bg-black flex items-center justify-center flex-shrink-0 w-full aspect-video sm:aspect-auto sm:flex-1 sm:min-w-0">
           {selected && !selected.locked ? (
-            !resolvedUrl ? (
+            accessError ? (
+              <div className="text-amber-300 text-center px-6">
+                <Lock size={40} className="mx-auto mb-3 text-amber-400" />
+                <p className="text-sm font-bold">{accessError}</p>
+              </div>
+            ) : !resolvedUrl ? (
               <div className="text-gray-500 text-center">
                 <div className="w-8 h-8 border-2 border-gray-500 border-t-white rounded-full animate-spin mx-auto mb-3"></div>
                 <p className="text-sm">جاري تحميل الفيديو...</p>
               </div>
-            ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') ? (
+            ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') || resolvedUrl.includes('kind=embed') ? (
               <iframe
                 key={selected.id}
                 src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
@@ -330,7 +351,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                 startTime={getSavedTime(selected.id)}
                 onTimeUpdate={(currentTime, duration) => {
                   if (Math.floor(currentTime) % 5 === 0) saveTime(selected.id, currentTime);
-                  if (duration > 0 && currentTime / duration >= 0.8) markLectureComplete(selected.id);
+                  if (duration > 0 && currentTime / duration >= 0.8) markLectureComplete(selected.id, currentTime);
                 }}
                 onSeeked={(vid) => {
                   const t = getSavedTime(selected.id);

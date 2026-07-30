@@ -40,6 +40,6 @@ npm test
 ## Coverage
 
 - **public-smoke**: home, courses, `/join-us` (404 regression), `/auth`, API liveness, `/api/courses` shape, and a **negative-student-count regression guard**.
-- **admin-login**: login page renders; full sign-in runs only when test credentials are supplied.
+- **admin-login**: login page renders; authenticated Admin and every employee role render in `admin-permissions`.
 
 Extend with lead→payment→client and Daqqi flows once a seeded test account exists.

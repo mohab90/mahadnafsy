@@ -1,20 +1,16 @@
-import { CreditCard, Plus, Trash2 } from 'lucide-react';
-import type { LeadItem, PaymentRecord } from '../../types';
+import { CreditCard, Plus } from 'lucide-react';
+import type { PaymentRecord } from '../../types';
 
 interface UnifiedClientLeadPaymentsPanelProps {
-  lead?: LeadItem;
   payments: PaymentRecord[];
   showForm: boolean;
   onShowForm: () => void;
-  onUpdateLead: (lead: LeadItem) => void;
 }
 
 export function UnifiedClientLeadPaymentsPanel({
-  lead,
   payments,
   showForm,
   onShowForm,
-  onUpdateLead,
 }: UnifiedClientLeadPaymentsPanelProps) {
   return (
     <>
@@ -26,8 +22,14 @@ export function UnifiedClientLeadPaymentsPanel({
         <Plus size={18} /> تسجيل دفعة جديدة
       </button>
 
+      {payments.length > 0 && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          السجلات التالية بيانات CRM قديمة وليست دفعات محاسبية معتمدة. الدفعات الجديدة تُسجّل في دفتر المدفوعات فقط.
+        </p>
+      )}
+
       {payments.map((payment) => (
-        <div key={payment.id} className="group flex items-start justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+        <div key={payment.id} className="flex items-start justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
           <div>
             <p className="font-bold text-emerald-700">
               {Number(payment.amount || 0).toLocaleString()} {payment.currency}
@@ -36,14 +38,6 @@ export function UnifiedClientLeadPaymentsPanel({
             {payment.courseId && <p className="text-xs text-gray-500">كورس: {payment.courseId}</p>}
             {payment.note && <p className="text-xs italic text-gray-500">{payment.note}</p>}
           </div>
-          <button
-            type="button"
-            onClick={() => lead && onUpdateLead({ ...lead, paymentRecords: payments.filter((item) => item.id !== payment.id) })}
-            className="mt-1 text-red-400 opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
-            aria-label="حذف الدفعة"
-          >
-            <Trash2 size={14} />
-          </button>
         </div>
       ))}
 

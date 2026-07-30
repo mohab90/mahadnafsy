@@ -29,7 +29,7 @@ interface Props {
   subCsDistributing: boolean;
   setSubCsDistributing: (v: boolean) => void;
   actionSubscribers: SubscriberItem[];
-  updateSubscriber: (s: SubscriberItem) => void;
+  reloadSubscribers: () => Promise<void>;
   notify: NotifyFn;
 }
 
@@ -37,7 +37,7 @@ export function ViewTabsBar({
   isDaqqiClientsTab, allCombined, isIntlSub, collOnlineViewTab, setCollOnlineViewTab,
   setCollOnlinePage, filtered, isOnlineManager, isDaqqiManager, isAdmin, setOmNewSubOpen,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, housingMap,
-  subCsDistributing, setSubCsDistributing, actionSubscribers, updateSubscriber, notify,
+  subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
 }: Props) {
   return (
     <div className="mb-3 border border-gray-200 rounded-2xl bg-gray-50 p-2">
@@ -134,9 +134,8 @@ export function ViewTabsBar({
               setSubCsDistributing(true);
               try {
                 const result = await mysqlAdmin.bulkAssignCollection();
+                await reloadSubscribers();
                 notify('success', `✅ تم توزيع ${result.assigned} مشترك على ${result.staffCount} موظف`);
-                const fresh = (await mysqlAdmin.listAllSubscribers()) as unknown as SubscriberItem[];
-                fresh.forEach(s => updateSubscriber(s));
               } catch (e: unknown) {
                 notify('error', `❌ فشل التوزيع: ${errorMessage(e)}`);
               } finally { setSubCsDistributing(false); }

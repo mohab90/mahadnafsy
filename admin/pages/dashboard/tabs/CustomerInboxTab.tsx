@@ -21,6 +21,7 @@ import {
 
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type InboxSource = 'ticket' | 'contact' | 'refund' | 'join_instructor' | 'join_consultant' | 'join_staff';
@@ -115,14 +116,24 @@ type CannedResponse = { id: string; title: string; body: string; category: strin
 
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
-  const { contactMessages, joinUsApplications } = useSiteData();
+  const { joinUsApplications, isAdmin, authUser, staffMembers } = useSiteData();
   const [tickets, setTickets] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | InboxSource>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | InboxStatus>('all');
   const [statusOverrides, setStatusOverrides] = useState<Record<string, { status: InboxStatus; originalStatus: string }>>({});
+  const currentStaff = staffMembers.find(member =>
+    String(member.email || '').toLowerCase() === String(authUser?.email || '').toLowerCase()
+  );
+  const permissionSubject = currentStaff ? {
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  } : null;
+  const canManageFinancial = isAdmin || hasPermission(permissionSubject, 'manage_financial');
+  const canManageJoinUs = isAdmin || hasPermission(permissionSubject, 'manage_join_us');
 
   // Detail drawer state — opens the full item + all its actions inline (no navigation).
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null);
@@ -157,18 +168,19 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const loadRemote = useCallback(async () => {
     setLoading(true);
     try {
-      const [ticketRows, refundRows] = await Promise.all([
-        mysqlAdmin.adminGet<any[]>('/admin/tickets').catch(() => []),
-        mysqlAdmin.adminGet<RefundRow[]>('/admin/finance/refunds').catch(() => []),
+      const [inbox, refundRows] = await Promise.all([
+        mysqlAdmin.adminGet<{ tickets: any[]; contacts: any[] }>('/admin/cs/inbox'),
+        canManageFinancial ? mysqlAdmin.adminGet<RefundRow[]>('/admin/finance/refunds') : Promise.resolve([]),
       ]);
-      setTickets(Array.isArray(ticketRows) ? ticketRows : []);
+      setTickets(Array.isArray(inbox?.tickets) ? inbox.tickets : []);
+      setContacts(Array.isArray(inbox?.contacts) ? inbox.contacts : []);
       setRefunds(Array.isArray(refundRows) ? refundRows : []);
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر تحميل صندوق خدمة العملاء');
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [canManageFinancial, notify]);
 
   useEffect(() => { loadRemote(); }, [loadRemote]);
 
@@ -186,7 +198,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       raw: row,
     }));
 
-    const contactItems = contactMessages.map((row) => ({
+    const contactItems = contacts.map((row) => ({
       id: row.id,
       source: 'contact' as const,
       title: row.subject || 'رسالة من الموقع',
@@ -195,7 +207,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       detail: row.message,
       status: mapStatus(row.status),
       originalStatus: row.status,
-      createdAt: row.createdAt,
+      createdAt: row.created_at || row.createdAt,
       raw: row as unknown as Record<string, unknown>,
     }));
 
@@ -213,7 +225,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       raw: row as unknown as Record<string, unknown>,
     }));
 
-    const joinItems = joinUsApplications.map((row) => ({
+    const joinItems = (canManageJoinUs ? joinUsApplications : []).map((row) => ({
       id: row.id,
       source: row.type === 'consultant' ? 'join_consultant' as const : ['instructor', 'lecturer', 'teacher', 'academic'].includes(String(row.type || '').toLowerCase()) ? 'join_instructor' as const : 'join_staff' as const,
       title: row.type === 'consultant' ? 'طلب انضمام استشاري' : ['instructor', 'lecturer', 'teacher', 'academic'].includes(String(row.type || '').toLowerCase()) ? 'طلب انضمام محاضر' : 'طلب انضمام موظف',
@@ -228,7 +240,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
 
     return [...ticketItems, ...contactItems, ...refundItems, ...joinItems]
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  }, [contactMessages, joinUsApplications, refunds, tickets]);
+  }, [canManageJoinUs, contacts, joinUsApplications, refunds, tickets]);
 
   const resolvedItems = useMemo(() => items.map((item) => {
     const override = statusOverrides[`${item.source}-${item.id}`];
@@ -251,15 +263,17 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         setTicketReplies(replies.map((r: any) => ({
           id: String(r.id),
           text: r.body || r.text || '',
-          author: r.author_name || (r.author_type === 'subscriber' ? 'العميل' : 'الإدارة'),
-          isStaff: r.author_type !== 'subscriber',
+          author: r.author_name || (['client', 'subscriber'].includes(String(r.author_type || '').toLowerCase()) ? 'العميل' : 'الإدارة'),
+          isStaff: !['client', 'subscriber'].includes(String(r.author_type || '').toLowerCase()),
           at: r.created_at || r.at || '',
         })));
-      } catch { /* keep drawer open with base info */ } finally {
+      } catch (error) {
+        notify('error', error instanceof Error ? error.message : 'تعذر تحميل محادثة التذكرة');
+      } finally {
         setDetailLoading(false);
       }
     }
-  }, []);
+  }, [notify]);
 
   const closeDetail = () => { setDetailItem(null); setTicketReplies([]); setReplyText(''); setRefundNote(''); setLinkedEntity(null); };
 
@@ -269,11 +283,11 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   }, [linkedEntity, navigate, notify]);
 
   const deleteTicketApi = useCallback(async (item: InboxItem) => {
-    if (!window.confirm('حذف هذه التذكرة نهائياً؟ لا يمكن التراجع.')) return;
+    if (!window.confirm('أرشفة هذه التذكرة؟ ستختفي من قوائم العمل مع الاحتفاظ بسجلها للمراجعة.')) return;
     setActionBusy(true);
     try {
       await mysqlAdmin.adminDelete(`/admin/tickets/${encodeURIComponent(item.id)}`);
-      notify('success', 'تم حذف التذكرة');
+      notify('success', 'تمت أرشفة التذكرة مع الاحتفاظ بسجلها');
       closeDetail(); loadRemote();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر حذف التذكرة');
@@ -289,10 +303,19 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       if (item.source === 'ticket') {
         // Real route is /status; accepts open|in_progress|resolved|closed.
         originalStatus = target === 'done' ? 'resolved' : target === 'closed' ? 'closed' : 'in_progress';
-        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, { status: originalStatus });
+        const closedReason = originalStatus === 'closed'
+          ? window.prompt('سبب إغلاق التذكرة (إلزامي):')?.trim()
+          : '';
+        if (originalStatus === 'closed' && !closedReason) return;
+        await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, {
+          status: originalStatus,
+          ...(closedReason ? { closed_reason: closedReason } : {}),
+        });
       } else if (item.source === 'contact') {
         originalStatus = target === 'done' ? 'replied' : 'read';
-        await mysqlAdmin.updateContactMessage(item.id, originalStatus);
+        await mysqlAdmin.adminPut(`/admin/cs/contact/${encodeURIComponent(item.id)}/status`, {
+          status: originalStatus,
+        });
       } else if (item.source === 'refund') {
         originalStatus = target === 'rejected' ? 'REJECTED' : 'APPROVED';
         await mysqlAdmin.adminPut(`/admin/finance/refunds/${encodeURIComponent(item.id)}`, {
@@ -319,8 +342,17 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     if (!replyText.trim()) return;
     setActionBusy(true);
     try {
-      await mysqlAdmin.adminPost(`/admin/tickets/${encodeURIComponent(item.id)}/reply`, { body: replyText.trim() });
-      setTicketReplies((prev) => [...prev, { id: `local-${Date.now()}`, text: replyText.trim(), author: 'الإدارة', isStaff: true, at: new Date().toISOString() }]);
+      const result = await mysqlAdmin.adminPost<{ reply: { id: string; body: string; author_name: string; created_at: string } }>(
+        `/admin/tickets/${encodeURIComponent(item.id)}/reply`,
+        { body: replyText.trim() },
+      );
+      setTicketReplies((prev) => [...prev, {
+        id: result.reply.id,
+        text: result.reply.body,
+        author: result.reply.author_name,
+        isStaff: true,
+        at: result.reply.created_at,
+      }]);
       setReplyText('');
       notify('success', 'تم إرسال الرد');
     } catch (error) {
@@ -343,13 +375,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     setActionBusy(true);
     try {
       await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/route`, { category: 'refund' });
-      // If we know which subscriber this is about, also create the actual
-      // financial refund-request record (not just recategorize the ticket).
       if (linkedEntity?.type === 'subscriber' && linkedEntity.id) {
-        await mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
-          subscriber_id: linkedEntity.id, amount: 0, reason: `محوّل من تذكرة دعم: ${item.title}`,
-        }).catch(() => {}); // best-effort — ticket routing already succeeded
-        notify('success', 'تم تحويل التذكرة وإنشاء طلب استرداد للعميل');
+        notify('success', 'تم تحويل التذكرة لقسم الاسترداد. اختَر الدفعة الأصلية من الملف المالي قبل إنشاء الطلب.');
       } else {
         notify('success', 'تم تحويل التذكرة لقسم الاسترداد');
       }
@@ -641,7 +668,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       {!['closed'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={15} /> إغلاق</button>}
                       <button disabled={actionBusy} onClick={() => escalateTicket(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50">⚠️ تصعيد للإدارة</button>
                       <button disabled={actionBusy} onClick={() => routeTicketToRefund(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><RotateCcw size={15} /> تحويل لقسم الاسترداد</button>
-                      <button disabled={actionBusy} onClick={() => deleteTicketApi(item)} className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={15} /> حذف</button>
+                      {isAdmin && <button disabled={actionBusy} onClick={() => deleteTicketApi(item)} className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={15} /> أرشفة</button>}
                     </>
                   ) : item.source === 'contact' ? (
                     <>

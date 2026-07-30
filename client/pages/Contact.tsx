@@ -7,6 +7,8 @@ const Contact: React.FC = () => {
   const { content, addContactMessage } = useSiteData();
   const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const phone = content['footer.phone'] || '+20 100 000 0000';
   const email = content['footer.email'] || 'info@psy-institute.com';
@@ -16,19 +18,27 @@ const Contact: React.FC = () => {
   const instagram = content['footer.instagram'] || '';
   const youtube = content['footer.youtube'] || '';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    addContactMessage({
-      id: `cm-${Date.now()}`,
-      name: form.name,
-      email: form.email || undefined,
-      phone: form.phone,
-      subject: form.subject || undefined,
-      message: form.message,
-      status: 'new',
-      createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-    });
-    setSubmitted(true);
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await addContactMessage({
+        id: `cm-${Date.now()}`,
+        name: form.name,
+        email: form.email || undefined,
+        phone: form.phone,
+        subject: form.subject || undefined,
+        message: form.message,
+        status: 'new',
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      });
+      setSubmitted(true);
+    } catch {
+      setSubmitError('تعذر إرسال رسالتك حاليًا. لم يتم حفظها، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -138,11 +148,15 @@ const Contact: React.FC = () => {
                   </div>
                   <button
                     type="submit"
-                    className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition"
+                    disabled={submitting}
+                    className="w-full bg-primary-600 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition"
                   >
                     <Send size={18} />
-                    إرسال الرسالة
+                    {submitting ? 'جارٍ الإرسال...' : 'إرسال الرسالة'}
                   </button>
+                  {submitError && (
+                    <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{submitError}</p>
+                  )}
                 </form>
               )}
             </div>

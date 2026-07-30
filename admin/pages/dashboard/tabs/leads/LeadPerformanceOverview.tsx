@@ -50,7 +50,7 @@ type LeadPerformanceOverviewProps = {
   smartIdleDays: number;
   setSmartIdleDays: (value: number) => void;
   smartRedistCandidates: SmartRedistributionCandidate[];
-  updateLead: (lead: LeadItem) => void | Promise<void>;
+  updateLead: (lead: LeadItem) => void | Promise<boolean>;
   notify: NotifyFn;
   navigate: NavigateFunction;
   scoredLeads: ScoredLead[];
@@ -417,9 +417,10 @@ export function LeadPerformanceOverview({
                         <div className="flex items-center gap-1.5">
                           {suggestedRep && (
                             <button
-                              onClick={() => {
-                                updateLead({ ...lead, assignedSalesId: suggestedRep.id, assignedSalesName: suggestedRep.name });
-                                notify('success', `تم تحويل ${lead.name} إلى ${suggestedRep.name}`);
+                              onClick={async () => {
+                                if (await updateLead({ ...lead, assignedSalesId: suggestedRep.id, assignedSalesName: suggestedRep.name }) !== false) {
+                                  notify('success', `تم تحويل ${lead.name} إلى ${suggestedRep.name}`);
+                                }
                               }}
                               className="text-[10px] font-bold px-2.5 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center gap-1">
                               <RefreshCw size={10} /> تحويل

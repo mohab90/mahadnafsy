@@ -9,7 +9,8 @@ const { requireAuth, requireAdmin } = require('../../middleware/auth');
 
 router.get('/api/staff/me/preferences', requireAuth, async (req, res) => {
   try {
-    const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
     const email = String(req.user?.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'No email in token' });
     const [[row]] = await pool.query(
@@ -26,13 +27,18 @@ router.get('/api/staff/me/preferences', requireAuth, async (req, res) => {
 
 router.put('/api/staff/me/preferences', requireAuth, async (req, res) => {
   try {
-    const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(400).json({ error: 'Tenant context required' });
     const email = String(req.user?.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'No email in token' });
     const body = req.body || {};
     const preferences = {
       waNumber: typeof body.waNumber === 'string' ? body.waNumber.slice(0, 30) : '',
-      waTemplates: Array.isArray(body.waTemplates) ? body.waTemplates.slice(0, 50) : [],
+      waTemplates: Array.isArray(body.waTemplates) ? body.waTemplates.slice(0, 50).map((template) => ({
+        id: String(template?.id || '').slice(0, 80),
+        title: String(template?.title || '').slice(0, 120),
+        body: String(template?.body || '').slice(0, 4000),
+      })).filter((template) => template.id && template.title) : [],
       customTags: Array.isArray(body.customTags) ? body.customTags.slice(0, 100).map(tag => String(tag).slice(0, 40)) : [],
     };
     const [result] = await pool.query(

@@ -1,179 +1,152 @@
-import React, { useState } from 'react';
-import { JoinUsApplication } from '../../../types';
+import { useMemo, useState } from 'react';
+import { BriefcaseBusiness, GraduationCap, Mail, Phone, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import type { JoinUsApplication } from '../../../types';
 
-type JoinUsStatus = 'new' | 'reviewed' | 'accepted' | 'rejected';
-type JoinUsType = 'all' | 'instructor' | 'consultant' | 'staff';
-type JoinUsGroupTab = 'teaching' | 'staff';
+type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
+type Kind = 'instructor' | 'consultant' | 'staff';
+type Group = 'teaching' | 'staff';
 
-function normalizeJoinStatus(status?: string): JoinUsStatus {
-  if (status === 'reviewed' || status === 'accepted' || status === 'rejected') return status;
-  if (status === 'pending' || status === 'in_progress' || status === 'read') return 'reviewed';
-  if (status === 'approved' || status === 'done') return 'accepted';
-  if (status === 'failed') return 'rejected';
+const STATUS: Record<Status, { label: string; className: string }> = {
+  new: { label: 'جديد', className: 'bg-blue-100 text-blue-700' },
+  reviewed: { label: 'قيد المراجعة', className: 'bg-amber-100 text-amber-700' },
+  accepted: { label: 'مقبول', className: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: 'مرفوض', className: 'bg-red-100 text-red-700' },
+};
+const KIND_LABEL: Record<Kind, string> = { instructor: 'محاضر', consultant: 'استشاري', staff: 'موظف' };
+const STAGE_LABEL: Record<string, string> = {
+  applied: 'تم الاستلام', screening: 'فرز أولي', interview: 'مقابلة',
+  offer: 'عرض وظيفي', hired: 'تم التعيين', rejected: 'مرفوض',
+};
+
+function statusOf(value?: string): Status {
+  const status = String(value || '').toLowerCase();
+  if (status === 'accepted' || status === 'rejected' || status === 'reviewed') return status;
+  if (['pending', 'in_progress', 'read'].includes(status)) return 'reviewed';
+  if (['approved', 'done'].includes(status)) return 'accepted';
   return 'new';
 }
 
-function normalizeJoinType(type?: string): Exclude<JoinUsType, 'all'> {
-  const value = String(type || '').trim().toLowerCase();
-  if (['consultant', 'consultation', 'therapist', 'advisor'].includes(value)) return 'consultant';
-  if (['staff', 'employee', 'hr', 'admin', 'ops', 'support'].includes(value)) return 'staff';
+function kindOf(value?: string): Kind {
+  const kind = String(value || '').toLowerCase();
+  if (['consultant', 'consultation', 'therapist', 'advisor'].includes(kind)) return 'consultant';
+  if (['staff', 'employee', 'hr', 'admin', 'ops', 'support'].includes(kind)) return 'staff';
   return 'instructor';
 }
 
-const typeLabels: Record<Exclude<JoinUsType, 'all'>, string> = {
-  instructor: 'محاضر',
-  consultant: 'استشاري',
-  staff: 'موظف',
-};
-
-const JoinUsAdminTab: React.FC<{ initialType?: JoinUsType }> = ({ initialType = 'all' }) => {
+export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
   const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication } = useSiteData();
+  const [group, setGroup] = useState<Group>(initialType === 'staff' ? 'staff' : 'teaching');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<Status | 'all'>('all');
+  const [kind, setKind] = useState<Kind | 'all'>(initialType);
 
-  const [groupTab, setGroupTab] = useState<JoinUsGroupTab>(initialType === 'staff' ? 'staff' : 'teaching');
-  const [juSearch, setJuSearch] = useState('');
-  const [juStatusFilter, setJuStatusFilter] = useState<'all' | JoinUsStatus>('all');
-  const [juTypeFilter, setJuTypeFilter] = useState<JoinUsType>('all');
+  const groupOf = (app: JoinUsApplication): Group => kindOf(app.type) === 'staff' ? 'staff' : 'teaching';
+  const rows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return joinUsApplications
+      .filter(app => groupOf(app) === group)
+      .filter(app => kind === 'all' || kindOf(app.type) === kind)
+      .filter(app => status === 'all' || statusOf(app.status) === status)
+      .filter(app => !query || [app.name, app.email, app.phone, app.specialty].some(value => String(value || '').toLowerCase().includes(query)))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  }, [group, joinUsApplications, kind, search, status]);
 
-  const statusCfg: Record<JoinUsStatus, { label: string; cls: string }> = {
-    new: { label: 'جديد', cls: 'bg-blue-100 text-blue-700' },
-    reviewed: { label: 'قيد المراجعة', cls: 'bg-amber-100 text-amber-700' },
-    accepted: { label: 'مقبول', cls: 'bg-emerald-100 text-emerald-700' },
-    rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-700' },
+  const changeStatus = async (app: JoinUsApplication, next: Status) =>
+    updateJoinUsApplication({ ...app, status: next });
+
+  const editNote = async (app: JoinUsApplication) => {
+    const note = window.prompt('ملاحظة فريق الموارد البشرية:', app.adminNote || '');
+    if (note !== null) await updateJoinUsApplication({ ...app, adminNote: note.trim() || undefined });
   };
 
-  const safeText = (value?: string | null) => String(value || '').toLowerCase();
-  const safeCreatedAt = (app: JoinUsApplication) => String(app.createdAt || '');
-
-  const matchesGroup = (app: JoinUsApplication, group: JoinUsGroupTab) => {
-    const t = normalizeJoinType(app.type);
-    return group === 'staff' ? t === 'staff' : (t === 'instructor' || t === 'consultant');
-  };
-
-  const filteredApps = joinUsApplications.filter(app => {
-    const q = juSearch.toLowerCase();
-    const matchQ = !q || safeText(app.name).includes(q) || safeText(app.email).includes(q) || safeText(app.specialty).includes(q);
-    const appStatus = normalizeJoinStatus(app.status);
-    const matchStatus = juStatusFilter === 'all' || appStatus === juStatusFilter;
-    const matchGroup = matchesGroup(app, groupTab);
-    const matchType = juTypeFilter === 'all' || normalizeJoinType(app.type) === juTypeFilter;
-    return matchQ && matchStatus && matchGroup && matchType;
-  }).sort((a, b) => safeCreatedAt(b).localeCompare(safeCreatedAt(a)));
-
-  const groupCounts = {
-    teaching: joinUsApplications.filter(app => matchesGroup(app, 'teaching')).length,
-    staff: joinUsApplications.filter(app => matchesGroup(app, 'staff')).length,
-  };
-  const typeCounts = {
-    all: joinUsApplications.filter(app => matchesGroup(app, groupTab)).length,
-    instructor: joinUsApplications.filter(app => normalizeJoinType(app.type) === 'instructor').length,
-    consultant: joinUsApplications.filter(app => normalizeJoinType(app.type) === 'consultant').length,
-    staff: joinUsApplications.filter(app => normalizeJoinType(app.type) === 'staff').length,
+  const remove = async (app: JoinUsApplication) => {
+    if (app.convertedApplicantId) return;
+    if (window.confirm('حذف الطلب غير المرتبط بمسار التوظيف نهائيًا؟')) await deleteJoinUsApplication(app.id);
   };
 
   return (
-    <div className="space-y-5 animate-fade-in" dir="rtl">
-      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-6 text-white">
-        <h2 className="text-2xl font-extrabold flex items-center gap-2">🎓 طلبات الانضمام</h2>
-        <p className="text-indigo-100 text-sm mt-1">مراجعة وإدارة طلبات المدربين والمستشارين</p>
-        <div className="flex gap-3 mt-4 flex-wrap text-center">
-          {(['new', 'reviewed', 'accepted', 'rejected'] as JoinUsStatus[]).map(s => (
-            <div key={s} className="bg-white/20 rounded-xl px-4 py-2">
-              <p className="text-xl font-black">{joinUsApplications.filter(a => normalizeJoinStatus(a.status) === s).length}</p>
-              <p className="text-xs">{statusCfg[s].label}</p>
-            </div>
+    <div className="space-y-5" dir="rtl">
+      <section className="rounded-2xl bg-gradient-to-l from-indigo-700 to-violet-600 p-6 text-white">
+        <h2 className="flex items-center gap-2 text-2xl font-black"><GraduationCap /> طلبات الانضمام</h2>
+        <p className="mt-1 text-sm text-indigo-100">كل طلب موقع يدخل تلقائيًا لمسار التوظيف ويظل مرتبطًا حتى التعيين.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(Object.keys(STATUS) as Status[]).map(key => (
+            <span key={key} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold">
+              {STATUS[key].label}: {joinUsApplications.filter(app => statusOf(app.status) === key).length}
+            </span>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Group tabs: instructors/consultants vs. employees */}
       <div className="flex gap-2 border-b border-gray-200">
         {([
-          { key: 'teaching' as const, label: '🎓 المحاضرين والاستشاريين', count: groupCounts.teaching },
-          { key: 'staff' as const, label: '💼 الموظفين', count: groupCounts.staff },
-        ]).map(t => (
-          <button key={t.key} onClick={() => { setGroupTab(t.key); setJuTypeFilter('all'); }}
-            className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${groupTab === t.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-            {t.label} <span className="text-xs opacity-70">({t.count})</span>
+          ['teaching', 'المحاضرون والاستشاريون', GraduationCap],
+          ['staff', 'الموظفون', BriefcaseBusiness],
+        ] as const).map(([key, label, Icon]) => (
+          <button key={key} onClick={() => { setGroup(key); setKind('all'); }}
+            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold ${group === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
+            <Icon size={16} /> {label}
           </button>
         ))}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <input value={juSearch} onChange={e => setJuSearch(e.target.value)} placeholder="بحث بالاسم أو البريد أو التخصص..."
-          className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-        {groupTab === 'teaching' && (
-          <select value={juTypeFilter} onChange={e => setJuTypeFilter(e.target.value as typeof juTypeFilter)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm">
-            <option value="all">الكل ({typeCounts.all})</option>
-            <option value="instructor">محاضرين ({typeCounts.instructor})</option>
-            <option value="consultant">استشاريين ({typeCounts.consultant})</option>
+        <input value={search} onChange={event => setSearch(event.target.value)}
+          placeholder="بحث بالاسم أو البريد أو الهاتف أو التخصص"
+          className="min-w-56 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+        {group === 'teaching' && (
+          <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
+            <option value="all">كل التخصصات</option><option value="instructor">محاضر</option><option value="consultant">استشاري</option>
           </select>
         )}
-        <select value={juStatusFilter} onChange={e => setJuStatusFilter(e.target.value as typeof juStatusFilter)}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm">
+        <select value={status} onChange={event => setStatus(event.target.value as Status | 'all')} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
           <option value="all">كل الحالات</option>
-          {Object.entries(statusCfg).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
         </select>
       </div>
 
-      {/* Applications list */}
-      {filteredApps.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center text-gray-400">
-          <p className="text-5xl mb-3">📋</p>
-          <p className="font-medium">{juSearch || juStatusFilter !== 'all' ? 'لا توجد نتائج مطابقة' : 'لا توجد طلبات انضمام بعد'}</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredApps.map(app => {
-            const appStatus = normalizeJoinStatus(app.status);
-            const appType = normalizeJoinType(app.type);
+      {rows.length === 0 ? <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-gray-400">لا توجد طلبات مطابقة.</div> : (
+        <div className="space-y-3">
+          {rows.map(app => {
+            const appStatus = statusOf(app.status);
             return (
-            <div key={app.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className={`text-xs px-2 py-0.5 rounded-lg font-bold ${statusCfg[appStatus].cls}`}>{statusCfg[appStatus].label}</span>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg">{typeLabels[appType]}</span>
-                    <span className="text-xs text-gray-400">{app.createdAt?.slice(0, 10)}</span>
-                  </div>
-                  <h4 className="font-bold text-gray-800 text-lg leading-tight">{app.name}</h4>
-                  <p className="text-sm text-gray-600 mt-0.5">{app.specialty}</p>
-                  <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500">
-                    <span>📧 {app.email}</span>
-                    <span>📞 {app.phone}</span>
-                    {app.experience && <span>🕐 {app.experience}</span>}
-                  </div>
-                  {app.message && <p className="text-sm text-gray-600 mt-2 bg-gray-50 rounded-xl px-3 py-2">💬 {app.message}</p>}
-                  {app.linkedin && <a href={app.linkedin} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">🔗 LinkedIn</a>}
-                  {app.adminNote && (
-                    <div className="mt-2 text-xs bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-800">
-                      📝 ملاحظة المشرف: {app.adminNote}
+              <article key={app.id} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${STATUS[appStatus].className}`}>{STATUS[appStatus].label}</span>
+                      <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{KIND_LABEL[kindOf(app.type)]}</span>
+                      {app.convertedApplicantId && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">داخل HR: {STAGE_LABEL[app.applicantStage || 'applied'] || app.applicantStage}</span>}
+                      {app.hiredStaffId && <span className="rounded-lg bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">موظف مرتبط</span>}
                     </div>
-                  )}
+                    <h3 className="text-lg font-bold text-gray-900">{app.name}</h3>
+                    <p className="text-sm text-gray-600">{app.specialty}</p>
+                    <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
+                      <span className="flex items-center gap-1"><Mail size={13} /> {app.email}</span>
+                      <span className="flex items-center gap-1"><Phone size={13} /> {app.phone}</span>
+                      <span>{app.createdAt?.slice(0, 10)}</span>
+                    </div>
+                    {app.message && <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">{app.message}</p>}
+                    {app.adminNote && <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">ملاحظة HR: {app.adminNote}</p>}
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2">
+                    <select value={appStatus} onChange={event => changeStatus(app, event.target.value as Status)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold">
+                      {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
+                    </select>
+                    <button onClick={() => editNote(app)} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">ملاحظة HR</button>
+                    <button disabled={Boolean(app.convertedApplicantId)} onClick={() => remove(app)}
+                      title={app.convertedApplicantId ? 'الطلب جزء من سجل التوظيف ولا يمكن حذفه' : undefined}
+                      className="flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
+                      <Trash2 size={13} /> حذف
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2 flex-shrink-0">
-                  <select value={appStatus} onChange={e => updateJoinUsApplication({ ...app, status: e.target.value as JoinUsApplication['status'] })}
-                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold">
-                    {Object.entries(statusCfg).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                  </select>
-                  <button onClick={() => {
-                    const note = window.prompt('ملاحظة للمشرف (اختياري):', app.adminNote || '');
-                    if (note !== null) updateJoinUsApplication({ ...app, adminNote: note || undefined });
-                  }} className="px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100">
-                    {app.adminNote ? '✏️ تعديل الملاحظة' : '📝 إضافة ملاحظة'}
-                  </button>
-                  <button onClick={() => { if (window.confirm('حذف هذا الطلب نهائياً؟')) deleteJoinUsApplication(app.id); }}
-                    className="px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100">حذف</button>
-                </div>
-              </div>
-            </div>
-          );})}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
   );
-};
-
-export default JoinUsAdminTab;
+}

@@ -1,7 +1,6 @@
 import type {
   Bundle, BranchType, Course, CourseAccessSetting,
   ExtraCertificateRequest, ExtraCertificateType,
-  InstallmentEntry, InstallmentPlan,
   LeadItem, PaymentHistoryEntry, StaffMember, SubscriberItem,
 } from '../../types';
 import type { PaymentDraft } from '../../components/PaymentModal';
@@ -49,14 +48,20 @@ interface HandleSubPaymentDeps {
   bundles: Bundle[];
   courses: Course[];
   content: Record<string, string>;
-  updateSubscriber: (sub: SubscriberItem) => void;
+  recordSubscriberPayment: (
+    subscriberId: string,
+    payment: Record<string, unknown>,
+  ) => Promise<{ status: string; approvalRequired?: boolean }>;
+  reloadSubscribers: () => Promise<void>;
   notify: Notify;
   currentStaff: StaffMember | null;
-  isAdmin: boolean;
 }
 
-export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDeps): void {
-  const { subPayRow, subscribers, bundles, courses, content, updateSubscriber, notify, currentStaff, isAdmin } = deps;
+export async function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDeps): Promise<void> {
+  const {
+    subPayRow, subscribers, bundles, courses, content,
+    recordSubscriberPayment, reloadSubscribers, notify, currentStaff,
+  } = deps;
   if (!subPayRow) return;
   const courseItemsComputed = draft.paymentType === 'course'
     ? [
@@ -87,25 +92,29 @@ export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDe
       const bId = isBundleItem ? item.courseId.replace('bundle:', '') : null;
       const bObj = bId ? bundles.find(b => b.id === bId) : null;
       const _bundleCatalog = isBundleItem && bObj ? priceForCurrency(bObj.price, subPayDraft.currency) : 0;
-      const _courseCatalog = !isBundleItem && item.courseId ? (courses.find(c => c.id === item.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === item.courseId)?.price?.EGP || 0) : 0;
+      const _courseCatalog = !isBundleItem && item.courseId ? (courses.find(c => c.id === item.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || 0) : 0;
       const _catalogPx = isBundleItem ? _bundleCatalog : _courseCatalog;
       const _customExpSub = Number(item.customExpected) || 0;
       const _discPctSub = Number(item.discountPct) || 0;
       const _itemExpected = _customExpSub > 0 ? _customExpSub : (_discPctSub > 0 && _catalogPx > 0 ? Math.round(_catalogPx * (1 - _discPctSub / 100)) : _catalogPx);
+      if (_itemExpected <= 0) {
+        throw new Error(`سعر ${subPayDraft.currency} غير مُعرّف للكورس/الباقة؛ أدخل السعر النهائي قبل الحفظ.`);
+      }
       const entry: PaymentHistoryEntry = {
         id: `pay-${Date.now()}-${item.courseId}`,
         amount: Number(item.amount),
-        courseExpected: _itemExpected > 0 ? _itemExpected : Number(item.amount),
+        courseExpected: _itemExpected,
         currency: subPayDraft.currency,
         paymentType: subPayDraft.paymentType,
         isInstallment: false,
         courseId: isBundleItem ? undefined : (item.courseId || undefined),
+        bundleId: isBundleItem ? (bId || undefined) : undefined,
         note: [noteParts.join(' | '), isBundleItem && bObj ? `مسار تعليمي: ${bObj.title}` : undefined].filter(Boolean).join(' | ') || undefined,
         paymentMethod: subPayDraft.paymentMethod || undefined,
         at: subPayDraft.date,
         staffId: currentStaff?.id || undefined,
         staffName: currentStaff?.name || undefined,
-        status: isAdmin ? 'paid' : 'pending',
+        status: 'paid',
       };
       newEntries.push(entry);
       if (isBundleItem && bObj) {
@@ -123,8 +132,11 @@ export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDe
     const bundleId = isBundleSelection ? subPayDraft.courseId.replace('bundle:', '') : null;
     const bundle = bundleId ? bundles.find(b => b.id === bundleId) : null;
     const _singleExpected = isBundleSelection && bundle
-      ? ((bundle.price as any)?.[subPayDraft.currency] || (bundle.price as any)?.EGP || 0)
-      : (!isBundleSelection && subPayDraft.courseId ? (courses.find(c => c.id === subPayDraft.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === subPayDraft.courseId)?.price?.EGP || 0) : 0);
+      ? ((bundle.price as any)?.[subPayDraft.currency] || 0)
+      : (!isBundleSelection && subPayDraft.courseId ? (courses.find(c => c.id === subPayDraft.courseId)?.price?.[subPayDraft.currency as 'EGP'|'SAR'|'USD'] || 0) : 0);
+    if (subPayDraft.bookingType === 'new_booking' && subPayDraft.paymentType === 'course' && _singleExpected <= 0) {
+      throw new Error(`سعر ${subPayDraft.currency} غير مُعرّف للكورس/الباقة؛ عرّف السعر قبل الحفظ.`);
+    }
     const entry: PaymentHistoryEntry = {
       id: `pay-${Date.now()}`,
       amount: Number(subPayDraft.amount),
@@ -133,12 +145,15 @@ export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDe
       paymentType: subPayDraft.paymentType,
       isInstallment: subPayDraft.bookingType === 'installment',
       courseId: isBundleSelection ? undefined : (subPayDraft.courseId || undefined),
+      bundleId: bundleId || undefined,
+      certId: subPayDraft.certReqId || undefined,
+      certType: subPayDraft.certType || undefined,
       note: [noteParts.join(' | '), isBundleSelection && bundle ? `مسار تعليمي: ${bundle.title}` : undefined].filter(Boolean).join(' | ') || undefined,
       paymentMethod: subPayDraft.paymentMethod || undefined,
       at: subPayDraft.date,
       staffId: currentStaff?.id || undefined,
       staffName: currentStaff?.name || undefined,
-      status: isAdmin ? 'paid' : 'pending',
+      status: 'paid',
     };
     updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), entry] };
 
@@ -216,7 +231,11 @@ export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDe
 
       const plan = (updated.installmentPlans || []).find(p => p.courseId === cid);
       const totalPaid = (updated.paymentHistory || [])
-        .filter(p => p.courseId === cid && (p.paymentType === 'course' || !p.paymentType))
+        .filter(p =>
+          p.courseId === cid
+          && (p.paymentType === 'course' || !p.paymentType)
+          && (!plan || p.currency === plan.currency)
+        )
         .reduce((s, p) => s + (Number(p.amount) || 0), 0);
       const isFullyPaid = plan && plan.totalAmount > 0 && totalPaid >= plan.totalAmount;
 
@@ -248,8 +267,28 @@ export function handleSubPaymentFn(draft: PaymentDraft, deps: HandleSubPaymentDe
   if (subExtraEntries.length > 0) {
     updated = { ...updated, paymentHistory: [...(updated.paymentHistory || []), ...subExtraEntries] };
   }
-  updateSubscriber(updated);
-  notify('success', 'تم تسجيل الدفعة بنجاح.');
+  const existingIds = new Set((freshSub.paymentHistory || []).map(payment => payment.id));
+  const newEntries = (updated.paymentHistory || []).filter(payment => !existingIds.has(payment.id));
+  if (!newEntries.length) throw new Error('No valid payment entries were produced');
+  try {
+    const results: Array<{ status: string; approvalRequired?: boolean }> = [];
+    for (const entry of newEntries) {
+      results.push(await recordSubscriberPayment(
+        freshSub.id,
+        entry as unknown as Record<string, unknown>,
+      ));
+    }
+    await reloadSubscribers();
+    notify(
+      'success',
+      results.some(result => result.approvalRequired)
+        ? 'تم تسجيل الدفعة كمعلّقة وتنتظر اعتماد الإدارة المالية.'
+        : 'تم تسجيل الدفعة والقيد المحاسبي وتحديث الاشتراك بنجاح.',
+    );
+  } catch (error) {
+    notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
+    throw error;
+  }
 }
 
 // ── handleLeadPayment ────────────────────────────────────────────────────────
@@ -260,13 +299,15 @@ interface HandleLeadPaymentDeps {
   subscribers: SubscriberItem[];
   bundles: Bundle[];
   courses: Course[];
-  content: Record<string, string>;
-  updateSubscriber: (sub: SubscriberItem) => void;
-  updateLead: (lead: LeadItem) => void;
-  addSubscriber: (sub: SubscriberItem) => Promise<boolean>;
-  issueClientCodeAsync: () => Promise<string>;
   branchLabelMap: Record<string, string>;
+  recordSubscriberPayment: (
+    subscriberId: string,
+    payment: Record<string, unknown>,
+  ) => Promise<{ status: string; approvalRequired?: boolean }>;
+  reloadLeads: () => Promise<void>;
+  reloadSubscribers: () => Promise<void>;
   notify: Notify;
+  currentStaff: StaffMember | null;
   isAdmin: boolean;
   isSalesOnly: boolean;
   isDaqqiManager: boolean;
@@ -274,9 +315,13 @@ interface HandleLeadPaymentDeps {
   fetchSalesData: () => Promise<void>;
   setActiveTab: (tab: TabKey) => void;
 }
-
 export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadPaymentDeps): Promise<void> {
-  const { leadPayRow, leads, subscribers, bundles, courses, content, updateSubscriber, updateLead, addSubscriber, issueClientCodeAsync, branchLabelMap, notify, isAdmin, isSalesOnly, isDaqqiManager, isReceptionDaqqi, fetchSalesData, setActiveTab } = deps;
+  const {
+    leadPayRow, leads, subscribers, bundles, courses,
+    branchLabelMap, recordSubscriberPayment,
+    reloadLeads, reloadSubscribers, notify, currentStaff, isAdmin,
+    isSalesOnly, isDaqqiManager, isReceptionDaqqi, fetchSalesData, setActiveTab,
+  } = deps;
   if (!leadPayRow) return;
   const courseItemsComputed = draft.paymentType === 'course'
     ? [
@@ -295,8 +340,13 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
     discountCustom: draft.customExpected,
   };
   const freshLead = leads.find(l => l.id === leadPayRow.id) || leadPayRow;
-  const noteParts = [leadPayDraft.note, leadPayDraft.transactionId, leadPayDraft.transferRef ? `تحويل: ${leadPayDraft.transferRef}` : '', leadPayDraft.nationalId ? `ر.ق: ${leadPayDraft.nationalId}` : '', leadPayDraft.branch ? `فرع: ${branchLabelMap[leadPayDraft.branch] || leadPayDraft.branch}` : ''].filter(Boolean);
-  const isMultiCourse = leadPayDraft.paymentType === 'course';
+  const noteParts = [
+    leadPayDraft.note,
+    leadPayDraft.transactionId,
+    leadPayDraft.transferRef ? `تحويل: ${leadPayDraft.transferRef}` : '',
+    leadPayDraft.nationalId ? `ر.ق: ${leadPayDraft.nationalId}` : '',
+    leadPayDraft.branch ? `فرع: ${branchLabelMap[leadPayDraft.branch] || leadPayDraft.branch}` : '',
+  ].filter(Boolean);
 
   const normPhone = (freshLead.phone || '').replace(/\D/g, '');
   const normEmail = (freshLead.email || '').toLowerCase().trim();
@@ -305,122 +355,112 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
     (normPhone.length > 5 && (s.phone || '').replace(/\D/g, '') === normPhone) ||
     (normEmail.length > 3 && (s.email || '').toLowerCase().trim() === normEmail)
   );
-  let updatedLead = { ...freshLead };
-
-  if (isMultiCourse) {
-    const validItems = leadPayDraft.courseItems.filter(item => item.courseId && item.amount);
-    if (validItems.length === 0) return;
-
-    const payEntries: PaymentHistoryEntry[] = [
-      ...validItems.map(item => {
-        const _isBndl = item.courseId.startsWith('bundle:');
-        const _bId = _isBndl ? item.courseId.replace('bundle:', '') : null;
-        const _bObj = _bId ? bundles.find(b => b.id === _bId) : null;
-        const _catalogPxL = _isBndl && _bObj
-          ? ((_bObj.price as unknown as Record<string,number>)?.[leadPayDraft.currency] || (_bObj.price as unknown as Record<string,number>)?.EGP || 0)
-          : (courses.find(c => c.id === item.courseId)?.price?.[leadPayDraft.currency as 'EGP'|'SAR'|'USD'] || courses.find(c => c.id === item.courseId)?.price?.EGP || 0);
-        const _customExpL = Number(item.customExpected) || 0;
-        const _discPctL = Number(item.discountPct) || 0;
-        const _itemExpectedL = _customExpL > 0 ? _customExpL : (_discPctL > 0 && _catalogPxL > 0 ? Math.round(_catalogPxL * (1 - _discPctL / 100)) : _catalogPxL);
-        const _discNoteL = _discPctL > 0 ? `خصم ${_discPctL}%` : (_customExpL > 0 && _catalogPxL > 0 ? `سعر نهائي: ${_customExpL}` : '');
-        return {
-          id: `pay-${Date.now()}-${item.courseId}`,
-          amount: Number(item.amount),
-          courseExpected: _itemExpectedL > 0 ? _itemExpectedL : Number(item.amount),
-          currency: leadPayDraft.currency,
-          paymentType: leadPayDraft.paymentType,
-          isInstallment: false,
-          courseId: item.courseId || undefined,
-          note: [noteParts.join(' | '), _discNoteL].filter(Boolean).join(' | ') || undefined,
-          paymentMethod: leadPayDraft.paymentMethod || undefined,
-          at: leadPayDraft.date,
-        } as PaymentHistoryEntry;
-      }),
-      ...(leadPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).map((i, ix) => ({
-        id: `pay-${Date.now()}-xtra-${ix}`,
-        amount: Number(i.amount),
-        currency: leadPayDraft.currency,
-        paymentType: i.type,
-        isInstallment: false,
-        note: [i.label, ...noteParts].filter(Boolean).join(' | ') || undefined,
-        paymentMethod: leadPayDraft.paymentMethod || undefined,
-        at: leadPayDraft.date,
-      } as PaymentHistoryEntry)),
-    ];
-    const enrollIds: string[] = [];
-    for (const item of validItems) {
-      if (item.courseId.startsWith('bundle:')) {
-        const bId = item.courseId.replace('bundle:', '');
-        const bObj = bundles.find(b => b.id === bId);
-        if (bObj) enrollIds.push(...bObj.courses.map((c: { id: string }) => c.id));
-        else enrollIds.push(item.courseId);
-      } else {
-        enrollIds.push(item.courseId);
+  const now = Date.now();
+  const payEntries: Array<Record<string, unknown>> = [];
+  if (leadPayDraft.paymentType === 'course') {
+    const validItems = leadPayDraft.courseItems.filter(item => item.courseId && Number(item.amount) > 0);
+    if (!validItems.length) throw new Error('اختر كورسًا أو باقة وأدخل مبلغًا صحيحًا.');
+    validItems.forEach((item, index) => {
+      const isBundle = item.courseId.startsWith('bundle:');
+      const bundleId = isBundle ? item.courseId.replace('bundle:', '') : '';
+      const bundle = bundleId ? bundles.find(row => row.id === bundleId) : null;
+      const course = !isBundle ? courses.find(row => row.id === item.courseId) : null;
+      const catalogPrice = bundle
+        ? ((bundle.price as unknown as Record<string, number>)?.[leadPayDraft.currency] || 0)
+        : (course?.price?.[leadPayDraft.currency as 'EGP' | 'SAR' | 'USD'] || 0);
+      const customExpected = Number(item.customExpected) || 0;
+      const discountPct = Number(item.discountPct) || 0;
+      const expected = customExpected > 0
+        ? customExpected
+        : (discountPct > 0 && catalogPrice > 0 ? Math.round(catalogPrice * (1 - discountPct / 100)) : catalogPrice);
+      if (expected <= 0) {
+        throw new Error(`سعر ${leadPayDraft.currency} غير مُعرّف للكورس/الباقة؛ أدخل السعر النهائي قبل الحفظ.`);
       }
-    }
-    const enrollIds_unique = [...new Set(enrollIds)];
-    const _leadDepositVids = Math.max(1, Number(content['access.videos_on_deposit'] || 20));
-    const courseAccessPatch = Object.fromEntries(enrollIds_unique.map(id => [id, { mode: 'limited' as const, lectureLimit: _leadDepositVids }]));
-
-    if (existingSub) {
-      const allCourseIds = [...new Set([...(existingSub.enrolledCourseIds || []), ...enrollIds_unique])];
-      updateSubscriber({
-        ...existingSub,
-        enrolledCourseIds: allCourseIds,
-        courseAccess: { ...(existingSub.courseAccess ?? {}), ...courseAccessPatch },
-        paymentHistory: [...(existingSub.paymentHistory || []), ...payEntries],
-        leadId: existingSub.leadId || freshLead.id,
+      const discountNote = discountPct > 0
+        ? `خصم ${discountPct}%`
+        : (customExpected > 0 && catalogPrice > 0 ? `سعر نهائي: ${customExpected}` : '');
+      payEntries.push({
+        id: `pay-${now}-${index}`,
+        amount: Number(item.amount),
+        currency: leadPayDraft.currency,
+        paymentType: 'course',
+        courseId: isBundle ? undefined : item.courseId,
+        bundleId: isBundle ? bundleId : undefined,
+        courseExpected: expected,
+        isInstallment: leadPayDraft.bookingType === 'installment',
+        note: [noteParts.join(' | '), discountNote].filter(Boolean).join(' | ') || undefined,
+        paymentMethod: leadPayDraft.paymentMethod || undefined,
+        transactionId: leadPayDraft.transactionId || undefined,
+        fromAccountNumber: leadPayDraft.transferRef || undefined,
+        at: leadPayDraft.date,
+        status: 'paid',
+        source: isReceptionDaqqi ? 'reception' : 'staff',
+        staffId: currentStaff?.id,
+        staffName: currentStaff?.name,
       });
-    } else {
-      const added = await addSubscriber({
-        id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(),
-        leadId: freshLead.id, name: freshLead.name, email: freshLead.email, phone: freshLead.phone,
-        enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
-        paymentHistory: payEntries, branch: (freshLead.branch as BranchType) || undefined,
-        status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
-        createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-      } as SubscriberItem);
-      void added;
-      notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
-    }
-    updatedLead = { ...updatedLead, status: 'converted' };
+    });
   } else {
-    if (!leadPayDraft.amount) return;
-    const payHistEntry: PaymentHistoryEntry = {
-      id: `pay-${Date.now()}`, amount: Number(leadPayDraft.amount),
-      currency: leadPayDraft.currency, paymentType: leadPayDraft.paymentType,
-      isInstallment: leadPayDraft.bookingType === 'installment',
+    const amount = Number(leadPayDraft.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('أدخل مبلغًا صحيحًا أكبر من صفر.');
+    payEntries.push({
+      id: `pay-${now}`,
+      amount,
+      currency: leadPayDraft.currency,
+      paymentType: leadPayDraft.paymentType,
       courseId: leadPayDraft.courseId || undefined,
+      isInstallment: leadPayDraft.bookingType === 'installment',
       note: noteParts.join(' | ') || undefined,
       paymentMethod: leadPayDraft.paymentMethod || undefined,
+      transactionId: leadPayDraft.transactionId || undefined,
+      fromAccountNumber: leadPayDraft.transferRef || undefined,
       at: leadPayDraft.date,
-    };
-    const _subExtra = {
-      ...(leadPayDraft.nationalId ? { nationalId: leadPayDraft.nationalId } : {}),
-      ...(leadPayDraft.email && leadPayDraft.email.includes('@') ? { email: leadPayDraft.email } : {}),
-    };
-    if (leadPayDraft.bookingType === 'new_booking' && leadPayDraft.paymentType === 'course' && leadPayDraft.courseId) {
-      const _singleDepVids = Math.max(1, Number(content['access.videos_on_deposit'] || 20));
-      const _initAccess = { mode: 'limited' as const, lectureLimit: _singleDepVids };
-      if (existingSub) {
-        const newCourseIds = (existingSub.enrolledCourseIds || []).includes(leadPayDraft.courseId)
-          ? (existingSub.enrolledCourseIds || [])
-          : [...(existingSub.enrolledCourseIds || []), leadPayDraft.courseId];
-        updateSubscriber({ ...existingSub, ..._subExtra, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), [leadPayDraft.courseId]: _initAccess }, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry], leadId: existingSub.leadId || freshLead.id });
-      } else {
-        const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [leadPayDraft.courseId], courseAccess: { [leadPayDraft.courseId]: _initAccess }, paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
-        void added;
-        notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
-      }
-      updatedLead = { ...updatedLead, status: 'converted' };
-    } else if (existingSub) {
-      updateSubscriber({ ...existingSub, ..._subExtra, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
-    } else {
-      await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: (freshLead.branch as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), ..._subExtra } as SubscriberItem);
-    }
+      status: 'paid',
+      source: isReceptionDaqqi ? 'reception' : 'staff',
+      staffId: currentStaff?.id,
+      staffName: currentStaff?.name,
+    });
+  }
+  (leadPayDraft.extraItems || [])
+    .filter(item => Number(item.amount) > 0)
+    .forEach((item, index) => payEntries.push({
+      id: `pay-${now}-extra-${index}`,
+      amount: Number(item.amount),
+      currency: leadPayDraft.currency,
+      paymentType: item.type,
+      note: [item.label, ...noteParts].filter(Boolean).join(' | ') || undefined,
+      paymentMethod: leadPayDraft.paymentMethod || undefined,
+      transactionId: leadPayDraft.transactionId || undefined,
+      fromAccountNumber: leadPayDraft.transferRef || undefined,
+      at: leadPayDraft.date,
+      status: 'paid',
+      source: isReceptionDaqqi ? 'reception' : 'staff',
+      staffId: currentStaff?.id,
+      staffName: currentStaff?.name,
+    }));
+
+  if (payEntries.length !== 1) {
+    throw new Error('تسجيل أكثر من بند دفع في عملية واحدة متوقف مؤقتًا لحين اعتماد مسار تجزئة الدفع.');
+  }
+  const results: Array<{ status: string; approvalRequired?: boolean }> = [];
+  try {
+    const result = existingSub
+      ? await recordSubscriberPayment(existingSub.id, payEntries[0])
+      : await mysqlAdmin.saveLeadPayment(
+          freshLead.id,
+          payEntries[0],
+          {
+            email: leadPayDraft.email || freshLead.email,
+            nationalId: leadPayDraft.nationalId || undefined,
+          },
+        ) as { status: string; approvalRequired?: boolean };
+    results.push(result);
+    await Promise.all([reloadSubscribers(), reloadLeads()]);
+  } catch (error) {
+    await Promise.allSettled([reloadSubscribers(), reloadLeads()]);
+    notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
+    throw error;
   }
 
-  updateLead(updatedLead);
   const _notifCourse = leadPayDraft.paymentType === 'course'
     ? leadPayDraft.courseItems.filter(i => i.courseId && i.amount).map(i => {
         if (i.courseId.startsWith('bundle:')) return bundles.find(b => b.id === i.courseId.replace('bundle:', ''))?.title || '';
@@ -430,8 +470,14 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   const _notifAmt = leadPayDraft.paymentType === 'course'
     ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
     : Number(leadPayDraft.amount);
-  notify('success', `? ${updatedLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`);
-  if (leadPayDraft.paymentType === 'course' && updatedLead.status === 'converted') {
+  const isPendingApproval = results.some(result => result.approvalRequired || result.status === 'pending');
+  notify(
+    'success',
+    isPendingApproval
+      ? `تم تسجيل دفعة ${freshLead.name} كمعلّقة وتنتظر اعتماد الإدارة المالية.`
+      : `تم تسجيل دفعة ${freshLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`,
+  );
+  if (leadPayDraft.paymentType === 'course' && !isPendingApproval) {
     const _welcomeEmail = leadPayDraft.email || freshLead.email;
     if (_welcomeEmail && _welcomeEmail.includes('@')) {
       const _courseTitles = leadPayDraft.courseItems
@@ -455,116 +501,4 @@ export async function handleLeadPaymentFn(draft: PaymentDraft, deps: HandleLeadP
   if (normBranchId(leadPayDraft.branch || freshLead.branch || '') === 'DAQQI' && (isDaqqiManager || isReceptionDaqqi || isAdmin)) {
     setActiveTab('daqqi_clients');
   }
-}
-
-// ── handleDashInstCreate ─────────────────────────────────────────────────────
-
-type SubInstDraft = {
-  courseId: string;
-  currency: 'EGP' | 'SAR' | 'USD';
-  amountPerInst: string;
-  numInstallments: string;
-  inputMode: 'count' | 'amount';
-  startDate: string;
-  intervalDays: string;
-  notes: string;
-  overrideExpected: string;
-};
-
-interface HandleDashInstCreateDeps {
-  subInstRow: SubscriberItem | null;
-  setSubInstRow: (r: SubscriberItem | null) => void;
-  subInstDraft: SubInstDraft;
-  setSubInstDraft: (d: SubInstDraft) => void;
-  bundles: Bundle[];
-  courses: Course[];
-  updateSubscriber: (sub: SubscriberItem) => void;
-  notify: Notify;
-}
-
-export function handleDashInstCreateFn(deps: HandleDashInstCreateDeps): void {
-  const { subInstRow, setSubInstRow, subInstDraft, setSubInstDraft, bundles, courses, updateSubscriber, notify } = deps;
-  if (!subInstRow || !subInstDraft.courseId || !subInstDraft.numInstallments) return;
-  const row = subInstRow;
-  const payments = row.paymentHistory || [];
-  const isAllSel = subInstDraft.courseId === '__all__';
-  const isBundleSel = !isAllSel && subInstDraft.courseId.startsWith('bundle:');
-  let expectedAmount: number;
-  let paidAmount: number;
-  let resolvedCourseId: string | undefined;
-  let resolvedTitle: string | undefined;
-  if (isAllSel) {
-    const rowBundles = bundles.filter(b => b.courses.length > 0 && b.courses.every(co => row.enrolledCourseIds.includes(co.id)));
-    const bundledCids = new Set(rowBundles.flatMap(b => b.courses.map(c => c.id)));
-    const partIds = (row.enrolledCourseIds || []).filter((cid: string) => !bundledCids.has(cid));
-    if (subInstDraft.overrideExpected) {
-      expectedAmount = Number(subInstDraft.overrideExpected);
-    } else {
-      expectedAmount = 0;
-      rowBundles.forEach(b => {
-        const bCids = b.courses.map(c => c.id);
-        const bPays = payments.filter(p => bCids.includes(p.courseId || '') || p.courseId === `bundle:${b.id}`);
-        const nb = bPays.find(p => !p.isInstallment);
-        expectedAmount += nb?.courseExpected || priceForCurrency(b.price, 'EGP') || b.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0;
-      });
-      partIds.forEach((cid: string) => {
-        const c = courses.find(x => x.id === cid);
-        const cPays = payments.filter(p => p.courseId === cid);
-        const nb = cPays.find(p => !p.isInstallment);
-        expectedAmount += nb?.courseExpected || c?.price?.EGP || 0;
-      });
-    }
-    paidAmount = payments.filter(p => !p.isInstallment).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    resolvedCourseId = undefined;
-    resolvedTitle = 'كل الكورسات';
-  } else if (isBundleSel) {
-    const bid = subInstDraft.courseId.replace('bundle:', '');
-    const b = bundles.find(x => x.id === bid);
-    const bCids = b?.courses.map(c => c.id) || [];
-    const bPays = payments.filter(p => bCids.includes(p.courseId || '') || p.courseId === subInstDraft.courseId || (!p.courseId && !row.enrolledCourseIds.some((cid: string) => !bCids.includes(cid))));
-    expectedAmount = subInstDraft.overrideExpected
-      ? Number(subInstDraft.overrideExpected)
-      : (priceForCurrency(b?.price, 'EGP') || b?.courses.reduce((s, c) => s + (c.price?.EGP || 0), 0) || 0);
-    paidAmount = bPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    resolvedCourseId = undefined;
-    resolvedTitle = b?.title;
-  } else {
-    const cid = subInstDraft.courseId;
-    const cPays = payments.filter(p => p.courseId === cid || (!p.courseId && payments.length === 1));
-    const c = courses.find(x => x.id === cid);
-    const bookingEntry = cPays.find(p => !p.isInstallment);
-    expectedAmount = subInstDraft.overrideExpected
-      ? Number(subInstDraft.overrideExpected)
-      : (bookingEntry?.courseExpected || c?.price?.EGP || 0);
-    paidAmount = cPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    resolvedCourseId = cid;
-    resolvedTitle = c?.title;
-  }
-  const remaining = Math.max(0, expectedAmount - paidAmount);
-  if (remaining <= 0) { notify('info', 'المبلغ المتبقي صفر — لا يوجد أقساط للإنشاء.'); return; }
-  const n = Math.max(1, Number(subInstDraft.numInstallments));
-  const perInstRaw = subInstDraft.inputMode === 'amount' && subInstDraft.amountPerInst
-    ? Number(subInstDraft.amountPerInst) : Math.floor(remaining / n);
-  const perInst = Math.max(1, perInstRaw);
-  const actualN = subInstDraft.inputMode === 'amount' && subInstDraft.amountPerInst
-    ? Math.ceil(remaining / perInst) : n;
-  const intervalDays = Number(subInstDraft.intervalDays || 30);
-  const startDate = new Date(subInstDraft.startDate);
-  const entries: InstallmentEntry[] = Array.from({ length: actualN }, (_, i) => {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + i * intervalDays);
-    const isLast = i === actualN - 1;
-    return { id: `ie-${Date.now()}-${i}`, amount: isLast ? Math.max(1, remaining - perInst * (actualN - 1)) : perInst, currency: subInstDraft.currency, dueDate: d.toISOString().slice(0, 10) };
-  });
-  const plan: InstallmentPlan = {
-    id: `ip-${Date.now()}`, courseId: resolvedCourseId, courseTitle: resolvedTitle,
-    totalAmount: remaining, currency: subInstDraft.currency,
-    downPayment: paidAmount > 0 ? paidAmount : undefined,
-    entries, notes: subInstDraft.notes || undefined,
-    createdAt: new Date().toISOString().slice(0, 10),
-  };
-  updateSubscriber({ ...row, installmentPlans: [...(row.installmentPlans || []), plan] });
-  notify('success', `تم إنشاء خطة الأقساط (${actualN} قسط) بنجاح.`);
-  setSubInstRow(null);
-  setSubInstDraft({ courseId: '', currency: 'EGP', amountPerInst: '', numInstallments: '3', inputMode: 'count', startDate: new Date().toISOString().slice(0, 10), intervalDays: '30', notes: '', overrideExpected: '' });
 }

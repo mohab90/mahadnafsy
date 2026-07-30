@@ -13,7 +13,7 @@ import { DASHBOARD_MENU_GROUPS, type TabKey } from './dashboard/navigation';
 import { branchMatchesFilter, branchSlugToFilter } from './dashboard/branchWorkspaceFilters';
 import { aboutPageFields, homeOfferFields, policySections } from './dashboard/contentFields';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { LeadItem, LeadStatus, StaffPermission, ExtraCertificateType, SalesTarget, OrderItem } from '../types';
+import { StaffPermission, ExtraCertificateType, OrderItem } from '../types';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import {
@@ -26,12 +26,9 @@ import { useToast } from '../../shared/ui/Toast';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
+import { currencyForBranch } from '../lib/branchCurrency';
 import { contentHubRouteTabs, directContentTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { defaultFacebookLeadAdsConfig } from './dashboard/facebookLeadAdsDefaults';
-import {
-  handleLeadPaymentFn,
-  handleSubPaymentFn,
-} from './dashboard/dashboardPaymentHandlers';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
@@ -39,7 +36,6 @@ import { useLeadsDerived } from './dashboard/hooks/useLeadsDerived';
 import { useSubscribersDerived } from './dashboard/hooks/useSubscribersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
 import { useCommunityDrafts } from './dashboard/hooks/useCommunityDrafts';
-import { useAdminAiAssistant } from './dashboard/hooks/useAdminAiAssistant';
 import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts';
 import { useCsvFbImportState } from './dashboard/hooks/useCsvFbImportState';
 import { useLeadFilters } from './dashboard/useLeadFilters';
@@ -80,7 +76,6 @@ import {
   _normClientPhone,
   _normalizeAr,
   _normalizeClientDate,
-  normBranchId,
   type CertPricingMap,
 } from './dashboard/dashboardShared';
 
@@ -110,8 +105,6 @@ const Dashboard: React.FC = () => {
     deleteSubscriber,
     addLead,
     updateLead,
-    markLeadsConverted,
-    bulkDeleteLeads,
     issueClientCodeAsync,
     addCommunityPost,
     updateCommunityPost,
@@ -127,13 +120,15 @@ const Dashboard: React.FC = () => {
     deleteCommunityEvent,
     updateOrderStatus,
     reloadOrders,
+    reloadLeads,
+    reloadSubscribers,
+    recordSubscriberPayment,
     deleteOrder,
     addOrder,
     setContentValue,
     mergeContent,
     addContentKey,
     removeContentKey,
-    adminAiConfig,
     fbLeadAdsConfig,
     authUser,
     remoteReady,
@@ -219,6 +214,7 @@ const Dashboard: React.FC = () => {
     myHrData, setMyHrData,
     loadingMyHr, setLoadingMyHr,
     myAdvances, setMyAdvances,
+    myDisciplinary, setMyDisciplinary,
     showAdvanceForm, setShowAdvanceForm,
     advanceDraft, setAdvanceDraft,
     submittingAdvance, setSubmittingAdvance,
@@ -245,8 +241,6 @@ const Dashboard: React.FC = () => {
     subPayDraft, setSubPayDraft,
     
     
-    setSubInstRow,
-    setSubInstDraft,
     setSubContactRow,
     setSubContactDraft,
     
@@ -282,7 +276,7 @@ const Dashboard: React.FC = () => {
     
     
     
-    leadsSalesTargets, setLeadsSalesTargets,
+    leadsSalesTargets,
   } = useLeadCrmTabState();
 
   const {
@@ -323,7 +317,7 @@ const Dashboard: React.FC = () => {
     notifUnread, setNotifUnread,
     notifOpen, setNotifOpen,
     notifRef,
-  } = useNotificationsBell(isAdmin);
+  } = useNotificationsBell(Boolean(authUser));
 
   const [onlineUsers] = useState<{ uid: string; email?: string; displayName?: string; lastActiveAt: string }[]>([]);
   const [kpiModal, setKpiModal] = useState<{ title: string; rows: { label: string; sub?: string }[] } | null>(null);
@@ -344,16 +338,6 @@ const Dashboard: React.FC = () => {
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
-  // Sync sales targets from content (Firebase-persisted) when content loads
-  useEffect(() => {
-    if (!content['crm.salesTargets']) return;
-    try {
-      const parsed = JSON.parse(content['crm.salesTargets']) as SalesTarget[];
-      setLeadsSalesTargets(parsed);
-    } catch { /* keep local state */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content['crm.salesTargets']]);
-
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
     navigate(`/dashboard/${tab}`);
@@ -398,50 +382,6 @@ const Dashboard: React.FC = () => {
 
   // Quiz + LiveStream state moved to their own tab components
 
-  // Auto-dedup on first load (silent — keeps oldest lead when duplicates found)
-  const _dedupedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (_dedupedRef.current || leads.length === 0) return;
-    _dedupedRef.current = true;
-    const sorted = [...leads].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-    const seenP = new Set<string>(); const seenE = new Set<string>();
-    const toDelete: string[] = [];
-    sorted.forEach(l => {
-      const lp = (l.phone || '').replace(/\D/g, '');
-      const le = (l.email || '').toLowerCase().trim();
-      const pk = lp.length >= 7 ? lp : null;
-      const ek = le && !le.endsWith('@lead.local') ? le : null;
-      if ((pk && seenP.has(pk)) || (ek && seenE.has(ek))) {
-        toDelete.push(l.id);
-      } else {
-        if (pk) seenP.add(pk);
-        if (ek) seenE.add(ek);
-      }
-    });
-    if (toDelete.length > 0) bulkDeleteLeads(toDelete);
-  }, [leads.length > 0]);
-
-  // Auto-convert leads that match subscriber phone/email (silent, once per mount)
-  // Guard prevents re-runs that would burst 100+ saveLead calls and exhaust the rate limit.
-  const _autoConvertRef = React.useRef(false);
-  React.useEffect(() => {
-    if (_autoConvertRef.current || leads.length === 0 || subscribers.length === 0) return;
-    _autoConvertRef.current = true;
-    const subPhones = new Set(subscribers.map(s => (s.phone || '').replace(/\D/g, '')).filter(p => p.length >= 7));
-    const subEmails = new Set(subscribers.map(s => (s.email || '').toLowerCase().trim()).filter(e => e && !e.endsWith('@lead.local')));
-    const toConvert: typeof leads = [];
-    leads.forEach(l => {
-      if (l.status === 'converted' && l.hidden) return;
-      const lp = (l.phone || '').replace(/\D/g, '');
-      const le = (l.email || '').toLowerCase().trim();
-      const isSubscriber = (lp.length >= 7 && subPhones.has(lp)) || (le && !le.endsWith('@lead.local') && subEmails.has(le));
-      if (isSubscriber) toConvert.push({ ...l, status: 'converted', hidden: true });
-    });
-    // Update local state only — no API calls. The DB already has the correct status
-    // (set when the subscriber was added). Calling saveLead here would flood the rate limiter.
-    if (toConvert.length > 0) markLeadsConverted(toConvert.map(l => l.id));
-  }, [subscribers.length]);
-
   // Resizable columns (widths in px, persisted per table in localStorage)
   // Activity log filters moved to ActivityTab.tsx
 
@@ -458,8 +398,6 @@ const Dashboard: React.FC = () => {
   // Contacts tab state moved to ContactsTab.tsx
 
   // -- Automation tab state moved to AutomationTab.tsx ---------------------
-
-  const { adminAiDraft, setAdminAiDraft, aiDevMessages, setAiDevMessages, aiDevChatEndRef } = useAdminAiAssistant(adminAiConfig);
 
   const menuGroups = DASHBOARD_MENU_GROUPS;
 
@@ -505,11 +443,13 @@ const Dashboard: React.FC = () => {
     if (activeTab !== 'staff_settings' || !currentStaff) return;
     setLoadingMyHr(true);
     Promise.all([
-      fetch(`/api/admin/hr/employees/${currentStaff.id}`, { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => null),
-      fetch(`/api/admin/hr/advances?staff_id=${currentStaff.id}`, { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => []),
-    ]).then(([hrData, advances]) => {
+      fetch('/api/staff/me/hr', { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => null),
+      fetch('/api/staff/me/advances', { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => []),
+      fetch('/api/staff/me/disciplinary', { credentials: 'include', headers: adminAuthHeaders() }).then(r => r.json()).catch(() => []),
+    ]).then(([hrData, advances, disciplinary]) => {
       if (hrData && !hrData.error) setMyHrData(hrData);
       if (Array.isArray(advances)) setMyAdvances(advances);
+      if (Array.isArray(disciplinary)) setMyDisciplinary(disciplinary);
     }).finally(() => setLoadingMyHr(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentStaff?.id]);
@@ -561,8 +501,7 @@ const Dashboard: React.FC = () => {
       const sub = (usesStaffScopedData ? salesOwnSubscribers : subscribers).find(s => s.id === clientId);
       if (sub) {
         setSubPayRow(sub);
-        const branchId = normBranchId(sub.branch);
-        const currency = branchId === 'ONLINE_ABROAD' ? 'SAR' : 'EGP';
+        const currency = currencyForBranch(sub.branch);
         const defaultBookingType = (sub.enrolledCourseIds || []).length > 0 ? 'installment' : 'new_booking';
         setSubPayDraft(createClientPaymentDraft({ currency, courseId: '' }));
         setSubPayDraft(prev => ({ ...prev, bookingType: defaultBookingType as 'new_booking'|'installment' }));
@@ -574,7 +513,7 @@ const Dashboard: React.FC = () => {
         setLeadPayRow(lead);
         setLeadPayDraft(createClientPaymentDraft({
           courseId: defaultCourseId,
-          currency: (['ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(normBranchId(lead.branch))) ? 'SAR' : 'EGP',
+          currency: currencyForBranch(lead.branch),
           branch: lead.branch || '',
           email: lead.email || '',
         }));
@@ -582,51 +521,6 @@ const Dashboard: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usesStaffScopedData, salesOwnSubscribers, subscribers, salesOwnLeads, leads]);
-
-  // -- Migration: process leftover clientStatus==='leads' subscribers --
-  // Clients with courses ? restore to active; clients without ? move to real leads
-  const leadsTabMigrationDone = React.useRef(false);
-  React.useEffect(() => {
-    const allSubs = usesStaffScopedData ? salesOwnSubscribers : subscribers;
-    const stale = allSubs.filter(s => s.clientStatus === 'leads');
-    if (stale.length === 0 || leadsTabMigrationDone.current) return;
-    leadsTabMigrationDone.current = true;
-    (async () => {
-      for (const sub of stale) {
-        const hasCourses = (sub.enrolledCourseIds || []).length > 0;
-        if (hasCourses) {
-          // Return to active online clients
-          const { clientStatus: _clientStatus, ...updated } = sub;
-          updateSubscriber(updated);
-          setSalesOwnSubscribers(prev => prev.map(s => s.id === sub.id ? updated : s));
-          try { await mysqlAdmin.saveSubscriber(updated as unknown as Record<string,unknown>); } catch {}
-        } else {
-          // Move to real leads
-          const lead: LeadItem = {
-            id: `lead-mig-${sub.id}-${Date.now()}`,
-            name: sub.name || '',
-            email: sub.email || '',
-            phone: sub.phone || '',
-            source: 'محول من أونلاين',
-            status: 'new' as LeadStatus,
-            leadType: 'course',
-            enrolledCourseId: '',
-            branch: sub.branch || 'other',
-            interestLevel: 'medium',
-            assignedSalesId: sub.assignedCsId || '',
-            assignedSalesName: '',
-            communications: [],
-            notes: sub.notes || '',
-            createdAt: sub.createdAt || new Date().toISOString().slice(0,10),
-          };
-          try { await addLead(lead); } catch {}
-          deleteSubscriber(sub.id);
-          setSalesOwnSubscribers(prev => prev.filter(s => s.id !== sub.id));
-        }
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscribers, salesOwnSubscribers]);
 
   useEffect(() => {
     void fetchSalesData();
@@ -771,34 +665,35 @@ const Dashboard: React.FC = () => {
   };
 
 
-  const handleSubPayment = (draft: PaymentDraft) => {
-    handleSubPaymentFn(draft, {
+  const handleSubPayment = async (draft: PaymentDraft) => {
+    const { handleSubPaymentFn } = await import('./dashboard/dashboardPaymentHandlers');
+    await handleSubPaymentFn(draft, {
       subPayRow,
       subscribers,
       bundles,
       courses,
       content,
-      updateSubscriber,
+      recordSubscriberPayment,
+      reloadSubscribers,
       notify,
       currentStaff,
-      isAdmin,
     });
   };
 
   const handleLeadPayment = async (draft: PaymentDraft) => {
+    const { handleLeadPaymentFn } = await import('./dashboard/dashboardPaymentHandlers');
     await handleLeadPaymentFn(draft, {
       leadPayRow,
       leads,
       subscribers,
       bundles,
       courses,
-      content,
-      updateSubscriber,
-      updateLead,
-      addSubscriber,
-      issueClientCodeAsync,
       branchLabelMap,
+      recordSubscriberPayment,
+      reloadLeads,
+      reloadSubscribers,
       notify,
+      currentStaff,
       isAdmin,
       isSalesOnly,
       isDaqqiManager,
@@ -943,7 +838,7 @@ const Dashboard: React.FC = () => {
                   certPricingMap={certPricingMap}
                   saveCertPricingMap={saveCertPricingMap}
                   subscribers={subscribers}
-                  updateSubscriber={updateSubscriber}
+                  reloadSubscribers={reloadSubscribers}
                   certSearch={certSearch}
                   setCertSearch={setCertSearch}
                   certTypeFilter={certTypeFilter as ExtraCertificateType | 'all'}
@@ -990,7 +885,8 @@ const Dashboard: React.FC = () => {
                     salesOwnLeads: salesOwnLeads ?? [],
                     updateSubscriber,
                     addSubscriber,
-                    addLead,
+                    reloadSubscribers,
+                    reloadLeads,
                     deleteSubscriber,
                     notify,
                     isDaqqiManager,
@@ -1011,8 +907,6 @@ const Dashboard: React.FC = () => {
                     setSubPayDraft,
                     setSubContactRow,
                     setSubContactDraft,
-                    setSubInstRow,
-                    setSubInstDraft,
                     setSubWaRow,
                     branchFilter: branchQueryFilter,
                   }}
@@ -1051,6 +945,7 @@ const Dashboard: React.FC = () => {
                     isOnlineManager,
                     isDaqqiManager,
                     isAdmin,
+                    canManageFinancial: hasPermission('manage_financial'),
                     notify,
                     courses,
                     bundles,
@@ -1061,7 +956,6 @@ const Dashboard: React.FC = () => {
                     setDaqqiAccDateFrom,
                     daqqiAccDateTo,
                     setDaqqiAccDateTo,
-                    updateSubscriber,
                     omOrdReviewTab,
                     setOmOrdReviewTab,
                     effectiveOrders,
@@ -1096,6 +990,7 @@ const Dashboard: React.FC = () => {
                     content,
                     updateOrderStatus,
                     reloadOrders,
+                    reloadSubscribers,
                     addOrder,
                     deleteOrder,
                     exportFilteredOrdersCsv,
@@ -1215,6 +1110,7 @@ const Dashboard: React.FC = () => {
                   isNonAdminStaff={isNonAdminStaff}
                   salesOwnDaqqiRounds={salesOwnDaqqiRounds}
                   isReceptionDaqqi={isReceptionDaqqi}
+                  canDeleteSubscriber={hasPermission('delete_subscribers')}
                   leadsSalesTargets={leadsSalesTargets}
                   setStaffProfileModalId={setStaffProfileModalId}
                 />
@@ -1253,7 +1149,7 @@ const Dashboard: React.FC = () => {
             )}
 
             {/* ---- LIVE STREAMS TAB ---- */}
-            {activeTab === 'staff_settings' && (isSalesOnly || isCollectionRole || isReceptionDaqqi) && currentStaff && (
+            {activeTab === 'staff_settings' && currentStaff && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
                 <DashboardStaffSettingsPanel
                   currentStaff={currentStaff}
@@ -1280,6 +1176,8 @@ const Dashboard: React.FC = () => {
                   setSubmittingAdvance={setSubmittingAdvance}
                   myAdvances={myAdvances}
                   setMyAdvances={setMyAdvances}
+                  myDisciplinary={myDisciplinary}
+                  setMyDisciplinary={setMyDisciplinary}
                   staffWaTemplateEdit={staffWaTemplateEdit}
                   setStaffWaTemplateEdit={setStaffWaTemplateEdit}
                   staffWaTemplates={staffWaTemplates}

@@ -12,43 +12,41 @@ export function useCourseQuizzesState(
   const [courseQuizzes, setCourseQuizzes] = useState<CourseQuiz[]>(initialCourseQuizzes);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>(initialQuizAttempts);
 
-  const persistCourseQuizToCollection = (quiz: CourseQuiz) => {
-    void mysqlAdmin.saveQuiz(quiz as unknown as Record<string,unknown>).catch(() => {});
-  };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const persistQuizAttemptToCollection = (_item: QuizAttempt) => { /* PG-only */ };
-
-  const addCourseQuiz = (item: CourseQuiz) => {
-    setCourseQuizzes((prev) => [item, ...prev.filter((q) => q.courseId !== item.courseId)]);
-    persistCourseQuizToCollection(item);
-    track('create', 'courseQuiz', item.title);
-  };
-
-  const updateCourseQuiz = (item: CourseQuiz) => {
-    setCourseQuizzes((prev) => prev.map((q) => (q.id === item.id ? item : q)));
-    persistCourseQuizToCollection(item);
-    track('update', 'courseQuiz', item.title);
+  const saveQuiz = async (item: CourseQuiz, action: 'create' | 'update') => {
+    try {
+      await mysqlAdmin.saveQuiz(item as unknown as Record<string, unknown>);
+      setCourseQuizzes((prev) => action === 'create'
+        ? [item, ...prev.filter((quiz) => quiz.courseId !== item.courseId)]
+        : prev.map((quiz) => quiz.id === item.id ? item : quiz));
+      track(action, 'courseQuiz', item.title);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'courseQuiz', name: item.title },
+      }));
+      return false;
+    }
   };
 
-  const deleteCourseQuiz = (id: string) => {
-    setCourseQuizzes((prev) => prev.filter((q) => q.id !== id));
-    void mysqlAdmin.deleteQuiz(id).catch(() => {});
-    track('delete', 'courseQuiz', id);
-  };
-
-  const addQuizAttempt = (item: QuizAttempt) => {
-    setQuizAttempts((prev) => [item, ...prev]);
-    persistQuizAttemptToCollection(item);
-    track('create', 'quizAttempt', `${item.subscriberId} score ${item.score}%`);
-  };
-
-  const deleteQuizAttempt = (id: string) => {
-    setQuizAttempts((prev) => prev.filter((a) => a.id !== id));
-    track('delete', 'quizAttempt', id);
+  const deleteCourseQuiz = async (id: string) => {
+    try {
+      await mysqlAdmin.deleteQuiz(id);
+      setCourseQuizzes((prev) => prev.filter((quiz) => quiz.id !== id));
+      track('delete', 'courseQuiz', id);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'courseQuiz', name: id },
+      }));
+      return false;
+    }
   };
 
   return {
-    courseQuizzes, setCourseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
-    quizAttempts, setQuizAttempts, addQuizAttempt, deleteQuizAttempt,
+    courseQuizzes, setCourseQuizzes,
+    addCourseQuiz: (item: CourseQuiz) => saveQuiz(item, 'create'),
+    updateCourseQuiz: (item: CourseQuiz) => saveQuiz(item, 'update'),
+    deleteCourseQuiz,
+    quizAttempts, setQuizAttempts,
   };
 }

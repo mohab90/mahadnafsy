@@ -7,12 +7,12 @@ const logger = require('../lib/logger').child({ module: 'admin-operations-route'
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { parseLimit, parseOffset } = require('../lib/helpers');
-const { completeCourse } = require('../lib/courseCompletion');
-const { sendEmail: sendEmailBase, htmlEmail } = require('../lib/email');
-const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
+const { branchForId, branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { postExpenseJournal } = require('../lib/finance');
+const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { assertWritable } = require('../lib/periodLock');
+const { writeAuditEvent } = require('../lib/auditTrail');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'admin operations route failed') {
@@ -34,31 +34,71 @@ function appendTenantScope(sql, alias, tenantId, params) {
   return `${sql} AND ${col} = ?`;
 }
 
-router.get('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) => {
+const EXPENSE_CATEGORY_DB = Object.freeze({
+  'رواتب': 'SALARIES',
+  'تسويق': 'MARKETING',
+  'إيجار': 'RENT',
+  'برمجيات': 'SOFTWARE',
+  'معدات': 'EQUIPMENT',
+  'أخرى': 'OTHER',
+});
+const EXPENSE_CATEGORY_LABEL = Object.freeze(
+  Object.fromEntries(Object.entries(EXPENSE_CATEGORY_DB).map(([label, code]) => [code, label]))
+);
+const VALID_EXPENSE_CURRENCIES = new Set(['EGP', 'SAR', 'USD']);
+function expenseCategory(value) {
+  const key = String(value || 'OTHER').trim();
+  const code = EXPENSE_CATEGORY_DB[key] || key.toUpperCase();
+  return EXPENSE_CATEGORY_LABEL[code] ? code : 'OTHER';
+}
+function expenseDate(value) {
+  const date = String(value || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())
+    ? date
+    : null;
+}
+
+router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const params = [];
-    const where = appendTenantScope('WHERE 1=1', '', scopedTenantId(req), params);
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const branchSql = scope.branchId ? ' AND branch_id=?' : '';
+    const params = scope.branchId ? [scopedTenantId(req), scope.branchId] : [scopedTenantId(req)];
     const [rows] = await pool.query(
       `SELECT id, description, amount, currency, fx_rate_to_egp, amount_egp, fx_source,
-       category, date, receipt_url, note, staff_id,
+       category, date, receipt_url, note, staff_id, branch_id,
        vat_rate, vat_amount, amount_before_vat, created_at
-       FROM expenses ${where} ORDER BY date DESC LIMIT 500`,
+       FROM expenses WHERE tenant_id=? AND deleted_at IS NULL${branchSql}
+       ORDER BY date DESC LIMIT 500`,
       params);
-    res.json(rows);
-  } catch (e) { routeError(res, e); }
+    res.json(rows.map(row => ({
+      ...row,
+      category: EXPENSE_CATEGORY_LABEL[row.category] || 'أخرى',
+      receiptUrl: row.receipt_url || '',
+      branchType: branchForId(row.branch_id),
+      createdAt: row.created_at,
+    })));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
+    routeError(res, e);
+  }
 });
 
-router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
     const e2 = req.body;
     const id = uuidv4();
     const tenantId = scopedTenantId(req);
-    const branchCode = defaultDigitalBranch(e2.branch);
-    const expDate = e2.date || new Date().toISOString().slice(0, 10);
+    const scope = resolveFinancialScope(req, { requestedBranch: e2.branchType || e2.branch || null });
+    const branchCode = scope.branch || defaultDigitalBranch(e2.branchType || e2.branch);
+    const branchId = scope.branchId || branchIdForBranch(branchCode);
+    const expDate = expenseDate(e2.date);
     const amount = Number(e2.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Expense amount must be positive' });
+    const currency = String(e2.currency || 'EGP').toUpperCase();
+    if (!expDate) return res.status(400).json({ error: 'Invalid expense date' });
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return res.status(400).json({ error: 'Expense amount must be positive' });
+    if (!VALID_EXPENSE_CURRENCIES.has(currency)) return res.status(400).json({ error: 'Invalid expense currency' });
     await conn.beginTransaction();
     transactionStarted = true;
     await assertWritable(expDate, conn, tenantId);
@@ -66,14 +106,15 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
     // threw "Unknown column 'notes'" and silently broke ALL expense creation
     // (confirmed: expenses table was empty in prod). Accept either field name.
     await conn.query(
-      `INSERT INTO expenses (id, tenant_id, branch_id, date, description, amount, currency, category, note, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [id, tenantId, branchIdForBranch(branchCode), expDate, e2.description || '',
-       amount, e2.currency || 'EGP', e2.category || 'other', e2.note ?? e2.notes ?? null,
+      `INSERT INTO expenses
+         (id, tenant_id, branch_id, date, description, amount, currency, category, receipt_url, note, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, tenantId, branchId, expDate, String(e2.description || '').trim().slice(0, 2000),
+       amount, currency, expenseCategory(e2.category), String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null, e2.note ?? e2.notes ?? null,
        e2.created_at || new Date().toISOString()]
     );
     const journalId = await postExpenseJournal(
-      { id, tenant_id: tenantId, date: expDate, description: e2.description, amount, currency: e2.currency, category: e2.category },
+      { id, tenant_id: tenantId, branch_id: branchId, date: expDate, description: e2.description, amount, currency, category: expenseCategory(e2.category) },
       +1, req.user?.email, conn, tenantId
     );
     if (!journalId) throw new Error('Expense journal posting failed');
@@ -82,43 +123,58 @@ router.post('/api/admin/expenses', requireAuth, requireAdmin, async (req, res) =
     res.json({ ok: true, id });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    if (e.status === 409) return res.status(409).json({ error: e.message });
+    if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
     routeError(res, e);
   } finally { conn.release(); }
 });
 
-router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
     const e2 = req.body;
     const tenantId = scopedTenantId(req);
     const amount = Number(e2.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Expense amount must be positive' });
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return res.status(400).json({ error: 'Expense amount must be positive' });
     await conn.beginTransaction();
     transactionStarted = true;
     // Fetch the old row (in tenant scope) so its ledger entry can be reversed.
-    const selParams = [req.params.id];
-    const selWhere = appendTenantScope('id=?', '', tenantId, selParams);
     const [[oldExp]] = await conn.query(
-      `SELECT id, tenant_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category FROM expenses WHERE ${selWhere} AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
-      selParams
+      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category, receipt_url, note
+       FROM expenses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [req.params.id, tenantId]
     );
     if (!oldExp) {
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Expense not found' });
     }
+    const sourceScope = resolveFinancialScope(req);
+    if (!financialRecordMatches(sourceScope, oldExp)) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(403).json({ error: 'Expense is outside your financial scope' });
+    }
+    const targetScope = resolveFinancialScope(req, { requestedBranch: e2.branchType || e2.branch || null });
+    const targetBranchId = targetScope.branchId || oldExp.branch_id;
+    const newDate = expenseDate(e2.date || oldExp.date);
+    const currency = String(e2.currency || oldExp.currency || 'EGP').toUpperCase();
+    if (!newDate || !VALID_EXPENSE_CURRENCIES.has(currency)) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(400).json({ error: 'Invalid expense date or currency' });
+    }
     await assertWritable(oldExp.date, conn, tenantId);
+    if (newDate !== String(oldExp.date).slice(0, 10)) await assertWritable(newDate, conn, tenantId);
     // `note` (singular) is the real column — `notes` does not exist.
-    const params = [e2.description || '', e2.amount || 0, e2.category || 'other', e2.note ?? e2.notes ?? null, req.params.id];
-    const where = appendTenantScope('id=?', '', tenantId, params);
     await conn.query(
-      `UPDATE expenses SET description=?, amount=?, category=?, note=? WHERE ${where}`,
-      params
+      `UPDATE expenses
+          SET description=?, amount=?, currency=?, category=?, date=?, receipt_url=?, note=?, branch_id=?
+        WHERE id=? AND tenant_id=?`,
+      [String(e2.description || '').trim().slice(0, 2000), amount, currency, expenseCategory(e2.category),
+       newDate, String(e2.receiptUrl || e2.receipt_url || '').slice(0, 2000) || null,
+       e2.note ?? e2.notes ?? oldExp.note ?? null, targetBranchId, req.params.id, tenantId]
     );
     const reversalId = await postExpenseJournal(oldExp, -1, req.user?.email, conn, tenantId);
     const journalId = await postExpenseJournal(
-      { ...oldExp, ...e2, amount, id: req.params.id, tenant_id: tenantId },
+      { ...oldExp, ...e2, amount, currency, date: newDate, category: expenseCategory(e2.category), branch_id: targetBranchId, id: req.params.id, tenant_id: tenantId },
       +1, req.user?.email, conn, tenantId
     );
     if (!reversalId || !journalId) throw new Error('Expense ledger update failed');
@@ -127,12 +183,12 @@ router.patch('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, r
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    if (e.status === 409) return res.status(409).json({ error: e.message });
+    if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
     routeError(res, e);
   } finally { conn.release(); }
 });
 
-router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/expenses/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
@@ -145,20 +201,25 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, 
     const tenantId = scopedTenantId(req);
     await conn.beginTransaction();
     transactionStarted = true;
-    const selParams = [req.params.id];
-    const selWhere = appendTenantScope('id=?', '', tenantId, selParams);
     const [[oldExp]] = await conn.query(
-      `SELECT id, tenant_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category FROM expenses WHERE ${selWhere} AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
-      selParams
+      `SELECT id, tenant_id, branch_id, date, description, amount, currency, fx_rate_to_egp, amount_egp, category
+       FROM expenses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [req.params.id, tenantId]
     );
     if (!oldExp) {
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Expense not found' });
     }
+    const scope = resolveFinancialScope(req);
+    if (!financialRecordMatches(scope, oldExp)) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(403).json({ error: 'Expense is outside your financial scope' });
+    }
     await assertWritable(oldExp.date, conn, tenantId);
-    const params = [req.params.id];
-    const where = appendTenantScope('id=?', '', tenantId, params);
-    const [del] = await conn.query(`UPDATE expenses SET deleted_at=NOW() WHERE ${where} AND deleted_at IS NULL`, params);
+    const [del] = await conn.query(
+      'UPDATE expenses SET deleted_at=NOW() WHERE id=? AND tenant_id=? AND deleted_at IS NULL',
+      [req.params.id, tenantId]
+    );
     // Reverse the ledger entry only on a real live->deleted transition, so a
     // double-delete can't post two reversals.
     if (!del.affectedRows) throw new Error('Expense deletion failed');
@@ -169,7 +230,7 @@ router.delete('/api/admin/expenses/:id', requireAuth, requireAdmin, async (req, 
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    if (e.status === 409) return res.status(409).json({ error: e.message });
+    if (e.status) return res.status(e.status).json({ error: e.message, code: e.code });
     routeError(res, e);
   } finally { conn.release(); }
 });
@@ -179,8 +240,8 @@ router.get('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, re
     const limit = parseLimit(req.query.limit, 200, 500);
     const offset = parseOffset(req.query.offset);
     const [rows] = await pool.query(
-      'SELECT id, action, entity, entity_id, label, actor, at FROM activity_logs ORDER BY at DESC LIMIT ? OFFSET ?',
-      [limit, offset]);
+      'SELECT id, action, entity, entity_id, label, actor, at FROM activity_logs WHERE tenant_id=? ORDER BY at DESC LIMIT ? OFFSET ?',
+      [req.tenantId, limit, offset]);
     res.json(rows);
   } catch (e) { routeError(res, e); }
 });
@@ -190,8 +251,9 @@ router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, r
     const a = req.body;
     const id = a.id || uuidv4();
     await pool.query(
-      'INSERT IGNORE INTO activity_logs (id, action, entity, entity_name, user_id, at) VALUES (?,?,?,?,?,?)',
-      [id, a.action || '', a.entity || '', a.entity_name || '', a.user_id || req.user.uid,
+      'INSERT IGNORE INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor, at) VALUES (?,?,?,?,?,?,?,?)',
+      [id, req.tenantId, a.action || '', a.entity || '', a.entity_id || null,
+       a.label || a.entity_name || a.entity || 'activity', a.actor || a.user_id || req.user.uid,
        a.at || new Date().toISOString()]
     );
     res.json({ ok: true, id });
@@ -201,71 +263,137 @@ router.post('/api/admin/activity-logs', requireAuth, requireAdmin, async (req, r
 router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermission('view_join_us'), async (req, res) => {
   try {
     const params = [];
-    let where = appendTenantScope('WHERE 1=1', '', scopedTenantId(req), params);
+    let where = appendTenantScope('WHERE 1=1', 'j', scopedTenantId(req), params);
     if (req.query.type && req.query.type !== 'all') {
-      where += ' AND type = ?';
+      where += ' AND j.type = ?';
       params.push(String(req.query.type).toUpperCase());
     }
     const [rows] = await pool.query(
-      `SELECT id, name, email, phone, specialty, experience, type, linkedin, message, status, admin_note, created_at
-       FROM join_us_applications ${where} ORDER BY created_at DESC LIMIT 500`,
+      `SELECT j.id, j.name, j.email, j.phone, j.specialty, j.experience, j.type,
+              j.linkedin, j.message, j.status, j.admin_note, j.created_at,
+              j.converted_applicant_id, j.reviewed_at, j.assigned_to,
+              a.stage applicant_stage, a.hired_staff_id
+         FROM join_us_applications j
+         LEFT JOIN job_applicants a
+           ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
+         ${where}
+        ORDER BY j.created_at DESC LIMIT 500`,
       params);
     res.json(rows.map(r => ({
       ...r,
-      application_category: String(r.type || '').toUpperCase() === 'STAFF' ? 'HR' : 'ACADEMIC',
+      application_category: String(r.type || '').toUpperCase() === 'EMPLOYEE' ? 'HR' : 'ACADEMIC',
     })));
   } catch (e) { routeError(res, e); }
 });
 
 router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_join_us'), async (req, res) => {
+  const conn = await pool.getConnection();
   try {
     const { status, notes } = req.body;
-    const params = [status || 'new', notes || null, req.params.id];
-    const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
-    await pool.query(`UPDATE join_us_applications SET status=?, message=COALESCE(?,message) WHERE ${where}`, params);
+    const nextStatus = String(status || '').toUpperCase();
+    if (!['NEW', 'REVIEWED', 'ACCEPTED', 'REJECTED'].includes(nextStatus)) {
+      return res.status(400).json({ error: 'Invalid application status' });
+    }
+    await conn.beginTransaction();
+    const [[application]] = await conn.query(
+      'SELECT id,status FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [req.params.id, scopedTenantId(req)]
+    );
+    if (!application) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    await conn.query(
+      `UPDATE join_us_applications
+          SET status=?,admin_note=?,reviewed_at=COALESCE(reviewed_at,NOW())
+        WHERE id=? AND tenant_id=?`,
+      [nextStatus, notes === undefined ? null : notes || null, req.params.id, scopedTenantId(req)]
+    );
+    await writeAuditEvent({
+      action: 'hr.join_application.updated',
+      entityType: 'join_us_application',
+      entityId: req.params.id,
+      metadata: { from: application.status, to: nextStatus },
+      req,
+      db: conn,
+    });
+    await conn.commit();
     res.json({ ok: true });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    routeError(res, e);
+  } finally {
+    conn.release();
+  }
 });
 
 router.delete('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_join_us'), async (req, res) => {
+  const conn = await pool.getConnection();
   try {
-    const params = [req.params.id];
-    const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
-    await pool.query(`DELETE FROM join_us_applications WHERE ${where}`, params);
+    await conn.beginTransaction();
+    const [[application]] = await conn.query(
+      'SELECT id,converted_applicant_id FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [req.params.id, scopedTenantId(req)]
+    );
+    if (!application) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    if (application.converted_applicant_id) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Pipeline applications cannot be deleted; reject them instead', code: 'APPLICATION_IN_PIPELINE' });
+    }
+    await conn.query(
+      'DELETE FROM join_us_applications WHERE id=? AND tenant_id=?',
+      [req.params.id, scopedTenantId(req)]
+    );
+    await writeAuditEvent({
+      action: 'hr.join_application.deleted',
+      entityType: 'join_us_application',
+      entityId: req.params.id,
+      severity: 'warning',
+      req,
+      db: conn,
+    });
+    await conn.commit();
     res.json({ ok: true });
-  } catch (e) { routeError(res, e); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    routeError(res, e);
+  } finally {
+    conn.release();
+  }
 });
 
 router.get('/api/admin/contact-messages', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const params = [];
-    let where = appendTenantScope('WHERE 1=1', '', scopedTenantId(req), params);
-    if (req.query.status && req.query.status !== 'all') {
-      where += ' AND status = ?';
-      params.push(String(req.query.status));
-    }
+    const status = req.query.status && req.query.status !== 'all' ? String(req.query.status) : null;
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, subject, message, status, admin_note, created_at
-       FROM contact_messages ${where} ORDER BY created_at DESC LIMIT 500`,
-      params);
+       FROM contact_messages
+       WHERE tenant_id=? AND (? IS NULL OR status=?)
+       ORDER BY created_at DESC LIMIT 500`,
+      [scopedTenantId(req), status, status]);
     res.json(rows);
   } catch (e) { routeError(res, e); }
 });
 
 router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const params = [req.body.status || 'new', req.params.id];
-    const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
-    await pool.query(`UPDATE contact_messages SET status=? WHERE ${where}`, params);
+    await pool.query(
+      'UPDATE contact_messages SET status=? WHERE id=? AND tenant_id=?',
+      [req.body.status || 'new', req.params.id, scopedTenantId(req)]
+    );
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
 
 router.delete('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const params = [req.params.id];
-    const where = appendTenantScope('id=?', '', scopedTenantId(req), params);
-    await pool.query(`DELETE FROM contact_messages WHERE ${where}`, params);
+    await pool.query(
+      'DELETE FROM contact_messages WHERE id=? AND tenant_id=?',
+      [req.params.id, scopedTenantId(req)]
+    );
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
 });
@@ -281,62 +409,6 @@ router.get('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, re
   } catch (e) { routeError(res, e); }
 });
 
-router.post('/api/admin/quiz-attempts', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const a = req.body;
-    const id = a.id || uuidv4();
-    const tenantId = scopedTenantId(req);
-    const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId });
-    if (a.subscriberId) {
-      const [[owner]] = await pool.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [a.subscriberId, tenantId]);
-      if (!owner) return res.status(404).json({ error: 'Subscriber not found' });
-    }
-    if (a.courseId) {
-      const [[ownedCourse]] = await pool.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1', [a.courseId, tenantId]);
-      if (!ownedCourse) return res.status(404).json({ error: 'Course not found' });
-    }
-    await pool.query(
-      `INSERT INTO quiz_attempts (id, tenant_id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at)
-       VALUES (?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE score=VALUES(score), passed=VALUES(passed)`,
-      [id, tenantId, a.subscriberId || null, a.quizId || null, a.courseId || null,
-       a.score || 0, a.passed ? 1 : 0, JSON.stringify(a.answers || []),
-       a.takenAt || new Date().toISOString()]
-    );
-    if (a.passed && a.courseId && a.subscriberId) {
-      try {
-        // requireFullProgress off: this endpoint is a staff manual entry (e.g. an
-        // offline/legacy quiz result), same trusted-override reasoning as
-        // POST /api/admin/completions — not the automatic self-service path.
-        await completeCourse({ tenantId, subscriberId: a.subscriberId, courseId: a.courseId, actor: req.user?.uid || req.user?.email || 'admin-quiz', requireFullProgress: false });
-        const [[alreadyDone]] = await pool.query('SELECT id FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1', [a.subscriberId, a.courseId, tenantId]);
-        if (!alreadyDone) {
-          const certCode = 'MHAD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-          await pool.query('INSERT IGNORE INTO course_completions (id, subscriber_id, course_id, certificate_code, tenant_id) VALUES (UUID(),?,?,?,?)', [a.subscriberId, a.courseId, certCode, tenantId]);
-          const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [a.courseId, tenantId]);
-          const [[sub]] = await pool.query('SELECT name, email FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [a.subscriberId, tenantId]);
-          if (sub?.email) {
-            sendEmail(sub.email, `🎓 مبروك! اجتزت اختبار "${course?.title || ''}"`,
-              htmlEmail('شهادة إتمام', `
-                <p>مبروك <strong>${sub.name || ''}</strong>!</p>
-                <p>لقد اجتزت بنجاح اختبار <strong>${course?.title || ''}</strong>.</p>
-                <div class="otp-box">${certCode}</div>
-                <p>يمكنك التحقق من شهادتك على موقعنا.</p>
-              `)
-            ).catch(() => {});
-          }
-        }
-      } catch (cerr) { logger.warn('[quiz] auto-cert error:', cerr.message); }
-    }
-    res.json({ ok: true, id });
-  } catch (e) { routeError(res, e); }
-});
-
-router.delete('/api/admin/quiz-attempts/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE FROM quiz_attempts WHERE id = ? AND tenant_id=?', [req.params.id, scopedTenantId(req)]); res.json({ ok: true }); }
-  catch (e) { routeError(res, e); }
-});
-
 router.post('/api/admin/next-client-code', requireAuth, requireAdmin, async (_req, res) => {
   try {
     await pool.query('UPDATE client_code_counter SET next_value = next_value + 1 WHERE id = 1');
@@ -346,17 +418,19 @@ router.post('/api/admin/next-client-code', requireAuth, requireAdmin, async (_re
   } catch (e) { routeError(res, e); }
 });
 
-router.post('/api/admin/sync-client-code-counter', requireAuth, requireAdmin, async (_req, res) => {
+router.post('/api/admin/sync-client-code-counter', requireAuth, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [[subMax]] = await conn.query(
       `SELECT MAX(CAST(SUBSTRING(client_code, 2) AS UNSIGNED)) AS mx
-       FROM subscribers WHERE client_code REGEXP '^C[0-9]+$'`
+       FROM subscribers WHERE tenant_id=? AND client_code REGEXP '^C[0-9]+$'`,
+      [scopedTenantId(req)]
     );
     const [[leadMax]] = await conn.query(
       `SELECT MAX(CAST(SUBSTRING(client_code, 2) AS UNSIGNED)) AS mx
-       FROM leads WHERE client_code REGEXP '^C[0-9]+$'`
+       FROM leads WHERE tenant_id=? AND client_code REGEXP '^C[0-9]+$'`,
+      [scopedTenantId(req)]
     );
     const maxVal = Math.max(subMax.mx || 0, leadMax.mx || 0);
     const newNext = maxVal >= 10000 ? maxVal + 1 : 10001;

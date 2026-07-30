@@ -29,9 +29,11 @@ test('default tenant can use contained legacy routes', () => {
 });
 
 test('tenant-native accounting routes are available to additional tenants', () => {
-  const result = invoke({ tenantId: 'tenant-acme', path: '/api/admin/accounting/chart-of-accounts' });
-  assert.equal(result.nextCalled, true);
-  assert.equal(result.statusCode, 200);
+  for (const path of ['/api/admin/accounting/chart-of-accounts', '/api/admin/fx-rates/refresh']) {
+    const result = invoke({ tenantId: 'tenant-acme', path });
+    assert.equal(result.nextCalled, true, path);
+    assert.equal(result.statusCode, 200, path);
+  }
 });
 
 test('tenant-scoped community routes are available to additional tenants', () => {

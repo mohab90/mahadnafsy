@@ -2,23 +2,9 @@
 
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
-
-const LEAD_STATUSES = new Set([
-  'new', 'contacted', 'interested', 'interested_booking', 'interested_followup',
-  'not_interested', 'not_interested_hidden', 'no_answer', 'no_answer_wa',
-  'no_answer_nowa', 'wrong_number', 'closed', 'converted', 'lost', 'won',
-  'unqualified', 'disqualified', 'archived',
-]);
-
-function normalizeLeadStatus(value) {
-  const status = String(value || '').trim().toLowerCase();
-  if (!LEAD_STATUSES.has(status)) {
-    const error = new Error('Invalid lead status');
-    error.statusCode = 400;
-    throw error;
-  }
-  return status;
-}
+const { findLeadById } = require('./leadRepository');
+const { LEAD_STATUSES, normalizeLeadStatus } = require('./leadStatuses');
+const { validateTransition } = require('./leadPipeline');
 
 async function transitionLead({
   tenantId,
@@ -39,10 +25,7 @@ async function transitionLead({
   const conn = db || await pool.getConnection();
   try {
     if (ownsConnection) await conn.beginTransaction();
-    const [[lead]] = await conn.query(
-      'SELECT id, status FROM leads WHERE id=? AND tenant_id=? AND hidden=0 LIMIT 1 FOR UPDATE',
-      [leadId, tenantId]
-    );
+    const lead = await findLeadById({ tenantId, leadId, db: conn, forUpdate: true });
     if (!lead) {
       const error = new Error('Lead not found');
       error.statusCode = 404;
@@ -53,6 +36,7 @@ async function transitionLead({
       if (ownsConnection) await conn.commit();
       return { changed: false, fromStatus, toStatus: status };
     }
+    await validateTransition(tenantId, fromStatus, status, conn);
     await conn.query(
       'UPDATE leads SET status=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
       [status, leadId, tenantId]

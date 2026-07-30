@@ -21,51 +21,72 @@ export function useAiMessagingConfigState(
   const [fbLeadAdsConfig, setFbLeadAdsConfigState] = useState<FacebookLeadAdsConfig | null>(initialFbLeadAdsConfig);
   const [inboxConversations, setInboxConversations] = useState<InboxConversation[]>(initialInboxConversations);
 
-  const _persistSettingsField = (field: string, value: unknown) => {
-    void mysqlAdmin.saveSettings({ [field]: JSON.parse(JSON.stringify(value)) } as Record<string,unknown>).catch(() => {});
-  };
-  const persistInboxConversationToCollection = (conv: InboxConversation) => {
-    void mysqlAdmin.saveInboxConversation(conv as unknown as Record<string,unknown>).catch(() => {});
+  const saveSettingsField = async (field: string, value: unknown) => {
+    try {
+      await mysqlAdmin.saveSettings({ [field]: JSON.parse(JSON.stringify(value)) } as Record<string,unknown>);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
-  const setAdminAiConfig = (config: AdminAiConfig) => {
+  const setAdminAiConfig = async (config: AdminAiConfig) => {
+    if (!await saveSettingsField('adminAiConfig', config)) return false;
     setAdminAiConfigLocal(config);
-    _persistSettingsField('adminAiConfig', config);
     track('update', 'admin_ai', config.model);
+    return true;
   };
 
-  const setAiAgentConfig = (config: AiAgentConfig) => {
+  const setAiAgentConfig = async (config: AiAgentConfig) => {
+    if (!await saveSettingsField('aiAgentConfig', config)) return false;
     setAiAgentConfigState(config);
-    _persistSettingsField('aiAgentConfig', config);
     track('update', 'ai_agent', config.name);
+    return true;
   };
 
-  const setMessagingChannels = (config: MessagingChannelsConfig) => {
+  const setMessagingChannels = async (config: MessagingChannelsConfig) => {
+    if (!await saveSettingsField('messagingChannels', config)) return false;
     setMessagingChannelsState(config);
-    _persistSettingsField('messagingChannels', config);
     track('update', 'messaging_channels', 'channels config');
+    return true;
   };
 
-  const setFbLeadAdsConfig = (config: FacebookLeadAdsConfig) => {
+  const setFbLeadAdsConfig = async (config: FacebookLeadAdsConfig) => {
+    if (!await saveSettingsField('fbLeadAdsConfig', config)) return false;
     setFbLeadAdsConfigState(config);
-    _persistSettingsField('fbLeadAdsConfig', config);
     track('update', 'fb_lead_ads', 'Facebook Lead Ads config');
+    return true;
   };
 
-  const addInboxConversation = (conv: InboxConversation) => {
-    setInboxConversations((prev) => [conv, ...prev]);
-    persistInboxConversationToCollection(conv);
-    track('create', 'inbox_conversation', conv.contactName);
+  const addInboxConversation = async (conv: InboxConversation) => {
+    try {
+      await mysqlAdmin.saveInboxConversation(conv as unknown as Record<string,unknown>);
+      setInboxConversations((prev) => [conv, ...prev]);
+      track('create', 'inbox_conversation', conv.contactName);
+      return true;
+    } catch {
+      return false;
+    }
   };
-  const updateInboxConversation = (conv: InboxConversation) => {
-    setInboxConversations((prev) => prev.map((c) => (c.id === conv.id ? conv : c)));
-    persistInboxConversationToCollection(conv);
-    track('update', 'inbox_conversation', conv.contactName);
+  const updateInboxConversation = async (conv: InboxConversation) => {
+    try {
+      await mysqlAdmin.saveInboxConversation(conv as unknown as Record<string,unknown>);
+      setInboxConversations((prev) => prev.map((c) => (c.id === conv.id ? conv : c)));
+      track('update', 'inbox_conversation', conv.contactName);
+      return true;
+    } catch {
+      return false;
+    }
   };
-  const deleteInboxConversation = (id: string) => {
-    setInboxConversations((prev) => prev.filter((c) => c.id !== id));
-    void mysqlAdmin.deleteInboxConversation(id).catch(() => {});
-    track('delete', 'inbox_conversation', id);
+  const deleteInboxConversation = async (id: string) => {
+    try {
+      await mysqlAdmin.deleteInboxConversation(id);
+      setInboxConversations((prev) => prev.filter((c) => c.id !== id));
+      track('delete', 'inbox_conversation', id);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   return {

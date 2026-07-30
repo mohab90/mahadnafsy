@@ -19,6 +19,7 @@ const CertificateVerify: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const [loading, setLoading] = useState(true);
   const [cert, setCert] = useState<VerifiedCertificate | null>(null);
+  const [revoked, setRevoked] = useState(false);
 
   useEffect(() => {
     document.title = 'التحقق من الشهادة | معهد الدراسات النفسية';
@@ -26,7 +27,12 @@ const CertificateVerify: React.FC = () => {
     let cancelled = false;
     mysqlClient.verifyCertificate(code)
       .then((row) => { if (!cancelled) setCert(row as unknown as VerifiedCertificate); })
-      .catch(() => { if (!cancelled) setCert(null); })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setCert(null);
+          setRevoked(error instanceof Error && /revoked/i.test(error.message));
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [code]);
@@ -63,8 +69,8 @@ const CertificateVerify: React.FC = () => {
         ) : (
           <>
             <ShieldX size={48} className="text-red-400 mx-auto mb-3" />
-            <h1 className="text-xl font-extrabold text-gray-900">الشهادة غير موجودة</h1>
-            <p className="text-gray-500 mt-2 text-sm">تأكد من صحة الرابط أو كود الشهادة، أو أن الشهادة لم تُصدر بعد.</p>
+            <h1 className="text-xl font-extrabold text-gray-900">{revoked ? 'الشهادة ملغاة' : 'الشهادة غير موجودة'}</h1>
+            <p className="text-gray-500 mt-2 text-sm">{revoked ? 'تم إلغاء صلاحية هذه الشهادة بواسطة الإدارة، ولم تعد صالحة للتحقق.' : 'تأكد من صحة الرابط أو كود الشهادة، أو أن الشهادة لم تُصدر بعد.'}</p>
           </>
         )}
       </div>

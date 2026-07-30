@@ -56,8 +56,21 @@ function branchIdForBranch(value, fallback = 'branch-other') {
   return map[branch] || fallback;
 }
 
+function branchForId(value, fallback = 'OTHER') {
+  const map = {
+    'branch-online-egypt': 'ONLINE_EGYPT',
+    'branch-online-saudi': 'ONLINE_SAUDI',
+    'branch-online-abroad': 'ONLINE_ABROAD',
+    'branch-daqqi': 'DAQQI',
+    'branch-tagamoa': 'TAGAMOA',
+    'branch-other': 'OTHER',
+  };
+  return map[String(value || '')] || fallback;
+}
+
 module.exports = {
   BRANCH_ALIASES,
+  branchForId,
   branchIdForBranch,
   defaultDigitalBranch,
   normalizeBranch,

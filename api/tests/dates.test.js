@@ -5,7 +5,10 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { safeIsoString, safeDateOnly, monthRange } = require('../lib/dates');
+const {
+  safeIsoString, safeDateOnly, monthRange, dateOnlyInTimeZone,
+  addDaysToDateOnly, isValidDateOnly,
+} = require('../lib/dates');
 
 test('safeIsoString: valid Date and date strings → ISO', () => {
   assert.equal(safeIsoString(new Date('2026-06-22T00:00:00Z')), '2026-06-22T00:00:00.000Z');
@@ -53,4 +56,17 @@ test('monthRange: malformed / out-of-range input → null (caller rejects)', () 
   assert.equal(monthRange('not-a-month'), null);
   assert.equal(monthRange(''), null);
   assert.equal(monthRange(null), null);
+});
+
+test('dateOnlyInTimeZone does not drift across the Cairo UTC boundary', () => {
+  assert.equal(dateOnlyInTimeZone(new Date('2026-07-28T22:30:00Z')), '2026-07-29');
+  assert.equal(dateOnlyInTimeZone(new Date('2026-01-01T21:30:00Z')), '2026-01-01');
+});
+
+test('date-only helpers add days across month/year boundaries and reject impossible dates', () => {
+  assert.equal(addDaysToDateOnly('2026-12-31', 1), '2027-01-01');
+  assert.equal(addDaysToDateOnly('2026-03-01', -1), '2026-02-28');
+  assert.equal(isValidDateOnly('2026-02-28'), true);
+  assert.equal(isValidDateOnly('2026-02-31'), false);
+  assert.equal(addDaysToDateOnly('2026-02-31', 1), '');
 });

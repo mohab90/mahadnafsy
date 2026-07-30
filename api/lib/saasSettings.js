@@ -106,7 +106,9 @@ async function getSysConfig(section, defaults, tenantId) {
 }
 
 function isPaymobActive(config) {
-  return config?.active_provider === 'paymob' && !!config?.paymob?.enabled;
+  return process.env.PAYMOB_REVIEW_PENDING !== 'true'
+    && config?.active_provider === 'paymob'
+    && !!config?.paymob?.enabled;
 }
 
 async function getPaymentGatewaySettings(tenantId) {

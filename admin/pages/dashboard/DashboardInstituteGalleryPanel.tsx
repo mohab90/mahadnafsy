@@ -8,7 +8,7 @@ type Props = {
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   instituteGalleryUploadRef: RefObject<HTMLInputElement | null>;
   handleInstituteGalleryUpload: (files: FileList | null) => void | Promise<void>;
   instituteGalleryUrlInput: string;
@@ -16,7 +16,7 @@ type Props = {
   instituteGalleryImages: string[];
   saveInstituteGalleryImages: (images: string[]) => void;
   instituteBranches: BranchEntry[];
-  BranchAddForm: ComponentType<{ instituteBranches: BranchEntry[]; setContentValue: (key: string, value: string) => void }>;
+  BranchAddForm: ComponentType<{ instituteBranches: BranchEntry[]; setContentValue: (key: string, value: string) => Promise<boolean> }>;
 };
 
 export function DashboardInstituteGalleryPanel({
@@ -69,9 +69,16 @@ export function DashboardInstituteGalleryPanel({
         {(policyDrafts['institute.gallery.title'] !== undefined || policyDrafts['institute.gallery.subtitle'] !== undefined) && (
           <div className="md:col-span-2 flex gap-2">
             <button
-              onClick={() => {
-                if (policyDrafts['institute.gallery.title'] !== undefined) setContentValue('institute.gallery.title', policyDrafts['institute.gallery.title']);
-                if (policyDrafts['institute.gallery.subtitle'] !== undefined) setContentValue('institute.gallery.subtitle', policyDrafts['institute.gallery.subtitle']);
+              onClick={async () => {
+                const updates = [
+                  policyDrafts['institute.gallery.title'] !== undefined
+                    ? setContentValue('institute.gallery.title', policyDrafts['institute.gallery.title'])
+                    : Promise.resolve(true),
+                  policyDrafts['institute.gallery.subtitle'] !== undefined
+                    ? setContentValue('institute.gallery.subtitle', policyDrafts['institute.gallery.subtitle'])
+                    : Promise.resolve(true),
+                ];
+                if (!(await Promise.all(updates)).every(Boolean)) return;
                 setPolicyDrafts(prev => { const next = { ...prev }; delete next['institute.gallery.title']; delete next['institute.gallery.subtitle']; return next; });
               }}
               className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 py-2 rounded-xl text-sm"

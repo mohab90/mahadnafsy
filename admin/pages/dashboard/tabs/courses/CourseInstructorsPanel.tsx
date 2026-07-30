@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { defaultMeetingBaseUrls, meetingProviderLabels } from '../../../../lib/consultations';
-import type { ConsultationItem, Therapist, TherapistAvailabilitySlot } from '../../../../types';
+import type { ConsultationItem, StaffMember, Therapist, TherapistAvailabilitySlot } from '../../../../types';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -9,6 +9,7 @@ interface Props {
   activeTab: string;
   isAdmin: boolean;
   therapists: Therapist[];
+  staffMembers: StaffMember[];
   consultations: ConsultationItem[];
   isTherapistFormOpen: boolean;
   setIsTherapistFormOpen: (open: boolean) => void;
@@ -22,16 +23,17 @@ interface Props {
   blankTherapistSlot: () => TherapistAvailabilitySlot;
   therapistAvatarDataUrl: (name?: string) => string;
   safeTherapistImageSrc: (image: string | undefined, name?: string) => string;
-  saveTherapist: () => void;
-  updateTherapist: (row: Therapist) => void;
+  saveTherapist: () => Promise<void>;
+  updateTherapist: (row: Therapist) => Promise<boolean>;
   startEditTherapist: (row: Therapist) => void;
-  deleteTherapist: (id: string) => void;
+  deleteTherapist: (id: string) => Promise<boolean>;
 }
 
 export function CourseInstructorsPanel({
   activeTab,
   isAdmin,
   therapists,
+  staffMembers,
   consultations,
   isTherapistFormOpen,
   setIsTherapistFormOpen,
@@ -119,6 +121,18 @@ export function CourseInstructorsPanel({
 
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
               <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="الاسم" value={therapistDraft.name} onChange={(e) => setTherapistDraft({ ...therapistDraft, name: e.target.value })} />
+              <select
+                className="border border-gray-300 rounded-xl px-4 py-2.5"
+                value={therapistDraft.staffId || ''}
+                onChange={(event) => {
+                  const staff = staffMembers.find(item => item.id === event.target.value);
+                  setTherapistDraft({ ...therapistDraft, staffId: event.target.value || undefined, name: therapistDraft.name || staff?.name || '' });
+                }}
+              >
+                <option value="">ربط بحساب موظف (إلزامي للكورسات)</option>
+                {staffMembers.filter(item => ['instructor', 'trainer'].includes(item.role) && item.status === 'active')
+                  .map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
               <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="التخصص الرئيسي" value={therapistDraft.specialty} onChange={(e) => setTherapistDraft({ ...therapistDraft, specialty: e.target.value })} />
               <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="المسمى الوظيفي" value={therapistDraft.title || ''} onChange={(e) => setTherapistDraft({ ...therapistDraft, title: e.target.value })} />
               <input type="number" className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="سنوات الخبرة" value={therapistDraft.experience} onChange={(e) => setTherapistDraft({ ...therapistDraft, experience: Number(e.target.value) })} />
@@ -198,8 +212,9 @@ export function CourseInstructorsPanel({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="اسم المستخدم لبوابة المحاضر" value={therapistDraft.consultationSettings.portal.username} onChange={(e) => setTherapistDraft({ ...therapistDraft, consultationSettings: { ...therapistDraft.consultationSettings!, portal: { ...therapistDraft.consultationSettings!.portal, username: e.target.value } } })} />
-                  <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="كلمة المرور" value={therapistDraft.consultationSettings.portal.password} onChange={(e) => setTherapistDraft({ ...therapistDraft, consultationSettings: { ...therapistDraft.consultationSettings!, portal: { ...therapistDraft.consultationSettings!.portal, password: e.target.value } } })} />
+                  <div className="md:col-span-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    دخول بوابة المحاضر يتم بحساب الموظف المرتبط أعلاه، بدون اسم مستخدم أو كلمة مرور منفصلة.
+                  </div>
                   <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-2" placeholder="رابط نموذج intake أو استبيان ما قبل الجلسة" value={therapistDraft.consultationSettings.intakeFormUrl || ''} onChange={(e) => setTherapistDraft({ ...therapistDraft, consultationSettings: { ...therapistDraft.consultationSettings!, intakeFormUrl: e.target.value } })} />
                   <textarea className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-2" rows={3} placeholder="تعليمات الحجز أو تجهيزات ما قبل الجلسة" value={therapistDraft.consultationSettings.bookingNotes || ''} onChange={(e) => setTherapistDraft({ ...therapistDraft, consultationSettings: { ...therapistDraft.consultationSettings!, bookingNotes: e.target.value } })} />
                 </div>
@@ -249,7 +264,7 @@ export function CourseInstructorsPanel({
             )}
           </div>
 
-          <button onClick={saveTherapist} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTherapistId ? 'تحديث المحاضر' : 'إضافة محاضر'}</button>
+          <button onClick={() => void saveTherapist()} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTherapistId ? 'تحديث المحاضر' : 'إضافة محاضر'}</button>
         </div>
       )}
       <div className="mt-5 border-t pt-4 grid grid-cols-1 xl:grid-cols-2 gap-3 max-h-[620px] overflow-auto">
@@ -283,17 +298,17 @@ export function CourseInstructorsPanel({
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">
                 <button
-                  onClick={() => updateTherapist({ ...row, showOnHome: !row.showOnHome })}
+                  onClick={() => void updateTherapist({ ...row, showOnHome: !row.showOnHome })}
                   title="تبديل الظهور في الصفحة الرئيسية"
                   className={`px-2 py-1.5 rounded-lg text-xs font-bold transition ${row.showOnHome ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
                 >🏠</button>
                 <button
-                  onClick={() => updateTherapist({ ...row, showOnAbout: !row.showOnAbout })}
+                  onClick={() => void updateTherapist({ ...row, showOnAbout: !row.showOnAbout })}
                   title="تبديل الظهور في فريق العمل"
                   className={`px-2 py-1.5 rounded-lg text-xs font-bold transition ${row.showOnAbout ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-gray-100 text-gray-400 hover:bg-amber-50 hover:text-amber-600'}`}
                 >ℹ️</button>
                 <button onClick={() => startEditTherapist(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button>
-                <button onClick={() => deleteTherapist(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
+                <button onClick={() => void deleteTherapist(row.id)} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
               </div>
             </div>
 
@@ -319,7 +334,7 @@ export function CourseInstructorsPanel({
             {row.consultationSettings?.enabled && (
               <div className="mt-4 border border-gray-200 rounded-xl bg-white p-3 space-y-2">
                 <p className="text-xs text-gray-500">بوابة المحاضر</p>
-                <p className="text-sm font-bold text-gray-800">{row.consultationSettings.portal.username}</p>
+                <p className="text-sm font-bold text-gray-800">{staffMembers.find(member => member.id === row.staffId)?.name || 'لا يوجد موظف مرتبط'}</p>
                 <p className="text-xs text-gray-500">المواعيد المتاحة: {(row.consultationSettings.availableSlots || []).filter((slot) => slot.isActive).length}</p>
               </div>
             )}

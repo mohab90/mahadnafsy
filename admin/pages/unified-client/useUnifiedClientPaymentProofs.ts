@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
 
 import { mysqlAdmin } from '../../lib/mysqlapi';
-import type { PaymentHistoryEntry, PaymentProof, SubscriberItem } from '../../types';
+import type { PaymentProof, SubscriberItem } from '../../types';
 
 type ReviewAction = 'approve' | 'reject';
 
 type UseUnifiedClientPaymentProofsArgs = {
   isSubscriber: boolean;
   subscriber?: SubscriberItem;
-  updateSubscriber: (subscriber: SubscriberItem) => void;
+  reloadSubscribers: () => Promise<void>;
 };
 
 export function useUnifiedClientPaymentProofs({
   isSubscriber,
   subscriber,
-  updateSubscriber,
+  reloadSubscribers,
 }: UseUnifiedClientPaymentProofsArgs) {
   const [clientProofs, setClientProofs] = useState<PaymentProof[]>([]);
   const [clientProofsLoaded, setClientProofsLoaded] = useState(false);
@@ -56,32 +56,7 @@ export function useUnifiedClientPaymentProofs({
     setReviewLoading(true);
     try {
       await mysqlAdmin.reviewPaymentProof(proofId, action, reviewerNote || undefined);
-
-      if (action === 'approve' && subscriber) {
-        const proof = clientProofs.find(item => item.id === proofId);
-        if (proof) {
-          const payEntry: PaymentHistoryEntry = {
-            id: `proof-${proofId}`,
-            amount: proof.amount,
-            currency: proof.currency,
-            paymentType: 'course',
-            isInstallment: true,
-            courseId: proof.course_id ?? undefined,
-            paymentMethod: proof.payment_method,
-            note: `إيصال معتمد${reviewerNote ? ' | ' + reviewerNote : ''}`,
-            at: new Date().toISOString().slice(0, 10),
-          };
-          const updatedSubscriber = {
-            ...subscriber,
-            paymentHistory: [...(subscriber.paymentHistory ?? []), payEntry],
-          };
-          updateSubscriber(updatedSubscriber);
-          void mysqlAdmin.saveSubscriberPayment(
-            subscriber.id,
-            payEntry as unknown as Record<string, unknown>,
-          ).catch(() => {});
-        }
-      }
+      if (action === 'approve') await reloadSubscribers();
 
       setClientProofs(prev => prev.map(proof => proof.id === proofId
         ? {

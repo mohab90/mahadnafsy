@@ -32,12 +32,14 @@ export function OutstandingPanel({ notify }: { notify: NotifyFn }) {
     setOutstandingLoading(true);
     try {
       const data = await mysqlAdmin.adminGet<{ subscribers: OutstandingSub[]; total_outstanding: number }>(
-        '/api/admin/payments/outstanding'
+        '/admin/payments/outstanding'
       );
       const d = data as { subscribers: OutstandingSub[]; total_outstanding: number };
       setOutstandingSubs(d.subscribers || []);
       setOutstandingTotal(d.total_outstanding || 0);
-    } catch { /* ignore */ } finally { setOutstandingLoading(false); }
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحميل الأرصدة المستحقة');
+    } finally { setOutstandingLoading(false); }
   };
 
   return (
@@ -103,7 +105,7 @@ export function OutstandingPanel({ notify }: { notify: NotifyFn }) {
                   try {
                     const ids = [...outstandingSelected];
                     const res = await mysqlAdmin.adminPost<{ sent: number; failed: number }>(
-                      '/api/admin/payments/send-reminder',
+                      '/admin/payments/send-reminder',
                       { subscriberIds: ids, message: outstandingReminderMsg }
                     );
                     const r = res as { sent: number; failed: number };

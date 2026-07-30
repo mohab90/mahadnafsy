@@ -98,7 +98,12 @@ const Auth: React.FC = () => {
         setLoading(true);
         setNotice(null);
         try {
+            if (!twoFaTempToken) throw new Error('Missing 2FA session');
+            const result = await mysqlAuth.verify2fa(twoFaTempToken, twoFaCode);
+            localStorage.setItem('mahad-token', result.token);
             setTwoFaStep(false);
+            setTwoFaCode('');
+            setTwoFaTempToken('');
             refreshAuth();
         } catch {
             setNotice({ type: 'error', text: 'الرمز غير صحيح أو منتهي الصلاحية.' });
@@ -132,16 +137,27 @@ const Auth: React.FC = () => {
         setNotice(null);
         try {
             if (isLogin) {
-                const result = await mysqlAuth.login(email.trim(), password) as Record<string, unknown>;
-                if (result.requires2fa || result.totpRequired) {
-                    setTwoFaTempToken((result.tempToken || result.pendingToken) as string);
+                const result = await mysqlAuth.login(email.trim(), password);
+                if (result.totpRequired) {
+                    if (!result.pendingToken) throw new Error('Missing 2FA session');
+                    setTwoFaTempToken(result.pendingToken);
                     setTwoFaEmail(email.trim());
                     setTwoFaStep(true);
                     return;
                 }
-                localStorage.setItem('mahad-token', String(result.token || '')); // keep for backward compat with existing sessions
+                if (!result.token) throw new Error('Login did not return a session token');
+                localStorage.setItem('mahad-token', result.token); // keep for backward compat with existing sessions
                 setNotice({ type: 'success', text: 'تم تسجيل الدخول بنجاح.' });
             } else {
+                const result = await mysqlAuth.register({
+                    email: email.trim(),
+                    password,
+                    name: fullName.trim(),
+                    phone: phone.trim(),
+                    country,
+                    interest,
+                });
+                localStorage.setItem('mahad-token', result.token);
                 setNotice({ type: 'success', text: 'تم إنشاء الحساب وتسجيل الدخول.' });
             }
             // Refresh auth state so isAdmin and authUser update immediately
@@ -187,9 +203,9 @@ const Auth: React.FC = () => {
           <form className="space-y-4 animate-fade-in" onSubmit={handleVerify2fa}>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
               <div className="text-3xl mb-2">🔐</div>
-              <p className="text-amber-800 font-bold text-sm">تم إرسال رمز التحقق إلى</p>
+              <p className="text-amber-800 font-bold text-sm">أدخل الرمز من تطبيق المصادقة</p>
               <p className="text-amber-700 font-mono text-sm mt-1">{twoFaEmail}</p>
-              <p className="text-xs text-gray-500 mt-1">هذا الحساب محمي بالتحقق الثنائي — تحقق من بريدك</p>
+              <p className="text-xs text-gray-500 mt-1">هذا الحساب محمي بالتحقق الثنائي — افتح Google Authenticator أو تطبيق المصادقة المسجل</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">رمز التحقق (6 أرقام)</label>

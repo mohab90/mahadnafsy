@@ -10,6 +10,7 @@ const { safeDateOnly, monthRange } = require('../lib/dates');
 const { sanitize } = require('../lib/helpers');
 const { isBranch, normalizeBranch } = require('../constants/branches');
 const { logFinancialAudit } = require('../lib/finance');
+const { resolveFinancialScope } = require('../lib/financialScope');
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ router.post('/api/waitlist', publicLimiter, async (req, res) => {
 });
 
 // Admin: list waitlist
-router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), async (req, res) => {
   try {
     const branch = req.query.branch || '';
     const status = req.query.status || '';
@@ -52,7 +53,7 @@ router.get('/api/admin/waitlist', requireAuth, requireAdminOrStaff, async (req, 
 });
 
 // Admin: update waitlist entry status
-router.patch('/api/admin/waitlist/:id', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.patch('/api/admin/waitlist/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes } = req.body || {};
@@ -78,26 +79,54 @@ router.get('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, re
   try {
     const [rows] = await pool.query('SELECT * FROM accounting_periods WHERE tenant_id=? ORDER BY opened_at DESC LIMIT 100', [req.tenantId]);
     res.json(rows);
-  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[periods]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 router.post('/api/admin/accounting-periods', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
+    const scope = resolveFinancialScope(req);
+    if (scope.kind !== 'all' || scope.branchId) {
+      return res.status(403).json({ error: 'Accounting period changes require central financial scope' });
+    }
     // Ensure no other open period exists
-    const [[existing]] = await pool.query("SELECT id FROM accounting_periods WHERE tenant_id=? AND status='open' LIMIT 1", [req.tenantId]);
-    if (existing) return res.status(409).json({ error: 'يوجد فترة مفتوحة بالفعل. أغلقها أولاً.' });
     const label = req.body.label || new Date().toISOString().slice(0, 7); // YYYY-MM
-    const { uuidv4 } = require('../lib/id');
+    if (!monthRange(label)) return res.status(400).json({ error: 'Period label must use YYYY-MM' });
     const id = uuidv4();
-    await pool.query(
+    await conn.beginTransaction();
+    transactionStarted = true;
+    const [[existing]] = await conn.query(
+      "SELECT id FROM accounting_periods WHERE tenant_id=? AND status='open' LIMIT 1 FOR UPDATE",
+      [req.tenantId],
+    );
+    if (existing) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({ error: 'يوجد فترة مفتوحة بالفعل. أغلقها أولاً.' });
+    }
+    await conn.query(
       `INSERT INTO accounting_periods (id, tenant_id, period_label, status) VALUES (?, ?, ?, 'open')`,
       [id, req.tenantId, label]
     );
+    await logFinancialAudit({
+      entityType: 'period', entityId: id, action: 'create',
+      newData: { period_label: label, status: 'open' },
+      actor: req.user?.email || req.user?.name || 'admin',
+      tenantId: req.tenantId, db: conn, strict: true,
+    });
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true, id });
   } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
     if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'يوجد تعارض مع فترة مفتوحة أو مكررة' });
-    logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' });
-  }
+    logger.error('[periods]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  } finally { conn.release(); }
 });
 
 router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
@@ -105,6 +134,10 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
   let transactionStarted = false;
   try {
     const { id } = req.params;
+    const scope = resolveFinancialScope(req);
+    if (scope.kind !== 'all' || scope.branchId) {
+      return res.status(403).json({ error: 'Accounting period closing requires central financial scope' });
+    }
     const actor = req.user?.email || req.user?.name || 'admin';
     await conn.beginTransaction();
     transactionStarted = true;
@@ -118,6 +151,27 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: 'Already closed' });
     }
+    const [[closeRequest]] = await conn.query(
+      `SELECT id,requested_by,reviewed_by FROM accounting_close_requests
+        WHERE tenant_id=? AND period_id=? AND status='approved'
+        ORDER BY reviewed_at DESC LIMIT 1 FOR UPDATE`,
+      [req.tenantId, period.id]
+    );
+    if (!closeRequest) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({
+        error: 'An approved close request is required before closing the period',
+        code: 'PERIOD_CLOSE_APPROVAL_REQUIRED',
+      });
+    }
+    const closeActor = String(req.staffRecord?.id || actor);
+    if ([closeRequest.requested_by, closeRequest.reviewed_by].map(String).includes(closeActor)) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(409).json({
+        error: 'The close requester or reviewer cannot execute the final close',
+        code: 'PERIOD_CLOSE_SOD',
+      });
+    }
     // Pure, tested half-open range [startDate, endDate) — no DB round-trip.
     const range = monthRange(period.period_label);
     if (!range) {
@@ -125,49 +179,148 @@ router.post('/api/admin/accounting-periods/:id/close', requireAuth, requireAdmin
       return res.status(400).json({ error: 'تنسيق الفترة غير صالح (متوقع YYYY-MM)' });
     }
     const { startDate, endDate } = range;
-    // Snapshot revenue by the payment's BUSINESS date (`date`), not `created_at`.
-    // A payment collected in month M but entered later must fall in M's period.
-    // `date` is also indexed (idx_payments_date) whereas created_at is not.
-    const [pmts] = await conn.query(
-      `SELECT SUM(amount) AS total, currency, COUNT(*) AS count
-       FROM payments WHERE tenant_id=? AND status='paid'
-         AND \`date\` >= ? AND \`date\` < ?
-       GROUP BY currency`,
+    const [[integrity]] = await conn.query(
+      `SELECT
+         (SELECT COUNT(*) FROM payments p
+           WHERE p.tenant_id=? AND p.status='paid' AND p.deleted_at IS NULL
+             AND p.date>=? AND p.date<?
+             AND NOT EXISTS (
+               SELECT 1 FROM journal_entries je
+                WHERE je.tenant_id=p.tenant_id AND je.ref_type='payment' AND je.ref_id=p.id
+             )) AS paid_without_journal,
+         (SELECT COUNT(*) FROM (
+            SELECT je.id
+              FROM journal_entries je
+              JOIN journal_entry_lines jel ON jel.entry_id=je.id
+             WHERE je.tenant_id=? AND je.entry_date>=? AND je.entry_date<?
+             GROUP BY je.id,je.total_debit,je.total_credit
+            HAVING ABS(SUM(jel.debit)-SUM(jel.credit))>=0.01
+                OR ABS(je.total_debit-je.total_credit)>=0.01
+          ) broken) AS unbalanced_journals,
+         (SELECT COUNT(*) FROM expenses e
+           WHERE e.tenant_id=? AND e.deleted_at IS NULL
+             AND e.date>=? AND e.date<?
+             AND NOT EXISTS (
+               SELECT 1 FROM journal_entries je
+                WHERE je.tenant_id=e.tenant_id AND je.ref_type='expense' AND je.ref_id=e.id
+             )) AS expenses_without_journal,
+         (SELECT COUNT(*) FROM payments p
+           WHERE p.tenant_id=? AND p.status='refunded' AND p.deleted_at IS NULL
+             AND p.date>=? AND p.date<?
+             AND NOT EXISTS (
+               SELECT 1 FROM journal_entries je
+                WHERE je.tenant_id=p.tenant_id AND je.ref_type='refund' AND je.ref_id=p.id
+             )) AS refunds_without_journal,
+         (SELECT COUNT(*) FROM payroll_runs pr
+           WHERE pr.tenant_id=? AND pr.status='PAID'
+             AND pr.year=? AND pr.month=?
+             AND NOT EXISTS (
+               SELECT 1 FROM journal_entries je
+                WHERE je.tenant_id=pr.tenant_id AND je.ref_type='payroll' AND je.ref_id=pr.id
+             )) AS payroll_without_journal,
+         (SELECT COUNT(*) FROM payments p
+           WHERE p.tenant_id=? AND p.status='pending' AND p.deleted_at IS NULL
+             AND p.date>=? AND p.date<?) AS pending_payments,
+         (SELECT COUNT(*) FROM finance_outbox fo
+           WHERE fo.tenant_id=? AND fo.status IN ('failed','dead')) AS failed_finance_events`,
+      [
+        req.tenantId, startDate, endDate,
+        req.tenantId, startDate, endDate,
+        req.tenantId, startDate, endDate,
+        req.tenantId, startDate, endDate,
+        req.tenantId, Number(period.period_label.slice(0, 4)), Number(period.period_label.slice(5, 7)),
+        req.tenantId, startDate, endDate,
+        req.tenantId,
+      ]
+    );
+    const integrityFailures = Object.fromEntries(
+      Object.entries(integrity).filter(([, value]) => Number(value) > 0)
+    );
+    if (Object.keys(integrityFailures).length) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        error: 'Period cannot close while financial reconciliation has critical errors',
+        integrity: integrityFailures,
+      });
+    }
+    const [ledgerSummary] = await conn.query(
+      `SELECT LEFT(jel.account_code,1) AS account_class,
+              SUM(jel.debit) AS debit, SUM(jel.credit) AS credit, COUNT(DISTINCT je.id) AS entries
+         FROM journal_entries je
+         JOIN journal_entry_lines jel ON jel.entry_id=je.id
+        WHERE je.tenant_id=? AND je.entry_date>=? AND je.entry_date<?
+        GROUP BY LEFT(jel.account_code,1)
+        ORDER BY account_class`,
       [req.tenantId, startDate, endDate]
     );
-    const [exps] = await conn.query(
-      `SELECT SUM(amount) AS total, currency FROM expenses
-       WHERE tenant_id=? AND deleted_at IS NULL AND date >= ? AND date < ?
-       GROUP BY currency`,
-      [req.tenantId, startDate, endDate]
-    ).catch(() => [[]]);
-    const summary = { revenues: pmts, expenses: exps, closedBy: actor, closedAt: new Date().toISOString() };
+    const summary = {
+      ledger: ledgerSummary,
+      integrity,
+      closedBy: actor,
+      closedAt: new Date().toISOString(),
+    };
     await conn.query(
       `UPDATE accounting_periods SET status='closed', closed_at=NOW(), closed_by=?, summary_json=? WHERE tenant_id=? AND id=?`,
       [actor, JSON.stringify(summary), req.tenantId, id]
     );
+    await conn.query(
+      `UPDATE accounting_close_requests
+          SET status='consumed',consumed_at=NOW()
+        WHERE id=? AND tenant_id=? AND status='approved'`,
+      [closeRequest.id, req.tenantId]
+    );
+    await logFinancialAudit({
+      entityType: 'period', entityId: id, action: 'close',
+      newData: { period_label: period.period_label }, actor, tenantId: req.tenantId,
+      db: conn, strict: true,
+    });
     await conn.commit();
     transactionStarted = false;
-    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'close', newData: { period_label: period.period_label }, actor, tenantId: req.tenantId });
     res.json({ ok: true, summary });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[periods]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   } finally { conn.release(); }
 });
 
-router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.post('/api/admin/accounting-periods/:id/reopen', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
     const { id } = req.params;
+    const scope = resolveFinancialScope(req);
+    if (scope.kind !== 'all' || scope.branchId) {
+      return res.status(403).json({ error: 'Accounting period reopening requires central financial scope' });
+    }
     const actor = req.user?.email || req.user?.name || 'admin';
-    const [result] = await pool.query(
-      `UPDATE accounting_periods SET status='open', closed_at=NULL, closed_by=NULL WHERE tenant_id=? AND id=?`,
+    const reason = sanitize(req.body?.reason || '', 500);
+    if (!reason) return res.status(400).json({ error: 'A reason is required to reopen a closed period' });
+    await conn.beginTransaction();
+    transactionStarted = true;
+    const [result] = await conn.query(
+      `UPDATE accounting_periods SET status='open', closed_at=NULL, closed_by=NULL
+        WHERE tenant_id=? AND id=? AND status='closed'`,
       [req.tenantId, id]
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'Period not found' });
-    await logFinancialAudit({ entityType: 'period', entityId: id, action: 'reopen', actor, tenantId: req.tenantId });
+    if (!result.affectedRows) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Period not found' });
+    }
+    await logFinancialAudit({
+      entityType: 'period', entityId: id, action: 'reopen',
+      newData: { reason }, actor, tenantId: req.tenantId, db: conn, strict: true,
+    });
+    await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true });
-  } catch (e) { logger.error('[periods]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    if (transactionStarted) await conn.rollback().catch(() => {});
+    logger.error('[periods]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  } finally { conn.release(); }
 });
 
 

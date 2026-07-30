@@ -13,7 +13,7 @@ interface UseLeadRemindersDataArgs {
   leads: LeadItem[];
   reminderStaffFilter: string;
   snoozeIds: Set<string>;
-  updateLead: (lead: LeadItem) => void | Promise<void>;
+  updateLead: (lead: LeadItem) => void | Promise<boolean>;
   setSnoozeIds: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
@@ -69,24 +69,24 @@ export function useLeadRemindersData({
     };
   }, [leads, next7, reminderStaffFilter, snoozeIds, todayStr]);
 
-  const snooze1Day = useCallback((lead: LeadItem) => {
+  const snooze1Day = useCallback(async (lead: LeadItem) => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    updateLead({ ...lead, nextFollowUpDate: tomorrow });
+    if (await updateLead({ ...lead, nextFollowUpDate: tomorrow }) === false) return;
     setSnoozeIds(current => new Set([...current, lead.id]));
   }, [setSnoozeIds, updateLead]);
 
-  const markDone = useCallback((lead: LeadItem) => {
+  const markDone = useCallback(async (lead: LeadItem) => {
     const rec: CommunicationRecord = {
       id: `rem-${Date.now()}`,
       type: 'note',
       date: new Date().toISOString().slice(0, 16).replace('T', ' '),
       notes: '✅ تم إنجاز المتابعة',
     };
-    updateLead({
+    if (await updateLead({
       ...lead,
       communications: [...(lead.communications || []), rec],
       nextFollowUpDate: undefined,
-    });
+    }) === false) return;
     setSnoozeIds(current => new Set([...current, lead.id]));
   }, [setSnoozeIds, updateLead]);
 

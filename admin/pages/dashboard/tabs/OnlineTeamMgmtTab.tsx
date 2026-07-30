@@ -8,6 +8,7 @@ const ROLE_LABEL: Record<string, string> = {
   online_manager: 'مدير أونلاين', sales: 'سيلز', collection: 'تحصيل',
   support: 'خدمة عملاء', consultant: 'استشاري', lecturer: 'محاضر',
 };
+const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(String(branch || '').toUpperCase());
 
 function getLast6Months() {
   const ms: string[] = [];
@@ -20,7 +21,9 @@ function getLast6Months() {
 
 export default function OnlineTeamMgmtTab() {
   const { staffMembers, subscribers, leads, courses } = useSiteData();
-  const months = getLast6Months();
+  const months = useMemo(getLast6Months, []);
+  const onlineSubscribers = useMemo(() => subscribers.filter(subscriber => isOnlineBranch(subscriber.branch)), [subscribers]);
+  const onlineLeads = useMemo(() => leads.filter(lead => isOnlineBranch(lead.branch)), [leads]);
 
   const onlineTeam = useMemo(() =>
     staffMembers.filter(s => s.status === 'active' &&
@@ -32,26 +35,26 @@ export default function OnlineTeamMgmtTab() {
   const monthlyData = useMemo(() =>
     months.map(m => ({
       month: m.slice(5),
-      مشتركين: subscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
-      ليدات: leads.filter(l => (l.createdAt || '').slice(0, 7) === m).length,
+      مشتركين: onlineSubscribers.filter(s => (s.createdAt || '').slice(0, 7) === m).length,
+      ليدات: onlineLeads.filter(l => (l.createdAt || '').slice(0, 7) === m).length,
     })),
-    [subscribers, leads, months]
+    [onlineSubscribers, onlineLeads, months]
   );
 
-  const activeSubs = useMemo(() => subscribers.filter(s =>
-    !['finished','paused','refunded','leads'].includes(s.clientStatus || '')), [subscribers]);
+  const activeSubs = useMemo(() => onlineSubscribers.filter(s =>
+    !['finished','paused','refunded','leads'].includes(s.clientStatus || '')), [onlineSubscribers]);
 
   const totalCourses = courses.length;
-  const totalSubs = subscribers.length;
+  const totalSubs = onlineSubscribers.length;
 
   // Team workload - consultations assigned
   const teamStats = useMemo(() => onlineTeam.map(s => {
-    const mySubs = subscribers.filter(sub =>
-      sub.assignedStaffId === s.id || sub.consultantId === s.id
+    const mySubs = onlineSubscribers.filter(sub =>
+      sub.assignedStaffId === s.id || sub.assignedCsId === s.id || sub.consultantId === s.id
     );
-    const myLeads = leads.filter(l => l.assignedSalesId === s.id);
+    const myLeads = onlineLeads.filter(l => l.assignedSalesId === s.id);
     return { ...s, subsCount: mySubs.length, leadsCount: myLeads.length };
-  }), [onlineTeam, subscribers, leads]);
+  }), [onlineTeam, onlineSubscribers, onlineLeads]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -64,16 +67,16 @@ export default function OnlineTeamMgmtTab() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'فريق الأونلاين', val: onlineTeam.length, icon: Users, color: 'cyan' },
-          { label: 'إجمالي المشتركين', val: totalSubs, icon: BookOpen, color: 'blue' },
-          { label: 'المشتركون النشطون', val: activeSubs.length, icon: CheckCircle, color: 'emerald' },
-          { label: 'الكورسات المتاحة', val: totalCourses, icon: Video, color: 'violet' },
+          { label: 'فريق الأونلاين', val: onlineTeam.length, icon: Users, card: 'bg-cyan-50 border-cyan-100', badge: 'bg-cyan-100', iconClass: 'text-cyan-600' },
+          { label: 'إجمالي المشتركين', val: totalSubs, icon: BookOpen, card: 'bg-blue-50 border-blue-100', badge: 'bg-blue-100', iconClass: 'text-blue-600' },
+          { label: 'المشتركون النشطون', val: activeSubs.length, icon: CheckCircle, card: 'bg-emerald-50 border-emerald-100', badge: 'bg-emerald-100', iconClass: 'text-emerald-600' },
+          { label: 'الكورسات المتاحة', val: totalCourses, icon: Video, card: 'bg-violet-50 border-violet-100', badge: 'bg-violet-100', iconClass: 'text-violet-600' },
         ].map(k => {
           const Icon = k.icon;
           return (
-            <div key={k.label} className={`bg-${k.color}-50 border border-${k.color}-100 rounded-2xl p-4 flex items-center gap-3`}>
-              <div className={`w-10 h-10 rounded-xl bg-${k.color}-100 flex items-center justify-center flex-shrink-0`}>
-                <Icon size={18} className={`text-${k.color}-600`} />
+            <div key={k.label} className={`${k.card} border rounded-2xl p-4 flex items-center gap-3`}>
+              <div className={`w-10 h-10 rounded-xl ${k.badge} flex items-center justify-center flex-shrink-0`}>
+                <Icon size={18} className={k.iconClass} />
               </div>
               <div>
                 <div className="text-xl font-extrabold text-gray-900">{k.val}</div>
@@ -144,7 +147,7 @@ export default function OnlineTeamMgmtTab() {
         <div className="p-4 border-b border-gray-100"><h3 className="font-bold text-gray-800">🎓 الكورسات النشطة</h3></div>
         <div className="divide-y divide-gray-50">
           {courses.filter(c => c.status === 'active' || !c.status).slice(0, 8).map(c => {
-            const enrolledCount = subscribers.filter(s => {
+            const enrolledCount = onlineSubscribers.filter(s => {
               const ids = s.enrolledCourseIds || (s.enrolledCourseId ? [s.enrolledCourseId] : []);
               return ids.includes(c.id);
             }).length;

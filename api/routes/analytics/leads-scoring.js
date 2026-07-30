@@ -5,6 +5,7 @@ const router  = express.Router();
 
 const { pool } = require('../../lib/db');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
+const { leadScope } = require('../../lib/leadAccess');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 const DEFAULT_WEIGHTS = Object.freeze({
@@ -44,19 +45,20 @@ function scoreLead(lead, weights = DEFAULT_WEIGHTS) {
 //   +15 has follow_up_date in future
 //   +10 has at least 1 communication
 //   +5  added within last 14 days (fresh)
-router.get('/api/admin/leads/scoring', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+router.get('/api/admin/leads/scoring', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
-    const ownershipSql = req.staffRecord?.role === 'SALES' ? ' AND l.assigned_sales_id = ?' : '';
-    const params = [req.tenantId, ...(req.staffRecord?.role === 'SALES' ? [req.staffRecord.id] : [])];
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.json([]);
+    const params = [req.tenantId, ...scope.params];
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source, l.branch,
              l.next_follow_up_date AS follow_up_date, l.created_at, l.lead_type,
              l.interest_level, l.enrolled_course_id,
              st.name AS assigned_staff,
-             (SELECT COUNT(*) FROM communications lc WHERE lc.lead_id = l.id) AS comm_count
+             (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS comm_count
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('converted','lost','junk')${ownershipSql}
+      WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('converted','lost','junk')${scope.sql}
       ORDER BY l.created_at DESC LIMIT 1000`, params);
 
     const weights = await getTenantSetting('lead_scoring_config', { tenantId: req.tenantId, fallback: DEFAULT_WEIGHTS });
@@ -104,7 +106,7 @@ router.post('/api/admin/leads/scoring/recalculate', requireAuth, requireAdmin, a
     const [leads] = await pool.query(`
       SELECT l.id, l.phone, l.email, l.status, l.interest_level,
              l.next_follow_up_date AS follow_up_date, l.created_at, l.enrolled_course_id,
-             (SELECT COUNT(*) FROM communications lc WHERE lc.lead_id = l.id) AS comm_count
+             (SELECT COUNT(*) FROM communications lc WHERE lc.tenant_id = l.tenant_id AND lc.lead_id = l.id) AS comm_count
       FROM leads l
       WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('lost','junk')
     `, [req.tenantId]);
@@ -133,9 +135,11 @@ router.post('/api/admin/leads/scoring/recalculate', requireAuth, requireAdmin, a
 });
 
 // GET /api/admin/leads/scoring/leaderboard?limit= — top leads by score
-router.get('/api/admin/leads/scoring/leaderboard', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+router.get('/api/admin/leads/scoring/leaderboard', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     const limit = Math.min(200, parseInt(req.query.limit) || 50);
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.json({ leads: [], total: 0 });
     const [rows] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source, l.branch,
              l.score, l.interest_level, l.next_follow_up_date AS follow_up_date, l.created_at,
@@ -145,10 +149,10 @@ router.get('/api/admin/leads/scoring/leaderboard', requireAuth, requireAdminOrSt
       FROM leads l
       LEFT JOIN courses c ON c.id = l.enrolled_course_id AND c.tenant_id = l.tenant_id
       WHERE l.tenant_id = ? AND l.hidden = 0 AND l.status NOT IN ('lost','junk','converted')
-        ${req.staffRecord?.role === 'SALES' ? 'AND l.assigned_sales_id = ?' : ''}
+        ${scope.sql}
       ORDER BY l.score DESC
       LIMIT ?
-    `, [req.tenantId, ...(req.staffRecord?.role === 'SALES' ? [req.staffRecord.id] : []), limit]);
+    `, [req.tenantId, ...scope.params, limit]);
     const graded = rows.map(r => ({
       ...r,
       grade: r.score >= 70 ? 'A' : r.score >= 50 ? 'B' : r.score >= 30 ? 'C' : 'D'

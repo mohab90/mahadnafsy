@@ -1,47 +1,23 @@
 import { useEffect, useState } from 'react';
 import type { Currency } from '../../types';
+import { mysqlCatalog } from '../../lib/mysqlapi';
 
-/** Currency: respect localStorage override, otherwise auto-detect by country via IP lookup. */
+/** Server-owned location context; customer browsers never choose their own price currency. */
 export function useCurrency() {
   const [currency, setCurrencyState] = useState<Currency>('USD');
 
   useEffect(() => {
-    const stored = localStorage.getItem('mahad-currency') as Currency | null;
-    if (stored && ['EGP', 'SAR', 'USD'].includes(stored)) {
-      setCurrencyState(stored);
-      return;
-    }
-    const countryToCurrency = (country?: string): Currency => {
-      if (country === 'EG') return 'EGP';
-      if (country === 'SA') return 'SAR';
-      return 'USD';
-    };
-    const withTimeout = (url: string, ms = 4000) =>
-      Promise.race([fetch(url), new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), ms))]) as Promise<Response>;
-
-    // Primary: api.country.is
-    withTimeout('https://api.country.is/')
-      .then(r => r.json())
-      .then((d: { country?: string }) => { setCurrencyState(countryToCurrency(d.country)); })
-      .catch(() =>
-        // Fallback 1: ipapi.co
-        withTimeout('https://ipapi.co/json/')
-          .then(r => r.json())
-          .then((d: { country_code?: string }) => { setCurrencyState(countryToCurrency(d.country_code)); })
-          .catch(() =>
-            // Fallback 2: ipinfo.io
-            withTimeout('https://ipinfo.io/json?token=')
-              .then(r => r.json())
-              .then((d: { country?: string }) => { setCurrencyState(countryToCurrency(d.country)); })
-              .catch(() => { setCurrencyState('USD'); })
-          )
-      );
+    localStorage.removeItem('mahad-currency');
+    let cancelled = false;
+    mysqlCatalog.getClientContext()
+      .then(value => { if (!cancelled) setCurrencyState(value.currency); })
+      .catch(() => { /* keep fail-safe USD display; checkout itself fails closed */ });
+    return () => { cancelled = true; };
   }, []);
 
-  const setCurrency = (c: Currency) => {
-    localStorage.setItem('mahad-currency', c);
-    setCurrencyState(c);
-  };
+  // Kept for the existing context contract only. Customer pricing is
+  // server-owned and cannot be overridden from browser UI or stored state.
+  const setCurrency = (_currency: Currency) => {};
 
   return { currency, setCurrency };
 }

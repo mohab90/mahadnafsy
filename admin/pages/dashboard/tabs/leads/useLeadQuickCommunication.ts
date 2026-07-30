@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CommunicationRecord, LeadItem } from '../../../../types';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
 const blankQuickCommunicationDraft = {
   leadSearch: '',
@@ -12,10 +13,10 @@ const blankQuickCommunicationDraft = {
 
 interface UseLeadQuickCommunicationArgs {
   effectiveLeads: LeadItem[];
-  updateLead: (lead: LeadItem) => void | Promise<void>;
+  reloadLeads: () => Promise<void>;
 }
 
-export function useLeadQuickCommunication({ effectiveLeads, updateLead }: UseLeadQuickCommunicationArgs) {
+export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLeadQuickCommunicationArgs) {
   const [showAddComm, setShowAddComm] = useState(false);
   const [addCommDraft, setAddCommDraft] = useState(blankQuickCommunicationDraft);
   const [addCommSearchResults, setAddCommSearchResults] = useState<LeadItem[]>([]);
@@ -42,25 +43,28 @@ export function useLeadQuickCommunication({ effectiveLeads, updateLead }: UseLea
     setAddCommSearchResults([]);
   };
 
-  const saveQuickCommunication = () => {
+  const saveQuickCommunication = async () => {
     const lead = effectiveLeads.find((item) => item.id === addCommDraft.selectedLeadId);
     if (!lead || !addCommDraft.notes.trim()) return;
-    const rec: CommunicationRecord = {
-      id: `comm-${Date.now()}`,
+    try {
+      await mysqlAdmin.addLeadInteraction(lead.id, {
       type: addCommDraft.type,
       date: new Date().toISOString().slice(0, 16).replace('T', ' '),
       notes: addCommDraft.notes.trim(),
       outcome: addCommDraft.outcome.trim() || undefined,
       nextFollowUp: addCommDraft.nextFollowUp || undefined,
-    };
-    updateLead({
-      ...lead,
-      communications: [...(lead.communications || []), rec],
-      nextFollowUpDate: addCommDraft.nextFollowUp || lead.nextFollowUpDate,
-      status: lead.status === 'new' ? 'contacted' : lead.status,
-    });
-    resetQuickCommunication();
-    setShowAddComm(false);
+      });
+      await reloadLeads();
+      resetQuickCommunication();
+      setShowAddComm(false);
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: {
+          field: 'lead-interaction',
+          name: error instanceof Error ? error.message : lead.id,
+        },
+      }));
+    }
   };
 
   return {

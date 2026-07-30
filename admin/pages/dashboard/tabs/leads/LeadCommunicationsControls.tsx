@@ -19,6 +19,8 @@ interface LeadCommunicationsControlsProps {
   setCommFilter: React.Dispatch<React.SetStateAction<LeadCommunicationFilter>>;
   salesReps: StaffMember[];
   isSalesOnly: boolean;
+  canManageLeads: boolean;
+  canExportLeads: boolean;
   showAddComm: boolean;
   setShowAddComm: React.Dispatch<React.SetStateAction<boolean>>;
   addCommDraft: QuickCommunicationDraft;
@@ -37,6 +39,8 @@ export function LeadCommunicationsControls({
   setCommFilter,
   salesReps,
   isSalesOnly,
+  canManageLeads,
+  canExportLeads,
   showAddComm,
   setShowAddComm,
   addCommDraft,
@@ -56,14 +60,14 @@ export function LeadCommunicationsControls({
             <span className="text-xs font-normal text-gray-400">({filteredCount} من {totalCount})</span>
           </h3>
           <div className="flex gap-2">
-            <button onClick={() => setShowAddComm(v => !v)}
+            {canManageLeads && <button onClick={() => setShowAddComm(v => !v)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition">
               <Plus size={13} /> تسجيل تواصل
-            </button>
-            <button onClick={exportCommsCsv}
+            </button>}
+            {canExportLeads && <button onClick={exportCommsCsv}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">
               <Download size={13} /> تصدير
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -103,7 +107,7 @@ export function LeadCommunicationsControls({
         </div>
       </div>
 
-      {showAddComm && (
+      {canManageLeads && showAddComm && (
         <div className="bg-white border border-primary-200 rounded-2xl p-4 shadow-sm space-y-3">
           <h4 className="font-bold text-primary-700 text-sm flex items-center gap-2">
             <Plus size={14} /> تسجيل تواصل جديد

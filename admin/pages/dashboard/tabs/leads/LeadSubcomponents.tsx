@@ -4,7 +4,7 @@ import {
   Clock, ExternalLink, 
   Inbox, Link2, MapPin, MessageCircle, MessageSquare, 
   Phone, Plus, Tag, 
-  Upload, UserPlus, Wallet, X,
+  UserPlus, Wallet, X,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type {
@@ -341,58 +341,6 @@ export function BulkWhatsAppModal({ selectedLeads, onClose, notify }: {
   );
 }
 
-// ── CSV Import Button ─────────────────────────────────────────────────────────
-export function CsvImportButton({ notify, onImported }: { notify: NotifyFn; onImported: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLoading(true);
-    try {
-      const text = await file.text();
-      // Parse CSV — first line is header
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) throw new Error('الملف فارغ أو لا يحتوي بيانات');
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
-      const leads = lines.slice(1).map(line => {
-        const vals = line.split(',').map(v => v.trim().replace(/^["']|["']$/g, ''));
-        const row: Record<string, string> = {};
-        headers.forEach((h, i) => { row[h] = vals[i] || ''; });
-        return {
-          name: row['name'] || row['الاسم'] || row['اسم'] || '',
-          phone: row['phone'] || row['هاتف'] || row['رقم الهاتف'] || row['mobile'] || '',
-          email: row['email'] || row['بريد'] || '',
-          source: row['source'] || row['المصدر'] || 'استيراد CSV',
-          notes: row['notes'] || row['ملاحظات'] || '',
-        };
-      }).filter(l => l.name && l.phone);
-
-      if (leads.length === 0) throw new Error('لم يتم العثور على أعمدة name/phone');
-      const r = await mysqlAdmin.importLeads(leads);
-      notify('success', `تم استيراد ${r.imported} ليد · تخطي: ${r.skipped}`);
-      onImported();
-    } catch (err) {
-      notify('error', err instanceof Error ? err.message : 'فشل الاستيراد');
-    } finally {
-      setLoading(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  };
-
-  return (
-    <>
-      <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFile} />
-      <button onClick={() => inputRef.current?.click()} disabled={loading}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition disabled:opacity-60">
-        {loading ? <span className="w-4 h-4 border-2 border-indigo-400 border-t-indigo-700 rounded-full animate-spin" /> : <Upload size={15} />}
-        استيراد CSV
-      </button>
-    </>
-  );
-}
-
 // ── WhatsApp Per-Rep Modal ───────────────────────────────────────────────────
 export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
   rep: { id: string; name: string };
@@ -400,10 +348,6 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
   onClose: () => void;
   notify: NotifyFn;
 }) {
-  const storageKey = `wa_rep_${rep.id}`;
-  const stored = useMemo(() => { try { return JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch { return {}; } }, [storageKey]);
-  const [instanceId, setInstanceId] = useState<string>(stored.instanceId || '');
-  const [apiToken, setApiToken] = useState<string>(stored.apiToken || '');
   const [view, setView] = useState<'setup' | 'inbox' | 'send'>('setup');
   const [chats, setChats] = useState<Array<{ id: string; name?: string; lastMessage?: { textMessage?: string } }>>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -413,19 +357,19 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
   const [sendPhone, setSendPhone] = useState('');
   const [sendMsg, setSendMsg] = useState('');
   const [sending, setSending] = useState(false);
-  const [saved, setSaved] = useState(!!stored.instanceId);
+  const [saved, setSaved] = useState(false);
 
-  const saveCredentials = () => {
-    localStorage.setItem(storageKey, JSON.stringify({ instanceId, apiToken }));
-    setSaved(true);
-    notify('success', `تم حفظ بيانات واتساب لـ ${rep.name}`);
-  };
+  useEffect(() => {
+    mysqlAdmin.getWhatsAppConfig()
+      .then((cfg) => setSaved(cfg.provider === 'green-api' ? !!(cfg.instanceId && cfg.hasToken) : !!(cfg.metaPhoneId && cfg.hasMetaToken)))
+      .catch(() => setSaved(false));
+  }, []);
 
   const loadChats = async () => {
-    if (!instanceId || !apiToken) { notify('error', 'أدخل بيانات الاتصال أولاً'); return; }
+    if (!saved) { notify('error', 'يجب إعداد واتساب مركزيًا أولاً'); return; }
     setChatLoading(true);
     try {
-      const data = await mysqlAdmin.waProxyChats(instanceId, apiToken);
+      const data = await mysqlAdmin.waProxyChats();
       setChats(Array.isArray(data) ? (data as typeof chats).slice(0, 40) : []);
     } catch { notify('error', 'فشل — تأكد من صحة بيانات الاتصال'); }
     finally { setChatLoading(false); }
@@ -434,7 +378,7 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
   const loadHistory = async (chatId: string) => {
     setHistLoading(true);
     try {
-      const data = await mysqlAdmin.waProxyChatHistory(instanceId, apiToken, chatId, 30);
+      const data = await mysqlAdmin.waProxyChatHistory(chatId, 30);
       setHistory(Array.isArray(data) ? (data as typeof history) : []);
       setSelectedChatId(chatId);
     } catch { notify('error', 'فشل تحميل الرسائل'); }
@@ -443,10 +387,10 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
 
   const handleSend = async () => {
     if (!sendPhone.trim() || !sendMsg.trim()) return;
-    if (!instanceId || !apiToken) { notify('error', 'أدخل بيانات الاتصال أولاً'); return; }
+    if (!saved) { notify('error', 'يجب إعداد واتساب مركزيًا أولاً'); return; }
     setSending(true);
     try {
-      await mysqlAdmin.waProxySend(instanceId, apiToken, sendPhone.trim(), sendMsg.trim());
+      await mysqlAdmin.waProxySend(sendPhone.trim(), sendMsg.trim());
       notify('success', 'تم إرسال الرسالة بنجاح');
       setSendMsg('');
     } catch (e) { notify('error', e instanceof Error ? e.message : 'فشل الإرسال'); }
@@ -495,36 +439,14 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
           {view === 'setup' && (
             <div className="p-5 space-y-4 overflow-y-auto">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <p className="text-xs font-bold text-amber-800 mb-2">📱 كيفية الإعداد:</p>
-                <ol className="list-decimal list-inside space-y-1 text-xs text-amber-700">
-                  <li>اذهب إلى <strong>green-api.com</strong> — أنشئ Instance مجاني واربطه بهاتفك</li>
-                  <li>انسخ <strong>Instance ID</strong> و<strong>API Token</strong> من لوحة التحكم</li>
-                  <li>الصقهما هنا واضغط حفظ ✅</li>
-                </ol>
+                <p className="text-xs font-bold text-amber-800 mb-2">🔐 إعداد مركزي آمن</p>
+                <p className="text-xs text-amber-700">بيانات الاتصال تُدار من إعدادات الأتمتة ولا تُحفظ داخل المتصفح أو حساب الموظف.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-gray-600 mb-1 block">معرّف الجهاز (Instance ID)</label>
-                  <input value={instanceId} onChange={e => setInstanceId(e.target.value)}
-                    placeholder="1234567890" dir="ltr"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-600 mb-1 block">API Token</label>
-                  <input value={apiToken} onChange={e => setApiToken(e.target.value)}
-                    type="password" placeholder="••••••••••" dir="ltr"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono" />
-                </div>
-              </div>
-              <button onClick={saveCredentials}
-                className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center justify-center gap-2">
-                <Link2 size={16} /> {saved ? '✓ تحديث بيانات الاتصال' : 'ربط الواتساب'}
-              </button>
-              {saved && (
-                <p className="text-center text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
-                  ✅ الواتساب مربوط — استخدم تبويبي الإرسال والبريد الوارد
-                </p>
-              )}
+              <p className={`text-center text-xs px-3 py-2 rounded-xl border ${saved
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                : 'text-red-700 bg-red-50 border-red-200'}`}>
+                {saved ? '✅ بيانات الاتصال موجودة على السيرفر' : '❌ واتساب غير مُعدّ؛ أكمل الإعداد المركزي أولًا'}
+              </p>
             </div>
           )}
 
@@ -671,7 +593,7 @@ export function getScoreBreakdown(lead: LeadItem) {
     new: 5, contacted: 15, interested: 35, no_answer: 8, not_interested: 0, closed: 50, converted: 100, lost: 0,
   };
   const ilScore = lead.interestLevel === 'high' ? 30 : lead.interestLevel === 'medium' ? 15 : 5;
-  const commScore = Math.min((lead.communications?.length || 0) * 5, 25);
+  const commScore = Math.min((lead.communicationCount ?? lead.communications?.length ?? 0) * 5, 25);
   return [
     { label: 'حالة الليد',       pts: statusScore[lead.status] ?? 0, max: 50 },
     { label: 'مستوى الاهتمام',  pts: ilScore, max: 30, tip: lead.interestLevel !== 'high' ? `ارفع لـ عالي +${30 - ilScore}` : '' },
@@ -1054,13 +976,14 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
 }
 
 // ── Lead Card ─────────────────────────────────────────────────────────────────
-export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onContact, instituteBranches, courses, bundles }: {
+export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onContact, canManageLeads, instituteBranches, courses, bundles }: {
   lead: LeadItem;
   score: number;
   onSelect: () => void;
   onStatusChange: (status: LeadStatus) => void;
   onBook?: (lead: LeadItem) => void;
   onContact?: (lead: LeadItem) => void;
+  canManageLeads: boolean;
   instituteBranches: { id: string; label: string }[];
   courses: Course[];
   bundles: Bundle[];
@@ -1191,9 +1114,9 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
 
       {/* Meta row: comms count + source + date */}
       <div className="flex items-center gap-1.5 mb-2 text-[9px] text-gray-400">
-        {(lead.communications?.length || 0) > 0 && (
+        {(lead.communicationCount ?? lead.communications?.length ?? 0) > 0 && (
           <span className="bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded-full">
-            {lead.communications!.length} تواصل
+            {lead.communicationCount ?? lead.communications?.length ?? 0} تواصل
           </span>
         )}
         {lead.source && (
@@ -1208,29 +1131,31 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
 
       {/* Actions */}
       <div className="space-y-1" onClick={e => e.stopPropagation()}>
-        <select
-          value={lead.status}
-          onChange={e => onStatusChange(e.target.value as LeadStatus)}
-          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-gray-50">
-          {(Object.keys(STATUS_CFG) as LeadStatus[]).filter(s => s !== 'converted').map(s => (
-            <option key={s} value={s}>{STATUS_CFG[s].label}</option>
-          ))}
-        </select>
+        {canManageLeads && (
+          <select
+            value={lead.status}
+            onChange={e => onStatusChange(e.target.value as LeadStatus)}
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-gray-50">
+            {(Object.keys(STATUS_CFG) as LeadStatus[]).filter(s => s !== 'converted').map(s => (
+              <option key={s} value={s}>{STATUS_CFG[s].label}</option>
+            ))}
+          </select>
+        )}
         <div className="grid grid-cols-4 gap-0.5">
           <a href={waPhone} target="_blank" rel="noreferrer" title="واتساب"
             className="h-7 rounded-lg bg-gray-50 text-gray-400 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
           </a>
-          <button
+          {canManageLeads && <button
             onClick={e => { e.stopPropagation(); if (onContact) onContact(lead); else window.location.href = `tel:${lead.phone}`; }}
             title="تسجيل اتصال"
             className="h-7 rounded-lg bg-gray-50 text-gray-400 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition">
             <Phone size={13}/>
-          </button>
-          <button onClick={onSelect} title="تعديل / تفاصيل"
+          </button>}
+          {canManageLeads && <button onClick={onSelect} title="تعديل / تفاصيل"
             className="h-7 rounded-lg bg-gray-50 text-gray-500 hover:bg-primary-50 hover:text-primary-600 flex items-center justify-center transition">
             <ExternalLink size={11}/>
-          </button>
+          </button>}
           {onBook && (
             <button onClick={() => onBook(lead)} title="حجز ودفع"
               className="h-7 rounded-lg bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition">
@@ -1332,11 +1257,6 @@ export const formatWaPhone = (p: string) => {
   if (d.startsWith('0')) return '2' + d;
   if (d.startsWith('2') || d.startsWith('9') || d.startsWith('1')) return d;
   return d;
-};
-
-export const normBranchId = (v: string | null | undefined): string => {
-  if (!v) return '';
-  return v.toUpperCase().replace(/[-\s]/g, '_');
 };
 
 export const mkPromoCode = (name: string) =>

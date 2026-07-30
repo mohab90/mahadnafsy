@@ -1,55 +1,21 @@
 import React from 'react';
 import { CalendarDays } from 'lucide-react';
-import type { Course, InstallmentEntry, InstallmentPlan, SubscriberItem } from '../../../../types';
+import type { SubscriberItem } from '../../../../types';
 import { InstallmentActions } from './InstallmentActions';
 import { InstallmentPlansList } from './InstallmentPlansList';
-import { InstallmentPlanModal, type InstallmentPlanDraft } from './InstallmentPlanModal';
-import { InstallmentPaymentModal, type PayingInstallmentEntry } from './InstallmentPaymentModal';
-
-type NewEntryDraft = { dueDate: string; amount: number; note: string };
 
 interface Props {
   subscribersWithPlans: SubscriberItem[];
-  subscribers: SubscriberItem[];
-  courses: Course[];
   today: string;
   toEGP: (amount: number, currency: string) => number;
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
-  isNewPlanOpen: boolean;
-  setIsNewPlanOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  newPlanSubId: string;
-  setNewPlanSubId: React.Dispatch<React.SetStateAction<string>>;
-  newPlanDraft: InstallmentPlanDraft;
-  setNewPlanDraft: React.Dispatch<React.SetStateAction<InstallmentPlanDraft>>;
-  newEntry: NewEntryDraft;
-  setNewEntry: React.Dispatch<React.SetStateAction<NewEntryDraft>>;
-  payingEntry: PayingInstallmentEntry | null;
-  setPayingEntry: React.Dispatch<React.SetStateAction<PayingInstallmentEntry | null>>;
-  paymentMethods: string[];
-  handleSaveInstallmentPlan: () => void;
-  handleConfirmInstallmentPayment: (sub: SubscriberItem, plan: InstallmentPlan, entry: InstallmentEntry) => void;
 }
 
 export function FinancialInstallmentsPanel({
   subscribersWithPlans,
-  subscribers,
-  courses,
   today,
   toEGP,
   exportCSV,
-  isNewPlanOpen,
-  setIsNewPlanOpen,
-  newPlanSubId,
-  setNewPlanSubId,
-  newPlanDraft,
-  setNewPlanDraft,
-  newEntry,
-  setNewEntry,
-  payingEntry,
-  setPayingEntry,
-  paymentMethods,
-  handleSaveInstallmentPlan,
-  handleConfirmInstallmentPayment,
 }: Props) {
   const allPlanEntries = subscribersWithPlans.flatMap(s =>
     (s.installmentPlans || []).flatMap(plan =>
@@ -61,6 +27,9 @@ export function FinancialInstallmentsPanel({
   const totalOverdue = overdueEntries.reduce((sum, e) => sum + toEGP(e.amount, e.currency), 0);
   return (
   <div className="space-y-4">
+    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      إنشاء خطط الأقساط وتسجيل دفعاتها موقوفان مؤقتًا لحين اعتماد نموذج الدفع. البيانات القديمة متاحة للقراءة والتصدير فقط.
+    </div>
     {/* Summary */}
     <div className="grid grid-cols-3 gap-4">
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
@@ -84,7 +53,6 @@ export function FinancialInstallmentsPanel({
     <InstallmentActions
       subscribersWithPlans={subscribersWithPlans}
       exportCSV={exportCSV}
-      onNewPlan={() => { setIsNewPlanOpen(true); setNewPlanSubId(''); setNewPlanDraft({ courseId: '', courseTitle: '', totalAmount: 0, currency: 'EGP', notes: '', entries: [] }); setNewEntry({ dueDate: '', amount: 0, note: '' }); }}
     />
 
     {/* Plans list */}
@@ -97,31 +65,8 @@ export function FinancialInstallmentsPanel({
       <InstallmentPlansList
         subscribersWithPlans={subscribersWithPlans}
         today={today}
-        onPayEntry={setPayingEntry}
       />
     )}
-
-    <InstallmentPlanModal
-      open={isNewPlanOpen}
-      subscribers={subscribers}
-      courses={courses}
-      newPlanSubId={newPlanSubId}
-      setNewPlanSubId={setNewPlanSubId}
-      newPlanDraft={newPlanDraft}
-      setNewPlanDraft={setNewPlanDraft}
-      newEntry={newEntry}
-      setNewEntry={setNewEntry}
-      onClose={() => setIsNewPlanOpen(false)}
-      onSave={handleSaveInstallmentPlan}
-    />
-
-    <InstallmentPaymentModal
-      payingEntry={payingEntry}
-      setPayingEntry={setPayingEntry}
-      subscribers={subscribers}
-      paymentMethods={paymentMethods}
-      onConfirm={handleConfirmInstallmentPayment}
-    />
   </div>
   );
 }

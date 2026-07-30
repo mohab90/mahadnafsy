@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  resolveDepartment, defaultPriority, slaHoursFor, computeSlaDue, CATEGORY_META,
+  resolveDepartment, defaultPriority, slaHoursFor, computeSlaDue, pickAssignee, CATEGORY_META,
 } = require('../lib/ticketRouting');
 
 test('every category routes to a known department', () => {
@@ -37,6 +37,21 @@ test('computeSlaDue adds the right window', () => {
   assert.equal(due.getTime() - from.getTime(), 4 * 3600 * 1000);
 });
 
+test('least-loaded assignment is tenant isolated and counts only active tenant tickets', async () => {
+  let captured;
+  const db = {
+    query: async (sql, params) => {
+      captured = { sql, params };
+      return [[{ id: 'staff-a', name: 'Agent A' }]];
+    },
+  };
+  const assignee = await pickAssignee(db, 'tenant-a', 'support');
+  assert.equal(assignee.id, 'staff-a');
+  assert.match(captured.sql, /t\.tenant_id=s\.tenant_id/);
+  assert.match(captured.sql, /s\.tenant_id=\?/);
+  assert.equal(captured.params[0], 'tenant-a');
+});
+
 test('support ticket details, replies and linked finance records are tenant scoped', () => {
   const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'support.js'), 'utf8');
   const migration = fs.readFileSync(path.join(__dirname, '..', 'migrations', '084_v25_support_reply_tenant_scope.sql'), 'utf8');
@@ -54,4 +69,19 @@ test('staff and client replies persist timeline and outbox atomically', () => {
   assert.match(route, /await conn\.beginTransaction\(\)[\s\S]*logTicketEvent\(conn[\s\S]*await conn\.commit\(\)/);
   assert.match(route, /contact_messages WHERE id=\? AND tenant_id=\?[^\n]+FOR UPDATE/);
   assert.match(route, /UPDATE contact_messages SET[^\n]+WHERE id=\? AND tenant_id=\?/);
+});
+
+test('support queues are department scoped and customer ownership follows canonical subscriber identity', () => {
+  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'support.js'), 'utf8');
+  const permissions = fs.readFileSync(path.join(__dirname, '..', 'constants', 'permissions.js'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'TicketsTab.tsx'), 'utf8');
+  assert.match(route, /const ticketScope =/);
+  assert.match(route, /canAccessTicket\(req,/);
+  assert.match(route, /findSubscriberForIdentity\(req\.tenantId, req\.user/);
+  assert.match(route, /Staff role is not compatible with the ticket department/);
+  assert.match(permissions, /\[ROLES\.SALES\][\s\S]{0,500}'manage_inbox'/);
+  assert.match(permissions, /\[ROLES\.COLLECTION\][\s\S]{0,500}'manage_inbox'/);
+  assert.match(permissions, /\[ROLES\.ACCOUNTANT\][\s\S]{0,500}'manage_inbox'/);
+  assert.match(ui, /urgent: 2, high: 4, medium: 24, low: 72/);
+  assert.match(ui, /closed_reason: closedReason/);
 });

@@ -7,7 +7,7 @@ type SubStatus = SubscriberItem['status'];
 
 // Subscriber-tab modal/draft state (edit-in-progress row + form drafts for
 // each of the subscriber quick-action popups: payment, extra-certificate
-// request, installment plan, quick-contact, edit-subscriber, WhatsApp),
+// request, quick-contact, edit-subscriber, WhatsApp),
 // lifted out of the Dashboard god-hub. Pure UI state (no effects) — returns
 // identical names so the component body is unchanged apart from the single
 // destructure that replaces these useState lines.
@@ -22,16 +22,6 @@ export function useSubscriberModals() {
   // Extra certificate request action
   const [certActionSub, setCertActionSub] = useState<SubscriberItem | null>(null);
   const [certActionDraft, setCertActionDraft] = useState<{ courseId: string; type: ExtraCertificateType | ''; certExpected: string; certPaid: string }>({ courseId: '', type: '', certExpected: '', certPaid: '' });
-
-  // Quick installment plan popup (from Dashboard table)
-  const [subInstRow, setSubInstRow] = useState<SubscriberItem | null>(null);
-  const [subInstDraft, setSubInstDraft] = useState({
-    courseId: '', currency: 'EGP' as 'EGP'|'SAR'|'USD',
-    amountPerInst: '', numInstallments: '3',
-    inputMode: 'count' as 'count'|'amount',
-    startDate: new Date().toISOString().slice(0, 10),
-    intervalDays: '30', notes: '', overrideExpected: '',
-  });
 
   // Subscriber quick-contact modal
   const [subContactRow, setSubContactRow] = useState<SubscriberItem | null>(null);
@@ -70,8 +60,6 @@ export function useSubscriberModals() {
     subPayDraft, setSubPayDraft,
     certActionSub, setCertActionSub,
     certActionDraft, setCertActionDraft,
-    subInstRow, setSubInstRow,
-    subInstDraft, setSubInstDraft,
     subContactRow, setSubContactRow,
     subContactDraft, setSubContactDraft,
     subscriberDraft, setSubscriberDraft,

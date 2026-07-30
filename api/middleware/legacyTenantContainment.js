@@ -6,7 +6,7 @@ const { DEFAULT_TENANT } = require('./tenantContext');
 // Keep this list centralized and shrink it as each module is migrated.
 const LEGACY_UNSCOPED_PATHS = [
   /^\/api\/admin\/(?:automation|drip-|reports|sales-|analytics|dashboard\/kpi|kpi\/|sms|subscription|security|consultations|nps|search)(?:\/|$)/,
-  /^\/api\/admin\/(?:ip-whitelist|kv|sys-config|inbox|daqqi|waitlist|ai|server-|promo-codes|upload|content|discounts|fx-rates|lifecycle|notification-settings|settings)(?:\/|$)/,
+  /^\/api\/admin\/(?:ip-whitelist|kv|sys-config|inbox|daqqi|waitlist|ai|server-|promo-codes|upload|content|discounts|lifecycle|notification-settings|settings)(?:\/|$)/,
   /^\/api\/admin\/(?:chapters|lectures|testimonials|therapists|courses|online-users|commissions\/monthly|export\/orders)(?:\/|$)/,
   /^\/api\/admin\/staff\/[^/]+\/(?:set-password|toggle-active)(?:\/|$)/,
   /^\/api\/admin\/subscribers\/[^/]+\/(?:loyalty|qr)(?:\/|$)/,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Calendar, ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
+  ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
   Bundle, CommunicationRecord, Course, 
@@ -10,15 +10,10 @@ import type {
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { SUB_STATUS_CFG, normBranchId, type SubStatus } from '../../dashboardShared';
 import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
+import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type SubInstDraft = {
-  courseId: string; currency: 'EGP'|'SAR'|'USD';
-  amountPerInst: string; numInstallments: string;
-  inputMode: 'count'|'amount'; startDate: string;
-  intervalDays: string; notes: string; overrideExpected: string;
-};
 type SubContactDraft = {
   type: CommunicationRecord['type']; date: string;
   notes: string; outcome: string; nextFollowUp: string;
@@ -42,15 +37,14 @@ interface Props {
   isOnlineManager: boolean;
   isDaqqiManager: boolean;
   shouldUseScopedSubscribers: boolean;
-  updateSubscriber: (s: SubscriberItem) => void;
+  updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
+  reloadSubscribers: () => Promise<void>;
   setSalesOwnSubscribers: React.Dispatch<React.SetStateAction<SubscriberItem[]>>;
-  deleteSubscriber: (id: string) => void;
+  deleteSubscriber: (id: string) => Promise<boolean>;
   setSubPayRow: (row: SubscriberItem | null) => void;
   setSubPayDraft: React.Dispatch<React.SetStateAction<import('../../../../components/PaymentModal').PaymentDraft>>;
   setSubContactRow: (row: SubscriberItem | null) => void;
   setSubContactDraft: React.Dispatch<React.SetStateAction<SubContactDraft>>;
-  setSubInstRow: (row: SubscriberItem | null) => void;
-  setSubInstDraft: React.Dispatch<React.SetStateAction<SubInstDraft>>;
   setSubWaRow: (row: SubscriberItem | null) => void;
   setDaqqiHousingModal: (row: SubscriberItem | null) => void;
   setDaqqiHousingRoundId: (id: string) => void;
@@ -72,8 +66,8 @@ export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
   isDaqqiManager, shouldUseScopedSubscribers,
-  updateSubscriber, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
-  setSubContactRow, setSubContactDraft, setSubInstRow, setSubInstDraft, setSubWaRow,
+  updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
+  setSubContactRow, setSubContactDraft, setSubWaRow,
   setDaqqiHousingModal, setDaqqiHousingRoundId, setCollDetailsDraft, setCollDetailsRow,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength, notify,
@@ -125,8 +119,7 @@ export function ClientsTable({
             const bundleHiddenIds = new Set(completeBundles.flatMap(b => b.courses.map(co => co.id)));
             const partialCids = enrolledIds.filter(id => !bundleHiddenIds.has(id));
             const branchId = normBranchId(row.branch);
-            const detCur = (fp?: {currency?:string}): 'EGP'|'SAR'|'USD' =>
-              (fp?.currency as 'EGP'|'SAR'|'USD') || (branchId === 'ONLINE_SAUDI' ? 'SAR' : branchId === 'ONLINE_ABROAD' ? 'USD' : 'EGP');
+            const branchCurrency = currencyForBranch(branchId);
             const certTypeAr: Record<string,string> = {
               social_solidarity:'تضامن اجتماعي', ain_shams:'عين شمس',
               experience_external:'خبرة خارجية', practice_external:'ممارسة خارجية',
@@ -140,22 +133,23 @@ export function ClientsTable({
               : null;
             const courseRows = (multiCourseKey)
               ? (() => {
-                  const totalPaid = payments.filter(p => p.paymentType !== 'certificate' && p.paymentType !== 'book').reduce((s,p)=>s+(Number(p.amount)||0),0);
+                  const settlementPayments = payments.filter(p => p.currency === branchCurrency);
+                  const totalPaid = settlementPayments.filter(p => p.paymentType !== 'certificate' && p.paymentType !== 'book').reduce((s,p)=>s+(Number(p.amount)||0),0);
                   const autoExp = partialCids.reduce((s, cid) => {
-                    const nb2 = payments.find(p => p.courseId === cid && !p.isInstallment && p.paymentType !== 'certificate');
-                    const catP = courses.find(c=>c.id===cid)?.price?.EGP || 0;
+                    const nb2 = settlementPayments.find(p => p.courseId === cid && !p.isInstallment && p.paymentType !== 'certificate');
+                    const catP = courses.find(c=>c.id===cid)?.price?.[branchCurrency] || 0;
                     return s + (nb2?.courseExpected || catP);
                   }, 0);
                   const exp = customPrices[multiCourseKey] || autoExp;
                   const lbl = 'باقة: ' + partialCids.map(cid => courses.find(c=>c.id===cid)?.title || cid).join(' + ');
-                  return [{ cid: multiCourseKey, label: lbl, expected: exp, paid: totalPaid, remaining: Math.max(0, exp - totalPaid), cur: detCur(payments[0]) }];
+                  return [{ cid: multiCourseKey, label: lbl, expected: exp, paid: totalPaid, remaining: Math.max(0, exp - totalPaid), cur: branchCurrency }];
                 })()
               : [
               ...completeBundles.map(b => {
                 const bCids = b.courses.map(co => co.id);
                 const bundleCid = `bundle:${b.id}`;
-                const bPay = payments.filter(p => (p.courseId && bCids.includes(p.courseId)) || (p.bundleId === b.id) || (!p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType)));
-                const cur = detCur(bPay[0]);
+                const bPay = payments.filter(p => p.currency === branchCurrency && ((p.courseId && bCids.includes(p.courseId)) || (p.bundleId === b.id) || (!p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))));
+                const cur = branchCurrency;
                 const nb = bPay.find(p => !p.isInstallment);
                 const bPrice = (b.price as unknown as Record<string,number>)[cur] || b.price.EGP || 0;
                 const expected = customPrices[bundleCid] || nb?.courseExpected || bPrice || 0;
@@ -164,15 +158,15 @@ export function ClientsTable({
               }),
               ...partialCids.map((cid, pidx) => {
                 const course = courses.find(c => c.id === cid);
-                const cPayBase = payments.filter(p => p.courseId === cid && p.paymentType !== 'certificate' && p.paymentType !== 'book');
+                const cPayBase = payments.filter(p => p.currency === branchCurrency && p.courseId === cid && p.paymentType !== 'certificate' && p.paymentType !== 'book');
                 // Fallback: attribute payments with no courseId to first course when no bundles
                 // Exclude bundleId-tagged payments (they belong to a bundle, not first course)
                 const unattributed = (pidx === 0 && completeBundles.length === 0)
-                  ? payments.filter(p => !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))
+                  ? payments.filter(p => p.currency === branchCurrency && !p.courseId && !p.bundleId && (p.paymentType === 'course' || !p.paymentType))
                   : [];
                 const cPay = [...cPayBase, ...unattributed];
                 const nb = cPay.find(p => !p.isInstallment);
-                const cur = detCur(nb || payments[0]);
+                const cur = branchCurrency;
                 const catPrice = course?.price?.[cur] || course?.price?.EGP || 0;
                 const expected = customPrices[cid] || nb?.courseExpected || catPrice;
                 const paid = cPay.reduce((s,p) => s+(Number(p.amount)||0), 0);
@@ -199,8 +193,12 @@ export function ClientsTable({
               ) : <span className="text-gray-300 text-[10px]">—</span>
             );
             const statusCell = (
-              <select value={row.status||'active'} onChange={e => {
+              <select value={row.status||'active'} onChange={async e => {
                 const nextStatus = e.target.value as SubscriberItem['status'];
+                if (nextStatus === 'refunded' || nextStatus === 'refund_pending') {
+                  notify('info', 'الاسترداد لازم يبدأ من الدفعة الأصلية داخل القسم المالي؛ لم يتم تغيير حالة العميل.');
+                  return;
+                }
                 // `status` (this dropdown) and `clientStatus` (which tab the client shows
                 // in — المنتهين/المتوقفين/المستردين) were two separate, unsynced fields:
                 // picking "استرداد معلق" here changed the row's color but never moved the
@@ -212,14 +210,8 @@ export function ClientsTable({
                 };
                 const nextClientStatus = clientStatusMap[nextStatus as string];
                 const nextRow = nextClientStatus ? { ...row, status: nextStatus, clientStatus: nextClientStatus } : { ...row, status: nextStatus };
-                updateSubscriber(nextRow);
-                if (nextStatus === 'refunded' || nextStatus === 'refund_pending') {
-                  mysqlAdmin.adminPost('/admin/refund-requests/by-admin', {
-                    subscriber_id: row.id,
-                    amount: row.totalPaid || 0,
-                    currency: 'EGP',
-                    reason: 'تغيير حالة العميل من صفحة العملاء',
-                  }).catch((err: unknown) => notify('error', 'تم تغيير حالة العميل لكن فشل إنشاء طلب الاسترداد: ' + (err instanceof Error ? err.message : String(err))));
+                if (!await updateSubscriber(nextRow)) {
+                  notify('error', 'فشل حفظ حالة العميل. لم يتم اعتماد التغيير.');
                 }
               }}
                 className={`text-[11px] font-bold border-0 rounded-full px-2 py-0.5 focus:outline-none cursor-pointer w-full ${(SUB_STATUS_CFG[(row.status||'active') as SubStatus]||SUB_STATUS_CFG.active).cls}`}>
@@ -265,9 +257,13 @@ export function ClientsTable({
                       const csId=e.target.value;
                       const csStaffMember=(isOnlineManager?onlineTeamMembers:staffMembers).find(st=>st.id===csId);
                       const updated={...row,assignedCsId:csId||undefined,assignedCsName:csStaffMember?.name||undefined};
-                      updateSubscriber(updated);
-                      if(shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>s.id===row.id?updated:s));
-                      await mysqlAdmin.assignSubscriberCollection(row.id,csId||null,csStaffMember?.name||null);
+                      try {
+                        await mysqlAdmin.assignSubscriberCollection(row.id,csId||null,csStaffMember?.name||null);
+                        if(shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.map(s=>s.id===row.id?updated:s));
+                        await reloadSubscribers();
+                      } catch (error) {
+                        notify('error', `فشل تعيين مسئول التحصيل: ${error instanceof Error ? error.message : String(error)}`);
+                      }
                     }}
                     className="w-full border border-gray-200 rounded text-[10px] px-1 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-teal-300"
                     title="مسئول التحصيل">
@@ -301,18 +297,17 @@ export function ClientsTable({
             ) : <span className="text-gray-300">—</span>;
             const actionsCell = (
               <div className="flex flex-col gap-0.5">
-                <div className="grid grid-cols-4 gap-0.5">
+                <div className="grid grid-cols-3 gap-0.5">
                   <button title="ملف العميل" onClick={()=>navigate(`/client/${clientCode}`)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-primary-50 hover:text-primary-600 flex items-center justify-center transition"><ExternalLink size={12}/></button>
                   <button title="تسجيل دفعة" onClick={()=>{
                     setSubPayRow(row);
                     setSubPayDraft(createClientPaymentDraft({
-                      currency: (branchId==='ONLINE_ABROAD'||branchId==='ONLINE_SAUDI')?'SAR':'EGP',
+                      currency: currencyForBranch(branchId),
                       courseId: completeBundles.length > 0 ? `bundle:${completeBundles[0].id}` : (row.enrolledCourseIds?.[0] || ''),
                     }));
                     setSubPayDraft(prev => ({ ...prev, bookingType: (row.enrolledCourseIds||[]).length > 0 ? 'installment' : 'new_booking' }));
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>
                   <button title="تواصل" onClick={()=>{setSubContactRow(row);setSubContactDraft({type:'call',date:new Date().toISOString().slice(0,16),notes:'',outcome:'',nextFollowUp:''}); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
-                  <button title="خطة أقساط" onClick={()=>{setSubInstRow(row);setSubInstDraft({courseId:'',currency:'EGP',amountPerInst:'',numInstallments:'3',inputMode:'count',startDate:new Date().toISOString().slice(0,10),intervalDays:'30',notes:'',overrideExpected:''}); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-600 flex items-center justify-center transition"><Calendar size={12}/></button>
                 </div>
                 <div className={`grid gap-0.5 ${(isDaqqiClientsTab||isAdmin||isOnlineManager||isDaqqiManager)?'grid-cols-4':'grid-cols-3'}`}>
                   <button title="واتساب" onClick={()=>setSubWaRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition"><MessageSquareText size={12}/></button>
@@ -337,8 +332,12 @@ export function ClientsTable({
                   {/* Was gated on "is the Daqqi tab open" instead of "can this role actually delete" —
                       reception_daqqi could see and click this, but the backend (requireAdmin, i.e.
                       admin/manager/online_manager/daqqi_manager only) silently rejected it. */}
-                  {(isAdmin||isOnlineManager||isDaqqiManager) && <button title="حذف العميل" onClick={()=>{if(confirm(`حذف "${row.name}"؟ لا يمكن التراجع.`)){deleteSubscriber(row.id);if(shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.filter(s=>s.id!==row.id));
-                  }}} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition"><Trash2 size={12}/></button>}
+                  {(isAdmin||isOnlineManager||isDaqqiManager) && <button title="حذف العميل" onClick={async ()=>{
+                    if (!confirm(`أرشفة "${row.name}"؟ سيظل السجل التاريخي محفوظًا.`)) return;
+                    const ok = await deleteSubscriber(row.id);
+                    if (ok && shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.filter(s=>s.id!==row.id));
+                    notify(ok ? 'success' : 'error', ok ? 'تمت أرشفة العميل.' : 'فشلت أرشفة العميل ولم يُحذف من النظام.');
+                  }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition"><Trash2 size={12}/></button>}
                 </div>
               </div>
             );

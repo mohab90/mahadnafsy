@@ -3,9 +3,10 @@ import {
   Monitor, Users, CreditCard, AlertCircle, TrendingUp,
   BarChart3, Target, Calendar, Phone, 
   Wallet, Receipt, Trophy, Edit2, Save, X,
-  Percent, Award, Headphones,
+  Award, Headphones,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -13,15 +14,16 @@ type SubTab = 'overview' | 'online' | 'collection' | 'targets';
 
 interface Props { notify: NotifyFn; }
 
-const TODAY = new Date().toISOString().slice(0, 10);
-const MONTH = new Date().toISOString().slice(0, 7);
+const today = () => new Date().toISOString().slice(0, 10);
+const month = () => new Date().toISOString().slice(0, 7);
+const isOnlineBranch = (branch?: string) => ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(String(branch || '').toUpperCase());
 
 function getRangeStart(range: TimeRange): string {
   const d = new Date();
-  if (range === 'today') return TODAY;
+  if (range === 'today') return today();
   if (range === '7d') return new Date(+d - 7 * 86400000).toISOString().slice(0, 10);
   if (range === '30d') return new Date(+d - 30 * 86400000).toISOString().slice(0, 10);
-  if (range === 'month') return `${MONTH}-01`;
+  if (range === 'month') return `${month()}-01`;
   return '2000-01-01';
 }
 
@@ -38,6 +40,18 @@ function pct(val: number, total: number) {
 function fmtMoney(n: number) {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}م` : n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
 }
+
+type CurrencyAmounts = Record<'EGP' | 'SAR' | 'USD', number>;
+const emptyCurrencyAmounts = (): CurrencyAmounts => ({ EGP: 0, SAR: 0, USD: 0 });
+const addCurrencyAmount = (amounts: CurrencyAmounts, currency: unknown, amount: unknown) => {
+  const code = String(currency || 'EGP').toUpperCase() as keyof CurrencyAmounts;
+  if (code in amounts) amounts[code] += Number(amount) || 0;
+};
+const formatCurrencyAmounts = (amounts: CurrencyAmounts) =>
+  (Object.entries(amounts) as [keyof CurrencyAmounts, number][])
+    .filter(([, amount]) => amount > 0)
+    .map(([currency, amount]) => `${fmtMoney(amount)} ${currency}`)
+    .join(' · ') || '—';
 
 function getLast7Days() {
   const days: string[] = [];
@@ -62,17 +76,17 @@ const MOTIVATE_COLLECTION = [
   'التنظيم والتركيز يحققان النتائج',
 ];
 
-// ── LocalStorage helpers ──────────────────────────────────────────────────
-const LS_KEY = `online_targets_${MONTH}`;
-
 interface StaffTargets { [staffId: string]: number }
-
-function loadTargets(): StaffTargets {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { return {}; }
-}
-function saveTargets(t: StaffTargets) {
-  localStorage.setItem(LS_KEY, JSON.stringify(t));
-}
+type OnlinePayment = {
+  subscriberId?: string | null;
+  amount: number;
+  amountEgp: number;
+  at: string;
+  branch?: string;
+  isInstallment?: boolean;
+  staffId?: string | null;
+  status?: string;
+};
 
 // ── Progress Bar Component ────────────────────────────────────────────────
 const ProgressBar: React.FC<{
@@ -118,16 +132,16 @@ const MiniBarChart: React.FC<{
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, subscribers, orders } = useSiteData();
+  const { staffMembers, subscribers } = useSiteData();
+  const onlineSubscribers = useMemo(() => subscribers.filter(subscriber => isOnlineBranch(subscriber.branch)), [subscribers]);
+  const [payments, setPayments] = useState<OnlinePayment[]>([]);
 
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
-  const [targets, setTargets] = useState<StaffTargets>(loadTargets);
+  const [targets, setTargets] = useState<StaffTargets>({});
   const [editingTargets, setEditingTargets] = useState<StaffTargets>({});
   const [editMode, setEditMode] = useState(false);
-
-  useEffect(() => { saveTargets(targets); }, [targets]);
 
   // ── Teams ──────────────────────────────────────────────────────────────
   const onlineTeam = useMemo(() =>
@@ -135,75 +149,112 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   const collectionTeam = useMemo(() =>
     staffMembers.filter(s => s.role === 'collection' && s.status === 'active'), [staffMembers]);
 
-  // ── Filtered data ──────────────────────────────────────────────────────
-  const filteredOrders = useMemo(() =>
-    orders.filter(o => o.status === 'paid' && inRange(o.paidAt || o.createdAt, timeRange)),
-    [orders, timeRange]);
+  useEffect(() => {
+    mysqlAdmin.listSalesTargets(month()).then((rows) => {
+      const next: StaffTargets = {};
+      rows.forEach((row) => {
+        const staffId = String(row.staffId || '');
+        const role = staffMembers.find((staff) => staff.id === staffId)?.role;
+        next[staffId] = Number(role === 'collection' ? row.revenueTarget : row.leadsTarget) || 0;
+      });
+      setTargets(next);
+    }).catch(() => notify('error', 'تعذر تحميل أهداف فريق الأونلاين والتحصيل'));
+  }, [staffMembers, notify]);
+  useEffect(() => {
+    const start = timeRange === 'all' ? undefined : getRangeStart(timeRange);
+    mysqlAdmin.getPayments(start, today()).then(rows => {
+      setPayments(rows.map(row => ({
+        subscriberId: row.subscriberId ? String(row.subscriberId) : row.subscriber_id ? String(row.subscriber_id) : null,
+        amount: Number(row.amount || 0),
+        amountEgp: Number(row.amountEgp ?? row.amount_egp ?? 0),
+        at: String(row.at || ''),
+        branch: String(row.branch || ''),
+        isInstallment: Boolean(row.isInstallment ?? row.is_installment),
+        staffId: row.staffId ? String(row.staffId) : row.staff_id ? String(row.staff_id) : null,
+        status: String(row.status || 'paid'),
+      })));
+    }).catch(() => notify('error', 'تعذر تحميل حركة التحصيل الموحّدة'));
+  }, [notify, timeRange]);
 
-  const paidThisPeriod = filteredOrders.reduce((s, o) => s + (o.amount || 0), 0);
+  // ── Filtered data ──────────────────────────────────────────────────────
+  const filteredPayments = useMemo(() =>
+    payments.filter(payment =>
+      payment.status === 'paid' && isOnlineBranch(payment.branch) && inRange(payment.at, timeRange)
+    ),
+    [payments, timeRange]);
+
+  const paidThisPeriod = filteredPayments.reduce((sum, payment) => sum + payment.amountEgp, 0);
 
   // ── Overdue installments ───────────────────────────────────────────────
-  const { overdueInstallments, overdueAmount, totalDue } = useMemo(() => {
-    let overdueCount = 0; let overdueAmt = 0; let totalAmt = 0;
-    subscribers.forEach(s => {
+  const { overdueInstallments, overdueByCurrency } = useMemo(() => {
+    let overdueCount = 0;
+    const overdue = emptyCurrencyAmounts();
+    onlineSubscribers.forEach(s => {
       (s.installmentPlans || []).forEach(p => {
         (p.entries || []).forEach(e => {
-          totalAmt += (e.amount || 0);
-          if (!e.paidAt && e.dueDate < TODAY) { overdueCount++; overdueAmt += (e.amount || 0); }
+          if (!e.paidAt && e.dueDate < today()) {
+            overdueCount++;
+            addCurrencyAmount(overdue, e.currency || p.currency, e.amount);
+          }
         });
       });
     });
-    return { overdueInstallments: overdueCount, overdueAmount: overdueAmt, totalDue: totalAmt };
-  }, [subscribers]);
-
-  const collectionRate = pct(paidThisPeriod, totalDue || paidThisPeriod + overdueAmount);
+    return { overdueInstallments: overdueCount, overdueByCurrency: overdue };
+  }, [onlineSubscribers]);
 
   // ── Weekly revenue chart ───────────────────────────────────────────────
   const last7Days = useMemo(() => getLast7Days(), []);
   const weeklyChartData = useMemo(() => last7Days.map(day => ({
     label: day.slice(5),
-    value: orders.filter(o => o.status === 'paid' && (o.paidAt || o.createdAt || '').slice(0, 10) === day)
-      .reduce((s, o) => s + (o.amount || 0), 0),
-  })), [orders, last7Days]);
+    value: payments.filter(payment =>
+      payment.status === 'paid' && isOnlineBranch(payment.branch) && payment.at.slice(0, 10) === day
+    ).reduce((sum, payment) => sum + payment.amountEgp, 0),
+  })), [payments, last7Days]);
 
   const collectionChartData = useMemo(() => last7Days.map(day => ({
     label: day.slice(5),
-    value: subscribers.reduce((acc, s) =>
-      acc + (s.installmentPlans || []).flatMap(p =>
-        (p.entries || []).filter(e => e.paidAt?.slice(0, 10) === day)
-      ).reduce((sum, e) => sum + (e.amount || 0), 0), 0),
-  })), [subscribers, last7Days]);
+    value: payments.filter(payment =>
+      payment.status === 'paid' && payment.isInstallment && isOnlineBranch(payment.branch)
+      && payment.at.slice(0, 10) === day
+    ).reduce((sum, payment) => sum + payment.amountEgp, 0),
+  })), [payments, last7Days]);
 
   // ── Per-online-staff stats ─────────────────────────────────────────────
   const onlineStats = useMemo(() =>
     onlineTeam.map(s => {
-      const myOrders = filteredOrders.filter(o => o.staffId === s.id);
-      const revenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
-      const mySubs = subscribers.filter(sub => sub.assignedCsId === s.id || sub.assignedSalesId === s.id);
+      const mySubs = onlineSubscribers.filter(sub => sub.assignedCsId === s.id || sub.assignedSalesId === s.id);
+      const mySubscriberIds = new Set(mySubs.map(sub => sub.id));
+      const myPayments = filteredPayments.filter(payment =>
+        payment.subscriberId ? mySubscriberIds.has(payment.subscriberId) : payment.staffId === s.id
+      );
+      const revenue = myPayments.reduce((sum, payment) => sum + payment.amountEgp, 0);
       const myTarget = targets[s.id] || 0;
-      return { staff: s, ordersCount: myOrders.length, revenue, subsCount: mySubs.length, target: myTarget };
-    }).sort((a, b) => b.ordersCount - a.ordersCount),
-    [onlineTeam, filteredOrders, subscribers, targets]);
+      return { staff: s, paymentsCount: myPayments.length, revenue, subsCount: mySubs.length, target: myTarget };
+    }).sort((a, b) => b.subsCount - a.subsCount),
+    [onlineTeam, filteredPayments, onlineSubscribers, targets]);
 
   // ── Per-collection-staff stats ────────────────────────────────────────
   const collectionStats = useMemo(() =>
     collectionTeam.map(s => {
-      const mySubs = subscribers.filter(sub => sub.assignedCsId === s.id);
+      const mySubs = onlineSubscribers.filter(sub => sub.assignedCsId === s.id);
       const myOverdueEntries = mySubs.flatMap(sub =>
         (sub.installmentPlans || []).flatMap(p =>
-          (p.entries || []).filter(e => !e.paidAt && e.dueDate < TODAY)));
-      const myOverdueAmt = myOverdueEntries.reduce((sum, e) => sum + (e.amount || 0), 0);
-      const myCollected = filteredOrders.filter(o => o.staffId === s.id)
-        .reduce((sum, o) => sum + (o.amount || 0), 0);
+          (p.entries || [])
+            .filter(e => !e.paidAt && e.dueDate < today())
+            .map(entry => ({ entry, currency: entry.currency || p.currency }))));
+      const myOverdueByCurrency = emptyCurrencyAmounts();
+      myOverdueEntries.forEach(({ entry, currency }) => addCurrencyAmount(myOverdueByCurrency, currency, entry.amount));
+      const myCollected = filteredPayments.filter(payment => payment.staffId === s.id)
+        .reduce((sum, payment) => sum + payment.amountEgp, 0);
       const myTarget = targets[s.id] || 0;
       const commissionEarned = myTarget > 0 ? Math.round(myCollected * ((s.commissionRate || 0) / 100)) : 0;
       return {
         staff: s, subsCount: mySubs.length,
-        overdueCount: myOverdueEntries.length, overdueAmt: myOverdueAmt,
+        overdueCount: myOverdueEntries.length, overdueByCurrency: myOverdueByCurrency,
         collected: myCollected, target: myTarget, commissionEarned,
       };
     }).sort((a, b) => b.collected - a.collected),
-    [collectionTeam, subscribers, filteredOrders, targets]);
+    [collectionTeam, onlineSubscribers, filteredPayments, targets]);
 
   // ── Handlers ───────────────────────────────────────────────────────────
   const startEdit = () => {
@@ -212,10 +263,22 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     setEditingTargets(init);
     setEditMode(true);
   };
-  const saveEdit = () => {
-    setTargets(editingTargets);
-    setEditMode(false);
-    notify('success', 'تم حفظ الأهداف بنجاح');
+  const saveEdit = async () => {
+    try {
+      await Promise.all([
+        ...onlineTeam.map((staff) => mysqlAdmin.saveSalesTarget({
+          staffId: staff.id, period: month(), leadsTarget: editingTargets[staff.id] || 0,
+        })),
+        ...collectionTeam.map((staff) => mysqlAdmin.saveSalesTarget({
+          staffId: staff.id, period: month(), revenueTarget: editingTargets[staff.id] || 0,
+        })),
+      ]);
+      setTargets(editingTargets);
+      setEditMode(false);
+      notify('success', 'تم حفظ الأهداف في قاعدة البيانات');
+    } catch {
+      notify('error', 'تعذر حفظ بعض أهداف الفريق');
+    }
   };
   const cancelEdit = () => setEditMode(false);
 
@@ -248,7 +311,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               <Headphones size={22} /> مركز الأونلاين والتحصيل
             </h2>
             <p className="text-teal-200 text-sm mt-0.5">
-              الأونلاين ({onlineTeam.length}) · التحصيل ({collectionTeam.length}) · {MONTH}
+              الأونلاين ({onlineTeam.length}) · التحصيل ({collectionTeam.length}) · {month()}
             </p>
           </div>
           <div className="flex bg-white/10 rounded-xl overflow-hidden">
@@ -299,10 +362,10 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
           {/* Stats cards row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: 'إجمالي محصل', value: fmtMoney(paidThisPeriod), sub: 'هذه الفترة', icon: Receipt, color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'أقساط متأخرة', value: overdueInstallments, sub: `${fmtMoney(overdueAmount)} ج`, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
-              { label: 'معدل التحصيل', value: `${collectionRate}%`, sub: 'محصل من الإجمالي', icon: Percent, color: 'text-cyan-600', bg: 'bg-cyan-50' },
-              { label: 'عملاء نشطون', value: subscribers.filter(s => s.status === 'active').length, sub: 'في النظام', icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
+              { label: 'إجمالي محصل', value: fmtMoney(paidThisPeriod), sub: 'ج.م مكافئ — هذه الفترة', icon: Receipt, color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'أقساط متأخرة', value: overdueInstallments, sub: formatCurrencyAmounts(overdueByCurrency), icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+              { label: 'حركات تحصيل', value: filteredPayments.length, sub: 'دفعات مؤكدة', icon: CreditCard, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+              { label: 'عملاء نشطون', value: onlineSubscribers.filter(s => s.status === 'active').length, sub: 'أونلاين', icon: Users, color: 'text-teal-600', bg: 'bg-teal-50' },
             ].map(c => (
               <div key={c.label} className={`${c.bg} rounded-2xl p-4`}>
                 <div className="flex items-start justify-between mb-1">
@@ -377,13 +440,13 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
                             <div className="font-medium text-sm text-gray-800">{stat.staff.name}</div>
                             {stat.target > 0 && (
                               <div className="mt-1 w-full">
-                                <ProgressBar value={stat.ordersCount} max={stat.target} color="bg-teal-400" showPct />
+                                <ProgressBar value={stat.subsCount} max={stat.target} color="bg-teal-400" showPct />
                               </div>
                             )}
                           </div>
                           <div className="text-right text-xs">
-                            <span className="font-bold text-teal-600">{stat.ordersCount}</span>
-                            <span className="text-gray-400"> طلب</span>
+                            <span className="font-bold text-teal-600">{stat.subsCount}</span>
+                            <span className="text-gray-400"> عميل</span>
                           </div>
                         </div>
                       </div>
@@ -428,20 +491,17 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
             </div>
           </div>
 
-          {/* Installment overview bar */}
+          {/* Installment overview — currencies stay separate to avoid false totals. */}
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <Receipt size={17} className="text-amber-500" />
-              <h3 className="font-bold text-gray-800">معدل التحصيل الإجمالي</h3>
-              <span className={`mr-auto text-sm font-bold ${collectionRate >= 80 ? 'text-green-600' : collectionRate >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                {collectionRate}%
-              </span>
+              <h3 className="font-bold text-gray-800">ملخص التحصيل والمتأخرات</h3>
             </div>
-            <ProgressBar value={paidThisPeriod} max={paidThisPeriod + overdueAmount} color="bg-cyan-400" height="h-4" />
-            <div className="flex justify-between text-xs text-gray-400 mt-2">
-              <span className="text-green-600 font-medium">محصل: {fmtMoney(paidThisPeriod)} ج</span>
-              <span className="text-red-500 font-medium">متأخر: {fmtMoney(overdueAmount)} ج</span>
+            <div className="flex flex-wrap justify-between gap-3 text-sm">
+              <span className="text-green-600 font-medium">محصل: {fmtMoney(paidThisPeriod)} ج.م مكافئ</span>
+              <span className="text-red-500 font-medium">متأخر: {formatCurrencyAmounts(overdueByCurrency)}</span>
             </div>
+            <p className="text-xs text-gray-400 mt-2">المتأخرات معروضة بكل عملة منفصلة؛ لا يتم جمع عملات مختلفة في نسبة مضللة.</p>
           </div>
         </div>
       )}
@@ -456,7 +516,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               <span className="font-bold text-teal-700">فريق الأونلاين ({onlineTeam.length})</span>
             </div>
             <div className="flex gap-4 text-sm text-gray-600">
-              <span>إجمالي الطلبات: <strong>{onlineStats.reduce((s, x) => s + x.ordersCount, 0)}</strong></span>
+              <span>إجمالي الدفعات: <strong>{onlineStats.reduce((s, x) => s + x.paymentsCount, 0)}</strong></span>
               <span>إجمالي العملاء: <strong>{onlineStats.reduce((s, x) => s + x.subsCount, 0)}</strong></span>
               <span>إجمالي الإيراد: <strong>{fmtMoney(onlineStats.reduce((s, x) => s + x.revenue, 0))} ج</strong></span>
             </div>
@@ -474,7 +534,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {onlineStats.map((stat, idx) => {
                 const hasTarget = stat.target > 0;
-                const progress = hasTarget ? pct(stat.ordersCount, stat.target) : 0;
+                const progress = hasTarget ? pct(stat.subsCount, stat.target) : 0;
                 const achieved = hasTarget && progress >= 100;
                 return (
                   <div key={stat.staff.id}
@@ -508,8 +568,8 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
                       {/* KPI grid */}
                       <div className="grid grid-cols-3 gap-2 mt-4">
                         <div className="bg-teal-50 rounded-xl p-2 text-center">
-                          <div className="text-lg font-black text-teal-600">{stat.ordersCount}</div>
-                          <div className="text-xs text-teal-400">طلبات</div>
+                          <div className="text-lg font-black text-teal-600">{stat.paymentsCount}</div>
+                          <div className="text-xs text-teal-400">دفعات</div>
                         </div>
                         <div className="bg-cyan-50 rounded-xl p-2 text-center">
                           <div className="text-lg font-black text-cyan-600">{stat.subsCount}</div>
@@ -525,14 +585,14 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
                       {hasTarget && (
                         <div className="mt-3">
                           <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>الهدف الشهري: {stat.target} طلب</span>
+                            <span>الهدف الشهري: {stat.target} عميل</span>
                             <span className={progress >= 100 ? 'text-green-600 font-bold' : progress >= 60 ? 'text-yellow-600' : 'text-red-500'}>
                               {progress}%
                             </span>
                           </div>
-                          <ProgressBar value={stat.ordersCount} max={stat.target} color="bg-teal-400" height="h-3" />
+                          <ProgressBar value={stat.subsCount} max={stat.target} color="bg-teal-400" height="h-3" />
                           <div className="text-xs text-gray-400 mt-0.5 text-left">
-                            {stat.target - stat.ordersCount > 0 ? `متبقي ${stat.target - stat.ordersCount} طلب` : 'تجاوز الهدف!'}
+                            {stat.target - stat.subsCount > 0 ? `متبقي ${stat.target - stat.subsCount} عميل` : 'تجاوز الهدف!'}
                           </div>
                         </div>
                       )}
@@ -562,8 +622,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               <div>
                 <div className="font-bold text-red-700">{overdueInstallments} قسط متأخر يحتاج متابعة</div>
                 <div className="text-sm text-red-500 mt-0.5">
-                  إجمالي المبالغ المتأخرة: {fmtMoney(overdueAmount)} ج —
-                  معدل التحصيل الحالي: <strong>{collectionRate}%</strong>
+                  المبالغ المتأخرة حسب العملة: <strong>{formatCurrencyAmounts(overdueByCurrency)}</strong>
                 </div>
               </div>
             </div>
@@ -662,10 +721,10 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
                       )}
 
                       {/* Overdue amount */}
-                      {stat.overdueAmt > 0 && (
+                      {stat.overdueCount > 0 && (
                         <div className="mt-2 bg-red-50 rounded-xl px-3 py-2 text-xs text-red-600 flex items-center justify-between">
                           <span className="flex items-center gap-1"><AlertCircle size={10} /> مبلغ متأخر</span>
-                          <strong>{fmtMoney(stat.overdueAmt)} ج</strong>
+                          <strong>{formatCurrencyAmounts(stat.overdueByCurrency)}</strong>
                         </div>
                       )}
                     </div>
@@ -684,7 +743,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
           <div className="bg-gradient-to-l from-teal-50 to-cyan-50 border border-teal-200 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <Target size={18} className="text-teal-600" /> الأهداف الشهرية — {MONTH}
+                <Target size={18} className="text-teal-600" /> الأهداف الشهرية — {month()}
               </h3>
               {!editMode ? (
                 <button onClick={startEdit}
@@ -705,7 +764,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               )}
             </div>
             <p className="text-xs text-gray-400">
-              اضبط الأهداف الشهرية لكل موظف — تُحفظ تلقائياً في المتصفح
+              اضبط الأهداف الشهرية لكل موظف — تُحفظ لكل مؤسسة في قاعدة البيانات
             </p>
           </div>
 
@@ -713,13 +772,13 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
               <Monitor size={16} className="text-teal-500" />
-              <h4 className="font-bold text-gray-700">فريق الأونلاين — هدف: عدد الطلبات</h4>
+              <h4 className="font-bold text-gray-700">فريق الأونلاين — هدف: عدد العملاء المسؤول عنهم</h4>
             </div>
             <div className="divide-y divide-gray-50">
               {onlineStats.length === 0
                 ? <p className="p-6 text-center text-gray-400 text-sm">لا يوجد أعضاء</p>
                 : onlineStats.map((stat, idx) => {
-                  const progress = stat.target > 0 ? pct(stat.ordersCount, stat.target) : 0;
+                  const progress = stat.target > 0 ? pct(stat.subsCount, stat.target) : 0;
                   const achieved = stat.target > 0 && progress >= 100;
                   return (
                     <div key={stat.staff.id} className="px-5 py-4">
@@ -739,16 +798,16 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
                                 type="number" min={0}
                                 value={editingTargets[stat.staff.id] || ''}
                                 onChange={e => setEditingTargets(prev => ({ ...prev, [stat.staff.id]: Number(e.target.value) }))}
-                                placeholder="الهدف (طلب)"
+                                placeholder="الهدف (عميل)"
                                 className="border border-gray-300 rounded-lg px-2 py-1 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-teal-500"
                               />
-                              <span className="text-xs text-gray-400">طلب / شهر</span>
+                              <span className="text-xs text-gray-400">عميل / شهر</span>
                             </div>
                           ) : (
                             <>
-                              <ProgressBar value={stat.ordersCount} max={stat.target || 1} color="bg-teal-400" height="h-2.5" />
+                              <ProgressBar value={stat.subsCount} max={stat.target || 1} color="bg-teal-400" height="h-2.5" />
                               <div className="flex justify-between text-xs text-gray-400 mt-0.5">
-                                <span>{stat.ordersCount} طلب منجز</span>
+                                <span>{stat.subsCount} عميل</span>
                                 <span>هدف: {stat.target || '—'}</span>
                               </div>
                             </>
@@ -824,8 +883,8 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
           {/* Team totals */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 text-center">
-              <div className="text-3xl font-black text-teal-700">{onlineStats.reduce((s, x) => s + x.ordersCount, 0)}</div>
-              <div className="text-sm text-teal-500 mt-1">إجمالي طلبات الأونلاين</div>
+              <div className="text-3xl font-black text-teal-700">{onlineStats.reduce((s, x) => s + x.subsCount, 0)}</div>
+              <div className="text-sm text-teal-500 mt-1">إجمالي عملاء فريق الأونلاين</div>
               <div className="text-xs text-gray-400">من {onlineStats.reduce((s, x) => s + (x.target || 0), 0) || '—'} هدف</div>
             </div>
             <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-4 text-center">

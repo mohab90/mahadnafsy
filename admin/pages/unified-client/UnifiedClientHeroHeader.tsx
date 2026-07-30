@@ -29,6 +29,7 @@ type Props = {
   codeCopied: boolean;
   allCommsCount: number;
   heroPaidEGP: number;
+  settlementLabel: string;
   heroCourseCount: number;
   lastCommDate: string | null;
   canManageCourseAccess: boolean;
@@ -60,6 +61,7 @@ export function UnifiedClientHeroHeader({
   codeCopied,
   allCommsCount,
   heroPaidEGP,
+  settlementLabel,
   heroCourseCount,
   lastCommDate,
   canManageCourseAccess,
@@ -134,7 +136,7 @@ export function UnifiedClientHeroHeader({
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
             <p className="text-2xl font-extrabold text-emerald-300">{heroPaidEGP > 0 ? heroPaidEGP.toLocaleString() : '—'}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">ج.م مدفوع</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{settlementLabel} مدفوع</p>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2.5 border border-white/10">
             <p className="text-2xl font-extrabold text-blue-300">{heroCourseCount}</p>

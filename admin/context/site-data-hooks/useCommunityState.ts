@@ -16,90 +16,89 @@ export function useCommunityState(
   const [communityVideos, setCommunityVideos] = useState<CommunityVideoItem[]>(initialCommunityVideos);
   const [communityEvents, setCommunityEvents] = useState<CommunityEventItem[]>(initialCommunityEvents);
 
-  const persistCommunityPostToCollection = (post: CommunityPostItem) => {
-    void mysqlAdmin.saveCommunityPost(post as unknown as Record<string,unknown>).catch(() => {});
-  };
-  const persistCommunityLibraryItemToCollection = (item: CommunityLibraryItem) => {
-    void mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string,unknown>).catch(() => {});
-  };
-  const persistCommunityVideoToCollection = (video: CommunityVideoItem) => {
-    void mysqlAdmin.saveCommunityVideo(video as unknown as Record<string,unknown>).catch(() => {});
-  };
-  const persistCommunityEventToCollection = (event: CommunityEventItem) => {
-    void mysqlAdmin.saveCommunityEvent(event as unknown as Record<string,unknown>).catch(() => {});
-  };
-
-  const addCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => [item, ...prev]);
-    persistCommunityPostToCollection(item);
-    track('create', 'community_post', item.title);
-  };
-
-  const updateCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityPostToCollection(item);
-    track('update', 'community_post', item.title);
+  const persist = async (
+    request: Promise<unknown>,
+    commit: () => void,
+    action: 'create' | 'update' | 'delete',
+    entity: string,
+    label: string,
+  ) => {
+    try {
+      await request;
+      commit();
+      track(action, entity, label);
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: entity, name: label },
+      }));
+      return false;
+    }
   };
 
-  const deleteCommunityPost = (id: string) => {
-    setCommunityPosts((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityPost(id).catch(() => {});
-    track('delete', 'community_post', id);
-  };
+  const addCommunityPost = (item: CommunityPostItem) => persist(
+    mysqlAdmin.saveCommunityPost(item as unknown as Record<string, unknown>),
+    () => setCommunityPosts((prev) => [item, ...prev]),
+    'create', 'community_post', item.title,
+  );
+  const updateCommunityPost = (item: CommunityPostItem) => persist(
+    mysqlAdmin.saveCommunityPost(item as unknown as Record<string, unknown>),
+    () => setCommunityPosts((prev) => prev.map((row) => row.id === item.id ? item : row)),
+    'update', 'community_post', item.title,
+  );
+  const deleteCommunityPost = (id: string) => persist(
+    mysqlAdmin.deleteCommunityPost(id),
+    () => setCommunityPosts((prev) => prev.filter((row) => row.id !== id)),
+    'delete', 'community_post', id,
+  );
 
-  const addCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => [item, ...prev]);
-    persistCommunityLibraryItemToCollection(item);
-    track('create', 'community_library', item.title);
-  };
+  const addCommunityLibraryItem = (item: CommunityLibraryItem) => persist(
+    mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string, unknown>),
+    () => setCommunityLibraryItems((prev) => [item, ...prev]),
+    'create', 'community_library', item.title,
+  );
+  const updateCommunityLibraryItem = (item: CommunityLibraryItem) => persist(
+    mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string, unknown>),
+    () => setCommunityLibraryItems((prev) => prev.map((row) => row.id === item.id ? item : row)),
+    'update', 'community_library', item.title,
+  );
+  const deleteCommunityLibraryItem = (id: string) => persist(
+    mysqlAdmin.deleteCommunityLibraryItem(id),
+    () => setCommunityLibraryItems((prev) => prev.filter((row) => row.id !== id)),
+    'delete', 'community_library', id,
+  );
 
-  const updateCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityLibraryItemToCollection(item);
-    track('update', 'community_library', item.title);
-  };
+  const addCommunityVideo = (item: CommunityVideoItem) => persist(
+    mysqlAdmin.saveCommunityVideo(item as unknown as Record<string, unknown>),
+    () => setCommunityVideos((prev) => [item, ...prev]),
+    'create', 'community_video', item.title,
+  );
+  const updateCommunityVideo = (item: CommunityVideoItem) => persist(
+    mysqlAdmin.saveCommunityVideo(item as unknown as Record<string, unknown>),
+    () => setCommunityVideos((prev) => prev.map((row) => row.id === item.id ? item : row)),
+    'update', 'community_video', item.title,
+  );
+  const deleteCommunityVideo = (id: string) => persist(
+    mysqlAdmin.deleteCommunityVideo(id),
+    () => setCommunityVideos((prev) => prev.filter((row) => row.id !== id)),
+    'delete', 'community_video', id,
+  );
 
-  const deleteCommunityLibraryItem = (id: string) => {
-    setCommunityLibraryItems((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityLibraryItem(id).catch(() => {});
-    track('delete', 'community_library', id);
-  };
-
-  const addCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => [item, ...prev]);
-    persistCommunityVideoToCollection(item);
-    track('create', 'community_video', item.title);
-  };
-
-  const updateCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityVideoToCollection(item);
-    track('update', 'community_video', item.title);
-  };
-
-  const deleteCommunityVideo = (id: string) => {
-    setCommunityVideos((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityVideo(id).catch(() => {});
-    track('delete', 'community_video', id);
-  };
-
-  const addCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => [item, ...prev]);
-    persistCommunityEventToCollection(item);
-    track('create', 'community_event', item.title);
-  };
-
-  const updateCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityEventToCollection(item);
-    track('update', 'community_event', item.title);
-  };
-
-  const deleteCommunityEvent = (id: string) => {
-    setCommunityEvents((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityEvent(id).catch(() => {});
-    track('delete', 'community_event', id);
-  };
+  const addCommunityEvent = (item: CommunityEventItem) => persist(
+    mysqlAdmin.saveCommunityEvent(item as unknown as Record<string, unknown>),
+    () => setCommunityEvents((prev) => [item, ...prev]),
+    'create', 'community_event', item.title,
+  );
+  const updateCommunityEvent = (item: CommunityEventItem) => persist(
+    mysqlAdmin.saveCommunityEvent(item as unknown as Record<string, unknown>),
+    () => setCommunityEvents((prev) => prev.map((row) => row.id === item.id ? item : row)),
+    'update', 'community_event', item.title,
+  );
+  const deleteCommunityEvent = (id: string) => persist(
+    mysqlAdmin.deleteCommunityEvent(id),
+    () => setCommunityEvents((prev) => prev.filter((row) => row.id !== id)),
+    'delete', 'community_event', id,
+  );
 
   return {
     communityPosts, setCommunityPosts, addCommunityPost, updateCommunityPost, deleteCommunityPost,

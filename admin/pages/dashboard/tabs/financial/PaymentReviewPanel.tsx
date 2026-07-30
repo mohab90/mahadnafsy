@@ -24,13 +24,13 @@ interface Props {
   notify: NotifyFn;
   branchFilter?: string;
   subscribers: SubscriberItem[];
-  updateSubscriber: (s: SubscriberItem) => void;
+  reloadSubscribers: () => Promise<void>;
   actorEmail?: string | null;
   sarRate: number;
   usdRate: number;
 }
 
-export function PaymentReviewPanel({ notify, branchFilter, subscribers, updateSubscriber, actorEmail, sarRate, usdRate }: Props) {
+export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSubscribers, actorEmail, sarRate, usdRate }: Props) {
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
 
   const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
@@ -130,15 +130,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, updateSu
     setReviewActionLoading(p.id);
     try {
       await mysqlAdmin.adminPatch(`/admin/payments/${encodeURIComponent(p.id)}/status`, { status: newStatus, actor: actorEmail || 'admin' });
-      const sub = subscribers.find(s => s.id === p.subscriberId);
-      if (sub) {
-        updateSubscriber({
-          ...sub,
-          paymentHistory: (sub.paymentHistory ?? []).map(ph =>
-            ph.id === p.id ? { ...ph, status: newStatus } : ph
-          ),
-        });
-      }
+      await reloadSubscribers();
       setServerReviewRows(rows => rows.map(row => row.id === p.id ? { ...row, status: newStatus } : row));
       notify('success', newStatus === 'paid' ? 'تم تأكيد الدفعة ✅' : 'تم وضع علامة فشل على الدفعة');
     } catch (e: unknown) { notify('error', (e as Error).message || 'خطأ'); }

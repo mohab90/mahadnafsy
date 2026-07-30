@@ -12,17 +12,23 @@ async function ensureNotificationsTable() {
   notificationsTableReady = true;
 }
 
-// Non-fatal: notification failure must not break the business action that triggered it.
-async function createNotification(type, title, message, data = {}, tenantId = DEFAULT_TENANT) {
+async function insertNotification(db, type, title, message, data = {}, tenantId = DEFAULT_TENANT, recipientStaffId = null) {
+  await db.query(
+    `INSERT INTO notifications
+       (id, tenant_id, recipient_staff_id, type, title, message, data_json)
+     VALUES (?,?,?,?,?,?,?)`,
+    [uuidv4(), tenantId, recipientStaffId || null, type || 'info', title || null, message || null, JSON.stringify(data)]
+  );
+}
+
+// Non-fatal convenience for secondary notifications outside a business transaction.
+async function createNotification(type, title, message, data = {}, tenantId = DEFAULT_TENANT, recipientStaffId = null) {
   try {
     await ensureNotificationsTable();
-    await pool.query(
-      `INSERT INTO notifications (id, tenant_id, type, title, message, data_json) VALUES (?,?,?,?,?,?)`,
-      [uuidv4(), tenantId, type || 'info', title || null, message || null, JSON.stringify(data)]
-    );
+    await insertNotification(pool, type, title, message, data, tenantId, recipientStaffId);
   } catch (e) {
     logger.warn('[notify] createNotification error:', e.message);
   }
 }
 
-module.exports = { createNotification, ensureNotificationsTable };
+module.exports = { createNotification, insertNotification, ensureNotificationsTable };

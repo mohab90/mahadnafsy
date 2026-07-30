@@ -7,21 +7,39 @@ const NotificationsAdminTab: React.FC = () => {
 
   const [notifDraft, setNotifDraft] = useState({ title: '', body: '', type: 'info' as 'info' | 'offer' | 'update' });
   const [editingNotifId, setEditingNotifId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const cancelNotifEdit = () => {
     setEditingNotifId('');
     setNotifDraft({ title: '', body: '', type: 'info' });
   };
 
-  const saveNotif = () => {
+  const saveNotif = async () => {
     if (!notifDraft.title.trim() || !notifDraft.body.trim()) { alert('العنوان والنص مطلوبان'); return; }
-    if (editingNotifId) {
-      const existing = notifications.find(n => n.id === editingNotifId);
-      updateNotification({ ...notifDraft, id: editingNotifId, createdAt: existing?.createdAt || new Date().toISOString(), active: existing?.active ?? true });
-    } else {
-      addNotification({ ...notifDraft, id: `notif-${Date.now()}`, createdAt: new Date().toISOString(), active: true });
+    setSaving(true);
+    setError('');
+    try {
+      if (editingNotifId) {
+        const existing = notifications.find(n => n.id === editingNotifId);
+        await updateNotification({ ...notifDraft, id: editingNotifId, createdAt: existing?.createdAt || new Date().toISOString(), active: existing?.active ?? true });
+      } else {
+        await addNotification({ ...notifDraft, id: `notif-${Date.now()}`, createdAt: new Date().toISOString(), active: true });
+      }
+      cancelNotifEdit();
+    } catch {
+      setError('تعذر حفظ الإشعار. لم يتم تغيير النسخة المنشورة للعملاء.');
+    } finally {
+      setSaving(false);
     }
-    cancelNotifEdit();
+  };
+
+  const mutateNotification = async (action: () => Promise<void>) => {
+    setSaving(true);
+    setError('');
+    try { await action(); }
+    catch { setError('تعذر تحديث الإشعار. لم يتم تغيير النسخة المنشورة للعملاء.'); }
+    finally { setSaving(false); }
   };
 
   const startEditNotif = (n: NotificationBroadcast) => {
@@ -50,6 +68,7 @@ const NotificationsAdminTab: React.FC = () => {
 
       {/* Form */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+        {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         <h3 className="font-bold text-gray-800 mb-4">{editingNotifId ? '✏️ تعديل الإشعار' : '➕ إرسال إشعار جديد'}</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
@@ -75,8 +94,8 @@ const NotificationsAdminTab: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3 mt-4">
-          <button onClick={saveNotif} className="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold transition flex items-center gap-2">
-            <span>{editingNotifId ? '💾 حفظ التعديل' : '📢 إرسال الإشعار'}</span>
+          <button onClick={() => void saveNotif()} disabled={saving} className="px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white rounded-xl text-sm font-bold transition flex items-center gap-2">
+            <span>{saving ? 'جارٍ الحفظ...' : editingNotifId ? '💾 حفظ التعديل' : '📢 إرسال الإشعار'}</span>
           </button>
           {editingNotifId && (
             <button onClick={cancelNotifEdit} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-bold transition">إلغاء</button>
@@ -108,11 +127,11 @@ const NotificationsAdminTab: React.FC = () => {
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button onClick={() => startEditNotif(n)} className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition">تعديل</button>
-                  <button onClick={() => updateNotification({ ...n, active: !n.active })}
+                  <button disabled={saving} onClick={() => void mutateNotification(() => updateNotification({ ...n, active: !n.active }))}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${n.active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
                     {n.active ? 'وقف' : 'تفعيل'}
                   </button>
-                  <button onClick={() => { if (window.confirm('حذف هذا الإشعار؟')) deleteNotification(n.id); }}
+                  <button disabled={saving} onClick={() => { if (window.confirm('حذف هذا الإشعار؟')) void mutateNotification(() => deleteNotification(n.id)); }}
                     className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition">حذف</button>
                 </div>
               </div>

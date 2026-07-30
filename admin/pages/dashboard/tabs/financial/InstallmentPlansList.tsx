@@ -12,7 +12,7 @@ interface PayingEntryDraft {
 interface InstallmentPlansListProps {
   subscribersWithPlans: SubscriberItem[];
   today: string;
-  onPayEntry: (draft: PayingEntryDraft) => void;
+  onPayEntry?: (draft: PayingEntryDraft) => void;
 }
 
 export function InstallmentPlansList({ subscribersWithPlans, today, onPayEntry }: InstallmentPlansListProps) {
@@ -66,7 +66,7 @@ export function InstallmentPlansList({ subscribersWithPlans, today, onPayEntry }
                             )}
                             {entry.note && <span className="text-xs text-gray-400"> · {entry.note}</span>}
                           </div>
-                          {!entry.paidAt && (
+                          {!entry.paidAt && onPayEntry && (
                             <button onClick={() => onPayEntry({ subId: subscriber.id, planId: plan.id, entryId: entry.id, paidAmount: entry.amount, paymentMethod: '' })}
                               className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-lg hover:bg-emerald-700 transition flex-shrink-0">
                               تم الدفع

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Settings, Save, RotateCcw, Loader2, CheckCircle,
   Shield, Database,
-  Download, RefreshCw, HardDrive,
+  Download, RefreshCw, HardDrive, Globe, Copy, Trash2,
 } from 'lucide-react';
 import { mysqlAuth } from '../../../lib/mysqlapi';
 import {
@@ -205,7 +205,10 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         </div>
 
         {/* Body */}
-        {active === 'general'            && <GeneralSection    data={data.general as General}           mutateField={(f,v) => mutateField('general', f, v)}/>}
+        {active === 'general'            && <>
+          <GeneralSection data={data.general as General} mutateField={(f,v) => mutateField('general', f, v)}/>
+          <TenantDomainSection notify={notify} />
+        </>}
         {active === 'financial'          && <FinancialSection   data={data.financial as Financial}       mutateField={(f,v) => mutateField('financial', f, v)}/>}
         {active === 'exchange_rates'     && <ExchangeRatesSection data={data.exchange_rates as ExchangeRates} mutateField={(f,v) => mutateField('exchange_rates', f, v)}/>}
         {active === 'cert_pricing'       && <CertPricingSection  data={data.cert_pricing as CertItem[]}  mutate={v => mutate('cert_pricing', v)} c={c}/>}
@@ -218,6 +221,137 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
           <ListSection data={data[active] as ListItem[]} mutate={v => mutate(active, v)} c={c} sectionKey={active}/>
         )}
       </main>
+    </div>
+  );
+};
+
+type TenantDomain = {
+  domain: string;
+  status: 'pending' | 'verified';
+  record_name: string;
+  record_value?: string;
+  verified_at?: string | null;
+};
+
+const TenantDomainSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
+  const [domain, setDomain] = useState('');
+  const [current, setCurrent] = useState<TenantDomain | null>(null);
+  const [busy, setBusy] = useState<'save' | 'verify' | 'delete' | null>(null);
+
+  const load = useCallback(async () => {
+    const response = await fetch('/api/admin/tenant-domain', {
+      credentials: 'include',
+      headers: adminHeaders(),
+    });
+    if (!response.ok) return;
+    const value = await response.json();
+    setCurrent(value);
+    if (value?.domain) setDomain(value.domain);
+  }, []);
+
+  useEffect(() => { load().catch(() => {}); }, [load]);
+
+  const requestVerification = async () => {
+    if (!domain.trim()) return;
+    setBusy('save');
+    try {
+      const response = await fetch('/api/admin/tenant-domain', {
+        method: 'PUT', credentials: 'include', headers: adminHeaders(true),
+        body: JSON.stringify({ domain: domain.trim() }),
+      });
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(value.error || 'فشل حفظ الدومين');
+      setCurrent(value);
+      notify('success', 'تم إنشاء سجل التحقق. أضفه في DNS ثم اضغط تحقق');
+    } catch (error) {
+      notify('error', errorMessage(error));
+    } finally { setBusy(null); }
+  };
+
+  const verify = async () => {
+    setBusy('verify');
+    try {
+      const response = await fetch('/api/admin/tenant-domain/verify', {
+        method: 'POST', credentials: 'include', headers: adminHeaders(true),
+      });
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(value.error || 'لم يتم العثور على سجل DNS');
+      await load();
+      notify('success', 'تم إثبات ملكية الدومين وربطه بالمؤسسة');
+    } catch (error) {
+      notify('error', errorMessage(error));
+    } finally { setBusy(null); }
+  };
+
+  const remove = async () => {
+    if (!confirm('هل تريد إلغاء ربط الدومين المخصص؟')) return;
+    setBusy('delete');
+    try {
+      const response = await fetch('/api/admin/tenant-domain', {
+        method: 'DELETE', credentials: 'include', headers: adminHeaders(),
+      });
+      if (!response.ok) throw new Error('فشل إلغاء الربط');
+      setCurrent(null);
+      setDomain('');
+      notify('success', 'تم إلغاء ربط الدومين');
+    } catch (error) {
+      notify('error', errorMessage(error));
+    } finally { setBusy(null); }
+  };
+
+  const copy = (value: string) => navigator.clipboard.writeText(value)
+    .then(() => notify('info', 'تم النسخ'))
+    .catch(() => notify('error', 'تعذر النسخ'));
+
+  return (
+    <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Globe size={18} className="text-indigo-600" />
+        <div>
+          <h3 className="font-bold text-gray-800">الدومين المخصص</h3>
+          <p className="text-xs text-gray-500">لا يُستخدم في توجيه العملاء أو هوية البريد إلا بعد إثبات الملكية من DNS.</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input value={domain} onChange={event => setDomain(event.target.value)}
+          placeholder="academy.example.com" dir="ltr"
+          className="flex-1 min-w-[220px] border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+        <button onClick={requestVerification} disabled={busy !== null}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">
+          {busy === 'save' ? 'جاري الحفظ...' : 'إنشاء سجل التحقق'}
+        </button>
+      </div>
+      {current && (
+        <div className={`rounded-xl border p-4 space-y-3 ${current.status === 'verified' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-sm">{current.domain}</span>
+            <span className={`text-xs font-bold ${current.status === 'verified' ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {current.status === 'verified' ? '✅ تم التحقق' : '⏳ في انتظار DNS'}
+            </span>
+          </div>
+          {current.status === 'pending' && (
+            <>
+              <p className="text-xs text-gray-600">أضف TXT record بالقيم التالية عند مزود الدومين:</p>
+              {[['Name', current.record_name], ['Value', current.record_value]].map(([label, value]) => value && (
+                <div key={label} className="flex items-center gap-2 bg-white rounded-lg border px-3 py-2" dir="ltr">
+                  <span className="text-[10px] text-gray-400 w-10">{label}</span>
+                  <code className="text-xs flex-1 break-all">{value}</code>
+                  <button onClick={() => copy(value)} className="text-indigo-600"><Copy size={13}/></button>
+                </div>
+              ))}
+              {!current.record_value && <p className="text-xs text-amber-700">أعد إنشاء سجل التحقق لإظهار قيمة TXT جديدة.</p>}
+              <button onClick={verify} disabled={busy !== null}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">
+                {busy === 'verify' ? 'جاري فحص DNS...' : 'تحقق الآن'}
+              </button>
+            </>
+          )}
+          <button onClick={remove} disabled={busy !== null}
+            className="flex items-center gap-1 text-xs text-red-600">
+            <Trash2 size={12}/> إلغاء الربط
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -332,7 +466,8 @@ const Security2FASection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     if (token.length !== 6) return;
     setWorking(true);
     try {
-      await mysqlAuth.enable2fa(token);
+      const result = await mysqlAuth.enable2fa(token);
+      localStorage.setItem('mahad-token', result.token);
       setStatus('enabled');
       setStep('idle');
       setToken('');
@@ -345,7 +480,8 @@ const Security2FASection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
   const doDisable = async () => {
     setWorking(true);
     try {
-      await mysqlAuth.disable2fa(token || undefined);
+      const result = await mysqlAuth.disable2fa(token || undefined);
+      localStorage.setItem('mahad-token', result.token);
       setStatus('disabled');
       setStep('idle');
       setToken('');

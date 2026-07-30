@@ -31,7 +31,7 @@ interface DashboardDirectContentRoutesProps {
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   notify: NotifyFn;
   contentEdits: ContentMap;
   setContentEdits: Dispatch<SetStateAction<ContentMap>>;
@@ -39,11 +39,11 @@ interface DashboardDirectContentRoutesProps {
   setNewContentKey: Dispatch<SetStateAction<string>>;
   newContentValue: string;
   setNewContentValue: Dispatch<SetStateAction<string>>;
-  addContentKey: (key: string, value: string) => void;
+  addContentKey: (key: string, value: string) => Promise<boolean>;
   searchText: string;
   setSearchText: Dispatch<SetStateAction<string>>;
   filteredContent: [string, string][];
-  removeContentKey: (key: string) => void;
+  removeContentKey: (key: string) => Promise<boolean>;
   courses: Course[];
   offerSelectedCourseId: string;
   setOfferSelectedCourseId: Dispatch<SetStateAction<string>>;
@@ -57,7 +57,7 @@ interface DashboardDirectContentRoutesProps {
   certPricingMap: CertPricingMap;
   saveCertPricingMap: (map: CertPricingMap) => void;
   subscribers: SubscriberItem[];
-  updateSubscriber: (subscriber: SubscriberItem) => void | Promise<void>;
+  reloadSubscribers: () => Promise<void>;
   certSearch: string;
   setCertSearch: Dispatch<SetStateAction<string>>;
   certTypeFilter: ExtraCertificateType | 'all';
@@ -98,7 +98,7 @@ export function DashboardDirectContentRoutes({
   certPricingMap,
   saveCertPricingMap,
   subscribers,
-  updateSubscriber,
+  reloadSubscribers,
   certSearch,
   setCertSearch,
   certTypeFilter,
@@ -213,7 +213,7 @@ export function DashboardDirectContentRoutes({
             notify={notify}
             courses={courses}
             subscribers={subscribers}
-            updateSubscriber={updateSubscriber}
+            reloadSubscribers={reloadSubscribers}
             certSearch={certSearch}
             setCertSearch={setCertSearch}
             certTypeFilter={certTypeFilter}

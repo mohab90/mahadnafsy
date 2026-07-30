@@ -4,18 +4,18 @@ import { mysqlAdmin } from '../../lib/mysqlapi';
 export type NotifRow = { id: string; type: string; title: string; message: string; read_at: string | null; created_at: string };
 
 /**
- * In-app notifications bell: 60s polling of unread notifications (admin only) +
+ * In-app notifications bell: 60s polling for authorised admin/staff users +
  * click-outside-to-close. Extracted verbatim from Dashboard.tsx — the block was
  * already contiguous, so the internal hook order is identical to before.
  */
-export function useNotificationsBell(isAdmin: boolean) {
+export function useNotificationsBell(enabled: boolean) {
   const [notifRows, setNotifRows] = useState<NotifRow[]>([]);
   const [notifUnread, setNotifUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!enabled) return;
     const loadNotifs = () => {
       mysqlAdmin.getNotifications().then(res => {
         const r = res as { rows: NotifRow[]; unread: number };
@@ -27,7 +27,7 @@ export function useNotificationsBell(isAdmin: boolean) {
     const iv = setInterval(loadNotifs, 60000);
     return () => clearInterval(iv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [enabled]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {

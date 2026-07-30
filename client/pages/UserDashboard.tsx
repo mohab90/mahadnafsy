@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen, Award, LogOut, User, CheckCircle,
-  Bell, Settings, MessageSquare, CreditCard, Play, Edit3, Camera,
+  Bell, Settings, MessageSquare, CreditCard, Play, Edit3,
   Save, X, 
   FileText,
   Users, Sparkles, Radio, Share2, Gift,
@@ -10,6 +10,7 @@ import {
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import type { PaymentProof } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
+import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJourneyTimeline';
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
@@ -53,7 +54,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
   useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
-  const { courses, subscribers, notifications, communityPosts, consultations, getCourseLectures, updateSubscriber, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
+  const { courses, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const navigate = useNavigate();
 
   // ── Direct staff check (for non-admin staff whose staffMembers won't be loaded) ──
@@ -72,11 +73,6 @@ const UserDashboard: React.FC = () => {
     }).catch(() => setIsStaffMember(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteReady, subscribers]);
-
-  /* dismissed notifications */
-  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('dismissed-notifs') || '[]'); } catch { return []; }
-  });
 
   /* tabs */
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -198,10 +194,6 @@ const UserDashboard: React.FC = () => {
   const [pwMsg, setPwMsg] = useState('');
   const [showPw, setShowPw] = useState(false);
 
-  /* avatar (stored in localStorage) */
-  const [avatarDataUrl, setAvatarDataUrl] = useState<string>('');
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-
   /* quiz taking state */
   const [quizModal, setQuizModal] = useState<{ courseId: string; quizId: string } | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
@@ -211,8 +203,6 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     if (authUser) {
       setNewName(authUser.displayName || '');
-      const saved = localStorage.getItem(`avatar-${authUser.uid}`);
-      if (saved) setAvatarDataUrl(saved);
     }
   }, [authUser]);
 
@@ -380,18 +370,6 @@ const UserDashboard: React.FC = () => {
   });
 
   /* ── handlers ── */
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const url = ev.target?.result as string;
-      setAvatarDataUrl(url);
-      localStorage.setItem(`avatar-${authUser.uid}`, url);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleSaveName = async () => {
     if (!newName.trim()) return;
     setNameSaving(true);
@@ -406,13 +384,16 @@ const UserDashboard: React.FC = () => {
     setTimeout(() => setNameMsg(''), 3000);
   };
 
-  const handleSaveNameEn = () => {
-    const sub = subscribers.find(s =>
-      s.email.toLowerCase().trim() === (authUser?.email || '').toLowerCase().trim()
-    );
-    if (!sub) return;
-    updateSubscriber({ ...sub, nameEn: newNameEn.trim() });
-    setNameEnMsg('Saved ✓');
+  const handleSaveNameEn = async () => {
+    const value = newNameEn.trim();
+    if (!value) return;
+    try {
+      await mysqlAuth.updateProfile(undefined, value);
+      await refreshMySubscriber();
+      setNameEnMsg('Saved ✓');
+    } catch {
+      setNameEnMsg('Save failed — try again');
+    }
     setTimeout(() => setNameEnMsg(''), 3000);
   };
 
@@ -480,8 +461,14 @@ const UserDashboard: React.FC = () => {
         String(order.currency).toUpperCase() === proofCurrency
       );
       if (!pendingOrder) throw new Error('لا يوجد طلب معلّق مطابق. ابدأ الطلب من صفحة الكورس أولاً.');
+      const intent = await mysqlClient.createPaymentIntent({
+        order_id: pendingOrder.id,
+        provider: 'manual',
+        idempotency_key: `dashboard:${pendingOrder.id}`,
+      });
       await mysqlClient.submitPaymentProof({
         order_id: pendingOrder.id,
+        payment_intent_id: intent.id,
         payment_method: proofMethod,
         proof_image: proofImage,
         note: proofNote || undefined,
@@ -579,11 +566,7 @@ const UserDashboard: React.FC = () => {
                   {n.body && <span className="text-white/90 text-sm mr-2">{n.body}</span>}
                 </div>
                 <button
-                  onClick={() => {
-                    const next = [...dismissedNotifIds, n.id];
-                    setDismissedNotifIds(next);
-                    localStorage.setItem('dismissed-notifs', JSON.stringify(next));
-                  }}
+                  onClick={() => { void markBroadcastNotificationRead(n.id); }}
                   className="flex-shrink-0 text-white/80 hover:text-white transition text-xl leading-none"
                 >&times;</button>
               </div>
@@ -601,20 +584,8 @@ const UserDashboard: React.FC = () => {
               <div className="flex flex-col items-center text-center gap-2 mb-4">
 
                 {/* Avatar */}
-                <div className="relative group mt-1">
-                  <div className={`w-20 h-20 rounded-full border-4 border-gray-100 overflow-hidden flex items-center justify-center text-2xl font-extrabold text-white ${!avatarDataUrl ? avatarBg : ''}`}>
-                    {avatarDataUrl
-                      ? <img src={avatarDataUrl} alt="avatar" className="w-full h-full object-cover" />
-                      : displayName.charAt(0).toUpperCase()}
-                  </div>
-                  <button
-                    onClick={() => avatarInputRef.current?.click()}
-                    className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
-                    title="تغيير الصورة"
-                  >
-                    <Camera size={18} className="text-white" />
-                  </button>
-                  <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                <div className={`mt-1 flex h-20 w-20 items-center justify-center rounded-full border-4 border-gray-100 text-2xl font-extrabold text-white ${avatarBg}`}>
+                  {displayName.charAt(0).toUpperCase()}
                 </div>
 
                 {/* Name editing */}
@@ -651,7 +622,7 @@ const UserDashboard: React.FC = () => {
                 {[
                   { label: 'كورساتي',  val: enrolledCourses.length,     icon: <BookOpen size={12} />,      color: 'bg-sky-50 text-sky-600' },
                   { label: 'استشارات', val: userConsultations.length,   icon: <MessageSquare size={12} />, color: 'bg-violet-50 text-violet-600' },
-                  { label: 'شهادات',   val: (subscriber?.extraCertificateRequests?.filter(r => r.status === 'issued').length || 0) + enrolledCourses.filter(c => { const lecs = getCourseLectures(c.id); const total = lecs.length; if (total === 0) return true; const watched = Object.entries(subscriber?.lectureProgress || {}).filter(([lid, pct]) => lecs.some(l => String(l.id) === lid) && (pct as number) >= 90).length; return watched === total; }).length, icon: <Award size={12} />, color: 'bg-amber-50 text-amber-600' },
+                  { label: 'شهادات',   val: (subscriber?.extraCertificateRequests?.filter(r => r.status === 'issued').length || 0) + completions.length, icon: <Award size={12} />, color: 'bg-amber-50 text-amber-600' },
                   { label: 'إشعارات', val: unreadNotifications.length,  icon: <Bell size={12} />,          color: 'bg-rose-50 text-rose-600' },
                 ].map((s, i) => (
                   <div key={i} className="bg-gray-50 rounded-xl p-2.5 flex items-center gap-2">
@@ -710,13 +681,7 @@ const UserDashboard: React.FC = () => {
             const totalPaidSAR = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'SAR').reduce((s, p) => s + p.amount, 0);
             const totalPaidUSD = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'USD').reduce((s, p) => s + p.amount, 0);
             const earnedCertsCount = (subscriber?.extraCertificateRequests?.filter(r => r.status === 'issued').length || 0)
-              + enrolledCourses.filter(c => {
-                  const lecs = getCourseLectures(c.id);
-                  const total = lecs.length;
-                  if (total === 0) return true;
-                  const watched = Object.entries(subscriber?.lectureProgress || {}).filter(([lid, pct]) => lecs.some(l => String(l.id) === lid) && (pct as number) >= 90).length;
-                  return watched === total;
-                }).length;
+              + completions.length;
             return (
               <div className="space-y-6">
 
@@ -853,6 +818,8 @@ const UserDashboard: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                <StudentJourneyTimeline />
 
               </div>
             );
@@ -1081,16 +1048,8 @@ const UserDashboard: React.FC = () => {
               unreadNotifications={unreadNotifications}
               dismissedNotifIds={dismissedNotifIds}
               installmentAlerts={installmentAlerts}
-              onMarkAllRead={() => {
-                const allIds = notifications.map(n => n.id);
-                setDismissedNotifIds(allIds);
-                localStorage.setItem('dismissed-notifs', JSON.stringify(allIds));
-              }}
-              onDismissNotification={(id) => {
-                const next = [...dismissedNotifIds, id];
-                setDismissedNotifIds(next);
-                localStorage.setItem('dismissed-notifs', JSON.stringify(next));
-              }}
+              onMarkAllRead={() => { void markAllBroadcastNotificationsRead(); }}
+              onDismissNotification={(id) => { void markBroadcastNotificationRead(id); }}
               onOpenPayments={() => {
                 setActiveTab('account');
                 setAccountSection('payments');
@@ -1120,15 +1079,13 @@ const UserDashboard: React.FC = () => {
             />
           )}
           {/* ════ SUPPORT TICKETS ════ */}
-          {activeTab === 'account' && accountSection === 'support' && <StudentSupportTab token={localStorage.getItem('mahad-token') || ''} />}
+          {activeTab === 'account' && accountSection === 'support' && <StudentSupportTab />}
 
           {/* ════ SETTINGS ════ */}
           {activeTab === 'account' && accountSection === 'settings' && (
             <StudentSettingsTab
               displayName={displayName}
-              avatarDataUrl={avatarDataUrl}
               avatarBg={avatarBg}
-              avatarInputRef={avatarInputRef}
               editingName={editingName}
               newName={newName}
               setEditingName={setEditingName}

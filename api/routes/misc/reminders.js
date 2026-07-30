@@ -1,30 +1,37 @@
 'use strict';
 const logger = require('../../lib/logger');
-const bcrypt   = require('bcryptjs');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
-const { mailer, sendEmail } = require('../../lib/email');
+const { mailer, sendEmail, htmlEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
+const outbox = require('../../lib/outbox');
+const { filterSuppressed } = require('../../lib/marketingConsent');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
+const { leadScope } = require('../../lib/leadAccess');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
 
-router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character]));
+
+router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const scope = leadScope(req, 'l');
+    if (scope.none) return res.json({ date: null, count: 0, leads: [] });
     const [leads] = await pool.query(`
       SELECT l.id, l.name, l.phone, l.email, l.status, l.source,
              l.next_follow_up_date, l.assigned_sales_id AS assigned_to,
              st.name AS staff_name
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND DATE(l.next_follow_up_date) = ?
+      WHERE l.tenant_id = ? AND DATE(l.next_follow_up_date) = CURDATE()
         AND l.status NOT IN ('converted','disqualified','archived')
-        ${req.staffRecord?.role === 'SALES' ? 'AND l.assigned_sales_id = ?' : ''}
-      ORDER BY l.name`, [req.tenantId, today, ...(req.staffRecord?.role === 'SALES' ? [req.staffRecord.id] : [])]);
-    res.json({ date: today, count: leads.length, leads });
+        ${scope.sql}
+      ORDER BY l.name`, [req.tenantId, ...scope.params]);
+    res.json({ date: new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }), count: leads.length, leads });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -179,7 +186,7 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Global Search ────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/search', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/search', requireAuth, requireAdminOrStaff, requirePermission('view_client_db'), async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     if (q.length < 2) return res.json({ subscribers: [], leads: [], consultations: [] });
@@ -215,7 +222,7 @@ router.get('/api/admin/search', requireAuth, requireAdminOrStaff, async (req, re
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Consultation Calendar ───────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-router.get('/api/admin/consultations/calendar', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/consultations/calendar', requireAuth, requireAdminOrStaff, requirePermission('view_consultations'), async (req, res) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
     const [rows] = await pool.query(
@@ -244,7 +251,7 @@ router.get('/api/admin/consultations/calendar', requireAuth, requireAdminOrStaff
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Session Notes (add/edit note on consultation) ───────────────
 // ═══════════════════════════════════════════════════════════════════════════
-router.put('/api/admin/consultations/:id/notes', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.put('/api/admin/consultations/:id/notes', requireAuth, requireAdminOrStaff, requirePermission('manage_consultations'), async (req, res) => {
   try {
     const { notes, status } = req.body;
     const sets = [];
@@ -263,47 +270,73 @@ router.put('/api/admin/consultations/:id/notes', requireAuth, requireAdminOrStaf
 // ── FEATURE: Bulk NPS send ────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 router.post('/api/admin/nps/send-bulk', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
+  let conn;
   try {
     // Send NPS to all active subscribers who haven't received one in 30 days
     const [subs] = await pool.query(
-      `SELECT s.id, s.email, s.name FROM subscribers s
+      `SELECT s.id, s.email, s.name, s.branch_id FROM subscribers s
        WHERE s.tenant_id = ? AND s.is_active=1 AND s.email IS NOT NULL AND s.email != ''
+         AND s.deleted_at IS NULL
          AND NOT EXISTS (
            SELECT 1 FROM nps_responses n
-           WHERE n.subscriber_id = s.id AND n.sent_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+           WHERE n.tenant_id=s.tenant_id AND n.subscriber_id=s.id
+             AND n.sent_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
          )
        LIMIT 100`,
       [req.tenantId]
     );
-    let sent = 0;
-    if (subs.length > 0) {
-      // Batch-insert all NPS records in one query (avoid N+1 per subscriber)
-      const npsIds = subs.map(() => uuidv4());
-      const insertVals = subs.map((sub, i) => [npsIds[i], sub.id, sub.email]);
-      await pool.query(
-        'INSERT INTO nps_responses (id, subscriber_id, subscriber_email, sent_at) VALUES ?',
+    const allowedSubs = await filterSuppressed(req.tenantId, 'email', subs, 'email');
+    let queued = 0;
+    if (allowedSubs.length > 0) {
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+
+      // The response row and retryable message are committed together. A
+      // provider outage can no longer suppress the subscriber for 30 days.
+      const npsIds = allowedSubs.map(() => uuidv4());
+      const insertVals = allowedSubs.map((sub, i) => [
+        npsIds[i], req.tenantId, sub.branch_id || null, sub.id, sub.email, new Date(),
+      ]);
+      await conn.query(
+        `INSERT INTO nps_responses
+           (id, tenant_id, branch_id, subscriber_id, subscriber_email, sent_at)
+         VALUES ?`,
         [insertVals]
       );
-      // Send emails (fire-and-forget, failures logged)
-      for (let i = 0; i < subs.length; i++) {
-        const sub = subs[i];
+
+      for (let i = 0; i < allowedSubs.length; i++) {
+        const sub = allowedSubs[i];
         const link = `https://mahadnafsy.com/nps?id=${npsIds[i]}`;
-        sendEmail(sub.email, 'كيف تقيّم تجربتك مع معهد الدراسات النفسية؟',
-          `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
-            <h2 style="color:#7c3aed">مرحباً ${sub.name || ''}،</h2>
+        await outbox.enqueue({
+          channel: 'email',
+          recipient: sub.email,
+          subject: 'كيف تقيّم تجربتك مع معهد الدراسات النفسية؟',
+          payload: {
+            html: htmlEmail('تقييمك يهمنا', `
+            <h2 style="color:#7c3aed">مرحباً ${escapeHtml(sub.name)}،</h2>
             <p>رأيك يهمنا جداً. قيّم تجربتك معنا من 0 إلى 10:</p>
             <div style="text-align:center;margin:24px 0">
               <a href="${link}" style="background:#7c3aed;color:#fff;padding:14px 36px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:bold">قيّم الآن ⭐</a>
             </div>
-            <p style="color:#9ca3af;font-size:12px;text-align:center">معهد الدراسات النفسية — mahadnafsy.com</p>
-          </div>`,
-          { tenantId: req.tenantId }
-        ).catch(() => {});
-        sent++;
+            <p style="color:#9ca3af;font-size:12px;text-align:center">معهد الدراسات النفسية — mahadnafsy.com</p>`),
+          },
+          tenantId: req.tenantId,
+          dedupeKey: `nps:${req.tenantId}:${npsIds[i]}`,
+          refType: 'nps_response',
+          refId: npsIds[i],
+        }, conn);
+        queued++;
       }
+      await conn.commit();
     }
-    res.json({ ok: true, sent });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+    res.json({ ok: true, queued, suppressed: subs.length - allowedSubs.length });
+  } catch (e) {
+    if (conn) await conn.rollback().catch(() => {});
+    logger.error('[nps bulk enqueue]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn?.release();
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

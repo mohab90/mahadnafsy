@@ -8,20 +8,22 @@ const nodemailer = require('nodemailer');
 const logger = require('./logger');
 const { getBrandSettings } = require('./brandSettings');
 const { getTenantSetting } = require('./tenantSettings');
+const { resolveSecret } = require('./secretResolver');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 const DEFAULTS = {
   smtpHost: process.env.SMTP_HOST || 'smtp.hostinger.com',
   smtpPort: parseInt(process.env.SMTP_PORT || '465'),
   smtpUser: process.env.SMTP_USER || 'otp@mahadnafsy.com',
-  smtpPass: process.env.SMTP_PASS || '',
+  smtpPass: resolveSecret('SMTP_PASS'),
   senderName: 'معهد الدراسات النفسية',
-  senderAddress: '', // '' → use smtpUser
+  senderAddress: process.env.EMAIL_FROM || '', // '' → use smtpUser
   brandColor: '#c0392b',
   headerTitle: 'معهد الدراسات النفسية',
   headerSubtitle: 'mahadnafsy.com',
   logoUrl: 'https://mahadnafsy.com/logo.png',
   footerText: 'هذا البريد أُرسل تلقائياً — يُرجى عدم الرد عليه',
+  websiteUrl: 'https://mahadnafsy.com',
 };
 
 const configCache = new Map();
@@ -48,10 +50,12 @@ async function getEmailConfig(tenantId = DEFAULT_TENANT) {
         headerTitle: b.instituteName,
         logoUrl: b.logoUrl,
         headerSubtitle: (b.websiteUrl || '').replace(/^https?:\/\//, ''),
+        websiteUrl: b.websiteUrl,
       };
     } catch (e) { logger.warn('[email] brand read failed', { err: e.message }); }
-    const cfg = { ...DEFAULTS, ...brandDefaults, ...saved };
-    cfg.smtpPass = saved.smtpPass || DEFAULTS.smtpPass; // password may live in env only
+    const environmentOnly = String(process.env.SMTP_CONFIG_SOURCE || '').toLowerCase() === 'environment';
+    const cfg = { ...DEFAULTS, ...brandDefaults, ...(environmentOnly ? {} : saved) };
+    cfg.smtpPass = environmentOnly ? DEFAULTS.smtpPass : (saved.smtpPass || DEFAULTS.smtpPass);
     if (!cfg.senderAddress) cfg.senderAddress = cfg.smtpUser;
     return cfg;
   })();
@@ -111,7 +115,7 @@ function htmlEmail(title, bodyHtml, cfg) {
   <div class="body">${bodyHtml}</div>
   <div class="footer">
     ${c.footerText}<br>
-    © ${new Date().getFullYear()} <a href="https://mahadnafsy.com">${c.headerTitle}</a> — جميع الحقوق محفوظة
+    © ${new Date().getFullYear()} <a href="${c.websiteUrl}">${c.headerTitle}</a> — جميع الحقوق محفوظة
   </div>
 </div></body></html>`;
 }
@@ -127,11 +131,30 @@ async function sendEmail(to, subject, bodyHtml, options = {}) {
   const tenantId = options.tenantId || DEFAULT_TENANT;
   const c = await getEmailConfig(tenantId);
   const transport = await getTransport(tenantId);
-  await transport.sendMail({
+  const info = await transport.sendMail({
     from: `"${c.senderName}" <${c.senderAddress}>`,
     to, subject,
     html: htmlEmail(subject, bodyHtml, c),
   });
+  assertRecipientAccepted(to, info);
+  return info;
+}
+
+function mailbox(value) {
+  if (typeof value === 'string') return value.trim().toLowerCase();
+  return String(value?.address || '').trim().toLowerCase();
+}
+
+function assertRecipientAccepted(to, info) {
+  const intended = mailbox(to);
+  const accepted = Array.isArray(info?.accepted) ? info.accepted.map(mailbox) : [];
+  const rejected = Array.isArray(info?.rejected) ? info.rejected.map(mailbox) : [];
+  if (!intended || rejected.includes(intended) || !accepted.includes(intended)) {
+    const error = new Error('SMTP provider did not accept the intended recipient');
+    error.code = 'EMAIL_RECIPIENT_NOT_ACCEPTED';
+    throw error;
+  }
+  return info;
 }
 
 // Backward-compatible `mailer` facade: existing `mailer.sendMail(opts)` calls
@@ -143,9 +166,13 @@ const mailer = {
     const c = await getEmailConfig(tenantId);
     const transport = await getTransport(tenantId);
     const { tenantId: _tenantId, ...mailOptions } = opts || {};
-    return transport.sendMail({ from: `"${c.senderName}" <${c.senderAddress}>`, ...mailOptions });
+    const info = await transport.sendMail({ from: `"${c.senderName}" <${c.senderAddress}>`, ...mailOptions });
+    assertRecipientAccepted(mailOptions.to, info);
+    return info;
   },
   async verify(tenantId = DEFAULT_TENANT) { return (await getTransport(tenantId)).verify(); },
 };
 
-module.exports = { mailer, sendEmail, htmlEmail, getEmailConfig, invalidateEmailConfig };
+module.exports = {
+  mailer, sendEmail, htmlEmail, getEmailConfig, invalidateEmailConfig, assertRecipientAccepted,
+};

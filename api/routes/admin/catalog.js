@@ -1,7 +1,6 @@
 'use strict';
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
-const bcrypt   = require('bcryptjs');
 const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../../lib/id');
@@ -16,38 +15,47 @@ const { logLeadEvent } = require('../../lib/crm');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
-const { onlineMap } = require('../../lib/onlineUsers');
+const { listOnlineUsers } = require('../../lib/onlineUsers');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
+const { requireTenantQuota } = require('../../middleware/tenantQuota');
 
 
 // GET /api/admin/online-users — العملاء المتصلون الآن (آخر دقيقتين)
-router.get('/api/admin/online-users', requireAuth, requireAdmin, (_req, res) => {
-  const cutoff = Date.now() - 2 * 60 * 1000;
-  const users = [];
-  for (const [uid, data] of onlineMap.entries()) {
-    if (data.lastSeen >= cutoff) {
-      users.push({ uid, name: data.name, email: data.email, lastActiveAt: new Date(data.lastSeen).toISOString() });
-    }
+router.get('/api/admin/online-users', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+  try {
+    const users = await listOnlineUsers(req.tenantId);
+    res.json(users.map(user => ({
+      uid: user.uid,
+      name: user.name,
+      email: user.email,
+      lastActiveAt: new Date(user.lastSeen).toISOString(),
+    })));
+  } catch (error) {
+    logger.error('[online-users]', error.message);
+    res.status(503).json({ error: 'Online presence unavailable' });
   }
-  res.json(users);
 });
 
 // GET /api/admin/courses?limit=500&offset=0  (كل الكورسات بما فيها غير المنشورة)
-router.get('/api/admin/courses', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermission('view_courses'), async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 500, 1000);
     const offset = parseOffset(req.query.offset);
+    const scopedInstructor = ['instructor', 'trainer'].includes(String(req.staffRecord?.role || '').toLowerCase())
+      ? req.staffRecord.id : null;
     const [rows] = await pool.query(
-      `SELECT ${COURSE_COLS} FROM courses WHERE tenant_id = ? ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
-      [req.tenantId, limit, offset]
+      `SELECT ${COURSE_COLS} FROM courses
+        WHERE tenant_id = ?${scopedInstructor ? ' AND instructor_id=?' : ''}
+        ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
+      scopedInstructor ? [req.tenantId, scopedInstructor, limit, offset] : [req.tenantId, limit, offset]
     );
     res.json(rows.map(mapCourse));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/courses
-router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) => {
+router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota('courses'), async (req, res) => {
   try {
     const c = req.body;
     const id = c.id || uuidv4();
@@ -57,6 +65,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
     const titleEn         = c.title_en         ?? c.titleEn         ?? null;
     const titleAr         = c.title_ar         ?? c.titleAr         ?? null;
     const shortDesc       = c.short_description ?? c.shortDescription ?? '';
+    const instructorId    = c.instructor_id    ?? c.instructorId    ?? null;
     const priceEGP        = c.price_egp        ?? c.price?.EGP      ?? 0;
     const priceSAR        = c.price_sar        ?? c.price?.SAR      ?? 0;
     const priceUSD        = c.price_usd        ?? c.price?.USD      ?? 0;
@@ -83,11 +92,19 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
       const [[anyRow]] = await pool.query('SELECT id, (tenant_id = ?) AS owned FROM courses WHERE id=? LIMIT 1', [req.tenantId, c.id]);
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Course not found' });
     }
+    if (instructorId) {
+      const [[instructor]] = await pool.query(
+        `SELECT id FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL
+          AND LOWER(role) IN ('instructor','trainer') LIMIT 1`,
+        [req.tenantId, instructorId]
+      );
+      if (!instructor) return res.status(400).json({ error: 'Assigned instructor is not an active tenant instructor' });
+    }
 
     await pool.query(
       `INSERT INTO courses
          (id, tenant_id, course_code, slug, title, title_en, title_ar,
-          description, short_description, instructor, thumbnail,
+          description, short_description, instructor, instructor_id, thumbnail,
           category, type,
           price_egp, price_sar, price_usd,
           orig_price_egp, orig_price_sar, orig_price_usd,
@@ -97,11 +114,11 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
           is_published, sort_order,
           modules_json, gallery_images_json, details_content_json, course_modules_json,
           seo_title, seo_description, seo_keywords)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          title=VALUES(title), title_en=VALUES(title_en), title_ar=VALUES(title_ar),
          description=VALUES(description), short_description=VALUES(short_description),
-         instructor=VALUES(instructor), thumbnail=VALUES(thumbnail),
+         instructor=VALUES(instructor), instructor_id=VALUES(instructor_id), thumbnail=VALUES(thumbnail),
          category=VALUES(category), type=VALUES(type),
          course_code=VALUES(course_code), slug=VALUES(slug),
          price_egp=VALUES(price_egp), price_sar=VALUES(price_sar), price_usd=VALUES(price_usd),
@@ -118,7 +135,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, async (req, res) =>
          updated_at=CURRENT_TIMESTAMP`,
       [
         id, req.tenantId, courseCode, slug, c.title, titleEn, titleAr,
-        c.description||'', shortDesc, c.instructor||'', c.thumbnail||'',
+        c.description||'', shortDesc, c.instructor||'', instructorId, c.thumbnail||'',
         category, courseType,
         priceEGP, priceSAR, priceUSD,
         origEGP, origSAR, origUSD,

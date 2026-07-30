@@ -7,11 +7,16 @@
  * isn't configured. To enable: `npm i @sentry/node` and set SENTRY_DSN in .env.
  */
 const logger = require('./logger');
+const { resolveSecret } = require('./secretResolver');
 
 let _sentry = null;
 
 function initErrorMonitor() {
-  const dsn = process.env.SENTRY_DSN;
+  let dsn = '';
+  try { dsn = resolveSecret('SENTRY_DSN'); } catch (error) {
+    logger.warn('[errorMonitor] invalid Sentry secret configuration', { err: error.message });
+    return;
+  }
   if (!dsn) { logger.info('[errorMonitor] SENTRY_DSN not set — error monitoring disabled (logs only)'); return; }
   try {
     // Lazy optional require — absent package must not crash the server.
@@ -47,7 +52,9 @@ function isActive() { return !!_sentry; }
 // Fires a webhook (ALERT_WEBHOOK_URL — Slack/Discord/generic) when the 5xx rate
 // in a rolling window crosses a threshold, or on demand. No-op without the URL.
 // Debounced so one incident doesn't spam. Never throws into the request path.
-const ALERT_URL = () => process.env.ALERT_WEBHOOK_URL;
+const ALERT_URL = () => {
+  try { return resolveSecret('ALERT_WEBHOOK_URL'); } catch (_) { return ''; }
+};
 const WINDOW_MS = Number(process.env.ALERT_WINDOW_MS || 5 * 60 * 1000);
 const THRESHOLD = Number(process.env.ALERT_5XX_THRESHOLD || 10);
 const COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS || 15 * 60 * 1000);
@@ -57,14 +64,31 @@ let _lastAlert = 0;
 
 async function alert(title, detail) {
   const url = ALERT_URL();
-  if (!url) return;
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: `🚨 ${title}`, title, detail, ts: new Date().toISOString(), app: 'mahad-api' }),
-    });
-  } catch (e) { logger.warn('[alert] webhook failed', { err: e.message }); }
+  if (!url) return false;
+  const body = JSON.stringify({
+    text: `Incident: ${title}`,
+    title,
+    detail,
+    ts: new Date().toISOString(),
+    app: 'mahad-api',
+    environment: process.env.NODE_ENV || 'production',
+    release: process.env.APP_RELEASE || null,
+  });
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(Number(process.env.ALERT_TIMEOUT_MS || 5000)),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return true;
+    } catch (e) {
+      logger.warn('[alert] webhook failed', { attempt, err: e.message });
+    }
+  }
+  return false;
 }
 
 // Call on every 5xx. Tracks a rolling window; alerts (once per cooldown) on spikes.

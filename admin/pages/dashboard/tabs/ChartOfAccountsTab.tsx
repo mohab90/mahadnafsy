@@ -32,7 +32,7 @@ export default function ChartOfAccountsTab({ notify }: { notify: NotifyFn }) {
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      setAccounts(await mysqlAdmin.adminGet<Account[]>('/api/admin/accounting/chart-of-accounts'));
+      setAccounts(await mysqlAdmin.adminGet<Account[]>('/admin/accounting/chart-of-accounts'));
     } catch {
       notify('error', 'فشل تحميل دليل الحسابات');
     } finally {
@@ -46,7 +46,7 @@ export default function ChartOfAccountsTab({ notify }: { notify: NotifyFn }) {
     if (!draft.code.trim() || !draft.name.trim()) return notify('error', 'يرجى إدخال كود واسم الحساب');
     setSaving(true);
     try {
-      await mysqlAdmin.adminPost('/api/admin/accounting/chart-of-accounts', draft);
+      await mysqlAdmin.adminPost('/admin/accounting/chart-of-accounts', draft);
       notify('success', 'تمت إضافة الحساب');
       setDraft({ code: '', name: '', type: 'asset' });
       setShowAdd(false);
@@ -60,7 +60,7 @@ export default function ChartOfAccountsTab({ notify }: { notify: NotifyFn }) {
 
   const toggle = async (account: Account) => {
     try {
-      await mysqlAdmin.adminPut(`/api/admin/accounting/chart-of-accounts/${encodeURIComponent(account.code)}`, { is_active: !account.is_active });
+      await mysqlAdmin.adminPut(`/admin/accounting/chart-of-accounts/${encodeURIComponent(account.code)}`, { is_active: !account.is_active });
       setAccounts((items) => items.map((item) => item.code === account.code ? { ...item, is_active: !item.is_active } : item));
       notify('success', 'تم تحديث حالة الحساب');
     } catch {

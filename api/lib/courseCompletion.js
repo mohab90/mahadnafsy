@@ -2,17 +2,16 @@
 
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
+const { certificateCode, writeCertificateEvent } = require('./certificateLifecycle');
 const outbox = require('./outbox');
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[character]));
 
-function certificateCode() {
-  return `MHAD-${Date.now().toString(36).toUpperCase()}-${uuidv4().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-}
-
-async function completeCourse({ tenantId, subscriberId, courseId, actor = 'system', requireFullProgress = true }, db = null) {
+async function completeCourse({
+  tenantId, subscriberId, courseId, actor = 'system', requireFullProgress = true, reason = null,
+}, db = null) {
   if (!tenantId || !subscriberId || !courseId) {
     const error = new Error('tenantId, subscriberId and courseId are required'); error.statusCode = 400; throw error;
   }
@@ -24,12 +23,14 @@ async function completeCourse({ tenantId, subscriberId, courseId, actor = 'syste
       `SELECT s.id AS subscriber_id,s.name,s.email,c.id AS course_id,c.title,c.price_egp,e.id AS enrollment_id
          FROM subscribers s
          JOIN enrollments e ON e.subscriber_id=s.id AND e.tenant_id=s.tenant_id AND e.course_id=?
+          AND e.status='active' AND e.access_type='full'
          JOIN courses c ON c.id=e.course_id AND c.tenant_id=e.tenant_id AND c.deleted_at IS NULL
         WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL
           AND (COALESCE(c.price_egp,0)<=0 OR EXISTS (
             SELECT 1 FROM payments p
              WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id AND p.status='paid' AND p.deleted_at IS NULL
-               AND (p.course_id=c.id OR EXISTS (SELECT 1 FROM bundle_courses bc WHERE bc.bundle_id=p.bundle_id AND bc.course_id=c.id))
+               AND (p.course_id=c.id OR EXISTS (SELECT 1 FROM bundle_courses bc
+                 WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=c.id))
           )) LIMIT 1 FOR UPDATE`,
       [courseId, subscriberId, tenantId]
     );
@@ -47,9 +48,23 @@ async function completeCourse({ tenantId, subscriberId, courseId, actor = 'syste
       if (!Number(progress?.total) || Number(progress.completed) < Number(progress.total)) {
         const error = new Error('All published lectures must be completed'); error.statusCode = 409; throw error;
       }
+      const [[quizGate]] = await conn.query(
+        `SELECT COUNT(*) AS required_count,
+                SUM(CASE WHEN EXISTS (
+                  SELECT 1 FROM quiz_attempts qa
+                   WHERE qa.tenant_id=q.tenant_id AND qa.subscriber_id=? AND qa.quiz_id=q.id
+                     AND qa.passed=1
+                ) THEN 1 ELSE 0 END) AS passed_count
+           FROM course_quizzes q
+          WHERE q.tenant_id=? AND q.course_id=? AND q.required_for_completion=1`,
+        [subscriberId, tenantId, courseId]
+      );
+      if (Number(quizGate?.passed_count || 0) < Number(quizGate?.required_count || 0)) {
+        const error = new Error('All required course quizzes must be passed'); error.statusCode = 409; throw error;
+      }
     }
     const [[existing]] = await conn.query(
-      'SELECT id,certificate_code,completed_at FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      'SELECT id,certificate_code,completed_at,status,version FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [subscriberId, courseId, tenantId]
     );
     if (existing) {
@@ -58,10 +73,25 @@ async function completeCourse({ tenantId, subscriberId, courseId, actor = 'syste
     }
     const id = uuidv4();
     const code = certificateCode();
-    await conn.query(
-      'INSERT INTO course_completions (id,subscriber_id,course_id,certificate_code,completed_at,tenant_id) VALUES (?,?,?,?,NOW(),?)',
+    const [inserted] = await conn.query(
+      `INSERT IGNORE INTO course_completions
+       (id,subscriber_id,course_id,certificate_code,completed_at,status,version,tenant_id)
+       VALUES (?,?,?,?,NOW(),'active',1,?)`,
       [id, subscriberId, courseId, code, tenantId]
     );
+    if (!inserted.affectedRows) {
+      const [[concurrent]] = await conn.query(
+        'SELECT id,certificate_code,completed_at,status,version FROM course_completions WHERE subscriber_id=? AND course_id=? AND tenant_id=? LIMIT 1',
+        [subscriberId, courseId, tenantId]
+      );
+      if (ownsConnection) await conn.commit();
+      return { ...concurrent, alreadyCompleted: true };
+    }
+    await writeCertificateEvent(conn, {
+      tenantId, completionId: id, eventType: 'issued', newCode: code, actor,
+      reason: reason ? String(reason).trim().slice(0, 500) : null,
+      meta: { completionMode: requireFullProgress ? 'automatic' : 'manual_override' },
+    });
     if (eligibility.email) {
       const base = String(process.env.CLIENT_URL || 'https://mahadnafsy.com').replace(/\/$/, '');
       await outbox.enqueue({
@@ -78,7 +108,9 @@ async function completeCourse({ tenantId, subscriberId, courseId, actor = 'syste
   } finally { if (ownsConnection) conn.release(); }
 }
 
-async function completeCourses({ tenantId, subscriberIds, courseId, actor, requireFullProgress = true }) {
+async function completeCourses({
+  tenantId, subscriberIds, courseId, actor, requireFullProgress = true, reason = null,
+}) {
   const ids = [...new Set((subscriberIds || []).map(String).filter(Boolean))];
   if (!ids.length || ids.length > 500) {
     const error = new Error('subscriberIds must contain 1-500 unique ids'); error.statusCode = 400; throw error;
@@ -87,7 +119,14 @@ async function completeCourses({ tenantId, subscriberIds, courseId, actor, requi
   try {
     await conn.beginTransaction();
     const results = [];
-    for (const subscriberId of ids) results.push({ subscriberId, ...(await completeCourse({ tenantId, subscriberId, courseId, actor, requireFullProgress }, conn)) });
+    for (const subscriberId of ids) {
+      results.push({
+        subscriberId,
+        ...(await completeCourse({
+          tenantId, subscriberId, courseId, actor, requireFullProgress, reason,
+        }, conn)),
+      });
+    }
     await conn.commit();
     return results;
   } catch (error) {

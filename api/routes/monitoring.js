@@ -9,7 +9,9 @@ const logger = require('../lib/logger');
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { verifyAuditRows } = require('../lib/auditTrail');
 const errorMonitor = require('../lib/errorMonitor');
 
 async function safeCount(sql, params = []) {
@@ -17,10 +19,11 @@ async function safeCount(sql, params = []) {
   catch { return null; }
 }
 
-async function sumPaidPaymentsEgp(where = '', params = []) {
+async function sumPaidPaymentsEgp(tenantId) {
   const [[row]] = await pool.query(
-    `SELECT COALESCE(SUM(amount_egp),0) AS total FROM payments WHERE status='paid' ${where}`,
-    params
+    `SELECT COALESCE(SUM(amount_egp),0) AS total
+     FROM payments WHERE tenant_id=? AND status='paid'`,
+    [tenantId]
   );
   return Number(row?.total || 0);
 }
@@ -67,7 +70,7 @@ router.get('/api/admin/monitoring', requireAuth, requireAdmin, async (req, res) 
   }
 });
 
-router.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/audit-logs', requireAuth, requireAdminOrStaff, requirePermission('view_security'), async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit || 100), 500);
     const severity = req.query.severity ? String(req.query.severity) : null;
@@ -93,6 +96,50 @@ router.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) 
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+router.get(
+  '/api/admin/security/audit-export',
+  requireAuth, requireAdminOrStaff, requirePermission('view_security'), bulkOperationLimiter,
+  async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(Number(req.query.limit) || 5000, 1), 10000);
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? req.query.from : '1970-01-01';
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || '')) ? req.query.to : '2999-12-31';
+      const columns = `id, tenant_id, actor_id, actor_role, action, entity_type, entity_id,
+        severity, metadata_json, ip_address, user_agent, previous_hash, event_hash,
+        hash_version, created_at,
+        DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') AS created_at_canonical`;
+      const [rows] = await pool.query(
+        `SELECT * FROM (
+           SELECT ${columns} FROM audit_logs
+            WHERE tenant_id=? AND created_at>=? AND created_at<DATE_ADD(?, INTERVAL 1 DAY)
+           UNION ALL
+           SELECT ${columns} FROM audit_logs_archive
+            WHERE tenant_id=? AND created_at>=? AND created_at<DATE_ADD(?, INTERVAL 1 DAY)
+         ) audit_export
+         ORDER BY created_at ASC, id ASC
+         LIMIT ?`,
+        [req.tenantId, from, to, req.tenantId, from, to, limit]
+      );
+      const verification = verifyAuditRows(rows);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="audit-${String(req.tenantId).replace(/[^a-z0-9_-]/gi, '_')}-${from}-${to}.json"`
+      );
+      res.json({
+        tenant_id: req.tenantId,
+        exported_at: new Date().toISOString(),
+        range: { from, to },
+        count: rows.length,
+        verification,
+        records: rows,
+      });
+    } catch (error) {
+      logger.error('[audit-export]', error.message);
+      res.status(500).json({ error: 'Audit export failed' });
+    }
+  }
+);
 
 router.get('/api/admin/queue-dashboard', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -135,7 +182,7 @@ router.get('/api/admin/reconcile-ledger', requireAuth, requireAdmin, async (req,
     const tenantId = req.tenantId || 'tenant-default';
     const [[pay]] = await pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='paid'", [tenantId]);
     const [[jrnl]] = await pool.query("SELECT COALESCE(SUM(jel.debit),0) AS total FROM journal_entry_lines jel JOIN journal_entries je ON je.id=jel.entry_id WHERE je.tenant_id=? AND je.ref_type='payment' AND jel.account_code='1100'", [tenantId]);
-    const paymentsTotal = await sumPaidPaymentsEgp('AND tenant_id=?', [tenantId]);
+    const paymentsTotal = await sumPaidPaymentsEgp(tenantId);
     const journalCashTotal = Number(jrnl.total) || 0;
     const diff = +(paymentsTotal - journalCashTotal).toFixed(2);
     res.json({
@@ -156,9 +203,6 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
   try {
     const limit = Math.min(Number(req.query.limit || 50), 200);
     const tenantId = req.tenantId || 'tenant-default';
-    const tenantParams = [tenantId];
-    const tenantWhere = 'tenant_id = ?';
-
     const [[payments]] = await pool.query(
       `SELECT
           COUNT(*) AS total_count,
@@ -166,8 +210,8 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
           COALESCE(SUM(status='refunded'),0) AS refunded_count,
           COALESCE(SUM(CASE WHEN status='paid' THEN amount_egp ELSE 0 END),0) AS paid_egp
        FROM payments
-       WHERE ${tenantWhere}`,
-      tenantParams
+       WHERE tenant_id=?`,
+      [tenantId]
     ).catch(() => [[{ total_count: 0, paid_count: 0, refunded_count: 0, paid_egp: 0 }]]);
 
     const [[refunds]] = await pool.query(
@@ -177,26 +221,26 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
           COALESCE(SUM(status='approved'),0) AS approved_count,
           COALESCE(SUM(status='rejected'),0) AS rejected_count
        FROM refund_requests
-       WHERE ${tenantWhere}`,
-      tenantParams
+       WHERE tenant_id=?`,
+      [tenantId]
     ).catch(() => [[{ total_count: 0, pending_count: 0, approved_count: 0, rejected_count: 0 }]]);
 
     const [recentPayments] = await pool.query(
       `SELECT id, subscriber_id, amount, currency, payment_type, payment_method, status, date, created_at
        FROM payments
-       WHERE ${tenantWhere}
+       WHERE tenant_id=?
        ORDER BY created_at DESC
        LIMIT ?`,
-      [...tenantParams, limit]
+      [tenantId, limit]
     ).catch(() => [[]]);
 
     const [recentRefunds] = await pool.query(
       `SELECT id, subscriber_id, payment_id, amount, status, reason, admin_note, resolved_by, created_at, resolved_at
        FROM refund_requests
-       WHERE ${tenantWhere}
+       WHERE tenant_id=?
        ORDER BY created_at DESC
        LIMIT ?`,
-      [...tenantParams, limit]
+      [tenantId, limit]
     ).catch(() => [[]]);
 
     const [recentJournal] = await pool.query(
@@ -208,7 +252,7 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
       [tenantId, limit]
     ).catch(() => [[]]);
 
-    const paymentCashTotal = await sumPaidPaymentsEgp(`AND ${tenantWhere}`, tenantParams).catch(() => 0);
+    const paymentCashTotal = await sumPaidPaymentsEgp(tenantId).catch(() => 0);
     const [[journalCash]] = await pool.query(
       `SELECT COALESCE(SUM(jel.debit),0) AS total
        FROM journal_entry_lines jel
@@ -242,10 +286,10 @@ router.get('/api/admin/financial-audit-dashboard', requireAuth, requireAdmin, as
       `SELECT p.id, p.subscriber_id, p.amount, p.currency, p.status, p.created_at
        FROM payments p
        LEFT JOIN journal_entries je ON je.tenant_id=p.tenant_id AND je.ref_type='payment' AND je.ref_id = p.id
-       WHERE p.status='paid' AND je.id IS NULL AND ${tenantWhere}
+       WHERE p.tenant_id=? AND p.status='paid' AND je.id IS NULL
        ORDER BY p.created_at DESC
        LIMIT 25`,
-      tenantParams
+      [tenantId]
     ).catch(() => [[]]);
 
     res.json({

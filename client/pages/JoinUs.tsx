@@ -11,6 +11,8 @@ const JoinUs: React.FC = () => {
     return { name: '', email: '', phone: '', specialty: '', experience: '', type: initialType, linkedin: '', message: '' };
   });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const isEmployee = form.type === 'employee';
   const [jobs, setJobs] = useState<any[]>([]);
   useEffect(() => {
@@ -20,22 +22,31 @@ const JoinUs: React.FC = () => {
   const EMP_LABEL: Record<string, string> = { full_time: 'دوام كامل', part_time: 'دوام جزئي', contract: 'عقد', remote: 'عن بُعد', internship: 'تدريب' };
   const BRANCH_LABEL: Record<string, string> = { DAQQI: 'فرع الدقي', TAGAMOA: 'فرع التجمع', ONLINE_EGYPT: 'أونلاين محلي (مصر)', ONLINE_SAUDI: 'أونلاين سعودي', ONLINE_ABROAD: 'أونلاين دولي', OTHER: 'أخرى' };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    addJoinUsApplication({
-      id: `ju-${Date.now()}`,
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
-      specialty: form.specialty,
-      experience: form.experience,
-      type: form.type as 'instructor' | 'consultant' | 'employee',
-      linkedin: form.linkedin || undefined,
-      message: form.message || undefined,
-      status: 'new',
-      createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-    });
-    setSubmitted(true);
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await addJoinUsApplication({
+        id: `ju-${Date.now()}`,
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        specialty: form.specialty,
+        experience: form.experience,
+        type: form.type as 'instructor' | 'consultant' | 'employee',
+        linkedin: form.linkedin || undefined,
+        message: form.message || undefined,
+        status: 'new',
+        createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      });
+      setSubmitted(true);
+    } catch {
+      setSubmitError('تعذر إرسال طلبك حاليًا. لم يتم حفظه، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const benefits = isEmployee ? [
@@ -251,9 +262,10 @@ const JoinUs: React.FC = () => {
                   <textarea rows={4} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="أخبرنا عن نفسك وماذا تريد أن تقدم للطلاب..." className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
                 </div>
 
-                <button type="submit" className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition text-lg">
+                {submitError && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{submitError}</p>}
+                <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition text-lg disabled:opacity-50">
                   <Send size={20} />
-                  إرسال الطلب
+                  {submitting ? 'جاري الإرسال...' : 'إرسال الطلب'}
                 </button>
                 <p className="text-center text-xs text-gray-400">بالإرسال توافق على شروط الاستخدام وسياسة الخصوصية الخاصة بالمعهد.</p>
               </form>

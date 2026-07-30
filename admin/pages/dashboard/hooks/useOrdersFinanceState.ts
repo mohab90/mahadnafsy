@@ -4,7 +4,7 @@ import type { OrderItem } from '../../../types';
 /**
  * Orders/finance tab state: the order-list search/status/type/method/staff/
  * date filters, the review-queue sub-tabs (admin + online-manager variants),
- * the reviewed-orders localStorage set, and the transfer-linking modals
+ * and the transfer-linking modals
  * (add transfer, link transfer-to-order, link order-to-transfer) plus the
  * transfer entry form draft. Lifted out of the Dashboard god-hub — pure UI
  * state (no effects) — returns identical names so the component body is
@@ -21,10 +21,6 @@ export function useOrdersFinanceState() {
   const [orderReviewTab, setOrderReviewTab] = useState<'review' | 'accepted' | 'failed' | 'transfers'>('review');
   const [orderStaffFilter, setOrderStaffFilter] = useState<string>('all');
   const [omOrdReviewTab, setOmOrdReviewTab] = useState<'review' | 'accepted' | 'failed'>('review');
-  const [reviewedOrders, setReviewedOrders] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('reviewedOrders') || '[]')); } catch { return new Set(); }
-  });
-
   // -- Add Transfer Modal --
   const [showAddTransfer, setShowAddTransfer] = useState(false);
   // -- Link Transfer -> Pending Order modal --
@@ -54,7 +50,6 @@ export function useOrdersFinanceState() {
     orderReviewTab, setOrderReviewTab,
     orderStaffFilter, setOrderStaffFilter,
     omOrdReviewTab, setOmOrdReviewTab,
-    reviewedOrders, setReviewedOrders,
     showAddTransfer, setShowAddTransfer,
     linkTransferModal, setLinkTransferModal,
     linkOrderModal, setLinkOrderModal,

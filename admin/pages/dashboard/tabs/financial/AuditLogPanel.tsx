@@ -25,7 +25,7 @@ export function AuditLogPanel() {
       if (auditActionFilter) params.set('action', auditActionFilter);
       if (auditDateFrom) params.set('dateFrom', auditDateFrom);
       if (auditDateTo) params.set('dateTo', auditDateTo);
-      const data = await mysqlAdmin.adminGet<{ total: number; rows: AuditRow[] }>(`/api/admin/payment-audit?${params}`);
+      const data = await mysqlAdmin.adminGet<{ total: number; rows: AuditRow[] }>(`/admin/payment-audit?${params}`);
       setAuditRows(data.rows || []);
       setAuditTotal(data.total || 0);
       setAuditPage(page);

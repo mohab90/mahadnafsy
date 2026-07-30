@@ -29,6 +29,20 @@ function mockConn(paymentRow, { periodClosed = false, leadId = null } = {}) {
       if (sql.includes('FROM accounting_periods')) {
         return periodClosed ? [[{ id: 'p1', period_label: '2026-01', status: 'closed' }]] : [[]];
       }
+      if (sql.includes('SELECT code,is_active FROM tenant_chart_of_accounts')) {
+        return [params.slice(1).map(code => ({ code, is_active: 1 }))];
+      }
+      if (sql.includes('FROM financial_documents')) return [[]];
+      if (sql.includes('SELECT next_number FROM finance_document_sequences')) {
+        return [[{ next_number: 2 }]];
+      }
+      if (sql.includes('SELECT id,status FROM enrollments')) return [[{ id: 'enr-1', status: 'active' }]];
+      if (sql.includes('SELECT id FROM course_completions')) {
+        return paymentRow?.course_id ? [[{ id: 'cc-1' }]] : [[]];
+      }
+      if (sql.includes('SELECT id,certificate_code,status,version FROM course_completions')) {
+        return [[{ id: 'cc-1', certificate_code: 'MHAD-TEST', status: 'active', version: 1 }]];
+      }
       if (sql.includes('UPDATE orders SET status')) return [{ affectedRows: 1 }];
       if (sql.includes('SELECT lead_id FROM subscribers')) return [[leadId ? { lead_id: leadId } : undefined]];
       if (sql.includes('INSERT INTO journal_entries') || sql.includes('journal')) return [{ insertId: 1 }];
@@ -49,24 +63,28 @@ test('applyRefundReversal: refuses to mutate a payment in a closed accounting pe
     { id: 'pay-1', subscriber_id: 's1', course_id: 'c1', bundle_id: null, amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'COURSE', status: 'paid', transaction_id: null },
     { periodClosed: true }
   );
-  await assert.rejects(() => applyRefundReversal({ paymentId: 'pay-1', tenantId: 't1', actor: 'admin' }, conn), (err) => {
+  await assert.rejects(() => applyRefundReversal({ paymentId: 'pay-1', refundAmount: 500, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn), (err) => {
     assert.equal(err.status, 409);
     return true;
   });
   assert.ok(!conn.calls.some(c => c.sql.includes("SET status='refunded'")), 'must not touch the payment once the period-lock check rejects it');
 });
 
-test('applyRefundReversal: marks the payment refunded, cancels its commission, removes the enrollment, and flips the linked order', async () => {
+test('applyRefundReversal: marks the payment refunded, cancels its commission, revokes the entitlement, and flips the linked order', async () => {
   const conn = mockConn({
     id: 'pay-1', subscriber_id: 's1', course_id: 'c1', bundle_id: null,
     amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'COURSE', status: 'paid', transaction_id: 'txn-abc',
   });
-  const result = await applyRefundReversal({ paymentId: 'pay-1', tenantId: 't1', actor: 'admin@x.com' }, conn);
+  const result = await applyRefundReversal({ paymentId: 'pay-1', refundAmount: 500, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin@x.com' }, conn);
 
   assert.ok(conn.calls.some(c => c.sql.includes("SET status='refunded'") && c.sql.includes('payments')), 'must mark the payment refunded');
   assert.ok(conn.calls.some(c => c.sql.includes('payment_audit_log')), 'must write an audit trail row');
   assert.ok(conn.calls.some(c => c.sql.includes("SET status='CANCELLED'") && c.sql.includes('crm_commissions')), 'must cancel any pending commission on the refunded payment');
-  assert.ok(conn.calls.some(c => c.sql.includes('DELETE FROM enrollments')), 'must remove the enrollment for a course/bundle payment');
+  assert.ok(conn.calls.some(c => c.sql.includes("UPDATE enrollments SET status='revoked'")), 'must auditably revoke the course entitlement');
+  assert.ok(conn.calls.some(c => c.sql.includes('INSERT INTO entitlement_events')), 'must preserve an entitlement audit event');
+  assert.ok(conn.calls.some(c => c.sql.includes("UPDATE course_completions") && c.sql.includes("status='revoked'")), 'must revoke a paid-only completion certificate');
+  assert.ok(conn.calls.some(c => c.sql.includes('INSERT INTO certificate_lifecycle_events')), 'must preserve certificate revocation history');
+  assert.ok(conn.calls.some(c => c.sql.includes('INSERT INTO financial_documents')), 'must issue immutable invoice/credit-note documents');
 
   const orderUpdateCall = conn.calls.find(c => c.sql.includes('UPDATE orders SET status'));
   assert.ok(orderUpdateCall, 'must update the linked order — this is exactly the PAY-05 gap being closed');
@@ -79,8 +97,8 @@ test('applyRefundReversal: skips enrollment removal for a non-course payment (e.
     id: 'pay-2', subscriber_id: 's1', course_id: null, bundle_id: null,
     amount: 300, amount_egp: 300, currency: 'EGP', payment_type: 'CONSULTATION', status: 'paid', transaction_id: null,
   });
-  await applyRefundReversal({ paymentId: 'pay-2', tenantId: 't1', actor: 'admin' }, conn);
-  assert.ok(!conn.calls.some(c => c.sql.includes('DELETE FROM enrollments')), 'a consultation payment has no enrollment to remove');
+  await applyRefundReversal({ paymentId: 'pay-2', refundAmount: 300, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn);
+  assert.ok(!conn.calls.some(c => c.sql.includes("UPDATE enrollments SET status='revoked'")), 'a consultation payment has no entitlement to revoke');
 });
 
 test('applyRefundReversal: logs a lead_timeline entry when the subscriber has a linked lead (FIN-02)', async () => {
@@ -88,7 +106,7 @@ test('applyRefundReversal: logs a lead_timeline entry when the subscriber has a 
     { id: 'pay-3', subscriber_id: 's1', course_id: 'c1', bundle_id: null, amount: 400, amount_egp: 400, currency: 'EGP', payment_type: 'COURSE', status: 'paid', transaction_id: null },
     { leadId: 'lead-42' }
   );
-  await applyRefundReversal({ paymentId: 'pay-3', tenantId: 't1', actor: 'admin' }, conn);
+  await applyRefundReversal({ paymentId: 'pay-3', refundAmount: 400, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn);
   const timelineCall = conn.calls.find(c => c.sql.includes('INSERT INTO lead_timeline'));
   assert.ok(timelineCall, 'must record the refund on the linked lead\'s timeline so CRM/sales staff see it');
   assert.equal(timelineCall.params[2], 'lead-42');
@@ -100,6 +118,39 @@ test('applyRefundReversal: does not error when the subscriber has no linked lead
     { id: 'pay-4', subscriber_id: 's1', course_id: null, bundle_id: null, amount: 200, amount_egp: 200, currency: 'EGP', payment_type: 'OTHER', status: 'paid', transaction_id: null },
     { leadId: null }
   );
-  await assert.doesNotReject(() => applyRefundReversal({ paymentId: 'pay-4', tenantId: 't1', actor: 'admin' }, conn));
+  await assert.doesNotReject(() => applyRefundReversal({ paymentId: 'pay-4', refundAmount: 200, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn));
   assert.ok(!conn.calls.some(c => c.sql.includes('INSERT INTO lead_timeline')));
+});
+
+test('applyRefundReversal: rejects an already-refunded payment before writing another reversal', async () => {
+  const conn = mockConn({
+    id: 'pay-5', subscriber_id: 's1', course_id: null, bundle_id: null,
+    amount: 200, amount_egp: 200, currency: 'EGP', payment_type: 'OTHER', status: 'refunded',
+  });
+  await assert.rejects(
+    () => applyRefundReversal({ paymentId: 'pay-5', refundAmount: 200, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, conn),
+    /already refunded/,
+  );
+  assert.ok(!conn.calls.some(c => c.sql.includes('INSERT INTO journal_entries')));
+});
+
+test('applyRefundReversal: rejects partial and Paymob refunds while those workflows are deferred', async () => {
+  const partialConn = mockConn({
+    id: 'pay-6', subscriber_id: 's1', course_id: null, bundle_id: null,
+    amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'OTHER', status: 'paid',
+  });
+  await assert.rejects(
+    () => applyRefundReversal({ paymentId: 'pay-6', refundAmount: 100, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, partialConn),
+    /Partial refunds are not enabled/,
+  );
+
+  const paymobConn = mockConn({
+    id: 'pay-7', subscriber_id: 's1', course_id: null, bundle_id: null,
+    amount: 500, amount_egp: 500, currency: 'EGP', payment_type: 'OTHER',
+    payment_method: 'paymob_card', source: 'paymob', status: 'paid',
+  });
+  await assert.rejects(
+    () => applyRefundReversal({ paymentId: 'pay-7', refundAmount: 500, refundCurrency: 'EGP', tenantId: 't1', actor: 'admin' }, paymobConn),
+    /Paymob refunds are suspended/,
+  );
 });

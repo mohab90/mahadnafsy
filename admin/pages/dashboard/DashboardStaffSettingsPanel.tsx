@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Settings2, TrendingUp } from 'lucide-react';
 import type { StaffMember, SubscriberItem } from '../../types';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
@@ -26,6 +26,11 @@ type MyHrData = {
 };
 
 type AdvanceRecord = { id: string; amount: number; currency: string; reason: string | null; status: string; created_at: string };
+type DisciplinaryRecord = {
+  id: string; type: string; severity: string; title: string; description: string | null;
+  incident_date: string | null; action_taken: string | null; appeal_note: string | null;
+  acknowledged_at: string | null; status: string; created_at: string;
+};
 type LeaveDraft = { type: string; start_date: string; end_date: string; reason: string };
 type AdvanceDraft = { amount: string; reason: string };
 type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
@@ -55,6 +60,8 @@ type DashboardStaffSettingsPanelProps = {
   setSubmittingAdvance: Dispatch<SetStateAction<boolean>>;
   myAdvances: AdvanceRecord[];
   setMyAdvances: Dispatch<SetStateAction<AdvanceRecord[]>>;
+  myDisciplinary: DisciplinaryRecord[];
+  setMyDisciplinary: Dispatch<SetStateAction<DisciplinaryRecord[]>>;
   staffWaTemplateEdit: StaffWaTemplate | null;
   setStaffWaTemplateEdit: Dispatch<SetStateAction<StaffWaTemplate | null>>;
   staffWaTemplates: StaffWaTemplate[];
@@ -90,6 +97,8 @@ export function DashboardStaffSettingsPanel({
   setSubmittingAdvance,
   myAdvances,
   setMyAdvances,
+  myDisciplinary,
+  setMyDisciplinary,
   staffWaTemplateEdit,
   setStaffWaTemplateEdit,
   staffWaTemplates,
@@ -99,26 +108,85 @@ export function DashboardStaffSettingsPanel({
   staffNewTagInput,
   setStaffNewTagInput,
 }: DashboardStaffSettingsPanelProps) {
+  const [savedWaNumber, setSavedWaNumber] = useState('');
+  const [disciplinaryBusy, setDisciplinaryBusy] = useState('');
+  const [appealTarget, setAppealTarget] = useState('');
+  const [appealNote, setAppealNote] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.getMyPreferences().then((preferences) => {
+      if (cancelled) return;
+      setSavedWaNumber(preferences.waNumber || '');
+      setStaffWaTemplates(preferences.waTemplates || []);
+      setStaffContactTags(preferences.customTags || []);
+    }).catch(() => notify('error', 'تعذر تحميل تفضيلات حساب الموظف'));
+    return () => { cancelled = true; };
+  }, [notify, setStaffContactTags, setStaffWaTemplates]);
+
   const draft = staffSettingsDraft ?? {
     name: currentStaff.name || '',
     phone: currentStaff.phone || '',
     image: currentStaff.image || '',
-    waNumber: localStorage.getItem('sales.waNumber') || '',
-    monthlyTarget: localStorage.getItem('sales.monthlyTarget') || '10',
+    waNumber: savedWaNumber,
+    monthlyTarget: String(currentStaff.monthlyLeadsTarget || 10),
   };
   const setDraft = (patch: Partial<typeof draft>) =>
     setStaffSettingsDraft(prev => ({ ...(prev ?? draft), ...patch }));
   const handleSave = async () => {
     setStaffSettingsSaving(true);
     try {
-      await mysqlAdmin.updateMyProfile({ name: draft.name, phone: draft.phone, image: draft.image || null });
-      if (draft.waNumber) localStorage.setItem('sales.waNumber', draft.waNumber);
-      else localStorage.removeItem('sales.waNumber');
-      if (draft.monthlyTarget) localStorage.setItem('sales.monthlyTarget', draft.monthlyTarget);
+      await Promise.all([
+        mysqlAdmin.updateMyProfile({ name: draft.name, phone: draft.phone, image: draft.image || null }),
+        mysqlAdmin.saveMyPreferences({
+          waNumber: draft.waNumber,
+          waTemplates: staffWaTemplates,
+          customTags: staffContactTags,
+        }),
+      ]);
+      setSavedWaNumber(draft.waNumber);
       notify('success', 'تم الحفظ بنجاح');
       setStaffSettingsDraft(null);
     } catch { notify('error', 'فشل الحفظ، حاول مجدداً'); }
     finally { setStaffSettingsSaving(false); }
+  };
+
+  const savePreferences = async (waTemplates: StaffWaTemplate[], customTags: string[]) => {
+    try {
+      await mysqlAdmin.saveMyPreferences({ waNumber: draft.waNumber, waTemplates, customTags });
+      setStaffWaTemplates(waTemplates);
+      setStaffContactTags(customTags);
+      return true;
+    } catch {
+      notify('error', 'تعذر حفظ تفضيلات حساب الموظف');
+      return false;
+    }
+  };
+
+  const updateDisciplinary = async (recordId: string, action: 'acknowledge' | 'appeal') => {
+    setDisciplinaryBusy(recordId);
+    try {
+      const response = await fetch(`/api/staff/me/disciplinary/${recordId}/${action}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: adminAuthHeaders(true),
+        body: JSON.stringify(action === 'appeal' ? { appeal_note: appealNote } : {}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'تعذر تنفيذ الإجراء');
+      const refreshed = await fetch('/api/staff/me/disciplinary', {
+        credentials: 'include',
+        headers: adminAuthHeaders(),
+      }).then(result => result.json());
+      if (Array.isArray(refreshed)) setMyDisciplinary(refreshed);
+      setAppealTarget('');
+      setAppealNote('');
+      notify('success', action === 'acknowledge' ? 'تم تأكيد الاطلاع' : 'تم إرسال التظلم');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تنفيذ الإجراء');
+    } finally {
+      setDisciplinaryBusy('');
+    }
   };
 
   const {
@@ -411,12 +479,12 @@ export function DashboardStaffSettingsPanel({
                         if (!currentStaff) return;
                         setSubmittingMyLeaveProfile(true);
                         try {
-                          const r = await fetch('/api/admin/hr/leaves', { method: 'POST', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify({ staff_id: currentStaff.id, ...myLeaveFormProfile }) });
+                          const r = await fetch('/api/staff/me/leaves', { method: 'POST', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify(myLeaveFormProfile) });
                           if (!r.ok) throw new Error();
                           notify('success', 'تم إرسال طلب الإجازة بنجاح');
                           setShowMyLeaveFormProfile(false);
                           setMyLeaveFormProfile({ type: 'ANNUAL', start_date: '', end_date: '', reason: '' });
-                          const hrData = await fetch(`/api/admin/hr/employees/${currentStaff.id}`, { credentials: 'include', headers: adminAuthHeaders() }).then(r2 => r2.json()).catch(() => null);
+                          const hrData = await fetch('/api/staff/me/hr', { credentials: 'include', headers: adminAuthHeaders() }).then(r2 => r2.json()).catch(() => null);
                           if (hrData && !hrData.error) setMyHrData(hrData);
                         } catch { notify('error', 'فشل إرسال الطلب، حاول مجدداً'); }
                         finally { setSubmittingMyLeaveProfile(false); }
@@ -479,7 +547,7 @@ export function DashboardStaffSettingsPanel({
                         if (!currentStaff) return;
                         setSubmittingAdvance(true);
                         try {
-                          const r = await fetch('/api/admin/hr/advances', { method: 'POST', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify({ staff_id: currentStaff.id, amount: Number(advanceDraft.amount), reason: advanceDraft.reason }) });
+                          const r = await fetch('/api/staff/me/advances', { method: 'POST', credentials: 'include', headers: adminAuthHeaders(true), body: JSON.stringify({ amount: Number(advanceDraft.amount), reason: advanceDraft.reason }) });
                           if (!r.ok) throw new Error();
                           const newAdv = await r.json();
                           setMyAdvances(prev => [newAdv, ...prev]);
@@ -523,6 +591,77 @@ export function DashboardStaffSettingsPanel({
                 </div>
               )}
             </div>
+
+            {/* Disciplinary self-service: only the employee can acknowledge or appeal. */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+              <h3 className="font-extrabold text-gray-900 mb-4">التنبيهات والجزاءات الوظيفية</h3>
+              {myDisciplinary.length === 0 ? (
+                <div className="text-center py-5 text-gray-400 text-sm">لا توجد سجلات وظيفية مسجلة</div>
+              ) : (
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {myDisciplinary.map(record => (
+                    <div key={record.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-gray-900">{record.title}</div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {record.incident_date ? new Date(record.incident_date).toLocaleDateString('ar-EG') : ''}
+                            {' · '}{record.severity === 'high' ? 'عالية' : record.severity === 'low' ? 'منخفضة' : 'متوسطة'}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-gray-600">
+                          {record.status === 'open' ? 'جديد' : record.status === 'acknowledged' ? 'تم الاطلاع' : record.status === 'appealed' ? 'قيد التظلم' : 'مغلق'}
+                        </span>
+                      </div>
+                      {record.description && <p className="mt-2 whitespace-pre-wrap text-gray-700">{record.description}</p>}
+                      {record.action_taken && <p className="mt-2 text-xs text-gray-600">الإجراء: {record.action_taken}</p>}
+                      {record.appeal_note && <p className="mt-2 rounded-lg bg-blue-50 p-2 text-xs text-blue-800">التظلم: {record.appeal_note}</p>}
+                      {['open', 'acknowledged'].includes(record.status) && (
+                        <div className="mt-3 space-y-2">
+                          {appealTarget === record.id && (
+                            <textarea
+                              value={appealNote}
+                              onChange={event => setAppealNote(event.target.value)}
+                              rows={3}
+                              maxLength={5000}
+                              placeholder="اكتب سبب التظلم بوضوح"
+                              className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"
+                            />
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {record.status === 'open' && (
+                              <button
+                                disabled={disciplinaryBusy === record.id}
+                                onClick={() => updateDisciplinary(record.id, 'acknowledge')}
+                                className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+                                تأكيد الاطلاع
+                              </button>
+                            )}
+                            {appealTarget === record.id ? (
+                              <>
+                                <button
+                                  disabled={disciplinaryBusy === record.id || !appealNote.trim()}
+                                  onClick={() => updateDisciplinary(record.id, 'appeal')}
+                                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+                                  إرسال التظلم
+                                </button>
+                                <button onClick={() => { setAppealTarget(''); setAppealNote(''); }}
+                                  className="rounded-lg bg-white px-3 py-1.5 text-xs text-gray-600">إلغاء</button>
+                              </>
+                            ) : (
+                              <button onClick={() => { setAppealTarget(record.id); setAppealNote(''); }}
+                                className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
+                                تقديم تظلم
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -560,10 +699,10 @@ export function DashboardStaffSettingsPanel({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300" dir="ltr" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">🎯 الهدف الشهري (تحويلات)</label>
-            <input value={draft.monthlyTarget} onChange={e => setDraft({ monthlyTarget: e.target.value })}
+            <label className="block text-xs font-semibold text-gray-600 mb-1">🎯 الهدف الشهري المحدد من الإدارة</label>
+            <input value={draft.monthlyTarget} readOnly
               type="number" min={1} max={500}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" dir="ltr" />
+              className="w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-not-allowed" dir="ltr" />
           </div>
         </div>
         <button onClick={handleSave} disabled={staffSettingsSaving}
@@ -607,14 +746,12 @@ export function DashboardStaffSettingsPanel({
               <div className="flex gap-2">
                 <button
                   disabled={!staffWaTemplateEdit.title.trim() || !staffWaTemplateEdit.body.trim()}
-                  onClick={() => {
+                  onClick={async () => {
                     const exists = staffWaTemplates.find(t => t.id === staffWaTemplateEdit.id);
                     const updated = exists
                       ? staffWaTemplates.map(t => t.id === staffWaTemplateEdit.id ? staffWaTemplateEdit : t)
                       : [...staffWaTemplates, staffWaTemplateEdit];
-                    setStaffWaTemplates(updated);
-                    localStorage.setItem('sales.waTemplates', JSON.stringify(updated));
-                    setStaffWaTemplateEdit(null);
+                    if (await savePreferences(updated, staffContactTags)) setStaffWaTemplateEdit(null);
                   }}
                   className="flex-1 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 disabled:opacity-50">
                   حفظ القالب
@@ -638,10 +775,9 @@ export function DashboardStaffSettingsPanel({
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
                       <button onClick={() => setStaffWaTemplateEdit(tpl)}
                         className="p-1 rounded text-blue-600 hover:bg-blue-100 text-xs">✏️</button>
-                      <button onClick={() => {
+                      <button onClick={async () => {
                         const updated = staffWaTemplates.filter(t => t.id !== tpl.id);
-                        setStaffWaTemplates(updated);
-                        localStorage.setItem('sales.waTemplates', JSON.stringify(updated));
+                        await savePreferences(updated, staffContactTags);
                       }}
                         className="p-1 rounded text-red-500 hover:bg-red-100 text-xs">🗑️</button>
                     </div>
@@ -674,13 +810,12 @@ export function DashboardStaffSettingsPanel({
             <input
               value={staffNewTagInput}
               onChange={e => setStaffNewTagInput(e.target.value)}
-              onKeyDown={e => {
+              onKeyDown={async e => {
                 if (e.key === 'Enter' && staffNewTagInput.trim()) {
                   const tag = staffNewTagInput.trim();
                   if (!staffContactTags.includes(tag)) {
                     const updated = [...staffContactTags, tag];
-                    setStaffContactTags(updated);
-                    localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                    await savePreferences(staffWaTemplates, updated);
                   }
                   setStaffNewTagInput('');
                 }
@@ -690,12 +825,11 @@ export function DashboardStaffSettingsPanel({
             />
             <button
               disabled={!staffNewTagInput.trim()}
-              onClick={() => {
+              onClick={async () => {
                 const tag = staffNewTagInput.trim();
                 if (tag && !staffContactTags.includes(tag)) {
                   const updated = [...staffContactTags, tag];
-                  setStaffContactTags(updated);
-                  localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                  await savePreferences(staffWaTemplates, updated);
                 }
                 setStaffNewTagInput('');
               }}
@@ -714,10 +848,9 @@ export function DashboardStaffSettingsPanel({
                 <span key={tag} className="flex items-center gap-1.5 bg-purple-50 text-purple-800 border border-purple-200 rounded-full px-3 py-1 text-xs font-semibold group">
                   {tag}
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const updated = staffContactTags.filter(t => t !== tag);
-                      setStaffContactTags(updated);
-                      localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                      await savePreferences(staffWaTemplates, updated);
                     }}
                     className="text-purple-400 hover:text-red-500 transition font-bold leading-none">×</button>
                 </span>
@@ -730,10 +863,9 @@ export function DashboardStaffSettingsPanel({
             <p className="text-xs text-gray-400 mb-2">تاجات شائعة للإضافة السريعة:</p>
             <div className="flex flex-wrap gap-1.5">
               {['مهتم جداً', 'يحتاج متابعة', 'لم يرد', 'عميل VIP', 'طالب راضي', 'سعر مرتفع', 'تأجيل'].filter(t => !staffContactTags.includes(t)).map(suggestion => (
-                <button key={suggestion} onClick={() => {
+                <button key={suggestion} onClick={async () => {
                   const updated = [...staffContactTags, suggestion];
-                  setStaffContactTags(updated);
-                  localStorage.setItem('sales.customTags', JSON.stringify(updated));
+                  await savePreferences(staffWaTemplates, updated);
                 }}
                   className="text-[11px] bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 rounded-full px-2.5 py-1 border border-gray-200 transition">
                   + {suggestion}

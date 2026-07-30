@@ -10,17 +10,19 @@ export interface ArchiveTabProps {
   leads: LeadItem[];
   staffMembers: StaffMember[];
   addLead: (l: Partial<LeadItem>) => Promise<unknown>;
-  updateLead: (l: LeadItem) => void;
+  updateLead: (l: LeadItem) => void | Promise<boolean>;
+  reloadLeads: () => void | Promise<void>;
   notify: NotifyFn;
   courses: Course[];
   bundles: Bundle[];
   navigate: NavigateFunction;
-  deleteLead: (id: string) => void | Promise<void>;
+  deleteLead: (id: string) => void | Promise<unknown>;
   addSubscriber: (s: SubscriberItem) => Promise<boolean>;
-  updateSubscriber: (s: SubscriberItem) => void | Promise<void>;
+  updateSubscriber: (s: SubscriberItem) => void | Promise<unknown>;
   subscribers: SubscriberItem[];
   salesReps: StaffMember[];
   isSalesOnly: boolean;
+  canManageLeads: boolean;
   onBook: (lead: LeadItem) => void;
   branchOptions: { id: string; label: string }[];
   sources: string[];
@@ -29,7 +31,7 @@ export interface ArchiveTabProps {
   customFilter?: (lead: LeadItem) => boolean;
   hideImport?: boolean;
 }
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false }: ArchiveTabProps) {
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
   const [archiveParseErr, setArchiveParseErr] = useState('');
@@ -137,7 +139,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
       </div>
 
       {/* ── Section 1: Import CSV ── */}
-      {!hideImport && (
+      {canManageLeads && !hideImport && (
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Upload size={14} className="text-indigo-500" /> استيراد ملف CSV / Excel
@@ -219,7 +221,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
       )}
 
       {/* ── Section 2: Bulk Assign ── */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+      {canManageLeads && <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Users size={14} className="text-emerald-500" /> تعيين جماعي لموظف
         </h3>
@@ -307,7 +309,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
             <button disabled={archivePage >= totalArchivePages} onClick={() => setArchivePage(p => p + 1)} className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-40 font-bold">التالي →</button>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── Section 3: Lead Table ── */}
       <LeadTable
@@ -317,12 +319,14 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, notify, c
         bundles={bundles}
         navigate={navigate}
         updateLead={updateLead}
+        reloadLeads={reloadLeads}
         deleteLead={deleteLead}
         addSubscriber={addSubscriber}
         updateSubscriber={updateSubscriber}
         subscribers={subscribers}
         salesStaff={salesReps}
         isSalesOnly={isSalesOnly}
+        canManageLeads={canManageLeads}
         onBook={onBook}
         branchOptions={branchOptions}
         sources={sources}

@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
-import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AutomationTrigger, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream } from '../types';
+import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, LeadStatus, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream } from '../types';
 import { mysqlCatalog, mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
 import { useDiscountsState } from './site-data-hooks/useDiscountsState';
@@ -21,6 +21,8 @@ import { useExpensesState } from './site-data-hooks/useExpensesState';
 import { useDaqqiRoundsState } from './site-data-hooks/useDaqqiRoundsState';
 import { useStaffState } from './site-data-hooks/useStaffState';
 import { useCrmCoreState } from './site-data-hooks/useCrmCoreState';
+import { useAdminDataRuntime } from './site-data-hooks/useAdminDataRuntime';
+import { readVersionedCache, writeVersionedCache } from '../../shared/siteDataCache';
 import {
   defaultCommunityEvents,
   defaultCommunityLibraryItems,
@@ -57,111 +59,106 @@ interface SiteDataShape {
   notifications: NotificationBroadcast[];
   expenses: ExpenseItem[];
   daqqiRounds: DaqqiRound[];
-  addDaqqiRound: (item: DaqqiRound) => Promise<void>;
-  updateDaqqiRound: (item: DaqqiRound) => void;
-  deleteDaqqiRound: (id: string) => void;
+  addDaqqiRound: (item: DaqqiRound) => Promise<boolean>;
+  updateDaqqiRound: (item: DaqqiRound) => Promise<boolean>;
+  deleteDaqqiRound: (id: string) => Promise<boolean>;
+  transferDaqqiAttendee: (subscriberId: string, fromRoundId: string, toRoundId: string) => Promise<boolean>;
   bulkSetDaqqiRounds: (rounds: DaqqiRound[]) => void;
   joinUsApplications: JoinUsApplication[];
-  addJoinUsApplication: (item: JoinUsApplication) => void;
-  updateJoinUsApplication: (item: JoinUsApplication) => void;
-  deleteJoinUsApplication: (id: string) => void;
+  addJoinUsApplication: (item: JoinUsApplication) => Promise<boolean>;
+  updateJoinUsApplication: (item: JoinUsApplication) => Promise<boolean>;
+  deleteJoinUsApplication: (id: string) => Promise<boolean>;
   contactMessages: ContactMessage[];
-  addContactMessage: (item: ContactMessage) => void;
-  updateContactMessage: (item: ContactMessage) => void;
-  deleteContactMessage: (id: string) => void;
-  addCourse: (course: Course) => void;
-  updateCourse: (course: Course) => void;
-  deleteCourse: (id: string) => void;
-  addTherapist: (therapist: Therapist) => void;
-  updateTherapist: (therapist: Therapist) => void;
-  deleteTherapist: (id: string) => void;
-  addBundle: (bundle: Bundle) => void;
-  updateBundle: (bundle: Bundle) => void;
-  deleteBundle: (id: string) => void;
-  addTestimonial: (item: TestimonialItem) => void;
-  updateTestimonial: (item: TestimonialItem) => void;
-  deleteTestimonial: (id: number) => void;
+  addContactMessage: (item: ContactMessage) => Promise<boolean>;
+  updateContactMessage: (item: ContactMessage) => Promise<boolean>;
+  deleteContactMessage: (id: string) => Promise<boolean>;
+  addCourse: (course: Course) => Promise<boolean>;
+  updateCourse: (course: Course) => Promise<boolean>;
+  deleteCourse: (id: string) => Promise<boolean>;
+  addTherapist: (therapist: Therapist) => Promise<boolean>;
+  updateTherapist: (therapist: Therapist) => Promise<boolean>;
+  deleteTherapist: (id: string) => Promise<boolean>;
+  addBundle: (bundle: Bundle) => Promise<boolean>;
+  updateBundle: (bundle: Bundle) => Promise<boolean>;
+  deleteBundle: (id: string) => Promise<boolean>;
+  addTestimonial: (item: TestimonialItem) => Promise<boolean>;
+  updateTestimonial: (item: TestimonialItem) => Promise<boolean>;
+  deleteTestimonial: (id: number) => Promise<boolean>;
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
-  updateSubscriber: (item: SubscriberItem) => void;
-  deleteSubscriber: (id: string) => void;
+  updateSubscriber: (item: SubscriberItem) => Promise<boolean>;
+  deleteSubscriber: (id: string) => Promise<boolean>;
   addLead: (item: LeadItem) => Promise<void>;
   addPublicLead: (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }) => Promise<void>;
-  updateLead: (item: LeadItem) => void;
+  updateLead: (item: LeadItem) => Promise<boolean>;
   markLeadsConverted: (ids: string[]) => void;
-  deleteLead: (id: string) => void;
-  bulkDeleteLeads: (ids: string[]) => void;
+  deleteLead: (id: string) => Promise<boolean>;
   bulkAssignClientCodes: (updatedSubs: SubscriberItem[], updatedLeads: LeadItem[]) => void;
   bulkRedistributeLeads: (mode: 'unassigned' | 'all') => Promise<number>;
-  addStaffMember: (item: StaffMember) => void;
-  updateStaffMember: (item: StaffMember) => void;
-  deleteStaffMember: (id: string) => void;
-  addConsultation: (item: ConsultationItem) => void;
-  updateConsultation: (item: ConsultationItem) => void;
-  deleteConsultation: (id: string) => void;
-  addLecture: (item: CourseLectureItem) => void;
-  updateLecture: (item: CourseLectureItem) => void;
-  deleteLecture: (id: string) => void;
-  addChapter: (item: CourseChapterItem) => void;
-  updateChapter: (item: CourseChapterItem) => void;
-  deleteChapter: (id: string) => void;
+  addStaffMember: (item: StaffMember) => Promise<boolean>;
+  updateStaffMember: (item: StaffMember) => Promise<boolean>;
+  deleteStaffMember: (id: string) => Promise<boolean>;
+  addLecture: (item: CourseLectureItem) => Promise<boolean>;
+  updateLecture: (item: CourseLectureItem) => Promise<boolean>;
+  deleteLecture: (id: string) => Promise<boolean>;
+  addChapter: (item: CourseChapterItem) => Promise<boolean>;
+  updateChapter: (item: CourseChapterItem) => Promise<boolean>;
+  deleteChapter: (id: string) => Promise<boolean>;
   getCourseChapters: (courseId: string) => CourseChapterItem[];
-  addOrder: (item: OrderItem) => void;
-  updateOrderStatus: (id: string, status: OrderItem['status']) => void;
-  deleteOrder: (id: string) => void;
-  addCommunityPost: (item: CommunityPostItem) => void;
-  updateCommunityPost: (item: CommunityPostItem) => void;
-  deleteCommunityPost: (id: string) => void;
-  addCommunityLibraryItem: (item: CommunityLibraryItem) => void;
-  updateCommunityLibraryItem: (item: CommunityLibraryItem) => void;
-  deleteCommunityLibraryItem: (id: string) => void;
-  addCommunityVideo: (item: CommunityVideoItem) => void;
-  updateCommunityVideo: (item: CommunityVideoItem) => void;
-  deleteCommunityVideo: (id: string) => void;
-  addCommunityEvent: (item: CommunityEventItem) => void;
-  updateCommunityEvent: (item: CommunityEventItem) => void;
-  deleteCommunityEvent: (id: string) => void;
+  addOrder: (item: OrderItem) => Promise<boolean>;
+  updateOrderStatus: (id: string, status: OrderItem['status']) => Promise<boolean>;
+  deleteOrder: (id: string) => Promise<boolean>;
+  addCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
+  updateCommunityPost: (item: CommunityPostItem) => Promise<boolean>;
+  deleteCommunityPost: (id: string) => Promise<boolean>;
+  addCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
+  updateCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
+  deleteCommunityLibraryItem: (id: string) => Promise<boolean>;
+  addCommunityVideo: (item: CommunityVideoItem) => Promise<boolean>;
+  updateCommunityVideo: (item: CommunityVideoItem) => Promise<boolean>;
+  deleteCommunityVideo: (id: string) => Promise<boolean>;
+  addCommunityEvent: (item: CommunityEventItem) => Promise<boolean>;
+  updateCommunityEvent: (item: CommunityEventItem) => Promise<boolean>;
+  deleteCommunityEvent: (id: string) => Promise<boolean>;
   getCourseLectures: (courseId: string) => CourseLectureItem[];
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   mergeContent: (data: Record<string, string>) => void;
-  addContentKey: (key: string, value: string) => void;
-  removeContentKey: (key: string) => void;
+  addContentKey: (key: string, value: string) => Promise<boolean>;
+  removeContentKey: (key: string) => Promise<boolean>;
   clearAllData: () => void;
-  addDiscount: (item: DiscountRule) => void;
-  updateDiscount: (item: DiscountRule) => void;
-  deleteDiscount: (id: string) => void;
-  addNotification: (item: NotificationBroadcast) => void;
-  updateNotification: (item: NotificationBroadcast) => void;
-  deleteNotification: (id: string) => void;
+  addDiscount: (item: DiscountRule) => Promise<void>;
+  updateDiscount: (item: DiscountRule) => Promise<void>;
+  deleteDiscount: (id: string) => Promise<void>;
+  addNotification: (item: NotificationBroadcast) => Promise<void>;
+  updateNotification: (item: NotificationBroadcast) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
   courseQuizzes: CourseQuiz[];
-  addCourseQuiz: (item: CourseQuiz) => void;
-  updateCourseQuiz: (item: CourseQuiz) => void;
-  deleteCourseQuiz: (id: string) => void;
+  addCourseQuiz: (item: CourseQuiz) => Promise<boolean>;
+  updateCourseQuiz: (item: CourseQuiz) => Promise<boolean>;
+  deleteCourseQuiz: (id: string) => Promise<boolean>;
   quizAttempts: QuizAttempt[];
-  addQuizAttempt: (item: QuizAttempt) => void;
-  deleteQuizAttempt: (id: string) => void;
   liveStreams: LiveStream[];
-  addLiveStream: (item: LiveStream) => void;
-  updateLiveStream: (item: LiveStream) => void;
-  deleteLiveStream: (id: string) => void;
-  addExpense: (item: ExpenseItem) => void;
-  updateExpense: (item: ExpenseItem) => void;
-  deleteExpense: (id: string) => void;
+  addLiveStream: (item: LiveStream) => Promise<boolean>;
+  updateLiveStream: (item: LiveStream) => Promise<boolean>;
+  deleteLiveStream: (id: string) => Promise<boolean>;
+  addExpense: (item: ExpenseItem) => Promise<void>;
+  updateExpense: (item: ExpenseItem) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
   automationWorkflows: AutomationWorkflow[];
-  addAutomationWorkflow: (item: AutomationWorkflow) => void;
-  updateAutomationWorkflow: (item: AutomationWorkflow) => void;
-  deleteAutomationWorkflow: (id: string) => void;
+  addAutomationWorkflow: (item: AutomationWorkflow) => Promise<boolean>;
+  updateAutomationWorkflow: (item: AutomationWorkflow) => Promise<boolean>;
+  deleteAutomationWorkflow: (id: string) => Promise<boolean>;
   adminAiConfig: AdminAiConfig | null;
-  setAdminAiConfig: (config: AdminAiConfig) => void;
+  setAdminAiConfig: (config: AdminAiConfig) => Promise<boolean>;
   aiAgentConfig: AiAgentConfig | null;
-  setAiAgentConfig: (config: AiAgentConfig) => void;
+  setAiAgentConfig: (config: AiAgentConfig) => Promise<boolean>;
   messagingChannels: MessagingChannelsConfig | null;
-  setMessagingChannels: (config: MessagingChannelsConfig) => void;
+  setMessagingChannels: (config: MessagingChannelsConfig) => Promise<boolean>;
   inboxConversations: InboxConversation[];
-  addInboxConversation: (conv: InboxConversation) => void;
-  updateInboxConversation: (conv: InboxConversation) => void;
-  deleteInboxConversation: (id: string) => void;
+  addInboxConversation: (conv: InboxConversation) => Promise<boolean>;
+  updateInboxConversation: (conv: InboxConversation) => Promise<boolean>;
+  deleteInboxConversation: (id: string) => Promise<boolean>;
   fbLeadAdsConfig: FacebookLeadAdsConfig | null;
-  setFbLeadAdsConfig: (config: FacebookLeadAdsConfig) => void;
+  setFbLeadAdsConfig: (config: FacebookLeadAdsConfig) => Promise<boolean>;
   currency: Currency;
   setCurrency: (c: Currency) => void;
   authUser: AuthUser | null | undefined;
@@ -173,26 +170,19 @@ interface SiteDataShape {
   reloadLectures: () => Promise<void>;
   reloadLeads: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;
+  reloadStaffMembers: () => Promise<void>;
   reloadOrders: () => Promise<void>;
+  recordSubscriberPayment: (
+    subscriberId: string,
+    payment: Record<string, unknown>,
+  ) => Promise<{ ok: boolean; id: string; status: string; approvalRequired?: boolean }>;
   logout: () => void;
   refreshAuth: () => void;
-  triggerAutomation: (trigger: AutomationTrigger, data?: Record<string, unknown>) => void;
   // Scoped data for non-admin staff (set by Dashboard after fetchSalesData)
   staffScopedSubscribers: SubscriberItem[];
   staffScopedLeads: LeadItem[];
   setStaffScopedSubscribers: (subs: SubscriberItem[]) => void;
   setStaffScopedLeads: (leads: LeadItem[]) => void;
-}
-
-type StaffMemberWire = StaffMember & {
-  is_active?: number | boolean | null;
-  isActive?: number | boolean | null;
-};
-
-function normalizeStaffStatus(staff: StaffMemberWire): StaffMember['status'] {
-  return staff.status === 'active' || staff.is_active === 1 || staff.is_active === true || staff.isActive === 1 || staff.isActive === true
-    ? 'active'
-    : 'inactive';
 }
 
 const STORAGE_KEY = 'mahad-admin-site-data-v1';
@@ -205,66 +195,9 @@ const SiteDataContext = createContext<SiteDataShape | null>(null);
 
 export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const initial = (() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return seedData;
-      }
-      const parsed = JSON.parse(raw);
-      // Reject stale Firebase-era cache — force fresh MySQL fetch
-      if (parsed._dataVersion !== DATA_VERSION) {
-        localStorage.removeItem(STORAGE_KEY);
-        return seedData;
-      }
-      // Migrate old-format source strings to structured fields
-      const migratedLeads: LeadItem[] = (parsed.leads || seedData.leads).map((lead: LeadItem) => {
-        if (!lead.source) return lead;
-        // Old format: "طلب كورس - {courseTitle} - {branch}"
-        if (lead.source.startsWith('طلب كورس - ')) {
-          const withoutPrefix = lead.source.replace('طلب كورس - ', '');
-          const lastDash = withoutPrefix.lastIndexOf(' - ');
-          const courseTitle = lastDash > 0 ? withoutPrefix.slice(0, lastDash) : withoutPrefix;
-          const branchRaw = lastDash > 0 ? withoutPrefix.slice(lastDash + 3) : '';
-          const matchedCourse = COURSES.find((c) => c.title === courseTitle);
-          return {
-            ...lead,
-            source: 'تسجيل اهتمام',
-            leadType: 'course' as const,
-            enrolledCourseId: matchedCourse?.id || lead.enrolledCourseId || '',
-            branch: (branchRaw as LeadItem['branch']) || lead.branch,
-          };
-        }
-        // Old format: "عرض الرئيسية - {branch}"
-        if (lead.source.startsWith('عرض الرئيسية - ')) {
-          const branchRaw = lead.source.replace('عرض الرئيسية - ', '');
-          return { ...lead, source: 'عرض 24 ساعة', branch: (branchRaw as LeadItem['branch']) || lead.branch };
-        }
-        // Old format: "تسجيل حساب - ..."
-        if (lead.source.startsWith('تسجيل حساب - ')) {
-          return { ...lead, source: 'تسجيل دخول' };
-        }
-        return lead;
-      });
-      // Security migration: strip loginPassword from all leads
-      const sanitizedLeads = migratedLeads.map(({ loginPassword: _pw, ...rest }: LeadItem & { loginPassword?: string }) => rest as LeadItem);
-      const filteredLeads = sanitizedLeads;
-      const allSubs: SubscriberItem[] = parsed.subscribers || seedData.subscribers;
-      const filteredSubs = allSubs;
-      // ── clientCode: do NOT assign codes locally from localStorage.
-      // Codes are assigned server-side atomically. We pass data through unchanged;
-      // the "تخصيص كود" button in Dashboard triggers the server to assign missing codes.
-      const codedSubs = filteredSubs;
-      const codedLeads = filteredLeads;
-      return {
-        ...seedData,
-        ...parsed,
-        leads: codedLeads,
-        subscribers: codedSubs,
-        content: { ...defaultContent, ...(parsed.content || {}) },
-      };
-    } catch {
-      return seedData;
-    }
+    const cached = readVersionedCache<typeof seedData>(STORAGE_KEY, DATA_VERSION);
+    if (!cached) return seedData;
+    return { ...seedData, ...cached, content: { ...defaultContent, ...(cached.content || {}) } };
   })();
 
   const subscribersRef = useRef<SubscriberItem[]>(initial.subscribers || defaultSubscribers);
@@ -291,44 +224,25 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Timestamp of last local CRM/config mutation
   const lastCRMWriteRef = useRef(0);
   const lastLocalConfigWriteRef = useRef(0);
-  // Shared safe-mutation helper: fire an optimistic-update API call, and on
-  // failure (403 permission denied, 404 deleted elsewhere, network drop) undo
-  // the optimistic local change and surface the existing 'site-persist-error'
-  // toast (consumed in Dashboard.tsx) — instead of leaving the UI showing a
-  // change that the server actually rejected.
-  const persistOrRevert = useCallback((apiCall: Promise<unknown>, revert: () => void, detail: { field: string; name?: string }) => {
-    void apiCall.catch((err: unknown) => {
-      console.error(`[${detail.field}] Failed to persist — rolling back:`, err);
-      revert();
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail }));
-    });
-  }, []);
   const { courses, setCourses, addCourse, updateCourse, deleteCourse, bundles, setBundles, addBundle, updateBundle, deleteBundle, therapists, setTherapists, addTherapist, updateTherapist, deleteTherapist, testimonials, setTestimonials, addTestimonial, updateTestimonial, deleteTestimonial } =
-    useCatalogState(initial.courses, initial.bundles, initial.therapists, initial.testimonials, lastLocalConfigWriteRef, persistOrRevert, track);
+    useCatalogState(initial.courses, initial.bundles, initial.therapists, initial.testimonials, lastLocalConfigWriteRef, track);
   const {
     lectures, setLectures, addLecture, updateLecture, deleteLecture, reloadLectures, getCourseLectures,
     chapters, setChapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
-  } = useLecturesChaptersState(initial.lectures || defaultLectures, initial.chapters || [], lastLocalConfigWriteRef, persistOrRevert, track);
+  } = useLecturesChaptersState(initial.lectures || defaultLectures, initial.chapters || [], lastLocalConfigWriteRef, track);
   const { expenses, setExpenses, addExpense, updateExpense, deleteExpense } =
-    useExpensesState((initial as typeof seedData & { expenses?: ExpenseItem[] }).expenses || [], lastCRMWriteRef, persistOrRevert, track);
-  const { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, bulkSetDaqqiRounds } =
-    useDaqqiRoundsState((initial as typeof seedData & { daqqiRounds?: DaqqiRound[] }).daqqiRounds || [], lastCRMWriteRef, persistOrRevert, track);
-  const { staffMembers, setStaffMembers, staffMembersRef, addStaffMember, updateStaffMember, deleteStaffMember } =
-    useStaffState(initial.staffMembers || defaultStaffMembers, lastCRMWriteRef, persistOrRevert, track);
+    useExpensesState((initial as typeof seedData & { expenses?: ExpenseItem[] }).expenses || [], lastCRMWriteRef, track);
+  const { daqqiRounds, setDaqqiRounds, addDaqqiRound, updateDaqqiRound, deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds } =
+    useDaqqiRoundsState((initial as typeof seedData & { daqqiRounds?: DaqqiRound[] }).daqqiRounds || [], lastCRMWriteRef, track);
+  const { staffMembers, setStaffMembers, staffMembersRef, reloadStaffMembers, addStaffMember, updateStaffMember, deleteStaffMember } =
+    useStaffState(initial.staffMembers || defaultStaffMembers, lastCRMWriteRef, track);
   // Debounce timers for MySQL persist effects
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const configTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guards the auto-save effect so it never fires before DB content is loaded
   const dbContentLoadedRef = useRef(false);
   // High-water mark for client codes (local fallback when MySQL unavailable)
   const { issueClientCode, issueClientCodeAsync, isValidClientCodeFormat } =
     useClientCodeIssuance(initial.leads, initial.subscribers, subscribersRef, leadsRef);
-  // triggerAutomation (from useAutomationState below) needs this hook's setLeads as
-  // an input, while this hook's own CRUD functions need triggerAutomation — resolved
-  // via this ref, which the provider points at the real triggerAutomation once
-  // useAutomationState has run (same "forward ref" shape as subscribersRef/leadsRef above).
-  const triggerAutomationRef = useRef<(trigger: AutomationTrigger, data?: Record<string, unknown>) => void>(() => {});
   const {
     subscribers, setSubscribers,
     staffScopedSubscribers, setStaffScopedSubscribers,
@@ -338,26 +252,25 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     orders, setOrders,
     joinUsApplications, setJoinUsApplications,
     addSubscriber, updateSubscriber, deleteSubscriber,
-    addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkDeleteLeads, bulkAssignClientCodes, bulkRedistributeLeads,
-    addConsultation, updateConsultation, deleteConsultation,
+    addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkAssignClientCodes, bulkRedistributeLeads,
     addOrder, updateOrderStatus, deleteOrder,
     addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication,
-    reloadLeads, reloadSubscribers, reloadOrders,
+    reloadLeads, reloadSubscribers, reloadOrders, recordSubscriberPayment,
   } = useCrmCoreState(
     initial.subscribers || defaultSubscribers,
     initial.leads || defaultLeads,
     initial.consultations || defaultConsultations,
     initial.orders || [],
     (initial as typeof seedData & { joinUsApplications?: JoinUsApplication[] }).joinUsApplications || [],
-    subscribersRef, leadsRef, lastCRMWriteRef, persistOrRevert, track,
-    staffMembers, issueClientCodeAsync, isValidClientCodeFormat, setInboxConversations, triggerAutomationRef,
+    subscribersRef, leadsRef, lastCRMWriteRef, track,
+    issueClientCodeAsync, isValidClientCodeFormat,
   );
   const { discounts, setDiscounts, addDiscount, updateDiscount, deleteDiscount } =
     useDiscountsState((initial as typeof seedData & { discounts?: DiscountRule[] }).discounts || [], lastLocalConfigWriteRef, track);
   const { notifications, setNotifications, addNotification, updateNotification, deleteNotification } =
     useNotificationsState((initial as typeof seedData & { notifications?: NotificationBroadcast[] }).notifications || [], lastLocalConfigWriteRef, track);
   const { liveStreams, setLiveStreams, addLiveStream, updateLiveStream, deleteLiveStream } =
-    useLiveStreamsState((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [], persistOrRevert, track);
+    useLiveStreamsState((initial as typeof seedData & { liveStreams?: LiveStream[] }).liveStreams || [], track);
   // Reconciled during ARC-03/04 resurrection: the previously-inline version of this
   // domain had regressed back to a no-op persist function and a delete that never
   // called the backend (both were genuinely fixed once before, in the commit that
@@ -371,7 +284,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     useContentState(initial.content, lastLocalConfigWriteRef, track);
   const {
     courseQuizzes, setCourseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
-    quizAttempts, setQuizAttempts, addQuizAttempt, deleteQuizAttempt,
+    quizAttempts, setQuizAttempts,
   } = useCourseQuizzesState(
     (initial as typeof seedData & { courseQuizzes?: CourseQuiz[] }).courseQuizzes || [],
     (initial as typeof seedData & { quizAttempts?: QuizAttempt[] }).quizAttempts || [],
@@ -389,15 +302,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     initial.communityEvents || defaultCommunityEvents,
     track,
   );
-  // setLeads/staffMembers are threaded in as parameters (leads lives in useCrmCoreState,
-  // called above — see the triggerAutomationRef comment there for how the reverse
-  // dependency, useCrmCoreState's CRUD functions needing triggerAutomation, is resolved).
-  const { automationWorkflows, setAutomationWorkflows, addAutomationWorkflow, updateAutomationWorkflow, deleteAutomationWorkflow, triggerAutomation } =
+  const { automationWorkflows, setAutomationWorkflows, addAutomationWorkflow, updateAutomationWorkflow, deleteAutomationWorkflow } =
     useAutomationState(
       (initial as typeof seedData & { automationWorkflows?: AutomationWorkflow[] }).automationWorkflows || [],
-      staffMembers, setLeads, setNotifications, track,
+      track,
     );
-  triggerAutomationRef.current = triggerAutomation;
 
   // Auth: restore session via httpOnly cookie — managed by AuthContext (AuthProvider above SiteDataProvider)
 
@@ -502,270 +411,17 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  // ── Per-user quizAttempts loader (skipped in admin panel — staff/admins use admin endpoints) ──
-
-  // ── MySQL primary bootstrap (admin only) ─────────────────────────────────────────────────────
-  // Loads entities in TWO batches to avoid overwhelming MySQL (connectionLimit=5).
-  // Batch 1 (critical): CRM data the admin needs immediately → shown right away.
-  // Batch 2 (secondary): catalog + config data → loaded after a short delay.
-  useEffect(() => {
-    if (!authUser?.email) return;
-    const isAdm = authUser?.isAdmin === true;
-    // Load data for admin OR authenticated staff
-    if (!isAdm && !authUser?.uid) return;
-    // Safety timeout: show dashboard after 8s even if batch 1 hasn't completed
-    const safetyTimer = setTimeout(() => {
-      isHydratingRef.current = false;
-      setRemoteReady(true);
-    }, 8000);
-    (async () => {
-      try {
-        // ── BATCH 1: critical CRM + content (5 concurrent, max 8s) ──────────
-        const withTimeout = <T,>(p: Promise<T>, ms = 7000): Promise<T> =>
-          Promise.race([p, new Promise<T>((_, r) => setTimeout(() => r(new Error('timeout')), ms))]);
-        const [subsRes, leadsRes, staffRes, consultsRes, contentRes] = await Promise.allSettled([
-          withTimeout(mysqlAdmin.listSubscribersPage(500, 0)),
-          withTimeout(mysqlAdmin.listLeadsPage(500, 0)),
-          withTimeout(mysqlAdmin.listAllStaff()),
-          withTimeout(mysqlAdmin.listAllConsultations()),
-          withTimeout(mysqlAdmin.getContent()),
-        ]);
-
-        if (subsRes.status === 'fulfilled') {
-          const subs = (subsRes.value as unknown as SubscriberItem[]).map(s => ({ ...s, enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [] }));
-          subscribersRef.current = subs;
-          setSubscribers(subs);
-        }
-        if (leadsRes.status === 'fulfilled') {
-          const normalizedLeads = (leadsRes.value as unknown as LeadItem[]).map(l => ({
-            ...l,
-            status: (l.status || 'new').toLowerCase() as LeadStatus,
-          }));
-          leadsRef.current = normalizedLeads;
-          setLeads(normalizedLeads);
-        }
-        if (staffRes.status === 'fulfilled') {
-          const normalizedStaff = (staffRes.value as unknown as StaffMemberWire[]).map(s => ({
-            ...s,
-            role: (s.role || '').toLowerCase() as StaffMember['role'],
-            status: normalizeStaffStatus(s),
-          }));
-          staffMembersRef.current = normalizedStaff;
-          setStaffMembers(normalizedStaff);
-        }
-        if (consultsRes.status === 'fulfilled')
-          setConsultations(consultsRes.value as unknown as ConsultationItem[]);
-        if (contentRes.status === 'fulfilled' && contentRes.value && Object.keys(contentRes.value).length > 0) {
-          const remoteContent = contentRes.value as Record<string, string>;
-          setContent(prev => ({ ...prev, ...remoteContent }));
-          contentRef.current = { ...contentRef.current, ...remoteContent };
-          // Only a successful, non-empty server snapshot may enable autosave.
-          dbContentLoadedRef.current = true;
-        }
-
-        // Mark ready after batch 1 — admin sees CRM immediately
-        clearTimeout(safetyTimer);
-        isHydratingRef.current = false;
-        setRemoteReady(true);
-
-        // Fill the full CRM archive after first paint. Latest records become usable fast,
-        // while deep filters/reports still receive the complete dataset in the background.
-        void (async () => {
-          await new Promise(r => setTimeout(r, 1000));
-          // listAllLeads/listAllSubscribers self-cap at 50k rows (see mysqlapi) so
-          // the browser can't freeze trying to buffer an unbounded table; at real
-          // prod scale today this loads everything exactly as before.
-          const [fullLeadsRes, fullSubsRes] = await Promise.allSettled([
-            mysqlAdmin.listAllLeads(),
-            mysqlAdmin.listAllSubscribers(),
-          ]);
-          if (fullLeadsRes.status === 'fulfilled') {
-            const normalized = (fullLeadsRes.value as unknown as LeadItem[]).map(l => ({
-              ...l,
-              status: (l.status || 'new').toLowerCase() as LeadStatus,
-            }));
-            leadsRef.current = normalized;
-            setLeads(normalized);
-          }
-          if (fullSubsRes.status === 'fulfilled') {
-            const subs = (fullSubsRes.value as unknown as SubscriberItem[]).map(s => ({
-              ...s,
-              enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [],
-            }));
-            subscribersRef.current = subs;
-            setSubscribers(subs);
-          }
-        })();
-
-        // ── BATCH 2: catalog + finance (max 5 concurrent, deferred 300ms) ───
-        await new Promise(r => setTimeout(r, 300));
-        const [cRes, bRes, lRes, chRes, thRes] = await Promise.allSettled([
-          mysqlAdmin.listAllCourses(),
-          mysqlAdmin.listAllBundles(500),
-          mysqlCatalog.listLectures(),
-          mysqlCatalog.listChapters(),
-          mysqlAdmin.listAllTherapists(),
-        ]);
-        if (cRes.status === 'fulfilled' && cRes.value.length > 0)
-          setCourses((cRes.value as unknown as Course[]).sort((a, b) => (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '')));
-        if (bRes.status === 'fulfilled' && bRes.value.length > 0) setBundles(bRes.value as unknown as Bundle[]);
-        if (lRes.status === 'fulfilled' && lRes.value.length > 0) setLectures(lRes.value as unknown as CourseLectureItem[]);
-        if (chRes.status === 'fulfilled' && chRes.value.length > 0) setChapters(chRes.value as unknown as CourseChapterItem[]);
-        if (thRes.status === 'fulfilled' && thRes.value.length > 0) setTherapists(thRes.value as unknown as Therapist[]);
-
-        // ── BATCH 3: financials + settings (max 5 concurrent) ───────────────
-        await new Promise(r => setTimeout(r, 300));
-        const [testRes, qRes, sRes, expRes, actRes] = await Promise.allSettled([
-          mysqlCatalog.listTestimonials(),
-          mysqlCatalog.listQuizzes(),
-          mysqlCatalog.listLiveStreams(),
-          mysqlAdmin.listAllExpenses(),
-          mysqlAdmin.listActivityLogs(),
-        ]);
-        if (testRes.status === 'fulfilled' && testRes.value.length > 0) setTestimonials(testRes.value as unknown as TestimonialItem[]);
-        if (qRes.status === 'fulfilled' && qRes.value.length > 0) setCourseQuizzes(qRes.value as unknown as CourseQuiz[]);
-        if (sRes.status === 'fulfilled' && sRes.value.length > 0) setLiveStreams(sRes.value as unknown as LiveStream[]);
-        if (expRes.status === 'fulfilled' && expRes.value.length > 0) setExpenses(expRes.value as unknown as ExpenseItem[]);
-        if (actRes.status === 'fulfilled' && actRes.value.length > 0) setActivityLogs(actRes.value as unknown as ActivityLogItem[]);
-
-        // ── BATCH 4: secondary data ──────────────────────────────────────────
-        await new Promise(r => setTimeout(r, 300));
-        const [ordersRes, joinUsRes, contactRes, daqqiRes, autoRes] = await Promise.allSettled([
-          mysqlAdmin.listAllOrders(),
-          mysqlAdmin.listAllJoinUs(),
-          mysqlAdmin.listAllContactMessages(),
-          mysqlAdmin.listAllDaqqiRounds(),
-          mysqlAdmin.listAllAutomationWorkflows(),
-        ]);
-        if (ordersRes.status === 'fulfilled' && ordersRes.value.length > 0) {
-          // Normalize snake_case DB fields → camelCase OrderItem
-          const normalized = (ordersRes.value as unknown as Record<string, unknown>[]).map(r => ({
-            id: r.id as string,
-            subscriberId: (r.subscriberId ?? r.subscriber_id ?? undefined) as string | undefined,
-            type: (r.type as string || 'course') as 'course' | 'bundle' | 'consultation',
-            itemId: (r.itemId ?? r.item_id ?? '') as string,
-            itemTitle: (r.itemTitle ?? r.item_title ?? '') as string,
-            amount: Number(r.amount) || 0,
-            currency: (r.currency || 'EGP') as 'EGP' | 'SAR' | 'USD',
-            paymentMethod: (r.paymentMethod ?? r.payment_method ?? 'wallet') as 'card' | 'wallet',
-            customerName: (r.customerName ?? r.customer_name ?? '') as string,
-            customerEmail: (r.customerEmail ?? r.customer_email ?? '') as string,
-            status: (r.status || 'paid') as 'paid' | 'failed' | 'refunded' | 'pending',
-            createdAt: (r.createdAt ?? r.created_at ?? '') as string,
-            transactionId: (r.transactionId ?? r.transaction_id) as string | undefined,
-            staffId: (r.staffId ?? r.staff_id ?? undefined) as string | undefined,
-            staffName: (r.staffName ?? r.staff_name ?? undefined) as string | undefined,
-            linkedTransferId: (r.linkedTransferId ?? r.linked_transfer_id ?? undefined) as string | undefined,
-          }));
-          setOrders(normalized as OrderItem[]);
-        }
-        if (joinUsRes.status === 'fulfilled' && joinUsRes.value.length > 0) setJoinUsApplications(joinUsRes.value as unknown as JoinUsApplication[]);
-        if (contactRes.status === 'fulfilled' && contactRes.value.length > 0) setContactMessages(contactRes.value as unknown as ContactMessage[]);
-        if (daqqiRes.status === 'fulfilled' && daqqiRes.value.length > 0) setDaqqiRounds(daqqiRes.value as unknown as DaqqiRound[]);
-        if (autoRes.status === 'fulfilled' && autoRes.value.length > 0) setAutomationWorkflows(autoRes.value as unknown as AutomationWorkflow[]);
-
-        // ── BATCH 5: settings ─────────────────────────────────────────────────
-        await new Promise(r => setTimeout(r, 300));
-        const [discountsRes, notifRes, settingsRes] = await Promise.allSettled([
-          mysqlAdmin.getDiscounts(),
-          mysqlAdmin.getNotifications(),
-          mysqlAdmin.getSettings(),
-        ]);
-        if (discountsRes.status === 'fulfilled' && discountsRes.value.length > 0)
-          setDiscounts(discountsRes.value as unknown as DiscountRule[]);
-        if (notifRes.status === 'fulfilled') {
-          const notifData = notifRes.value as unknown as { rows?: NotificationBroadcast[] } | NotificationBroadcast[];
-          const notifArr = Array.isArray(notifData) ? notifData : ((notifData as { rows?: NotificationBroadcast[] }).rows || []);
-          if (notifArr.length > 0) setNotifications(notifArr);
-        }
-        if (settingsRes.status === 'fulfilled' && settingsRes.value) {
-          const s = settingsRes.value as Record<string, unknown>;
-          if (s.adminAiConfig) setAdminAiConfigLocal(s.adminAiConfig as AdminAiConfig);
-          if (s.aiAgentConfig) setAiAgentConfigState(s.aiAgentConfig as AiAgentConfig);
-          if (s.messagingChannels) setMessagingChannelsState(s.messagingChannels as MessagingChannelsConfig);
-          if (s.fbLeadAdsConfig) setFbLeadAdsConfigState(s.fbLeadAdsConfig as FacebookLeadAdsConfig);
-        }
-
-        // Bootstrap complete
-      } catch (err) {
-        console.error('[MySQL] Bootstrap failed:', err);
-        clearTimeout(safetyTimer);
-        // Keep writes blocked: rendering stale defaults is safer than overwriting
-        // the server after a failed hydration.
-        isHydratingRef.current = true;
-        setRemoteReady(true);
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid]);
-
-  // ── Admin background polling (leads + subscribers every 2 min) ──────────────
-  // Silently refreshes CRM data so admin never works with stale state
-  useEffect(() => {
-    if (!authUser?.email || authUser?.isAdmin !== true) return;
-    let cancelled = false;
-
-    const silentRefresh = async () => {
-      if (cancelled) return;
-      // Don't overwrite fresh local CRM writes — wait at least 3 min after last write
-      const msSinceWrite = Date.now() - lastCRMWriteRef.current;
-      if (msSinceWrite < 180_000) return;
-      try {
-        const [freshLeads, freshSubs, freshRounds, freshExpenses] = await Promise.allSettled([
-          mysqlAdmin.listAllLeads(),
-          mysqlAdmin.listAllSubscribers(),
-          mysqlAdmin.listAllDaqqiRounds(),
-          mysqlAdmin.listAllExpenses(),
-        ]);
-        if (cancelled) return;
-        // Re-check after the async fetch — user may have made a CRM write while we were waiting
-        if (Date.now() - lastCRMWriteRef.current < 180_000) return;
-        if (freshLeads.status === 'fulfilled' && (freshLeads.value as unknown as LeadItem[]).length > 0) {
-          const normalized = (freshLeads.value as unknown as LeadItem[]).map(l => ({
-            ...l,
-            status: (l.status || 'new').toLowerCase() as LeadStatus,
-          }));
-          leadsRef.current = normalized;
-          setLeads(normalized);
-        }
-        if (freshSubs.status === 'fulfilled' && (freshSubs.value as unknown as SubscriberItem[]).length > 0) {
-          const subs = (freshSubs.value as unknown as SubscriberItem[]).map(s => ({
-            ...s,
-            enrolledCourseIds: Array.isArray(s.enrolledCourseIds) ? s.enrolledCourseIds : [],
-          }));
-          subscribersRef.current = subs;
-          setSubscribers(subs);
-        }
-        if (freshRounds.status === 'fulfilled' && (freshRounds.value as unknown as DaqqiRound[]).length > 0) {
-          setDaqqiRounds(freshRounds.value as unknown as DaqqiRound[]);
-        }
-        if (freshExpenses.status === 'fulfilled' && (freshExpenses.value as unknown as ExpenseItem[]).length > 0) {
-          setExpenses(freshExpenses.value as unknown as ExpenseItem[]);
-        }
-        // Orders reuse reloadOrders() (already normalizes snake_case→camelCase) so
-        // the Financial Overview tab doesn't lag behind Cockpit/Reconciliation,
-        // which already read live from the DB on every render (PAY-15).
-        void reloadOrders();
-      } catch { /* silent — polling failure is non-fatal */ }
-    };
-
-    // Poll every 2 minutes
-    const pollId = setInterval(() => { void silentRefresh(); }, 2 * 60 * 1000);
-
-    // Also refresh when tab regains focus (user switches back)
-    const onVisible = () => {
-      if (!cancelled && document.visibilityState === 'visible') void silentRefresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      cancelled = true;
-      clearInterval(pollId);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.uid]);
-
+  useAdminDataRuntime({
+    authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
+    subscribersRef, leadsRef, staffMembersRef, contentRef,
+    setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
+    setContent, setCourses, setBundles, setLectures, setChapters, setTherapists,
+    setTestimonials, setCourseQuizzes, setLiveStreams, setExpenses, setActivityLogs,
+    setOrders, setJoinUsApplications, setContactMessages, setDaqqiRounds,
+    setAutomationWorkflows, setDiscounts, setNotifications, setAdminAiConfigLocal,
+    setAiAgentConfigState, setMessagingChannelsState, setFbLeadAdsConfigState,
+    reloadOrders,
+  });
   // ── Community + catalog loader (public, non-admin) ──────────────────────────
   // Admin catalog is loaded by the bootstrap above. Non-admin guests load via MySQL.
   useEffect(() => {
@@ -896,71 +552,12 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       courseQuizzes,
       liveStreams,
     };
-    const safePayload = JSON.stringify({ ...payloadObject, _dataVersion: DATA_VERSION });
-
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, safePayload);
-      } catch (e) {
-        if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-          // localStorage is full — strip base64 images from gallery/certificate/therapist and retry
-          const stripped = JSON.parse(safePayload);
-          if (Array.isArray(stripped.courses)) {
-            stripped.courses = stripped.courses.map((c: Record<string, unknown>) => ({
-              ...c,
-              galleryImages: Array.isArray(c.galleryImages)
-                ? (c.galleryImages as string[]).filter((img: string) => !img.startsWith('data:'))
-                : [],
-              certificateTemplateUrl: typeof c.certificateTemplateUrl === 'string' && c.certificateTemplateUrl.startsWith('data:') ? '' : c.certificateTemplateUrl,
-            }));
-          }
-          if (Array.isArray(stripped.therapists)) {
-            stripped.therapists = stripped.therapists.map((t: Record<string, unknown>) => ({
-              ...t,
-              image: typeof t.image === 'string' && t.image.startsWith('data:') ? '' : t.image,
-            }));
-          }
-          if (stripped.content && typeof stripped.content['institute.gallery.images'] === 'string') {
-            // Keep gallery images (including compressed base64 thumbnails) — do not strip
-          }
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped)); } catch { /* give up */ }
-        }
-      }
+      writeVersionedCache(STORAGE_KEY, DATA_VERSION, payloadObject);
     }, 500);
     return () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); };
   }, [courses, bundles, therapists, testimonials, subscribers, leads, staffMembers, consultations, lectures, chapters, orders, communityPosts, communityLibraryItems, communityVideos, communityEvents, content, activityLogs, discounts, notifications, expenses, daqqiRounds, joinUsApplications, contactMessages, automationWorkflows, adminAiConfig, aiAgentConfig, messagingChannels, inboxConversations, fbLeadAdsConfig, courseQuizzes, quizAttempts, liveStreams]);
-
-  // ── Firestore CRM persist — all CRM arrays are now per-document collections ────────────────
-  // consultations, orders, activityLogs, expenses, daqqiRounds, joinUsApplications,
-  // contactMessages, quizAttempts each have their own persist* helper called at mutation time.
-  // This effect is intentionally a no-op; retained only to avoid breaking dependency tracking.
-  useEffect(() => {
-    /* no-op: all CRM data now written per-doc via persist*ToCollection helpers */
-  }, [remoteReady]);
-
-  // ── MySQL Config persist — therapists, content, discounts, notifications ─────────────────
-  useEffect(() => {
-    if (!remoteReady || !isAdmin || isHydratingRef.current || !dbContentLoadedRef.current) return;
-    if (configTimerRef.current) clearTimeout(configTimerRef.current);
-    configTimerRef.current = setTimeout(() => {
-      void mysqlAdmin.saveSettings({ therapists, testimonials } as Record<string, unknown>).catch(() => {});
-      void mysqlAdmin.saveContent(content as Record<string, unknown>).catch(() => {});
-      void mysqlAdmin.saveDiscounts(discounts as unknown[]).catch(() => {});
-      void mysqlAdmin.saveNotifications(notifications as unknown[]).catch(() => {});
-    }, 1500);
-    return () => { if (configTimerRef.current) clearTimeout(configTimerRef.current); };
-  }, [therapists, testimonials, content, discounts, notifications, remoteReady, isAdmin]);
-
-  // ── MySQL Settings persist — AI & messaging config ─────────────────────────────────────────
-  useEffect(() => {
-    if (!remoteReady || !isAdmin || isHydratingRef.current || !dbContentLoadedRef.current) return;
-    if (settingsTimerRef.current) clearTimeout(settingsTimerRef.current);
-    settingsTimerRef.current = setTimeout(() => {
-      void mysqlAdmin.saveSettings({ adminAiConfig, aiAgentConfig, messagingChannels, fbLeadAdsConfig } as Record<string, unknown>).catch(() => {});
-    }, 2000);
-    return () => { if (settingsTimerRef.current) clearTimeout(settingsTimerRef.current); };
-  }, [adminAiConfig, aiAgentConfig, messagingChannels, fbLeadAdsConfig, remoteReady, isAdmin]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const value = useMemo<SiteDataShape>(() => ({
@@ -1004,15 +601,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateLead,
     markLeadsConverted,
     deleteLead,
-    bulkDeleteLeads,
     bulkAssignClientCodes,
     bulkRedistributeLeads,
     addStaffMember,
     updateStaffMember,
     deleteStaffMember,
-    addConsultation,
-    updateConsultation,
-    deleteConsultation,
     addLecture,
     updateLecture,
     deleteLecture,
@@ -1054,8 +647,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateCourseQuiz,
     deleteCourseQuiz,
     quizAttempts,
-    addQuizAttempt,
-    deleteQuizAttempt,
     liveStreams,
     addLiveStream,
     updateLiveStream,
@@ -1067,6 +658,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addDaqqiRound,
     updateDaqqiRound,
     deleteDaqqiRound,
+    transferDaqqiAttendee,
     bulkSetDaqqiRounds,
     joinUsApplications,
     addJoinUsApplication,
@@ -1101,10 +693,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     reloadLectures,
     reloadLeads,
     reloadSubscribers,
+    reloadStaffMembers,
     reloadOrders,
+    recordSubscriberPayment,
     logout,
     refreshAuth,
-    triggerAutomation,
     staffScopedSubscribers,
     staffScopedLeads,
     setStaffScopedSubscribers,

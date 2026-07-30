@@ -1,20 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
+import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { Suspense } from 'react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
-import { mysqlAdmin, mysqlClient } from '../../../lib/mysqlapi';
 import type {
   LeadItem, LeadStatus, CommunicationRecord, 
-  BranchType, PaymentHistoryEntry, PaymentItemType,
-  SubscriberItem, StaffMember, CourseAccessSetting,
+  SubscriberItem, StaffMember,
 } from '../../../types';
-import { DEFAULT_CRM_SETTINGS } from './CrmSettingsModal';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
-import type { CrmSettings, NotifyFn } from './CrmSettingsModal';
-import { DEFAULT_SOURCES, isOnlineSource, EMPTY_LEAD_DRAFT } from './crmConstants';
-import { LeadTable } from './LeadTable';
+import type { NotifyFn } from './CrmSettingsModal';
+import { DEFAULT_SOURCES, isOnlineSource } from './crmConstants';
 import { useLeadSubTab } from './leads/useLeadSubTab';
 import type { ConvertLeadModalState } from './leads/ConvertLeadModal';
 import { useLeadCommunicationsData, type LeadCommunicationFilter } from './leads/useLeadCommunicationsData';
@@ -27,7 +25,6 @@ import { useLeadAnalyticsData } from './leads/useLeadAnalyticsData';
 import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
 import {
-  BRANCH_ENUM_LABELS,
   STATUS_CFG,
   getRottenLevel,
   // getScoreBreakdown intentionally NOT imported — this file defines a richer local version
@@ -46,27 +43,27 @@ interface LeadsTabProps {
   branchFilter?: string;
 }
 
-type StaffSelfSnapshot = {
-  id?: string;
-  role?: string;
-  name?: string;
-};
-
-import { QuickEditPanel, normBranchId } from './leads/LeadSubcomponents';
+import { normBranchId } from './leads/leadBranchUtils';
 import { LeadsTabHeader } from './leads/LeadsTabHeader';
 import { LeadFilterBar } from './leads/LeadFilterBar';
 import { LeadSalesKpiStrip } from './leads/LeadSalesKpiStrip';
 import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
-import type { StaleLeadRow } from './leads/LeadStaleLeadsPanel';
-import { buildCsv } from './leads/leadCsvUtils';
+import { useLeadActions } from './leads/useLeadActions';
+import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
+import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
 
 const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
 const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));
+const LeadDuplicateReviewPanel = React.lazy(() => import('./leads/LeadDuplicateReviewPanel').then(module => ({ default: module.LeadDuplicateReviewPanel })));
 const LeadModalsHost = React.lazy(() => import('./leads/LeadModalsHost').then(module => ({ default: module.LeadModalsHost })));
 const LeadPerformancePanel = React.lazy(() => import('./leads/LeadPerformancePanel').then(module => ({ default: module.LeadPerformancePanel })));
 const LeadPerformanceOverview = React.lazy(() => import('./leads/LeadPerformanceOverview').then(module => ({ default: module.LeadPerformanceOverview })));
 const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').then(module => ({ default: module.LeadPipelineBoard })));
 const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel').then(module => ({ default: module.LeadRemindersPanel })));
+const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
+const CrmCoachingPanel = React.lazy(() => import('./leads/CrmCoachingPanel').then(module => ({ default: module.CrmCoachingPanel })));
+const LeadTable = React.lazy(() => import('./LeadTable').then(module => ({ default: module.LeadTable })));
+const QuickEditPanel = React.lazy(() => import('./leads/LeadSubcomponents').then(module => ({ default: module.QuickEditPanel })));
 
 const LeadSectionFallback = () => (
   <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">
@@ -76,7 +73,11 @@ const LeadSectionFallback = () => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
-  const { leads, staffMembers, subscribers, courses, bundles, updateLead, addLead, reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber, authUser, issueClientCodeAsync } = useSiteData();
+  const {
+    leads, staffMembers, subscribers, courses, bundles, updateLead, addLead,
+    reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
+    authUser, isAdmin, recordSubscriberPayment, bulkRedistributeLeads,
+  } = useSiteData();
   const instituteBranches = useBranches();
   const navigate = useNavigate();
   const currentStaff = useMemo(() =>
@@ -89,11 +90,22 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   );
 
   const statusDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => () => {
+    statusDebounceRef.current.forEach(clearTimeout);
+    statusDebounceRef.current.clear();
+  }, []);
   // Drag-and-drop between kanban columns
   const draggedLeadRef = useRef<LeadItem | null>(null);
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
   const { subTab, setSubTab } = useLeadSubTab();
+  const { crmSettings, setCrmSettings, pipelineStages, reloadPipeline, selfStaff } =
+    useLeadCrmBootstrap(notify);
+  const {
+    staleLeads, staleLoading, staleBulkMsg, setStaleBulkMsg, staleSending,
+    staleSelected, setStaleSelected, dueToday, dueTodayLoading,
+    refreshStaleLeads, refreshDueToday, sendStaleBulkWhatsapp,
+  } = useLeadRemoteReminders(subTab, notify);
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
   const [waRepId, setWaRepId] = useState<string | null>(null);
@@ -103,7 +115,6 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [singleStatus, setSingleStatus] = useState<LeadStatus | ''>('');
-  const [crmSettings, setCrmSettings] = useState<CrmSettings>(DEFAULT_CRM_SETTINGS);
   const [searchTerm, setSearchTerm] = useState('');
   const [assignFilter, setAssignFilter] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -114,6 +125,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [statusFilter, setStatusFilter] = useState<Set<LeadStatus>>(new Set());
   const [courseFilter, setCourseFilter] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState<string | null>(null);
+
   useEffect(() => {
     setBranchFilter(workspaceBranchFilter || null);
   }, [workspaceBranchFilter]);
@@ -123,29 +135,16 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [showBulkWA, setShowBulkWA] = useState(false);
 
-  // Stale leads (server-fetched — leads not contacted in 7+ days)
-  const [staleLeads, setStaleLeads] = useState<StaleLeadRow[]>([]);
-  const [staleLoading, setStaleLoading] = useState(false);
-  const [staleBulkMsg, setStaleBulkMsg] = useState('أهلاً {name} 💚 نتمنى تواصلك معنا لمعرفة المزيد عن برامجنا. فريق مهاد للدراسات النفسية 🌿');
-  const [staleSending, setStaleSending] = useState(false);
-  const [staleSelected, setStaleSelected] = useState<Set<string>>(new Set());
-
-  // Due-today leads (server-fetched — follow-up date is today)
-  const [dueToday, setDueToday] = useState<{
-    id: string; name: string; phone: string; email: string;
-    status: string; interest_level: string;
-    next_follow_up_date: string; assigned_sales_name: string | null; overdue_days: number;
-  }[]>([]);
-  const [dueTodayLoading, setDueTodayLoading] = useState(false);
-
-  // Self staff — for role-based UI gating (SALES vs admin)
-  const [selfStaff, setSelfStaff] = useState<{ id: string; role: StaffMember['role']; name: string } | null>(null);
-  useEffect(() => {
-    mysqlClient.getStaffSelf()
-      .then((s: StaffSelfSnapshot) => { if (s?.id) setSelfStaff({ id: s.id, role: (s.role || 'other') as StaffMember['role'], name: s.name || '' }); })
-      .catch(() => {});
-  }, []);
   const isSalesOnly = selfStaff?.role === 'sales' || staffSelfProp?.role === 'sales';
+  const permissionSubject = currentStaff
+    ? {
+        role: currentStaff.role as RoleKey,
+        permissions: currentStaff.permissions as PermissionKey[] | undefined,
+      }
+    : null;
+  const canExportLeads = isAdmin || hasStaffPermission(permissionSubject, 'export_leads');
+  const canBulkWhatsApp = isAdmin || hasStaffPermission(permissionSubject, 'bulk_whatsapp');
+  const canManageLeads = isAdmin || hasStaffPermission(permissionSubject, 'manage_leads');
   const { effectiveLeads, effectiveSubs } = useLeadEffectiveRecords({
     leads,
     subscribers,
@@ -169,63 +168,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     return () => document.removeEventListener('mousedown', handler);
   }, [showActionsMenu]);
 
-  // Load CRM settings on mount
-  useEffect(() => {
-    mysqlAdmin.getCrmSettings().then(data => {
-      if (data && (data as Partial<CrmSettings>).leadSources?.length) {
-        setCrmSettings(x => ({ ...x, ...(data as Partial<CrmSettings>) }));
-      }
-    }).catch(() => {});
-  }, []);
-
-  const refreshStaleLeads = useCallback(() => {
-    setStaleLoading(true);
-    mysqlAdmin.adminGet<StaleLeadRow[]>('/api/admin/crm/stale-leads?days=7')
-      .then(data => { setStaleLeads(Array.isArray(data) ? data : []); })
-      .catch(() => {})
-      .finally(() => setStaleLoading(false));
-  }, []);
-
-  const sendStaleBulkWhatsapp = useCallback(async () => {
-    if (!staleBulkMsg.trim() || staleSelected.size === 0) return;
-    setStaleSending(true);
-    try {
-      const selectedLeads = staleLeads
-        .filter(lead => staleSelected.has(lead.id))
-        .map(lead => ({ id: lead.id, phone: lead.phone, name: lead.name }));
-      const result = await mysqlAdmin.adminPost<{ sent: number; failed: number }>('/api/admin/crm/bulk-whatsapp', { leads: selectedLeads, message: staleBulkMsg });
-      notify('success', `تم الإرسال: ${result.sent} رسالة ✅`);
-      setStaleSelected(new Set());
-      const fresh = await mysqlAdmin.adminGet<StaleLeadRow[]>('/api/admin/crm/stale-leads?days=7');
-      setStaleLeads(Array.isArray(fresh) ? fresh : []);
-    } catch (e: unknown) {
-      notify('error', (e as Error).message || 'فشل الإرسال');
-    } finally {
-      setStaleSending(false);
-    }
-  }, [notify, staleBulkMsg, staleLeads, staleSelected]);
-
-  const refreshDueToday = useCallback(() => {
-    setDueTodayLoading(true);
-    mysqlAdmin.adminGet<typeof dueToday>('/api/admin/crm/follow-up-due')
-      .then(data => { setDueToday(Array.isArray(data) ? data : []); })
-      .catch(() => {})
-      .finally(() => setDueTodayLoading(false));
-  }, []);
-
-  // Fetch stale leads + due-today leads when reminders tab is active
-  useEffect(() => {
-    if (subTab !== 'reminders') return;
-    refreshStaleLeads();
-    refreshDueToday();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab]);
-
   // Pagination: how many cards shown per column (default 15)
   const [colLimit, setColLimit] = useState<Record<LeadStatus, number>>(
     Object.fromEntries(Object.keys(STATUS_CFG).map(k => [k, 15])) as Record<LeadStatus, number>
   );
-  const { salesTargets, saveSalesTargets } = useSalesTargetsStorage();
+  const { salesTargets, saveSalesTargets } = useSalesTargetsStorage(targetMonth);
 
 
   // ── Extra state (payment / convert / FB / CRM contact) ──────────────────
@@ -254,7 +201,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     handleLeadSearchChange,
     selectLeadForCommunication,
     saveQuickCommunication,
-  } = useLeadQuickCommunication({ effectiveLeads, updateLead });
+  } = useLeadQuickCommunication({ effectiveLeads, reloadLeads });
   // ── Reminders tab state ──────────────────────────────────────────────────
   const [reminderStaffFilter, setReminderStaffFilter] = useState('');
   const [reminderView, setReminderView] = useState<'list' | 'kanban'>('kanban');
@@ -323,6 +270,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     leadsFollowupFilter,
     statusFilter,
     instituteBranches,
+    pipelineColumns: pipelineStages.length
+      ? pipelineStages.filter(stage => stage.showInPipeline).map(stage => stage.status as LeadStatus)
+      : undefined,
   });
 
   const leadFiltersActive = Boolean(
@@ -362,499 +312,20 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   const waActiveRep = waRepId ? salesReps.find(r => r.id === waRepId) ?? null : null;
 
-  const handleSave = (updated: LeadItem) => {
-    updateLead(updated);
-    setSelectedId(null);
-    notify('success', 'تم حفظ بيانات العميل');
-  };
-
-  const handleSyncSheet = async () => {
-    setSyncingSheet(true);
-    try {
-      const r = await mysqlAdmin.syncAllSheets();
-      await reloadLeads();
-      notify('success', `تمت المزامنة · ${r.imported} جديد، ${r.skipped} مكرر`);
-    } catch (e) {
-      notify('error', e instanceof Error ? e.message : 'فشلت المزامنة');
-    } finally {
-      setSyncingSheet(false);
-    }
-  };
-
-  const handleDistribute = async () => {
-    if (salesReps.length === 0) return notify('error', 'لا يوجد مندوبو مبيعات');
-    setDistributing(true);
-    try {
-      const validRepIds = new Set(salesReps.map(r => r.id));
-      // Include unassigned leads AND leads assigned to reps no longer active
-      const toAssign = leads.filter(l =>
-        !l.hidden && !['converted', 'lost'].includes(l.status) &&
-        (!l.assignedSalesId || !validRepIds.has(l.assignedSalesId))
-      );
-      if (toAssign.length === 0) return notify('info', 'جميع الليدز النشطة لديها مندوب مُعيَّن');
-      // One extra virtual "بدون مندوب" slot alongside the real reps in the rotation, so
-      // roughly 1 in (reps+1) leads is deliberately left unassigned — those stay visible
-      // in "محلي جديد" for manual placement instead of every lead being force-assigned.
-      const totalSlots = salesReps.length + 1;
-      const updates: typeof toAssign = [];
-      let leftUnassigned = 0;
-      toAssign.forEach((lead, i) => {
-        const slot = i % totalSlots;
-        if (slot === salesReps.length) { leftUnassigned++; return; }
-        const rep = salesReps[slot];
-        updates.push({ ...lead, assignedSalesId: rep.id, assignedSalesName: rep.name });
-      });
-      for (const u of updates) await updateLead(u);
-      notify('success', `تم توزيع ${updates.length} ليد على ${salesReps.length} مندوب، وترك ${leftUnassigned} بدون مندوب (محلي جديد)`);
-    } finally {
-      setDistributing(false);
-    }
-  };
-
-  const handleMigrateBranches = async () => {
-    const missing = leads.filter(l => !l.hidden && !l.branch);
-    if (missing.length === 0) return notify('info', 'جميع العملاء لديهم فرع مُعيَّن بالفعل');
-    setMigratingBranches(true);
-    let updated = 0;
-    try {
-      // Normalize helper: strip spaces, dashes, underscores, leading ال
-      const norm = (s: string) => s.toLowerCase().replace(/[\s_\-]/g, '').replace(/^ال/, '');
-
-      // Build list of all known branches with their normalized aliases
-      const allBranches: { id: string; aliases: string[] }[] = [
-        ...instituteBranches.map(b => ({ id: b.id, aliases: [norm(b.id), norm(b.label)] })),
-        ...Object.entries(BRANCH_ENUM_LABELS).map(([k, v]) => ({ id: k, aliases: [norm(k), norm(v)] })),
-      ];
-
-      // Find branch id by scanning free text for any branch alias
-      const detectBranch = (text: string): string | null => {
-        const nt = norm(text);
-        for (const br of allBranches) {
-          for (const alias of br.aliases) {
-            if (!alias || alias.length < 3) continue;
-            if (nt === alias || nt.includes(alias)) return br.id;
-          }
-        }
-        return null;
-      };
-
-      for (const lead of missing) {
-        // 1. Try "الفرع: X" / "فرع: X" / "branch: X" pattern first
-        let branchId: string | null = null;
-        if (lead.notes) {
-          const m = /(?:الفرع|فرع|branch)\s*[:\-]\s*([^|\n،,\|]+)/i.exec(lead.notes);
-          if (m) branchId = detectBranch(m[1].trim());
-        }
-        // 2. If not found via prefix, scan all text fields freely
-        if (!branchId) {
-          const allText = [lead.notes, lead.source]
-            .filter(Boolean).join(' ');
-          branchId = detectBranch(allText);
-        }
-        if (!branchId) continue;
-        await updateLead({ ...lead, branch: branchId });
-        updated++;
-      }
-      if (updated > 0) {
-        notify('success', `تم تحديث الفرع لـ ${updated} عميل`);
-        reloadLeads();
-      } else {
-        notify('info', `لم يُعثر على اسم فرع معروف في بيانات ${missing.length} عميل — تأكد أن الملاحظات تحتوي على اسم الفرع`);
-      }
-    } catch (e) {
-      notify('error', e instanceof Error ? e.message : 'حدث خطأ');
-    } finally {
-      setMigratingBranches(false);
-    }
-  };
-
-  const handleAddLead = async (draft: typeof EMPTY_LEAD_DRAFT & { interestedCourseIds: string[] }) => {
-    const mySelfId   = selfStaff?.id   || staffSelfProp?.id;
-    const mySelfName = selfStaff?.name || staffSelfProp?.name;
-
-    // For sales-only users, always assign the lead to themselves (staffMembers context is empty for sales)
-    let resolvedSalesId = isSalesOnly && mySelfId ? mySelfId : draft.assignedSalesId;
-
-    if (!isSalesOnly) {
-      if (draft.autoAssign && salesReps.length > 0) {
-        // Explicit "auto" selection → least-loaded rep
-        const repCounts = salesReps.map(r => ({
-          r,
-          count: leads.filter(l => l.assignedSalesId === r.id && !['converted', 'lost'].includes(l.status)).length,
-        }));
-        const leastLoaded = repCounts.sort((a, b) => a.count - b.count)[0]?.r;
-        if (leastLoaded) resolvedSalesId = leastLoaded.id;
-      } else if (draft.assignedSalesId === '__rr__' && salesReps.length > 0) {
-        // Explicit round-robin selection
-        const idx = parseInt(localStorage.getItem('crm.rrIndex') || '0') % salesReps.length;
-        localStorage.setItem('crm.rrIndex', String((idx + 1) % salesReps.length));
-        resolvedSalesId = salesReps[idx].id;
-      } else if (!resolvedSalesId && salesReps.length > 0) {
-        // No manual assignment → use global setting, default to least-loaded
-        const autoMode = crmSettings.autoAssign || 'least';
-        if (autoMode === 'rr') {
-          const idx = parseInt(localStorage.getItem('crm.rrIndex') || '0') % salesReps.length;
-          localStorage.setItem('crm.rrIndex', String((idx + 1) % salesReps.length));
-          resolvedSalesId = salesReps[idx].id;
-        } else {
-          // 'least' or any other value → assign to least-loaded rep
-          const repCounts = salesReps.map(r => ({
-            r,
-            count: leads.filter(l => l.assignedSalesId === r.id && !['converted', 'lost'].includes(l.status)).length,
-          }));
-          const leastLoaded = repCounts.sort((a, b) => a.count - b.count)[0]?.r;
-          if (leastLoaded) resolvedSalesId = leastLoaded.id;
-        }
-      }
-    }
-
-    const rep = isSalesOnly && mySelfId
-      ? { id: mySelfId, name: mySelfName || '' }
-      : salesReps.find(r => r.id === resolvedSalesId);
-    const newLead: LeadItem = {
-      id: `lead-${Date.now()}`,
-      name: draft.name.trim(),
-      phone: draft.phone.trim(),
-      email: draft.email.trim(),
-      notes: draft.notes.trim() || undefined,
-      status: draft.status,
-      interestLevel: draft.interestLevel,
-      source: draft.source,
-      leadType: 'general',
-      assignedSalesId: resolvedSalesId && resolvedSalesId !== '__rr__' ? resolvedSalesId : undefined,
-      assignedSalesName: rep?.name || undefined,
-      interestedCourseIds: draft.interestedCourseIds,
-      branch: (draft.branch || undefined) as LeadItem['branch'],
-      tags: draft.tags.length > 0 ? draft.tags : undefined,
-      communications: [],
-      createdAt: new Date().toISOString(),
-      hidden: false,
-    };
-    await addLead(newLead);
-    notify('success', `تم إضافة ${newLead.name} بنجاح`);
-    // Refresh sales user's own data so new lead appears immediately in CRM list
-    if (isSalesOnly && fetchSalesData) fetchSalesData();
-  };
-  const handleStatusChange = (lead: LeadItem, status: LeadStatus) => {
-    // Debounce: if user changes status twice quickly, only the last change is saved
-    const existing = statusDebounceRef.current.get(lead.id);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      updateLead({ ...lead, status });
-      statusDebounceRef.current.delete(lead.id);
-      notify('success', `${lead.name} → ${STATUS_CFG[status].label}`);
-    }, 600);
-    statusDebounceRef.current.set(lead.id, timer);
-  };
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // Extra handlers from LeadsTab
-  // ═══════════════════════════════════════════════════════════════════════
-
-
-
-
-
-  // lectureProgress is stored as { [lectureId]: percentNumber } where 100 = complete.
-  // Pass through unchanged — it is keyed by lectureId, not courseId.
-
-
-  const openLeadBook = (row: LeadItem) => {
-    setLeadPayRow(row);
-    const defaultCourseId = row.interestedCourseIds?.[0] || row.enrolledCourseId || '';
-    const currency = (['ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(normBranchId(row.branch))) ? 'SAR' : 'EGP';
-    setLeadPayDraft(createClientPaymentDraft({ courseId: defaultCourseId, currency, branch: row.branch || '', email: row.email || '' }));
-  };
-
-
-  const handleLeadPayment = async (draft: PaymentDraft) => {
-    if (!leadPayRow) return;
-    // shadow leadPayDraft so handler body needs no changes
-    const _courseItems = draft.paymentType === 'course'
-      ? [{ courseId: draft.courseId, amount: draft.amount, discountPct: draft.discountPct, customExpected: draft.customExpected }]
-      : [];
-    const leadPayDraft = {
-      ...draft,
-      courseItems: _courseItems,
-      transferRef: draft.fromAccountNumber,
-      discountCustom: '',
-    };
-    const freshLead = effectiveLeads.find(l => l.id === leadPayRow.id) || leadPayRow;
-    const _isCustomPrice = leadPayDraft.discountPct === 'custom';
-    const _customFinalPrice = _isCustomPrice ? Number(leadPayDraft.discountCustom) : 0;
-    const _discountPct = _isCustomPrice ? 0 : Number(leadPayDraft.discountPct);
-    const _totalOrig = leadPayDraft.paymentType === 'course'
-      ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
-      : Number(leadPayDraft.amount);
-    const _applyDiscount = (amt: number) => {
-      if (_isCustomPrice && _customFinalPrice > 0 && _totalOrig > 0) return Math.round(_customFinalPrice * amt / _totalOrig);
-      return _discountPct > 0 ? Math.round(amt * (1 - _discountPct / 100)) : amt;
-    };
-    // Lookup system price for a course/bundle by ID
-    const _getSystemPrice = (courseId: string): number => {
-      if (courseId.startsWith('bundle:')) {
-        const bId = courseId.replace('bundle:', '');
-        const b = bundles.find(bx => bx.id === bId);
-        return (b?.price as unknown as Record<string,number>)?.[leadPayDraft.currency] || (b?.price as unknown as Record<string,number>)?.EGP || 0;
-      }
-      const c = courses.find(cx => cx.id === courseId);
-      return (c?.price as unknown as Record<string,number>)?.[leadPayDraft.currency] || (c?.price as unknown as Record<string,number>)?.EGP || 0;
-    };
-    const _getExpectedPrice = (courseId: string, fallbackAmount: number): number => {
-      const sysPrice = _getSystemPrice(courseId);
-      if (_isCustomPrice && _customFinalPrice > 0) return _customFinalPrice;
-      if (sysPrice > 0 && _discountPct > 0) return Math.round(sysPrice * (1 - _discountPct / 100));
-      return sysPrice || fallbackAmount;
-    };
-    // Branch-based access level for new enrollments
-    const _branchForAccess = normBranchId(leadPayDraft.branch || freshLead.branch || '');
-    const _isOnlineBranch = ['ONLINE_EGYPT', 'ONLINE_SAUDI', 'ONLINE_ABROAD'].includes(_branchForAccess);
-    const _newCourseAccess: CourseAccessSetting = _isOnlineBranch
-      ? { mode: 'limited', lectureLimit: 20 }
-      : { mode: 'preview' };
-    // Build price note for courses
-    const _buildCourseNote = (courseId: string, advanceAmt: number): string => {
-      const sysPrice = _getSystemPrice(courseId);
-      if (sysPrice > 0 && _discountPct > 0) {
-        const afterDiscount = Math.round(sysPrice * (1 - _discountPct / 100));
-        return `سعر الكورس: ${sysPrice.toLocaleString()}، خصم ${_discountPct}%، بعد الخصم: ${afterDiscount.toLocaleString()}، مقدم: ${advanceAmt.toLocaleString()}`;
-      }
-      if (sysPrice > 0 && _isCustomPrice && _customFinalPrice > 0) {
-        return `سعر الكورس: ${sysPrice.toLocaleString()}، سعر نهائي: ${_customFinalPrice.toLocaleString()}، مقدم: ${advanceAmt.toLocaleString()}`;
-      }
-      if (sysPrice > 0 && advanceAmt > 0 && advanceAmt < sysPrice) {
-        return `سعر الكورس: ${sysPrice.toLocaleString()}، مقدم: ${advanceAmt.toLocaleString()}`;
-      }
-      return '';
-    };
-    const noteParts = [leadPayDraft.note, leadPayDraft.transactionId, leadPayDraft.transferRef ? `تحويل: ${leadPayDraft.transferRef}` : '', leadPayDraft.nationalId ? `ر.ق: ${leadPayDraft.nationalId}` : '', leadPayDraft.branch ? `فرع: ${branchLabelMap[leadPayDraft.branch] || leadPayDraft.branch}` : '', leadPayDraft.paymentType === 'certificate' && leadPayDraft.certType ? leadPayDraft.certType : '', leadPayDraft.paymentType === 'book' && leadPayDraft.courseId ? `كتاب: ${courses.find(c => c.id === leadPayDraft.courseId)?.title || ''}` : ''].filter(Boolean);
-    const isMultiCourse = leadPayDraft.paymentType === 'course';
-
-    const normPhone = (freshLead.phone || '').replace(/\D/g, '');
-    const normEmail = (freshLead.email || '').toLowerCase().trim();
-    const existingSub = effectiveSubs.find(s =>
-      s.leadId === freshLead.id ||
-      (normPhone.length > 5 && (s.phone || '').replace(/\D/g, '') === normPhone) ||
-      (normEmail.length > 3 && (s.email || '').toLowerCase().trim() === normEmail)
-    );
-    let updatedLead = { ...freshLead };
-
-    if (isMultiCourse) {
-      // Multi-course new booking
-      const validItems = leadPayDraft.courseItems.filter(item => item.courseId && item.amount);
-      if (validItems.length === 0) return;
-
-      const payEntries: PaymentHistoryEntry[] = [
-        ...validItems.map(item => {
-          const isBundleItem = item.courseId.startsWith('bundle:');
-          const bundleId = isBundleItem ? item.courseId.replace('bundle:', '') : undefined;
-          const expectedPrice = _getExpectedPrice(item.courseId, Number(item.amount));
-          return {
-            id: `pay-${Date.now()}-${item.courseId}`,
-            amount: Number(item.amount),
-            currency: leadPayDraft.currency,
-            paymentType: leadPayDraft.paymentType as PaymentItemType,
-            isInstallment: leadPayDraft.bookingType === 'installment',
-            courseId: isBundleItem ? undefined : (item.courseId || undefined),
-            bundleId,
-            courseExpected: leadPayDraft.bookingType === 'new_booking' && expectedPrice > 0 ? expectedPrice : undefined,
-            note: [...noteParts, _buildCourseNote(item.courseId, Number(item.amount))].filter(Boolean).join(' | ') || undefined,
-            paymentMethod: leadPayDraft.paymentMethod || undefined,
-            transactionId: leadPayDraft.transactionId || undefined,
-            fromAccountNumber: leadPayDraft.transferRef || undefined,
-            at: leadPayDraft.date,
-          } as PaymentHistoryEntry;
-        }),
-        ...(leadPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).map((i, ix) => ({
-          id: `pay-${Date.now()}-xtra-${ix}`,
-          amount: Number(i.amount),
-          currency: leadPayDraft.currency,
-          paymentType: i.type as PaymentItemType,
-          isInstallment: leadPayDraft.bookingType === 'installment',
-          note: [i.label, ...noteParts].filter(Boolean).join(' | ') || undefined,
-          paymentMethod: leadPayDraft.paymentMethod || undefined,
-          at: leadPayDraft.date,
-        } as PaymentHistoryEntry)),
-      ];
-      // Expand bundle:b-xxx → individual course IDs so enrolledCourseIds never stores raw bundle IDs
-      const enrollIds: string[] = [];
-      for (const item of validItems) {
-        if (item.courseId.startsWith('bundle:')) {
-          const bId = item.courseId.replace('bundle:', '');
-          const bObj = bundles.find((b: { id: string; courses: { id: string }[] }) => b.id === bId);
-          if (bObj) enrollIds.push(...bObj.courses.map((c: { id: string }) => c.id));
-          else enrollIds.push(item.courseId);
-        } else {
-          enrollIds.push(item.courseId);
-        }
-      }
-      const enrollIds_unique = [...new Set(enrollIds)];
-      const courseAccessPatch = Object.fromEntries(enrollIds_unique.map(id => [id, _newCourseAccess]));
-
-      if (existingSub) {
-        const allCourseIds = [...new Set([...(existingSub.enrolledCourseIds || []), ...enrollIds_unique])];
-        updateSubscriber({
-          ...existingSub,
-          enrolledCourseIds: allCourseIds,
-          courseAccess: { ...(existingSub.courseAccess ?? {}), ...courseAccessPatch },
-          paymentHistory: [...(existingSub.paymentHistory || []), ...payEntries],
-          leadId: existingSub.leadId || freshLead.id,
-          email: leadPayDraft.email || existingSub.email,
-        });
-      } else {
-        const added = await addSubscriber({
-          id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(),
-          leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone,
-          enrolledCourseIds: enrollIds_unique, courseAccess: courseAccessPatch,
-          paymentHistory: payEntries, branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined,
-          status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName,
-          createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-        });
-        if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
-      }
-      updatedLead = { ...updatedLead, status: 'converted', email: leadPayDraft.email || updatedLead.email };
-    } else {
-      // Single payment (installment or non-course type)
-      if (!leadPayDraft.amount) return;
-      const singlePaymentIsBundle = Boolean(leadPayDraft.courseId?.startsWith('bundle:'));
-      const singlePaymentBundleId = singlePaymentIsBundle ? leadPayDraft.courseId.replace('bundle:', '') : undefined;
-      const singlePaymentExpected = leadPayDraft.courseId
-        ? _getExpectedPrice(leadPayDraft.courseId, Number(leadPayDraft.amount))
-        : 0;
-      const payHistEntry: PaymentHistoryEntry = {
-        id: `pay-${Date.now()}`, amount: _applyDiscount(Number(leadPayDraft.amount)),
-        currency: leadPayDraft.currency, paymentType: leadPayDraft.paymentType as PaymentItemType,
-        isInstallment: leadPayDraft.bookingType === 'installment',
-        courseId: singlePaymentIsBundle ? undefined : (leadPayDraft.courseId || undefined),
-        bundleId: singlePaymentBundleId,
-        courseExpected: leadPayDraft.bookingType === 'new_booking' && singlePaymentExpected > 0 ? singlePaymentExpected : undefined,
-        note: noteParts.join(' | ') || undefined,
-        paymentMethod: leadPayDraft.paymentMethod || undefined,
-        transactionId: leadPayDraft.transactionId || undefined,
-        fromAccountNumber: leadPayDraft.transferRef || undefined,
-        at: leadPayDraft.date,
-      };
-      if (leadPayDraft.bookingType === 'new_booking' && leadPayDraft.paymentType === 'course' && leadPayDraft.courseId) {
-        // Expand bundle ID to actual course IDs for single-item booking too
-        const singleCourseId = leadPayDraft.courseId;
-        let singleEnrollIds: string[];
-        if (singleCourseId.startsWith('bundle:')) {
-          const bId = singleCourseId.replace('bundle:', '');
-          const bObj = bundles.find((b: { id: string; courses: { id: string }[] }) => b.id === bId);
-          singleEnrollIds = bObj ? bObj.courses.map((c: { id: string }) => c.id) : [singleCourseId];
-        } else {
-          singleEnrollIds = [singleCourseId];
-        }
-        const singleAccessPatch = Object.fromEntries(singleEnrollIds.map(id => [id, _newCourseAccess]));
-        if (existingSub) {
-          const newCourseIds = [...new Set([...(existingSub.enrolledCourseIds || []), ...singleEnrollIds])];
-          const singleNote = [...noteParts, _buildCourseNote(leadPayDraft.courseId, Number(leadPayDraft.amount))].filter(Boolean).join(' | ') || undefined;
-          updateSubscriber({ ...existingSub, enrolledCourseIds: newCourseIds, courseAccess: { ...(existingSub.courseAccess ?? {}), ...singleAccessPatch }, paymentHistory: [...(existingSub.paymentHistory || []), { ...payHistEntry, note: singleNote }], leadId: existingSub.leadId || freshLead.id, email: leadPayDraft.email || existingSub.email });
-        } else {
-          const singleNote = [...noteParts, _buildCourseNote(leadPayDraft.courseId, Number(leadPayDraft.amount))].filter(Boolean).join(' | ') || undefined;
-          const added = await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: leadPayDraft.email || freshLead.email, phone: freshLead.phone, enrolledCourseIds: singleEnrollIds, courseAccess: singleAccessPatch, paymentHistory: [{ ...payHistEntry, note: singleNote }], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
-          if (!added) { notify('error', 'فشل إنشاء المشترك'); return; }
-        }
-        updatedLead = { ...updatedLead, status: 'converted', email: leadPayDraft.email || updatedLead.email };
-      } else if (existingSub) {
-        updateSubscriber({ ...existingSub, paymentHistory: [...(existingSub.paymentHistory || []), payHistEntry] });
-      } else {
-        await addSubscriber({ id: `sub-${Date.now()}`, clientCode: freshLead.clientCode || await issueClientCodeAsync(), leadId: freshLead.id, name: freshLead.name, email: freshLead.email, phone: freshLead.phone, enrolledCourseIds: [], paymentHistory: [payHistEntry], branch: ((leadPayDraft.branch || freshLead.branch) as BranchType) || undefined, status: 'active', assignedSalesId: freshLead.assignedSalesId, assignedSalesName: freshLead.assignedSalesName, createdAt: new Date().toLocaleString('ar-EG', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) });
-      }
-    }
-
-    updateLead(updatedLead);
-
-    setLeadPayRow(null);
-    const _notifCourse = leadPayDraft.paymentType === 'course'
-      ? leadPayDraft.courseItems.filter(i => i.courseId && i.amount).map(i => {
-          if (i.courseId.startsWith('bundle:')) return bundles.find((b: {id:string;title:string}) => b.id === i.courseId.replace('bundle:', ''))?.title || '';
-          return courses.find((c: {id:string;title:string}) => c.id === i.courseId)?.title || '';
-        }).filter(Boolean).join(' + ')
-      : '';
-    const _notifAmt = leadPayDraft.paymentType === 'course'
-      ? leadPayDraft.courseItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
-      : Number(leadPayDraft.amount);
-    notify('success', `✅ ${updatedLead.name}${_notifCourse ? ' — ' + _notifCourse : ''} | ${_notifAmt.toLocaleString()} ${leadPayDraft.currency}`);
-    // Fire welcome email if new_booking for a course and email is available
-    if (leadPayDraft.paymentType === 'course' && updatedLead.status === 'converted') {
-      const _welcomeEmail = leadPayDraft.email || freshLead.email;
-      if (_welcomeEmail && _welcomeEmail.includes('@')) {
-        const _courseTitles = leadPayDraft.courseItems
-          .filter(i => i.courseId)
-          .map(i => {
-            if (i.courseId.startsWith('bundle:')) {
-              const bId = i.courseId.replace('bundle:', '');
-              return bundles.find((b: { id: string; title: string }) => b.id === bId)?.title || i.courseId;
-            }
-            return courses.find((c: { id: string; title: string }) => c.id === i.courseId)?.title || i.courseId;
-          })
-          .filter(Boolean);
-        void mysqlAdmin.enrollmentWelcome({
-          email: _welcomeEmail,
-          name: freshLead.name,
-          courseTitle: _courseTitles.join(' + ') || 'الكورس',
-          branch: leadPayDraft.branch || freshLead.branch || '',
-          courseIds: leadPayDraft.courseItems.filter(i => i.courseId).map(i => i.courseId),
-          phone: freshLead.phone || undefined,
-        }).catch(() => {});
-      }
-    }
-    // Refresh sales user's own data so new subscriber/payment appears immediately in عملائي and مدفوعاتي
-    if (fetchSalesData) fetchSalesData();
-    // Auto-navigate: if booking was for DAQQI branch, go to daqqi_clients tab (admins/managers only)
-    const _branchNorm = (leadPayDraft.branch || freshLead.branch || '').toUpperCase().trim().replace(/[-\s]/g, '_');
-    if ((_branchNorm === 'DAQQI' || _branchNorm === 'DQI') && setActiveDashboardTab && !isSalesOnly) {
-      setActiveDashboardTab('daqqi_clients');
-    }
-  };
-
-
-
-  const convertLeadToSubscriber = async () => {
-    const { lead, courseId, accessMode } = convertLeadModal;
-    if (!lead || !courseId) return;
-    try {
-      await mysqlAdmin.convertLead(lead.id, { courseId, accessMode });
-      await Promise.all([reloadLeads(), reloadSubscribers()]);
-      notify('success', 'تم تحويل العميل وربط الكورس داخل النظام بنجاح');
-      setConvertLeadModal({ lead: null, courseId: '', accessMode: 'full' });
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'تعذر تحويل العميل');
-    }
-  };
-  const handleExportVisibleLeadsCsv = () => {
-    const headers = ['الاسم', 'الهاتف', 'البريد', 'المصدر', 'الحالة', 'مستوى الاهتمام', 'المندوب', 'تاريخ الإنشاء'];
-    const rows = visibleLeads.map(l => [
-      l.name,
-      l.phone,
-      l.email || '',
-      l.source || '',
-      l.status,
-      l.interestLevel || '',
-      l.assignedSalesName || '',
-      (l.createdAt || '').slice(0, 10),
-    ]);
-    const csv = buildCsv([headers, ...rows]);
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleCleanupJunkLeads = async () => {
-    if (!window.confirm('سيتم إخفاء العملاء المحتملين بدون اسم ولا هاتف. تأكيد؟')) return;
-    try {
-      const r = await mysqlAdmin.adminPost('/api/admin/cleanup-junk-leads', {}) as Record<string, unknown>;
-      notify('success', `تم إخفاء ${r.hidden as number} سجل جنك`);
-      reloadLeads();
-    } catch {
-      notify('error', 'فشل التنظيف');
-    }
-  };
+  const {
+    handleSave, handleSyncSheet, handleDistribute, handleMigrateBranches,
+    handleAddLead, handleStatusChange, openLeadBook, handleLeadPayment,
+    convertLeadToSubscriber, handleExportVisibleLeadsCsv, handleCleanupJunkLeads,
+  } = useLeadActions({
+    notify, updateLead, addLead, reloadLeads, reloadSubscribers,
+    bulkRedistributeLeads,
+    recordSubscriberPayment, fetchSalesData, setActiveDashboardTab,
+    salesReps, leads, effectiveLeads, effectiveSubs, visibleLeads, bundles,
+    courses, branchLabelMap, currentStaff, isAdmin, isSalesOnly: Boolean(isSalesOnly),
+    statusDebounceRef, leadPayRow, setLeadPayRow, setLeadPayDraft,
+    convertLeadModal, setConvertLeadModal, setSelectedId, setSyncingSheet,
+    setDistributing, setMigratingBranches,
+  });
 
 
   return (
@@ -862,6 +333,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* Row 1: Title + tabs + primary actions — all on one line */}
       <LeadsTabHeader
         isSalesOnly={isSalesOnly}
+        canAdministerCrm={isAdmin}
+        canManageLeads={canManageLeads}
+        canExportLeads={canExportLeads}
+        canBulkWhatsApp={canBulkWhatsApp}
+        canManageDuplicates={isAdmin}
         totalOfflineLeads={leads.filter(l => !l.hidden && !isOnlineSource(l.source)).length}
         overdueCount={overdueLeads.length}
         rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length}
@@ -952,6 +428,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             setDragOverCol={setDragOverCol}
             draggedLeadRef={draggedLeadRef}
             bulkMode={bulkMode}
+            canManageLeads={canManageLeads}
             selectedLeadIds={selectedLeadIds}
             setSelectedLeadIds={setSelectedLeadIds}
             setSelectedId={setSelectedId}
@@ -970,24 +447,34 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
       {/* ─── TABLE VIEW ──────────────────────────────────────────────── */}
       {subTab === 'table' && (
-        <LeadTable
-          rows={scoredLeads}
-          showCourseCol={true}
-          courses={courses}
-          bundles={bundles}
-          navigate={navigate}
-          updateLead={updateLead}
-          deleteLead={deleteLead ?? (() => Promise.resolve())}
-          addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
-          updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-          subscribers={effectiveSubs}
-          salesStaff={salesReps}
-          isSalesOnly={isSalesOnly}
-          onBook={openLeadBook}
-          branchOptions={instituteBranches}
-          sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
-          onSalesClick={!isSalesOnly ? (staffId: string) => navigate(`/staff/${staffId}`) : undefined}
-        />
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadTable
+            rows={scoredLeads}
+            showCourseCol={true}
+            courses={courses}
+            bundles={bundles}
+            navigate={navigate}
+            updateLead={updateLead}
+            reloadLeads={reloadLeads}
+            deleteLead={deleteLead ?? (() => Promise.resolve())}
+            addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
+            updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
+            subscribers={effectiveSubs}
+            salesStaff={salesReps}
+            isSalesOnly={isSalesOnly}
+            canManageLeads={canManageLeads}
+            onBook={openLeadBook}
+            branchOptions={instituteBranches}
+            sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
+            onSalesClick={!isSalesOnly ? (staffId: string) => navigate(`/staff/${staffId}`) : undefined}
+          />
+        </Suspense>
+      )}
+
+      {subTab === 'duplicates' && isAdmin && (
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadDuplicateReviewPanel notify={notify} onChanged={reloadLeads} />
+        </Suspense>
       )}
 
       {subTab === 'localNew' && (
@@ -999,29 +486,33 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">غير موزّع: <strong className="text-amber-600">{unassignedLeads.length}</strong></span>
-              <button onClick={handleDistribute} disabled={distributing || unassignedLeads.length === 0}
+              {isAdmin && <button onClick={handleDistribute} disabled={distributing || unassignedLeads.length === 0}
                 className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-emerald-700 disabled:opacity-40 transition whitespace-nowrap">
                 {distributing ? 'جارٍ التوزيع...' : 'توزيع تلقائي'}
-              </button>
+              </button>}
             </div>
           </div>
-          <LeadTable
-            rows={unassignedLeads}
-            showCourseCol={true}
-            courses={courses}
-            bundles={bundles}
-            navigate={navigate}
-            updateLead={updateLead}
-            deleteLead={deleteLead ?? (() => Promise.resolve())}
-            addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
-            updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
-            subscribers={effectiveSubs}
-            salesStaff={salesReps}
-            isSalesOnly={isSalesOnly}
-            onBook={openLeadBook}
-            branchOptions={instituteBranches}
-            sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
-          />
+          <Suspense fallback={<LeadSectionFallback />}>
+            <LeadTable
+              rows={unassignedLeads}
+              showCourseCol={true}
+              courses={courses}
+              bundles={bundles}
+              navigate={navigate}
+              updateLead={updateLead}
+              reloadLeads={reloadLeads}
+              deleteLead={deleteLead ?? (() => Promise.resolve())}
+              addSubscriber={addSubscriber ?? ((_: SubscriberItem) => Promise.resolve(false))}
+              updateSubscriber={updateSubscriber ?? (() => Promise.resolve())}
+              subscribers={effectiveSubs}
+              salesStaff={salesReps}
+              isSalesOnly={isSalesOnly}
+              canManageLeads={canManageLeads}
+              onBook={openLeadBook}
+              branchOptions={instituteBranches}
+              sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -1040,6 +531,8 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             setCommFilter={setCommFilter}
             salesReps={salesReps}
             isSalesOnly={isSalesOnly}
+            canManageLeads={canManageLeads}
+            canExportLeads={canExportLeads}
             showAddComm={showAddComm}
             setShowAddComm={setShowAddComm}
             addCommDraft={addCommDraft}
@@ -1056,7 +549,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </Suspense>
       )}
 
-      {subTab === 'communications' && (
+      {subTab === 'reminders' && (
         <Suspense fallback={<LeadSectionFallback />}>
           <LeadRemindersPanel
             overdueCount={overdue.length}
@@ -1093,29 +586,44 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </Suspense>
       )}
 
+      {subTab === 'quotes' && (
+        <Suspense fallback={<LeadSectionFallback />}>
+          <CrmQuotesWorkspace
+            leads={effectiveLeads}
+            courses={courses}
+            bundles={bundles}
+            subscribers={salesOwnSubscribers || subscribers}
+            notify={notify}
+          />
+        </Suspense>
+      )}
+
       {subTab === 'performance' && (
         <Suspense fallback={<LeadSectionFallback />}>
-          <LeadPerformanceOverview
-            targetMonth={targetMonth}
-            setTargetMonth={setTargetMonth}
-            salesReps={salesReps}
-            handleDistribute={handleDistribute}
-            distributing={distributing}
-            leads={leads}
-            salesPerformance={salesPerformance}
-            salesTargets={salesTargets}
-            saveSalesTargets={saveSalesTargets}
-            weeklyScorecard={weeklyScorecard}
-            smartIdleDays={smartIdleDays}
-            setSmartIdleDays={setSmartIdleDays}
-            smartRedistCandidates={smartRedistCandidates}
-            updateLead={updateLead}
-            notify={notify}
-            navigate={navigate}
-            scoredLeads={scoredLeads}
-            totalConverted={totalConverted}
-            overdueLeads={overdueLeads}
-          />
+          <div className="space-y-5">
+            <CrmCoachingPanel notify={notify} />
+            <LeadPerformanceOverview
+              targetMonth={targetMonth}
+              setTargetMonth={setTargetMonth}
+              salesReps={salesReps}
+              handleDistribute={handleDistribute}
+              distributing={distributing}
+              leads={leads}
+              salesPerformance={salesPerformance}
+              salesTargets={salesTargets}
+              saveSalesTargets={saveSalesTargets}
+              weeklyScorecard={weeklyScorecard}
+              smartIdleDays={smartIdleDays}
+              setSmartIdleDays={setSmartIdleDays}
+              smartRedistCandidates={smartRedistCandidates}
+              updateLead={updateLead}
+              notify={notify}
+              navigate={navigate}
+              scoredLeads={scoredLeads}
+              totalConverted={totalConverted}
+              overdueLeads={overdueLeads}
+            />
+          </div>
         </Suspense>
       )}
 
@@ -1142,6 +650,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           staffMembers={staffMembers}
           addLead={addLead}
           updateLead={updateLead}
+          reloadLeads={reloadLeads}
           notify={notify}
           courses={courses}
           bundles={bundles}
@@ -1152,6 +661,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           subscribers={effectiveSubs}
           salesReps={salesReps}
           isSalesOnly={isSalesOnly}
+          canManageLeads={canManageLeads}
           onBook={openLeadBook}
           branchOptions={instituteBranches}
           sources={crmSettings.leadSources.length > 0 ? crmSettings.leadSources : DEFAULT_SOURCES}
@@ -1160,15 +670,17 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
       {/* Quick Edit Panel */}
       {activeLead && (
-        <QuickEditPanel
-          lead={activeLead}
-          onClose={() => setSelectedId(null)}
-          onSave={handleSave}
-          courses={courses}
-          bundles={bundles}
-          notify={notify}
-          instituteBranches={instituteBranches}
-        />
+        <Suspense fallback={null}>
+          <QuickEditPanel
+            lead={activeLead}
+            onClose={() => setSelectedId(null)}
+            onSave={handleSave}
+            courses={courses}
+            bundles={bundles}
+            notify={notify}
+            instituteBranches={instituteBranches}
+          />
+        </Suspense>
       )}
 
       <Suspense fallback={null}>
@@ -1197,6 +709,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           salesReps={salesReps}
           reloadLeads={reloadLeads}
           setCrmSettings={setCrmSettings}
+          reloadPipeline={reloadPipeline}
           showAddLead={showAddLead}
           setShowAddLead={setShowAddLead}
           sources={crmSettings.leadSources}

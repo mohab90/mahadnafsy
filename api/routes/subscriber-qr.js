@@ -1,14 +1,31 @@
 'use strict';
 const express = require('express');
 const router = express.Router();
-const { requireAuth, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { pool } = require('../lib/db');
+const { createAttendanceQr } = require('../lib/attendanceQr');
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}[char]));
 
 // GET /api/admin/subscribers/:id/qr
-router.get('/api/admin/subscribers/:id/qr', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/subscribers/:id/qr', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const { id } = req.params;
+    const [[subscriber]] = await pool.query(
+      'SELECT id,client_code,name FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      [id, req.tenantId]
+    );
+    if (!subscriber) return res.status(404).send('العميل غير موجود');
     const QRCode = require('qrcode');
-    const qrDataUrl = await QRCode.toDataURL(id, { width: 300, margin: 2 });
+    const qrToken = createAttendanceQr({ tenantId: req.tenantId, subscriberId: subscriber.id });
+    const qrDataUrl = await QRCode.toDataURL(qrToken, { width: 300, margin: 2 });
+    const displayName = escapeHtml(subscriber.name || 'الطالب');
+    const displayCode = escapeHtml(subscriber.client_code || subscriber.id);
     
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(`
@@ -33,9 +50,9 @@ router.get('/api/admin/subscribers/:id/qr', requireAuth, requireAdminOrStaff, as
       </head>
       <body>
         <div class="card">
-          <h2>بطاقة حضور الطالب</h2>
+          <h2>بطاقة حضور ${displayName}</h2>
           <img src="${qrDataUrl}" alt="QR Code">
-          <p style="color:#64748b;font-family:monospace;font-size:1.2rem;">${id}</p>
+          <p style="color:#64748b;font-family:monospace;font-size:1.2rem;">${displayCode}</p>
           <button onclick="window.print()">طباعة البطاقة</button>
         </div>
       </body>

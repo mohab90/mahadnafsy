@@ -55,7 +55,7 @@ router.delete('/api/admin/automation-workflows/:id', requireAuth, requireAdmin, 
 // ── Automation Engine: Execute enabled workflows ──────────────────────────────
 // POST /api/admin/automation-workflows/run  — the manual "تشغيل الآن" button.
 // Delegates to lib/automationEngine.js — the SAME code the daily cron
-// (lib/serverCronJobs.js) calls, scoped to just this admin's tenant (MKT-04).
+// (server.js) calls, scoped to just this admin's tenant (MKT-04).
 router.post('/api/admin/automation-workflows/run', requireAuth, requireAdmin, requirePermission('manage_automation'), async (req, res) => {
   try {
     const results = await runAutomationWorkflows({ tenantId: req.tenantId, actor: req.user?.email || 'automation' });
@@ -83,10 +83,10 @@ router.post('/api/admin/automation-workflows/run-single/:id', requireAuth, requi
       const days = parseInt(actionCfg.days || '7');
       const [[{ cnt }]] = await pool.query(`
         SELECT COUNT(*) AS cnt FROM leads l
-        LEFT JOIN (SELECT lead_id, MAX(date) AS last_date FROM communications GROUP BY lead_id) c ON c.lead_id = l.id
+        LEFT JOIN (SELECT lead_id, MAX(date) AS last_date FROM communications WHERE tenant_id=? GROUP BY lead_id) c ON c.lead_id = l.id
         WHERE l.tenant_id=? AND l.hidden = 0 AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number')
           AND DATEDIFF(NOW(), COALESCE(c.last_date, l.last_follow_up, l.created_at)) >= ?
-      `, [req.tenantId, days]);
+      `, [req.tenantId, req.tenantId, days]);
       matchedLeads = cnt;
     } else if (wf.trigger === 'new_lead') {
       const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) AS cnt FROM leads WHERE tenant_id=? AND hidden=0 AND status='new' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`, [req.tenantId, parseInt(actionCfg.days||'1')]);

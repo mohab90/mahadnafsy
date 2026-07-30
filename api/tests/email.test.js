@@ -5,7 +5,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { htmlEmail } = require('../lib/email');
+const { htmlEmail, assertRecipientAccepted } = require('../lib/email');
 
 test('htmlEmail wraps content in the branded RTL template', () => {
   const out = htmlEmail('عنوان الاختبار', '<p>محتوى الرسالة</p>');
@@ -19,4 +19,17 @@ test('htmlEmail wraps content in the branded RTL template', () => {
 test('htmlEmail honours a custom brand color override', () => {
   const out = htmlEmail('t', '<p>b</p>', { brandColor: '#123456' });
   assert.ok(out.includes('#123456'), 'uses the overridden brand color');
+});
+
+test('SMTP delivery is successful only when the intended recipient is accepted', () => {
+  const info = { accepted: ['student@example.com'], rejected: [], messageId: 'm-1' };
+  assert.equal(assertRecipientAccepted('STUDENT@example.com', info), info);
+  assert.throws(
+    () => assertRecipientAccepted('student@example.com', { accepted: [], rejected: ['student@example.com'] }),
+    error => error.code === 'EMAIL_RECIPIENT_NOT_ACCEPTED'
+  );
+  assert.throws(
+    () => assertRecipientAccepted('student@example.com', { messageId: 'ambiguous' }),
+    /did not accept/
+  );
 });

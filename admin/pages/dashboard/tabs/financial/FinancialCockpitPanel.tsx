@@ -90,9 +90,11 @@ function ChangeChip({ pct }: { pct: number | null }) {
 export default function FinancialCockpitPanel({
   notify,
   onNavigate,
+  branch,
 }: {
   notify: (msg: string, t?: 'success' | 'error') => void;
   onNavigate?: (tab: string) => void;
+  branch?: string;
 }) {
   const [data, setData] = useState<CockpitData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -100,7 +102,8 @@ export default function FinancialCockpitPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/admin/finance/cockpit', { credentials: 'include', headers: adminAuthHeaders() });
+      const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+      const r = await fetch(`/api/admin/finance/cockpit${query}`, { credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) throw new Error(await r.text());
       setData(await r.json());
     } catch (e: unknown) {
@@ -108,7 +111,7 @@ export default function FinancialCockpitPanel({
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [branch, notify]);
 
   useEffect(() => { load(); }, [load]);
 

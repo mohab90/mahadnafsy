@@ -64,6 +64,7 @@ export interface Course {
   description: string;
   shortDescription: string;
   instructor: string;
+  instructorId?: string;
   thumbnail: string;
   category: 'Therapy' | 'Diagnosis' | 'Child' | 'General';
   type: 'Recorded' | 'Live' | 'Mix';
@@ -107,6 +108,7 @@ export interface Bundle {
 
 export interface Therapist {
   id: string;
+  staffId?: string;
   name: string;
   specialty: string;
   image: string;
@@ -356,7 +358,8 @@ export interface PaymentHistoryEntry {
   at: string;
   staffId?: string;             // Staff who recorded this payment
   staffName?: string;           // Display name of staff who recorded it
-  status?: 'pending' | 'paid' | 'failed'; // undefined/missing = paid (backward compat)
+  status?: 'pending' | 'paid' | 'failed' | 'refunded'; // undefined/missing = paid (backward compat)
+  invoiceNumber?: string | null; // Immutable tenant/branch-scoped financial document number
 }
 
 export interface SubscriberItem {
@@ -369,6 +372,7 @@ export interface SubscriberItem {
   nameAr?: string;      // Explicit Arabic name (same as name by default)
   email: string;
   phone: string;
+  isActive?: boolean;    // Authoritative subscribers.is_active flag from the API
   enrolledCourseIds: string[];
   courseAccess?: Record<string, 'preview' | 'full' | CourseAccessSetting>;
   lectureProgress?: Record<string, number>;
@@ -518,6 +522,7 @@ export interface CommunityPostItem {
   pinned?: boolean;
   commentsList?: CommunityComment[];
   status?: 'pending' | 'approved' | 'rejected'; // moderation status; undefined/approved = visible
+  isOwner?: boolean;
 }
 
 export interface CommunityLibraryItem {
@@ -661,6 +666,13 @@ export interface PaymentProof {
   reviewer_id?: string | null;
   reviewer_note?: string | null;
   submitted_at: string;
+  review_due_at?: string | null;
+  risk_level?: 'standard' | 'high';
+  second_review_required?: boolean | 0 | 1;
+  first_reviewer_id?: string | null;
+  first_review_note?: string | null;
+  first_reviewed_at?: string | null;
+  sla_state?: 'within_sla' | 'due_soon' | 'breached' | 'completed';
   reviewed_at?: string | null;
 }
 
@@ -960,6 +972,7 @@ export interface CourseQuiz {
   title: string;
   questions: QuizQuestion[];
   passingScore: number; // percentage 0-100
+  requiredForCompletion?: boolean;
   createdAt: string;
   updatedAt: string;
   generatedByAI: boolean;

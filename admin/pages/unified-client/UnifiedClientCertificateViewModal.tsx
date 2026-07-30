@@ -52,7 +52,7 @@ export const UnifiedClientCertificateViewModal: React.FC<UnifiedClientCertificat
             </div>
             <p className="text-xs text-gray-400">صدرت في {cert.issuedAt}</p>
           </div>
-          <button onClick={() => window.print()} className="w-full py-2.5 bg-gray-800 text-white rounded-xl text-sm font-bold hover:bg-gray-700 flex items-center justify-center gap-2">
+          <button onClick={() => window.open(`/api/completions/${encodeURIComponent(cert.certificateNumber)}/certificate`, '_blank', 'noopener,noreferrer')} className="w-full py-2.5 bg-gray-800 text-white rounded-xl text-sm font-bold hover:bg-gray-700 flex items-center justify-center gap-2">
             <Printer size={16} /> طباعة الشهادة
           </button>
         </div>

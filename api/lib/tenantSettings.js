@@ -18,6 +18,10 @@ function normalizeSettingKey(key) {
   return value;
 }
 
+function isSecretSetting(key) {
+  return key === 'settings' || /^sys_(payment_gateway|lead_source_connectors|otp_provider)$/.test(key);
+}
+
 function parseJson(value, fallback = null) {
   if (value == null || value === '') return fallback;
   try { return typeof value === 'string' ? JSON.parse(value) : value; }
@@ -60,7 +64,7 @@ async function setTenantSetting(key, value, { tenantId, actorId: _actorId = null
       `INSERT INTO tenant_settings (id, tenant_id, section, config_json, is_secret)
        VALUES (?,?,?,?,?)
        ON DUPLICATE KEY UPDATE config_json=VALUES(config_json), is_secret=VALUES(is_secret)`,
-      [uuidv4(), scopedTenant, scopedKey, serialized, /^sys_(payment_gateway|lead_source_connectors|otp_provider)$/.test(scopedKey) ? 1 : 0]
+      [uuidv4(), scopedTenant, scopedKey, serialized, isSecretSetting(scopedKey) ? 1 : 0]
     );
   } catch (error) {
     if (!MISSING_TABLE.test(error.message || '') || scopedTenant !== DEFAULT_TENANT) throw error;
@@ -73,6 +77,7 @@ async function setTenantSetting(key, value, { tenantId, actorId: _actorId = null
 
 module.exports = {
   getTenantSetting,
+  isSecretSetting,
   normalizeSettingKey,
   normalizeTenantId,
   parseJson,

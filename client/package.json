@@ -8,18 +8,18 @@
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && node deploy_client.cjs"
+    "deploy": "node deploy_client.cjs"
   },
   "dependencies": {
     "@types/dompurify": "^3.0.5",
-    "dompurify": "^3.3.3",
+    "dompurify": "3.4.12",
     "hls.js": "^1.6.16",
     "lucide-react": "^0.555.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-is": "^19.2.6",
-    "react-router-dom": "^7.17.0",
+    "react-router-dom": "7.18.2",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
@@ -29,9 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.27",
-    "dotenv": "^16.4.5",
-    "postcss": "^8.5.8",
-    "ssh2": "^1.17.0",
+    "postcss": "8.5.23",
     "tailwindcss": "^3.4.19",
     "terser": "^5.47.1",
     "typescript": "~5.8.2",

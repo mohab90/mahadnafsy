@@ -28,8 +28,8 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
     setLoading(true);
     try {
       const [accountRows, journal] = await Promise.all([
-        mysqlAdmin.adminGet<Account[]>('/api/admin/accounting/chart-of-accounts'),
-        mysqlAdmin.adminGet<{ entries: JournalEntry[]; lines: Record<string, JournalLine[]> }>('/api/admin/reports/journal?limit=30'),
+        mysqlAdmin.adminGet<Account[]>('/admin/accounting/chart-of-accounts'),
+        mysqlAdmin.adminGet<{ entries: JournalEntry[]; lines: Record<string, JournalLine[]> }>('/admin/reports/journal?limit=30'),
       ]);
       setAccounts(accountRows || []);
       setEntries(journal.entries || []);
@@ -62,7 +62,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
 
     setSaving(true);
     try {
-      await mysqlAdmin.adminPost('/api/admin/accounting/journal-entries', { date: draft.date, description: draft.description, lines: validLines });
+      await mysqlAdmin.adminPost('/admin/accounting/journal-entries', { date: draft.date, description: draft.description, lines: validLines });
       notify('success', 'تم ترحيل قيد اليومية');
       setShowAdd(false);
       setDraft({ date: new Date().toISOString().slice(0, 10), description: '', lines: [{ account_code: '', account_name: '', debit: '', credit: '' }, { account_code: '', account_name: '', debit: '', credit: '' }] });

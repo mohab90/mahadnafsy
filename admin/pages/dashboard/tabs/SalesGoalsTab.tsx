@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Target, Trophy, Edit2, Save, X } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -20,6 +21,27 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
 
   const MONTH = new Date().toISOString().slice(0, 7);
   const monthStart = `${MONTH}-01`;
+
+  useEffect(() => {
+    let cancelled = false;
+    mysqlAdmin.listSalesTargets(MONTH)
+      .then(rows => {
+        if (cancelled) return;
+        const next: Record<string, Goal> = {};
+        for (const row of rows) {
+          const target = row as { staffId?: string; revenueTarget?: number; leadsTarget?: number };
+          if (!target.staffId || target.staffId === '__collection__') continue;
+          next[target.staffId] = {
+            staffId: target.staffId,
+            monthlyTarget: Number(target.revenueTarget) || 0,
+            monthlyLeadsTarget: Number(target.leadsTarget) || 0,
+          };
+        }
+        setGoals(next);
+      })
+      .catch(() => notify('error', 'تعذر تحميل أهداف المبيعات من قاعدة البيانات'));
+    return () => { cancelled = true; };
+  }, [MONTH, notify]);
 
   const salesStaff = useMemo(() => staffMembers.filter(s => s.status === 'active'), [staffMembers]);
 
@@ -50,17 +72,25 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
     });
   }
 
-  function saveEdit(staffId: string) {
-    setGoals(prev => ({
-      ...prev,
-      [staffId]: {
+  async function saveEdit(staffId: string) {
+    const nextGoal = {
+      staffId,
+      monthlyTarget: Number(editValues.monthlyTarget) || 0,
+      monthlyLeadsTarget: Number(editValues.monthlyLeadsTarget) || 0,
+    };
+    try {
+      await mysqlAdmin.saveSalesTarget({
         staffId,
-        monthlyTarget: Number(editValues.monthlyTarget) || 0,
-        monthlyLeadsTarget: Number(editValues.monthlyLeadsTarget) || 0,
-      }
-    }));
-    setEditingId(null);
-    notify('success', 'تم حفظ الهدف');
+        period: MONTH,
+        revenueTarget: nextGoal.monthlyTarget,
+        leadsTarget: nextGoal.monthlyLeadsTarget,
+      });
+      setGoals(prev => ({ ...prev, [staffId]: nextGoal }));
+      setEditingId(null);
+      notify('success', 'تم حفظ الهدف في قاعدة البيانات');
+    } catch {
+      notify('error', 'تعذر حفظ الهدف؛ لم يتم تغيير البيانات المحلية');
+    }
   }
 
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);
@@ -167,8 +197,8 @@ export default function SalesGoalsTab({ notify }: { notify: NotifyFn }) {
         </div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-800 text-sm">
-        <strong>ملاحظة:</strong> الأهداف المحددة هنا مؤقتة ولا تُحفظ في قاعدة البيانات حتى الآن. ستُضاف ميزة الحفظ الدائم قريباً.
+      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 text-sm">
+        <strong>مصدر البيانات:</strong> الأهداف محفوظة لكل موظف ولكل شهر في قاعدة البيانات وتظهر بنفس القيم لكل المستخدمين المصرح لهم.
       </div>
     </div>
   );

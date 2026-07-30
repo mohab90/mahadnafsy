@@ -5,13 +5,18 @@ const router = express.Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { requireDaqqiAccess } = require('../lib/daqqiAccess');
+const { writeAuditEvent } = require('../lib/auditTrail');
+const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
-  const status = err && dbCodes.has(err.code) ? 503 : 500;
-  res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
+  const status = err && dbCodes.has(err.code) ? 503 : (err?.statusCode || 500);
+  res.status(status).json({
+    error: status === 503 ? 'Database unavailable' : (status < 500 ? err.message : 'Internal server error'),
+  });
 }
 
 
@@ -27,27 +32,17 @@ function toMysqlDt(v) {
 // GET /api/admin/daqqi-rounds; the attendance-report/export/monthly routes had no
 // role check at all, so e.g. a SALES or HR account could pull every Dokki attendee's
 // name/phone/payments via CSV export.
-const DAQQI_ALLOWED_ROLES = new Set(['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI', 'INSTRUCTOR', 'TRAINER']);
-function requireDaqqiAccess(req, res, next) {
-  const role = (req.staffRecord?.role || '').toUpperCase();
-  if (req.staffRecord && !req.isSuperAdmin && !DAQQI_ALLOWED_ROLES.has(role)) {
-    return res.status(403).json({ error: 'Access denied' });
-  }
-  next();
-}
-
-router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
+router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const [rounds] = await pool.query(
       `SELECT id, code, course_id, instructor_id, instructor_name, reception_id, reception_name,
        day_of_week, start_date, time_slot, status, current_lecture, postponed_weeks_json, created_at
-       FROM daqqi_rounds ORDER BY created_at DESC LIMIT 500`
+       FROM daqqi_rounds WHERE tenant_id=? ORDER BY created_at DESC LIMIT 500`,
+      [req.tenantId]
     );
     if (rounds.length === 0) return res.json([]);
 
-    const [attendees] = await pool.query(
-      'SELECT round_id, subscriber_id, name, phone, booked_at, amount_paid, attended_lectures FROM daqqi_attendees'
-    );
+    const attendees = await getDaqqiAttendees(pool, req.tenantId, rounds.map(round => round.id));
     const attendeesMap = {};
     for (const a of attendees) {
       if (!attendeesMap[a.round_id]) attendeesMap[a.round_id] = [];
@@ -88,7 +83,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireD
   }
 });
 
-router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), async (req, res) => {
   const role = (req.staffRecord?.role || '').toUpperCase();
   const allowedRoles = new Set(['MANAGER', 'ADMIN', 'DAQQI_MANAGER', 'RECEPTION_DAQQI']);
   if (req.staffRecord && !req.isSuperAdmin && !allowedRoles.has(role)) {
@@ -100,64 +95,173 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
     await conn.beginTransaction();
     const d = req.body;
     const id = d.id || uuidv4();
+    const courseId = String(d.courseId || d.course_id || '').trim();
+    const currentLecture = Number(d.currentLecture ?? d.current_lecture ?? 0);
     const tsMap = { 'صباحاً': 'MORNING', 'ظهراً': 'NOON', 'مساءً': 'EVENING' };
     const stMap = { new: 'NEW', active: 'ACTIVE', finished: 'FINISHED' };
     const timeSlot = tsMap[d.timeSlot] || tsMap[d.time_slot] || 'EVENING';
     const status = stMap[(d.status || '').toLowerCase()] || 'NEW';
     const startDate = toMysqlDt(d.startDate || d.start_date || null);
-    const postponedJson = d.postponedWeeks ? JSON.stringify(d.postponedWeeks) : (d.postponed_weeks_json || null);
+    const postponedWeeks = d.postponedWeeks ?? (() => {
+      try { return JSON.parse(d.postponed_weeks_json || '[]'); } catch { return null; }
+    })();
+    if (!courseId || !startDate || Number.isNaN(Date.parse(startDate))
+      || !Number.isInteger(currentLecture) || currentLecture < 0 || currentLecture > 1000
+      || !Array.isArray(postponedWeeks) || postponedWeeks.length > 200) {
+      const error = new Error('Valid course, start date, lecture count and postponed weeks are required');
+      error.statusCode = 400;
+      throw error;
+    }
+    const postponedJson = JSON.stringify(postponedWeeks);
+    const [[course]] = await conn.query(
+      'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [courseId, req.tenantId]
+    );
+    if (!course) {
+      const error = new Error('Course not found'); error.statusCode = 404; throw error;
+    }
+    for (const [staffId, allowedRoles, label] of [
+      [d.instructorId || d.instructor_id, ['instructor', 'trainer'], 'Instructor'],
+      [d.receptionId || d.reception_id, ['reception_daqqi', 'daqqi_manager'], 'Reception staff'],
+    ]) {
+      if (!staffId) continue;
+      const [[staff]] = await conn.query(
+        `SELECT id FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL
+          AND LOWER(role) IN (${allowedRoles.map(() => '?').join(',')}) LIMIT 1 FOR UPDATE`,
+        [staffId, req.tenantId, ...allowedRoles]
+      );
+      if (!staff) {
+        const error = new Error(`${label} not found or has an invalid role`);
+        error.statusCode = 404;
+        throw error;
+      }
+    }
+    let savedCode = String(d.code || '');
 
-    const [[existing]] = await conn.query('SELECT id FROM daqqi_rounds WHERE id = ? LIMIT 1', [id]);
+    const [[existing]] = await conn.query(
+      'SELECT id,code,status FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [id, req.tenantId]
+    );
+    const transitions = { NEW: ['NEW', 'ACTIVE'], ACTIVE: ['ACTIVE', 'FINISHED'], FINISHED: ['FINISHED'] };
+    if (existing && !transitions[existing.status]?.includes(status)) {
+      const error = new Error(`Invalid round status transition: ${existing.status} -> ${status}`);
+      error.statusCode = 409;
+      throw error;
+    }
     if (existing) {
+      savedCode = String(existing.code || savedCode);
       await conn.query(
         `UPDATE daqqi_rounds SET course_id=?,instructor_id=?,instructor_name=?,reception_id=?,reception_name=?,
-         day_of_week=?,start_date=?,time_slot=?,status=?,current_lecture=?,postponed_weeks_json=? WHERE id=?`,
+         day_of_week=?,start_date=?,time_slot=?,status=?,current_lecture=?,postponed_weeks_json=?
+         WHERE id=? AND tenant_id=?`,
         [
-          d.courseId || d.course_id || '', d.instructorId || d.instructor_id || null,
+          courseId, d.instructorId || d.instructor_id || null,
           d.instructorName || d.instructor_name || '', d.receptionId || d.reception_id || null,
           d.receptionName || d.reception_name || '', d.dayOfWeek || d.day_of_week || '',
           startDate, timeSlot, status,
-          Number(d.currentLecture || d.current_lecture || 0), postponedJson, id,
+          currentLecture, postponedJson, id, req.tenantId,
         ]
       );
     } else {
-      const [[codeRow]] = await conn.query("SELECT MAX(CAST(code AS UNSIGNED)) as maxcode FROM daqqi_rounds WHERE code REGEXP '^[0-9]+$'");
+      await conn.query('SELECT id FROM tenants WHERE id=? FOR UPDATE', [req.tenantId]);
+      const [[codeRow]] = await conn.query(
+        "SELECT MAX(CAST(code AS UNSIGNED)) AS maxcode FROM daqqi_rounds WHERE tenant_id=? AND code REGEXP '^[0-9]+$'",
+        [req.tenantId]
+      );
       const nextDbCode = String(Math.max(Number(codeRow?.maxcode || 0) + 1, 3000));
-      const code = d.code || nextDbCode;
+      const code = nextDbCode;
+      savedCode = String(code);
       await conn.query(
         `INSERT INTO daqqi_rounds
           (id,code,course_id,instructor_id,instructor_name,reception_id,reception_name,
-           day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,created_at,tenant_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
-          id, code, d.courseId || d.course_id || '',
+          id, code, courseId,
           d.instructorId || d.instructor_id || null, d.instructorName || d.instructor_name || '',
           d.receptionId || d.reception_id || null, d.receptionName || d.reception_name || '',
           d.dayOfWeek || d.day_of_week || '', startDate, timeSlot, status,
-          Number(d.currentLecture || d.current_lecture || 0), postponedJson,
+          currentLecture, postponedJson,
           toMysqlDt(d.createdAt || new Date().toISOString()),
+          req.tenantId,
         ]
       );
     }
 
     if (Array.isArray(d.attendees)) {
-      await conn.query('DELETE FROM daqqi_attendees WHERE round_id = ?', [id]);
+      const attendeeIds = d.attendees.map(a => String(a.subscriberId || a.subscriber_id || '')).filter(Boolean);
+      if (attendeeIds.length !== new Set(attendeeIds).size || attendeeIds.length > 2000) {
+        const error = new Error('Attendees must be unique and cannot exceed 2000 per round');
+        error.statusCode = 400;
+        throw error;
+      }
+      const [persistedAttendees] = existing
+        ? await conn.query(
+          `SELECT subscriber_id,attended_lectures FROM daqqi_attendees
+            WHERE tenant_id=? AND round_id=? FOR UPDATE`,
+          [req.tenantId, id]
+        )
+        : [[]];
+      const persistedAttendance = new Map(
+        persistedAttendees.map(attendee => [String(attendee.subscriber_id), Number(attendee.attended_lectures || 0)])
+      );
+      const removedWithHistory = persistedAttendees.find(attendee =>
+        Number(attendee.attended_lectures || 0) > 0 && !attendeeIds.includes(String(attendee.subscriber_id))
+      );
+      if (removedWithHistory) {
+        const error = new Error('An attendee with attendance history cannot be removed from a round');
+        error.statusCode = 409;
+        throw error;
+      }
+      await conn.query('DELETE FROM daqqi_attendees WHERE round_id=? AND tenant_id=?', [id, req.tenantId]);
       for (const a of d.attendees) {
         const subId = a.subscriberId || a.subscriber_id;
         if (!subId) continue;
-        await conn.query(
-          `INSERT INTO daqqi_attendees (round_id,subscriber_id,name,phone,booked_at,amount_paid,attended_lectures)
-           VALUES (?,?,?,?,?,?,?)`,
+        const attendedLectures = existing ? (persistedAttendance.get(String(subId)) || 0) : 0;
+        if (!Number.isInteger(attendedLectures) || attendedLectures < 0 || attendedLectures > currentLecture) {
+          const error = new Error('attendedLectures must be an integer within the round lecture count');
+          error.statusCode = 400;
+          throw error;
+        }
+        const [attendeeInsert] = await conn.query(
+          `INSERT INTO daqqi_attendees
+             (round_id,subscriber_id,tenant_id,name,phone,booked_at,amount_paid,attended_lectures)
+           SELECT ?,s.id,?,s.name,s.phone,?,
+             COALESCE((
+               SELECT SUM(p.amount_egp) FROM payments p
+                WHERE p.tenant_id=s.tenant_id AND p.subscriber_id=s.id
+                  AND p.status='paid' AND p.deleted_at IS NULL
+                  AND (p.course_id=? OR EXISTS (
+                    SELECT 1 FROM bundle_courses bc
+                     WHERE bc.tenant_id=p.tenant_id AND bc.bundle_id=p.bundle_id AND bc.course_id=?
+                  ))
+             ),0),?
+           FROM subscribers s
+          WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL`,
           [
-            id, subId, a.name || '', a.phone || '',
+            id, req.tenantId,
             toMysqlDt(a.bookedAt || a.booked_at || new Date().toISOString()),
-            Number(a.amountPaid || a.amount_paid || 0), Number(a.attendedLectures || a.attended_lectures || 0),
+            courseId, courseId, attendedLectures,
+            subId, req.tenantId,
           ]
         );
+        if (attendeeInsert.affectedRows !== 1) {
+          const error = new Error('Subscriber not found');
+          error.statusCode = 404;
+          throw error;
+        }
       }
     }
+    await writeAuditEvent({
+      action: existing ? 'DAQQI_ROUND_UPDATED' : 'DAQQI_ROUND_CREATED',
+      entityType: 'DAQQI_ROUND',
+      entityId: id,
+      metadata: { courseId, status, currentLecture, attendeeCount: d.attendees?.length ?? null },
+      req,
+      db: conn,
+    });
     await conn.commit();
-    res.json({ ok: true, id });
+    res.json({ ok: true, id, code: savedCode });
   } catch (e) {
     await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
@@ -167,18 +271,206 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, async (
   }
 });
 
-router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
-    await pool.query('DELETE FROM daqqi_rounds WHERE id = ?', [req.params.id]);
+    const [events] = await pool.query(
+      `SELECT e.id,e.subscriber_id,e.session_number,e.status,e.source,e.marked_by,e.reason,e.marked_at,
+              s.name,s.phone
+         FROM daqqi_attendance_events e
+         JOIN subscribers s
+           ON s.id=e.subscriber_id AND s.tenant_id=e.tenant_id
+        WHERE e.tenant_id=? AND e.round_id=?
+        ORDER BY e.session_number DESC,e.marked_at DESC
+        LIMIT 5000`,
+      [req.tenantId, req.params.roundId]
+    );
+    res.json(events);
+  } catch (error) {
+    logger.error('[daqqi-attendance-list]', error.message);
+    sendRouteError(res, error);
+  }
+});
+
+router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  const subscriberId = String(req.body?.subscriberId || '').trim();
+  if (!subscriberId) return res.status(400).json({ error: 'subscriberId is required' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[round]] = await conn.query(
+      `SELECT id,status,current_lecture FROM daqqi_rounds
+        WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE`,
+      [req.params.roundId, req.tenantId]
+    );
+    if (!round) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Round not found' });
+    }
+    if (round.status !== 'ACTIVE' || Number(round.current_lecture) < 1) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Attendance can only be marked for an active round with a current lecture' });
+    }
+    const sessionNumber = req.body?.sessionNumber === undefined
+      ? Number(round.current_lecture)
+      : Number(req.body.sessionNumber);
+    if (!Number.isInteger(sessionNumber) || sessionNumber < 1 || sessionNumber > Number(round.current_lecture)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Invalid sessionNumber' });
+    }
+    const [[attendee]] = await conn.query(
+      `SELECT attended_lectures FROM daqqi_attendees
+        WHERE tenant_id=? AND round_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE`,
+      [req.tenantId, req.params.roundId, subscriberId]
+    );
+    if (!attendee) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Attendee not found in round' });
+    }
+    if (Number(attendee.attended_lectures || 0) >= sessionNumber) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Attendance is already recorded for this session' });
+    }
+    const eventId = uuidv4();
+    await conn.query(
+      `INSERT INTO daqqi_attendance_events
+        (id,tenant_id,round_id,subscriber_id,session_number,status,source,marked_by)
+       VALUES (?,?,?,?,?,'PRESENT','MANUAL',?)`,
+      [eventId, req.tenantId, req.params.roundId, subscriberId, sessionNumber,
+        req.staffRecord?.id || req.user?.uid || null]
+    );
+    await conn.query(
+      `UPDATE daqqi_attendees SET attended_lectures=attended_lectures+1
+        WHERE tenant_id=? AND round_id=? AND subscriber_id=?`,
+      [req.tenantId, req.params.roundId, subscriberId]
+    );
+    await writeAuditEvent({
+      action: 'DAQQI_ATTENDANCE_MARKED',
+      entityType: 'DAQQI_ATTENDANCE',
+      entityId: eventId,
+      metadata: { roundId: req.params.roundId, subscriberId, sessionNumber },
+      req,
+      db: conn,
+    });
+    const attendedLectures = Number(attendee.attended_lectures || 0) + 1;
+    await conn.commit();
+    res.status(201).json({ ok: true, id: eventId, sessionNumber, attendedLectures });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Attendance is already recorded for this session' });
+    }
+    logger.error('[daqqi-attendance-mark]', error.message);
+    sendRouteError(res, error);
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/api/admin/daqqi-rounds/transfer-attendee', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  const { subscriberId, fromRoundId, toRoundId } = req.body || {};
+  if (!subscriberId || !fromRoundId || !toRoundId || fromRoundId === toRoundId) {
+    return res.status(400).json({ error: 'Valid subscriberId, fromRoundId and toRoundId are required' });
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rounds] = await conn.query(
+      'SELECT id FROM daqqi_rounds WHERE tenant_id=? AND id IN (?,?) FOR UPDATE',
+      [req.tenantId, fromRoundId, toRoundId],
+    );
+    if (rounds.length !== 2) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Source or target round not found' });
+    }
+    const [[source]] = await conn.query(
+      `SELECT name, phone, booked_at, amount_paid, attended_lectures
+         FROM daqqi_attendees
+        WHERE tenant_id=? AND round_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE`,
+      [req.tenantId, fromRoundId, subscriberId],
+    );
+    if (!source) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Attendee not found in source round' });
+    }
+    if (Number(source.attended_lectures || 0) > 0) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Cannot transfer an attendee after attendance has started; preserve round history' });
+    }
+    const [[duplicate]] = await conn.query(
+      `SELECT subscriber_id FROM daqqi_attendees
+        WHERE tenant_id=? AND round_id=? AND subscriber_id=? LIMIT 1 FOR UPDATE`,
+      [req.tenantId, toRoundId, subscriberId],
+    );
+    if (duplicate) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Attendee already exists in target round' });
+    }
+    await conn.query(
+      'DELETE FROM daqqi_attendees WHERE tenant_id=? AND round_id=? AND subscriber_id=?',
+      [req.tenantId, fromRoundId, subscriberId],
+    );
+    await conn.query(
+      `INSERT INTO daqqi_attendees
+        (round_id, subscriber_id, tenant_id, name, phone, booked_at, amount_paid, attended_lectures)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [toRoundId, subscriberId, req.tenantId, source.name, source.phone, new Date(),
+       source.amount_paid, source.attended_lectures],
+    );
+    await conn.commit();
     res.json({ ok: true });
   } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[daqqi-transfer-attendee]', e.message);
+    sendRouteError(res, e);
+  } finally {
+    conn.release();
+  }
+});
+
+router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[round]] = await conn.query(
+      `SELECT r.id,r.status,
+              (SELECT COUNT(*) FROM daqqi_attendees a
+                WHERE a.tenant_id=r.tenant_id AND a.round_id=r.id) AS attendee_count
+         FROM daqqi_rounds r WHERE r.id=? AND r.tenant_id=? LIMIT 1 FOR UPDATE`,
+      [req.params.id, req.tenantId]
+    );
+    if (!round) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Round not found' });
+    }
+    if (Number(round.attendee_count) > 0 || round.status !== 'NEW') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Only an empty NEW round can be deleted; retain operational history' });
+    }
+    const [result] = await conn.query(
+      'DELETE FROM daqqi_rounds WHERE id=? AND tenant_id=?',
+      [req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) throw new Error('Round delete lost its lock');
+    await writeAuditEvent({
+      action: 'DAQQI_ROUND_DELETED',
+      entityType: 'DAQQI_ROUND',
+      entityId: req.params.id,
+      req,
+      db: conn,
+    });
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
     sendRouteError(res, e);
+  } finally {
+    conn.release();
   }
 });
 
 // ── Attendance report: all rounds (or filtered by status) with per-attendee stats ──
-router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const { status } = req.query; // 'active' | 'finished' | '' (all)
     const statusFilter = status && ['NEW','ACTIVE','FINISHED'].includes(String(status).toUpperCase())
@@ -188,19 +480,15 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
       `SELECT id, code, course_id, instructor_name, reception_name,
               day_of_week, start_date, time_slot, status, current_lecture
        FROM daqqi_rounds
-       ${statusFilter ? 'WHERE status = ?' : ''}
+       WHERE tenant_id=? ${statusFilter ? 'AND status = ?' : ''}
        ORDER BY start_date DESC LIMIT 300`,
-      statusFilter ? [statusFilter] : []
+      statusFilter ? [req.tenantId, statusFilter] : [req.tenantId]
     );
 
     if (!rounds.length) return res.json([]);
 
     const roundIds = rounds.map(r => r.id);
-    const [attendees] = await pool.query(
-      `SELECT round_id, subscriber_id, name, phone, booked_at, amount_paid, attended_lectures
-       FROM daqqi_attendees WHERE round_id IN (${roundIds.map(() => '?').join(',')})`,
-      roundIds
-    );
+    const attendees = await getDaqqiAttendees(pool, req.tenantId, roundIds);
 
     const attMap = {};
     for (const a of attendees) {
@@ -245,7 +533,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
 });
 
 // ── Attendance CSV export ──
-router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaff, requireDaqqiAccess, bulkOperationLimiter, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, bulkOperationLimiter, async (req, res) => {
   try {
     const { status } = req.query;
     const statusFilter = status && ['NEW','ACTIVE','FINISHED'].includes(String(status).toUpperCase())
@@ -255,9 +543,9 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
       `SELECT id, code, course_id, instructor_name, reception_name,
               day_of_week, start_date, time_slot, status, current_lecture
        FROM daqqi_rounds
-       ${statusFilter ? 'WHERE status = ?' : ''}
+       WHERE tenant_id=? ${statusFilter ? 'AND status = ?' : ''}
        ORDER BY start_date DESC LIMIT 300`,
-      statusFilter ? [statusFilter] : []
+      statusFilter ? [req.tenantId, statusFilter] : [req.tenantId]
     );
 
     if (!rounds.length) {
@@ -266,11 +554,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
     }
 
     const roundIds = rounds.map(r => r.id);
-    const [attendees] = await pool.query(
-      `SELECT round_id, name, phone, booked_at, amount_paid, attended_lectures
-       FROM daqqi_attendees WHERE round_id IN (${roundIds.map(() => '?').join(',')})`,
-      roundIds
-    );
+    const attendees = await getDaqqiAttendees(pool, req.tenantId, roundIds);
 
     const attMap = {};
     for (const a of attendees) {
@@ -307,7 +591,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
 });
 
 // ── Monthly attendance report — aggregate rounds by month ──
-router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrStaff, requireDaqqiAccess, async (req, res) => {
+router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
   try {
     const months = Math.min(24, Math.max(1, Number(req.query.months) || 12));
 
@@ -322,24 +606,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     if (!rounds.length) return res.json({ months: [], totals: null });
 
     const roundIds = rounds.map(r => r.id);
-    // Revenue = LIVE per-course paid amount from the payments ledger (same logic the
-    // Financial tab + DaqqiScheduleTab use: this subscriber's paid EGP payments for the
-    // round's course, or uncategorised), so the rounds report matches the accounting
-    // instead of a stored amount_paid that can go stale. COALESCE falls back to the
-    // stored value for walk-ins / attendees with no linked subscriber.
-    const [attendees] = await pool.query(
-      `SELECT da.round_id, da.attended_lectures,
-              COALESCE((
-                SELECT SUM(p.amount_egp) FROM payments p
-                WHERE p.tenant_id=da.tenant_id AND p.subscriber_id = da.subscriber_id
-                  AND p.status = 'paid'
-                  AND (p.course_id = dr.course_id OR p.course_id IS NULL)
-              ), da.amount_paid, 0) AS amount_paid
-       FROM daqqi_attendees da
-       JOIN daqqi_rounds dr ON dr.id = da.round_id AND dr.tenant_id=da.tenant_id
-       WHERE da.tenant_id=? AND da.round_id IN (${roundIds.map(() => '?').join(',')})`,
-      [req.tenantId, ...roundIds]
-    );
+    const attendees = await getDaqqiAttendees(pool, req.tenantId, roundIds);
 
     const attByRound = {};
     for (const a of attendees) {

@@ -1,16 +1,22 @@
-import { AlertCircle, CheckCircle2, Download } from 'lucide-react';
-import type { InstallmentPlan, SubscriberItem } from '../../../../types';
+import React from 'react';
+import { AlertCircle, CheckCircle2, Download, RefreshCw } from 'lucide-react';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
 
 type AgingRow = {
-  sub: SubscriberItem;
-  plan: InstallmentPlan;
-  remaining: number;
+  planId: string;
+  installmentNumber: number;
+  subscriberId: string;
+  subscriberName: string;
+  subscriberPhone?: string;
+  title?: string;
+  currency: string;
+  outstanding: number;
   dueDate: string;
   daysOverdue: number;
 };
 
 interface AgingReportPanelProps {
-  rows: AgingRow[];
+  branchFilter?: string;
   toEGP: (amount: number, currency: string) => number;
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
 }
@@ -31,7 +37,20 @@ function agingBadgeColor(daysOverdue: number) {
   return 'bg-emerald-100 text-emerald-700';
 }
 
-export function AgingReportPanel({ rows, toEGP, exportCSV }: AgingReportPanelProps) {
+export function AgingReportPanel({ branchFilter, toEGP, exportCSV }: AgingReportPanelProps) {
+  const [rows, setRows] = React.useState<AgingRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const query = branchFilter ? `?branch=${encodeURIComponent(branchFilter)}` : '';
+      const data = await mysqlAdmin.adminGet<{ rows: AgingRow[] }>(`/admin/finance/ar-aging${query}`);
+      setRows(data.rows || []);
+    } finally {
+      setLoading(false);
+    }
+  }, [branchFilter]);
+  React.useEffect(() => { load(); }, [load]);
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -41,7 +60,7 @@ export function AgingReportPanel({ rows, toEGP, exportCSV }: AgingReportPanelPro
               ? row.daysOverdue === 0
               : row.daysOverdue >= bucket.min && row.daysOverdue <= bucket.max
           ));
-          const total = bucketRows.reduce((sum, row) => sum + toEGP(row.remaining, row.plan.currency), 0);
+          const total = bucketRows.reduce((sum, row) => sum + toEGP(row.outstanding, row.currency), 0);
 
           return (
             <div key={bucket.label} className={`${bucket.bg} border ${bucket.border} rounded-xl p-3 text-center`}>
@@ -59,14 +78,18 @@ export function AgingReportPanel({ rows, toEGP, exportCSV }: AgingReportPanelPro
             <AlertCircle size={16} className="text-red-500" />
             تفاصيل الأقساط المتأخرة
           </h4>
+          <div className="flex gap-2">
+          <button type="button" onClick={load} disabled={loading} className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 disabled:opacity-60">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> تحديث
+          </button>
           <button
             onClick={() => exportCSV(
               'aging-report.csv',
               rows.map(row => [
-                row.sub.name,
-                row.sub.phone,
-                row.plan.courseTitle || '—',
-                String(Math.round(toEGP(row.remaining, row.plan.currency))),
+                row.subscriberName,
+                row.subscriberPhone || '',
+                row.title || '—',
+                String(Math.round(toEGP(row.outstanding, row.currency))),
                 row.dueDate,
                 String(row.daysOverdue),
               ]),
@@ -76,6 +99,7 @@ export function AgingReportPanel({ rows, toEGP, exportCSV }: AgingReportPanelPro
           >
             <Download size={13} /> تصدير CSV
           </button>
+          </div>
         </div>
 
         {rows.length === 0 ? (
@@ -96,15 +120,15 @@ export function AgingReportPanel({ rows, toEGP, exportCSV }: AgingReportPanelPro
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
-                <tr key={`${row.sub.id}-${row.plan.id}-${index}`} className="border-b border-gray-50 hover:bg-gray-50/50">
+              {rows.map((row) => (
+                <tr key={`${row.planId}-${row.installmentNumber}`} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="py-2.5">
-                    <p className="font-bold text-gray-900">{row.sub.name}</p>
-                    <p className="text-xs text-gray-500">{row.sub.phone}</p>
+                    <p className="font-bold text-gray-900">{row.subscriberName}</p>
+                    <p className="text-xs text-gray-500">{row.subscriberPhone}</p>
                   </td>
-                  <td className="py-2.5 text-gray-700">{row.plan.courseTitle || '—'}</td>
+                  <td className="py-2.5 text-gray-700">{row.title || '—'}</td>
                   <td className="py-2.5 font-bold text-red-600">
-                    {Math.round(toEGP(row.remaining, row.plan.currency)).toLocaleString('ar-EG')} ج.م
+                    {Math.round(toEGP(row.outstanding, row.currency)).toLocaleString('ar-EG')} ج.م
                   </td>
                   <td className="py-2.5 text-gray-500 text-xs">{row.dueDate}</td>
                   <td className="py-2.5">
@@ -113,9 +137,9 @@ export function AgingReportPanel({ rows, toEGP, exportCSV }: AgingReportPanelPro
                     </span>
                   </td>
                   <td className="py-2.5">
-                    {row.sub.phone && (
+                    {row.subscriberPhone && (
                       <a
-                        href={`https://wa.me/${row.sub.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${row.sub.name}، نذكركم بموعد دفع قسط كورس ${row.plan.courseTitle || ''} بمبلغ ${row.remaining} ${row.plan.currency}. شكراً لتعاملكم معنا.`)}`}
+                        href={`https://wa.me/${row.subscriberPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${row.subscriberName}، نذكركم بموعد دفع قسط كورس ${row.title || ''} بمبلغ ${row.outstanding} ${row.currency}. شكراً لتعاملكم معنا.`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg px-2 py-1 transition font-bold"

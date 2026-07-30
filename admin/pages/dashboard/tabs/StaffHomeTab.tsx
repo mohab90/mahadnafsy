@@ -4,6 +4,7 @@ import {
   Phone, UserCheck, Star, ArrowLeft, Bell, FileText,
   BarChart3, Zap, RefreshCw, ChevronRight, MessageCircle,
   UserPlus, Percent, AlertCircle, Briefcase, Award,
+  UserCog,
 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../../types';
@@ -12,6 +13,12 @@ type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimestampedLead = LeadItem & { updatedAt?: string };
 type StaffWithCommission = StaffMember & { commissionRate?: number };
+type StaffHrSnapshot = {
+  leaves?: Array<{ status: string }>;
+  leaveBalance?: { remaining: number };
+  kpi?: { leads_assigned: number; leads_converted: number; revenue_generated: number };
+  commission?: { thisMonth?: { total: number } | null };
+};
 
 interface StaffHomeTabProps {
   staff: StaffMember;
@@ -52,9 +59,10 @@ const STATUS_COLOR: Record<string, string> = {
   no_answer: 'bg-gray-100 text-gray-600',
 };
 
-export default function StaffHomeTab({ staff, leads, subscribers, onNavigate }: StaffHomeTabProps) {
+export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavigate }: StaffHomeTabProps) {
   const [leaveBalance, setLeaveBalance] = useState<number | null>(null);
   const [pendingLeaves, setPendingLeaves] = useState<number>(0);
+  const [hrSnapshot, setHrSnapshot] = useState<StaffHrSnapshot | null>(null);
   const [myTasks, setMyTasks] = useState<any[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -92,13 +100,8 @@ export default function StaffHomeTab({ staff, leads, subscribers, onNavigate }: 
       n + (l.communications || []).filter(c => (c.date || '').slice(0, 7) === thisMonth).length, 0,
     );
 
-    // Revenue (from subscribers paymentHistory)
-    const revenueThisMonth = subscribers.flatMap(s => s.paymentHistory || [])
-      .filter(p => (p.at || '').slice(0, 7) === thisMonth)
-      .reduce((sum, p) => {
-        const egp = p.currency === 'EGP' ? Number(p.amount) : p.currency === 'SAR' ? Number(p.amount) * 13 : Number(p.amount) * 50;
-        return sum + (isNaN(egp) ? 0 : egp);
-      }, 0);
+    // Financial and conversion KPIs come from the server-side canonical ledger.
+    const revenueThisMonth = Number(hrSnapshot?.kpi?.revenue_generated || 0);
 
     // 7-day communications chart
     const last7 = Array.from({ length: 7 }, (_, i) => {
@@ -129,43 +132,47 @@ export default function StaffHomeTab({ staff, leads, subscribers, onNavigate }: 
       .slice(0, 5);
 
     const commissionRate = (staff as StaffWithCommission).commissionRate || 0;
-    const commission = commissionRate > 0 ? Math.round(revenueThisMonth * commissionRate / 100) : 0;
+    const commission = Number(hrSnapshot?.commission?.thisMonth?.total || 0);
 
     return {
-      totalLeads, converted: converted.length, convertedThisMonth: convertedThisMonth.length,
-      convRate, overdueFollowups, todayFollowups, newThisMonth: newThisMonth.length,
+      totalLeads, converted: converted.length,
+      convertedThisMonth: Number(hrSnapshot?.kpi?.leads_converted ?? convertedThisMonth.length),
+      convRate: Number(hrSnapshot?.kpi?.leads_assigned || 0) > 0
+        ? Math.round(Number(hrSnapshot?.kpi?.leads_converted || 0) / Number(hrSnapshot?.kpi?.leads_assigned || 1) * 100)
+        : convRate,
+      overdueFollowups, todayFollowups, newThisMonth: newThisMonth.length,
       callsThisMonth, revenueThisMonth, last7, maxCalls, recentActivity,
       urgentLeads, commission, commissionRate,
     };
-  }, [leads, subscribers, today, thisMonth, staff]);
+  }, [leads, subscribers, today, thisMonth, staff, hrSnapshot]);
 
   // ── Load leaves + tasks ─────────────────────────────────────────────────
   const loadHrData = useCallback(async () => {
     if (!staff?.id) return;
     try {
-      const res = await fetch(`/api/admin/hr/leaves?staff_id=${staff.id}`, { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) {
-        const data: any[] = await res.json();
-        setPendingLeaves(data.filter(l => l.status === 'PENDING').length);
-        // Count approved leaves remaining this year
-        const approved = data.filter(l => l.status === 'APPROVED' && l.leave_type === 'ANNUAL');
-        const usedDays = approved.reduce((sum, l) => {
-          const s = new Date(l.start_date), e = new Date(l.end_date);
-          const days = Math.ceil((e.getTime() - s.getTime()) / 86400000) + 1;
-          return sum + (isNaN(days) ? 0 : days);
-        }, 0);
-        setLeaveBalance(Math.max(0, 21 - usedDays)); // Assume 21 annual days
-      }
-    } catch { /* silent */ }
-  }, [staff?.id]);
+      const res = await fetch('/api/staff/me/hr', { credentials: 'include', headers: adminAuthHeaders() });
+      const data = await res.json().catch(() => null) as StaffHrSnapshot | { error?: string } | null;
+      if (!res.ok) throw new Error((data as { error?: string } | null)?.error || 'تعذر تحميل بيانات الموارد البشرية');
+      const snapshot = data as StaffHrSnapshot;
+      setHrSnapshot(snapshot);
+      setPendingLeaves((snapshot.leaves || []).filter(leave => leave.status === 'PENDING').length);
+      setLeaveBalance(Number(snapshot.leaveBalance?.remaining || 0));
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحميل بيانات الموارد البشرية');
+    }
+  }, [staff?.id, notify]);
 
   const loadTasks = useCallback(async () => {
     setLoadingTasks(true);
     try {
       const res = await fetch('/api/admin/tasks?limit=5&my=true', { credentials: 'include', headers: adminAuthHeaders() });
-      if (res.ok) setMyTasks(await res.json());
-    } catch { /* silent */ } finally { setLoadingTasks(false); }
-  }, []);
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.error || 'تعذر تحميل المهام');
+      setMyTasks(payload);
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تحميل المهام');
+    } finally { setLoadingTasks(false); }
+  }, [notify]);
 
   useEffect(() => {
     loadHrData();
@@ -182,6 +189,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, onNavigate }: 
   const quickActions = useMemo(() => {
     const role = (staff.role || '').toLowerCase();
     const base = [
+      { label: 'بياناتي وطلباتي', icon: UserCog, tab: 'staff_settings', color: 'bg-sky-50 text-sky-600 border-sky-200' },
       { label: 'ملفي الوظيفي', icon: Briefcase, tab: 'my_hr', color: 'bg-violet-50 text-violet-600 border-violet-200' },
       { label: 'لوحة المهام', icon: CheckCircle, tab: 'tasks_board', color: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
     ];

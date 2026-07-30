@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Eye, Receipt, RefreshCw, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, Eye, Receipt, RefreshCw, XCircle } from 'lucide-react';
 import type { PaymentProof } from '../../../../types';
 
 type ProofFilter = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
@@ -148,8 +148,28 @@ export function PaymentProofsPanel({
                           <span className={`rounded-full px-2 py-1 text-xs font-bold ${STATUS_CLASS[proof.status] || STATUS_CLASS.PENDING}`}>
                             {FILTER_LABELS[(proof.status as ProofFilter) || 'PENDING'] || proof.status}
                           </span>
+                          {proof.risk_level === 'high' && (
+                            <span className="mt-1 flex items-center gap-1 text-[11px] font-bold text-red-700">
+                              <AlertTriangle size={11} /> اعتماد ثنائي
+                            </span>
+                          )}
+                          {proof.first_reviewed_at && proof.status === 'PENDING' && (
+                            <span className="mt-1 block text-[11px] font-bold text-indigo-700">تم الاعتماد الأول</span>
+                          )}
                         </td>
-                        <td className="p-3 text-xs text-gray-500">{proof.submitted_at?.slice(0, 10) || '-'}</td>
+                        <td className="p-3 text-xs text-gray-500">
+                          <span>{proof.submitted_at?.slice(0, 10) || '-'}</span>
+                          {proof.status === 'PENDING' && proof.sla_state && (
+                            <span className={`mt-1 flex items-center gap-1 font-bold ${
+                              proof.sla_state === 'breached' ? 'text-red-700'
+                                : proof.sla_state === 'due_soon' ? 'text-amber-700' : 'text-emerald-700'
+                            }`}>
+                              <Clock size={11} />
+                              {proof.sla_state === 'breached' ? 'تجاوز SLA'
+                                : proof.sla_state === 'due_soon' ? 'اقترب الموعد' : 'داخل SLA'}
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
                             {!proofImages[proof.id] && (
@@ -160,7 +180,7 @@ export function PaymentProofsPanel({
                             {proof.status === 'PENDING' && !isReviewing && (
                               <>
                                 <button type="button" onClick={() => { setReviewingProofId(proof.id); setProofsReviewerNote(''); loadProofImg(proof.id); }} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700">
-                                  <CheckCircle size={13} /> قبول
+                                  <CheckCircle size={13} /> {proof.first_reviewed_at ? 'اعتماد ثانٍ' : 'قبول'}
                                 </button>
                                 <button type="button" onClick={() => { setReviewingProofId(proof.id); setProofsReviewerNote(''); }} className="inline-flex items-center gap-1 rounded-lg bg-red-500 px-2 py-1 text-xs font-bold text-white hover:bg-red-600">
                                   <XCircle size={13} /> رفض
@@ -179,6 +199,7 @@ export function PaymentProofsPanel({
                               ) : <div />}
                               <div className="space-y-2">
                                 {proof.reviewer_note && <p className="rounded-lg bg-white px-3 py-2 text-xs text-gray-600">ملاحظة المراجع: {proof.reviewer_note}</p>}
+                                {proof.first_review_note && <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700">ملاحظة الاعتماد الأول: {proof.first_review_note}</p>}
                                 {isReviewing && proof.status === 'PENDING' && (
                                   <>
                                     <input

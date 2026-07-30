@@ -22,12 +22,23 @@ interface RecurringItem {
 
 const FREQ_LABELS: Record<Frequency, string> = { weekly: 'أسبوعي', monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
 const FREQ_MULTIPLIER: Record<Frequency, number> = { weekly: 52, monthly: 12, quarterly: 4, yearly: 1 };
-const CATEGORIES = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'أخرى'];
+const CATEGORY_LABELS: Record<string, string> = {
+  SALARIES: 'رواتب',
+  MARKETING: 'تسويق',
+  RENT: 'إيجار',
+  SOFTWARE: 'برمجيات',
+  EQUIPMENT: 'معدات',
+  UTILITIES: 'مرافق',
+  MAINTENANCE: 'صيانة',
+  TRAVEL: 'سفر',
+  OTHER: 'أخرى',
+};
+const CATEGORIES = Object.keys(CATEGORY_LABELS);
 
 const CAT_COLORS: Record<string, string> = {
-  'رواتب': 'bg-blue-100 text-blue-700', 'تسويق': 'bg-purple-100 text-purple-700',
-  'إيجار': 'bg-amber-100 text-amber-700', 'برمجيات': 'bg-teal-100 text-teal-700',
-  'معدات': 'bg-gray-100 text-gray-700', 'أخرى': 'bg-pink-100 text-pink-700',
+  SALARIES: 'bg-blue-100 text-blue-700', MARKETING: 'bg-purple-100 text-purple-700',
+  RENT: 'bg-amber-100 text-amber-700', SOFTWARE: 'bg-teal-100 text-teal-700',
+  EQUIPMENT: 'bg-gray-100 text-gray-700', OTHER: 'bg-pink-100 text-pink-700',
 };
 
 type Draft = { title?: string; amount_egp?: number; category?: string; frequency?: Frequency; day_of_month?: number; notes?: string };
@@ -68,7 +79,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
       await mysqlAdmin.adminPost('/admin/recurring-expenses', {
         title: draft.title.trim(),
         amount_egp: draft.amount_egp,
-        category: draft.category || 'أخرى',
+        category: draft.category || 'OTHER',
         frequency: draft.frequency || 'monthly',
         day_of_month: draft.day_of_month || 1,
         notes: draft.notes || null,
@@ -127,7 +138,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
             <h2 className="text-xl font-bold flex items-center gap-2"><RefreshCcw size={22} /> المصروفات المتكررة</h2>
             <p className="text-orange-200 text-sm mt-0.5">إدارة الالتزامات المالية الدورية (مشتركة بين كل الموظفين)</p>
           </div>
-          <button onClick={() => { setShowAdd(true); setDraft({ frequency: 'monthly', category: 'أخرى', day_of_month: 1 }); }}
+          <button onClick={() => { setShowAdd(true); setDraft({ frequency: 'monthly', category: 'OTHER', day_of_month: 1 }); }}
             className="flex items-center gap-2 bg-white text-orange-700 font-bold px-4 py-2 rounded-xl hover:bg-orange-50 text-sm">
             <Plus size={16} /> إضافة مصروف
           </button>
@@ -159,9 +170,9 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
               placeholder="اسم المصروف *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
             <input type="number" value={draft.amount_egp || ''} onChange={e => setDraft(p => ({ ...p, amount_egp: +e.target.value }))}
               placeholder="المبلغ (ج.م) *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-            <select value={draft.category || 'أخرى'} onChange={e => setDraft(p => ({ ...p, category: e.target.value }))}
+            <select value={draft.category || 'OTHER'} onChange={e => setDraft(p => ({ ...p, category: e.target.value }))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
             </select>
             <select value={draft.frequency || 'monthly'} onChange={e => setDraft(p => ({ ...p, frequency: e.target.value as Frequency }))}
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none">
@@ -186,7 +197,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
           <h3 className="font-bold text-gray-800 mb-4">التكلفة الشهرية حسب الفئة</h3>
           {byCat.map(([cat, amt]) => (
             <div key={cat} className="flex items-center gap-3 mb-3">
-              <span className="text-xs w-16 shrink-0 text-gray-600">{cat}</span>
+              <span className="text-xs w-16 shrink-0 text-gray-600">{CATEGORY_LABELS[cat] || cat}</span>
               <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
                 <div className="h-full bg-orange-400 rounded-full" style={{ width: `${Math.round(amt / maxCat * 100)}%` }} />
               </div>
@@ -204,7 +215,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
               { key: 'all', label: 'الكل' },
               { key: 'active', label: '✅ نشطة' },
               { key: 'inactive', label: '⏸️ متوقفة' },
-              ...CATEGORIES.map(c => ({ key: c, label: c })),
+              ...CATEGORIES.map(c => ({ key: c, label: CATEGORY_LABELS[c] })),
             ].map(f => (
               <button key={f.key} onClick={() => setFilter(f.key)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${filter === f.key ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300'}`}>
@@ -230,7 +241,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none" />
                       <select value={draft.category ?? item.category} onChange={e => setDraft(p => ({ ...p, category: e.target.value }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
-                        {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                        {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
                       </select>
                       <select value={draft.frequency ?? item.frequency} onChange={e => setDraft(p => ({ ...p, frequency: e.target.value as Frequency }))}
                         className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
@@ -249,7 +260,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-gray-800 text-sm">{item.title}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${CAT_COLORS[item.category] || 'bg-gray-100 text-gray-600'}`}>{item.category}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${CAT_COLORS[item.category] || 'bg-gray-100 text-gray-600'}`}>{CATEGORY_LABELS[item.category] || item.category}</span>
                         <span className="text-xs text-gray-400">{FREQ_LABELS[item.frequency]}</span>
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">

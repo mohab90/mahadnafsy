@@ -17,9 +17,11 @@ const {
 } = require('../lib/saasSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { writeAuditEvent } = require('../lib/auditTrail');
+const { pool } = require('../lib/db');
 const logger = require('../lib/logger').child({ route: 'connector-diagnostics' });
 
 const router = express.Router();
+const manageConnectors = [requireAuth, requireAdminOrStaff, requirePermission('manage_settings')];
 async function audit(req, action, provider, outcome = {}) {
   await writeAuditEvent({
     req,
@@ -89,6 +91,57 @@ router.post('/api/admin/otp-provider/test', requireAuth, requireAdminOrStaff, re
     }
     logger.error('OTP diagnostic failed', { channel, err: error.message, tenantId: req.tenantId });
     res.status(500).json({ ok: false, message: 'تعذر تنفيذ اختبار OTP.' });
+  }
+});
+
+router.get('/api/admin/connectors/events', ...manageConnectors, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+    const params = [req.tenantId];
+    let filter = '';
+    if (req.query.provider) {
+      filter += ' AND provider=?';
+      params.push(String(req.query.provider));
+    }
+    if (req.query.status) {
+      filter += ' AND status=?';
+      params.push(String(req.query.status));
+    }
+    params.push(limit);
+    const [events] = await pool.query(
+      `SELECT id,provider,external_event_id,status,attempts,next_attempt_at,last_error,
+              received_at,processed_at,updated_at
+         FROM connector_events
+        WHERE tenant_id=?${filter}
+        ORDER BY received_at DESC LIMIT ?`,
+      params
+    );
+    const [health] = await pool.query(
+      `SELECT provider,status,COUNT(*) AS count,MIN(received_at) AS oldest_at,MAX(updated_at) AS latest_at
+         FROM connector_events WHERE tenant_id=? GROUP BY provider,status`,
+      [req.tenantId]
+    );
+    res.json({ events, health });
+  } catch (error) {
+    logger.error('connector event list failed', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/connectors/events/:id/replay', ...manageConnectors, connectorDiagnosticLimiter, async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      `UPDATE connector_events
+          SET status='pending',attempts=0,next_attempt_at=NOW(),locked_at=NULL,locked_by=NULL,last_error=NULL
+        WHERE id=? AND tenant_id=? AND status IN ('failed','dead')`,
+      [req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(409).json({ error: 'Only failed or dead events can be replayed' });
+    await audit(req, 'connector.event.replayed', 'connector_event', { ok: true });
+    res.json({ ok: true, status: 'pending' });
+  } catch (error) {
+    logger.error('connector event replay failed', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -14,7 +14,6 @@ const fs      = require('fs');
 const fsp     = require('fs/promises');
 const path    = require('path');
 const https   = require('https');
-const http    = require('http');
 const logger  = require('../lib/logger');
 const { imageProxyLimiter } = require('../middleware/rateLimits');
 
@@ -23,7 +22,10 @@ try { sharp = require('sharp'); }
 catch { logger.warn('[img] sharp not installed — proxy will pass through to originals'); }
 
 // Cache lives OUTSIDE the deploy dir so a redeploy doesn't wipe warmed images.
-const CACHE_DIR = process.env.IMG_CACHE_DIR || path.join(__dirname, '..', '.img-cache');
+const CACHE_DIR = process.env.IMG_CACHE_DIR
+  || (process.env.NODE_ENV === 'production'
+    ? '/var/cache/mahad/images'
+    : path.join(__dirname, '..', '.img-cache'));
 try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch { /* noop */ }
 
 // SSRF guard — only fetch from hosts we actually serve images from. Anything
@@ -33,13 +35,22 @@ const ALLOWED_HOST_RE = /(^|\.)top4top\.io$/i;
 const ALLOWED_WIDTHS = [80, 120, 160, 240, 320, 400, 500, 640, 800, 1000, 1200];
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024; // don't buffer more than 25 MB of source
 
-function fetchBuffer(url) {
+function allowedSource(value) {
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  return url.protocol === 'https:' && ALLOWED_HOST_RE.test(url.hostname) ? url : null;
+}
+
+function fetchBuffer(value, redirects = 0) {
   return new Promise((resolve, reject) => {
-    const lib = url.startsWith('https') ? https : http;
-    const req = lib.get(url, { timeout: 15000 }, (res) => {
+    const url = allowedSource(value);
+    if (!url) return reject(new Error('source not allowed'));
+    if (redirects > 3) return reject(new Error('too many redirects'));
+    const req = https.get(url, { timeout: 15000 }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        return fetchBuffer(new URL(res.headers.location, url).toString()).then(resolve, reject);
+        const target = new URL(res.headers.location, url).toString();
+        return fetchBuffer(target, redirects + 1).then(resolve, reject);
       }
       if (res.statusCode !== 200) { res.resume(); return reject(new Error('upstream ' + res.statusCode)); }
       const chunks = []; let len = 0;
@@ -58,12 +69,11 @@ function fetchBuffer(url) {
 router.get('/api/img', imageProxyLimiter, async (req, res) => {
   const src = String(req.query.src || '');
   try {
-    let u;
-    try { u = new URL(src); } catch { return res.status(400).end(); }
-    if (!/^https?:$/.test(u.protocol)) return res.status(400).end();
+    const u = allowedSource(src);
+    if (!u) return res.status(400).end();
 
-    // Not an optimizable host, or sharp unavailable → let the original serve.
-    if (!sharp || !ALLOWED_HOST_RE.test(u.hostname)) return res.redirect(302, src);
+    // Only the allow-listed HTTPS origin may receive a pass-through redirect.
+    if (!sharp) return res.redirect(302, u.toString());
 
     let w = parseInt(req.query.w, 10) || 500;
     if (!ALLOWED_WIDTHS.includes(w)) {
@@ -94,7 +104,8 @@ router.get('/api/img', imageProxyLimiter, async (req, res) => {
   } catch (e) {
     logger.warn('[img]', e.message);
     // Never break an image: fall back to the original URL.
-    if (src) return res.redirect(302, src);
+    const fallback = allowedSource(src);
+    if (fallback) return res.redirect(302, fallback.toString());
     return res.status(500).end();
   }
 });

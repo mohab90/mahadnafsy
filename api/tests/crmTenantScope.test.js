@@ -59,3 +59,28 @@ test('subscriber CRM saves cannot create payments outside the journal workflow',
   assert.match(subscribers, /Payments are never accepted through subscriber CRM JSON/);
   assert.doesNotMatch(subscribers, /\[payment-sync\]/);
 });
+
+test('CRM inbox and retargeting records are tenant owned', () => {
+  const migration = read('migrations/116_v25_crm_auxiliary_tenant_scope.sql');
+  const inbox = read('routes/inbox.js');
+  const scheduledJobs = read('lib/scheduledJobHandlers.js');
+  assert.match(migration, /inbox_conversations[\s\S]*tenant_id/);
+  assert.match(migration, /retargeting_log[\s\S]*tenant_id/);
+  assert.match(inbox, /FROM inbox_conversations WHERE tenant_id=\?/);
+  assert.match(inbox, /DELETE FROM inbox_conversations WHERE id=\? AND tenant_id=\?/);
+  assert.match(scheduledJobs, /INSERT IGNORE INTO retargeting_log[\s\S]*\(id,tenant_id,lead_id/);
+});
+
+test('CRM operational views share the canonical role and branch scope', () => {
+  const access = read('lib/leadAccess.js');
+  const admin = read('routes/admin/leads.js');
+  const advanced = read('routes/crm-advanced.js');
+  const ops = read('routes/crm-ops.js');
+  assert.match(access, /DATA_SCOPE/);
+  assert.match(access, /assigned_sales/);
+  assert.match(access, /assigned_cs/);
+  assert.match(access, /scope\.startsWith\('branch:'\)/);
+  assert.match(admin, /leadScope\(req, 'l'\)/);
+  assert.match(advanced, /leadScope\(req, 'l'\)/);
+  assert.match(ops, /leadScope\(req, 'l'\)/);
+});

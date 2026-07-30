@@ -54,17 +54,107 @@ const CHECKS = [
     hint: 'The same gateway transaction recorded twice = double-counted revenue.',
   },
   {
+    key: 'payment_without_invoice',
+    name: 'paid/refunded payments have an immutable numbered invoice',
+    severity: 'critical',
+    sql: `SELECT COUNT(*) AS n FROM payments p
+          WHERE p.status IN ('paid','refunded') AND p.deleted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM financial_documents fd
+               WHERE fd.tenant_id=p.tenant_id AND fd.document_type='invoice'
+                 AND fd.source_type='payment' AND fd.source_id=p.id
+            )`,
+    hint: 'Every settled payment must have one tenant/branch-scoped invoice number.',
+  },
+  {
+    key: 'refund_without_credit_note',
+    name: 'refunded payments have a credit note linked to their invoice',
+    severity: 'critical',
+    sql: `SELECT COUNT(*) AS n FROM payments p
+          WHERE p.status='refunded' AND p.deleted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM financial_documents cn
+              JOIN financial_documents inv
+                ON inv.id=cn.related_document_id AND inv.tenant_id=cn.tenant_id
+               WHERE cn.tenant_id=p.tenant_id AND cn.document_type='credit_note'
+                 AND cn.source_type='payment_refund' AND cn.source_id=p.id
+                 AND inv.document_type='invoice' AND inv.source_type='payment' AND inv.source_id=p.id
+            )`,
+    hint: 'A refund must preserve the original invoice and issue a linked credit note.',
+  },
+  {
     key: 'unlinkable_paid_orders',
-    name: 'paid course/bundle orders that have no linkable payment',
-    severity: 'info',
+    name: 'paid course/bundle orders have payment, journal, subscriber and enrollment',
+    severity: 'critical',
     sql: `SELECT COUNT(*) AS n FROM orders o
-          WHERE LOWER(o.status) = 'paid' AND o.type IN ('course','bundle')
+          WHERE LOWER(o.status)='paid' AND LOWER(o.type) IN ('course','bundle')
             AND NOT EXISTS (
               SELECT 1 FROM payments p
-              WHERE p.id = o.id OR p.id = CONCAT('paymob-', o.id)
-                 OR (o.transaction_id IS NOT NULL AND p.transaction_id = o.transaction_id)
+               WHERE p.tenant_id=o.tenant_id AND p.status='paid'
+                 AND (p.id=o.id OR p.id=CONCAT('paymob-',o.id)
+                   OR p.id=o.transaction_id
+                   OR (o.transaction_id IS NOT NULL AND p.transaction_id=o.transaction_id))
+                 AND COALESCE(o.subscriber_id,p.subscriber_id) IS NOT NULL
+                 AND EXISTS (
+                   SELECT 1 FROM journal_entries je
+                    WHERE je.tenant_id=o.tenant_id AND je.ref_type='payment' AND je.ref_id=p.id
+                      AND je.total_debit=je.total_credit
+                 )
+                 AND (
+                   (LOWER(o.type)='course' AND EXISTS (
+                     SELECT 1 FROM enrollments e
+                      WHERE e.tenant_id=o.tenant_id
+                        AND e.subscriber_id=COALESCE(o.subscriber_id,p.subscriber_id)
+                        AND e.course_id=COALESCE(o.course_id,o.item_id) AND e.status='active'
+                   ))
+                   OR
+                   (LOWER(o.type)='bundle'
+                    AND EXISTS (
+                      SELECT 1 FROM bundle_courses bc
+                       WHERE bc.tenant_id=o.tenant_id AND bc.bundle_id=COALESCE(o.bundle_id,o.item_id)
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1 FROM bundle_courses bc
+                       WHERE bc.tenant_id=o.tenant_id AND bc.bundle_id=COALESCE(o.bundle_id,o.item_id)
+                         AND NOT EXISTS (
+                           SELECT 1 FROM enrollments e
+                            WHERE e.tenant_id=o.tenant_id
+                              AND e.subscriber_id=COALESCE(o.subscriber_id,p.subscriber_id)
+                              AND e.course_id=bc.course_id AND e.status='active'
+                         )
+                    ))
+                 )
             )`,
-    hint: 'Informational: orders and payments are partly separate universes; some manual orders legitimately lack a payment row.',
+    hint: 'A paid learning order is incomplete unless customer, cash, balanced ledger and LMS access share the same tenant-owned IDs.',
+  },
+  {
+    key: 'orphan_customer_users',
+    name: 'active customer users are linked to a lead or subscriber',
+    severity: 'critical',
+    sql: `SELECT COUNT(*) AS n FROM users u
+          WHERE LOWER(COALESCE(u.role,'user'))='user' AND u.is_active=1
+            AND NOT EXISTS (
+              SELECT 1 FROM subscribers s
+               WHERE s.tenant_id=u.tenant_id AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM leads l
+               WHERE l.tenant_id=u.tenant_id AND l.hidden=0
+                 AND LOWER(TRIM(l.email))=LOWER(TRIM(u.email))
+            )`,
+    hint: 'A login identity without a CRM/customer projection disappears from every operational team.',
+  },
+  {
+    key: 'converted_leads_without_subscriber',
+    name: 'converted leads have a linked subscriber',
+    severity: 'critical',
+    sql: `SELECT COUNT(*) AS n FROM leads l
+          WHERE l.status='converted' AND l.hidden=0
+            AND NOT EXISTS (
+              SELECT 1 FROM subscribers s
+               WHERE s.tenant_id=l.tenant_id AND s.lead_id=l.id
+            )`,
+    hint: 'A converted lead without subscriber ownership breaks payment, portal and LMS continuity.',
   },
 ];
 

@@ -169,7 +169,7 @@ interface HandleFbApiSyncDeps {
   addLead: (lead: LeadItem) => void;
   staffMembers: StaffMember[];
   fbLeadAdsConfig: FacebookLeadAdsConfig | null;
-  setFbLeadAdsConfig: (cfg: FacebookLeadAdsConfig) => void;
+  setFbLeadAdsConfig: (cfg: FacebookLeadAdsConfig) => Promise<boolean>;
   setFbDraft: (cfg: FacebookLeadAdsConfig) => void;
   setFbSyncLoading: (b: boolean) => void;
   setFbSyncNotice: (n: string) => void;
@@ -241,7 +241,9 @@ export async function handleFbApiSyncFn(deps: HandleFbApiSyncDeps): Promise<void
       totalImported: (fbLeadAdsConfig?.totalImported || 0) + totalAdded,
       updatedAt: new Date().toISOString(),
     };
-    setFbLeadAdsConfig(newConfig);
+    if (!await setFbLeadAdsConfig(newConfig)) {
+      throw new Error('Failed to persist Facebook Lead Ads sync state');
+    }
     setFbDraft(newConfig);
     setFbSyncNotice(`✅ تم: إضافة ${totalAdded} عميل جديد (تخطي ${totalSkipped} مكرر).`);
   } catch {

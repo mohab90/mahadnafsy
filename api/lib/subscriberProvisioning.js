@@ -26,7 +26,7 @@ async function ensureSubscriberForOrder(conn, {
   if (!normalizedEmail) throw new Error('ensureSubscriberForOrder requires a customer email');
 
   let [[sub]] = await conn.query(
-    'SELECT id, lead_id, branch, branch_id, tenant_id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1 FOR UPDATE',
+    'SELECT id, lead_id, branch, branch_id, assigned_sales_id, tenant_id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1 FOR UPDATE',
     [tenantId, uid || '', normalizedEmail]
   );
   if (sub) {
@@ -53,7 +53,14 @@ async function ensureSubscriberForOrder(conn, {
      lead?.assigned_sales_id || null, lead?.assigned_sales_name || null,
      lead?.assigned_cs_id || null, lead?.assigned_cs_name || null, tenantId]
   );
-  return { id: subscriberId, lead_id: lead?.id || null, branch, branch_id: branchId, tenant_id: tenantId };
+  return {
+    id: subscriberId,
+    lead_id: lead?.id || null,
+    branch,
+    branch_id: branchId,
+    assigned_sales_id: lead?.assigned_sales_id || null,
+    tenant_id: tenantId,
+  };
 }
 
 module.exports = { ensureSubscriberForOrder };

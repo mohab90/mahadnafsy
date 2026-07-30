@@ -24,18 +24,24 @@ const blankLiveStreamDraft = (): LiveStreamDraft => ({
   description: '',
 });
 
-const LiveStreamsTab: React.FC<Props> = ({ notify: _notify }) => {
+const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
   const { liveStreams, addLiveStream, updateLiveStream, deleteLiveStream, courses } = useSiteData();
 
   const [lsEdit, setLsEdit] = useState<LiveStream | null>(null);
   const [lsDraft, setLsDraft] = useState<LiveStreamDraft>(blankLiveStreamDraft());
   const [lsFormOpen, setLsFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSaveLiveStream = () => {
+  const handleSaveLiveStream = async () => {
     const now = new Date().toISOString();
-    if (lsEdit) { updateLiveStream({ ...lsEdit, ...lsDraft }); }
-    else { addLiveStream({ ...lsDraft, id: `ls-${Date.now()}`, createdAt: now }); }
+    setSaving(true);
+    const saved = lsEdit
+      ? await updateLiveStream({ ...lsEdit, ...lsDraft })
+      : await addLiveStream({ ...lsDraft, id: `ls-${Date.now()}`, createdAt: now });
+    setSaving(false);
+    if (!saved) { notify('error', 'تعذر حفظ البث المباشر.'); return; }
     setLsFormOpen(false); setLsEdit(null); setLsDraft(blankLiveStreamDraft());
+    notify('success', 'تم حفظ البث المباشر.');
   };
 
   const visLabel = (v: LiveStream['visibility'], ids: string[]) => {
@@ -85,7 +91,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify: _notify }) => {
             {lsDraft.status === 'ended' && <div className="md:col-span-2"><label className="text-xs font-bold text-gray-600 mb-1 block">رابط التسجيل</label><input type="url" value={lsDraft.recordingUrl || ''} onChange={e => setLsDraft(d => ({ ...d, recordingUrl: e.target.value }))} placeholder="https://..." dir="ltr" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:border-primary-400 focus:outline-none" /></div>}
           </div>
           <div className="flex gap-3">
-            <button onClick={handleSaveLiveStream} disabled={!lsDraft.title || !lsDraft.streamUrl || !lsDraft.instructorName} className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2"><Save size={15} />{lsEdit ? 'تحديث البث' : 'حفظ البث'}</button>
+            <button onClick={() => void handleSaveLiveStream()} disabled={saving || !lsDraft.title || !lsDraft.streamUrl || !lsDraft.instructorName} className="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2"><Save size={15} />{lsEdit ? 'تحديث البث' : 'حفظ البث'}</button>
             <button onClick={() => { setLsFormOpen(false); setLsEdit(null); }} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm transition">إلغاء</button>
           </div>
         </div>
@@ -119,7 +125,7 @@ const LiveStreamsTab: React.FC<Props> = ({ notify: _notify }) => {
                 </div>
                 <div className="flex flex-col gap-2 flex-shrink-0">
                   <button onClick={() => { setLsEdit(ls); setLsDraft({ ...ls }); setLsFormOpen(true); }} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition">✏ تعديل</button>
-                  <button onClick={() => { if (confirm('حذف هذا البث؟')) deleteLiveStream(ls.id); }} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg border border-red-200 transition">🗑 حذف</button>
+                  <button onClick={() => { if (confirm('حذف هذا البث؟')) void deleteLiveStream(ls.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف البث.' : 'تعذر حذف البث.')); }} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg border border-red-200 transition">🗑 حذف</button>
                 </div>
               </div>
             );

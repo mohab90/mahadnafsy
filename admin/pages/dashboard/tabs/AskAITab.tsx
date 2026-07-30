@@ -1,29 +1,21 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
     leads, subscribers, orders, courses, bundles, therapists, consultations,
-    contactMessages, staffMembers, adminAiConfig,
+    adminAiConfig,
   } = useSiteData();
 
-  // ── Chat state (moved from Dashboard) ─────────────────────────────────────
-  const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('mahad-ai-messages') || '[]'); } catch { return []; }
-  });
+  // Session-only by design: operational prompts and AI responses may contain
+  // sensitive business data and must not survive in browser storage.
+  const [aiMessages, setAiMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const aiChatEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('mahad-ai-messages', JSON.stringify(aiMessages.slice(-50)));
-    } catch {
-      try { localStorage.setItem('mahad-ai-messages', JSON.stringify(aiMessages.slice(-20))); } catch { /* silent */ }
-    }
-  }, [aiMessages]);
 
   // ── Pre-computed AI analysis data ──────────────────────────────────────────
   const _aiBranchLabels: Record<string, string> = {
@@ -36,52 +28,12 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
     subscribers.flatMap(s =>
       (s.paymentHistory || []).map(p => ({
         ...p,
-        subName: s.name,
-        subPhone: s.phone,
         branchCode: s.branch || 'other',
         branchLabel: _aiBranchLabels[s.branch || 'other'] || s.branch || '—',
-        assignedSalesName: s.assignedSalesName || '—',
       }))
     ),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [subscribers]);
-
-  const _aiStaffPerf = useMemo(() => {
-    const salesStaff = staffMembers.filter(s => s.role === 'sales');
-    return salesStaff.map(s => {
-      const sl = leads.filter(l => l.assignedSalesName === s.name || l.assignedSalesId === s.id);
-      const assignedSubs = subscribers.filter(sub => sub.assignedSalesId === s.id);
-      const now2 = new Date(); const tM2 = now2.getMonth(), tY2 = now2.getFullYear();
-      const isT = (d: string) => !!d && new Date(d).toDateString() === now2.toDateString();
-      const isW = (d: string) => { if (!d) return false; const st = new Date(now2); st.setDate(now2.getDate() - now2.getDay()); st.setHours(0, 0, 0, 0); return new Date(d) >= st; };
-      const isTM = (d: string) => { if (!d) return false; const x = new Date(d); return x.getMonth() === tM2 && x.getFullYear() === tY2; };
-      const allPayments = assignedSubs.flatMap(sub => (sub.paymentHistory || []).map(p => ({ ...p, subId: sub.id })));
-      const toRevEGP = (payments: typeof allPayments) => Math.round(payments.reduce((sum, p) => sum + _aiToEGP(p.amount, p.currency), 0));
-      const revTotal = toRevEGP(allPayments);
-      const revToday = toRevEGP(allPayments.filter(p => isT(p.at || '')));
-      const revWeek  = toRevEGP(allPayments.filter(p => isW(p.at || '')));
-      const revMonth = toRevEGP(allPayments.filter(p => isTM(p.at || '')));
-      const cr = s.commissionRate || 0;
-      return {
-        id: s.id, name: s.name, role: s.role, commissionRate: cr,
-        total: sl.length, today: sl.filter(l => isT(l.createdAt || '')).length,
-        week: sl.filter(l => isW(l.createdAt || '')).length, month: sl.filter(l => isTM(l.createdAt || '')).length,
-        contacted: sl.filter(l => l.status === 'contacted').length,
-        converted: sl.filter(l => l.status === 'converted').length,
-        convertedMonth: sl.filter(l => l.status === 'converted' && isTM(l.createdAt || '')).length,
-        lost: sl.filter(l => l.status === 'lost').length,
-        pending: sl.filter(l => l.status === 'new').length,
-        noAnswer: sl.filter(l => l.status === 'no_answer').length,
-        notInterested: sl.filter(l => l.status === 'not_interested').length,
-        revTotal, revToday, revWeek, revMonth,
-        commission: cr ? Math.round(revTotal * cr / 100) : 0,
-        commissionMonth: cr ? Math.round(revMonth * cr / 100) : 0,
-        leads: sl,
-        subs: assignedSubs,
-      };
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staffMembers, leads, subscribers]);
 
   const _aiAllManualForBranch = _aiAllManual;
   const _aiBranchStats = useMemo(() => {
@@ -110,18 +62,9 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   // ═══ PRE-COMPUTE everything once at IIFE top ═══════════════════
   const _now = new Date();
   const _todayISO = _now.toISOString().slice(0, 10);
-  const _tM = _now.getMonth(), _tY = _now.getFullYear();
-  const _monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-
   // Date filters
   const _isToday    = (d: string) => !!d && (d.startsWith(_todayISO) || new Date(d).toDateString() === _now.toDateString());
   const _toEGP = (amt: number, cur: string) => cur==='EGP'?amt:cur==='SAR'?amt*13:amt*50;
-
-  // Branch label mapping
-  const BRANCH_LABELS: Record<string,string> = {
-    daqqi:'الدقي', tagamoa:'التجمع', 'online-egypt':'أون لاين - مصر',
-    'online-saudi':'أون لاين - السعودية', 'online-abroad':'خارج مصر', other:'أخرى',
-  };
 
   // ── All manual payments (pre-memoized above for performance) ──────────────────
   const _allManual = _aiAllManual;
@@ -134,9 +77,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const _todayOnlineRev = _todayOrders.reduce((s,o)=>s+_toEGP(o.amount,o.currency),0);
   const _todayManualRev = _todayManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
 
-  // ── Staff performance (pre-memoized above) ────────────────────
-  const _staffPerf = _aiStaffPerf;
-
   // ── Branch stats (pre-memoized above) ─────────────────────────
   const _branchStats = _aiBranchStats;
 
@@ -144,138 +84,50 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const _totalRevEGP = orders.filter(o=>o.status==='paid').reduce((s,o)=>s+_toEGP(o.amount,o.currency),0)
     + _allManual.reduce((s,p)=>s+_toEGP(p.amount,p.currency),0);
 
-  // Build full system context
+  // Only aggregate, non-identifying data crosses the third-party AI boundary.
+  // Customer names, phones, messages, health details and payment notes stay local.
   const buildSystemContext = () => {
     const totalRevEGP = _totalRevEGP;
     const convRate = leads.length > 0 ? ((leads.filter(l => l.status === 'converted').length / leads.length) * 100).toFixed(1) : '0';
     const todayStr = _now.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-    const todayISO = _todayISO;
-    return `## هويتك وشخصيتك
-أنت **مساعد إداري ذكي** خاص بـ **معهد الدراسات النفسية**.
-اسمك: مساعد المعهد.
-تتحدث بالعربية العامية المصرية المهنية — واضح، مباشر، محترم، وودود.
-لا تُجيب إلا عن بيانات المعهد — لا تناقش أي موضوع خارجي.
-لا تخترع أرقاماً — كل رقم تذكره موجود حرفياً في البيانات المُرفَقة.
+    const leadSources = Object.entries(leads.reduce((result: Record<string, number>, lead) => {
+      const source = lead.source || 'غير محدد';
+      result[source] = (result[source] || 0) + 1;
+      return result;
+    }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    return `## دورك
+أنت مساعد إداري لمعهد الدراسات النفسية. أجب بالعربية المصرية المهنية وبالأرقام المرفقة فقط.
+لا تستنتج هوية أي شخص، ولا تطلب أو تعرض أسماء أو هواتف أو بريدًا أو رسائل أو بيانات صحية أو ملاحظات دفع.
+إذا طُلبت بيانات فردية، وضّح أن سياق AI آمن ومجمّع ووجّه المستخدم للشاشة التشغيلية المختصة.
 
-## ما الذي تفعله بالضبط
-لديك قاعدة بيانات كاملة ومحدَّثة لحظياً للمعهد تشمل:
-- **المشتركين**: الأسماء، الهواتف، الفروع، الكورسات، تواريخ التسجيل، حالة الاشتراك
-- **العملاء المحتملين (Leads)**: من تواصل، من السيلز المسؤول، مصدر العميل، حالته (جديد/تم التواصل/تحوَّل/ضائع)
-- **الإيرادات**: الطلبات الأونلاين + الدفعات اليدوية، مفصَّلة بالفرع والعملة والتاريخ
-- **الفروع**: الدقي، التجمع، أونلاين مصر، أونلاين السعودية، أونلاين الخارج
-- **فريق السيلز**: أداء كل فرد يومياً/أسبوعياً/شهرياً، عدد التابعات والتحويلات
-- **الكورسات والدبلومات**: أعداد الطلاب، الأسعار، التصنيفات
-- **الاستشارات**: المواعيد، الأطباء، الحالات
-- **الرسائل وطلبات التواصل**
+## التاريخ
+اليوم: ${todayStr} (${_todayISO})
 
-## كيف تتعامل مع الأسئلة
-- إذا سألك بالعامي: "النهاردة كام عميل دخل؟" — أجب فوراً بالعدد والتفاصيل
-- إذا سألك عن موظف: "ياسمين عملت إيه النهاردة؟" — اذكر عدد عملاؤها، التابعات، التحويلات
-- إذا سألك عن فرع: "الدقي الشهر ده دخل كام؟" — اذكر الإيراد والدفعات والمشتركين
-- إذا سألك عن مقارنة: قدِّم جدولاً أو قائمة منظمة بالأرقام
-- إذا سألك سؤالاً تحليلياً: قدِّم رأيك بناءً على الأرقام الفعلية فقط
+## اليوم
+Leads جدد: ${_todayLeads.length}
+مشتركون جدد: ${_todaySubs.length}
+طلبات أونلاين مدفوعة: ${_todayOrders.length}
+دفعات يدوية: ${_todayManual.length}
+إيراد أونلاين: ${Math.round(_todayOnlineRev).toLocaleString()} ج.م
+إيراد يدوي: ${Math.round(_todayManualRev).toLocaleString()} ج.م
 
-## قواعد الإجابة
-1. ابدأ دائماً بالرقم أو الإجابة المباشرة — لا تطوِّل في المقدمة
-2. استخدم **تمييز النص** للأرقام الأساسية
-3. إذا كانت الإجابة قائمة، رتِّبها من الأعلى للأدنى
-4. إذا لم تجد البيانات، قل ذلك بوضوح ولا تخترع
-5. في نهاية أي إجابة إحصائية طويلة، أضف سطراً: "هل تريد تفاصيل إضافية؟"
-6. لا تذكر أسماء المرضى أو بياناتهم الصحية الحساسة بشكل غير ضروري
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 التاريخ والوقت
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-اليوم: ${todayStr}
-التاريخ (ISO): ${todayISO}
-الشهر الحالي: ${_monthNames[_tM]} ${_tY}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔴 إحصائيات اليوم — ${todayISO} — LIVE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-عملاء محتملين جدد اليوم: ${_todayLeads.length}
-مشتركون سجلوا اليوم: ${_todaySubs.length}
-إيراد أونلاين اليوم: ${Math.round(_todayOnlineRev).toLocaleString()} ج.م (${_todayOrders.length} طلب)
-إيراد يدوي اليوم: ${Math.round(_todayManualRev).toLocaleString()} ج.م (${_todayManual.length} دفعة)
-إجمالي إيراد اليوم: ${Math.round(_todayOnlineRev+_todayManualRev).toLocaleString()} ج.م
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📥 العملاء المحتملين الجدد اليوم — تفاصيل كاملة
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${_todayLeads.length > 0 ? _todayLeads.map((l,i)=>`${i+1}. ${l.name} | هاتف: ${l.phone} | المصدر: ${l.source} | السيلز: ${l.assignedSalesName||'غير مُسند'} | الحالة: ${l.status} | النوع: ${l.leadType||'—'} | الفرع: ${BRANCH_LABELS[l.branch||'']||l.branch||'—'}`).join('\n') : '← لا يوجد عملاء محتملين اليوم بعد'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💳 الدفعات اليدوية اليوم — تفاصيل كاملة
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${_todayManual.length > 0 ? _todayManual.map((p,i)=>`${i+1}. ${p.subName} (${p.subPhone}) | ${p.amount} ${p.currency} | النوع: ${p.paymentType||'دفعة'} | الفرع: ${p.branchLabel} | ملاحظة: ${p.note||'—'}`).join('\n') : '← لا توجد دفعات يدوية اليوم بعد'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👥 أداء فريق المبيعات — كل الأوقات والتفصيل
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${_staffPerf.length > 0 ? _staffPerf.map(s =>
-`[${s.name}] (${s.role==='reception_daqqi'?'ريسبشن دقي':'سيلز'})
-  ▸ اليوم: ${s.today} عميل | الأسبوع: ${s.week} | الشهر: ${s.month} | الإجمالي: ${s.total}
-  ▸ تم التواصل: ${s.contacted} | تحوّل لمشترك: ${s.converted} | ضائع: ${s.lost} | لم يُتابَع: ${s.pending}
-  ▸ آخر 5 عملاء: ${s.leads.slice(-5).map(l=>`${l.name}(${l.status})`).join(', ')||'—'}`
-).join('\n\n') : '← لا يوجد موظفين مبيعات مسجلين'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏢 الفروع — إحصائيات وإيرادات
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${_branchStats.map(b=>`${b.label} (${b.code}): مشتركون=${b.subs} | جديد اليوم=${b.todayNew} | إيراد اليوم=${b.todayRev.toLocaleString()} ج.م | إيراد الشهر=${b.monthRev.toLocaleString()} ج.م | إيراد كلي=${b.allRev.toLocaleString()} ج.م`).join('\n')||'← لا توجد فروع مسجلة'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 الإحصائيات الإجمالية الكاملة
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-المشتركون: ${subscribers.length} (نشط: ${subscribers.filter(s=>s.status==='active').length} | موقوف: ${subscribers.filter(s=>s.status==='paused').length})
-العملاء المحتملون: ${leads.length}
-  → جديد: ${leads.filter(l=>l.status==='new').length} | تواصل: ${leads.filter(l=>l.status==='contacted').length} | تحوّل: ${leads.filter(l=>l.status==='converted').length} | ضائع: ${leads.filter(l=>l.status==='lost').length}
-  → معدل التحويل: ${convRate}%
-الاستشارات: ${consultations.length} (انتظار: ${consultations.filter(c=>c.status==='pending').length} | مؤكد: ${consultations.filter(c=>c.status==='confirmed').length} | مكتمل: ${consultations.filter(c=>c.status==='completed').length})
+## الإجماليات
+المشتركون: ${subscribers.length} (نشط ${subscribers.filter(s => s.status === 'active').length}، موقوف ${subscribers.filter(s => s.status === 'paused').length})
+Leads: ${leads.length} (جديد ${leads.filter(l => l.status === 'new').length}، تواصل ${leads.filter(l => l.status === 'contacted').length}، تحوّل ${leads.filter(l => l.status === 'converted').length}، ضائع ${leads.filter(l => l.status === 'lost').length})
+معدل التحويل: ${convRate}%
+الاستشارات: ${consultations.length} (انتظار ${consultations.filter(c => c.status === 'pending').length}، مؤكد ${consultations.filter(c => c.status === 'confirmed').length}، مكتمل ${consultations.filter(c => c.status === 'completed').length})
 الكورسات: ${courses.length} | المعالجون: ${therapists.length} | المسارات: ${bundles.length}
-طلبات (paid): ${orders.filter(o=>o.status==='paid').length} | معلقة: ${orders.filter(o=>o.status==='pending').length}
-الإيراد الإجمالي الكلي: ~${Math.round(totalRevEGP).toLocaleString()} ج.م
+الطلبات المدفوعة: ${orders.filter(o => o.status === 'paid').length} | المعلقة: ${orders.filter(o => o.status === 'pending').length}
+إجمالي الإيراد التقريبي: ${Math.round(totalRevEGP).toLocaleString()} ج.م
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 كل العملاء المحتملين — آخر 60 (الأحدث أولاً)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${[...leads].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,60).map((l,i)=>
-  `${i+1}. [${l.createdAt?.slice(0,10)||'؟'}] ${l.name} | ${l.phone} | ${l.source} | ${l.status} | سيلز: ${l.assignedSalesName||'—'} | فرع: ${BRANCH_LABELS[l.branch||'']||'—'} | نوع: ${l.leadType||'—'}`
-).join('\n')}
+## الفروع (بيانات مجمعة)
+${_branchStats.map(branch => `${branch.label}: مشتركون ${branch.subs} | جديد اليوم ${branch.todayNew} | إيراد اليوم ${branch.todayRev.toLocaleString()} | الشهر ${branch.monthRev.toLocaleString()} ج.م`).join('\n') || 'لا توجد بيانات'}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ المشتركون — آخر 30 (الأحدث أولاً)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${[...subscribers].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).slice(0,30).map((s,i)=>
-  `${i+1}. [${s.createdAt?.slice(0,10)||'؟'}] ${s.name} | ${s.phone} | فرع: ${BRANCH_LABELS[s.branch||'']||'—'} | كورسات: ${s.enrolledCourseIds.length} | الحالة: ${s.status} | سيلز: ${s.assignedSalesName||'—'}`
-).join('\n')}
+## مصادر Leads
+${leadSources.map(([source, count]) => `${source}: ${count}`).join('\n') || 'لا توجد بيانات'}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 آخر 20 دفعة يدوية
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${[..._allManual].sort((a,b)=>(b.at||'').localeCompare(a.at||'')).slice(0,20).map((p,i)=>
-  `${i+1}. [${p.at?.slice(0,10)||'؟'}] ${p.subName} | ${p.amount} ${p.currency} | ${p.paymentType||'دفعة'} | فرع: ${p.branchLabel} | ملاحظة: ${p.note||'—'}`
-).join('\n')||'← لا توجد دفعات يدوية بعد'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📚 الكورسات (أكثر 15 تسجيلاً)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${[...courses].sort((a,b)=>(b.students||0)-(a.students||0)).slice(0,15).map((c,i)=>`${i+1}. ${c.title}: ${c.students||0} طالب | ${c.type} | السعر: ${c.price?.EGP??0} ج.م`).join('\n')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌟 المعالجون والمتخصصون
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${therapists.map(t=>`- ${t.name} | ${t.specialty} | تقييم: ${t.rating||'—'} | استشارات: ${consultations.filter(c=>c.therapistId===t.id).length}`).join('\n')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📣 رسائل التواصل الجديدة (لم يُرَد عليها)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${contactMessages.filter(c=>c.status==='new').slice(0,10).map(c=>`• ${c.name} | ${c.phone||''} | "${c.message?.slice(0,100)}"`).join('\n')||'← لا توجد رسائل جديدة'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-مصادر العملاء المحتملين (Top 8)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${(Object.entries(leads.reduce((a:Record<string,number>,l)=>{a[l.source]=(a[l.source]||0)+1;return a},{})) as [string,number][]).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([s,n])=>`- ${s}: ${n} عميل`).join('\n')}`;
+## أكثر الكورسات تسجيلًا
+${[...courses].sort((a, b) => (b.students || 0) - (a.students || 0)).slice(0, 10).map(course => `${course.title}: ${course.students || 0} طالب`).join('\n') || 'لا توجد بيانات'}`;
   };
 
   const handleAiSend = async () => {
@@ -288,19 +140,6 @@ ${(Object.entries(leads.reduce((a:Record<string,number>,l)=>{a[l.source]=(a[l.so
     setTimeout(() => { aiChatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, 100);
 
     try {
-      // Use adminAiDraft (admin AI settings) for this chat
-      const provider = adminAiDraft.provider || 'gemini';
-      const model = adminAiDraft.model || 'gemini-2.0-flash-lite';
-      const apiKey = adminAiDraft.apiKey || '';
-
-      if (!apiKey) {
-        throw new Error(
-          provider === 'gemini'
-            ? 'مفتاح Gemini API غير مُفعَّل. أدخل المفتاح في إعدادات AI Agent.'
-            : 'مفتاح OpenAI API غير مُفعَّل. أدخل المفتاح في إعدادات AI Agent.'
-        );
-      }
-
       const customPrompt = adminAiDraft.systemPrompt?.trim();
       // Always include full data context; custom prompt is prepended as extra instructions
       const dataCtx = buildSystemContext();
@@ -314,63 +153,15 @@ ${customPrompt}
       // Keep last 8 turns of history for context
       const history = aiMessages.slice(-16);
 
-      if (provider === 'gemini') {
-        // Build multi-turn Gemini contents
-        const geminiContents: { role: string; parts: { text: string }[] }[] = [
-          { role: 'user', parts: [{ text: systemCtx + '\n\n---\nهذه هي المحادثة حتى الآن. أجب على آخر سؤال.' }] },
-          { role: 'model', parts: [{ text: 'فهمت. أنا مساعد إداري معهد الدراسات النفسية. لدي كل البيانات. سأجيب بناءً على الأرقام الحقيقية الموجودة في القاعدة.' }] },
-          ...history.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
-          { role: 'user', parts: [{ text: userMsg }] },
-        ];
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: geminiContents,
-              generationConfig: { temperature: adminAiDraft.temperature ?? 0.7, maxOutputTokens: adminAiDraft.maxTokens ?? 1500 },
-            }),
-          }
-        );
-        if (!response.ok) {
-          const err = await response.json() as { error?: { message?: string } };
-          throw new Error(err.error?.message || `خطأ HTTP: ${response.status}`);
-        }
-        const data = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'لم أتمكن من الحصول على إجابة. حاول مجدداً.';
-        setAiMessages(prev => [...prev, { role: 'assistant', text: answer }]);
-      } else {
-        // OpenAI / Claude (OpenAI-compatible)
-        const baseUrl = provider === 'claude'
-          ? 'https://api.anthropic.com/v1/messages'
-          : 'https://api.openai.com/v1/chat/completions';
-        const response = await fetch(baseUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-            ...(provider === 'claude' ? { 'anthropic-version': '2023-06-01' } : {}),
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: systemCtx },
-              ...history.map(m => ({ role: m.role, content: m.text })),
-              { role: 'user', content: userMsg },
-            ],
-            temperature: adminAiDraft.temperature ?? 0.7,
-            max_tokens: adminAiDraft.maxTokens ?? 1500,
-          }),
-        });
-        if (!response.ok) {
-          const err = await response.json() as { error?: { message?: string } };
-          throw new Error(err.error?.message || `خطأ HTTP: ${response.status}`);
-        }
-        const data = await response.json() as { choices?: { message?: { content?: string } }[] };
-        const answer = data.choices?.[0]?.message?.content || 'لم أتمكن من الحصول على إجابة. حاول مجدداً.';
-        setAiMessages(prev => [...prev, { role: 'assistant', text: answer }]);
-      }
+      const { text } = await mysqlAdmin.generateAdminAi({
+        systemPrompt: systemCtx,
+        messages: [...history, { role: 'user' as const, text: userMsg }]
+          .map(message => ({ role: message.role, content: message.text })),
+      });
+      setAiMessages(prev => [...prev, {
+        role: 'assistant',
+        text: text || 'لم أتمكن من الحصول على إجابة. حاول مجدداً.',
+      }]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
       setAiMessages(prev => [...prev, { role: 'assistant', text: `⚠️ خطأ: ${msg}` }]);
@@ -422,9 +213,9 @@ ${customPrompt}
       icon: Users,
       color: 'text-emerald-600',
       q: [
-        `${_staffPerf[0]?.name || 'السيلز'} تابعت مع كام عميل النهاردة؟`,
-        'أداء كل فريق السيلز الشهر ده',
-        'مين أحسن سيلز الشهر ده؟',
+        'حالة مسار السيلز النهاردة؟',
+        'معدل التحويل الحالي؟',
+        'وزّع العملاء المحتملين حسب الحالة',
         'كام عميل محتمل غير متابَع؟',
       ],
     },
@@ -436,7 +227,7 @@ ${customPrompt}
         'إيراد الشهر ده كله',
         'مقارنة كل الفروع في الإيراد',
         'فرع الدقي الشهر ده دخل كام؟',
-        'آخر 10 دفعات يدوية',
+        'عدد وقيمة الدفعات اليدوية النهاردة',
       ],
     },
     {
@@ -447,7 +238,7 @@ ${customPrompt}
         'معدل تحويل العملاء المحتملين؟',
         'أكثر الكورسات تسجيلاً؟',
         'مصادر العملاء الأكثر فاعلية',
-        'إيراد هذا الشهر مقارنة بالسابق',
+        'ملخص الإيراد الحالي حسب الفروع',
       ],
     },
   ];

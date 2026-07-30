@@ -1,8 +1,9 @@
 'use strict';
 const logger = require('../../lib/logger');
-const bcrypt   = require('bcryptjs');
 const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
+const { sanitize } = require('../../lib/helpers');
+const { nextBillingDate } = require('../../lib/subscriptionBilling');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
@@ -18,7 +19,9 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
 router.get('/api/admin/subscription-plans', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, price, billing_cycle, description, is_active, created_at FROM subscription_plans ORDER BY created_at DESC'
+      `SELECT id, name, price, billing_cycle, description, is_active, created_at
+       FROM subscription_plans WHERE tenant_id=? ORDER BY created_at DESC`,
+      [req.tenantId]
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
@@ -27,10 +30,21 @@ router.get('/api/admin/subscription-plans', requireAuth, requireAdmin, async (re
 // POST /api/admin/subscription-plans
 router.post('/api/admin/subscription-plans', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, price, billing_cycle = 'monthly', description = '' } = req.body;
-    if (!name || !price) return res.status(400).json({ error: 'name and price required' });
-    const [r] = await pool.query('INSERT INTO subscription_plans (name, price, billing_cycle, description) VALUES (?,?,?,?)',
-      [name, price, billing_cycle, description]);
+    const { name, price, billing_cycle = 'monthly', description = '' } = req.body || {};
+    const safeName = sanitize(name || '', 255);
+    const safeDescription = sanitize(description || '', 2000);
+    const numericPrice = Number(price);
+    if (!safeName || !Number.isFinite(numericPrice) || numericPrice <= 0 || numericPrice > 100000000) {
+      return res.status(400).json({ error: 'valid name and positive price required' });
+    }
+    if (!['monthly', 'quarterly', 'yearly'].includes(billing_cycle)) {
+      return res.status(400).json({ error: 'invalid billing_cycle' });
+    }
+    const [r] = await pool.query(
+      `INSERT INTO subscription_plans (tenant_id, name, price, billing_cycle, description)
+       VALUES (?,?,?,?,?)`,
+      [req.tenantId, safeName, numericPrice, billing_cycle, safeDescription || null]
+    );
     res.json({ id: r.insertId, ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -38,7 +52,11 @@ router.post('/api/admin/subscription-plans', requireAuth, requireAdmin, async (r
 // DELETE /api/admin/subscription-plans/:id
 router.delete('/api/admin/subscription-plans/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await pool.query('DELETE FROM subscription_plans WHERE id=?', [req.params.id]);
+    const [result] = await pool.query(
+      'UPDATE subscription_plans SET is_active=0 WHERE id=? AND tenant_id=? AND is_active=1',
+      [req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Plan not found' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -50,89 +68,81 @@ router.get('/api/admin/subscriptions', requireAuth, requireAdmin, async (req, re
       SELECT ss.*, sp.name AS plan_name, sp.price AS plan_price, sp.billing_cycle,
              s.name AS subscriber_name, s.phone AS subscriber_phone, s.client_code
       FROM subscriber_subscriptions ss
-      JOIN subscription_plans sp ON sp.id = ss.plan_id
-      JOIN subscribers s ON s.id = ss.subscriber_id
-      ORDER BY ss.next_billing_date ASC LIMIT 500`);
+      JOIN subscription_plans sp ON sp.id=ss.plan_id AND sp.tenant_id=ss.tenant_id
+      JOIN subscribers s ON s.id=ss.subscriber_id AND s.tenant_id=ss.tenant_id
+      WHERE ss.tenant_id=?
+      ORDER BY ss.next_billing_date ASC LIMIT 500`,
+      [req.tenantId]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/admin/subscriptions  — assign plan to subscriber
 router.post('/api/admin/subscriptions', requireAuth, requireAdmin, async (req, res) => {
+  let conn;
   try {
-    const { subscriber_id, plan_id, start_date, auto_renew = 1 } = req.body;
+    const { subscriber_id, plan_id, start_date, auto_renew = 1 } = req.body || {};
     if (!subscriber_id || !plan_id) return res.status(400).json({ error: 'subscriber_id and plan_id required' });
 
-    const [[plan]] = await pool.query(
-      'SELECT id, name, price, billing_cycle, description, is_active, created_at FROM subscription_plans WHERE id=?',
-      [plan_id]
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [[plan]] = await conn.query(
+      `SELECT id, name, price, billing_cycle
+       FROM subscription_plans
+       WHERE id=? AND tenant_id=? AND is_active=1
+       LIMIT 1 FOR UPDATE`,
+      [plan_id, req.tenantId]
     );
-    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    if (!plan) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Plan not found' });
+    }
+    const [[subscriber]] = await conn.query(
+      `SELECT id FROM subscribers
+       WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL
+       LIMIT 1 FOR UPDATE`,
+      [subscriber_id, req.tenantId]
+    );
+    if (!subscriber) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    const [[duplicate]] = await conn.query(
+      `SELECT id FROM subscriber_subscriptions
+       WHERE tenant_id=? AND subscriber_id=? AND plan_id=? AND status IN ('active','paused')
+       LIMIT 1 FOR UPDATE`,
+      [req.tenantId, subscriber_id, plan_id]
+    );
+    if (duplicate) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Subscriber already has this plan' });
+    }
 
     const start = start_date || new Date().toISOString().slice(0, 10);
-    const startMs = new Date(start);
-    let next = new Date(startMs);
-    if (plan.billing_cycle === 'monthly')    next.setMonth(next.getMonth() + 1);
-    else if (plan.billing_cycle === 'quarterly') next.setMonth(next.getMonth() + 3);
-    else if (plan.billing_cycle === 'yearly')    next.setFullYear(next.getFullYear() + 1);
-
-    const [r] = await pool.query(
-      'INSERT INTO subscriber_subscriptions (subscriber_id, plan_id, start_date, next_billing_date, auto_renew) VALUES (?,?,?,?,?)',
-      [subscriber_id, plan_id, start, next.toISOString().slice(0, 10), auto_renew ? 1 : 0]);
-    res.json({ id: r.insertId, ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// Subscription billing cron — runs daily, generates payment stubs for due subscriptions
-setInterval(async () => {
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const [due] = await pool.query(`
-      SELECT ss.*, sp.price, sp.billing_cycle
-      FROM subscriber_subscriptions ss
-      JOIN subscription_plans sp ON sp.id = ss.plan_id
-      WHERE ss.status='active' AND ss.next_billing_date <= ? AND ss.auto_renew=1`, [today]);
-
-    if (due.length > 0) {
-      // Batch INSERT payment stubs — atomic: only advance billing dates if INSERT succeeds
-      const billingPayRows = due.map(() => `(UUID(), ?, ?, 'subscription', 'pending', ?, NOW())`);
-      const billingPayParams = due.flatMap(sub => [sub.subscriber_id, sub.price, `Auto-billing plan: ${sub.plan_id}`]);
-      let billingInsertOk = false;
-      try {
-        await pool.query(
-          `INSERT INTO payments (id, subscriber_id, amount, payment_method, status, note, created_at) VALUES ${billingPayRows.join(',')}`,
-          billingPayParams
-        );
-        billingInsertOk = true;
-      } catch (e) { logger.warn('[subscription billing] payment INSERT failed — billing dates NOT advanced:', e.message); }
-
-      // Only advance next_billing_date if payment stubs were created successfully
-      if (billingInsertOk) {
-        const billingNextDates = due.map(sub => {
-          const next = new Date(sub.next_billing_date);
-          if (sub.billing_cycle === 'monthly')       next.setMonth(next.getMonth() + 1);
-          else if (sub.billing_cycle === 'quarterly') next.setMonth(next.getMonth() + 3);
-          else if (sub.billing_cycle === 'yearly')    next.setFullYear(next.getFullYear() + 1);
-          return next.toISOString().slice(0, 10);
-        });
-        // Chunk to avoid oversized queries (safety cap: 500/chunk)
-        const BILLING_CHUNK = 500;
-        for (let bi = 0; bi < due.length; bi += BILLING_CHUNK) {
-          const bChunk = due.slice(bi, bi + BILLING_CHUNK);
-          const bDates = billingNextDates.slice(bi, bi + BILLING_CHUNK);
-          const bCaseWhen = bChunk.map(() => 'WHEN id=? THEN ?').join(' ');
-          const bCaseParams = bChunk.flatMap((sub, j) => [sub.id, bDates[j]]);
-          const bIds = bChunk.map(sub => sub.id);
-          await pool.query(
-            `UPDATE subscriber_subscriptions SET next_billing_date = CASE ${bCaseWhen} END WHERE id IN (${bIds.map(() => '?').join(',')})`,
-            [...bCaseParams, ...bIds]
-          ).catch(e => logger.warn('[subscription billing] date update chunk failed:', e.message));
-        }
-        logger.info(`[subscription billing] processed ${due.length} renewals`);
-      }
+    let next;
+    try {
+      next = nextBillingDate(start, plan.billing_cycle);
+    } catch (_) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'start_date must be YYYY-MM-DD' });
     }
-  } catch (e) { logger.warn('[subscription billing cron]', e.message); }
-}, 24 * 60 * 60 * 1000);
+
+    const [r] = await conn.query(
+      `INSERT INTO subscriber_subscriptions
+         (tenant_id, subscriber_id, plan_id, start_date, next_billing_date, auto_renew)
+       VALUES (?,?,?,?,?,?)`,
+      [req.tenantId, subscriber_id, plan_id, start, next, auto_renew ? 1 : 0]
+    );
+    await conn.commit();
+    res.json({ id: r.insertId, ok: true });
+  } catch (e) {
+    if (conn) await conn.rollback().catch(() => {});
+    logger.error('[subscription assignment]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn?.release();
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: PDF Invoice Generation (Server-side HTML) ────────────────────

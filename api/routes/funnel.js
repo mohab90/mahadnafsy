@@ -19,26 +19,41 @@ router.get('/api/admin/funnel', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { from, to, branch } = req.query;
     const br = branch && branch !== 'all' ? String(branch).toUpperCase() : null;
-    // Build per-table WHERE fragments honouring date range (+ branch where present).
+    // One lead cohort owns every stage. Mixing lead-created dates with payment
+    // dates and all-time LMS rows used to produce attractive but false rates.
     const range = (col) => { const c = [], p = []; if (from) { c.push(`${col} >= ?`); p.push(from); } if (to) { c.push(`${col} < DATE_ADD(?, INTERVAL 1 DAY)`); p.push(to); } return { c, p }; };
-    const lr = range('created_at'); const lw = ['tenant_id=?', 'hidden=0', ...lr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const lp = [req.tenantId, ...lr.p, ...(br ? [br] : [])];
-    const pr = range('date');       const pw = ['tenant_id=?', "status='paid'", ...pr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const pp = [req.tenantId, ...pr.p, ...(br ? [br] : [])];
-    const sr = range('created_at'); const sw = ['tenant_id=?', ...sr.c, ...(br ? ['branch=?'] : [])].join(' AND '); const sp = [req.tenantId, ...sr.p, ...(br ? [br] : [])];
-    const learnerJoin = `JOIN subscribers s ON s.id=t.subscriber_id AND s.tenant_id=?${br ? ' WHERE s.branch=?' : ''}`;
-    const learnerParams = [req.tenantId, ...(br ? [br] : [])];
-    const certificateWhere = `WHERE t.tenant_id=?${br ? ' AND s.branch=?' : ''}`;
-    const certificateParams = [req.tenantId, ...(br ? [br] : [])];
+    const lr = range('l.created_at');
+    const lw = ['l.tenant_id=?', 'l.hidden=0', ...lr.c, ...(br ? ['l.branch=?'] : [])].join(' AND ');
+    const lp = [req.tenantId, ...lr.p, ...(br ? [br] : [])];
     const data = await cached(`funnel:${req.tenantId}:${from || ''}:${to || ''}:${br || 'all'}`, 5 * 60 * 1000, async () => {
       const [leads, contacted, interested, converted, subscribers, paying, learners, certified, revenue] = await Promise.all([
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw}`, lp),
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND status <> 'new'`, lp),
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND (status='interested' OR interest_level='HIGH')`, lp),
-        n(`SELECT COUNT(*) FROM leads WHERE ${lw} AND status='converted'`, lp),
-        n(`SELECT COUNT(*) FROM subscribers WHERE ${sw}`, sp),
-        n(`SELECT COUNT(DISTINCT subscriber_id) FROM payments WHERE ${pw}`, pp),
-        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM lecture_completions t ${learnerJoin} AND t.tenant_id=s.tenant_id`, learnerParams),
-        n(`SELECT COUNT(DISTINCT t.subscriber_id) FROM certificate_requests t JOIN subscribers s ON s.id=t.subscriber_id AND s.tenant_id=t.tenant_id ${certificateWhere} AND t.status IN ('ISSUED','AT_BRANCH','DELIVERED')`, certificateParams),
-        n(`SELECT COALESCE(SUM(amount_egp),0) FROM payments WHERE ${pw}`, pp),
+        n(`SELECT COUNT(*) FROM leads l WHERE ${lw}`, lp),
+        n(`SELECT COUNT(*) FROM leads l WHERE ${lw} AND l.status <> 'new'`, lp),
+        n(`SELECT COUNT(*) FROM leads l WHERE ${lw}
+            AND (l.status IN ('interested','interested_booking','interested_followup','converted','won')
+              OR l.interest_level='HIGH')`, lp),
+        n(`SELECT COUNT(*) FROM leads l WHERE ${lw} AND l.status IN ('converted','won')`, lp),
+        n(`SELECT COUNT(DISTINCT s.id) FROM leads l
+            JOIN subscribers s ON s.lead_id=l.id AND s.tenant_id=l.tenant_id
+            WHERE ${lw}`, lp),
+        n(`SELECT COUNT(DISTINCT l.id) FROM leads l
+            JOIN subscribers s ON s.lead_id=l.id AND s.tenant_id=l.tenant_id
+            JOIN payments p ON p.subscriber_id=s.id AND p.tenant_id=s.tenant_id
+              AND p.status='paid' AND p.deleted_at IS NULL
+            WHERE ${lw}`, lp),
+        n(`SELECT COUNT(DISTINCT l.id) FROM leads l
+            JOIN subscribers s ON s.lead_id=l.id AND s.tenant_id=l.tenant_id
+            JOIN lecture_completions lc ON lc.subscriber_id=s.id AND lc.tenant_id=s.tenant_id
+            WHERE ${lw}`, lp),
+        n(`SELECT COUNT(DISTINCT l.id) FROM leads l
+            JOIN subscribers s ON s.lead_id=l.id AND s.tenant_id=l.tenant_id
+            JOIN course_completions cc ON cc.subscriber_id=s.id AND cc.tenant_id=s.tenant_id AND cc.status='active'
+            WHERE ${lw}`, lp),
+        n(`SELECT COALESCE(SUM(p.amount_egp),0) FROM leads l
+            JOIN subscribers s ON s.lead_id=l.id AND s.tenant_id=l.tenant_id
+            JOIN payments p ON p.subscriber_id=s.id AND p.tenant_id=s.tenant_id
+              AND p.status='paid' AND p.deleted_at IS NULL
+            WHERE ${lw}`, lp),
       ]);
       const stages = [
         { key: 'leads', label: 'عملاء محتملون', value: leads },

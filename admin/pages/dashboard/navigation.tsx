@@ -135,7 +135,6 @@ export type TabKey =
   | 'lead_sources_settings'
   | 'otp_settings'
   | 'branch_workspaces'
-  | 'automation_dashboard'
   | 'webhooks'
   | 'ip_whitelist'
   | 'security_dashboard'

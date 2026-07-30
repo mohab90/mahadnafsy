@@ -20,8 +20,10 @@ export const ROLES = {
   HR:                       'hr',
   ACCOUNTANT:               'accountant',
   CONSULTANT:               'consultant',
+  EXPERT:                   'expert',
   TRAINER:                  'trainer',
   INSTRUCTOR:               'instructor',
+  OTHER:                    'other',
 } as const;
 
 export type RoleKey = typeof ROLES[keyof typeof ROLES];
@@ -40,8 +42,10 @@ export const ROLE_LABELS: Record<RoleKey, string> = {
   hr:                       'موارد بشرية',
   accountant:               'محاسب',
   consultant:               'مستشار',
+  expert:                   'خبير',
   trainer:                  'مدرب',
   instructor:               'محاضر',
+  other:                    'موظف',
 };
 
 // ── 3. PERMISSIONS ────────────────────────────────────────────────────────────
@@ -240,6 +244,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_reports', 'view_activity',
     'view_staff',
     'view_client_db',
+    'manage_inbox', 'manage_notifications',
     'bulk_whatsapp',
     'ask_ai',
   ],
@@ -250,6 +255,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_subscribers',
     'view_orders',
     'view_consultations',
+    'manage_inbox', 'manage_notifications',
     'ask_ai',
   ],
 
@@ -260,6 +266,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_financial', 'manage_financial',
     'view_reports',
     'view_client_db',
+    'manage_inbox', 'manage_notifications',
     'bulk_whatsapp',
     'ask_ai',
   ],
@@ -299,6 +306,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports',
+    'manage_inbox', 'manage_notifications',
   ],
 
   consultant: [
@@ -312,12 +320,25 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
   trainer: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
+    'view_consultations', 'manage_consultations',
+  ],
+
+  expert: [
+    'view_dashboard',
+    'view_courses',
     'view_consultations',
+    'view_subscribers',
+    'view_reports',
   ],
 
   instructor: [
     'view_dashboard',
     'view_courses', 'manage_lectures',
+    'view_consultations', 'manage_consultations',
+  ],
+
+  other: [
+    'view_dashboard',
   ],
 };
 
@@ -338,8 +359,10 @@ export const ROLE_DATA_SCOPE: Record<RoleKey, DataScope> = {
   hr:                       'none',
   accountant:               'all',
   consultant:               'assigned_sales',
+  expert:                   'none',
   trainer:                  'none',
   instructor:               'none',
+  other:                    'none',
 };
 
 // ── 8. FULL-ACCESS ROLES ──────────────────────────────────────────────────────

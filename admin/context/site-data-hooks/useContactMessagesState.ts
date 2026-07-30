@@ -4,28 +4,48 @@ import { mysqlAdmin } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
 
+const reportFailure = (name: string) => window.dispatchEvent(new CustomEvent('site-persist-error', {
+  detail: { field: 'contactMessage', name },
+}));
+
 export function useContactMessagesState(initialContactMessages: ContactMessage[], track: Track) {
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(initialContactMessages);
 
-  const persistContactMessageToCollection = (item: ContactMessage) => {
-    // status/note changes persist to the contact_messages table
-    void mysqlAdmin.updateContactMessage(item.id, item.status, (item as unknown as { adminNote?: string }).adminNote).catch(() => {});
+  const persistContactMessage = async (item: ContactMessage) => {
+    try {
+      await mysqlAdmin.updateContactMessage(item.id, item.status, item.adminNote);
+      setContactMessages((prev) => prev.some((row) => row.id === item.id)
+        ? prev.map((row) => row.id === item.id ? item : row)
+        : [item, ...prev]);
+      return true;
+    } catch {
+      reportFailure(item.name);
+      return false;
+    }
   };
 
-  const addContactMessage = (item: ContactMessage) => {
-    setContactMessages((prev) => [item, ...prev]);
-    persistContactMessageToCollection(item);
+  const addContactMessage = async (item: ContactMessage) => {
+    if (!await persistContactMessage(item)) return false;
     track('create', 'contactMessage', item.name);
+    return true;
   };
-  const updateContactMessage = (item: ContactMessage) => {
-    setContactMessages((prev) => prev.map((x) => (x.id === item.id ? item : x)));
-    persistContactMessageToCollection(item);
+
+  const updateContactMessage = async (item: ContactMessage) => {
+    if (!await persistContactMessage(item)) return false;
     track('update', 'contactMessage', item.name);
+    return true;
   };
-  const deleteContactMessage = (id: string) => {
-    setContactMessages((prev) => prev.filter((x) => x.id !== id));
-    void mysqlAdmin.deleteContactMessage(id).catch(() => {}); // was local-only → messages came back on refresh
-    track('delete', 'contactMessage', id);
+
+  const deleteContactMessage = async (id: string) => {
+    try {
+      await mysqlAdmin.deleteContactMessage(id);
+      setContactMessages((prev) => prev.filter((item) => item.id !== id));
+      track('delete', 'contactMessage', id);
+      return true;
+    } catch {
+      reportFailure(id);
+      return false;
+    }
   };
 
   return { contactMessages, setContactMessages, addContactMessage, updateContactMessage, deleteContactMessage };

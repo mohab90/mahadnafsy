@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem } from '../../types';
-import { mysqlClient, mysqlAdmin } from '../../lib/mysqlapi';
+import type { CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, CommunityComment } from '../../types';
+import { mysqlClient } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
 
@@ -10,7 +10,6 @@ export function useCommunityData(
   initialLibrary: CommunityLibraryItem[],
   initialVideos: CommunityVideoItem[],
   initialEvents: CommunityEventItem[],
-  isAdmin: boolean,
   track: Track,
 ) {
   const [communityPosts, setCommunityPosts] = useState<CommunityPostItem[]>(initialPosts);
@@ -18,118 +17,50 @@ export function useCommunityData(
   const [communityVideos, setCommunityVideos] = useState<CommunityVideoItem[]>(initialVideos);
   const [communityEvents, setCommunityEvents] = useState<CommunityEventItem[]>(initialEvents);
 
-  const persistCommunityPostToCollection = (post: CommunityPostItem) => {
-    // Admins write via the admin endpoint (full control + status). Customers post via the
-    // auth-gated customer endpoint, which forces status='pending' for moderation. Routing a
-    // customer to the admin endpoint would 403 and the post would silently vanish.
-    if (isAdmin) {
-      void mysqlAdmin.saveCommunityPost(post as unknown as Record<string, unknown>).catch(() => {});
-    } else {
-      void mysqlClient.createCommunityPost(post as unknown as Record<string, unknown>).catch(() => {});
-    }
-  };
-
-  // Customer edits to an EXISTING post (likes/comments engagement, or an actual content
-  // edit) must PATCH the real row by id — routing them through createCommunityPost (as
-  // persistCommunityPostToCollection does for brand-new posts) silently created a fresh
-  // duplicate pending post on every like/comment click instead (MKT-16).
-  const persistCommunityPostUpdate = (post: CommunityPostItem) => {
-    if (isAdmin) {
-      void mysqlAdmin.saveCommunityPost(post as unknown as Record<string, unknown>).catch(() => {});
-    } else {
-      void mysqlClient.updateCommunityPost(post.id, post as unknown as Record<string, unknown>).catch(() => {});
-    }
-  };
-
-  const persistCommunityLibraryItemToCollection = (item: CommunityLibraryItem) => {
-    void mysqlAdmin.saveCommunityLibraryItem(item as unknown as Record<string, unknown>).catch(() => {});
-  };
-
-  const persistCommunityVideoToCollection = (video: CommunityVideoItem) => {
-    void mysqlAdmin.saveCommunityVideo(video as unknown as Record<string, unknown>).catch(() => {});
-  };
-
-  const persistCommunityEventToCollection = (event: CommunityEventItem) => {
-    void mysqlAdmin.saveCommunityEvent(event as unknown as Record<string, unknown>).catch(() => {});
-  };
-
-  const addCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => [item, ...prev]);
-    persistCommunityPostToCollection(item);
+  const addCommunityPost = async (item: CommunityPostItem) => {
+    const saved = await mysqlClient.createCommunityPost(item as unknown as Record<string, unknown>);
+    const response = saved as { id?: string; status?: CommunityPostItem['status'] };
+    setCommunityPosts((prev) => [{
+      ...item,
+      id: response.id || item.id,
+      status: response.status || item.status,
+      isOwner: true,
+    }, ...prev]);
     track('create', 'community_post', item.title);
   };
 
-  const updateCommunityPost = (item: CommunityPostItem) => {
-    setCommunityPosts((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityPostUpdate(item);
+  const updateCommunityPost = async (item: CommunityPostItem) => {
+    const saved = await mysqlClient.updateCommunityPost(item.id, item as unknown as Record<string, unknown>);
+    const response = saved as { status?: CommunityPostItem['status'] };
+    setCommunityPosts((prev) => prev.map((row) => (
+      row.id === item.id ? { ...item, status: response.status || item.status } : row
+    )));
     track('update', 'community_post', item.title);
   };
 
-  const deleteCommunityPost = (id: string) => {
+  const deleteCommunityPost = async (id: string) => {
+    await mysqlClient.deleteCommunityPost(id);
     setCommunityPosts((prev) => prev.filter((row) => row.id !== id));
-    // Only admins may hit the admin-only delete endpoint (manage_community permission) —
-    // routing a customer's own-post deletion there used to 403 while the UI optimistically
-    // removed it anyway, so the post silently reappeared on the next reload (MKT-16).
-    if (isAdmin) {
-      void mysqlAdmin.deleteCommunityPost(id).catch(() => {});
-    } else {
-      void mysqlClient.deleteCommunityPost(id).catch(() => {});
-    }
     track('delete', 'community_post', id);
   };
 
-  const addCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => [item, ...prev]);
-    persistCommunityLibraryItemToCollection(item);
-    track('create', 'community_library', item.title);
+  const toggleCommunityPostLike = async (id: string) => {
+    const result = await mysqlClient.toggleCommunityPostLike(id);
+    setCommunityPosts((prev) => prev.map((row) => (
+      row.id === id ? { ...row, likes: result.likes } : row
+    )));
+    return { liked: result.liked, likes: result.likes };
   };
 
-  const updateCommunityLibraryItem = (item: CommunityLibraryItem) => {
-    setCommunityLibraryItems((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityLibraryItemToCollection(item);
-    track('update', 'community_library', item.title);
-  };
-
-  const deleteCommunityLibraryItem = (id: string) => {
-    setCommunityLibraryItems((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityLibraryItem(id).catch(() => {});
-    track('delete', 'community_library', id);
-  };
-
-  const addCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => [item, ...prev]);
-    persistCommunityVideoToCollection(item);
-    track('create', 'community_video', item.title);
-  };
-
-  const updateCommunityVideo = (item: CommunityVideoItem) => {
-    setCommunityVideos((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityVideoToCollection(item);
-    track('update', 'community_video', item.title);
-  };
-
-  const deleteCommunityVideo = (id: string) => {
-    setCommunityVideos((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityVideo(id).catch(() => {});
-    track('delete', 'community_video', id);
-  };
-
-  const addCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => [item, ...prev]);
-    persistCommunityEventToCollection(item);
-    track('create', 'community_event', item.title);
-  };
-
-  const updateCommunityEvent = (item: CommunityEventItem) => {
-    setCommunityEvents((prev) => prev.map((row) => (row.id === item.id ? item : row)));
-    persistCommunityEventToCollection(item);
-    track('update', 'community_event', item.title);
-  };
-
-  const deleteCommunityEvent = (id: string) => {
-    setCommunityEvents((prev) => prev.filter((row) => row.id !== id));
-    void mysqlAdmin.deleteCommunityEvent(id).catch(() => {});
-    track('delete', 'community_event', id);
+  const addCommunityPostComment = async (id: string, body: string): Promise<CommunityComment> => {
+    const result = await mysqlClient.addCommunityPostComment(id, body);
+    setCommunityPosts((prev) => prev.map((row) => row.id === id ? {
+      ...row,
+      comments: row.comments + 1,
+      commentsList: [...(row.commentsList || []), result.comment],
+    } : row));
+    track('create', 'community_comment', id);
+    return result.comment;
   };
 
   const resetCommunity = (defaults: {
@@ -147,9 +78,7 @@ export function useCommunityData(
     communityVideos, setCommunityVideos,
     communityEvents, setCommunityEvents,
     addCommunityPost, updateCommunityPost, deleteCommunityPost,
-    addCommunityLibraryItem, updateCommunityLibraryItem, deleteCommunityLibraryItem,
-    addCommunityVideo, updateCommunityVideo, deleteCommunityVideo,
-    addCommunityEvent, updateCommunityEvent, deleteCommunityEvent,
+    toggleCommunityPostLike, addCommunityPostComment,
     resetCommunity,
   };
 }

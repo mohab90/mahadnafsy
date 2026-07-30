@@ -14,7 +14,23 @@ const { createNotification } = require('../lib/notification');
 const { transitionLead } = require('../lib/leadState');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { completeCourse } = require('../lib/courseCompletion');
+const { recordLectureProgress } = require('../lib/learningProgress');
+const { resolveLectureAccess } = require('../lib/learningAccess');
+const { grantCourseSelections } = require('../lib/entitlements');
+const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { inspectProofImageDataUrl } = require('../lib/uploadSafety');
+const { isJourneyState } = require('../lib/journeyStates');
+const { dateOnlyInTimeZone } = require('../lib/dates');
+const { logFinancialAudit, logPaymentAudit } = require('../lib/finance');
+const { recordPaymentCompensation } = require('../lib/paymentCompensation');
+const {
+  createPaymentAttempt,
+  getOrCreatePaymentIntent,
+  settlePaymentAttempt,
+} = require('../lib/paymentIntents');
+const { getTenantSetting } = require('../lib/tenantSettings');
+const { classifyPaymentProof, paymentProofReviewStep } = require('../lib/paymentProofReview');
 
 function tenantIdFor(req) {
   return req.tenantId || req.user?.tenant_id || 'tenant-default';
@@ -31,6 +47,8 @@ function branchForId(branchId) {
   return map[branchId] || 'ONLINE_EGYPT';
 }
 
+const isPendingOrder = status => isJourneyState('order', status, 'pending');
+
 // ── Payment Proofs — client submits & admin reviews ───────────────────────────
 
 // Client: submit a payment proof (instapay / bank transfer receipt)
@@ -41,16 +59,15 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     const { uid, email } = req.user;
     const tenantId = tenantIdFor(req);
     const normalizedEmail = String(email || '').toLowerCase().trim();
-    const { order_id, payment_method, proof_image, note } = req.body || {};
+    const { order_id, payment_intent_id, payment_method, proof_image, note } = req.body || {};
     if (!order_id || !normalizedEmail) return res.status(400).json({ error: 'order_id and authenticated email required' });
     // Validate proof_image: must be a base64 image (data:image/...) or null
     if (proof_image) {
       if (typeof proof_image !== 'string') return res.status(400).json({ error: 'Invalid proof image' });
       if (proof_image.length > 5 * 1024 * 1024) return res.status(400).json({ error: 'Image too large (max 5MB base64)' });
       // Only allow image MIME types — reject SVG (XSS risk) and non-image data URIs
-      if (proof_image.startsWith('data:') && !/^data:image\/(jpeg|jpg|png|webp|gif);base64,/.test(proof_image)) {
-        return res.status(400).json({ error: 'Only JPEG, PNG, WebP or GIF images are allowed' });
-      }
+      try { inspectProofImageDataUrl(proof_image); }
+      catch (error) { return res.status(400).json({ error: error.message }); }
     }
     const safeNote = note ? String(note).slice(0, 500) : null;
     await conn.beginTransaction();
@@ -63,13 +80,16 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
       [order_id, tenantId, normalizedEmail]
     );
     if (!order) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Order not found' }); }
-    if (order.status !== 'pending') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending payment' }); }
+    if (!isPendingOrder(order.status)) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending payment' }); }
     if (Number(order.amount) <= 0 || Number(order.amount) > 500000) {
       await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order amount is invalid' });
     }
     const [[existingProof]] = await conn.query(
-      "SELECT id FROM payment_proofs WHERE order_id=? AND status IN ('PENDING','APPROVED') LIMIT 1 FOR UPDATE",
-      [order.id]
+      `SELECT id
+       FROM payment_proofs
+       WHERE order_id=? AND tenant_id=? AND status IN ('PENDING','APPROVED')
+       LIMIT 1 FOR UPDATE`,
+      [order.id, tenantId]
     );
     if (existingProof) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'A payment proof already exists for this order' }); }
 
@@ -81,19 +101,35 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     await conn.query('UPDATE orders SET subscriber_id=? WHERE id=? AND tenant_id=?', [sub.id, order.id, tenantId]);
 
     const id = `pp-${uuidv4()}`;
+    const intent = await getOrCreatePaymentIntent(conn, {
+      tenantId, order, subscriberId: sub.id, actor: uid || normalizedEmail,
+      idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotency_key,
+      requestedIntentId: payment_intent_id || null,
+    });
+    const attemptId = await createPaymentAttempt(conn, {
+      tenantId, intentId: intent.id, proofId: id, actor: uid || normalizedEmail,
+    });
+    const reviewPolicy = await getTenantSetting('payment_review_policy', {
+      tenantId, fallback: {}, db: conn,
+    });
+    const review = classifyPaymentProof({
+      amount: order.amount, currency: order.currency || 'EGP', policy: reviewPolicy,
+    });
+    const reviewDueAt = new Date(Date.now() + review.slaHours * 60 * 60 * 1000);
     await conn.query(
       `INSERT INTO payment_proofs
-         (id, order_id, subscriber_id, course_id, bundle_id, item_type, amount, currency,
-          payment_method, proof_image, note, tenant_id, branch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, order.id, sub.id, order.course_id || null, order.bundle_id || null,
+         (id, order_id, payment_intent_id, payment_attempt_id, subscriber_id, course_id, bundle_id, item_type, amount, currency,
+          payment_method, proof_image, note, review_due_at, risk_level, second_review_required, tenant_id, branch_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, order.id, intent.id, attemptId, sub.id, order.course_id || null, order.bundle_id || null,
        String(order.type || 'OTHER').toLowerCase(), order.amount, order.currency || 'EGP',
-       String(payment_method || 'instapay').slice(0, 50), proof_image || null, safeNote,
+       String(payment_method || 'instapay').slice(0, 50), proof_image || null, safeNote, reviewDueAt,
+       review.riskLevel, review.secondReviewRequired ? 1 : 0,
        tenantId, order.branch_id || sub.branch_id || 'branch-other']
     );
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, id });
+    res.json({ ok: true, id, payment_intent_id: intent.id, payment_attempt_id: attemptId });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
@@ -107,46 +143,17 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
     const tenantId = tenantIdFor(req);
     const emailNorm = email?.toLowerCase().trim() || '';
     if (!emailNorm && !uid) return res.status(400).json({ error: 'No identity in token' });
-    const { lectureId, pct } = req.body || {};
+    const { lectureId, pct, watchSeconds } = req.body || {};
     if (!lectureId || pct === undefined) return res.status(400).json({ error: 'lectureId and pct required' });
     const progress = Math.min(100, Math.max(0, Number(pct) || 0));
     const [[sub]] = await pool.query(
-      'SELECT id, crm_json FROM subscribers WHERE tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
+      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
       [tenantId, uid || '', emailNorm]
     );
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
-    const [[entitledLecture]] = await pool.query(
-      `SELECT cl.id, cl.course_id
-       FROM course_lectures cl
-       JOIN courses c ON c.id=cl.course_id AND c.tenant_id=?
-       JOIN enrollments e ON e.course_id=cl.course_id AND e.subscriber_id=? AND e.tenant_id=?
-       WHERE cl.id=? AND (
-         COALESCE(c.price_egp,c.price,0)<=0 OR
-         COALESCE((SELECT SUM(p.amount_egp) FROM payments p
-                   WHERE p.subscriber_id=? AND p.course_id=c.id AND p.tenant_id=?
-                     AND p.status IN ('paid','confirmed') AND p.deleted_at IS NULL),0) >= COALESCE(c.price_egp,c.price,0)
-         OR EXISTS (
-           SELECT 1 FROM payments bp
-           JOIN bundle_courses bc ON bc.bundle_id=bp.bundle_id AND bc.course_id=c.id
-           WHERE bp.subscriber_id=? AND bp.tenant_id=?
-             AND bp.status IN ('paid','confirmed') AND bp.deleted_at IS NULL
-         )
-       ) LIMIT 1`,
-      [tenantId, sub.id, tenantId, lectureId, sub.id, tenantId, sub.id, tenantId]
-    );
-    if (!entitledLecture) return res.status(403).json({ error: 'Active paid enrollment is required' });
-    const crm = tryJson(sub.crm_json, {});
-    crm.lectureProgress = { ...(crm.lectureProgress || {}), [lectureId]: progress };
-    await pool.query(
-      `INSERT INTO lecture_completions
-         (id, subscriber_id, lecture_id, course_id, progress_pct, watch_seconds, completed_at, tenant_id)
-       VALUES (UUID(),?,?,?,?,0,IF(?=100,NOW(),NULL),?)
-       ON DUPLICATE KEY UPDATE progress_pct=GREATEST(progress_pct,VALUES(progress_pct)),
-         completed_at=IF(GREATEST(progress_pct,VALUES(progress_pct))=100,COALESCE(completed_at,NOW()),completed_at),
-         tenant_id=VALUES(tenant_id)`,
-      [sub.id, lectureId, entitledLecture.course_id, progress, progress, tenantId]
-    );
-    await pool.query('UPDATE subscribers SET crm_json = ? WHERE id = ? AND tenant_id=?', [JSON.stringify(crm), sub.id, tenantId]);
+    const savedProgress = await recordLectureProgress({
+      tenantId, subscriberId: sub.id, lectureId, progress, watchSeconds,
+    });
     // ── Auto-complete: delegate to the shared completeCourse() (LMS-07) instead
     // of reimplementing eligibility/cert-issuing here — this used to duplicate
     // (and drift from) lib/courseCompletion.js's own entitlement + progress
@@ -155,20 +162,14 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
     let completionData = null;
     if (progress >= 100) {
       try {
-        const [[lec]] = await pool.query(
-          `SELECT cl.course_id FROM course_lectures cl
-           JOIN enrollments e ON e.course_id=cl.course_id AND e.subscriber_id=? AND e.tenant_id=?
-          WHERE cl.id=? LIMIT 1`,
-          [sub.id, tenantId, lectureId]
-        );
-        if (lec?.course_id) {
+        if (savedProgress.courseId) {
           const completion = await completeCourse({
-            tenantId, subscriberId: sub.id, courseId: lec.course_id, actor: emailNorm || uid, requireFullProgress: true,
+            tenantId, subscriberId: sub.id, courseId: savedProgress.courseId, actor: emailNorm || uid, requireFullProgress: true,
           });
           if (!completion.alreadyCompleted) {
-            const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [lec.course_id, tenantId]);
+            const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [savedProgress.courseId, tenantId]);
             const [[subInfo]] = await pool.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [sub.id, tenantId]);
-            await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId: lec.course_id, certCode: completion.certificate_code }, req.tenantId);
+            await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId: savedProgress.courseId, certCode: completion.certificate_code }, req.tenantId);
             completionData = { completed: true, certCode: completion.certificate_code };
           }
         }
@@ -180,41 +181,48 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
       }
     }
     res.json({ ok: true, ...(completionData || {}) });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[progress]', e.message);
+    res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });
+  }
 });
 
 router.get('/api/admin/subscribers/:id/progress', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const tenantId = tenantIdFor(req);
     const [[subscriber]] = await pool.query(
-      'SELECT id, crm_json FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+      'SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
       [req.params.id, tenantId]
     );
     if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
-    const crm = tryJson(subscriber.crm_json, {});
-    const progress = crm.lectureProgress || {};
     const [courses] = await pool.query(
       `SELECT e.course_id, c.title
          FROM enrollments e JOIN courses c ON c.id=e.course_id AND c.tenant_id=e.tenant_id
-        WHERE e.subscriber_id=? AND e.tenant_id=?`,
+        WHERE e.subscriber_id=? AND e.tenant_id=? AND e.status='active'`,
       [subscriber.id, tenantId]
     );
     // Batched instead of one course_lectures query per enrolled course (PERF-01).
     const courseIds = courses.map(course => course.course_id);
     const lecturesByCourse = new Map();
+    const progress = {};
     if (courseIds.length) {
       const [allLectures] = await pool.query(
-        `SELECT id, title, course_id FROM course_lectures WHERE course_id IN (${courseIds.map(() => '?').join(',')}) AND is_published=1 ORDER BY sort_order`,
-        courseIds
+        `SELECT cl.id,cl.title,cl.course_id,COALESCE(lc.progress_pct,0) AS progress_pct
+         FROM course_lectures cl
+         LEFT JOIN lecture_completions lc ON lc.lecture_id=cl.id AND lc.subscriber_id=? AND lc.tenant_id=?
+         WHERE cl.course_id IN (${courseIds.map(() => '?').join(',')}) AND cl.is_published=1
+         ORDER BY cl.sort_order`,
+        [subscriber.id, tenantId, ...courseIds]
       );
       for (const lecture of allLectures) {
+        progress[lecture.id] = Number(lecture.progress_pct || 0);
         if (!lecturesByCourse.has(lecture.course_id)) lecturesByCourse.set(lecture.course_id, []);
         lecturesByCourse.get(lecture.course_id).push(lecture);
       }
     }
     const courseStats = courses.map(course => {
       const lectures = lecturesByCourse.get(course.course_id) || [];
-      const completed = lectures.filter(lecture => Number(progress[lecture.id] || 0) >= 90).length;
+      const completed = lectures.filter(lecture => Number(progress[lecture.id] || 0) >= 100).length;
       return {
         courseId: course.course_id,
         courseTitle: course.title,
@@ -223,7 +231,7 @@ router.get('/api/admin/subscribers/:id/progress', requireAuth, requireAdminOrSta
         pct: lectures.length ? Math.round((completed / lectures.length) * 100) : 0,
       };
     });
-    res.json({ crmProgress: progress, courseStats });
+    res.json({ lectureProgress: progress, courseStats });
   } catch (error) {
     logger.error('[admin-progress]', error.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -241,7 +249,7 @@ router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
     );
     if (!sub) return res.json([]);
     const [rows] = await pool.query(
-      'SELECT id, order_id, item_type, amount, currency, course_id, bundle_id, payment_method, note, status, reviewer_note, submitted_at, reviewed_at FROM payment_proofs WHERE subscriber_id = ? AND tenant_id=? ORDER BY submitted_at DESC LIMIT 100',
+      'SELECT id, order_id, payment_intent_id, payment_attempt_id, item_type, amount, currency, course_id, bundle_id, payment_method, note, status, reviewer_note, submitted_at, reviewed_at FROM payment_proofs WHERE subscriber_id = ? AND tenant_id=? ORDER BY submitted_at DESC LIMIT 100',
       [sub.id, tenantId]
     );
     res.json(rows);
@@ -252,19 +260,82 @@ router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
 router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const tenantId = tenantIdFor(req);
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
     const statusFilter = req.query.status; // 'PENDING' | 'APPROVED' | 'REJECTED' | undefined (all)
+    const normalizedStatus = statusFilter ? String(statusFilter).toUpperCase() : null;
+    if (normalizedStatus && !['PENDING', 'APPROVED', 'REJECTED'].includes(normalizedStatus)) {
+      return res.status(400).json({ error: 'Invalid payment proof status' });
+    }
     let sql = `SELECT pp.*, s.name AS subscriber_name, s.phone AS subscriber_phone, s.email AS subscriber_email,
-               c.title AS course_title
+               c.title AS course_title,
+               CASE
+                 WHEN pp.status<>'PENDING' THEN 'completed'
+                 WHEN pp.review_due_at<NOW() THEN 'breached'
+                 WHEN pp.review_due_at<DATE_ADD(NOW(),INTERVAL 60 MINUTE) THEN 'due_soon'
+                 ELSE 'within_sla'
+               END AS sla_state
                FROM payment_proofs pp
-               LEFT JOIN subscribers s ON s.id = pp.subscriber_id
-               LEFT JOIN courses c ON c.id = pp.course_id
+               LEFT JOIN subscribers s ON s.id = pp.subscriber_id AND s.tenant_id=pp.tenant_id
+               LEFT JOIN courses c ON c.id = pp.course_id AND c.tenant_id=pp.tenant_id
                WHERE pp.tenant_id=?`;
     const params = [tenantId];
-    if (statusFilter) { sql += ' AND pp.status = ?'; params.push(statusFilter.toUpperCase()); }
+    if (scope.branchId) { sql += ' AND pp.branch_id=?'; params.push(scope.branchId); }
+    if (normalizedStatus) { sql += ' AND pp.status = ?'; params.push(normalizedStatus); }
     sql += ' ORDER BY pp.submitted_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
+});
+
+router.get('/api/me/lecture-notes/:lectureId', requireAuth, async (req, res) => {
+  try {
+    const tenantId = tenantIdFor(req);
+    const email = req.user.email?.toLowerCase().trim() || '';
+    const [[sub]] = await pool.query(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1',
+      [tenantId, req.user.uid || '', email]
+    );
+    if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
+    const access = await resolveLectureAccess({ tenantId, subscriberId: sub.id, lectureId: req.params.lectureId });
+    if (!access.accessible) return res.status(403).json({ error: `Lecture access denied: ${access.reason}` });
+    const [[row]] = await pool.query(
+      'SELECT note_text FROM lecture_completions WHERE tenant_id=? AND subscriber_id=? AND lecture_id=? LIMIT 1',
+      [tenantId, sub.id, req.params.lectureId]
+    );
+    res.json({ note: row?.note_text || '' });
+  } catch (error) {
+    logger.error('[lecture-notes:get]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/api/me/lecture-notes/:lectureId', requireAuth, async (req, res) => {
+  try {
+    const tenantId = tenantIdFor(req);
+    const email = req.user.email?.toLowerCase().trim() || '';
+    const note = String(req.body?.note || '').slice(0, 10000);
+    const [[sub]] = await pool.query(
+      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1',
+      [tenantId, req.user.uid || '', email]
+    );
+    if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
+    const access = await resolveLectureAccess({ tenantId, subscriberId: sub.id, lectureId: req.params.lectureId });
+    if (!access.accessible) return res.status(403).json({ error: `Lecture access denied: ${access.reason}` });
+    await pool.query(
+      `INSERT INTO lecture_completions
+         (id,tenant_id,subscriber_id,lecture_id,course_id,progress_pct,watch_seconds,note_text)
+       VALUES (UUID(),?,?,?,?,0,0,?)
+       ON DUPLICATE KEY UPDATE note_text=VALUES(note_text),tenant_id=VALUES(tenant_id)`,
+      [tenantId, sub.id, req.params.lectureId, access.lecture.course_id, note]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('[lecture-notes:put]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Admin: approve or reject a payment proof
@@ -274,16 +345,20 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
   try {
     const { id } = req.params;
     const { action, reviewer_note } = req.body; // action: 'approve' | 'reject'
+    const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'action must be approve or reject' });
+    if (String(reviewer_note || '').length > 2000) return res.status(400).json({ error: 'reviewer_note is too long' });
     const tenantId = tenantIdFor(req);
     await conn.beginTransaction();
     transactionStarted = true;
     const [[proof]] = await conn.query(
       `SELECT pp.id, pp.order_id, pp.subscriber_id, pp.course_id, pp.bundle_id, pp.item_type,
               pp.amount, pp.currency, pp.payment_method, pp.proof_image, pp.note, pp.status,
-              pp.branch_id, o.item_id, o.item_title, o.notes AS order_notes,
+              pp.branch_id, pp.payment_intent_id, pp.payment_attempt_id, pp.second_review_required,
+              pp.first_reviewer_id, pp.first_review_note, pp.first_reviewed_at, pp.review_due_at, pp.risk_level,
+              o.item_id, o.item_title, o.notes AS order_notes,
               o.customer_name, o.customer_email, o.customer_phone, o.status AS order_status,
-              s.lead_id, s.branch
+               s.lead_id, s.branch, s.assigned_sales_id
          FROM payment_proofs pp
          JOIN orders o ON o.id=pp.order_id AND o.tenant_id=pp.tenant_id
          JOIN subscribers s ON s.id=pp.subscriber_id AND s.tenant_id=pp.tenant_id
@@ -291,14 +366,54 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       [id, tenantId]
     );
     if (!proof) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Proof not found' }); }
+    if (!financialRecordMatches(scope, proof)) {
+      await conn.rollback();
+      transactionStarted = false;
+      return res.status(403).json({ error: 'Payment proof is outside your financial scope' });
+    }
     if (proof.status !== 'PENDING') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Already reviewed' }); }
-    if (proof.order_status !== 'pending') { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending' }); }
+    if (!isPendingOrder(proof.order_status)) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending' }); }
 
+    const actorId = req.staffRecord?.id || req.user?.uid || req.user?.email || 'system';
+    const reviewStep = paymentProofReviewStep({
+      action,
+      secondReviewRequired: Boolean(proof.second_review_required),
+      firstReviewerId: proof.first_reviewer_id,
+      actorId,
+    });
     const reviewed_at = new Date();
+    if (reviewStep === 'first_approve') {
+      await conn.query(
+        `UPDATE payment_proofs
+            SET first_reviewer_id=?,first_review_note=?,first_reviewed_at=?
+          WHERE id=? AND tenant_id=? AND status='PENDING' AND first_reviewer_id IS NULL`,
+        [actorId, reviewer_note || null, reviewed_at, id, tenantId]
+      );
+      await logFinancialAudit({
+        entityType: 'payment_proof',
+        entityId: proof.id,
+        action: 'first_approved',
+        oldData: { status: proof.status, first_reviewer_id: null },
+        newData: { status: 'PENDING', first_reviewer_id: actorId, second_review_required: true },
+        amount: proof.amount,
+        actor: req.user?.email || actorId,
+        tenantId,
+        db: conn,
+        strict: true,
+      });
+      await conn.commit();
+      transactionStarted = false;
+      return res.json({
+        ok: true,
+        status: 'PENDING',
+        pendingSecondApproval: true,
+        review_due_at: proof.review_due_at,
+      });
+    }
     const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
     await conn.query(
       `UPDATE payment_proofs SET status=?, reviewer_id=?, reviewer_note=?, reviewed_at=? WHERE id=? AND tenant_id=?`,
-      [newStatus, req.user?.uid || req.user?.email || null, reviewer_note || null, reviewed_at, id, tenantId]
+      [newStatus, actorId, reviewer_note || null, reviewed_at, id, tenantId]
     );
 
     if (action === 'approve') {
@@ -310,13 +425,13 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       const normalizedType = String(proof.item_type || 'other').toUpperCase();
       const paymentType = ['COURSE', 'BUNDLE', 'CONSULTATION', 'CERTIFICATE'].includes(normalizedType) ? normalizedType : 'OTHER';
       const payId = `proof-${proof.id}`;
-      await assertWritable(new Date().toISOString().slice(0, 10), conn, tenantId);
+      await assertWritable(dateOnlyInTimeZone(), conn, tenantId);
       await conn.query(
         `INSERT INTO payments
            (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
             transaction_id, is_installment, course_expected, note, date, status, staff_id, staff_name,
             source, item_title, branch, branch_id, tenant_id, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,0,?,?,NOW(),'paid',?,?,?,?,?,?,?,?,NOW())`,
+         VALUES (?,?,?,?,?,?,?,?,?,0,?,?,NOW(),'paid',?,?,?,?,?,?,?,NOW())`,
         [payId, proof.subscriber_id, proof.course_id || null, proof.bundle_id || null,
          proof.amount, proof.currency || 'EGP', paymentType, proof.payment_method || 'تحويل', proof.id,
          proof.amount,
@@ -333,38 +448,33 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         tenantId,
       }, conn);
       if (!journalId) throw new Error('Payment proof journal posting failed');
+      await logPaymentAudit(
+        payId, 'create', null, 'paid', proof.amount, proof.subscriber_id,
+        req.user?.email || 'system', tenantId, conn, true,
+      );
+      await recordPaymentCompensation({
+        paymentId: payId,
+        tenantId,
+        commissionStaffId: proof.assigned_sales_id || null,
+        actor: reviewer?.id || req.user?.email || 'system',
+      }, conn);
 
-      if (paymentType === 'COURSE' && proof.course_id) {
-        const [[course]] = await conn.query('SELECT id FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [proof.course_id, tenantId]);
-        if (!course) throw new Error('Paid course does not exist in tenant');
-        await conn.query(
-          `INSERT INTO enrollments (id, subscriber_id, course_id, enrolled_at, access_type, tenant_id, branch_id)
-           SELECT ?,?,?,NOW(),'full',?,?
-           WHERE NOT EXISTS (SELECT 1 FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=?)`,
-          [uuidv4(), proof.subscriber_id, proof.course_id, tenantId, proof.branch_id || 'branch-other',
-           proof.subscriber_id, proof.course_id, tenantId]
-        );
-      } else if (paymentType === 'BUNDLE' && proof.bundle_id) {
-        const [bundleCourses] = await conn.query(
-          `SELECT bc.course_id FROM bundle_courses bc
-             JOIN courses c ON c.id=bc.course_id AND c.tenant_id=?
-             JOIN bundles b ON b.id=bc.bundle_id AND b.tenant_id=?
-            WHERE bc.bundle_id=?`,
-          [tenantId, tenantId, proof.bundle_id]
-        );
-        if (!bundleCourses.length) throw new Error('Paid bundle has no tenant courses');
-        for (const row of bundleCourses) {
-          await conn.query(
-            `INSERT INTO enrollments (id, subscriber_id, course_id, bundle_id, enrolled_at, access_type, tenant_id, branch_id)
-             SELECT ?,?,?,?,?, 'full',?,?
-             WHERE NOT EXISTS (SELECT 1 FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=?)`,
-            [uuidv4(), proof.subscriber_id, row.course_id, proof.bundle_id, reviewed_at,
-             tenantId, proof.branch_id || 'branch-other', proof.subscriber_id, row.course_id, tenantId]
-          );
-        }
+      if ((paymentType === 'COURSE' && proof.course_id) || (paymentType === 'BUNDLE' && proof.bundle_id)) {
+        await grantCourseSelections({
+          tenantId, subscriberId: proof.subscriber_id,
+          selections: [{ courseId: paymentType === 'BUNDLE' ? `bundle:${proof.bundle_id}` : proof.course_id, accessType: 'full' }],
+          branchId: proof.branch_id || 'branch-other', source: 'payment_proof',
+          actor: req.user?.email || 'system',
+        }, conn);
       } else if (paymentType === 'CONSULTATION') {
         const extra = tryJson(proof.order_notes, {});
-        await conn.query(
+        const [updatedConsultation] = await conn.query(
+          `UPDATE consultations
+              SET status='CONFIRMED',amount=?,currency=?,subscriber_id=?,updated_at=NOW()
+            WHERE id=? AND tenant_id=? AND deleted_at IS NULL AND status IN ('PENDING','CONFIRMED')`,
+          [proof.amount, proof.currency || 'EGP', proof.subscriber_id, proof.item_id, tenantId]
+        );
+        if (!updatedConsultation.affectedRows) await conn.query(
           `INSERT INTO consultations
              (id, client_name, client_email, client_phone, therapist_id, session_type, session_date,
               status, notes, amount, currency, subscriber_id, tenant_id, branch_id, created_at)
@@ -402,6 +512,30 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
       }, conn);
     }
 
+    if (proof.payment_intent_id && proof.payment_attempt_id) {
+      await settlePaymentAttempt(conn, {
+        tenantId,
+        intentId: proof.payment_intent_id,
+        attemptId: proof.payment_attempt_id,
+        approved: action === 'approve',
+        paymentId: action === 'approve' ? `proof-${proof.id}` : null,
+        failureCode: action === 'reject' ? 'PROOF_REJECTED' : null,
+      });
+    }
+
+    await logFinancialAudit({
+      entityType: 'payment_proof',
+      entityId: proof.id,
+      action: action === 'approve' ? 'approved' : 'rejected',
+      oldData: { status: proof.status },
+      newData: { status: newStatus, reviewer_note: reviewer_note || null },
+      amount: proof.amount,
+      actor: req.user?.email || 'system',
+      tenantId,
+      db: conn,
+      strict: true,
+    });
+
     await conn.commit();
     transactionStarted = false;
 
@@ -436,17 +570,26 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
     res.json({ ok: true, status: newStatus });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   } finally { conn.release(); }
 });
 
 // Admin: get single payment proof image (with auth check)
 router.get('/api/admin/payment-proofs/:id/image', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const [[row]] = await pool.query('SELECT proof_image FROM payment_proofs WHERE id = ? AND tenant_id=?', [req.params.id, tenantIdFor(req)]);
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const [[row]] = await pool.query(
+      'SELECT proof_image, branch_id FROM payment_proofs WHERE id = ? AND tenant_id=?',
+      [req.params.id, tenantIdFor(req)]
+    );
     if (!row || !row.proof_image) return res.status(404).json({ error: 'No image' });
+    if (!financialRecordMatches(scope, row)) return res.status(403).json({ error: 'Payment proof is outside your financial scope' });
     res.json({ image: row.proof_image });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 

@@ -5,7 +5,7 @@ ALTER TABLE automation_workflows
 
 ALTER TABLE automation_log
   ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(36) NOT NULL DEFAULT 'tenant-default' AFTER id,
-  ADD INDEX IF NOT EXISTS idx_automation_log_tenant_created (tenant_id, created_at);
+  ADD INDEX IF NOT EXISTS idx_automation_log_tenant_triggered (tenant_id, triggered_at);
 
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(36) NOT NULL DEFAULT 'tenant-default' AFTER id,

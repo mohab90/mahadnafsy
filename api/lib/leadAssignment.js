@@ -2,6 +2,8 @@
 
 const { pool } = require('./db');
 const { logLeadEventStrict } = require('./crm');
+const { findLeadById } = require('./leadRepository');
+const { normalizeBranch } = require('./leadAssignmentPolicy');
 
 // Canonical "least-loaded" sales-rep picker for single-lead auto-assignment
 // at capture time (public registration, chatbot capture, self-registration,
@@ -22,19 +24,48 @@ const { logLeadEventStrict } = require('./crm');
 // smart-route re-sorting batch distributor) are intentionally NOT routed
 // through this — they distribute a whole batch in one pass with their own
 // rebalancing strategy, which this single-pick helper isn't shaped for.
-async function getNextSalesRep(tenantId, db = pool) {
-  const [reps] = await db.query(
-    `SELECT s.id, s.name FROM staff s
-     LEFT JOIN leads l
-       ON l.assigned_sales_id = s.id AND l.tenant_id = s.tenant_id AND l.hidden = 0
-      AND l.status NOT IN ('converted','lost','archived','disqualified')
-     WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role) IN ('SALES','MANAGER')
-     GROUP BY s.id, s.name
-     ORDER BY COUNT(l.id) ASC, s.name ASC
-     LIMIT 1`,
+async function getNextSalesRep(tenantId, db = pool, options = {}) {
+  const branch = normalizeBranch(options.branch);
+  const teamKey = String(options.teamKey || 'sales').trim().toLowerCase();
+  const [rows] = await db.query(
+    `SELECT s.id,s.name,p.id AS policy_id,p.branch_key,p.weight,p.max_open_leads,
+            p.is_available,p.last_assigned_at
+       FROM staff s
+       LEFT JOIN crm_assignment_members p
+         ON p.tenant_id=s.tenant_id AND p.staff_id=s.id AND p.team_key=?
+        AND p.branch_key IN (?, '*')
+      WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL AND UPPER(s.role)='SALES'`,
+    [teamKey, branch, tenantId]
+  );
+  const [loads] = await db.query(
+    `SELECT assigned_sales_id,COUNT(*) active_leads FROM leads
+      WHERE tenant_id=? AND hidden=0
+        AND status NOT IN ('converted','lost','archived','disqualified')
+        AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`,
     [tenantId]
   );
-  return reps[0] || null;
+  const loadByStaff = new Map(loads.map(row => [String(row.assigned_sales_id), Number(row.active_leads)]));
+  const selectedPolicy = new Map();
+  for (const row of rows) {
+    const current = selectedPolicy.get(row.id);
+    if (!current || (row.branch_key === branch && current.branch_key !== branch)) selectedPolicy.set(row.id, row);
+  }
+  const reps = [...selectedPolicy.values()]
+    .map(row => ({ ...row, activeLeads: loadByStaff.get(String(row.id)) || 0 }))
+    .filter(row => row.policy_id == null || (Boolean(row.is_available) && (row.max_open_leads == null || row.activeLeads < Number(row.max_open_leads))))
+    .sort((a, b) =>
+      (a.activeLeads / Math.max(Number(a.weight) || 1, 0.1)) - (b.activeLeads / Math.max(Number(b.weight) || 1, 0.1)) ||
+      new Date(a.last_assigned_at || 0) - new Date(b.last_assigned_at || 0) ||
+      String(a.name).localeCompare(String(b.name))
+    );
+  const rep = reps[0] || null;
+  if (rep?.policy_id) {
+    await db.query(
+      'UPDATE crm_assignment_members SET last_assigned_at=NOW() WHERE id=? AND tenant_id=?',
+      [rep.policy_id, tenantId]
+    );
+  }
+  return rep ? { id: rep.id, name: rep.name } : null;
 }
 
 async function assignLead({ tenantId, leadId, salesId, actor = null, reason = 'Lead assigned', metadata = {} }, db = null) {
@@ -47,10 +78,7 @@ async function assignLead({ tenantId, leadId, salesId, actor = null, reason = 'L
   const conn = db || await pool.getConnection();
   try {
     if (ownsConnection) await conn.beginTransaction();
-    const [[lead]] = await conn.query(
-      'SELECT id,assigned_sales_id,assigned_sales_name FROM leads WHERE id=? AND tenant_id=? AND hidden=0 LIMIT 1 FOR UPDATE',
-      [leadId, tenantId]
-    );
+    const lead = await findLeadById({ tenantId, leadId, db: conn, forUpdate: true });
     if (!lead) {
       const error = new Error('Lead not found');
       error.statusCode = 404;

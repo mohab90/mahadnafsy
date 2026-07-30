@@ -90,8 +90,16 @@ const Bundles: React.FC = () => {
                                 <p className="text-gray-200 text-sm leading-relaxed line-clamp-3">{bundle.description}</p>
                             </div>
                             <div className="mt-8">
-                                <div className="text-3xl font-bold mb-1">{bundle.price?.[currency] ?? 0} {currencySymbol}</div>
-                                <div className="text-white/60 line-through text-sm mb-4">{content['bundles.card.oldPricePrefix'] || 'بدلاً من'} {bundle.originalPrice?.[currency] ?? 0} {currencySymbol}</div>
+                                {(bundle.price?.[currency] ?? 0) > 0 ? (
+                                  <>
+                                    <div className="text-3xl font-bold mb-1">{bundle.price?.[currency]} {currencySymbol}</div>
+                                    {(bundle.originalPrice?.[currency] ?? 0) > (bundle.price?.[currency] ?? 0) && (
+                                      <div className="text-white/60 line-through text-sm mb-4">{content['bundles.card.oldPricePrefix'] || 'بدلاً من'} {bundle.originalPrice?.[currency]} {currencySymbol}</div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="text-sm font-bold text-amber-200 mb-4">السعر غير متاح في دولتك حاليًا</div>
+                                )}
                                 <Link to={`/bundle/${bundle.slug || bundle.id}`} className="block w-full text-center bg-white text-primary-700 font-bold py-3 rounded-lg hover:bg-gray-50 transition shadow-lg">
                                     {content['bundles.card.detailsCta'] || 'عرض تفاصيل المسار'}
                                 </Link>
@@ -140,12 +148,18 @@ const Bundles: React.FC = () => {
                                 <span className="text-blue-800 font-medium">{content['bundles.benefits.supervision'] || 'إشراف مهني مجاني'}</span>
                             </div>
                             <div className="mr-auto flex gap-2">
-                                <button
-                                    onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
-                                    className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition shadow shadow-primary-500/20 flex items-center gap-1.5"
-                                >
-                                    <Check size={15} /> اشترك الآن واحصل على خصم إضافي
-                                </button>
+                                {(bundle.price?.[currency] ?? 0) > 0 ? (
+                                  <button
+                                      onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
+                                      className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition shadow shadow-primary-500/20 flex items-center gap-1.5"
+                                  >
+                                      <Check size={15} /> اشترك الآن واحصل على خصم إضافي
+                                  </button>
+                                ) : (
+                                  <span className="bg-amber-50 border border-amber-200 text-amber-800 font-bold px-5 py-2.5 rounded-xl text-sm">
+                                    تواصل معنا لتجهيز السعر
+                                  </span>
+                                )}
                                 <Link to={`/bundle/${bundle.slug || bundle.id}#register-form`}
                                     className="border-2 border-primary-600 text-primary-700 hover:bg-primary-50 font-bold px-5 py-2.5 rounded-xl text-sm transition flex items-center gap-1.5"
                                 >

@@ -5,16 +5,29 @@ const router = express.Router();
 
 const { pool } = require('../lib/db');
 const { ensureNotificationsTable } = require('../lib/notification');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdminOrStaff, requirePermission, requireAnyPermission } = require('../middleware/auth');
+
+const viewerKey = req => req.staffRecord?.id
+  ? `staff:${req.staffRecord.id}`
+  : `admin:${req.user?.uid || String(req.user?.email || '').toLowerCase()}`;
+const visibilitySql = req => req.isSuperAdmin
+  ? { sql: '', params: [] }
+  : { sql: ' AND (n.recipient_staff_id IS NULL OR n.recipient_staff_id=?)', params: [req.staffRecord.id] };
 
 // GET /api/admin/notifications
-router.get('/api/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
+router.get('/api/admin/notifications', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_notifications', 'manage_inbox'), async (req, res) => {
   try {
     await ensureNotificationsTable();
+    const visibility = visibilitySql(req);
     const [rows] = await pool.query(
-      `SELECT id, type, title, message, data_json, read_at, created_at
-       FROM notifications WHERE tenant_id=? ORDER BY created_at DESC LIMIT 100`,
-      [req.tenantId]
+      `SELECT n.id, n.type, n.title, n.message, n.data_json,
+              COALESCE(r.read_at, n.read_at) AS read_at, n.created_at
+         FROM notifications n
+         LEFT JOIN notification_reads r
+           ON r.notification_id=n.id AND r.tenant_id=n.tenant_id AND r.viewer_key=?
+        WHERE n.tenant_id=?${visibility.sql}
+        ORDER BY n.created_at DESC LIMIT 100`,
+      [viewerKey(req), req.tenantId, ...visibility.params]
     );
     const unread = rows.filter(r => !r.read_at).length;
     res.json({ rows, unread });
@@ -33,10 +46,17 @@ router.get('/api/admin/notifications', requireAuth, requireAdmin, async (req, re
 // Removed rather than optimized.
 
 // PATCH /api/admin/notifications/read-all
-router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/notifications/read-all', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_notifications', 'manage_inbox'), async (req, res) => {
   try {
     await ensureNotificationsTable();
-    await pool.query('UPDATE notifications SET read_at=NOW() WHERE tenant_id=? AND read_at IS NULL', [req.tenantId]);
+    const visibility = visibilitySql(req);
+    await pool.query(
+      `INSERT INTO notification_reads (notification_id, tenant_id, viewer_key, read_at)
+       SELECT n.id, n.tenant_id, ?, NOW()
+         FROM notifications n
+        WHERE n.tenant_id=?${visibility.sql}
+       ON DUPLICATE KEY UPDATE read_at=VALUES(read_at)`,
+      [viewerKey(req), req.tenantId, ...visibility.params]);
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
@@ -45,10 +65,17 @@ router.patch('/api/admin/notifications/read-all', requireAuth, requireAdmin, asy
 });
 
 // PATCH /api/admin/notifications/:id/read
-router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdminOrStaff, requireAnyPermission('manage_notifications', 'manage_inbox'), async (req, res) => {
   try {
     await ensureNotificationsTable();
-    const [result] = await pool.query('UPDATE notifications SET read_at=NOW() WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
+    const visibility = visibilitySql(req);
+    const [result] = await pool.query(
+      `INSERT INTO notification_reads (notification_id, tenant_id, viewer_key, read_at)
+       SELECT n.id, n.tenant_id, ?, NOW()
+         FROM notifications n
+        WHERE n.id=? AND n.tenant_id=?${visibility.sql}
+       ON DUPLICATE KEY UPDATE read_at=VALUES(read_at)`,
+      [viewerKey(req), req.params.id, req.tenantId, ...visibility.params]);
     if (!result.affectedRows) return res.status(404).json({ error: 'Notification not found' });
     res.json({ ok: true });
   } catch (e) {
@@ -58,7 +85,7 @@ router.patch('/api/admin/notifications/:id/read', requireAuth, requireAdmin, asy
 });
 
 // DELETE /api/admin/notifications/:id — NotifInboxMgmtTab.tsx's delete button (NOT-01/02).
-router.delete('/api/admin/notifications/:id', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/api/admin/notifications/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_notifications'), async (req, res) => {
   try {
     await ensureNotificationsTable();
     const [result] = await pool.query('DELETE FROM notifications WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);

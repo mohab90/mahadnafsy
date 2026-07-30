@@ -13,22 +13,23 @@ const TicketRating: React.FC = () => {
   const [done, setDone] = useState(false);
 
   const id = new URLSearchParams(window.location.search).get('id') || '';
+  const token = new URLSearchParams(window.location.search).get('token') || '';
 
   useEffect(() => {
     document.title = 'تقييم الدعم | معهد الدراسات النفسية';
-    if (!id) { setNotFound(true); setLoading(false); return; }
-    fetch(`/api/ticket-csat/${id}`)
+    if (!id || !token) { setNotFound(true); setLoading(false); return; }
+    fetch(`/api/ticket-csat/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`)
       .then(r => (r.ok ? r.json() : Promise.reject()))
       .then(d => { setSubject(d.subject || ''); setAlreadyRated(!!d.rated); })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, token]);
 
   const submit = async () => {
     if (score < 1) return;
     setSubmitting(true);
     try {
-      const r = await fetch(`/api/ticket-csat/${id}`, {
+      const r = await fetch(`/api/ticket-csat/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ score, comment }),
       });

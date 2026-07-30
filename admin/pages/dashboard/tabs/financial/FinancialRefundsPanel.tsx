@@ -35,7 +35,7 @@ const fmtDate = (value?: string) => value ? new Date(value).toLocaleDateString('
 const fmtMoney = (amount: RefundRow['amount'], currency = 'EGP') =>
   `${Math.round(toAmount(amount)).toLocaleString('ar-EG')} ${currency || 'EGP'}`;
 
-export default function FinancialRefundsPanel({ notify }: { notify: (msg: string, tone?: 'success' | 'error') => void }) {
+export default function FinancialRefundsPanel({ notify, branch }: { notify: (msg: string, tone?: 'success' | 'error') => void; branch?: string }) {
   const [rows, setRows] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
@@ -48,7 +48,8 @@ export default function FinancialRefundsPanel({ notify }: { notify: (msg: string
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/finance/refunds', {
+      const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+      const response = await fetch(`/api/admin/finance/refunds${query}`, {
         credentials: 'include',
         headers: adminAuthHeaders(),
       });
@@ -59,7 +60,7 @@ export default function FinancialRefundsPanel({ notify }: { notify: (msg: string
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [branch, notify]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -71,7 +72,7 @@ export default function FinancialRefundsPanel({ notify }: { notify: (msg: string
         method: 'PUT',
         credentials: 'include',
         headers: adminAuthHeaders(true),
-        body: JSON.stringify({ status: actionStatus, notes: actionNote }),
+        body: JSON.stringify({ status: actionStatus, notes: actionNote, branch }),
       });
       if (!response.ok) throw new Error(await response.text());
       notify(`تم تحديث الطلب: ${actionStatus === 'APPROVED' ? 'مقبول' : 'مرفوض'}`, 'success');

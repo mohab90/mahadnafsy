@@ -13,7 +13,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: true,
+  // Staff accounts intentionally allow one active session. Serial browser tests
+  // avoid invalidating the same seeded identity from two workers.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',

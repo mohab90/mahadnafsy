@@ -10,7 +10,7 @@ type DashboardHomeOfferPanelProps = {
   content: ContentMap;
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
-  setContentValue: (key: string, value: string) => void;
+  setContentValue: (key: string, value: string) => Promise<boolean>;
   notify: NotifyFn;
   courses: Course[];
   offerSelectedCourseId: string;
@@ -28,41 +28,42 @@ export function DashboardHomeOfferPanel({
   offerSelectedCourseId,
   setOfferSelectedCourseId,
 }: DashboardHomeOfferPanelProps) {
-  const saveFields = () => {
-    fields.forEach((field) => {
+  const saveFields = async () => {
+    const saved = await Promise.all(fields.map((field) => {
       const value = policyDrafts[field.key] ?? content[field.key] ?? '';
-      setContentValue(field.key, value);
-    });
-    notify('success', 'تم حفظ إعدادات الصفحة الرئيسية بنجاح.');
+      return setContentValue(field.key, value);
+    }));
+    notify(saved.every(Boolean) ? 'success' : 'error', saved.every(Boolean)
+      ? 'تم حفظ إعدادات الصفحة الرئيسية بنجاح.'
+      : 'تعذر حفظ بعض إعدادات الصفحة الرئيسية.');
   };
 
-  const applySelectedCourse = () => {
+  const applySelectedCourse = async () => {
     const selected = courses.find((course) => course.id === offerSelectedCourseId);
     if (!selected) {
       notify('error', 'يرجى اختيار كورس أولاً.');
       return;
     }
 
-    setContentValue('offer.courseId', selected.id);
-    setContentValue('home.offer.title', selected.title);
-    setContentValue(
-      'home.offer.description',
-      (selected.shortDescription || selected.description?.slice(0, 200) || '')
-        .replace(/<[^>]*>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .trim()
-    );
-
     const egpPrice = selected.price?.EGP ?? 0;
     const egpOriginal = selected.originalPrice?.EGP ?? 0;
-    setContentValue('home.offer.newPrice', egpPrice > 0 ? `${egpPrice} ج.م` : '');
-    setContentValue('home.offer.oldPrice', egpOriginal > 0 ? `${egpOriginal} ج.م` : '');
+    const updates: [string, string][] = [
+      ['offer.courseId', selected.id],
+      ['home.offer.title', selected.title],
+      ['home.offer.description', (selected.shortDescription || selected.description?.slice(0, 200) || '')
+        .replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()],
+      ['home.offer.newPrice', egpPrice > 0 ? `${egpPrice} ج.م` : ''],
+      ['home.offer.oldPrice', egpOriginal > 0 ? `${egpOriginal} ج.م` : ''],
+      ['home.offer.registerFor', `${selected.title} (عرض 24 ساعة)`],
+    ];
     if (egpOriginal > 0 && egpPrice > 0) {
       const pct = Math.round(((egpOriginal - egpPrice) / egpOriginal) * 100);
-      setContentValue('home.offer.discount', `خصم ${pct}%`);
+      updates.push(['home.offer.discount', `خصم ${pct}%`]);
     }
-    setContentValue('home.offer.registerFor', `${selected.title} (عرض 24 ساعة)`);
-    notify('success', `تم تطبيق كورس "${selected.title}" على قسم العرض بنجاح.`);
+    const saved = await Promise.all(updates.map(([key, value]) => setContentValue(key, value)));
+    notify(saved.every(Boolean) ? 'success' : 'error', saved.every(Boolean)
+      ? `تم تطبيق كورس "${selected.title}" على قسم العرض بنجاح.`
+      : 'تعذر حفظ إعدادات العرض كاملة على السيرفر.');
   };
 
   return (
@@ -85,9 +86,11 @@ export function DashboardHomeOfferPanel({
           </h4>
           <button
             type="button"
-            onClick={() => {
-              setContentValue('offer.timerStartedAt', new Date().toISOString());
-              notify('success', 'تم إعادة ضبط مؤقت الـ24 ساعة.');
+            onClick={async () => {
+              const saved = await setContentValue('offer.timerStartedAt', new Date().toISOString());
+              notify(saved ? 'success' : 'error', saved
+                ? 'تم إعادة ضبط مؤقت الـ24 ساعة.'
+                : 'تعذر إعادة ضبط المؤقت على السيرفر.');
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors"
           >

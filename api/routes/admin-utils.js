@@ -10,7 +10,6 @@ const { sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
-const { writeAuditEvent } = require('../lib/auditTrail');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
 // Timers belong to the central worker. Starting them from a route module made
@@ -23,62 +22,29 @@ const ROUTE_LOCAL_CRONS_ENABLED = false;
 // ── FEATURE: GDPR — Export & Delete subscriber data ───────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/api/admin/subscribers/:id/export-data', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
-  try {
-    const subId = req.params.id;
-    const tenantId = req.tenantId;
-    const [[sub]] = await pool.query('SELECT id,name,email,phone,firebase_uid,is_active,source,notes,crm_json,client_code,created_at FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subId, tenantId]);
-    if (!sub) return res.status(404).json({ error: 'Not found' });
-    const [[user]] = await pool.query('SELECT id, email, name, role, created_at FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, sub.email?.toLowerCase().trim() || '']);
-    const [payments] = await pool.query('SELECT id,subscriber_id,amount,currency,payment_type,payment_method,transaction_id,is_installment,course_id,bundle_id,note,status,staff_id,staff_name,from_account,source,item_title,created_at FROM payments WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    const [enrollments] = await pool.query('SELECT id,subscriber_id,course_id,access_level,enrolled_at FROM enrollments WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    const [completions] = await pool.query('SELECT id,subscriber_id,course_id,completed_at FROM course_completions WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    const [tickets] = await pool.query('SELECT id,subscriber_id,subject,status,created_at FROM support_tickets WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    const [nps] = await pool.query('SELECT id,subscriber_id,score,comment,created_at FROM nps_responses WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    const crm = tryJson(sub.crm_json, {});
-    const exportData = {
-      exportedAt: new Date().toISOString(),
-      subscriber: { ...sub, crm_json: undefined },
-      crmData: crm,
-      userAccount: user || null,
-      payments, enrollments, completions, tickets, nps,
-    };
-    await writeAuditEvent({ action: 'subscriber_data_exported', entityType: 'subscriber', entityId: subId, severity: 'warning', req });
-    res.setHeader('Content-Disposition', `attachment; filename="subscriber-${subId}-export.json"`);
-    res.setHeader('Content-Type', 'application/json');
-    res.json(exportData);
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-router.delete('/api/admin/subscribers/:id/delete-data', requireAuth, requireAdmin, async (req, res) => {
-  let conn = null;
-  let transactionStarted = false;
-  try {
-    const subId = req.params.id;
-    const tenantId = req.tenantId;
-    conn = await pool.getConnection();
-    await conn.beginTransaction(); transactionStarted = true;
-    const [[sub]] = await conn.query('SELECT email,firebase_uid FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [subId, tenantId]);
-    if (!sub) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Not found' }); }
-    // Anonymize rather than delete (GDPR soft-delete)
-    const anonEmail = `deleted-${subId}@anon.mahad`;
-    await conn.query(
-      "UPDATE subscribers SET name='[محذوف]',email=?,phone=NULL,crm_json='{}',notes=NULL,is_active=0,deleted_at=NOW() WHERE id=? AND tenant_id=?",
-      [anonEmail, subId, tenantId]
-    );
-    await conn.query("UPDATE users SET name='[محذوف]',email=?,is_active=0 WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?)", [anonEmail, tenantId, sub.firebase_uid || '', sub.email?.toLowerCase().trim() || '']);
-    await conn.query('DELETE FROM support_tickets WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    await conn.query('DELETE FROM nps_responses WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    await conn.query('DELETE FROM lecture_progress WHERE subscriber_id=? AND tenant_id=?', [subId, tenantId]);
-    await conn.query("DELETE FROM marketing_suppressions WHERE tenant_id=? AND subject_type='subscriber' AND subject_id=?", [tenantId, subId]);
-    await writeAuditEvent({ action: 'subscriber_data_anonymized', entityType: 'subscriber', entityId: subId, severity: 'critical', req, db: conn });
-    await conn.commit(); transactionStarted = false;
-    res.json({ ok: true, message: 'Subscriber data anonymized per GDPR' });
-  } catch (e) {
-    if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
-  } finally { conn?.release(); }
-});
+// Stop legacy clients before the former partial implementations below. The
+// reviewed privacy workflow is the only supported export/erasure boundary.
+router.get(
+  '/api/admin/subscribers/:id/export-data',
+  requireAuth,
+  requireAdminOrStaff,
+  requirePermission('export_subscribers'),
+  (_req, res) => res.status(410).json({
+    error: 'Use /api/admin/subscribers/:id/privacy-export',
+    code: 'PRIVACY_WORKFLOW_REQUIRED',
+  })
+);
+router.delete(
+  '/api/admin/subscribers/:id/delete-data',
+  requireAuth,
+  requireAdminOrStaff,
+  requirePermission('delete_subscribers'),
+  bulkOperationLimiter,
+  (_req, res) => res.status(410).json({
+    error: 'Use the reviewed privacy request workflow',
+    code: 'PRIVACY_WORKFLOW_REQUIRED',
+  })
+);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Auto DB Backup status ────────────────────────────────────────
@@ -209,7 +175,7 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, bulkOpera
               COUNT(DISTINCT e.course_id) AS courses_count,
               COALESCE(SUM(p.amount_egp),0) AS total_paid
        FROM subscribers s
-       LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id
+       LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id AND e.status='active'
        LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.status='paid'
        WHERE s.tenant_id=?
        GROUP BY s.id ORDER BY s.created_at DESC LIMIT 10000`, [req.tenantId]
@@ -314,14 +280,15 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
              DATEDIFF(CURDATE(), l.next_follow_up_date) AS days_overdue,
              st.name AS staff_name, st.email AS staff_email
       FROM leads l
-      JOIN staff st ON st.id = l.assigned_sales_id
-      WHERE l.hidden = 0
+      JOIN staff st ON st.id=l.assigned_sales_id AND st.tenant_id=l.tenant_id
+      WHERE l.tenant_id=?
+        AND l.hidden = 0
         AND l.next_follow_up_date < CURDATE()
         AND l.status NOT IN ('CONVERTED','LOST','CLOSED')
         AND st.email IS NOT NULL AND st.email != ''
       ORDER BY st.id, l.next_follow_up_date ASC
       LIMIT 500
-    `);
+    `, [DEFAULT_TENANT_ID]);
     if (!overdue.length) return;
     // Group by staff email
     const byStaff = {};
@@ -359,8 +326,8 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     }
     logger.info(`[FollowUpReminder] Sent ${emailsSent} emails for ${overdue.length} overdue leads`);
     await pool.query(
-      'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
-      [uuidv4(), 'auto_reminder', 'leads', null, `تذكير متابعات تلقائي — ${overdue.length} ليد لـ ${emailsSent} موظف`, 'system']
+      'INSERT INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?,?)',
+      [uuidv4(), DEFAULT_TENANT_ID, 'auto_reminder', 'leads', null, `تذكير متابعات تلقائي — ${overdue.length} ليد لـ ${emailsSent} موظف`, 'system']
     ).catch(() => {});
   } catch (e) { logger.warn('[FollowUpReminder] error:', e.message); }
 }, 60 * 60 * 1000); // check every hour
@@ -381,11 +348,11 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
 
     // Fetch all active installment plans with subscriber contact info
     const [plans] = await pool.query(`
-      SELECT ip.id, ip.title, ip.total_amount, ip.currency,
+      SELECT ip.id, ip.tenant_id, ip.title, ip.total_amount, ip.currency,
              ip.installments_count, ip.installment_amounts, ip.due_dates, ip.paid_dates,
              s.id AS sub_id, s.name AS sub_name, s.phone AS sub_phone, s.email AS sub_email
       FROM installment_plans ip
-      JOIN subscribers s ON s.id = ip.subscriber_id
+      JOIN subscribers s ON s.id = ip.subscriber_id AND s.tenant_id=ip.tenant_id
       WHERE ip.status = 'active'
       LIMIT 2000
     `);
@@ -404,6 +371,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         if (due >= today) continue;          // not yet overdue
         overdueList.push({
           planId:    plan.id,
+          tenantId:  plan.tenant_id,
           planTitle: plan.title,
           subId:     plan.sub_id,
           subName:   plan.sub_name,
@@ -425,11 +393,12 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     // Send WhatsApp to each subscriber (deduplicated — one message per subscriber)
     const notifiedSubs = new Set();
     for (const item of overdueList) {
-      if (!item.subPhone || notifiedSubs.has(item.subId)) continue;
-      notifiedSubs.add(item.subId);
+      const subscriberKey = `${item.tenantId}:${item.subId}`;
+      if (!item.subPhone || notifiedSubs.has(subscriberKey)) continue;
+      notifiedSubs.add(subscriberKey);
 
       // Collect all overdue installments for this subscriber
-      const subItems = overdueList.filter(x => x.subId === item.subId);
+      const subItems = overdueList.filter(x => x.tenantId === item.tenantId && x.subId === item.subId);
       const lines = subItems.map(x =>
         `• ${x.planTitle} — القسط ${x.installmentNum}/${x.totalInstallments} (${x.amount.toLocaleString()} ${x.currency}) — متأخر ${x.daysOverdue} يوم`
       ).join('\n');
@@ -440,7 +409,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         `${lines}\n\n` +
         `يُرجى التواصل مع الفريق لترتيب السداد.\nشكراً لتعاونكم 🙏`;
 
-      const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId || DEFAULT_TENANT_ID });
+      const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId });
       if (result.ok) waSent++;
     }
 
@@ -488,12 +457,19 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
       );
     } catch (_) {}
 
-    await pool.query(
-      'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
-      [uuidv4(), 'auto_reminder', 'installments', null,
-       `تذكير أقساط تلقائي — ${overdueList.length} قسط متأخر، واتساب لـ ${waSent} مشترك`,
-       'system']
-    ).catch(() => {});
+    const tenantStats = overdueList.reduce((stats, item) => {
+      stats[item.tenantId] = (stats[item.tenantId] || 0) + 1;
+      return stats;
+    }, {});
+    for (const [tenantId, overdueCount] of Object.entries(tenantStats)) {
+      const notifiedCount = [...notifiedSubs].filter((key) => key.startsWith(`${tenantId}:`)).length;
+      await pool.query(
+        'INSERT INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?,?)',
+        [uuidv4(), tenantId, 'auto_reminder', 'installments', null,
+         `تذكير أقساط تلقائي — ${overdueCount} قسط متأخر، واتساب لـ ${notifiedCount} مشترك`,
+         'system']
+      ).catch(() => {});
+    }
 
     logger.info(`[InstallmentReminder] ${overdueList.length} overdue installments, WA sent: ${waSent}`);
   } catch (e) { logger.warn('[InstallmentReminder] error:', e.message); }
@@ -520,15 +496,26 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
     const { payment_id, amount, currency = 'EGP', reason } = req.body;
     const requestedAmount = Number(amount);
     if (!reason || !Number.isFinite(requestedAmount) || requestedAmount <= 0) return res.status(400).json({ error: 'reason and a positive amount are required' });
-    if (payment_id) {
-      const [[payment]] = await pool.query(
-        "SELECT id, amount, currency FROM payments WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' LIMIT 1",
-        [payment_id, sub.id, tenantId]
-      );
-      if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
-      if (requestedAmount > Number(payment.amount || 0)) return res.status(400).json({ error: 'Refund amount exceeds payment amount' });
-      if (currency !== payment.currency) return res.status(400).json({ error: 'Refund currency must match payment currency' });
+    if (!payment_id) return res.status(400).json({ error: 'payment_id is required' });
+    const [[payment]] = await pool.query(
+      "SELECT id, amount, currency, payment_method, source FROM payments WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' LIMIT 1",
+      [payment_id, sub.id, tenantId]
+    );
+    if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
+    if (Math.abs(requestedAmount - Number(payment.amount || 0)) >= 0.01) {
+      return res.status(409).json({ error: 'Partial refunds are not enabled; select the full payment amount' });
     }
+    if (String(currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
+      return res.status(400).json({ error: 'Refund currency must match payment currency' });
+    }
+    if (/paymob/i.test(`${payment.payment_method || ''} ${payment.source || ''}`)) {
+      return res.status(409).json({ error: 'Paymob refunds are suspended until the gateway review is complete' });
+    }
+    const [[existingRequest]] = await pool.query(
+      "SELECT id FROM refund_requests WHERE tenant_id=? AND payment_id=? AND status='PENDING' LIMIT 1",
+      [tenantId, payment_id]
+    );
+    if (existingRequest) return res.status(409).json({ error: 'A pending refund already exists for this payment' });
     const id = uuidv4();
     await pool.query(
       'INSERT INTO refund_requests (id, tenant_id, subscriber_id, payment_id, amount, currency, reason) VALUES (?,?,?,?,?,?,?)',
@@ -554,29 +541,49 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
 // POST /api/admin/refund-requests/by-admin — admin initiates a refund request for a subscriber
 router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
   try {
-    const { subscriber_id, amount, currency = 'EGP', reason, refund_method } = req.body;
-    if (!subscriber_id || !reason) return res.status(400).json({ error: 'subscriber_id and reason are required' });
+    const { subscriber_id, payment_id, amount, currency = 'EGP', reason, refund_method } = req.body;
+    const requestedAmount = Number(amount);
+    if (!subscriber_id || !payment_id || !reason || !Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return res.status(400).json({ error: 'subscriber_id, payment_id, reason and a positive amount are required' });
+    }
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
     const tenantId = req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
     const [[subInTenant]] = await pool.query(
-      'SELECT id FROM subscribers WHERE id=? AND (tenant_id=? OR tenant_id IS NULL) LIMIT 1',
+      'SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
       [subscriber_id, tenantId]
     );
     if (!subInTenant) return res.status(404).json({ error: 'Subscriber not found' });
-    // Skip if a PENDING refund request already exists for this subscriber
+    const [[payment]] = await pool.query(
+      `SELECT id, amount, currency, payment_method, source
+         FROM payments
+        WHERE id=? AND subscriber_id=? AND tenant_id=? AND status='paid' AND deleted_at IS NULL
+        LIMIT 1`,
+      [payment_id, subscriber_id, tenantId]
+    );
+    if (!payment) return res.status(404).json({ error: 'Eligible payment not found' });
+    if (Math.abs(requestedAmount - Number(payment.amount || 0)) >= 0.01) {
+      return res.status(409).json({ error: 'Partial refunds are not enabled; select one full payment' });
+    }
+    if (String(currency).toUpperCase() !== String(payment.currency).toUpperCase()) {
+      return res.status(400).json({ error: 'Refund currency must match payment currency' });
+    }
+    if (/paymob/i.test(`${payment.payment_method || ''} ${payment.source || ''}`)) {
+      return res.status(409).json({ error: 'Paymob refunds are suspended until the gateway review is complete' });
+    }
+    // Skip if a PENDING refund request already exists for this payment.
     const [[existing]] = await pool.query(
-      "SELECT id FROM refund_requests WHERE tenant_id=? AND subscriber_id=? AND status='PENDING' LIMIT 1",
-      [tenantId, subscriber_id]
+      "SELECT id FROM refund_requests WHERE tenant_id=? AND payment_id=? AND status='PENDING' LIMIT 1",
+      [tenantId, payment_id]
     );
     if (existing) return res.json({ ok: true, id: existing.id, skipped: true });
     const id = uuidv4();
     await pool.query(
-      'INSERT INTO refund_requests (id, tenant_id, subscriber_id, amount, currency, reason, refund_method, status) VALUES (?,?,?,?,?,?,?,?)',
-      [id, tenantId, subscriber_id, parseFloat(amount) || 0, currency, String(reason).substring(0, 1000), refund_method || null, 'PENDING']
+      'INSERT INTO refund_requests (id, tenant_id, subscriber_id, payment_id, amount, currency, reason, refund_method, status) VALUES (?,?,?,?,?,?,?,?,?)',
+      [id, tenantId, subscriber_id, payment_id, requestedAmount, payment.currency, String(reason).substring(0, 1000), refund_method || null, 'PENDING']
     );
     await pool.query(
-      'INSERT INTO activity_logs (id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?)',
-      [uuidv4(), 'refund_created', 'refund_requests', id, `طلب استرداد بقيمة ${amount} ${currency} — بواسطة ${actor}`, actor]
+      'INSERT INTO activity_logs (id, tenant_id, action, entity, entity_id, label, actor) VALUES (?,?,?,?,?,?,?)',
+      [uuidv4(), tenantId, 'refund_created', 'refund_requests', id, `طلب استرداد بقيمة ${amount} ${currency} — بواسطة ${actor}`, actor]
     ).catch(() => {});
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -631,17 +638,19 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     // Revenue (last 7 days)
     const [[{ revenue }]] = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS revenue FROM payments
-       WHERE date >= ? AND status = 'paid'`, [weekAgo]
+       WHERE tenant_id=? AND date >= ? AND status = 'paid'`, [DEFAULT_TENANT_ID, weekAgo]
     ).catch(() => [[{ revenue: 0 }]]);
 
     // New leads
     const [[{ newLeads }]] = await pool.query(
-      `SELECT COUNT(*) AS newLeads FROM leads WHERE created_at >= ?`, [weekAgo]
+      `SELECT COUNT(*) AS newLeads FROM leads WHERE tenant_id=? AND created_at >= ?`,
+      [DEFAULT_TENANT_ID, weekAgo]
     ).catch(() => [[{ newLeads: 0 }]]);
 
     // New subscribers
     const [[{ newSubs }]] = await pool.query(
-      `SELECT COUNT(*) AS newSubs FROM subscribers WHERE created_at >= ?`, [weekAgo]
+      `SELECT COUNT(*) AS newSubs FROM subscribers WHERE tenant_id=? AND created_at >= ?`,
+      [DEFAULT_TENANT_ID, weekAgo]
     ).catch(() => [[{ newSubs: 0 }]]);
 
     // Conversion rate
@@ -651,9 +660,9 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     const [topStaff] = await pool.query(
       `SELECT s.name, COALESCE(SUM(c.commission_amount),0) AS earned
        FROM crm_commissions c
-       LEFT JOIN staff s ON s.id = c.staff_id
-       WHERE c.created_at >= ?
-       GROUP BY c.staff_id ORDER BY earned DESC LIMIT 3`, [weekAgo]
+       LEFT JOIN staff s ON s.id=c.staff_id AND s.tenant_id=c.tenant_id
+       WHERE c.tenant_id=? AND c.created_at >= ?
+       GROUP BY c.staff_id ORDER BY earned DESC LIMIT 3`, [DEFAULT_TENANT_ID, weekAgo]
     ).catch(() => [[]]);
 
     const topStaffHtml = topStaff.length > 0
@@ -664,7 +673,8 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
     const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const [[{ prevRevenue }]] = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS prevRevenue FROM payments
-       WHERE date >= ? AND date < ? AND status = 'paid'`, [twoWeeksAgo, weekAgo]
+       WHERE tenant_id=? AND date >= ? AND date < ? AND status = 'paid'`,
+      [DEFAULT_TENANT_ID, twoWeeksAgo, weekAgo]
     ).catch(() => [[{ prevRevenue: 0 }]]);
 
     const revenueChange = prevRevenue > 0

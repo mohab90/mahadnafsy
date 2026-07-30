@@ -1,8 +1,7 @@
 name: CI
 
-# Static safety net — runs on every push/PR. No database required: these checks
-# (type-check, build, lint, quality gate) are all offline. The DB-backed smoke
-# test lives in smoke.yml (self-hosted) because it needs the live SSH-tunnelled DB.
+# Pull requests use only an isolated disposable MySQL service. They never query
+# production. Manual remote smoke testing is protected by the staging environment.
 on:
   push:
     branches: ['**']
@@ -20,11 +19,7 @@ jobs:
   static-checks:
     name: API lint + quality gate
     runs-on: ubuntu-latest
-    # Ephemeral test database (TEST-04) — separate from smoke.yml's self-hosted
-    # job, which SSH-tunnels into the real production DB for a live smoke test.
-    # This one is a throwaway MySQL container: migrated fresh on every run, never
-    # holds real data, exists only so tests/integration/*.test.js (schema/ledger
-    # invariant checks) run in CI instead of skipping silently everywhere.
+    # Throwaway MySQL container migrated fresh on every run; it never holds live data.
     services:
       mysql:
         image: mysql:8
@@ -48,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: api/package-lock.json
       - name: Install API dependencies
@@ -62,19 +57,18 @@ jobs:
       # in the dump.
       - name: Apply migrations newer than the schema.sql snapshot
         run: npm run migrate
+      - name: JavaScript syntax check (all API source and tools)
+        run: npm run syntax:api
       - name: ESLint (api — no-undef)
         run: npm run lint:api
       - name: Unit tests (finance / RBAC / templates / helpers / tenant / pagination)
         run: npm --prefix api run test:unit
       - name: Integration tests (real MySQL — schema/ledger invariants)
         run: npm --prefix api run test:integration
-      - name: Quality gate (54 checks)
+      - name: Quality gate
         run: node tools/mahad-quality-check.mjs
-      - name: Dependency audit (api / admin / client)
-        run: |
-          npm --prefix api    audit --omit=dev --audit-level=high
-          npm --prefix admin  audit --audit-level=moderate
-          npm --prefix client audit --audit-level=moderate
+      - name: Dependency audit (new advisories fail; expiring risks are explicit)
+        run: npm run audit:dependencies
       - name: E2E compile check (Playwright --list)
         run: |
           npm --prefix e2e ci || npm --prefix e2e install
@@ -90,7 +84,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: admin/package-lock.json
       - run: npm ci
@@ -109,7 +103,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
@@ -117,3 +111,34 @@ jobs:
         run: npx tsc --noEmit
       - name: Build (vite)
         run: npm run build
+
+  release-artifact:
+    name: Immutable release artifacts
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    needs: [static-checks, admin, client]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            admin/package-lock.json
+            client/package-lock.json
+      - name: Build reviewed frontend assets
+        run: |
+          npm --prefix admin ci
+          npm --prefix client ci
+          npm --prefix admin run build
+          npm --prefix client run build
+      - name: Build commit-addressed API/Admin/Client artifacts and SHA-256 manifest
+        env:
+          APP_RELEASE: mahad-${{ github.sha }}
+        run: npm run release:prepare
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mahad-release-${{ github.sha }}
+          path: artifacts/releases/*
+          if-no-files-found: error
+          retention-days: 14

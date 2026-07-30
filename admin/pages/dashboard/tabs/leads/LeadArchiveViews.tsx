@@ -35,12 +35,14 @@ export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsPr
           bundles={archiveProps.bundles as Bundle[]}
           navigate={archiveProps.navigate}
           updateLead={archiveProps.updateLead}
+          reloadLeads={archiveProps.reloadLeads}
           deleteLead={archiveProps.deleteLead}
           addSubscriber={archiveProps.addSubscriber}
           updateSubscriber={archiveProps.updateSubscriber}
           subscribers={archiveProps.subscribers as SubscriberItem[]}
           salesStaff={archiveProps.salesReps as StaffMember[]}
           isSalesOnly={archiveProps.isSalesOnly}
+          canManageLeads={archiveProps.canManageLeads}
           onBook={archiveProps.onBook}
           branchOptions={archiveProps.branchOptions}
           sources={archiveProps.sources}

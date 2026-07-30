@@ -12,6 +12,12 @@ const { getTenantSetting } = require('../lib/tenantSettings');
 const { applyRefundReversal } = require('../lib/refunds');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
+const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
+const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange } = require('../lib/dates');
+const { logFinancialAudit } = require('../lib/finance');
+
+const validDateRange = (from, to) => isValidDateOnly(from) && isValidDateOnly(to) && from <= to;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: HTML Invoice ─────────────────────────────────────────────────
@@ -24,14 +30,16 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
 
 async function _loadPaymentForPrint(paymentId, tenantId) {
   const [[p]] = await pool.query(`
-    SELECT p.*, s.name AS client_name, s.email AS client_email, s.phone AS client_phone,
-           s.national_id, s.client_code,
+    SELECT p.*, fd.document_number, s.name AS client_name, s.email AS client_email, s.phone AS client_phone,
+           s.national_id, s.client_code, s.assigned_cs_id, s.assigned_sales_id,
            c.title AS course_title, b.title AS bundle_title
     FROM payments p
     LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
     LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
     LEFT JOIN bundles b ON b.id = p.bundle_id AND b.tenant_id = p.tenant_id
-    WHERE p.id = ? AND p.tenant_id = ?
+    LEFT JOIN financial_documents fd ON fd.tenant_id=p.tenant_id
+      AND fd.document_type='invoice' AND fd.source_type='payment' AND fd.source_id=p.id
+    WHERE p.id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL
   `, [paymentId, tenantId]);
   if (!p) return null;
   // Identity comes from the central brand (what the owner set in Settings → الهوية),
@@ -44,7 +52,7 @@ async function _loadPaymentForPrint(paymentId, tenantId) {
   p._logoUrl = /^https?:\/\//i.test(brand.logoUrl || '') ? escapeHtml(brand.logoUrl) : '';
   p._primaryColor = brand.primaryColor;
   p._websiteUrl = escapeHtml(brand.websiteUrl);
-  p._invoiceNum = `INV-${p.id.slice(-8).toUpperCase()}`;
+  p._invoiceNum = p.document_number || `PAY-${p.id.slice(-8).toUpperCase()}`;
   p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
   p._amount = parseFloat(p.amount) || 0;
   const cur = p.currency || 'EGP';
@@ -56,24 +64,28 @@ async function _loadPaymentForPrint(paymentId, tenantId) {
   // VAT
   const vatPct = parseFloat(vatSetting || '0') || 0;
   p._vatPct     = vatPct;
-  p._vatAmount  = vatPct > 0 ? parseFloat((p._amount * vatPct / 100).toFixed(2)) : 0;
-  p._totalWithVat = parseFloat((p._amount + p._vatAmount).toFixed(2));
+  // Payment.amount is the gross amount actually collected. Derive the tax
+  // component from that gross value; adding VAT again prints a total greater
+  // than the cash received and makes the document irreconcilable.
+  p._netAmount = vatPct > 0
+    ? parseFloat((p._amount / (1 + vatPct / 100)).toFixed(2))
+    : p._amount;
+  p._vatAmount = parseFloat((p._amount - p._netAmount).toFixed(2));
+  p._totalWithVat = p._amount;
   return p;
 }
 
-// ── Thermal receipt middleware (token in query) ───────────────────────────
-function _tokenFromQuery(req, res, next) {
-  if (req.query.token && !req.headers.authorization) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  next();
-}
-
 // GET /api/admin/payments/:id/receipt — 70mm thermal receipt (printable)
-router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/payments/:id/receipt', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    const scope = resolveFinancialScope(req, {
+      requestedBranch: req.query.branch || null,
+      allowAssigned: true,
+    });
     const p = await _loadPaymentForPrint(req.params.id, req.tenantId);
-    if (!p) return res.status(404).json({ error: 'Payment not found' });
+    if (!p || !financialRecordMatches(scope, p)) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
 
     const statusLabel = p.status === 'paid' ? 'مدفوع ✓' : p.status === 'pending' ? 'معلق' : p.status === 'refunded' ? 'مسترد' : p.status === 'failed' ? 'ملغى' : p.status || '—';
     const payMethod = p.payment_method || p.paymentMethod || '—';
@@ -193,7 +205,7 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
   <div class="total-box">
     <div class="lbl">إجمالي المبلغ المسدد</div>
     ${p._vatPct > 0 ? `
-    <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">قبل الضريبة</span><span class="v">${p._amount.toLocaleString('ar-EG')} ${p._currencyLabel}</span></div>
+    <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">قبل الضريبة</span><span class="v">${p._netAmount.toLocaleString('ar-EG')} ${p._currencyLabel}</span></div>
     <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">ضريبة (${p._vatPct}%)</span><span class="v">${p._vatAmount.toLocaleString('ar-EG')} ${p._currencyLabel}</span></div>
     ` : ''}
     <div class="amt">${p._totalWithVat.toLocaleString('ar-EG')} ${p._currencyLabel}</div>
@@ -206,7 +218,7 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
 
   <!-- Footer -->
   <div class="center small" style="margin-top:3px">
-    <div>هذا الإيصال وثيقة رسمية</div>
+    <div>إيصال سداد صادر من النظام</div>
     <div>شكراً لثقتكم 💚</div>
     <div style="margin-top:3px;font-size:8px">mahadnafsy.com</div>
     <div class="barcode-sim" style="margin-top:4px;font-size:7px;letter-spacing:2px">${p.id.toUpperCase()}</div>
@@ -236,16 +248,20 @@ router.get('/api/admin/payments/:id/receipt', _tokenFromQuery, requireAuth, requ
 });
 
 // GET /api/admin/invoice/:paymentId — returns printable HTML invoice (A4)
-router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/invoice/:paymentId', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    const scope = resolveFinancialScope(req, {
+      requestedBranch: req.query.branch || null,
+      allowAssigned: true,
+    });
     const p = await _loadPaymentForPrint(req.params.paymentId, req.tenantId);
-    if (!p) return res.status(404).json({ error: 'Payment not found' });
+    if (!p || !financialRecordMatches(scope, p)) return res.status(404).json({ error: 'Payment not found' });
 
     const instituteName = p._instituteName;
     const invoiceNum    = p._invoiceNum;
     const dateStr       = p._dateStr;
     const itemName      = p._itemName;
-    const amount        = p._amount;
+    const amount        = p._netAmount;
     const currencyLabel = p._currencyLabel === 'ج.م' ? 'جنيه مصري' : p._currencyLabel === 'ريال' ? 'ريال سعودي' : 'دولار أمريكي';
 
     const html = `<!DOCTYPE html>
@@ -253,7 +269,7 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>فاتورة ${invoiceNum}</title>
+<title>بيان سداد ${invoiceNum}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; color: #333; direction: rtl; }
@@ -292,11 +308,11 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
 <div class="page">
   <div class="header">
     <h1>${instituteName}</h1>
-    <p>فاتورة رسمية — Official Invoice</p>
+    <p>بيان سداد — Payment Statement</p>
   </div>
   <div class="inv-meta">
     <div class="block">
-      <div class="label">رقم الفاتورة</div>
+      <div class="label">مرجع السداد</div>
       <div class="inv-badge">${invoiceNum}</div>
     </div>
     <div class="block">
@@ -350,7 +366,7 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
   </table>
   <div class="footer">
     <p>${instituteName} — info@mahadnafsy.com — mahadnafsy.com</p>
-    <p style="margin-top:6px">هذه الفاتورة وثيقة رسمية تُثبت سداد المبلغ المذكور</p>
+    <p style="margin-top:6px">بيان صادر من النظام يطابق عملية السداد المسجلة</p>
   </div>
 </div>
 <div class="no-print" style="text-align:center;padding:20px">
@@ -366,7 +382,10 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
 </html>`;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -376,65 +395,105 @@ router.get('/api/admin/invoice/:paymentId', _tokenFromQuery, requireAuth, requir
 // GET /api/admin/financial/monthly-comparison — current vs previous month
 router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const [[cur]] = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN status='paid' THEN amount_egp ELSE 0 END), 0) AS revenue,
-        COUNT(CASE WHEN status='paid' THEN 1 END) AS payment_count,
-        COUNT(DISTINCT subscriber_id) AS active_clients
-      FROM payments
-      WHERE tenant_id=? AND YEAR(date) = YEAR(CURDATE()) AND MONTH(date) = MONTH(CURDATE())
-    `, [req.tenantId]);
-    const [[prev]] = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN status='paid' THEN amount_egp ELSE 0 END), 0) AS revenue,
-        COUNT(CASE WHEN status='paid' THEN 1 END) AS payment_count,
-        COUNT(DISTINCT subscriber_id) AS active_clients
-      FROM payments
-      WHERE tenant_id=? AND YEAR(date) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-        AND MONTH(date) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))
-    `, [req.tenantId]);
-    const [[curExp]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS expenses FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND YEAR(date)=YEAR(CURDATE()) AND MONTH(date)=MONTH(CURDATE())`, [req.tenantId]);
-    const [[prevExp]] = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS expenses FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND YEAR(date)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(date)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`, [req.tenantId]);
-    const [[newLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`, [req.tenantId]);
-    const [[prevLeads]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`, [req.tenantId]);
-    const [[newSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())`, [req.tenantId]);
-    const [[prevSubs]] = await pool.query(`SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND YEAR(created_at)=YEAR(DATE_SUB(CURDATE(),INTERVAL 1 MONTH)) AND MONTH(created_at)=MONTH(DATE_SUB(CURDATE(),INTERVAL 1 MONTH))`, [req.tenantId]);
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const scopedParams = (...values) => scope.branchId ? [...values, scope.branchId] : values;
+    const journalBranchSql = scope.branchId ? ' AND je.branch_id=?' : '';
+    const paymentBranchSql = scope.branchId ? ' AND p.branch_id=?' : '';
+    const leadBranchSql = scope.branchId ? ' AND l.branch_id=?' : '';
+    const subscriberBranchSql = scope.branchId ? ' AND s.branch_id=?' : '';
+    const today = dateOnlyInTimeZone();
+    const current = monthRange(today);
+    const previous = monthRange(addDaysToDateOnly(current.startDate, -1));
+    const [ledgerResult, paymentResult, leadResult, subscriberResult] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN je.entry_date>=? AND jel.account_code LIKE '4%' THEN jel.credit-jel.debit ELSE 0 END),0) AS current_revenue,
+          COALESCE(SUM(CASE WHEN je.entry_date<? AND jel.account_code LIKE '4%' THEN jel.credit-jel.debit ELSE 0 END),0) AS previous_revenue,
+          COALESCE(SUM(CASE WHEN je.entry_date>=? AND jel.account_code LIKE '5%' THEN jel.debit-jel.credit ELSE 0 END),0) AS current_expenses,
+          COALESCE(SUM(CASE WHEN je.entry_date<? AND jel.account_code LIKE '5%' THEN jel.debit-jel.credit ELSE 0 END),0) AS previous_expenses
+        FROM journal_entries je
+        JOIN journal_entry_lines jel ON jel.entry_id=je.id
+        WHERE je.tenant_id=? AND je.entry_date>=? AND je.entry_date<?${journalBranchSql}`,
+      scopedParams(current.startDate, current.startDate, current.startDate, current.startDate,
+        req.tenantId, previous.startDate, current.endDate)),
+      pool.query(`
+        SELECT
+          COUNT(CASE WHEN p.date>=? AND p.status='paid' THEN 1 END) AS current_payment_count,
+          COUNT(DISTINCT CASE WHEN p.date>=? AND p.status='paid' THEN p.subscriber_id END) AS current_active_clients,
+          COUNT(CASE WHEN p.date<? AND p.status='paid' THEN 1 END) AS previous_payment_count,
+          COUNT(DISTINCT CASE WHEN p.date<? AND p.status='paid' THEN p.subscriber_id END) AS previous_active_clients
+        FROM payments p
+        WHERE p.tenant_id=? AND p.deleted_at IS NULL AND p.date>=? AND p.date<?${paymentBranchSql}`,
+      scopedParams(current.startDate, current.startDate, current.startDate, current.startDate,
+        req.tenantId, previous.startDate, current.endDate)),
+      pool.query(`
+        SELECT
+          COUNT(CASE WHEN l.created_at>=? THEN 1 END) AS current_count,
+          COUNT(CASE WHEN l.created_at<? THEN 1 END) AS previous_count
+        FROM leads l
+        WHERE l.tenant_id=? AND l.created_at>=? AND l.created_at<?${leadBranchSql}`,
+      scopedParams(current.startDate, current.startDate, req.tenantId, previous.startDate, current.endDate)),
+      pool.query(`
+        SELECT
+          COUNT(CASE WHEN s.created_at>=? THEN 1 END) AS current_count,
+          COUNT(CASE WHEN s.created_at<? THEN 1 END) AS previous_count
+        FROM subscribers s
+        WHERE s.tenant_id=? AND s.deleted_at IS NULL AND s.created_at>=? AND s.created_at<?${subscriberBranchSql}`,
+      scopedParams(current.startDate, current.startDate, req.tenantId, previous.startDate, current.endDate)),
+    ]);
+    const ledger = ledgerResult[0][0];
+    const payments = paymentResult[0][0];
+    const leads = leadResult[0][0];
+    const subscribers = subscriberResult[0][0];
 
     const diff = (a, b) => b > 0 ? Math.round(((a - b) / b) * 100) : (a > 0 ? 100 : 0);
-    const curRev = parseFloat(cur.revenue) || 0;
-    const prevRev = parseFloat(prev.revenue) || 0;
-    const curExpAmt = parseFloat(curExp.expenses) || 0;
-    const prevExpAmt = parseFloat(prevExp.expenses) || 0;
+    const curRev = Number(ledger.current_revenue) || 0;
+    const prevRev = Number(ledger.previous_revenue) || 0;
+    const curExpAmt = Number(ledger.current_expenses) || 0;
+    const prevExpAmt = Number(ledger.previous_expenses) || 0;
+    const curPaymentCount = Number(payments.current_payment_count) || 0;
+    const prevPaymentCount = Number(payments.previous_payment_count) || 0;
+    const curActiveClients = Number(payments.current_active_clients) || 0;
+    const prevActiveClients = Number(payments.previous_active_clients) || 0;
+    const newLeads = Number(leads.current_count) || 0;
+    const prevLeads = Number(leads.previous_count) || 0;
+    const newSubs = Number(subscribers.current_count) || 0;
+    const prevSubs = Number(subscribers.previous_count) || 0;
 
     res.json({
       current: {
         revenue: curRev,
         expenses: curExpAmt,
         net: curRev - curExpAmt,
-        payment_count: cur.payment_count,
-        active_clients: cur.active_clients,
-        new_leads: newLeads.n,
-        new_subscribers: newSubs.n,
+        payment_count: curPaymentCount,
+        active_clients: curActiveClients,
+        new_leads: newLeads,
+        new_subscribers: newSubs,
       },
       previous: {
         revenue: prevRev,
         expenses: prevExpAmt,
         net: prevRev - prevExpAmt,
-        payment_count: prev.payment_count,
-        active_clients: prev.active_clients,
-        new_leads: prevLeads.n,
-        new_subscribers: prevSubs.n,
+        payment_count: prevPaymentCount,
+        active_clients: prevActiveClients,
+        new_leads: prevLeads,
+        new_subscribers: prevSubs,
       },
       changes: {
         revenue: diff(curRev, prevRev),
         expenses: diff(curExpAmt, prevExpAmt),
         net: diff(curRev - curExpAmt, prevRev - prevExpAmt),
-        payment_count: diff(cur.payment_count, prev.payment_count),
-        new_leads: diff(newLeads.n, prevLeads.n),
-        new_subscribers: diff(newSubs.n, prevSubs.n),
-      }
+        payment_count: diff(curPaymentCount, prevPaymentCount),
+        new_leads: diff(newLeads, prevLeads),
+        new_subscribers: diff(newSubs, prevSubs),
+      },
+      branch: scope.branch,
+      branchId: scope.branchId,
     });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -454,8 +513,12 @@ router.get('/api/admin/financial/monthly-comparison', requireAuth, requireAdminO
 // Returns Profit & Loss: Revenue (4xxx) - Expenses (5xxx) grouped by account, monthly breakdown
 router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const from = req.query.from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const today = dateOnlyInTimeZone();
+    const from = req.query.from || `${today.slice(0, 4)}-01-01`;
+    const to   = req.query.to   || today;
+    if (!validDateRange(from, to)) return res.status(400).json({ error: 'Invalid date range' });
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const branchSql = scope.branchId ? ' AND je.branch_id=?' : '';
 
     // Revenue lines (credit-normal): credit - debit = net credit
     const [revRows] = await pool.query(`
@@ -467,10 +530,10 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePer
       FROM journal_entry_lines jel
       JOIN journal_entries je ON je.id = jel.entry_id
       WHERE je.tenant_id=? AND jel.account_code LIKE '4%'
-        AND je.entry_date BETWEEN ? AND ?
+        AND je.entry_date BETWEEN ? AND ?${branchSql}
       GROUP BY jel.account_code, jel.account_name, month
       ORDER BY jel.account_code, month
-    `, [req.tenantId, from, to]);
+    `, scope.branchId ? [req.tenantId, from, to, scope.branchId] : [req.tenantId, from, to]);
 
     // Expense lines (debit-normal): debit - credit = net debit
     const [expRows] = await pool.query(`
@@ -482,10 +545,10 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePer
       FROM journal_entry_lines jel
       JOIN journal_entries je ON je.id = jel.entry_id
       WHERE je.tenant_id=? AND jel.account_code LIKE '5%'
-        AND je.entry_date BETWEEN ? AND ?
+        AND je.entry_date BETWEEN ? AND ?${branchSql}
       GROUP BY jel.account_code, jel.account_name, month
       ORDER BY jel.account_code, month
-    `, [req.tenantId, from, to]);
+    `, scope.branchId ? [req.tenantId, from, to, scope.branchId] : [req.tenantId, from, to]);
 
     // Totals
     const totalRevenue  = revRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
@@ -515,21 +578,28 @@ router.get('/api/admin/reports/pl', requireAuth, requireAdminOrStaff, requirePer
     const months = [...monthSet].sort();
 
     res.json({
-      period: { from, to },
+      period: { from, to }, branch: scope.branch, branchId: scope.branchId,
       months,
       revenue:  { accounts: Object.values(revenueByAccount),  total: totalRevenue  },
       expenses: { accounts: Object.values(expensesByAccount), total: totalExpenses },
       net_income: netIncome
     });
-  } catch (e) { logger.error('[reports/pl]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[reports/pl]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // GET /api/admin/reports/trial-balance?from=&to=
 // Returns all accounts with running debit/credit totals
 router.get('/api/admin/reports/trial-balance', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const from = req.query.from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const today = dateOnlyInTimeZone();
+    const from = req.query.from || `${today.slice(0, 4)}-01-01`;
+    const to   = req.query.to   || today;
+    if (!validDateRange(from, to)) return res.status(400).json({ error: 'Invalid date range' });
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const branchSql = scope.branchId ? ' AND je.branch_id=?' : '';
 
     const [rows] = await pool.query(`
       SELECT
@@ -540,10 +610,10 @@ router.get('/api/admin/reports/trial-balance', requireAuth, requireAdminOrStaff,
         SUM(jel.debit) - SUM(jel.credit) AS balance
       FROM journal_entry_lines jel
       JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ?
+      WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ?${branchSql}
       GROUP BY jel.account_code, jel.account_name
       ORDER BY jel.account_code
-    `, [req.tenantId, from, to]);
+    `, scope.branchId ? [req.tenantId, from, to, scope.branchId] : [req.tenantId, from, to]);
 
     const totalDebit  = rows.reduce((s, r) => s + parseFloat(r.total_debit  || 0), 0);
     const totalCredit = rows.reduce((s, r) => s + parseFloat(r.total_credit || 0), 0);
@@ -564,27 +634,36 @@ router.get('/api/admin/reports/trial-balance', requireAuth, requireAdminOrStaff,
 
     res.json({
       period: { from, to },
+      branch: scope.branch,
+      branchId: scope.branchId,
       accounts,
       totals: { debit: totalDebit, credit: totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 }
     });
-  } catch (e) { logger.error('[reports/trial-balance]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[reports/trial-balance]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // GET /api/admin/reports/journal?from=&to=&account_code=&ref_type=&page=&limit=
 // Paginated journal entry ledger
 router.get('/api/admin/reports/journal', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const from    = req.query.from    || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to      = req.query.to      || new Date().toISOString().slice(0, 10);
+    const today = dateOnlyInTimeZone();
+    const from    = req.query.from    || `${today.slice(0, 4)}-01-01`;
+    const to      = req.query.to      || today;
+    if (!validDateRange(from, to)) return res.status(400).json({ error: 'Invalid date range' });
     const acct    = req.query.account_code || null;
     const refType = req.query.ref_type    || null;
     const page    = Math.max(1, parseInt(req.query.page)  || 1);
     const limit   = Math.min(200, parseInt(req.query.limit) || 50);
     const offset  = (page - 1) * limit;
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
 
-    let where = 'WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ?';
+    let filters = '';
     const params = [req.tenantId, from, to];
-    if (refType) { where += ' AND je.ref_type = ?'; params.push(refType); }
+    if (scope.branchId) { filters += ' AND je.branch_id = ?'; params.push(scope.branchId); }
+    if (refType) { filters += ' AND je.ref_type = ?'; params.push(refType); }
 
     let entryFilter = '';
     if (acct) {
@@ -594,20 +673,28 @@ router.get('/api/admin/reports/journal', requireAuth, requireAdminOrStaff, requi
 
     const countParams = [...params];
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM journal_entries je ${where} ${entryFilter}`,
+      `SELECT COUNT(*) AS total FROM journal_entries je
+       WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ? ${filters} ${entryFilter}`,
       countParams
     );
 
     const [entries] = await pool.query(`
       SELECT je.id, je.ref_type, je.ref_id, je.entry_date, je.description,
-             je.total_debit, je.total_credit, je.posted_by, je.created_at
-      FROM journal_entries je
-      ${where} ${entryFilter}
+             je.total_debit, je.total_credit, je.posted_by, je.branch, je.branch_id, je.created_at
+       FROM journal_entries je
+       WHERE je.tenant_id=? AND je.entry_date BETWEEN ? AND ? ${filters} ${entryFilter}
       ORDER BY je.entry_date DESC, je.created_at DESC
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
 
-    if (!entries.length) return res.json({ entries: [], lines: {}, pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
+    if (!entries.length) return res.json({
+      period: { from, to },
+      branch: scope.branch,
+      branchId: scope.branchId,
+      entries: [],
+      lines: {},
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+    });
 
     const entryIds = entries.map(e => e.id);
     const [lines] = await pool.query(
@@ -624,32 +711,41 @@ router.get('/api/admin/reports/journal', requireAuth, requireAdminOrStaff, requi
 
     res.json({
       period: { from, to },
+      branch: scope.branch,
+      branchId: scope.branchId,
       entries,
       lines: linesByEntry,
       pagination: { total, page, limit, pages: Math.ceil(total / limit) }
     });
-  } catch (e) { logger.error('[reports/journal]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[reports/journal]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // GET /api/admin/reports/pl/html?from=&to= — printable P&L HTML report
-router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+router.get('/api/admin/reports/pl/html', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const from = req.query.from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+    const today = dateOnlyInTimeZone();
+    const from = req.query.from || `${today.slice(0, 4)}-01-01`;
+    const to   = req.query.to   || today;
+    if (!validDateRange(from, to)) return res.status(400).json({ error: 'Invalid date range' });
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const branchSql = scope.branchId ? ' AND je.branch_id=?' : '';
 
     const [revRows] = await pool.query(`
       SELECT jel.account_code, jel.account_name, SUM(jel.credit) - SUM(jel.debit) AS net_amount
       FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE je.tenant_id=? AND jel.account_code LIKE '4%' AND je.entry_date BETWEEN ? AND ?
+      WHERE je.tenant_id=? AND jel.account_code LIKE '4%' AND je.entry_date BETWEEN ? AND ?${branchSql}
       GROUP BY jel.account_code, jel.account_name ORDER BY jel.account_code
-    `, [req.tenantId, from, to]);
+    `, scope.branchId ? [req.tenantId, from, to, scope.branchId] : [req.tenantId, from, to]);
 
     const [expRows] = await pool.query(`
       SELECT jel.account_code, jel.account_name, SUM(jel.debit) - SUM(jel.credit) AS net_amount
       FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.entry_id
-      WHERE je.tenant_id=? AND jel.account_code LIKE '5%' AND je.entry_date BETWEEN ? AND ?
+      WHERE je.tenant_id=? AND jel.account_code LIKE '5%' AND je.entry_date BETWEEN ? AND ?${branchSql}
       GROUP BY jel.account_code, jel.account_name ORDER BY jel.account_code
-    `, [req.tenantId, from, to]);
+    `, scope.branchId ? [req.tenantId, from, to, scope.branchId] : [req.tenantId, from, to]);
 
     const instituteName = escapeHtml((await getBrandSettings(req.tenantId)).instituteName);
 
@@ -659,12 +755,12 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
     const fmt = n => parseFloat(n || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 });
 
     const revRows_html = revRows.map(r => `
-      <tr><td>${r.account_code}</td><td>${r.account_name}</td>
+      <tr><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name)}</td>
           <td class="num">${fmt(r.net_amount)}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="text-align:center;color:#999">لا يوجد بيانات</td></tr>';
 
     const expRows_html = expRows.map(r => `
-      <tr><td>${r.account_code}</td><td>${r.account_name}</td>
+      <tr><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name)}</td>
           <td class="num">${fmt(r.net_amount)}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="text-align:center;color:#999">لا يوجد بيانات</td></tr>';
 
@@ -738,7 +834,10 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.send(html);
-  } catch (e) { logger.error('[reports/pl/html]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[reports/pl/html]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -746,10 +845,30 @@ router.get('/api/admin/reports/pl/html', _tokenFromQuery, requireAuth, requireAd
 // ═══════════════════════════════════════════════════════════════════════════
 
 
+function checkoutUrlForPaymentLink(token) {
+  if (process.env.PAYMENT_LINKS_ENABLED !== 'true') return null;
+  const template = String(process.env.PAYMENT_LINK_CHECKOUT_URL_TEMPLATE || '').trim();
+  if (!template.includes('{token}')) return null;
+  try {
+    const url = new URL(template.replace('{token}', encodeURIComponent(token)));
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 // POST /api/admin/payment-links — generate a payment link
 router.post('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
-    const { item_type, item_id, amount, currency = 'EGP', subscriber_id, description, expires_days = 7 } = req.body;
+    const checkoutProbe = checkoutUrlForPaymentLink('probe');
+    if (!checkoutProbe) {
+      return res.status(409).json({
+        error: 'Payment links are disabled until a verified HTTPS checkout contract is configured',
+        code: 'PAYMENT_LINKS_DISABLED',
+      });
+    }
+    const { item_type, item_id, amount, currency = 'EGP', subscriber_id, description, expires_days = 7, branch } = req.body;
+    const scope = resolveFinancialScope(req, { requestedBranch: branch || null, allowAssigned: true });
     if (!item_type || !item_id || !amount) return res.status(400).json({ error: 'item_type, item_id, and amount are required' });
     if (!['course', 'bundle', 'consultation'].includes(item_type)) return res.status(400).json({ error: 'Invalid item type' });
     const numericAmount = Number(amount);
@@ -758,39 +877,71 @@ router.post('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requir
     const itemTable = item_type === 'course' ? 'courses' : item_type === 'bundle' ? 'bundles' : 'consultations';
     const [[itemExists]] = await pool.query(`SELECT id FROM ${itemTable} WHERE id=? AND tenant_id=? LIMIT 1`, [item_id, req.tenantId]);
     if (!itemExists) return res.status(404).json({ error: 'Item not found' });
+    let subscriber = null;
     if (subscriber_id) {
-      const [[subscriber]] = await pool.query('SELECT id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [subscriber_id, req.tenantId]);
+      [[subscriber]] = await pool.query(
+        `SELECT id, branch, branch_id, assigned_cs_id, assigned_sales_id
+         FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
+        [subscriber_id, req.tenantId]
+      );
       if (!subscriber) return res.status(404).json({ error: 'Subscriber not found' });
+      if (!financialRecordMatches(scope, subscriber)) {
+        return res.status(404).json({ error: 'Subscriber not found' });
+      }
+    } else if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
+      return res.status(400).json({ error: 'subscriber_id is required for assigned-record financial scope' });
     }
+    const effectiveBranch = subscriber?.branch || scope.branch || defaultDigitalBranch(branch);
+    const effectiveBranchId = subscriber?.branch_id || scope.branchId || branchIdForBranch(effectiveBranch);
     const id = uuidv4();
     const token = crypto.randomBytes(32).toString('hex');
     const safeExpiresDays = Math.min(90, Math.max(1, parseInt(expires_days, 10) || 7));
     const expiresAt = new Date(Date.now() + safeExpiresDays * 24 * 60 * 60 * 1000);
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
     await pool.query(
-      'INSERT INTO payment_links (id, tenant_id, token, item_type, item_id, amount, currency, subscriber_id, description, expires_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-      [id, req.tenantId, token, item_type, item_id, numericAmount, String(currency).toUpperCase(), subscriber_id || null, description || null, expiresAt, actor]
+      'INSERT INTO payment_links (id, tenant_id, branch, branch_id, token, item_type, item_id, amount, currency, subscriber_id, description, expires_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [id, req.tenantId, effectiveBranch, effectiveBranchId, token, item_type, item_id, numericAmount, String(currency).toUpperCase(), subscriber_id || null, description || null, expiresAt, actor]
     );
-    const baseUrl = 'https://mahadnafsy.com';
-    const link = `${baseUrl}/#/pay/${token}`;
+    const link = checkoutUrlForPaymentLink(token);
     res.json({ ok: true, id, link, token, expires_at: expiresAt });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // GET /api/admin/payment-links — list all payment links
 router.get('/api/admin/payment-links', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    const scope = resolveFinancialScope(req, {
+      requestedBranch: req.query.branch || null,
+      allowAssigned: true,
+    });
+    let scopeSql = '';
+    const scopeParams = [];
+    if (scope.branchId) {
+      scopeSql = ' AND pl.branch_id=?';
+      scopeParams.push(scope.branchId);
+    } else if (scope.kind === 'assigned_cs') {
+      scopeSql = ' AND s.assigned_cs_id=?';
+      scopeParams.push(scope.staffId);
+    } else if (scope.kind === 'assigned_sales') {
+      scopeSql = ' AND s.assigned_sales_id=?';
+      scopeParams.push(scope.staffId);
+    }
     const [rows] = await pool.query(`
       SELECT pl.*, s.name AS subscriber_name
       FROM payment_links pl
       LEFT JOIN subscribers s ON s.id = pl.subscriber_id AND s.tenant_id = pl.tenant_id
-      WHERE pl.tenant_id=?
+      WHERE pl.tenant_id=?${scopeSql}
       ORDER BY pl.created_at DESC LIMIT 200
-    `, [req.tenantId]);
-    const baseUrl = 'https://mahadnafsy.com';
-    const result = rows.map(r => ({ ...r, link: `${baseUrl}/#/pay/${r.token}` }));
+    `, [req.tenantId, ...scopeParams]);
+    const result = rows.map(r => ({ ...r, link: checkoutUrlForPaymentLink(r.token) }));
     res.json(result);
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    logger.error('[route]', e.message);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
+  }
 });
 
 // GET /api/payment-links/:token — public validate (used by client checkout)
@@ -812,6 +963,15 @@ router.get('/api/payment-links/:token', publicLimiter, async (req, res) => {
     } else if (pl.item_type === 'bundle') {
       const [[b]] = await pool.query('SELECT id, title, price_egp, price_sar, price_usd FROM bundles WHERE id=? AND tenant_id=?', [pl.item_id, pl.tenant_id]);
       item = b;
+    } else if (pl.item_type === 'consultation') {
+      const [[consultation]] = await pool.query(
+        `SELECT c.id,CONCAT('Consultation - ',t.name) AS title,c.session_date,c.status
+           FROM consultations c
+           JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
+          WHERE c.id=? AND c.tenant_id=? AND c.deleted_at IS NULL LIMIT 1`,
+        [pl.item_id, pl.tenant_id]
+      );
+      item = consultation;
     }
     res.json({ ok: true, pl: { ...pl, token: undefined }, item });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -830,38 +990,68 @@ router.get('/api/payment-links/:token', publicLimiter, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const journalScopeSql = scope.branchId ? ' AND je.branch_id=?' : '';
+    const paymentScopeSql = scope.branchId ? ' AND branch_id=?' : '';
+    const paymentAliasScopeSql = scope.branchId ? ' AND p.branch_id=?' : '';
+    const expenseScopeSql = scope.branchId ? ' AND branch_id=?' : '';
     const now = new Date();
-    const today      = now.toISOString().slice(0, 10);
-    const weekStart  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString().slice(0, 10);
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    const prevMonth  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthStart = prevMonth.toISOString().slice(0, 10);
-    const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const today = dateOnlyInTimeZone(now);
+    const todayUtc = new Date(`${today}T00:00:00.000Z`);
+    const weekStart = addDaysToDateOnly(today, -todayUtc.getUTCDay());
+    const currentMonth = monthRange(today);
+    const monthStart = currentMonth.startDate;
+    const prevMonth = monthRange(addDaysToDateOnly(monthStart, -1));
+    const prevMonthStart = prevMonth.startDate;
+    const prevMonthEnd = prevMonth.endDate;
 
     // ── Revenue snapshots ──────────────────────────────────────────────
-    const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND DATE(date)=? AND status='paid'`, [req.tenantId, today]);
-    const [[weekRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, weekStart]);
-    const [[monthRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND status='paid'`, [req.tenantId, monthStart]);
-    const [[prevRev]]   = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date>=? AND date<? AND status='paid'`, [req.tenantId, prevMonthStart, prevMonthEnd]);
+    const revenueForRange = async (start, end = null) => {
+      const endSql = end ? ' AND je.entry_date < ?' : '';
+      const params = end ? [req.tenantId, start, end] : [req.tenantId, start];
+      if (scope.branchId) params.push(scope.branchId);
+      const [[row]] = await pool.query(
+        `SELECT COALESCE(SUM(jel.credit-jel.debit),0) AS v
+           FROM journal_entries je
+           JOIN journal_entry_lines jel ON jel.entry_id=je.id
+          WHERE je.tenant_id=? AND je.entry_date>=?${endSql}${journalScopeSql}
+            AND jel.account_code LIKE '4%'`,
+        params
+      );
+      return row;
+    };
+    const [todayRev, weekRev, monthRev, prevRev] = await Promise.all([
+      revenueForRange(today, addDaysToDateOnly(today, 1)),
+      revenueForRange(weekStart),
+      revenueForRange(monthStart),
+      revenueForRange(prevMonthStart, prevMonthEnd),
+    ]);
 
     // ── Expense this month ─────────────────────────────────────────────
-    const [[monthExp]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date>=?`, [req.tenantId, monthStart]);
+    const [[monthExp]] = await pool.query(
+      `SELECT COALESCE(SUM(jel.debit-jel.credit),0) AS v
+         FROM journal_entries je
+         JOIN journal_entry_lines jel ON jel.entry_id=je.id
+        WHERE je.tenant_id=? AND je.entry_date>=?${journalScopeSql} AND jel.account_code LIKE '5%'`,
+      scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]
+    );
 
     // ── Revenue forecast: project month based on days elapsed ──────────
-    const dayOfMonth = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dayOfMonth = Number(today.slice(8, 10));
+    const daysInMonth = Number(addDaysToDateOnly(currentMonth.endDate, -1).slice(8, 10));
     const forecast = dayOfMonth > 0 ? Math.round((parseFloat(monthRev.v) / dayOfMonth) * daysInMonth) : 0;
 
     // ── 12-month trend ─────────────────────────────────────────────────
     const [trend12] = await pool.query(`
-      SELECT DATE_FORMAT(date,'%Y-%m') AS month,
-             COALESCE(SUM(amount_egp),0) AS revenue,
-             COUNT(*) AS txn_count
-      FROM payments
-      WHERE tenant_id=? AND date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-        AND status='paid'
+      SELECT DATE_FORMAT(je.entry_date,'%Y-%m') AS month,
+             COALESCE(SUM(jel.credit-jel.debit),0) AS revenue,
+             COUNT(DISTINCT je.id) AS txn_count
+      FROM journal_entries je
+      JOIN journal_entry_lines jel ON jel.entry_id=je.id
+      WHERE je.tenant_id=? AND je.entry_date>=DATE_SUB(CURDATE(),INTERVAL 12 MONTH)
+        AND jel.account_code LIKE '4%'${journalScopeSql}
       GROUP BY month ORDER BY month ASC
-    `, [req.tenantId]);
+    `, scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]);
 
     // ── Top 5 courses by revenue this month ───────────────────────────
     const [topCourses] = await pool.query(`
@@ -869,9 +1059,9 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
              SUM(p.amount_egp) AS revenue, COUNT(*) AS cnt
       FROM payments p
       LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid'
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid'${paymentAliasScopeSql}
       GROUP BY p.course_id ORDER BY revenue DESC LIMIT 5
-    `, [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Top 5 staff by revenue collected this month ────────────────────
     const [topStaff] = await pool.query(`
@@ -879,60 +1069,96 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
              SUM(p.amount_egp) AS collected, COUNT(*) AS deals
       FROM payments p
       LEFT JOIN staff s ON s.id = p.staff_id AND s.tenant_id = p.tenant_id
-      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.staff_id IS NOT NULL
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.staff_id IS NOT NULL${paymentAliasScopeSql}
       GROUP BY p.staff_id ORDER BY collected DESC LIMIT 5
-    `, [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Revenue by payment method this month ───────────────────────────
     const [byMethod] = await pool.query(`
       SELECT COALESCE(payment_method,'غير محدد') AS method,
              SUM(amount_egp) AS revenue
       FROM payments
-      WHERE tenant_id=? AND date >= ? AND status='paid'
+      WHERE tenant_id=? AND date >= ? AND status='paid'${paymentScopeSql}
       GROUP BY payment_method ORDER BY revenue DESC
-    `, [req.tenantId, monthStart]);
+    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Expense by category this month ────────────────────────────────
     const [byCategory] = await pool.query(`
-      SELECT category, SUM(amount_egp) AS total FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date >= ? GROUP BY category ORDER BY total DESC
-    `, [req.tenantId, monthStart]);
+      SELECT category, SUM(amount_egp) AS total
+      FROM expenses
+      WHERE tenant_id=? AND deleted_at IS NULL AND date >= ?${expenseScopeSql}
+      GROUP BY category ORDER BY total DESC
+    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Budget utilization ─────────────────────────────────────────────
-    const curMonthLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const curMonthLabel = today.slice(0, 7);
+    const budgetBranchId = scope.branchId || 'branch-all';
     const [budgets] = await pool.query(`
-      SELECT category, budgeted_amount AS limit_amount FROM budgets WHERE tenant_id=? AND month = ?
-    `, [req.tenantId, curMonthLabel]).catch(() => [[]]);
+      SELECT category, budgeted_amount AS limit_amount
+      FROM budgets WHERE tenant_id=? AND branch_id=? AND month = ?
+    `, [req.tenantId, budgetBranchId, curMonthLabel]);
 
     // ── Cross-section: Leads ───────────────────────────────────────────
     const [[leadsConverted]] = await pool.query(`
-      SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND status='converted' AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())
-    `, [req.tenantId]).catch(() => [[{ n: 0 }]]);
+      SELECT COUNT(*) AS n FROM leads
+      WHERE tenant_id=? AND status='converted' AND created_at>=? AND created_at<?
+        ${scope.branchId ? 'AND branch_id=?' : ''}
+    `, scope.branchId
+      ? [req.tenantId, monthStart, currentMonth.endDate, scope.branchId]
+      : [req.tenantId, monthStart, currentMonth.endDate]);
     const [[leadsTotal]] = await pool.query(`
-      SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())
-    `, [req.tenantId]).catch(() => [[{ n: 0 }]]);
+      SELECT COUNT(*) AS n FROM leads
+      WHERE tenant_id=? AND created_at>=? AND created_at<?
+        ${scope.branchId ? 'AND branch_id=?' : ''}
+    `, scope.branchId
+      ? [req.tenantId, monthStart, currentMonth.endDate, scope.branchId]
+      : [req.tenantId, monthStart, currentMonth.endDate]);
 
-    // ── Cross-section: HR payroll cost this month ──────────────────────
+    // ── Cross-section: posted payroll expense this month ───────────────
+    // The ledger is authoritative here. Summing payroll_items.net_salary
+    // included unapproved/cancelled runs and omitted employer/statutory cost.
     const [[payrollCost]] = await pool.query(`
-      SELECT COALESCE(SUM(pi.net_salary), 0) AS v
-      FROM payroll_items pi
-       JOIN payroll_runs pr ON pr.id = pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
-      WHERE pr.tenant_id=? AND CONCAT(pr.year, '-', LPAD(pr.month, 2, '0')) = ?
-    `, [req.tenantId, curMonthLabel]).catch(() => [[{ v: 0 }]]);
+      SELECT COALESCE(SUM(jel.debit-jel.credit), 0) AS v
+      FROM journal_entries je
+      JOIN journal_entry_lines jel ON jel.entry_id=je.id
+      WHERE je.tenant_id=? AND je.ref_type='payroll'
+        AND je.entry_date>=? AND je.entry_date<?
+        AND jel.account_code='5100'
+        ${scope.branchId ? 'AND je.branch_id=?' : ''}
+    `, scope.branchId
+      ? [req.tenantId, monthStart, currentMonth.endDate, scope.branchId]
+      : [req.tenantId, monthStart, currentMonth.endDate]);
 
     // ── Cross-section: Daqqi revenue this month ────────────────────────
     const [[daqqiRev]] = await pool.query(`
       SELECT COALESCE(SUM(p.amount_egp),0) AS v
       FROM payments p
-      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.source='daqqi'
-    `, [req.tenantId, monthStart]).catch(() => [[{ v: 0 }]]);
+      WHERE p.tenant_id=? AND p.date >= ? AND p.status='paid' AND p.source='daqqi'${paymentAliasScopeSql}
+    `, scope.branchId ? [req.tenantId, monthStart, scope.branchId] : [req.tenantId, monthStart]);
 
     // ── Alerts ─────────────────────────────────────────────────────────
-    const [[pendingProofs]] = await pool.query(`SELECT COUNT(*) AS n FROM payment_proofs WHERE tenant_id=? AND status='pending'`, [req.tenantId]).catch(() => [[{ n: 0 }]]);
-    const [[pendingReviews]] = await pool.query(`SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'`, [req.tenantId]).catch(() => [[{ n: 0 }]]);
+    const [[pendingProofs]] = await pool.query(
+      `SELECT COUNT(*) AS n FROM payment_proofs WHERE tenant_id=? AND status='pending'${paymentScopeSql}`,
+      scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]
+    );
+    const [[pendingReviews]] = await pool.query(
+      `SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'${paymentScopeSql}`,
+      scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]
+    );
     const [[overdueInst]] = await pool.query(`
-      SELECT COUNT(*) AS n FROM installment_plans WHERE tenant_id=? AND status='active' AND next_due_date < CURDATE()
-    `, [req.tenantId]).catch(() => [[{ n: 0 }]]);
-    const [[openTickets]] = await pool.query(`SELECT COUNT(*) AS n FROM support_tickets WHERE tenant_id=? AND status='open'`, [req.tenantId]).catch(() => [[{ n: 0 }]]);
+      SELECT COUNT(*) AS n
+        FROM installment_plans ip
+        JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
+       WHERE ip.tenant_id=? AND ip.status IN ('active','overdue')
+         AND CAST(JSON_UNQUOTE(JSON_EXTRACT(
+               ip.due_dates,CONCAT('$[',COALESCE(ip.paid_count,0),']')
+             )) AS DATE)<CURDATE()
+         ${scope.branchId ? 'AND s.branch_id=?' : ''}
+    `, scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]);
+    const [[openTickets]] = await pool.query(
+      `SELECT COUNT(*) AS n FROM support_tickets WHERE tenant_id=? AND status='open'${paymentScopeSql}`,
+      scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]
+    );
 
     // ── Financial health score (0-100) ─────────────────────────────────
     const mRev = parseFloat(monthRev.v) || 0;
@@ -983,11 +1209,12 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
         total: pendingProofs.n + pendingReviews.n + overdueInst.n,
       },
       healthScore,
+      scope: { branch: scope.branch, branchId: scope.branchId },
       generatedAt: new Date().toISOString(),
     });
   } catch (e) {
     logger.error('[finance/cockpit]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   }
 });
 
@@ -996,18 +1223,32 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const scope = resolveFinancialScope(req, { requestedBranch: req.query.branch || null });
+    const budgetBranchId = scope.branchId || 'branch-all';
+    const month = req.query.month || dateOnlyInTimeZone().slice(0, 7);
+    const range = monthRange(month);
+    if (!range) return res.status(400).json({ error: 'Valid month is required' });
     const [rows] = await pool.query(
-      `SELECT id, category, budgeted_amount AS limit_amount, month AS period_label, notes FROM budgets WHERE tenant_id=? AND month=? ORDER BY category`,
-      [req.tenantId, month]
-    ).catch(() => [[]]);
+      `SELECT id, branch, branch_id, category, budgeted_amount AS limit_amount, month AS period_label, notes
+       FROM budgets WHERE tenant_id=? AND branch_id=? AND month=? ORDER BY category`,
+      [req.tenantId, budgetBranchId, month]
+    );
 
     // Also get current month spending per category
-    const monthStart = `${month}-01`;
-    const monthEnd   = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 1).toISOString().slice(0, 10);
+    const monthStart = range.startDate;
+    const monthEnd = range.endDate;
     const [spending] = await pool.query(
-      `SELECT category, COALESCE(SUM(amount_egp),0) AS spent FROM expenses WHERE tenant_id=? AND deleted_at IS NULL AND date >= ? AND date < ? GROUP BY category`,
-      [req.tenantId, monthStart, monthEnd]
+      `SELECT e.category,COALESCE(SUM(jel.debit-jel.credit),0) AS spent
+         FROM expenses e
+         JOIN journal_entries je ON je.tenant_id=e.tenant_id
+          AND je.ref_type='expense' AND je.ref_id=e.id
+         JOIN journal_entry_lines jel ON jel.entry_id=je.id AND jel.account_code LIKE '5%'
+        WHERE e.tenant_id=? AND e.deleted_at IS NULL AND je.entry_date >= ? AND je.entry_date < ?
+          ${scope.branchId ? 'AND je.branch_id=?' : ''}
+        GROUP BY e.category`,
+      scope.branchId
+        ? [req.tenantId, monthStart, monthEnd, scope.branchId]
+        : [req.tenantId, monthStart, monthEnd]
     );
     const spendMap = {};
     for (const s of spending) spendMap[s.category] = parseFloat(s.spent) || 0;
@@ -1023,47 +1264,91 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
     })));
   } catch (e) {
     logger.error('[finance/budgets GET]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   }
 });
 
 router.put('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
+  let transactionStarted = false;
   try {
-    const { month, budgets } = req.body;
+    const { month, budgets, branch } = req.body;
+    const scope = resolveFinancialScope(req, { requestedBranch: branch || null });
+    const budgetBranch = scope.branch || null;
+    const budgetBranchId = scope.branchId || 'branch-all';
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || '')) || !Array.isArray(budgets)) return res.status(400).json({ error: 'Valid month and budgets[] required' });
     const { uuidv4: uid } = require('../lib/id');
     const normalized = [];
+    const categories = new Set();
     for (const b of budgets) {
       const limitAmount = b.limit ?? b.limit_amount ?? b.budgeted_amount;
       const numericLimit = Number(limitAmount);
       const category = String(b.category || '').trim().slice(0, 255);
-      if (!category || !Number.isFinite(numericLimit) || numericLimit < 0 || numericLimit > 100000000) {
+      const currency = String(b.currency || 'EGP').toUpperCase();
+      if (!category || categories.has(category) || currency !== 'EGP'
+        || !Number.isFinite(numericLimit) || numericLimit < 0 || numericLimit > 100000000) {
         return res.status(400).json({ error: 'Invalid budget row' });
       }
-      normalized.push({ ...b, category, numericLimit });
+      categories.add(category);
+      normalized.push({ ...b, category, numericLimit, currency });
     }
     await conn.beginTransaction();
+    transactionStarted = true;
+    const [oldRows] = await conn.query(
+      `SELECT category,budgeted_amount,currency,notes FROM budgets
+        WHERE tenant_id=? AND branch_id=? AND month=? FOR UPDATE`,
+      [req.tenantId, budgetBranchId, month],
+    );
     for (const b of normalized) {
       await conn.query(
-        `INSERT INTO budgets (id, tenant_id, month, category, budgeted_amount, currency, notes)
-         VALUES (?,?,?,?,?,?,?)
+        `INSERT INTO budgets (id, tenant_id, branch, branch_id, month, category, budgeted_amount, currency, notes)
+         VALUES (?,?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE budgeted_amount=VALUES(budgeted_amount), currency=VALUES(currency), notes=VALUES(notes)`,
-        [uid(), req.tenantId, month, b.category, b.numericLimit, b.currency || 'EGP', b.notes || null]
+        [uid(), req.tenantId, budgetBranch, budgetBranchId, month, b.category, b.numericLimit, b.currency, b.notes || null]
       );
     }
+    await logFinancialAudit({
+      entityType: 'budget',
+      entityId: `${budgetBranchId}:${month}`,
+      action: 'upsert',
+      oldData: oldRows,
+      newData: normalized.map(({ category, numericLimit, currency, notes }) => ({
+        category, budgeted_amount: numericLimit, currency, notes: notes || null,
+      })),
+      actor: req.user?.email || req.user?.uid || 'system',
+      tenantId: req.tenantId,
+      db: conn,
+      strict: true,
+    });
     await conn.commit();
+    transactionStarted = false;
     res.json({ ok: true });
   } catch (e) {
-    try { await conn.rollback(); } catch (_) {}
+    if (transactionStarted) try { await conn.rollback(); } catch (_) {}
     logger.error('[finance/budgets PUT]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   } finally { conn.release(); }
 });
 
 // ── Refund requests list & status update ──────────────────────────────────
 router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    const scope = resolveFinancialScope(req, {
+      requestedBranch: req.query.branch || null,
+      allowAssigned: true,
+    });
+    let scopeSql = '';
+    const scopeParams = [];
+    if (scope.branchId) {
+      scopeSql = ' AND rr.branch_id=?';
+      scopeParams.push(scope.branchId);
+    } else if (scope.kind === 'assigned_cs') {
+      scopeSql = ' AND s.assigned_cs_id=?';
+      scopeParams.push(scope.staffId);
+    } else if (scope.kind === 'assigned_sales') {
+      scopeSql = ' AND s.assigned_sales_id=?';
+      scopeParams.push(scope.staffId);
+    }
     const [rows] = await pool.query(`
       SELECT rr.*, rr.admin_note AS admin_notes, rr.resolved_by AS handled_by,
              rr.resolved_at AS handled_at, s.name AS subscriber_name, s.email AS subscriber_email,
@@ -1071,19 +1356,23 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
       FROM refund_requests rr
       LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id
       LEFT JOIN staff st ON st.id = rr.resolved_by AND st.tenant_id=rr.tenant_id
-      WHERE rr.tenant_id=?
+      WHERE rr.tenant_id=?${scopeSql}
       ORDER BY rr.created_at DESC LIMIT 200
-    `, [req.tenantId]).catch(() => [[]]);
+    `, [req.tenantId, ...scopeParams]);
     res.json(rows);
   } catch (e) {
     logger.error('[finance/refunds]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error', code: e.code });
   }
 });
 
-router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
+router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
   const conn = await pool.getConnection();
   try {
+    const scope = resolveFinancialScope(req, {
+      requestedBranch: req.body?.branch || null,
+      allowAssigned: true,
+    });
     const { status, notes } = req.body;
     const normalizedStatus = String(status || '').toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(normalizedStatus))
@@ -1093,7 +1382,8 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     await conn.beginTransaction();
 
     const [[rr]] = await conn.query(
-      `SELECT rr.*, s.name AS subscriber_name, s.email AS subscriber_email
+      `SELECT rr.*, s.name AS subscriber_name, s.email AS subscriber_email,
+              s.assigned_cs_id, s.assigned_sales_id
        FROM refund_requests rr
        LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id
        WHERE rr.id = ? AND rr.tenant_id=? FOR UPDATE`,
@@ -1103,6 +1393,18 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
       await conn.rollback();
       return res.status(404).json({ error: 'Refund request not found' });
     }
+    if (!financialRecordMatches(scope, rr)) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Refund request not found' });
+    }
+    if (String(rr.status || '').toUpperCase() !== 'PENDING') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Refund request has already been resolved' });
+    }
+    if (normalizedStatus === 'APPROVED' && !rr.payment_id) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'A refund cannot be approved without a linked payment' });
+    }
 
     await conn.query(
       `UPDATE refund_requests SET status=?, admin_note=?, resolved_by=?, resolved_at=NOW() WHERE id=? AND tenant_id=?`,
@@ -1110,31 +1412,34 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     );
 
     if (normalizedStatus === 'APPROVED' && rr.payment_id) {
-      await applyRefundReversal({ paymentId: rr.payment_id, subscriberId: rr.subscriber_id, tenantId, actor }, conn);
+      await applyRefundReversal({
+        paymentId: rr.payment_id,
+        subscriberId: rr.subscriber_id,
+        refundAmount: rr.amount,
+        refundCurrency: rr.currency,
+        tenantId,
+        actor,
+      }, conn);
     }
 
-    await conn.query(
-      `INSERT INTO financial_audit_log
-         (id, tenant_id, entity_type, entity_id, action, old_json, new_json, amount, actor)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-      [
-        uuidv4(),
-        rr.tenant_id || req.tenantId || 'tenant-default',
-        'refund_request',
-        req.params.id,
-        normalizedStatus === 'APPROVED' ? 'approved' : 'rejected',
-        JSON.stringify({ status: rr.status, payment_id: rr.payment_id || null }),
-        JSON.stringify({ status: normalizedStatus, notes: notes || null }),
-        rr.amount,
-        actor,
-      ]
-    ).catch((e) => logger.warn('[finance/refunds] financial audit insert:', e.message));
+    await logFinancialAudit({
+      entityType: 'refund_request',
+      entityId: req.params.id,
+      action: normalizedStatus === 'APPROVED' ? 'approved' : 'rejected',
+      oldData: { status: rr.status, payment_id: rr.payment_id || null },
+      newData: { status: normalizedStatus, notes: notes || null },
+      amount: rr.amount,
+      actor,
+      tenantId,
+      db: conn,
+      strict: true,
+    });
     await conn.commit();
     res.json({ ok: true });
   } catch (e) {
     try { await conn.rollback(); } catch (_) {}
     logger.error('[finance/refunds PUT]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Internal server error' });
   } finally {
     conn.release();
   }

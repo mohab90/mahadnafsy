@@ -34,10 +34,14 @@ test('admin HR leave endpoints and self-service leave endpoints share the same `
   assert.match(attendance, /INSERT INTO leaves/);
 });
 
-test('the monthly attendance report reads approved leaves from `leaves` with the real `type` column, not the dead leave_requests.leave_type', () => {
+test('the monthly attendance report reads canonical leave attendance rows, not the dead leave_requests table', () => {
   const reportWindow = compensation.slice(compensation.indexOf('Monthly Attendance Report'), compensation.indexOf('module.exports'));
-  assert.doesNotMatch(reportWindow, /SELECT staff_id, leave_type/);
-  assert.match(reportWindow, /FROM leaves\s*\n\s*WHERE tenant_id=\? AND status = 'APPROVED'/);
+  assert.doesNotMatch(reportWindow, /leave_requests/);
+  assert.doesNotMatch(reportWindow, /FROM staff_absences/);
+  assert.match(reportWindow, /FROM attendance_logs/);
+  assert.match(reportWindow, /LEFT JOIN leaves/);
+  assert.match(reportWindow, /a\.leave_id IS NOT NULL/);
+  assert.match(reportWindow, /getEffectiveHrPolicy/);
 });
 
 test('hr/reports.js and analytics/dashboard.js leave stats read from `leaves`, not the dead leave_requests table (HR-02)', () => {
@@ -47,10 +51,12 @@ test('hr/reports.js and analytics/dashboard.js leave stats read from `leaves`, n
   assert.match(dashboard, /FROM leaves WHERE tenant_id=\? AND status='PENDING'/);
 });
 
-test('payroll actor-tracking columns use req.staffRecord?.id, not the always-undefined req.user.id (HR-03)', () => {
+test('payroll actor-tracking uses the staff id with authenticated uid fallback and enforces separation of duties (HR-03)', () => {
   assert.doesNotMatch(payroll, /req\.user\.id\b/);
-  const approvedByMatches = payroll.match(/req\.staffRecord\?\.id \|\| null/g) || [];
-  assert.equal(approvedByMatches.length, 2, 'expected both payroll status-transition and item-override to use req.staffRecord?.id');
+  assert.match(payroll, /const actorId = req\.staffRecord\?\.id \|\| req\.user\?\.uid \|\| null/);
+  assert.match(payroll, /status === 'APPROVED'.*prevRun\.calculated_by/s);
+  assert.match(payroll, /status === 'PAID'.*prevRun\.approved_by/s);
+  assert.match(payroll, /code: 'PAYROLL_SOD'/);
 });
 
 test('registerLimiter no longer references a JWT `role` claim that no token issuance ever sets (HR-07)', () => {

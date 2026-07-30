@@ -23,12 +23,13 @@ function scopedTenantId(req) {
 async function subscriberIdForUser(req) {
   const email = String(req.user?.email || '').trim().toLowerCase();
   const uid = req.user?.uid || '';
+  const tenantId = scopedTenantId(req);
   const [[row]] = await pool.query(
     `SELECT id FROM subscribers
-     WHERE firebase_uid = ? OR LOWER(TRIM(email)) = ?
+     WHERE tenant_id = ? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?)
      ORDER BY created_at DESC
      LIMIT 1`,
-    [uid, email]
+    [tenantId, uid, email]
   );
   return row?.id || null;
 }
@@ -88,8 +89,8 @@ router.delete('/api/push/subscribe', requireAuth, async (req, res) => {
     const subscription = req.body?.subscription;
     if (!subscription?.endpoint) return res.status(400).json({ error: 'subscription endpoint required' });
     await pool.query(
-      'UPDATE push_subscriptions SET is_active = 0 WHERE endpoint_hash = ?',
-      [endpointHash(subscription)]
+      'UPDATE push_subscriptions SET is_active = 0 WHERE tenant_id = ? AND endpoint_hash = ?',
+      [scopedTenantId(req), endpointHash(subscription)]
     );
     res.json({ ok: true });
   } catch (error) {
@@ -105,10 +106,10 @@ router.post('/api/push/test-send', requireAuth, async (req, res) => {
     const [rows] = await pool.query(
       `SELECT id, subscription_json
        FROM push_subscriptions
-       WHERE is_active = 1 AND (user_uid = ? OR subscriber_id = ?)
+       WHERE tenant_id = ? AND is_active = 1 AND (user_uid = ? OR subscriber_id = ?)
        ORDER BY updated_at DESC
        LIMIT 5`,
-      [req.user?.uid || null, subscriberId]
+      [scopedTenantId(req), req.user?.uid || null, subscriberId]
     );
     if (!rows.length) return res.status(400).json({ error: 'No active push subscriptions' });
 
@@ -123,7 +124,10 @@ router.post('/api/push/test-send', requireAuth, async (req, res) => {
         ? JSON.parse(row.subscription_json)
         : row.subscription_json;
       await sendPushNotification(subscription, payload);
-      await pool.query('UPDATE push_subscriptions SET last_sent_at = NOW(), last_error = NULL WHERE id = ?', [row.id]);
+      await pool.query(
+        'UPDATE push_subscriptions SET last_sent_at = NOW(), last_error = NULL WHERE id = ? AND tenant_id = ?',
+        [row.id, scopedTenantId(req)]
+      );
     }));
 
     const sent = results.filter(r => r.status === 'fulfilled').length;

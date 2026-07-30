@@ -10,12 +10,32 @@ const Checkout: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { courses, bundles, therapists, content, currency, authUser, subscribers } = useSiteData();
-  const type = searchParams.get('type');
-  const id = searchParams.get('id');
+  const paymentLinkToken = searchParams.get('paymentToken') || searchParams.get('token');
+  const [paymentLink, setPaymentLink] = useState<{
+    item_type: string; item_id: string; amount: number; currency: 'EGP' | 'SAR' | 'USD';
+    description?: string | null; item?: { title?: string; title_ar?: string } | null;
+  } | null>(null);
+  const [paymentLinkLoading, setPaymentLinkLoading] = useState(Boolean(paymentLinkToken));
+  const [paymentLinkError, setPaymentLinkError] = useState('');
+  const type = paymentLink?.item_type || searchParams.get('type');
+  const id = paymentLink?.item_id || searchParams.get('id');
   const subtype = searchParams.get('subtype'); // For consultations
 
   // Every payment proof must belong to an authenticated customer and order.
   const requiresLogin = ['course', 'bundle', 'consultation', 'certificate'].includes(type || '');
+
+  useEffect(() => {
+    if (!paymentLinkToken) return;
+    setPaymentLinkLoading(true);
+    fetch(`/api/payment-links/${encodeURIComponent(paymentLinkToken)}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.pl) throw new Error(data.error || 'رابط الدفع غير صالح');
+        setPaymentLink({ ...data.pl, item: data.item || null });
+      })
+      .catch((error) => setPaymentLinkError(error instanceof Error ? error.message : 'رابط الدفع غير صالح'))
+      .finally(() => setPaymentLinkLoading(false));
+  }, [paymentLinkToken]);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -50,7 +70,6 @@ const Checkout: React.FC = () => {
   // Determine Item details
   let itemTitle = '';
   let itemPrice = 0;
-  let itemEGPPrice = 0;
   let itemImage = '';
   let itemFound = false;
 
@@ -59,7 +78,6 @@ const Checkout: React.FC = () => {
       if (course) {
           itemTitle = course.title;
           itemPrice = course.price?.[currency] ?? 0;
-          itemEGPPrice = course.price?.EGP ?? 0;
           itemImage = course.thumbnail;
           itemFound = true;
       }
@@ -68,15 +86,13 @@ const Checkout: React.FC = () => {
       if (bundle) {
           itemTitle = bundle.title;
           itemPrice = bundle.price?.[currency] ?? 0;
-          itemEGPPrice = bundle.price?.EGP ?? 0;
           itemImage = bundle.courses[0]?.thumbnail ?? '';
           itemFound = true;
       }
   } else if (type === 'consultation') {
       if (subtype === 'express') {
           itemTitle = 'جلسة استشارة سريعة (Express)';
-          itemPrice = Number(searchParams.get('price'));
-          itemEGPPrice = itemPrice; // Express price is always in EGP
+          itemPrice = Number(content[`express.price.${currency}`] || searchParams.get('price'));
           itemImage = content['consultation.expressImage'] || '';
           itemFound = true;
       } else {
@@ -85,7 +101,6 @@ const Checkout: React.FC = () => {
           if (therapist) {
             itemTitle = `جلسة علاج نفسي مع ${therapist.name}`;
                         itemPrice = getTherapistSessionPrice(therapist, currency);
-            itemEGPPrice = getTherapistSessionPrice(therapist, 'EGP');
             itemImage = therapist.image;
             itemFound = true;
           }
@@ -93,18 +108,22 @@ const Checkout: React.FC = () => {
   } else if (type === 'certificate') {
       itemTitle = decodeURIComponent(searchParams.get('title') || 'شهادة إضافية');
       itemPrice = Number(searchParams.get('amount') || 0);
-      itemEGPPrice = itemPrice;
       itemFound = true;
   }
+  if (paymentLink) {
+    itemPrice = Number(paymentLink.amount) || 0;
+    itemTitle = paymentLink.item?.title_ar || paymentLink.item?.title || paymentLink.description || itemTitle;
+    itemFound = Boolean(paymentLink.item) && itemPrice > 0;
+  }
 
-  // Manual transfers are settled and reconciled in EGP while Paymob is paused.
-  const settlementCurrency = serverCurrency || (type === 'certificate' && ['EGP', 'SAR', 'USD'].includes(searchParams.get('currency') || '')
-    ? searchParams.get('currency') as 'EGP' | 'SAR' | 'USD' : 'EGP');
+  // Display follows verified location; the server independently recalculates it.
+  const settlementCurrency = serverCurrency || paymentLink?.currency || (type === 'certificate' && ['EGP', 'SAR', 'USD'].includes(searchParams.get('currency') || '')
+    ? searchParams.get('currency') as 'EGP' | 'SAR' | 'USD' : currency);
   const currencySymbol = settlementCurrency === 'SAR' ? 'ر.س' : settlementCurrency === 'USD' ? '$' : 'ج.م';
-  const finalAmount = serverAmount ?? itemEGPPrice;
+  const finalAmount = serverAmount ?? itemPrice;
   const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
 
-  const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemEGPPrice > 0;
+  const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemPrice > 0;
 
   const handlePay = async () => {
     if (!canPay) return;
@@ -113,7 +132,7 @@ const Checkout: React.FC = () => {
     try {
       const token = localStorage.getItem('mahad-token');
       if (!token) throw new Error('سجّل الدخول أولاً لإتمام الطلب');
-      const idempotencyStorageKey = `checkout-idempotency:${type}:${id || subtype || 'item'}`;
+      const idempotencyStorageKey = `checkout-idempotency:${type}:${id || subtype || 'item'}:${paymentLinkToken || ''}`;
       const idempotencyKey = sessionStorage.getItem(idempotencyStorageKey) || crypto.randomUUID();
       sessionStorage.setItem(idempotencyStorageKey, idempotencyKey);
       const response = await fetch('/api/public/checkout-intent', {
@@ -125,10 +144,11 @@ const Checkout: React.FC = () => {
         },
         body: JSON.stringify({
           itemId: id, itemType: type, itemTitle,
+          ...(paymentLinkToken ? { paymentLinkToken } : {}),
           customerName: customerName.trim(),
           customerEmail: customerEmail.trim(),
           customerPhone: customerPhone.trim(),
-          amount: itemEGPPrice, currency: 'EGP',
+          amount: itemPrice, currency,
           ...(type === 'consultation' ? {
             therapistId: searchParams.get('therapistId') || '',
             sessionDate: searchParams.get('date') || '',
@@ -168,11 +188,19 @@ const Checkout: React.FC = () => {
     setProofSubmitting(true); setProofError('');
     try {
       const token = localStorage.getItem('mahad-token');
+      const intentRes = await fetch('/api/me/payment-intents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ order_id: orderId, provider: 'manual', idempotency_key: `checkout:${orderId}` }),
+      });
+      const intent = await intentRes.json().catch(() => ({}));
+      if (!intentRes.ok || !intent.id) throw new Error(intent.error || 'تعذّر تجهيز عملية الدفع');
       const res = await fetch('/api/me/payment-proof', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           order_id: orderId,
+          payment_intent_id: intent.id,
           payment_method: proofMethod, proof_image: proofImage,
           note: `طلب ذاتي: ${itemTitle}`,
         }),
@@ -185,6 +213,12 @@ const Checkout: React.FC = () => {
   };
 
   // Require login before any payable customer workflow.
+  if (paymentLinkLoading) {
+    return <div className="min-h-screen bg-gray-50 grid place-items-center text-gray-500" dir="rtl"><Loader2 className="animate-spin" /> جاري التحقق من رابط الدفع...</div>;
+  }
+  if (paymentLinkError) {
+    return <div className="min-h-screen bg-gray-50 grid place-items-center p-4" dir="rtl"><div className="rounded-2xl border border-red-200 bg-white p-8 text-center text-red-700">{paymentLinkError}</div></div>;
+  }
   if (requiresLogin && authUser === null) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
@@ -401,14 +435,14 @@ const Checkout: React.FC = () => {
                         }
                         <div>
                             <h3 className="font-bold text-sm text-gray-800 line-clamp-2">{itemTitle}</h3>
-                            <p className="text-primary-600 font-bold mt-1">{itemEGPPrice} {currencySymbol}</p>
+                            <p className="text-primary-600 font-bold mt-1">{itemPrice} {currencySymbol}</p>
                         </div>
                     </div>
                     
                     <div className="space-y-2 text-sm text-gray-600 mb-4">
                         <div className="flex justify-between">
                             <span>السعر الأساسي</span>
-                            <span>{itemEGPPrice} {currencySymbol}</span>
+                            <span>{itemPrice} {currencySymbol}</span>
                         </div>
                     </div>
 

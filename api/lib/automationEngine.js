@@ -5,7 +5,7 @@
  * Before this, the exact same "match a trigger, run its action steps" logic
  * was independently implemented twice: routes/automation.js's manual
  * POST /run button (20 triggers, 9 actions, multi-step JSON support), and
- * lib/serverCronJobs.js's daily automatic run (5 triggers, 4 actions,
+ * server.js's daily automatic run (5 triggers, 4 actions,
  * single-action only, hand-copied and already drifted — e.g. its
  * add_followup_reminder writes lead_timeline directly instead of going
  * through logLeadEvent()). A fix applied to one silently never reached the
@@ -17,6 +17,7 @@ const { sendWhatsApp } = require('./whatsapp');
 const { logLeadEvent } = require('./crm');
 const { transitionLead } = require('./leadState');
 const { assignLead } = require('./leadAssignment');
+const { appendLeadInteraction } = require('./leadInteractions');
 const { uuidv4 } = require('./id');
 const logger = require('./logger');
 
@@ -34,7 +35,6 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
      FROM automation_workflows WHERE ${where} ORDER BY created_at ASC`, params
   );
   const results = [];
-  const todayStr = new Date().toISOString().slice(0, 10);
 
   for (const wf of workflows) {
     // Per-workflow guard: a single broken trigger (e.g. a stale table/column ref)
@@ -53,12 +53,12 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           SELECT l.id, l.name, l.phone, l.email, l.status, l.assigned_sales_name
           FROM leads l
           LEFT JOIN (
-            SELECT lead_id, MAX(date) AS last_date FROM communications GROUP BY lead_id
+            SELECT lead_id, MAX(date) AS last_date FROM communications WHERE tenant_id=? GROUP BY lead_id
           ) c ON c.lead_id = l.id
           WHERE l.tenant_id=? AND l.hidden = 0
             AND l.status NOT IN ('converted','lost','not_interested','no_answer_nowa','wrong_number')
             AND DATEDIFF(NOW(), COALESCE(c.last_date, l.last_follow_up, l.created_at)) >= ?
-        `, [tid, days]);
+        `, [tid, tid, days]);
         matchedLeads = rows;
       }
 
@@ -286,12 +286,12 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           SELECT l.id, l.name, l.phone, l.email, l.status, l.assigned_sales_name
           FROM leads l
           LEFT JOIN (
-            SELECT lead_id, MAX(date) AS last_date FROM communications GROUP BY lead_id
+            SELECT lead_id, MAX(date) AS last_date FROM communications WHERE tenant_id=? GROUP BY lead_id
           ) c ON c.lead_id = l.id
           WHERE l.tenant_id=? AND l.hidden = 0
             AND l.status NOT IN ('converted','lost')
             AND TIMESTAMPDIFF(HOUR, COALESCE(c.last_date, l.created_at), NOW()) >= ?
-        `, [tid, hours]);
+        `, [tid, tid, hours]);
         matchedLeads = rows;
       }
 
@@ -362,12 +362,12 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
           }
 
           else if (step.action === 'add_note' && msg && lead.id) {
-            const noteId = `auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            await pool.query(
-              `INSERT IGNORE INTO communications (id, lead_id, type, date, notes, outcome)
-               VALUES (?, ?, 'note', ?, ?, 'auto')`,
-              [noteId, lead.id, todayStr, `[أتوميشن: ${wf.name}] ${msg}`]
-            );
+            await appendLeadInteraction({
+              tenantId: tid,
+              leadId: lead.id,
+              interaction: { type: 'note', notes: `[أتوميشن: ${wf.name}] ${msg}`, outcome: 'auto' },
+              actor: { name: actor, automation: true, workflowId: wf.id },
+            });
             actionsRun++;
           }
 

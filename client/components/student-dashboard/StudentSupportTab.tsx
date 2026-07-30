@@ -11,10 +11,6 @@ type SupportTicket = {
   reply_count?: number;
 };
 
-type StudentSupportTabProps = {
-  token: string;
-};
-
 const STATUS_LABELS: Record<string, string> = {
   open: 'مفتوحة',
   in_progress: 'قيد المعالجة',
@@ -29,17 +25,14 @@ const STATUS_COLORS: Record<string, string> = {
   closed: 'bg-gray-100 text-gray-600',
 };
 
-export function StudentSupportTab({ token }: StudentSupportTabProps) {
+export function StudentSupportTab() {
   const [tickets, setTickets] = React.useState<SupportTicket[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [form, setForm] = React.useState({ subject: '', body: '' });
   const [submitting, setSubmitting] = React.useState(false);
   const [toast, setToast] = React.useState('');
 
-  const headers = React.useMemo(() => ({
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  }), [token]);
+  const headers = React.useMemo(() => ({ 'Content-Type': 'application/json' }), []);
 
   const showToast = React.useCallback((message: string) => {
     setToast(message);
@@ -49,7 +42,7 @@ export function StudentSupportTab({ token }: StudentSupportTabProps) {
   const loadTickets = React.useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_SUPPORT}/me/tickets`, { headers });
+      const response = await fetch(`${API_SUPPORT}/me/tickets`, { headers, credentials: 'include' });
       if (response.ok) setTickets(await response.json());
     } finally {
       setLoading(false);
@@ -67,19 +60,21 @@ export function StudentSupportTab({ token }: StudentSupportTabProps) {
     }
 
     setSubmitting(true);
-    const response = await fetch(`${API_SUPPORT}/me/tickets`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(form),
-    });
-    setSubmitting(false);
-
-    if (response.ok) {
+    try {
+      const response = await fetch(`${API_SUPPORT}/me/tickets`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(form),
+      });
+      if (!response.ok) throw new Error(`Support request failed (${response.status})`);
       showToast('تم إرسال تذكرتك بنجاح');
       setForm({ subject: '', body: '' });
-      loadTickets();
-    } else {
+      await loadTickets();
+    } catch {
       showToast('حدث خطأ، يرجى المحاولة مرة أخرى');
+    } finally {
+      setSubmitting(false);
     }
   };
 

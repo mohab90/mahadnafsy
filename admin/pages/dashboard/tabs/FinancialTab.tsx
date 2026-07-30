@@ -5,15 +5,13 @@ import {
 import { FinancialSubTabs } from './financial/FinancialSubTabs';
 import { FinancialOrdersControls } from './financial/FinancialOrdersControls';
 import { FinancialOrdersTable } from './financial/FinancialOrdersTable';
-import type { InstallmentPlanDraft } from './financial/InstallmentPlanModal';
-import type { PayingInstallmentEntry } from './financial/InstallmentPaymentModal';
 import { useFinancialCommissionsData } from './financial/useFinancialCommissionsData';
 import { useFinancialOrdersData } from './financial/useFinancialOrdersData';
 import { usePaymentProofsReview } from './financial/usePaymentProofsReview';
 import { exportCSV, exportExpensesPdfReport, exportFullFinancialReport, exportPaymentsExcelReport } from './financial/financialExports';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { PaymentHistoryEntry, ExpenseItem, InstallmentEntry, InstallmentPlan, SubscriberItem } from '../../../types';
+import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
 import { branchMatches, createBlankIncomeDraft, type FinancialSubTab } from './financial/financialTabUtils';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -34,10 +32,12 @@ const ReconciliationPanel = React.lazy(() => import('./financial/ReconciliationP
 const PaymentProofsPanel = React.lazy(() => import('./financial/PaymentProofsPanel').then(module => ({ default: module.PaymentProofsPanel })));
 const PaymentReviewPanel = React.lazy(() => import('./financial/PaymentReviewPanel').then(module => ({ default: module.PaymentReviewPanel })));
 const PeriodClosingPanel = React.lazy(() => import('./FinancialPanels').then(module => ({ default: module.PeriodClosingPanel })));
+const FinanceAdvancesPanel = React.lazy(() => import('./hr-sections/HrAdvancesPanel'));
+const FinanceOperationsPanel = React.lazy(() => import('./financial/FinanceOperationsPanel'));
 
 export default function FinancialTab({ notify, branchFilter }: { notify: NotifyFn; branchFilter?: string }) {
   const {
-    orders: _allOrders, subscribers: _allSubscribers, updateSubscriber, staffMembers,
+    orders: _allOrders, subscribers: _allSubscribers, recordSubscriberPayment, reloadSubscribers, staffMembers,
     expenses: _allExpenses, addExpense, updateExpense, deleteExpense, content, setContentValue, courses,
     authUser,
   } = useSiteData();
@@ -75,11 +75,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     handleProofReview,
     pendingProofsCount,
   } = usePaymentProofsReview({
-    authUserEmail: authUser?.email,
     notify,
-    staffMembers,
-    subscribers,
-    updateSubscriber,
+    reloadSubscribers,
+    branchFilter,
   });
 
   // ── FX rates refresh ──
@@ -87,7 +85,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const refreshFxRates = async () => {
     setFxRefreshing(true);
     try {
-      const r = await mysqlAdmin.adminPost<{ ok: boolean; sar_to_egp: number; usd_to_egp: number }>('/api/admin/fx-rates/refresh', {});
+      const r = await mysqlAdmin.adminPost<{ ok: boolean; sar_to_egp: number; usd_to_egp: number }>('/admin/fx-rates/refresh', {});
       if (r && (r as { ok?: boolean }).ok) {
         setContentValue('exchange.sar_to_egp', String((r as { sar_to_egp: number }).sar_to_egp));
         setContentValue('exchange.usd_to_egp', String((r as { usd_to_egp: number }).usd_to_egp));
@@ -104,6 +102,32 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   // ── Global date range filter (for overview / P&L) ──
   const [globalDateFrom, setGlobalDateFrom] = useState('');
   const [globalDateTo, setGlobalDateTo] = useState('');
+  type LedgerPnl = { totalRevenue: number; totalExpenses: number; netProfit: number; margin: number };
+  const [ledgerAllPnl, setLedgerAllPnl] = useState<LedgerPnl | null>(null);
+  const [ledgerFilteredPnl, setLedgerFilteredPnl] = useState<LedgerPnl | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(true);
+  React.useEffect(() => {
+    let active = true;
+    setLedgerLoading(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const filteredFrom = globalDateFrom || '2000-01-01';
+    const filteredTo = globalDateTo || today;
+    Promise.all([
+      mysqlAdmin.getFinancialPnl('2000-01-01', today, branchFilter || undefined),
+      mysqlAdmin.getFinancialPnl(filteredFrom, filteredTo, branchFilter || undefined),
+    ]).then(([allPnl, filteredPnl]) => {
+      if (!active) return;
+      setLedgerAllPnl(allPnl);
+      setLedgerFilteredPnl(filteredPnl);
+    }).catch(() => {
+      if (!active) return;
+      setLedgerAllPnl(null);
+      setLedgerFilteredPnl(null);
+    }).finally(() => {
+      if (active) setLedgerLoading(false);
+    });
+    return () => { active = false; };
+  }, [branchFilter, globalDateFrom, globalDateTo]);
 
   // ── Orders tab extra filters ──
   const [orderSearch, setOrderSearch] = useState('');
@@ -113,8 +137,18 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const [ordersPage, setOrdersPage] = useState(1);
   const ORDERS_PAGE_SIZE = 50;
 
-  const exportFullReport = () => exportFullFinancialReport({ content, orders, subscribers, expenses });
-  const exportPaymentsExcel = () => exportPaymentsExcelReport({ content, orders, subscribers });
+  const exportFullReport = () => {
+    if (!ledgerAllPnl) return notify('error', 'تعذر التصدير: دفتر الأستاذ غير متاح.');
+    try {
+      exportFullFinancialReport({ content, orders, subscribers, expenses, officialTotals: ledgerAllPnl });
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تصدير التقرير المالي.');
+    }
+  };
+  const exportPaymentsExcel = () => {
+    try { exportPaymentsExcelReport({ content, orders, subscribers }); }
+    catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر تصدير المدفوعات.'); }
+  };
   const exportExpensesPDF = () => exportExpensesPdfReport(expenses);
 
   const allPaymentHistoryEarly = subscribers.flatMap(s => s.paymentHistory ?? []);
@@ -127,12 +161,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const [commissionFrom, setCommissionFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 2); return d.toISOString().slice(0, 7); });
   const [commissionTo, setCommissionTo] = useState(new Date().toISOString().slice(0, 7));
   const [commissionViewMode, setCommissionViewMode] = useState<'single' | 'range'>('single');
-  const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
-  const [newPlanSubId, setNewPlanSubId] = useState('');
-  const [newPlanDraft, setNewPlanDraft] = useState<InstallmentPlanDraft>({ courseId: '', courseTitle: '', totalAmount: 0, currency: 'EGP', notes: '', entries: [] });
-  const [newEntry, setNewEntry] = useState({ dueDate: '', amount: 0, note: '' });
-  const [payingEntry, setPayingEntry] = useState<PayingInstallmentEntry | null>(null);
-  const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean }> | null>(null);
+  const [dbPayments, setDbPayments] = useState<Array<{ id: string; subscriberId: string; subscriberName: string; amount: number; currency: string; paymentType: string; paymentMethod: string | null; transactionId: string | null; note: string | null; at: string; isInstallment: boolean; status?: string }> | null>(null);
   const [loadingDbPayments, setLoadingDbPayments] = useState(false);
 
   const loadDbPayments = async () => {
@@ -145,98 +174,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   };
   const [incomeDraft, setIncomeDraft] = useState(createBlankIncomeDraft);
 
-  const handleSaveInstallmentPlan = () => {
-    if (!newPlanSubId || !newPlanDraft.totalAmount || newPlanDraft.entries.length === 0) return;
-    const sub = subscribers.find(s => s.id === newPlanSubId);
-    if (!sub) return;
-    const plan: InstallmentPlan = {
-      id: `plan-${Date.now()}`,
-      courseId: newPlanDraft.courseId || undefined,
-      courseTitle: newPlanDraft.courseTitle || undefined,
-      totalAmount: newPlanDraft.totalAmount,
-      currency: newPlanDraft.currency,
-      notes: newPlanDraft.notes || undefined,
-      entries: newPlanDraft.entries.map((entry, index) => ({
-        id: `entry-${Date.now()}-${index}`,
-        amount: entry.amount,
-        currency: newPlanDraft.currency,
-        dueDate: entry.dueDate,
-        note: entry.note || undefined,
-      } as InstallmentEntry)),
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-    updateSubscriber({ ...sub, installmentPlans: [...(sub.installmentPlans || []), plan] });
-    if (newPlanDraft.courseId) {
-      void mysqlAdmin.addEnrollment(sub.id, newPlanDraft.courseId, null, 'limited', 15).catch(() => {});
-    }
-    notify('success', 'تم إنشاء خطة الأقساط بنجاح.');
-    setIsNewPlanOpen(false);
-    setNewPlanSubId('');
-    setNewPlanDraft({ courseId: '', courseTitle: '', totalAmount: 0, currency: 'EGP', notes: '', entries: [] });
-    setNewEntry({ dueDate: '', amount: 0, note: '' });
-  };
-
-  const handleConfirmInstallmentPayment = (sub: SubscriberItem, plan: InstallmentPlan, entry: InstallmentEntry) => {
-    if (!payingEntry) return;
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const updatedPlans = (sub.installmentPlans || []).map(pl =>
-      pl.id !== payingEntry.planId ? pl : {
-        ...pl,
-        entries: pl.entries.map(en =>
-          en.id !== payingEntry.entryId ? en : {
-            ...en,
-            paidAt: todayStr,
-            paidAmount: payingEntry.paidAmount,
-          }
-        ),
-      }
-    );
-    const payHistEntry: PaymentHistoryEntry = {
-      id: `inst-${payingEntry.entryId}-${Date.now()}`,
-      amount: payingEntry.paidAmount,
-      currency: entry.currency || plan.currency || 'EGP',
-      paymentMethod: payingEntry.paymentMethod || undefined,
-      note: [
-        `قسط: ${plan.courseTitle || 'خطة سداد'}`,
-        entry.dueDate ? `استحقاق: ${entry.dueDate}` : '',
-        entry.note || '',
-      ].filter(Boolean).join(' — ') || undefined,
-      paymentType: 'course',
-      courseId: plan.courseId || undefined,
-      isInstallment: true,
-      at: todayStr,
-    };
-    let updatedCourseAccess = { ...(sub.courseAccess ?? {}) };
-    let updatedEnrolledIds = [...(sub.enrolledCourseIds ?? [])];
-    if (plan.courseId) {
-      const prevInstCount = (sub.paymentHistory || []).filter(
-        payment => payment.isInstallment && payment.courseId === plan.courseId
-      ).length;
-      if (prevInstCount === 0) {
-        const curAccess = updatedCourseAccess[plan.courseId];
-        const notFull = !curAccess || curAccess === 'preview' ||
-          (typeof curAccess === 'object' && curAccess.mode !== 'full' && curAccess.mode !== 'limited');
-        if (notFull) updatedCourseAccess[plan.courseId] = { mode: 'limited', lectureLimit: 15 };
-        if (!updatedEnrolledIds.includes(plan.courseId))
-          updatedEnrolledIds = [...updatedEnrolledIds, plan.courseId];
-      }
-    }
-    updateSubscriber({
-      ...sub,
-      installmentPlans: updatedPlans,
-      paymentHistory: [...(sub.paymentHistory || []), payHistEntry],
-      courseAccess: updatedCourseAccess,
-      enrolledCourseIds: updatedEnrolledIds,
-    });
-    void mysqlAdmin.saveSubscriberPayment(sub.id, payHistEntry as unknown as Record<string, unknown>).catch(() => {});
-    if (plan.courseId) {
-      void mysqlAdmin.addEnrollment(sub.id, plan.courseId, null, 'limited', 15).catch(() => {});
-    }
-    notify('success', 'تم تسجيل دفعة القسط بنجاح.');
-    setPayingEntry(null);
-  };
-
-  const handleAddIncome = () => {
+  const handleAddIncome = async () => {
     if (!incomeDraft.subscriberId || !incomeDraft.amount) return;
     const sub = subscribers.find((s) => s.id === incomeDraft.subscriberId);
     if (!sub) return;
@@ -251,93 +189,61 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       isInstallment: incomeDraft.isInstallment || false,
       at: incomeDraft.date,
     };
-    // Auto-unlock 15 limited videos on first installment for a course
-    let updatedCourseAccess = { ...(sub.courseAccess ?? {}) };
-    let updatedEnrolledIds = [...(sub.enrolledCourseIds ?? [])];
-    if (incomeDraft.isInstallment && incomeDraft.courseId) {
-      const prevInstCount = (sub.paymentHistory || []).filter(
-        p => p.isInstallment && p.courseId === incomeDraft.courseId
-      ).length;
-      if (prevInstCount === 0) {
-        const curAccess = updatedCourseAccess[incomeDraft.courseId];
-        const notFull = !curAccess || curAccess === 'preview' ||
-          (typeof curAccess === 'object' && curAccess.mode !== 'full' && curAccess.mode !== 'limited');
-        if (notFull) updatedCourseAccess[incomeDraft.courseId] = { mode: 'limited', lectureLimit: 15 };
-        if (!updatedEnrolledIds.includes(incomeDraft.courseId))
-          updatedEnrolledIds = [...updatedEnrolledIds, incomeDraft.courseId];
-      }
+    try {
+      const result = await recordSubscriberPayment(sub.id, entry as unknown as Record<string, unknown>);
+      notify(
+        'success',
+        result.approvalRequired
+          ? 'تم تسجيل الدفعة كمعلّقة وتنتظر اعتماد الإدارة المالية.'
+          : 'تم تسجيل الدخل وحفظ القيد المحاسبي بنجاح.',
+      );
+      setIsIncomeFormOpen(false);
+      setIncomeDraft(createBlankIncomeDraft());
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تسجيل الدفعة.');
     }
-    updateSubscriber({
-      ...sub,
-      paymentHistory: [...(sub.paymentHistory ?? []), entry],
-      courseAccess: updatedCourseAccess,
-      enrolledCourseIds: updatedEnrolledIds,
-    });
-    // Persist payment to MySQL payments table
-    void mysqlAdmin.saveSubscriberPayment(sub.id, entry as unknown as Record<string, unknown>).catch(() => {});
-    // Persist enrollment to MySQL enrollments table
-    if (incomeDraft.courseId) {
-      let accessLevel: 'full' | 'limited' = 'full';
-      let lectureLimit: number | undefined;
-      const newAccess = updatedCourseAccess[incomeDraft.courseId];
-      if (newAccess && typeof newAccess === 'object' && newAccess.mode === 'limited') {
-        accessLevel = 'limited';
-        lectureLimit = newAccess.lectureLimit;
-      }
-      void mysqlAdmin.addEnrollment(sub.id, incomeDraft.courseId, null, accessLevel, lectureLimit).catch(() => {});
-    }
-    notify('success', 'تم تسجيل الدخل بنجاح.');
-    setIsIncomeFormOpen(false);
-    setIncomeDraft(createBlankIncomeDraft());
   };
 
   const today = new Date().toISOString().slice(0, 10);
   const subscribersWithPlans = subscribers.filter(s => (s.installmentPlans?.length ?? 0) > 0);
 
-  const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
+  const fxUpdatedAt = new Date(content['exchange.updated_at'] || '').getTime();
+  const fxFresh = Number.isFinite(fxUpdatedAt)
+    && fxUpdatedAt <= Date.now()
+    && Date.now() - fxUpdatedAt <= 48 * 3600000;
+  const sarRate = fxFresh ? Number(content['exchange.sar_to_egp']) || 0 : 0;
+  const usdRate = fxFresh ? Number(content['exchange.usd_to_egp']) || 0 : 0;
   const toEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
   const paidOrders = orders.filter(o => o.status === 'paid' && (o.paymentMethod === 'card' || o.paymentMethod === 'wallet' || o.paymentMethod === 'online_paymob' || (o as unknown as Record<string,unknown>)['source'] !== 'crm'));
+  const paidOrderRefs = new Set<string>();
+  paidOrders.forEach(order => {
+    paidOrderRefs.add(String(order.id));
+    if (order.transactionId) paidOrderRefs.add(String(order.transactionId));
+  });
   // All paymentHistory entries across subscribers — only confirmed/paid entries count toward revenue
   const allPaymentHistory = subscribers.flatMap(s => s.paymentHistory ?? []);
   // Truly manual payments: only paid status, exclude Paymob online entries (already in paidOrders above)
   const allManualPayments = allPaymentHistory.filter(p =>
     (!p.status || p.status === 'paid') &&
-    (p.paymentMethod || '') !== 'online_paymob' &&
-    !(p.paymentMethod || '').includes('Paymob')
+    !String(p.paymentMethod || '').toLowerCase().includes('paymob') &&
+    !paidOrderRefs.has(String(p.id)) &&
+    !(p.transactionId && paidOrderRefs.has(String(p.transactionId)))
   );
   const onlineRevenueEGP = paidOrders.reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
   const manualRevenueEGP = allManualPayments.reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
-  const totalRevenueEGP = onlineRevenueEGP + manualRevenueEGP;
-  const totalExpensesEGP = expenses.reduce((s, e) => s + toEGP(e.amount, e.currency), 0);
-  const netProfitEGP = totalRevenueEGP - totalExpensesEGP;
-  const profitMargin = totalRevenueEGP > 0 ? Math.round((netProfitEGP / totalRevenueEGP) * 100) : 0;
+  // Official financial statements are ledger-only. Never replace an unavailable
+  // ledger with browser-derived order/payment totals that can diverge by role.
+  const totalRevenueEGP = ledgerAllPnl?.totalRevenue ?? 0;
+  const totalExpensesEGP = ledgerAllPnl?.totalExpenses ?? 0;
+  const netProfitEGP = ledgerAllPnl?.netProfit ?? 0;
+  const profitMargin = ledgerAllPnl?.margin ?? 0;
 
   // ── فلتر فترة زمنية للنظرة العامة / الأرباح والخسائر ──
   const isGlobalFiltered = !!(globalDateFrom || globalDateTo);
-  const globalFilteredManual = allManualPayments.filter(p => {
-    const d = (p.at || '').slice(0, 10);
-    if (globalDateFrom && d < globalDateFrom) return false;
-    if (globalDateTo && d > globalDateTo) return false;
-    return true;
-  });
-  const globalFilteredOrders = paidOrders.filter(o => {
-    const d = (o.paidAt || o.createdAt || '').slice(0, 10);
-    if (globalDateFrom && d < globalDateFrom) return false;
-    if (globalDateTo && d > globalDateTo) return false;
-    return true;
-  });
-  const globalFilteredExpenses = expenses.filter(e => {
-    if (globalDateFrom && e.date < globalDateFrom) return false;
-    if (globalDateTo && e.date > globalDateTo) return false;
-    return true;
-  });
-  const gOnline = globalFilteredOrders.reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
-  const gManual = globalFilteredManual.reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
-  const gRevenue = gOnline + gManual;
-  const gExpenses = globalFilteredExpenses.reduce((s, e) => s + toEGP(e.amount, e.currency), 0);
-  const gProfit = gRevenue - gExpenses;
-  const gMargin = gRevenue > 0 ? Math.round((gProfit / gRevenue) * 100) : 0;
+  const gRevenue = ledgerFilteredPnl?.totalRevenue ?? 0;
+  const gExpenses = ledgerFilteredPnl?.totalExpenses ?? 0;
+  const gProfit = ledgerFilteredPnl?.netProfit ?? 0;
+  const gMargin = ledgerFilteredPnl?.margin ?? 0;
 
   // ── إيرادات لكل كورس ──
   const revenueByCourse = courses.map(c => {
@@ -349,19 +255,6 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       .reduce((s, o) => s + toEGP(o.amount, o.currency), 0);
     return { id: c.id, title: c.titleAr || c.title, manual, online, total: manual + online };
   }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
-
-  // ── تقرير التقادم (aging) للأقساط المتأخرة ──
-  const agingRows = subscribersWithPlans.flatMap(s =>
-    (s.installmentPlans ?? []).flatMap(plan => {
-      const totalPaid = (plan.payments ?? []).reduce((sum: number, py: { amount: number }) => sum + py.amount, 0);
-      const remaining = plan.totalAmount - totalPaid;
-      if (remaining <= 0) return [];
-      const dueDate = plan.nextDueDate || plan.startDate || '';
-      if (!dueDate) return [];
-      const days = dueDate < today ? Math.floor((Date.now() - new Date(dueDate).getTime()) / 86400000) : 0;
-      return [{ sub: s, plan, remaining, dueDate, daysOverdue: days }];
-    })
-  ).sort((a, b) => b.daysOverdue - a.daysOverdue);
 
   // Helper: get payment method from entry (new field first, then scan note for compat)
   const DEFAULT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
@@ -492,10 +385,10 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           {/* FX Rates widget */}
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs">
             <span className="text-gray-500">ر.س =</span>
-            <span className="font-bold text-gray-800">{parseFloat(content['exchange.sar_to_egp'] || '13') || 13} ج.م</span>
+            <span className={`font-bold ${fxFresh ? 'text-gray-800' : 'text-red-600'}`}>{fxFresh ? `${sarRate} ج.م` : 'غير متاح'}</span>
             <span className="text-gray-400">|</span>
             <span className="text-gray-500">$ =</span>
-            <span className="font-bold text-gray-800">{parseFloat(content['exchange.usd_to_egp'] || '50') || 50} ج.م</span>
+            <span className={`font-bold ${fxFresh ? 'text-gray-800' : 'text-red-600'}`}>{fxFresh ? `${usdRate} ج.م` : 'غير متاح'}</span>
             <button onClick={refreshFxRates} disabled={fxRefreshing} title="تحديث أسعار الصرف من الإنترنت"
               className="mr-1 p-1 rounded-lg hover:bg-gray-200 transition disabled:opacity-50">
               {fxRefreshing
@@ -531,6 +424,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       {financialSubTab === 'cockpit' && (
         <FinancialCockpitPanel
           notify={notifyLegacy}
+          branch={branchFilter || undefined}
           onNavigate={(tab) => {
             if (tab === 'proofs' && !allProofs) loadAllProofs();
             setFinancialSubTab(tab as typeof financialSubTab);
@@ -539,11 +433,19 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       )}
 
       {financialSubTab === 'budget' && (
-        <FinancialBudgetPanel notify={notifyLegacy} />
+        <FinancialBudgetPanel notify={notifyLegacy} branch={branchFilter || undefined} />
       )}
 
       {financialSubTab === 'refunds' && (
-        <FinancialRefundsPanel notify={notifyLegacy} />
+        <FinancialRefundsPanel notify={notifyLegacy} branch={branchFilter || undefined} />
+      )}
+
+      {financialSubTab === 'advances' && (
+        <FinanceAdvancesPanel notify={notify} canDisburse financeMode />
+      )}
+
+      {financialSubTab === 'operations' && (
+        <FinanceOperationsPanel notify={notifyLegacy} branch={branchFilter} />
       )}
 
       {financialSubTab === 'overview' && (
@@ -649,6 +551,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           addExpense={addExpense}
           updateExpense={updateExpense}
           deleteExpense={deleteExpense}
+          notify={notify}
         />
       )}
 
@@ -676,25 +579,15 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       {financialSubTab === 'installments' && (
         <FinancialInstallmentsPanel
           subscribersWithPlans={subscribersWithPlans}
-          subscribers={subscribers}
-          courses={courses}
           today={today}
           toEGP={toEGP}
           exportCSV={exportCSV}
-          isNewPlanOpen={isNewPlanOpen}
-          setIsNewPlanOpen={setIsNewPlanOpen}
-          newPlanSubId={newPlanSubId}
-          setNewPlanSubId={setNewPlanSubId}
-          newPlanDraft={newPlanDraft}
-          setNewPlanDraft={setNewPlanDraft}
-          newEntry={newEntry}
-          setNewEntry={setNewEntry}
-          payingEntry={payingEntry}
-          setPayingEntry={setPayingEntry}
-          paymentMethods={PAYMENT_METHODS}
-          handleSaveInstallmentPlan={handleSaveInstallmentPlan}
-          handleConfirmInstallmentPayment={handleConfirmInstallmentPayment}
         />
+      )}
+      {!ledgerLoading && (!ledgerAllPnl || !ledgerFilteredPnl) && (
+        <div className="rounded-2xl border border-red-300 bg-red-50 px-5 py-3 text-sm text-red-800">
+          تعذر تحميل الدفتر المحاسبي. تم إيقاف عرض الإجماليات الرسمية بدل استخدام أرقام محلية غير معتمدة. أعد المحاولة بعد استعادة اتصال الـAPI/قاعدة البيانات.
+        </div>
       )}
 
       {financialSubTab === 'monthly' && <MonthlyRevenuePanel monthlyRevenue={monthlyRevenue} />}
@@ -738,18 +631,18 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
       {/* ─── Aging Report Tab ─── */}
       {financialSubTab === 'aging' && (
-        <AgingReportPanel rows={agingRows} toEGP={toEGP} exportCSV={exportCSV} />
+        <AgingReportPanel branchFilter={branchFilter} toEGP={toEGP} exportCSV={exportCSV} />
       )}
 
       {/* ─── Outstanding Balances Tab ─── */}
       {financialSubTab === 'outstanding' && <OutstandingPanel notify={notify} />}
 
-      {financialSubTab === 'reconciliation' && <ReconciliationPanel />}
+      {financialSubTab === 'reconciliation' && <ReconciliationPanel branchFilter={branchFilter} />}
 
       {/* ── Audit Log ─────────────────────────────────────────────────── */}
       {financialSubTab === 'audit' && <AuditLogPanel />}
 
-      {financialSubTab === 'review' && <PaymentReviewPanel notify={notify} branchFilter={branchFilter} subscribers={subscribers} updateSubscriber={updateSubscriber} actorEmail={authUser?.email} sarRate={sarRate} usdRate={usdRate} />}
+      {financialSubTab === 'review' && <PaymentReviewPanel notify={notify} branchFilter={branchFilter} subscribers={subscribers} reloadSubscribers={reloadSubscribers} actorEmail={authUser?.email} sarRate={sarRate} usdRate={usdRate} />}
 
       {/* ── Period Closing ──────────────────────────────────────────────── */}
       {financialSubTab === 'period_closing' && (

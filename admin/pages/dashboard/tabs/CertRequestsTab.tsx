@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Search, Star, Trash2, X } from 'lucide-react';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course, SubscriberItem } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -7,7 +9,7 @@ interface Props {
   notify: NotifyFn;
   courses: Course[];
   subscribers: SubscriberItem[];
-  updateSubscriber: (s: SubscriberItem) => void;
+  reloadSubscribers: () => Promise<void>;
   certSearch: string;
   setCertSearch: (v: string) => void;
   certTypeFilter: string;
@@ -17,10 +19,11 @@ interface Props {
 }
 
 export default function CertRequestsTab({
-  notify, courses, subscribers, updateSubscriber,
+  notify, courses, subscribers, reloadSubscribers,
   certSearch, setCertSearch, certTypeFilter, setCertTypeFilter,
   certStatusFilter, setCertStatusFilter,
 }: Props) {
+              const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
               // Gather all extra certificate requests from all subscribers
               type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string };
               const allRequests: CertReqRow[] = [];
@@ -62,21 +65,33 @@ export default function CertRequestsTab({
                 return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${m.badge}`}>{m.label}</span>;
               };
 
-              const changeStatus = (req: CertReqRow, newStatus: CertStatus) => {
-                const sub = subscribers.find(s => s.id === req.subscriberId);
-                if (!sub) return;
-                const updated = (sub.extraCertificateRequests || []).map(r => r.id === req.id ? { ...r, status: newStatus } : r);
-                updateSubscriber({ ...sub, extraCertificateRequests: updated });
-                notify('success', `تم تحديث الحالة: ${STATUS_META[newStatus]?.label || newStatus}`);
+              const changeStatus = async (req: CertReqRow, newStatus: CertStatus) => {
+                if (busyRequestId) return;
+                setBusyRequestId(req.id);
+                try {
+                  await mysqlAdmin.updateCertificateRequest(req.id, newStatus);
+                  await reloadSubscribers();
+                  notify('success', `تم تحديث الحالة: ${STATUS_META[newStatus]?.label || newStatus}`);
+                } catch (error) {
+                  notify('error', error instanceof Error ? error.message : 'تعذر تحديث حالة طلب الشهادة');
+                } finally {
+                  setBusyRequestId(null);
+                }
               };
 
-              const deleteCertReq = (req: CertReqRow) => {
+              const deleteCertReq = async (req: CertReqRow) => {
                 if (!window.confirm(`حذف طلب الشهادة لـ "${req.subscriberName}"؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
-                const sub = subscribers.find(s => s.id === req.subscriberId);
-                if (!sub) return;
-                const updated = (sub.extraCertificateRequests || []).filter(r => r.id !== req.id);
-                updateSubscriber({ ...sub, extraCertificateRequests: updated });
-                notify('success', 'تم حذف الطلب.');
+                if (busyRequestId) return;
+                setBusyRequestId(req.id);
+                try {
+                  await mysqlAdmin.deleteCertificateRequest(req.id);
+                  await reloadSubscribers();
+                  notify('success', 'تم حذف الطلب.');
+                } catch (error) {
+                  notify('error', error instanceof Error ? error.message : 'تعذر حذف طلب الشهادة');
+                } finally {
+                  setBusyRequestId(null);
+                }
               };
 
               // ── Apply filters ────────────────────────────────────────────────────────────
@@ -240,7 +255,8 @@ export default function CertRequestsTab({
                                 <td className="px-3 py-2 border border-gray-100">
                                   <select
                                     value={req.status}
-                                    onChange={e => changeStatus(req, e.target.value as CertStatus)}
+                                      onChange={e => void changeStatus(req, e.target.value as CertStatus)}
+                                      disabled={busyRequestId === req.id}
                                     className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
                                   >
                                     {(Object.entries(STATUS_META) as [CertStatus, { label: string }][]).map(([k, v]) => (
@@ -255,7 +271,8 @@ export default function CertRequestsTab({
                                 <td className="px-3 py-2 border border-gray-100">
                                   <div className="flex flex-wrap gap-1 items-center">
                                     <button
-                                      onClick={() => deleteCertReq(req)}
+                                      onClick={() => void deleteCertReq(req)}
+                                      disabled={busyRequestId === req.id}
                                       title="حذف الطلب"
                                       className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
                                     >
