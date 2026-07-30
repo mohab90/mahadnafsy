@@ -18,6 +18,14 @@ const WEBHOOK_EVENTS = new Set([
   'refund_requested', 'new_consultation', 'new_contact', 'new_join_us',
 ]);
 
+// A broadcast used to load EVERY matching subscriber and lead into memory with
+// no upper bound. At scale (100k+ contacts) that is an unbounded allocation
+// inside a request that already holds a DB connection open for the whole send —
+// it can exhaust API memory and take the server down for every user, not just
+// slow one request. Cap the recipient set, and tell the caller when the cap
+// was reached instead of silently sending to an arbitrary subset.
+const MAX_CAMPAIGN_RECIPIENTS = parseInt(process.env.MAX_CAMPAIGN_RECIPIENTS || '25000', 10);
+
 function validateWebhookInput({ name, url, secret, events }) {
   if (typeof name !== 'string' || !name.trim() || name.length > 255) return 'Invalid webhook name';
   if (typeof url !== 'string' || !url.trim() || url.length > 1000) return 'Invalid webhook URL';
@@ -141,12 +149,15 @@ router.post('/api/admin/email-campaigns/:id/send', requireAuth, requireAdmin, as
 
     // Collect recipients
     let emails = [];
+    let recipientCapReached = false;
     if (campaign.audience === 'subscribers' || campaign.audience === 'all') {
-      const [subs] = await conn.query("SELECT id,email,name FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND email IS NOT NULL AND email<>'' AND email LIKE '%@%'", [req.tenantId]);
+      const [subs] = await conn.query("SELECT id,email,name FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND email IS NOT NULL AND email<>'' AND email LIKE '%@%' ORDER BY created_at DESC LIMIT ?", [req.tenantId, MAX_CAMPAIGN_RECIPIENTS]);
+      if (subs.length >= MAX_CAMPAIGN_RECIPIENTS) recipientCapReached = true;
       emails = [...emails, ...subs.map(s => ({ ...s, subjectType: 'subscriber' }))];
     }
     if (campaign.audience === 'leads' || campaign.audience === 'all') {
-      const [leads] = await conn.query("SELECT id,email,name FROM leads WHERE tenant_id=? AND hidden=0 AND deleted_at IS NULL AND email IS NOT NULL AND email<>'' AND email LIKE '%@%'", [req.tenantId]);
+      const [leads] = await conn.query("SELECT id,email,name FROM leads WHERE tenant_id=? AND hidden=0 AND deleted_at IS NULL AND email IS NOT NULL AND email<>'' AND email LIKE '%@%' ORDER BY created_at DESC LIMIT ?", [req.tenantId, MAX_CAMPAIGN_RECIPIENTS]);
+      if (leads.length >= MAX_CAMPAIGN_RECIPIENTS) recipientCapReached = true;
       emails = [...emails, ...leads.map(l => ({ ...l, subjectType: 'lead' }))];
     }
     if (campaign.audience === 'manual' && campaign.audience_filter) {
@@ -173,7 +184,14 @@ router.post('/api/admin/email-campaigns/:id/send', requireAuth, requireAdmin, as
     }
     if (!emails.length) await conn.query("UPDATE email_campaigns SET status='sent',sent_at=NOW() WHERE id=? AND tenant_id=?", [campaign.id, req.tenantId]);
     await conn.commit(); transactionStarted = false;
-    res.json({ ok: true, queued: emails.length, suppressedOrInvalid: 0 });
+    // Surface the cap so an operator can tell "sent to everyone" apart from
+    // "sent to the first MAX_CAMPAIGN_RECIPIENTS" instead of guessing.
+    res.json({
+      ok: true,
+      queued: emails.length,
+      suppressedOrInvalid: 0,
+      ...(recipientCapReached ? { recipientCapReached: true, recipientCap: MAX_CAMPAIGN_RECIPIENTS } : {}),
+    });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
@@ -572,12 +590,15 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
     }
 
     let phones = [];
+    let recipientCapReached = false;
     if (campaign.audience === 'subscribers' || campaign.audience === 'all') {
-      const [subs] = await conn.query("SELECT id,phone,name FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND phone IS NOT NULL AND phone<>''", [req.tenantId]);
+      const [subs] = await conn.query("SELECT id,phone,name FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1 AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT ?", [req.tenantId, MAX_CAMPAIGN_RECIPIENTS]);
+      if (subs.length >= MAX_CAMPAIGN_RECIPIENTS) recipientCapReached = true;
       phones = [...phones, ...subs.map(s => ({ ...s, subjectType: 'subscriber' }))];
     }
     if (campaign.audience === 'leads' || campaign.audience === 'all') {
-      const [leads] = await conn.query("SELECT id,phone,name FROM leads WHERE tenant_id=? AND hidden=0 AND deleted_at IS NULL AND phone IS NOT NULL AND phone<>''", [req.tenantId]);
+      const [leads] = await conn.query("SELECT id,phone,name FROM leads WHERE tenant_id=? AND hidden=0 AND deleted_at IS NULL AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT ?", [req.tenantId, MAX_CAMPAIGN_RECIPIENTS]);
+      if (leads.length >= MAX_CAMPAIGN_RECIPIENTS) recipientCapReached = true;
       phones = [...phones, ...leads.map(l => ({ ...l, subjectType: 'lead' }))];
     }
     if (campaign.audience === 'manual' && campaign.audience_filter) {
@@ -601,7 +622,11 @@ router.post('/api/admin/sms-campaigns/:id/send', requireAuth, requireAdmin, asyn
     }
     if (!phones.length) await conn.query("UPDATE sms_campaigns SET status='sent',sent_at=NOW() WHERE id=? AND tenant_id=?", [campaign.id, req.tenantId]);
     await conn.commit(); transactionStarted = false;
-    res.json({ ok: true, queued: phones.length });
+    res.json({
+      ok: true,
+      queued: phones.length,
+      ...(recipientCapReached ? { recipientCapReached: true, recipientCap: MAX_CAMPAIGN_RECIPIENTS } : {}),
+    });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
