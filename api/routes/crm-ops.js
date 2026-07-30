@@ -111,7 +111,7 @@ router.get('/api/admin/crm/work-queue', requireAuth, requireAdminOrStaff, requir
             GROUP BY tenant_id,lead_id
          ) seq ON seq.tenant_id=l.tenant_id AND seq.lead_id=l.id
         WHERE l.tenant_id=? AND l.hidden=0 AND l.deleted_at IS NULL
-          AND LOWER(l.status) NOT IN ('converted','lost','archived','disqualified','not_interested','wrong_number','junk')
+          AND l.status NOT IN ('converted','lost','archived','disqualified','not_interested','wrong_number','junk')
           ${scope.sql}
         ORDER BY l.score DESC,l.created_at ASC
         LIMIT ?`,

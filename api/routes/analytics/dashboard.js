@@ -58,8 +58,8 @@ router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, require
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
         FROM consultations WHERE tenant_id=?`, [req.tenantId]),
       pool.query('SELECT COUNT(*) AS total FROM course_completions WHERE tenant_id=?', [req.tenantId]),
-      pool.query("SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND DATE(created_at)=CURDATE() AND hidden=0", [req.tenantId]),
-      pool.query("SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND DATE(created_at)=CURDATE()", [req.tenantId]),
+      pool.query("SELECT COUNT(*) AS n FROM leads WHERE tenant_id=? AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY AND hidden=0", [req.tenantId]),
+      pool.query("SELECT COUNT(*) AS n FROM subscribers WHERE tenant_id=? AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY", [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'", [req.tenantId]),
       pool.query("SELECT COUNT(*) AS n FROM leaves WHERE tenant_id=? AND status='PENDING'", [req.tenantId]).catch(() => [[{n:0}]]),
       pool.query("SELECT COUNT(*) AS n FROM forum_posts WHERE tenant_id=? AND is_hidden=0", [req.tenantId]).catch(() => [[{n:0}]]),
@@ -138,10 +138,10 @@ router.get('/api/admin/analytics/cohorts', requireAuth, requireAdmin, async (req
       LEFT JOIN payments p
         ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id
         AND p.status IN ('paid','confirmed')
-      WHERE s.tenant_id=? AND YEAR(s.created_at) = ?
+      WHERE s.tenant_id=? AND s.created_at >= ? AND s.created_at < ?
       GROUP BY s.id, cohort_month
       ORDER BY cohort_month ASC
-    `, [req.tenantId, year]);
+    `, [req.tenantId, `${year}-01-01`, `${Number(year) + 1}-01-01`]);
 
     // Step 2: All (subscriber, pay_month) pairs relevant to this year + next
     const [payMonths] = await pool.query(`

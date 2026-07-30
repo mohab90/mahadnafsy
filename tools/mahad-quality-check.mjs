@@ -13,6 +13,7 @@ import { scanBulkRateLimitViolations } from './bulk-rate-limit-scan.mjs';
 import { scanPublicRateLimitViolations } from './public-rate-limit-scan.mjs';
 import { scanPermissionMatrix } from './permission-matrix-scan.mjs';
 import { scanSchemaSourceDrift } from './schema-source-drift.mjs';
+import { scanIndexDefeats } from './index-defeat-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -408,6 +409,23 @@ if (schemaDrift.missingTables.length <= SCHEMA_DRIFT_TABLE_BASELINE
   pass(`schema drift: ${schemaDrift.missingTables.length} table(s) / ${schemaDrift.missingColumnCount} column(s) built by migrations but absent from schema.sql (≤ baseline ${SCHEMA_DRIFT_TABLE_BASELINE}/${SCHEMA_DRIFT_COLUMN_BASELINE}; lower it as schema.sql is refreshed)`);
 } else {
   fail(`schema drift grew to ${schemaDrift.missingTables.length} table(s) / ${schemaDrift.missingColumnCount} column(s) (baseline ${SCHEMA_DRIFT_TABLE_BASELINE}/${SCHEMA_DRIFT_COLUMN_BASELINE}) — a migration added structure api/schema.sql doesn't declare, so a fresh build from it would be incomplete. Run: node tools/schema-source-drift.mjs --list`);
+}
+
+// ── 21. Index-defeat guard ────────────────────────────────────────────────────
+// Wrapping an indexed column in a function inside WHERE/JOIN (LOWER(status),
+// DATE(created_at), MONTH(x)=? AND YEAR(x)=?) silently turns the query into a
+// full table scan: still correct, just linearly slower as the table grows — the
+// failure mode that only appears in production at scale. This class kept
+// reappearing (fixed in routes, then found again in lib, then reintroduced by
+// parallel work), so it's locked at ZERO rather than a baseline.
+// Projections (SELECT DATE(x) AS day) and headcount-bounded tables
+// (attendance_logs, leaves, payroll_*) are exempt — see the scanner.
+console.log('\n21. Index-defeat guard (functions on indexed columns)');
+const indexDefeats = scanIndexDefeats();
+if (indexDefeats.length === 0) {
+  pass('index-defeat guard: 0 function-wrapped indexed columns in WHERE/JOIN');
+} else {
+  fail(`index-defeat guard: ${indexDefeats.length} indexed column(s) wrapped in a function inside WHERE/JOIN — these force full table scans. Run: node tools/index-defeat-scan.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────

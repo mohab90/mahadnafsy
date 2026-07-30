@@ -217,8 +217,9 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
       JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
       WHERE p.tenant_id = ? AND p.status = 'pending'
         AND p.is_installment = 1
-        AND DATE(p.date) IN (?, ?)
-      LIMIT 200`, [tenantId, in3days, in1day]);
+        AND ((p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY))
+          OR (p.date >= ? AND p.date < DATE_ADD(?, INTERVAL 1 DAY)))
+      LIMIT 200`, [tenantId, in3days, in3days, in1day, in1day]);
 
     let sent = 0;
     // Batch-check which payments were already reminded today (1 query instead of N)

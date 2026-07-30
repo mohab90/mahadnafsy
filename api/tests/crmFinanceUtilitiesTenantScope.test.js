@@ -57,7 +57,10 @@ test('lead scoring uses one tenant configuration and tenant-bounded updates', ()
 test('CRM due reminders preserve tenant and canonical role data boundaries', () => {
   const route = read('routes/misc/reminders.js');
   const shared = read('routes/misc/_shared.js');
-  assert.match(route, /WHERE l\.tenant_id = \? AND DATE\(l\.next_follow_up_date\)/);
+  // Tenant boundary plus the today's-follow-ups filter, pinned in the
+  // index-usable half-open form: DATE(next_follow_up_date) = CURDATE() would
+  // defeat idx_leads_next_followup and full-scan leads on every reminder sweep.
+  assert.match(route, /WHERE l\.tenant_id = \? AND l\.next_follow_up_date >= CURDATE\(\) AND l\.next_follow_up_date < CURDATE\(\) \+ INTERVAL 1 DAY/);
   assert.match(route, /leadScope\(req, 'l'\)/);
   assert.match(route, /\$\{scope\.sql\}/);
   assert.match(shared, /runFollowUpReminders\(tenantId/);

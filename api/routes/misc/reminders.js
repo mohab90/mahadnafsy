@@ -27,7 +27,7 @@ router.get('/api/admin/leads/due-today', requireAuth, requireAdminOrStaff, requi
              st.name AS staff_name
       FROM leads l
       LEFT JOIN staff st ON st.id = l.assigned_sales_id AND st.tenant_id = l.tenant_id
-      WHERE l.tenant_id = ? AND DATE(l.next_follow_up_date) = CURDATE()
+      WHERE l.tenant_id = ? AND l.next_follow_up_date >= CURDATE() AND l.next_follow_up_date < CURDATE() + INTERVAL 1 DAY
         AND l.status NOT IN ('converted','disqualified','archived')
         ${scope.sql}
       ORDER BY l.name`, [req.tenantId, ...scope.params]);
@@ -158,9 +158,9 @@ router.get('/api/admin/automation/stats', requireAuth, requireAdmin, async (req,
     const [[{ followup_overdue }]] = await pool.query(
       `SELECT COUNT(*) AS followup_overdue FROM leads WHERE tenant_id=? AND next_follow_up_date < ? AND status NOT IN ('converted','disqualified','archived')`, [req.tenantId, today]);
     const [[{ payment_due_3d }]] = await pool.query(
-      `SELECT COUNT(*) AS payment_due_3d FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND DATE(date) BETWEEN ? AND DATE_ADD(?, INTERVAL 3 DAY)`, [req.tenantId, today, today]);
+      `SELECT COUNT(*) AS payment_due_3d FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND date >= ? AND date < DATE_ADD(?, INTERVAL 4 DAY)`, [req.tenantId, today, today]);
     const [[{ payment_overdue }]] = await pool.query(
-      `SELECT COUNT(*) AS payment_overdue FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND DATE(date) < ?`, [req.tenantId, today]);
+      `SELECT COUNT(*) AS payment_overdue FROM payments WHERE tenant_id=? AND status='pending' AND is_installment=1 AND date < ?`, [req.tenantId, today]);
     const [[{ reminders_sent_today }]] = await pool.query(
       `SELECT COUNT(*) AS reminders_sent_today FROM reminder_log WHERE tenant_id=? AND sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)`, [req.tenantId, today, today]).catch(() => [[{ reminders_sent_today: 0 }]]);
     // Was drip_campaigns.is_active — a column that table never had (MKT-08),

@@ -137,7 +137,7 @@ router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff
          ) c ON c.staff_id=s.id
          LEFT JOIN (
            SELECT assigned_sales_id staff_id,COUNT(*) leads_count,
-                  SUM(LOWER(status) IN ('converted','won')) converted_count
+                  SUM(status IN ('converted','won')) converted_count
              FROM leads
             WHERE tenant_id=? AND deleted_at IS NULL AND created_at>=? AND created_at<?
             GROUP BY assigned_sales_id
@@ -264,7 +264,7 @@ router.get('/api/staff/me/hr', requireAuth, async (req, res) => {
              AND created_at>=? AND created_at<?) leads_assigned,
          (SELECT COUNT(*) FROM leads
            WHERE tenant_id=? AND deleted_at IS NULL AND assigned_sales_id=?
-             AND LOWER(status) IN ('converted','won') AND created_at>=? AND created_at<?) leads_converted,
+             AND status IN ('converted','won') AND created_at>=? AND created_at<?) leads_converted,
          (SELECT COALESCE(SUM(amount_egp),0) FROM payments
            WHERE tenant_id=? AND deleted_at IS NULL AND status='paid' AND staff_id=?
              AND date>=? AND date<?) revenue_generated`,

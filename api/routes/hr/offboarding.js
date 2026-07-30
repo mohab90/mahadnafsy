@@ -111,7 +111,7 @@ async function assignedWork(conn, tenantId, staffId) {
       `SELECT COUNT(*) total FROM leads
         WHERE tenant_id=? AND deleted_at IS NULL
           AND (assigned_sales_id=? OR assigned_cs_id=?)
-          AND LOWER(status) NOT IN (?)`,
+          AND status NOT IN (?)`,
       [tenantId, staffId, staffId, TERMINAL_LEAD_STATUSES]
     ),
     conn.query(
@@ -173,7 +173,7 @@ async function reassignWork(conn, tenantId, fromId, successor) {
               assigned_cs_id=IF(assigned_cs_id=?,?,assigned_cs_id)
         WHERE tenant_id=? AND deleted_at IS NULL
           AND (assigned_sales_id=? OR assigned_cs_id=?)
-          AND LOWER(status) NOT IN (?)`,
+          AND status NOT IN (?)`,
       [fromId, successor.name, fromId, successor.id, fromId, successor.name, fromId, successor.id,
         tenantId, fromId, fromId, TERMINAL_LEAD_STATUSES]
     ),

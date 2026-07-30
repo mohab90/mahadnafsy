@@ -98,8 +98,8 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
         WHERE p.staff_id = ?
           AND p.tenant_id = ?
           AND p.status = 'paid'
-          AND MONTH(p.date) = ? AND YEAR(p.date) = ?
-      `, [effectiveRate, id, req.tenantId, curMonth, curYear]);
+          AND p.date >= ? AND p.date < ?
+      `, [effectiveRate, id, req.tenantId, monthStart, nextMonthStart]);
       commissionFallback = fb ? { ...fb, usedRate: effectiveRate } : fb;
     }
 
