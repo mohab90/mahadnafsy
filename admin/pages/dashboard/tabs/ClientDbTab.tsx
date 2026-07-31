@@ -6,6 +6,7 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
+import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -92,6 +93,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const branches = useBranches();
   const navigate = useNavigate();
 
+  const [view, setView] = useState<'clients' | 'logins'>('clients');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl'>('all');
   const [branchFilter, setBranchFilter] = useState('');
@@ -317,6 +319,23 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           ))}
         </div>
       </div>
+
+      {/* View switcher — the sign-in log is an authentication trail, not a CRM
+          record, so it gets its own view instead of being mixed into the client
+          and lead list. */}
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs w-fit">
+        {([['clients', 'قاعدة العملاء'], ['logins', 'سجل تسجيلات الدخول']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`px-4 py-2 font-bold transition ${view === key ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'logins' ? <LoginHistoryPanel /> : (<>
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
@@ -595,6 +614,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }
