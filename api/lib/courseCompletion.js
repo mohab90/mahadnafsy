@@ -9,6 +9,13 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[character]));
 
+// Share of a course's published lectures that must be finished before the
+// certificate is issued. Was an implicit 100%, which meant a learner who watched
+// almost everything still got nothing automatically and had to be completed by
+// hand. Required quizzes are NOT part of this allowance — those still all have
+// to be passed, so the threshold can't be used to skip an assessment.
+const COURSE_COMPLETION_THRESHOLD = Number(process.env.COURSE_COMPLETION_THRESHOLD || 0.8);
+
 async function completeCourse({
   tenantId, subscriberId, courseId, actor = 'system', requireFullProgress = true, reason = null,
 }, db = null) {
@@ -45,8 +52,17 @@ async function completeCourse({
           WHERE cl.course_id=? AND cl.is_published=1`,
         [subscriberId, tenantId, courseId]
       );
-      if (!Number(progress?.total) || Number(progress.completed) < Number(progress.total)) {
-        const error = new Error('All published lectures must be completed'); error.statusCode = 409; throw error;
+      const totalLectures = Number(progress?.total) || 0;
+      const doneLectures = Number(progress?.completed) || 0;
+      // ceil() so a threshold can never round DOWN to fewer lectures than
+      // intended — on a 10-lecture course 80% means 8, not 7.
+      const requiredLectures = Math.max(1, Math.ceil(totalLectures * COURSE_COMPLETION_THRESHOLD));
+      if (!totalLectures || doneLectures < requiredLectures) {
+        const error = new Error(
+          `Course progress is ${doneLectures}/${totalLectures} lectures; ${requiredLectures} are required`
+        );
+        error.statusCode = 409;
+        throw error;
       }
       const [[quizGate]] = await conn.query(
         `SELECT COUNT(*) AS required_count,

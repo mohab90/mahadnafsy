@@ -231,14 +231,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     if (!subscriber) return 0;
     try { return parseInt(localStorage.getItem(`vt:${subscriber.id}:${lectureId}`) || '0') || 0; } catch { return 0; }
   };
-  const saveTime = (lectureId: string, seconds: number) => {
+  const saveTime = (lectureId: string, seconds: number, duration?: number) => {
     if (!subscriber || seconds < 3) return;
     try { localStorage.setItem(`vt:${subscriber.id}:${lectureId}`, String(Math.floor(seconds))); } catch { /* quota */ }
     const bucket = Math.floor(seconds / 15);
     const lastBucket = watchSyncRef.current.get(lectureId);
     if (bucket > 0 && bucket !== lastBucket) {
       watchSyncRef.current.set(lectureId, bucket);
-      void mysqlClient.saveLectureProgress(lectureId, subscriber.lectureProgress?.[lectureId] || 0, seconds).catch(() => {});
+      // Report the percentage actually watched. This used to resend whatever
+      // percentage was already stored, so a lecture stayed at 0% until the 80%
+      // completion mark flipped it straight to 100 — the learner (and the admin
+      // looking at their file) could never see partial progress. Never walks
+      // backwards, so re-watching an earlier part can't lower a lecture's score.
+      const stored = Number(subscriber.lectureProgress?.[lectureId]) || 0;
+      const watched = duration && duration > 0
+        ? Math.min(100, Math.round((seconds / duration) * 100))
+        : stored;
+      void mysqlClient.saveLectureProgress(lectureId, Math.max(stored, watched), seconds).catch(() => {});
     }
   };
   const watchSyncRef = useRef(new Map<string, number>());
@@ -350,7 +359,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                 src={deobfV2(resolvedUrl)}
                 startTime={getSavedTime(selected.id)}
                 onTimeUpdate={(currentTime, duration) => {
-                  if (Math.floor(currentTime) % 5 === 0) saveTime(selected.id, currentTime);
+                  if (Math.floor(currentTime) % 5 === 0) saveTime(selected.id, currentTime, duration);
                   if (duration > 0 && currentTime / duration >= 0.8) markLectureComplete(selected.id, currentTime);
                 }}
                 onSeeked={(vid) => {

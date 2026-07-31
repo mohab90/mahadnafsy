@@ -55,7 +55,7 @@ test('completeCourse: requireFullProgress defaults to true (LMS-07) — rejects 
   ]);
   await assert.rejects(
     () => completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1' }, conn),
-    (err) => { assert.equal(err.statusCode, 409); assert.match(err.message, /All published lectures must be completed/); return true; }
+    (err) => { assert.equal(err.statusCode, 409); assert.match(err.message, /lectures; 4 are required/); return true; }
   );
 });
 
@@ -66,8 +66,28 @@ test('completeCourse: requireFullProgress=true rejects when lectures are incompl
   ]);
   await assert.rejects(
     () => completeCourse({ tenantId: 't1', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn),
-    (err) => { assert.equal(err.statusCode, 409); assert.match(err.message, /All published lectures must be completed/); return true; }
+    (err) => { assert.equal(err.statusCode, 409); assert.match(err.message, /lectures; 4 are required/); return true; }
   );
+});
+
+test('completeCourse: 80% of lectures is enough to earn the certificate', async () => {
+  // The gate used to demand every published lecture. It is now a share
+  // (COURSE_COMPLETION_THRESHOLD, default 0.8), so 4 of 5 qualifies while 3 of 5
+  // — asserted above — still does not. ceil() keeps 80% of 5 at 4, never 3.
+  const conn = mockConn([
+    { match: 'FROM subscribers s', rows: [{ subscriber_id: 's1', name: 'Test', email: 't@x.com', course_id: 'c1', title: 'Course', price_egp: 100, enrollment_id: 'e1' }] },
+    { match: 'FROM course_lectures', rows: [{ total: 5, completed: 4 }] },
+    { match: 'FROM course_quizzes', rows: [{ required_count: 0, passed_count: 0 }] },
+    { match: 'FROM course_completions', rows: [] },
+    { match: 'INSERT IGNORE INTO course_completions', rows: { affectedRows: 1 } },
+    { match: 'INSERT INTO certificate_lifecycle_events', rows: { affectedRows: 1 } },
+    { match: 'INSERT INTO message_outbox', rows: { affectedRows: 1 } },
+  ]);
+  const result = await completeCourse(
+    { tenantId: 't1', subscriberId: 's1', courseId: 'c1', requireFullProgress: true }, conn
+  );
+  assert.equal(result.alreadyCompleted, false);
+  assert.ok(result.certificate_code, 'a certificate code must be issued');
 });
 
 test('completeCourse: rejects certificate issuance until every required quiz is passed', async () => {

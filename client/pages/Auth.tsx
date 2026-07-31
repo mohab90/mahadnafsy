@@ -283,9 +283,13 @@ const Auth: React.FC = () => {
               <form className="space-y-4" onSubmit={handleVerifyOtp}>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
                   <div className="text-3xl mb-2">📧</div>
-                  <p className="text-blue-800 font-bold text-sm">تم إرسال كود مكون من 6 أرقام إلى</p>
+                  {/* Worded conditionally on purpose: the API deliberately returns
+                      success even when no account matches, so it can't be used to
+                      discover which emails are registered. Claiming "تم الإرسال"
+                      outright made a silent no-send look identical to a real one. */}
+                  <p className="text-blue-800 font-bold text-sm">إذا كان هناك حساب مسجّل بهذا البريد، فقد أرسلنا إليه كوداً من 6 أرقام</p>
                   <p className="text-blue-700 font-mono text-sm mt-1">{forgotEmail}</p>
-                  <p className="text-xs text-gray-500 mt-1">تحقق من مجلد البريد المزعج (Spam) إذا لم تجده</p>
+                  <p className="text-xs text-gray-500 mt-1">تحقق من مجلد البريد المزعج (Spam). إذا لم يصلك الكود خلال دقائق، فغالباً لا يوجد حساب بهذا البريد — جرّب بريداً آخر أو تواصل مع الدعم.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">كود التحقق</label>
