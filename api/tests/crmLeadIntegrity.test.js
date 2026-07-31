@@ -137,7 +137,10 @@ test('CRM writes, bulk messaging and interaction deletion preserve role data sco
     isSuperAdmin: false,
   }, 'l');
   assert.equal(daqqi.scope, 'branch:DAQQI');
-  assert.match(daqqi.sql, /l\.branch=\?/);
+  // IN (…) rather than = ? because a branch scope may now list several branches;
+  // for a single-branch scope like DAQQI the matched rows are identical.
+  assert.match(daqqi.sql, /l\.branch IN \(\?\)/);
+  assert.deepEqual(daqqi.params, ['DAQQI']);
   assert.deepEqual(daqqi.params, ['DAQQI']);
 
   assert.match(admin, /WHERE l\.tenant_id=\? AND l\.id=\?\$\{writeScope\.sql\}/);

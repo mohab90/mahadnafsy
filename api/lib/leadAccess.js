@@ -2,6 +2,15 @@
 
 const { DATA_SCOPE } = require('../constants/permissions');
 
+// A branch scope may name one branch ('branch:DAQQI') or several
+// ('branch:ONLINE_EGYPT,ONLINE_SAUDI'). Roles that oversee a group of branches —
+// an online manager covering the three online branches — cannot be expressed
+// with a single value, and the alternative was giving them 'all', which also
+// exposes other branches' data.
+function branchesFromScope(scope) {
+  return String(scope).slice(7).split(',').map(b => b.trim()).filter(Boolean);
+}
+
 function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
   if (!staffRecord || isSuperAdmin) return { scope: 'all', sql: '', params: [], none: false };
   const scope = DATA_SCOPE[String(staffRecord.role || '').toLowerCase()] || 'assigned_sales';
@@ -18,9 +27,16 @@ function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
     };
   }
   if (scope.startsWith('branch:')) {
-    return { scope, sql: ` AND ${alias}.branch=?`, params: [scope.slice(7)], none: false };
+    const branches = branchesFromScope(scope);
+    if (!branches.length) return { scope, sql: ' AND 1=0', params: [], none: true };
+    return {
+      scope,
+      sql: ` AND ${alias}.branch IN (${branches.map(() => '?').join(',')})`,
+      params: branches,
+      none: false,
+    };
   }
   return { scope: 'all', sql: '', params: [], none: false };
 }
 
-module.exports = { leadScope };
+module.exports = { leadScope, branchesFromScope };

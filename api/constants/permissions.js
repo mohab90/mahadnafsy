@@ -252,6 +252,10 @@ const DATA_SCOPE = Object.freeze({
   // Full access — see everything
   [ROLES.ADMIN]:                    'all',
   [ROLES.MANAGER]:                  'all',
+  // Intentionally 'all', not branch-scoped: this role works the original data
+  // rather than an isolated slice, and permissions.test.js pins that decision
+  // ("online manager remains an original-data role, not an isolated data copy").
+  // The scope engine now supports 'branch:A,B,C' if that ever needs to change.
   [ROLES.ONLINE_MANAGER]:           'all',
   [ROLES.SALES_COLLECTION_MANAGER]: 'all',
 

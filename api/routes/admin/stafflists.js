@@ -12,6 +12,7 @@ const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServe
 const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
+const { branchesFromScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
@@ -77,8 +78,9 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     let scopeClause = '1=1';
     const scopeParams = [];
     if (scope.startsWith('branch:')) {
-      scopeClause = 's.branch = ?';
-      scopeParams.push(scope.slice(7));
+      const branches = branchesFromScope(scope);
+      scopeClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
+      scopeParams.push(...branches);
     } else if (scope === 'assigned_sales') {
       const staffId = req.staffRecord?.id;
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
@@ -267,9 +269,9 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
       whereClause = `(s.assigned_cs_id = ? OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?))`;
       params.push(staffId, staffId);
     } else if (scope.startsWith('branch:')) {
-      const branch = scope.slice(7); // e.g. 'DAQQI'
-      whereClause = `s.branch = ?`;
-      params.push(branch);
+      const branches = branchesFromScope(scope); // e.g. 'DAQQI' or 'ONLINE_EGYPT,ONLINE_SAUDI'
+      whereClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
+      params.push(...branches);
     }
 
     const limit  = parseLimit(req.query.limit, 5000, 10000);
@@ -407,9 +409,11 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
     }
     // 'all' sees all leads; branch scopes see only their branch.
     else if (scope.startsWith('branch:')) {
-      const branch = scope.slice(7);
-      whereClause = 'hidden = 0 AND branch = ?';
-      params.push(branch);
+      const branches = branchesFromScope(scope);
+      whereClause = branches.length
+        ? `hidden = 0 AND branch IN (${branches.map(() => '?').join(',')})`
+        : '1=0';
+      params.push(...branches);
     }
 
     const limit  = parseLimit(req.query.limit, 5000, 20000);

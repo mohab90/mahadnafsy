@@ -18,7 +18,7 @@ const { normalizeLeadStatus, transitionLead } = require('../../lib/leadState');
 const { getNextSalesRep } = require('../../lib/leadAssignment');
 const { appendLeadInteraction, queueLeadWhatsAppBatch } = require('../../lib/leadInteractions');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
-const { leadScope } = require('../../lib/leadAccess');
+const { leadScope, branchesFromScope } = require('../../lib/leadAccess');
 const {
   archiveLead,
   findLeadById,
@@ -159,13 +159,17 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     const branchRaw = crmData.branch || null;
     let branchVal = branchRaw ? String(branchRaw).trim().toUpperCase().replace(/[-\s]/g, '_') : null;
     if (isNew && writeScope.scope.startsWith('branch:')) {
-      const scopedBranch = writeScope.scope.slice(7);
-      if (branchVal && branchVal !== scopedBranch) {
+      // A branch scope can cover several branches (e.g. an online manager over the
+      // three online branches), so membership is checked against the whole set.
+      // When the caller doesn't name a branch we fall back to the first one in the
+      // scope — for a single-branch scope that is exactly the previous behaviour.
+      const scopedBranches = branchesFromScope(writeScope.scope);
+      if (!scopedBranches.length || (branchVal && !scopedBranches.includes(branchVal))) {
         await conn.rollback();
         return res.status(403).json({ error: 'Lead branch is outside your data scope' });
       }
-      branchVal = scopedBranch;
-      crmData.branch = scopedBranch;
+      branchVal = branchVal || scopedBranches[0];
+      crmData.branch = branchVal;
     }
     const branchId = branchVal ? branchIdForBranch(branchVal) : null;
     if (branchVal && !VALID_BRANCHES.has(branchVal)) {
