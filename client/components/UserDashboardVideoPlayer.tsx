@@ -281,7 +281,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     const plain = deobfV2(url);
     if (!plain) return '';
     const start = startSec > 0 ? `&start=${Math.floor(startSec)}` : '';
-    const params = `?autoplay=1&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&enablejsapi=1${start}`;
+    // disablekb=1 removes YouTube's keyboard shortcuts, some of which navigate
+    // away from the lesson. fs=0 drops the fullscreen control, whose native
+    // chrome exposes the video title (and with it a route to youtube.com).
+    const params = `?autoplay=1&controls=1&modestbranding=1&rel=0&showinfo=0&iv_load_policy=3&color=white&playsinline=1&enablejsapi=1&disablekb=1&fs=0${start}`;
     if (plain.includes('youtube.com/watch?v=')) {
       try { const videoId = new URL(plain).searchParams.get('v') || ''; return `https://www.youtube-nocookie.com/embed/${videoId}${params}`; } catch { /* fall through */ }
     }
@@ -345,14 +348,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                 <p className="text-sm">جاري تحميل الفيديو...</p>
               </div>
             ) : resolvedUrl.includes('youtube') || resolvedUrl.includes('youtu.be') || resolvedUrl.startsWith('enc:') || resolvedUrl.includes('kind=embed') ? (
-              <iframe
-                key={selected.id}
-                src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
-                className="w-full h-full"
-                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                allowFullScreen
-                title={selected.title}
-              />
+              /* The embed still renders YouTube's own title bar across the top on
+                 hover, and that title (and the logo beside it) link out to
+                 youtube.com. The strip below sits over that band and swallows the
+                 clicks, so the lesson can't be used as a doorway to YouTube. It
+                 covers only the top ~15%, leaving the control bar fully usable. */
+              <div className="relative w-full h-full">
+                <iframe
+                  key={selected.id}
+                  src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
+                  className="w-full h-full"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  referrerPolicy="no-referrer"
+                  title={selected.title}
+                />
+                <div
+                  className="absolute top-0 left-0 right-0 h-[15%] min-h-[48px] cursor-default"
+                  onClick={e => e.preventDefault()}
+                  onContextMenu={e => e.preventDefault()}
+                  aria-hidden="true"
+                />
+              </div>
             ) : (
               <HlsVideoPlayer
                 key={selected.id}

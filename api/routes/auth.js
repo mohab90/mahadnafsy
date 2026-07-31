@@ -37,6 +37,7 @@ const { getMfaPolicy, policyRequiresStaff } = require('../lib/mfaPolicy');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { createSessionBinding, rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
+const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
 
 function hashOtp({ tenantId, email, type, code }) {
   const secret = String(resolveSecret('OTP_HMAC_SECRET') || JWT_SECRET);
@@ -743,6 +744,18 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // that otherwise forms a circular wait and every request times out.
     conn.release();
     conn = null;
+    // Refuse before verifying the password: an account serving a sharing lock
+    // shouldn't be sign-in-able even with correct credentials.
+    const activeLock = await getSharingLock(req.tenantId || 'tenant-default', user.id);
+    if (activeLock.locked) {
+      await logLoginAttempt({
+        userId: user.id, email: user.email, req, status: 'failed', failureReason: 'sharing_locked',
+      });
+      return res.status(423).json({
+        error: `الحساب موقوف مؤقتاً بسبب الاستخدام من أجهزة متعددة (${activeLock.reason || 'مشاركة الحساب'}). حاول لاحقاً أو تواصل مع الدعم.`,
+        code: 'ACCOUNT_SHARING_LOCKED',
+      });
+    }
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       logger.info('[login] wrong password for:', email.toLowerCase().trim());
@@ -789,6 +802,18 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // Set httpOnly cookie (secure, 7-day expiry) + return token in body for backward compat
     setAuthCookie(res, token);
     await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'success' });
+    // Runs AFTER the attempt is recorded so the current IP counts. If this login
+    // pushes the account past the allowance it is suspended and the session just
+    // issued is revoked, so the token above stops working on the next request.
+    const sharing = await enforceSharingLimit({
+      tenantId: req.tenantId || 'tenant-default', userId: user.id, email: user.email,
+    });
+    if (sharing.locked) {
+      return res.status(423).json({
+        error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctIps} شبكات مختلفة. تواصل مع الدعم.`,
+        code: 'ACCOUNT_SHARING_LOCKED',
+      });
+    }
     res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
   } catch (err) {
     logger.error('[auth/login]', err);
