@@ -5,6 +5,7 @@ const { requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail
 const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp } = require('../../lib/finance');
+const { computePayrollLine } = require('../../lib/payrollCalc');
 
 function parseCsvRow(line) {
   const fields = [];
@@ -252,50 +253,34 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
       const salaryCurrency = String(emp.salary_currency || 'EGP').toUpperCase();
       const salaryFx = Number(fxRates[salaryCurrency] || 1);
       const baseSalary = (parseFloat(emp.base_salary) || 0) * salaryFx;
-      const housing    = (parseFloat(emp.housing_allowance) || 0) * salaryFx;
-      const transport  = (parseFloat(emp.transport_allowance) || 0) * salaryFx;
-      const food       = (parseFloat(emp.food_allowance) || 0) * salaryFx;
-      const otherFixed = (parseFloat(emp.other_fixed) || 0) * salaryFx;
-      const dedSocial  = (parseFloat(emp.deduction_social_insurance) || 0) * salaryFx;
-      const dedTax     = (parseFloat(emp.deduction_tax) || 0) * salaryFx;
-      const totalAllowances = housing + transport + food + otherFixed;
-
       // Attendance from batch map
       const attStats = attMap[emp.staff_id] || { absent_days: 0, late_minutes: 0, present_days: 0 };
-      const unpaidLeaveDays = Number(attStats.unpaid_leave_days) || 0;
-      const absentDays   = (Number(attStats.absent_days) || 0) + unpaidLeaveDays;
-      const lateMins     = parseInt(attStats.late_minutes) || 0;
-      const presentDays  = Number(attStats.present_days) || 0;
-
-      const dailyRate   = baseSalary / workDaysPerMonth;
-      const minuteRate  = baseSalary / (workDaysPerMonth * workdayMinutes);
-      const absenceDeduction = dailyRate * absentDays;
-      const lateDeduction    = minuteRate * lateMins;
-
-      // Commission — unified: crm_commissions first, flat-rate fallback (EGP-converted sales)
-      const ccRow = ccMap[emp.staff_id];
-      const totalSales = commMap[emp.staff_id] || 0;
-      let commission, commissionCount, commissionSource;
-      if (ccRow && ccRow.cnt > 0) {
-        commission = ccRow.amt;
-        commissionCount = ccRow.cnt;
-        commissionSource = 'crm_commissions';
-      } else {
-        commission = totalSales * ((parseFloat(emp.commission_rate) || 0) / 100);
-        commissionCount = null;
-        commissionSource = 'flat_rate';
-      }
-
-      // Advance deductions from batch map
-      const advanceDeduction = advMap[emp.staff_id] || 0;
-
-      const instructorEarnings = feeMap[emp.staff_id]?.amount || 0;
+      const presentDays = Number(attStats.present_days) || 0;
       const bonusTotal = bonusMap[emp.staff_id]?.bonus || 0;
       const deductionTotal = bonusMap[emp.staff_id]?.deduction || 0;
 
-      const grossSalary = baseSalary + totalAllowances + commission + instructorEarnings + bonusTotal;
-      const totalDeductions = dedSocial + dedTax + absenceDeduction + lateDeduction + advanceDeduction + deductionTotal;
-      const netSalary = Math.max(0, grossSalary - totalDeductions);
+      // The arithmetic itself lives in lib/payrollCalc.js so it can be unit
+      // tested — it used to be inline here, which is why the money-critical part
+      // of HR had almost no coverage. Moved verbatim: same operations, same order.
+      const line = computePayrollLine(emp, {
+        salaryFx,
+        baseSalary,
+        workDaysPerMonth,
+        workdayMinutes,
+        attendance: attStats,
+        crmCommission: ccMap[emp.staff_id] || null,
+        totalSales: commMap[emp.staff_id] || 0,
+        advanceDeduction: advMap[emp.staff_id] || 0,
+        instructorEarnings: feeMap[emp.staff_id]?.amount || 0,
+        bonus: bonusTotal,
+        deduction: deductionTotal,
+      });
+      const {
+        housing, transport, food, otherFixed, totalAllowances,
+        dedSocial, dedTax, absentDays, lateMins,
+        absenceDeduction, lateDeduction, commission, commissionCount, commissionSource,
+        advanceDeduction, instructorEarnings, grossSalary, totalDeductions, netSalary,
+      } = line;
       totalAmount += netSalary;
 
       const allowancesJson = JSON.stringify({ housing, transport, food, other: otherFixed });

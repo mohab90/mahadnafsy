@@ -1028,9 +1028,28 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
     // don't pass q/status get identical results to before.
     const q = (req.query.q || '').trim();
     if (q) {
-      sql += ' AND (l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.client_code LIKE ?)';
-      const like = `%${q}%`;
-      params.push(like, like, like, like);
+      // Route by the shape of what was typed. A leading-wildcard LIKE can never
+      // use an index, so searching all four columns with '%q%' meant a full scan
+      // of leads on every keystroke-driven search — the single most expensive
+      // query in the CRM as the table grows.
+      //
+      // A client code and a complete email address are identifiers: people type
+      // them in full, so an equality match returns the same row while riding
+      // idx_leads_client_code / idx_leads_email. Only genuinely open-ended text
+      // (a partial name, part of a phone number) still needs the scan.
+      // Full substring search across every field at scale needs a real search
+      // engine — MariaDB has no ngram FULLTEXT parser, so it can't serve it.
+      if (/^C\d+$/i.test(q)) {
+        sql += ' AND l.client_code = ?';
+        params.push(q.toUpperCase());
+      } else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) {
+        sql += ' AND l.email = ?';
+        params.push(q);
+      } else {
+        sql += ' AND (l.name LIKE ? OR l.phone LIKE ? OR l.email LIKE ? OR l.client_code LIKE ?)';
+        const like = `%${q}%`;
+        params.push(like, like, like, like);
+      }
     }
     const statusFilter = (req.query.status || '').trim().toLowerCase();
     if (statusFilter && statusFilter !== 'all') {

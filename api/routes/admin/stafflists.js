@@ -101,9 +101,20 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     const searchParams = [];
     const q = (req.query.q || '').trim();
     if (q) {
-      searchClause += ' AND (s.name LIKE ? OR s.phone LIKE ? OR s.email LIKE ? OR s.client_code LIKE ?)';
-      const like = `%${q}%`;
-      searchParams.push(like, like, like, like);
+      // Same shape-routing as the leads list: a client code or a complete email
+      // is an identifier typed in full, so match it exactly and let the index
+      // serve it instead of forcing a full scan with a leading wildcard.
+      if (/^C\d+$/i.test(q)) {
+        searchClause += ' AND s.client_code = ?';
+        searchParams.push(q.toUpperCase());
+      } else if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) {
+        searchClause += ' AND s.email = ?';
+        searchParams.push(q);
+      } else {
+        searchClause += ' AND (s.name LIKE ? OR s.phone LIKE ? OR s.email LIKE ? OR s.client_code LIKE ?)';
+        const like = `%${q}%`;
+        searchParams.push(like, like, like, like);
+      }
     }
     const statusFilter = (req.query.status || '').trim();
     if (statusFilter && statusFilter !== 'all') {
