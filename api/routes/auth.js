@@ -38,6 +38,9 @@ const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 const { createSessionBinding, rotateSingleSession, closeSingleSession } = require('../lib/singleSession');
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
+const {
+  requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
+} = require('../lib/whatsappOtp');
 
 function hashOtp({ tenantId, email, type, code }) {
   const secret = String(resolveSecret('OTP_HMAC_SECRET') || JWT_SECRET);
@@ -883,6 +886,88 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
 
 // ── Forgot Password + OTP + 2FA ───────────────────────────────────────────────
 // POST /api/auth/forgot-password — send 6-digit OTP via email
+// ── WhatsApp sign-in ─────────────────────────────────────────────────────────
+// Additive: email + password still works exactly as before. This path can't be
+// exercised against a live database or a real WhatsApp send before release, so
+// it is offered alongside rather than replacing the existing login — a broken
+// auth change must not be able to lock everyone out.
+
+// POST /api/auth/whatsapp/request-otp  { phone }
+router.post('/api/auth/whatsapp/request-otp', otpLimiter, async (req, res) => {
+  try {
+    const result = await requestLoginCode({
+      tenantId: req.tenantId || 'tenant-default',
+      phone: req.body?.phone,
+    });
+    // `delivered` is intentionally not surfaced: telling the caller whether a
+    // message actually went out would reveal which numbers have accounts.
+    res.json({ ok: true, expiresInMinutes: WA_CODE_TTL_MINUTES });
+    void result;
+  } catch (e) {
+    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+    logger.error('[wa-otp] request failed', e.message);
+    res.status(500).json({ error: 'تعذّر إرسال الرمز' });
+  }
+});
+
+// POST /api/auth/whatsapp/verify-otp  { phone, code }
+router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
+  const tenantId = req.tenantId || 'tenant-default';
+  try {
+    const { userId, phone } = await verifyLoginCode({
+      tenantId, phone: req.body?.phone, code: req.body?.code,
+    });
+
+    const [[user]] = await pool.query(
+      'SELECT id, email, name FROM users WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1',
+      [userId, tenantId]
+    );
+    if (!user) return res.status(401).json({ error: 'الحساب غير متاح' });
+
+    // Same sharing lock the password path enforces — the sign-in method must not
+    // be a way around it.
+    const activeLock = await getSharingLock(tenantId, user.id);
+    if (activeLock.locked) {
+      await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'sharing_locked' });
+      return res.status(423).json({
+        error: `الحساب موقوف مؤقتاً (${activeLock.reason || 'مشاركة الحساب'}). حاول لاحقاً أو تواصل مع الدعم.`,
+        code: 'ACCOUNT_SHARING_LOCKED',
+      });
+    }
+
+    // Identical session issuance to the password path: rotating the session
+    // invalidates whatever device was signed in before.
+    const session = await rotateSingleSession(pool, { userId: user.id, tenantId, req });
+    invalidateIdentity(tenantId, user.id, user.email);
+    const token = signAccessToken({
+      uid: user.id, email: user.email, tenantId,
+      sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+    });
+    pool.query(
+      'UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login = NOW() WHERE id=? AND tenant_id=?',
+      [user.id, tenantId]
+    ).catch(() => {});
+    setAuthCookie(res, token);
+    await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'success' });
+
+    const sharing = await enforceSharingLimit({ tenantId, userId: user.id, email: user.email });
+    if (sharing.locked) {
+      return res.status(423).json({
+        error: `تم إيقاف الحساب مؤقتاً بعد تسجيل الدخول من ${sharing.distinctIps} شبكات مختلفة. تواصل مع الدعم.`,
+        code: 'ACCOUNT_SHARING_LOCKED',
+      });
+    }
+    res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '', phone } });
+  } catch (e) {
+    if (e.statusCode) {
+      await logLoginAttempt({ email: null, req, status: 'failed', failureReason: 'wa_otp_invalid' }).catch(() => {});
+      return res.status(e.statusCode).json({ error: e.message });
+    }
+    logger.error('[wa-otp] verify failed', e.message);
+    res.status(500).json({ error: 'تعذّر التحقق من الرمز' });
+  }
+});
+
 router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
   const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId: req.tenantId });
   const { email } = req.body || {};
