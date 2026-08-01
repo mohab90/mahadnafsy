@@ -4,6 +4,9 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { resolveSecret } = require('../lib/secretResolver');
 const { applyDeliveryStatus } = require('../lib/whatsappDelivery');
+const {
+  recordInboundMessage, extractMetaMessages, extractGreenApiMessage,
+} = require('../lib/whatsappInbound');
 const { whatsappWebhookLimiter } = require('../middleware/rateLimits');
 const logger = require('../lib/logger');
 
@@ -44,7 +47,17 @@ router.post('/api/webhooks/whatsapp/meta', whatsappWebhookLimiter, async (req, r
       timestamp: status.timestamp,
       error: status.errors?.length ? JSON.stringify(status.errors) : null,
     })));
-    return res.json({ received: true, updated: updated.filter(Boolean).length });
+    // Inbound replies ride in the same payload as statuses and used to be
+    // dropped: the customer answered and nobody in the institute ever knew.
+    const inbound = await Promise.all(
+      extractMetaMessages(req.body).map(message =>
+        recordInboundMessage({ tenantId: req.tenantId, ...message }))
+    );
+    return res.json({
+      received: true,
+      updated: updated.filter(Boolean).length,
+      inbound: inbound.filter(result => result.recorded).length,
+    });
   } catch (error) {
     logger.error('[WhatsApp webhook] Meta status processing failed', error.message);
     return res.status(500).json({ error: 'WhatsApp delivery status processing failed' });
@@ -63,6 +76,20 @@ router.post('/api/webhooks/whatsapp/green-api', whatsappWebhookLimiter, async (r
   const receivedInstance = String(req.body?.instanceData?.idInstance || '').trim();
   if (configuredInstance && receivedInstance && configuredInstance !== receivedInstance) {
     return res.status(401).json({ error: 'WhatsApp instance mismatch' });
+  }
+  // An incoming reply is not a status callback, and used to fall through here
+  // and be discarded — the rep never learned the customer had answered.
+  if (req.body?.typeWebhook === 'incomingMessageReceived') {
+    try {
+      const message = extractGreenApiMessage(req.body);
+      const result = message
+        ? await recordInboundMessage({ tenantId: req.tenantId, ...message })
+        : { recorded: false };
+      return res.json({ received: true, inbound: result.recorded ? 1 : 0 });
+    } catch (error) {
+      logger.error('[WhatsApp webhook] Green API inbound processing failed', error.message);
+      return res.status(500).json({ error: 'WhatsApp inbound processing failed' });
+    }
   }
   if (req.body?.typeWebhook !== 'outgoingMessageStatus') {
     return res.json({ received: true, updated: 0 });

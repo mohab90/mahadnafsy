@@ -409,6 +409,8 @@ CREATE TABLE `communications` (
   `lead_id` varchar(36) DEFAULT NULL,
   `subscriber_id` varchar(36) DEFAULT NULL,
   `type` enum('CALL','WHATSAPP','EMAIL','MEETING','NOTE','PAYMENT_FOLLOWUP','NEW_COURSE_SALE','CERTIFICATE') NOT NULL,
+  `direction` enum('OUT','IN') NOT NULL DEFAULT 'OUT' COMMENT 'IN = received from the customer via the WhatsApp webhook',
+  `provider_message_id` varchar(128) DEFAULT NULL COMMENT 'Provider id of the inbound message — the idempotency key',
   `date` datetime NOT NULL,
   `notes` text NOT NULL,
   `outcome` text DEFAULT NULL,
@@ -416,10 +418,12 @@ CREATE TABLE `communications` (
   `staff_id` varchar(36) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_comm_tenant_provider_msg` (`tenant_id`,`provider_message_id`),
   KEY `idx_comm_lead` (`lead_id`),
   KEY `idx_comm_subscriber` (`subscriber_id`),
   KEY `idx_comm_tenant_lead_date` (`tenant_id`,`lead_id`,`date`),
   KEY `idx_comm_tenant_subscriber_date` (`tenant_id`,`subscriber_id`,`date`),
+  KEY `idx_comm_tenant_direction_date` (`tenant_id`,`direction`,`date`),
   CONSTRAINT `fk_comm_lead` FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_comm_subscriber` FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
