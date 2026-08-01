@@ -86,7 +86,7 @@ interface VideoPlayerProps {
   onClose: () => void;
 }
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) => {
-  const { getCourseLectures, getCourseChapters, subscribers, authUser, refreshMySubscriber } = useSiteData();
+  const { getCourseLectures, getCourseChapters, subscribers, authUser, mySubscriberId, refreshMySubscriber } = useSiteData();
   const [selectedId, setSelectedId] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -97,10 +97,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   const [resolvedUrl, setResolvedUrl] = useState('');
   const [accessError, setAccessError] = useState('');
 
-  const subscriber = authUser?.email
-    ? subscribers.find(s =>
-        s.email.toLowerCase().trim() === authUser.email!.toLowerCase().trim()
-      )
+  // Keyed on the id the server resolved, not on a client-side email match: a
+  // client who signed in by WhatsApp number has no email, and matching on it
+  // left them with no subscriber — no notes, no progress, on courses they paid for.
+  const subscriber = mySubscriberId
+    ? subscribers.find(s => s.id === mySubscriberId)
     : undefined;
 
   const [noteText, setNoteText] = useState('');

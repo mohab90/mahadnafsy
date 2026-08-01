@@ -54,6 +54,10 @@ interface SiteDataShape {
   isAdmin: boolean;
   remoteReady: boolean;
   mySubscriberLoaded: boolean;
+  /** Subscriber the server resolved for this account; null when signed out or
+   *  when the account has no subscriber record. Screens must use this instead
+   *  of matching authUser.email, which is null for WhatsApp-only clients. */
+  mySubscriberId: string | null;
   refreshMySubscriber: () => void;
   reloadLectures: () => Promise<void>;
   logout: () => void;
@@ -423,7 +427,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 
 
-  const { mySubscriberLoaded, refreshMySubscriber, isStaff } = useClientAccountRuntime({
+  const { mySubscriberLoaded, mySubscriberId, refreshMySubscriber, isStaff } = useClientAccountRuntime({
     authUser,
     isAdmin,
     setSubscribers,
@@ -539,6 +543,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isAdmin,
     remoteReady,
     mySubscriberLoaded,
+    mySubscriberId,
     refreshMySubscriber,
     reloadLectures,
     logout,
@@ -547,7 +552,8 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }), [courses, bundles, therapists, testimonials, subscribers, isStaff, consultations,
     communityPosts, communityLibraryItems, communityVideos,
     communityEvents, content, discounts, notifications, notificationReadIds, courseQuizzes, quizAttempts,
-    liveStreams, currency, authUser, isAdmin, isStaff, remoteReady]);
+    liveStreams, currency, authUser, isAdmin, isStaff, remoteReady,
+    mySubscriberId, mySubscriberLoaded]);
 
   return <SiteDataContext.Provider value={value}>{children}</SiteDataContext.Provider>;
 };

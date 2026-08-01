@@ -23,8 +23,19 @@ export function useClientAccountRuntime({
 }: ClientAccountRuntimeOptions) {
   const [mySubscriberLoaded, setMySubscriberLoaded] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  // The id of the subscriber the server resolved for this account. Screens used
+  // to re-derive it by matching authUser.email against the subscriber list,
+  // which finds nothing for a client who signed in by WhatsApp number and has no
+  // email — their own paid courses then read as "not enrolled".
+  const [mySubscriberId, setMySubscriberId] = useState<string | null>(null);
   const emailRef = useRef<string | null>(null);
   useEffect(() => { emailRef.current = authUser?.email ?? null; }, [authUser?.email]);
+  // Any identity is enough to ask the server "who am I?"; gating a refresh on the
+  // email alone froze WhatsApp-only accounts on whatever loaded first.
+  const identityRef = useRef<string | null>(null);
+  useEffect(() => {
+    identityRef.current = authUser?.uid || authUser?.email || null;
+  }, [authUser?.uid, authUser?.email]);
 
   const applySubscriberData = useCallback((value: unknown) => {
     const raw = value as SubscriberItem & { enrolledCoursesData?: Course[] };
@@ -32,6 +43,7 @@ export function useClientAccountRuntime({
       ...raw,
       enrolledCourseIds: Array.isArray(raw.enrolledCourseIds) ? raw.enrolledCourseIds : [],
     };
+    setMySubscriberId(subscriber.id ?? null);
     setSubscribers(previous => {
       const index = previous.findIndex(item => item.id === subscriber.id);
       if (index >= 0) {
@@ -53,14 +65,14 @@ export function useClientAccountRuntime({
   }, [setCourses, setSubscribers]);
 
   const refreshMySubscriber = useCallback(() => {
-    if (!emailRef.current) return;
+    if (!identityRef.current) return;
     void mysqlClient.getMySubscriber()
       .then(value => { if (value) applySubscriberData(value); })
       .catch(() => {});
   }, [applySubscriberData]);
 
   useEffect(() => {
-    if (!authUser || isAdmin) return;
+    if (!authUser || isAdmin) { setMySubscriberId(null); return; }
     setMySubscriberLoaded(false);
     let cancelled = false;
     void mysqlClient.getMySubscriber()
@@ -87,7 +99,9 @@ export function useClientAccountRuntime({
   }, [authUser?.uid, isAdmin, applySubscriberData, refreshMySubscriber]);
 
   useEffect(() => {
-    if (!authUser?.email || isAdmin) return;
+    // uid, not email: the consultations endpoint resolves the client from the
+    // account, and a WhatsApp-only account has no email to gate on.
+    if (!authUser?.uid || isAdmin) return;
     let cancelled = false;
     void mysqlClient.getMyConsultations()
       .then(list => {
@@ -112,5 +126,5 @@ export function useClientAccountRuntime({
     return () => { cancelled = true; };
   }, [authUser?.uid, isAdmin]);
 
-  return { mySubscriberLoaded, refreshMySubscriber, isStaff };
+  return { mySubscriberLoaded, mySubscriberId, refreshMySubscriber, isStaff };
 }

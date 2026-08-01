@@ -16,7 +16,7 @@ import { CourseUpsellModal } from './course-details-sections/CourseUpsellModal';
 import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
 
 const CourseDetails: React.FC = () => {
-                const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
+                const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
   const { id, slug } = useParams<{ id: string; slug: string }>();
   const navigate = useNavigate();
     // Support both /course/:id and /c/:slug routes
@@ -86,10 +86,11 @@ const CourseDetails: React.FC = () => {
         const chapters = ctxChapters.length > 0 ? ctxChapters : (course ? apiFallbackChapters : []);
         const ctxLectures = course && courseFromCtx ? getCourseLectures(course.id) : [];
         const lectures = ctxLectures.length > 0 ? ctxLectures : (course ? apiFallbackLectures : []);
-        const subscriber = authUser?.email
-            ? subscribers.find((row) =>
-                row.email.toLowerCase() === authUser.email!.toLowerCase()
-              )
+        // Keyed on the id the server resolved. Matching authUser.email found
+        // nothing for a WhatsApp-only client, so their own enrolled course
+        // rendered as "preview".
+        const subscriber = mySubscriberId
+            ? subscribers.find((row) => row.id === mySubscriberId)
             : undefined;
         // subscriberLoading: logged in but subscriber data not fetched yet — avoid flashing "Preview"
         const subscriberLoading = !!authUser && !mySubscriberLoaded;
