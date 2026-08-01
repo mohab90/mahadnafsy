@@ -401,7 +401,15 @@ if (publicRateLimitViolations.length === 0) {
 // self-heal; the rest are stale declarations in migration 007 that the live
 // schema later renamed (e.g. conditions → conditions_json).
 console.log('\n20. schema.sql ↔ migrations drift guard');
-const SCHEMA_DRIFT_TABLE_BASELINE = 15;
+// Tables are now at ZERO: the 13 real ones were copied verbatim from their
+// owning migrations into schema.sql, and the rest turned out not to be drift at
+// all — `lectures`/`tickets`/`lecture_logs` are only ever ALTERed (stale names;
+// the real tables are course_lectures/support_tickets), and the *_archive pair
+// is CREATE TABLE ... LIKE, which the migration rebuilds from its parent.
+// Columns remain documentation-only drift: all but 3 come from post-baseline
+// migrations that still execute on a fresh build, and those 3 are stale
+// migration-007 declarations the live schema later renamed.
+const SCHEMA_DRIFT_TABLE_BASELINE = 0;
 const SCHEMA_DRIFT_COLUMN_BASELINE = 79;
 const schemaDrift = scanSchemaSourceDrift();
 if (schemaDrift.missingTables.length <= SCHEMA_DRIFT_TABLE_BASELINE

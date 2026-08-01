@@ -98,6 +98,13 @@ const BASELINE_MAX = 33;
 const expected = new Map(); // table -> Set(columns)
 const originTable = new Map();  // table -> first migration number that creates it
 const originColumn = new Map(); // "table.col" -> first migration number that adds it
+// Tables only ever seen in an ALTER: nothing creates them, so they are stale
+// references to a name that doesn't exist (migration 007 ALTERs `lectures` and
+// `tickets`; the real tables are course_lectures and support_tickets).
+const alterOnly = new Set();
+// Tables defined as CREATE TABLE x LIKE y — structure copies with no DDL of
+// their own to mirror.
+const derivedTables = new Set();
 const migFiles = readdirSync(MIG_DIR)
   .filter((f) => f.endsWith('.sql'))
   .sort((a, b) => {
@@ -118,13 +125,21 @@ for (const file of migFiles) {
     for (const c of columnsFromBody(body)) { expected.get(table).add(c); noteCol(table, c); }
   }
 
+  // CREATE TABLE x LIKE y — the structure is a copy of another table, so there
+  // is no DDL to mirror into schema.sql. These migrations run on a fresh build
+  // and recreate the copy from whatever the parent looks like then; duplicating
+  // the parent's columns into the snapshot would only drift from it.
+  const likeRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?\s+LIKE\s+[`"']?([A-Za-z0-9_]+)[`"']?/gi;
+  let lk;
+  while ((lk = likeRe.exec(sql))) derivedTables.add(norm(lk[1]));
+
   // ALTER TABLE [IF EXISTS] <t> ADD [COLUMN] [IF NOT EXISTS] <col>
   const addRe = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?\s+ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?/gi;
   let a;
   while ((a = addRe.exec(sql))) {
     const t = norm(a[1]), c = norm(a[2]);
     if (NON_COLUMN.test(c)) continue;           // ADD INDEX/KEY/CONSTRAINT
-    if (!expected.has(t)) { expected.set(t, new Set()); noteTable(t); }
+    if (!expected.has(t)) { expected.set(t, new Set()); noteTable(t); alterOnly.add(t); }
     expected.get(t).add(c);
     noteCol(t, c);
   }
@@ -167,7 +182,16 @@ for (const { table, body } of parseCreateTables(stripComments(readFileSync(SCHEM
 }
 
 // ── 3. Diff ─────────────────────────────────────────────────────────────────
-const missingTables = [...expected.keys()].filter((t) => !actual.has(t)).sort();
+// A table is only genuinely missing if something actually CREATEs it with its
+// own DDL. Excluded:
+//  - alterOnly: never created, so the ALTER targets a name that doesn't exist
+//    and schema.sql is right not to declare it.
+//  - derivedTables: CREATE TABLE ... LIKE parent — the migration rebuilds the
+//    copy on a fresh database, and copying the parent's columns into the
+//    snapshot would just drift from the parent.
+const missingTables = [...expected.keys()]
+  .filter((t) => !actual.has(t) && !alterOnly.has(t) && !derivedTables.has(t))
+  .sort();
 const extraTables = [...actual.keys()].filter((t) => !expected.has(t)).sort();
 const missingColumns = []; // { table, columns[] }
 for (const [t, cols] of expected) {

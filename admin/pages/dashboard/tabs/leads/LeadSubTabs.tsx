@@ -1,9 +1,10 @@
 import type { ElementType } from 'react';
-import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, Phone, TrendingUp, UserX, Users } from 'lucide-react';
+import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, Phone, Settings, TrendingUp, UserX, Users } from 'lucide-react';
 
 export type SubTabKey =
   | 'pipeline' | 'table' | 'communications' | 'reminders' | 'quotes'
-  | 'performance' | 'duplicates' | 'localNew' | 'dawliNew' | 'dawliOld' | 'archive';
+  | 'performance' | 'duplicates' | 'localNew' | 'dawliNew' | 'dawliOld' | 'archive'
+  | 'pipelineSettings';
 
 interface LeadSubTabsProps {
   subTab: SubTabKey;
@@ -39,6 +40,10 @@ export function LeadSubTabs({
     ['dawliNew', 'دولي جديد', Globe],
     ['dawliOld', 'دولي قديم', Globe],
     ...(!isSalesOnly ? [['archive', 'محلي قديم', Archive] as [SubTabKey, string, ElementType]] : []),
+    // Editing the stage rules changes what every status transition allows, so it
+    // sits behind the same gate as duplicate merging rather than being visible
+    // to every rep.
+    ...(canManageDuplicates ? [['pipelineSettings', 'إعداد المراحل', Settings] as [SubTabKey, string, ElementType]] : []),
   ];
 
   return (

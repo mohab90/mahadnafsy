@@ -3891,3 +3891,160 @@ CREATE TABLE `cash_flow_forecast_assumptions` (
   CONSTRAINT `chk_cash_forecast_confidence` CHECK (`confidence_pct` >= 0 AND `confidence_pct` <= 100),
   CONSTRAINT `chk_cash_forecast_dates` CHECK (`end_date` IS NULL OR `end_date` >= `start_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- staff_absences — from migrations/068_v25_hr_tenant_scope.sql
+CREATE TABLE IF NOT EXISTS staff_absences (
+  id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  staff_id VARCHAR(100) NOT NULL,
+  type VARCHAR(30) NOT NULL DEFAULT 'absence',
+  date DATE NOT NULL,
+  reason TEXT NULL,
+  is_excused TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_staff_absence_tenant (tenant_id, staff_id, date, type),
+  INDEX idx_staff_absences_tenant (tenant_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- tenant_chart_of_accounts — from migrations/072_v25_accounting_tenant_scope.sql
+CREATE TABLE IF NOT EXISTS tenant_chart_of_accounts (
+  tenant_id VARCHAR(64) NOT NULL,
+  code VARCHAR(32) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  type ENUM('asset','liability','equity','revenue','expense') NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, code),
+  KEY idx_tenant_chart_active (tenant_id, is_active, code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- marketing_consent_audit — from migrations/082_v25_marketing_consent_outbox.sql
+CREATE TABLE IF NOT EXISTS marketing_consent_audit (
+  id VARCHAR(36) NOT NULL PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL,
+  subject_type VARCHAR(20) NOT NULL,
+  subject_id VARCHAR(100) NOT NULL,
+  channel VARCHAR(20) NOT NULL,
+  action VARCHAR(30) NOT NULL,
+  source VARCHAR(80) NOT NULL,
+  actor VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_marketing_consent_subject (tenant_id, subject_type, subject_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- marketing_suppressions — from migrations/082_v25_marketing_consent_outbox.sql
+CREATE TABLE IF NOT EXISTS marketing_suppressions (
+  tenant_id VARCHAR(64) NOT NULL,
+  channel VARCHAR(20) NOT NULL,
+  destination_hash CHAR(64) NOT NULL,
+  subject_type VARCHAR(20) NOT NULL,
+  subject_id VARCHAR(100) NOT NULL,
+  suppressed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id, channel, destination_hash),
+  KEY idx_marketing_suppression_subject (tenant_id, subject_type, subject_id, channel)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- support_canned_responses — from migrations/090_support_canned_responses.sql
+CREATE TABLE IF NOT EXISTS support_canned_responses (
+  id VARCHAR(36) NOT NULL DEFAULT (UUID()),
+  tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  title VARCHAR(200) NOT NULL,
+  body TEXT NOT NULL,
+  category VARCHAR(100) NOT NULL DEFAULT 'عام',
+  created_by VARCHAR(36) DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  INDEX idx_canned_tenant (tenant_id, category)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
+-- enps_responses — from migrations/091_enps_responses.sql
+CREATE TABLE IF NOT EXISTS enps_responses (
+  id VARCHAR(36) NOT NULL DEFAULT (UUID()),
+  tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  staff_id VARCHAR(36) NOT NULL,
+  score TINYINT UNSIGNED NOT NULL COMMENT '0-10',
+  comment TEXT DEFAULT NULL,
+  period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_enps_tenant_staff_period (tenant_id, staff_id, period),
+  INDEX idx_enps_tenant_period (tenant_id, period)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
+-- staff_offboarding — from migrations/092_staff_offboarding.sql
+CREATE TABLE IF NOT EXISTS staff_offboarding (
+  id VARCHAR(36) NOT NULL DEFAULT (UUID()),
+  tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  staff_id VARCHAR(36) NOT NULL,
+  staff_name VARCHAR(255) DEFAULT NULL,
+  reason ENUM('resignation','termination','end_contract','other') NOT NULL DEFAULT 'resignation',
+  last_working_day DATE DEFAULT NULL,
+  status ENUM('in_progress','completed','cancelled') NOT NULL DEFAULT 'in_progress',
+  checklist JSON DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+  created_by VARCHAR(36) DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME DEFAULT NULL,
+  PRIMARY KEY (id),
+  INDEX idx_offboarding_tenant_staff (tenant_id, staff_id),
+  INDEX idx_offboarding_tenant_status (tenant_id, status)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
+-- faq_entries — from migrations/093_faq_entries.sql
+CREATE TABLE IF NOT EXISTS faq_entries (
+  id VARCHAR(36) NOT NULL DEFAULT (UUID()),
+  tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  question VARCHAR(500) NOT NULL,
+  answer TEXT NOT NULL,
+  category VARCHAR(100) NOT NULL DEFAULT 'عام',
+  sort_order INT NOT NULL DEFAULT 0,
+  is_published TINYINT(1) NOT NULL DEFAULT 1,
+  created_by VARCHAR(36) DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  INDEX idx_faq_tenant_pub (tenant_id, is_published, sort_order)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
+-- payroll_period_locks — from migrations/151_v25_payroll_scope_integrity.sql
+CREATE TABLE IF NOT EXISTS payroll_period_locks (
+  tenant_id VARCHAR(64) NOT NULL,
+  year SMALLINT UNSIGNED NOT NULL,
+  month TINYINT UNSIGNED NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant_id,year,month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- instructor_rate_change_requests — from migrations/152_v25_instructor_rate_approval.sql
+CREATE TABLE IF NOT EXISTS instructor_rate_change_requests (
+  id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(64) NOT NULL,
+  staff_id VARCHAR(36) NOT NULL,
+  consultation_rate_type ENUM('per_session','percentage','per_hour') NOT NULL DEFAULT 'per_session',
+  consultation_rate_value DECIMAL(12,2) NOT NULL DEFAULT 0,
+  lecture_rate_per_hour DECIMAL(12,2) NOT NULL DEFAULT 0,
+  training_rate_per_hour DECIMAL(12,2) NOT NULL DEFAULT 0,
+  currency ENUM('EGP','SAR','USD') NOT NULL DEFAULT 'EGP',
+  notes TEXT NULL,
+  status ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+  requested_by VARCHAR(36) NULL,
+  reviewed_by VARCHAR(36) NULL,
+  reviewed_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  INDEX idx_rate_request_pending (tenant_id,status,created_at),
+  INDEX idx_rate_request_staff (tenant_id,staff_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -62,6 +62,7 @@ const LeadPipelineBoard = React.lazy(() => import('./leads/LeadPipelineBoard').t
 const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel').then(module => ({ default: module.LeadRemindersPanel })));
 const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
 const CrmCoachingPanel = React.lazy(() => import('./leads/CrmCoachingPanel').then(module => ({ default: module.CrmCoachingPanel })));
+const LeadPipelineSettings = React.lazy(() => import('./leads/LeadPipelineSettings').then(module => ({ default: module.LeadPipelineSettings })));
 const LeadTable = React.lazy(() => import('./LeadTable').then(module => ({ default: module.LeadTable })));
 const QuickEditPanel = React.lazy(() => import('./leads/LeadSubcomponents').then(module => ({ default: module.QuickEditPanel })));
 
@@ -583,6 +584,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             onRefreshStaleLeads={refreshStaleLeads}
             onSendStaleBulk={sendStaleBulkWhatsapp}
           />
+        </Suspense>
+      )}
+
+      {subTab === 'pipelineSettings' && (
+        <Suspense fallback={<LeadSectionFallback />}>
+          <LeadPipelineSettings notify={notify} />
         </Suspense>
       )}
 
