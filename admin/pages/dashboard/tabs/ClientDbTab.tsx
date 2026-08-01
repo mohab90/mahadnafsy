@@ -7,6 +7,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
+import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -93,7 +94,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const branches = useBranches();
   const navigate = useNavigate();
 
-  const [view, setView] = useState<'clients' | 'logins'>('clients');
+  const [view, setView] = useState<'clients' | 'accounts' | 'logins'>('clients');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl'>('all');
   const [branchFilter, setBranchFilter] = useState('');
@@ -324,7 +325,11 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           record, so it gets its own view instead of being mixed into the client
           and lead list. */}
       <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs w-fit">
-        {([['clients', 'قاعدة العملاء'], ['logins', 'سجل تسجيلات الدخول']] as const).map(([key, label]) => (
+        {([
+          ['clients', 'قاعدة العملاء'],
+          ['accounts', 'حسابات الدخول'],
+          ['logins', 'سجل تسجيلات الدخول'],
+        ] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setView(key)}
@@ -335,7 +340,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         ))}
       </div>
 
-      {view === 'logins' ? <LoginHistoryPanel /> : (<>
+      {view === 'accounts' ? <LoginAccountsPanel /> : view === 'logins' ? <LoginHistoryPanel /> : (<>
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">

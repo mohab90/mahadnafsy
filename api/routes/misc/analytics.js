@@ -117,6 +117,56 @@ router.get('/api/admin/analytics/revenue-forecast', requireAuth, requireAdmin, a
 
 // Helper to log login events — called from login endpoints
 
+// GET /api/admin/security/accounts — the sign-in accounts themselves.
+// Distinct from login-history, which is a stream of events: this answers "who
+// can actually get in, and how". Now that a WhatsApp number is the identity,
+// an account with no number simply cannot sign in, and that has to be visible
+// to staff instead of surfacing as a customer complaint.
+router.get('/api/admin/security/accounts', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '200'), 500);
+    const q = String(req.query.q || '').trim();
+    const filter = String(req.query.filter || '').trim();
+
+    let where = 'u.tenant_id = ?';
+    const params = [req.tenantId];
+    if (filter === 'no_phone') where += ' AND (u.phone IS NULL OR u.phone = \'\')';
+    else if (filter === 'unverified') where += ' AND u.phone IS NOT NULL AND u.phone_verified_at IS NULL';
+    else if (filter === 'locked') where += ' AND u.sharing_locked_until IS NOT NULL AND u.sharing_locked_until > NOW()';
+    else if (filter === 'inactive') where += ' AND u.is_active = 0';
+    if (q) {
+      // A complete email is an identifier — match it exactly so the index serves
+      // it; anything else stays a contains-search over name/phone.
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) { where += ' AND u.email = ?'; params.push(q); }
+      else { where += ' AND (u.name LIKE ? OR u.phone LIKE ? OR u.email LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    }
+
+    const [rows] = await pool.query(
+      `SELECT u.id, u.name, u.email, u.phone, u.phone_verified_at, u.role, u.is_active,
+              u.last_login, u.login_count, u.sharing_locked_until, u.sharing_lock_reason,
+              u.active_session_id IS NOT NULL AS has_active_session,
+              u.active_session_last_seen_at,
+              s.id AS subscriber_id, s.client_code
+         FROM users u
+         LEFT JOIN subscribers s ON s.tenant_id = u.tenant_id AND s.firebase_uid = u.id
+        WHERE ${where}
+        ORDER BY u.last_login IS NULL, u.last_login DESC
+        LIMIT ?`,
+      [...params, limit]
+    );
+
+    const [[stats]] = await pool.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN phone IS NULL OR phone = '' THEN 1 ELSE 0 END) AS without_phone,
+              SUM(CASE WHEN phone IS NOT NULL AND phone_verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified,
+              SUM(CASE WHEN sharing_locked_until IS NOT NULL AND sharing_locked_until > NOW() THEN 1 ELSE 0 END) AS locked
+         FROM users WHERE tenant_id = ?`,
+      [req.tenantId]
+    );
+    res.json({ rows, stats });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 router.get('/api/admin/security/login-history', requireAuth, requireAdmin, async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || '100'), 500);
