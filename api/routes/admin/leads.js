@@ -278,6 +278,16 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
         `${safeName || 'مجهول'} — ${safeSource || 'بدون مصدر'}${safePhone ? ' | ' + safePhone : ''}`,
         { leadId: id, assignedSalesId: salesId }, tenantId
       ));
+      // Welcome the lead automatically, same journey step the public capture
+      // forms and website registration use — a lead added by staff was the one
+      // door that produced no welcome at all. Queued through the outbox (retry +
+      // dedupe on the lead id), and only after commit so a rolled-back insert
+      // can never send a message about a lead that doesn't exist.
+      if (safePhone || safeEmail) {
+        postCommitNotifications.push(() => require('../../lib/lifecycle').trigger('lead_created', {
+          name: safeName, email: safeEmail, phone: safePhone, tenantId,
+        }, { dedupeKey: `lead:${id}` }));
+      }
     } else {
       // Status changed?
       if (normalizedPrev && normalizedPrev !== normalizedNew && !statusTransitionLogged) {

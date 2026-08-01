@@ -8,7 +8,11 @@ const Auth: React.FC = () => {
   useEffect(() => { document.title = 'تسجيل الدخول | معهد الدراسات النفسية'; }, []);
   const [isLogin, setIsLogin] = useState(true);
   // WhatsApp sign-in: step 0 = enter number, step 1 = enter the code.
-  const [waMode, setWaMode] = useState(false);
+  // Default ON: WhatsApp is the way in now. The email form stays reachable
+  // behind "الدخول بالبريد الإلكتروني" as a recovery path for accounts that
+  // don't have a number yet — the server rejects it unless
+  // AUTH_ALLOW_EMAIL_LOGIN=1, and shows a clear message when it does.
+  const [waMode, setWaMode] = useState(true);
   const [waStep, setWaStep] = useState(0);
   const [waPhone, setWaPhone] = useState('');
   const [waCode, setWaCode] = useState('');

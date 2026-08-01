@@ -169,9 +169,22 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       if (createdLeadId) pool.query("UPDATE leads SET notes = CONCAT(IFNULL(notes,''), ?) WHERE id=? AND tenant_id=?", [`\n[مُحال من كود: ${ref}]`, createdLeadId, tenantId]).catch(() => {});
     }
 
-    // Best-effort WhatsApp welcome message
-    if (phone) {
-      sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId }).catch(() => {});
+    // Welcome message for the new lead, through the lifecycle journey rather
+    // than a direct send. The direct sendWhatsApp() call this replaces was
+    // fire-and-forget: a momentary WhatsApp outage lost the message for good,
+    // a repeated registration could double-send it, it ignored the journey
+    // toggles in Settings, and nothing recorded whether it was delivered.
+    // Routing it through the outbox gives retry, dedupe and an audit trail —
+    // and the same lead_created step already used by the public capture forms,
+    // so a lead now gets the same welcome no matter which door it came in by.
+    if (phone || normalizedEmail) {
+      require('../lib/lifecycle').trigger('lead_created', {
+        name: (name || '').trim(),
+        email: normalizedEmail,
+        phone,
+        tenantId,
+      }, { dedupeKey: createdLeadId ? `lead:${createdLeadId}` : undefined })
+        .catch(err => logger.warn('[register] lead_created journey failed', { error: err.message }));
     }
     // Enqueue registration email sequence (best-effort)
     enqueueEmailSequence({ tenantId, triggerEvent: 'registration', recipientEmail: email, recipientName: (name || '').trim() }).catch(error => logger.warn('[register] sequence enqueue failed', { error: error.message }));
@@ -712,6 +725,22 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     password: v => isString(v, 200)   || 'Password is required',
   }),
   async (req, res) => {
+  // WhatsApp OTP is the intended way in. Email + password is disabled by
+  // default and stays reachable only as a recovery hatch: set
+  // AUTH_ALLOW_EMAIL_LOGIN=1 to turn it back on instantly.
+  //
+  // Why a switch instead of deleting the route: staff and admins sign in here
+  // too, and users.phone is only populated where migration 181 could find a
+  // number (subscribers, then leads) — anyone it couldn't match, or whose
+  // number was skipped as a duplicate, has no WhatsApp identity yet. Removing
+  // this outright would lock those accounts, including admin accounts, out of
+  // the system with no way back in.
+  if (String(process.env.AUTH_ALLOW_EMAIL_LOGIN || '') !== '1') {
+    return res.status(403).json({
+      error: 'تسجيل الدخول أصبح عبر رقم الواتساب. استخدم "الدخول برقم الواتساب".',
+      code: 'EMAIL_LOGIN_DISABLED',
+    });
+  }
   const { email, password } = req.body || {};
   let conn;
   try {
