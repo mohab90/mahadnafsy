@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, Shield, Eye, EyeOff, Save, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { toDialable } from '../lib/whatsappLink';
 import { mysqlAdmin, mysqlAuth } from '../lib/mysqlapi';
 import type { StaffMember, StaffPermission } from '../types';
 import {
@@ -16,10 +17,8 @@ const toEGP = (amt: number, cur: string) =>
 
 const fmt = (n: number) => n.toLocaleString('ar-EG-u-nu-latn');
 
-const formatWaPhone = (p: string) => {
-  const d = p.replace(/\D/g, '');
-  return d.startsWith('0') ? '2' + d : d;
-};
+// Delegates to the shared rule — this used to build country code "2".
+const formatWaPhone = (p: string) => toDialable(p);
 
 const ROLE_LABELS: Record<string, string> = {
   instructor: 'محاضر', trainer: 'مدرب', expert: 'خبير', sales: 'مسئول مبيعات',

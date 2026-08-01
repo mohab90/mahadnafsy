@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { sendWhatsApp } = require('./whatsapp');
+const { toIdentity, isPlausible } = require('./phoneNumber');
 const { resolveSecret } = require('./secretResolver');
 const logger = require('./logger');
 
@@ -29,18 +30,11 @@ const MAX_ATTEMPTS = Math.max(1, Number(process.env.WA_OTP_MAX_ATTEMPTS || 5));
  * dashes; all of those are the same person, so they must normalise to one value
  * or a number would fail to match the account it belongs to.
  */
-function normalizeWhatsAppNumber(input) {
-  let digits = String(input || '').replace(/\D/g, '');
-  if (!digits) return '';
-  digits = digits.replace(/^00/, '');          // 00<country> → <country>
-  if (digits.startsWith('20')) digits = digits.slice(2);
-  digits = digits.replace(/^0+/, '');          // local trunk prefix
-  return digits;
-}
-
-function isPlausibleNumber(digits) {
-  return /^\d{9,15}$/.test(digits);
-}
+// Both delegate to lib/phoneNumber.js — the identity key here and the delivery
+// address used by lib/whatsapp.js have to come from one place, or a number can
+// identify an account and still be unreachable (which is exactly what happened).
+const normalizeWhatsAppNumber = toIdentity;
+const isPlausibleNumber = isPlausible;
 
 function generateCode() {
   // 6 digits from a CSPRNG. Math.random() is predictable enough to be guessable

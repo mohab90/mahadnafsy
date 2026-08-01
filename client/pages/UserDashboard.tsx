@@ -14,6 +14,7 @@ import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJ
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
+import { toDialable } from '../lib/whatsappLink';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -317,7 +318,7 @@ const UserDashboard: React.FC = () => {
         </p>
         <p className="text-xs text-gray-400">{authUser.email}</p>
         <a
-          href={`https://wa.me/${content['footer.whatsapp'] || '201096203090'}`}
+          href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}`}
           target="_blank"
           rel="noopener noreferrer"
           className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold transition flex items-center gap-2"
@@ -406,7 +407,7 @@ const UserDashboard: React.FC = () => {
       `الاسم: ${subscriber.name || ''}\n` +
       `البريد الإلكتروني: ${subscriber.email || ''}`
     );
-    window.open(`https://wa.me/201096203090?text=${msg}`, '_blank', 'noopener,noreferrer');
+    window.open(`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}?text=${msg}`, '_blank', 'noopener,noreferrer');
     setInstallIframeUrl('whatsapp_sent');
   };
 

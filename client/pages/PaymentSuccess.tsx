@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Receipt } from 'lucide-react';
+import { toDialable } from '../lib/whatsappLink';
+import { useSiteData } from '../context/SiteDataContext';
 
 /**
  * PaymentSuccess — shown after a user submits a payment request.
@@ -16,6 +18,7 @@ const STEPS = [
 ];
 
 const PaymentSuccess: React.FC = () => {
+  const { content } = useSiteData();
   useEffect(() => { document.title = 'تم استلام طلبك | معهد الدراسات النفسية'; }, []);
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
@@ -62,7 +65,7 @@ const PaymentSuccess: React.FC = () => {
             ارفع إيصال التحويل الآن
           </Link>
           <a
-            href="https://wa.me/201096203090"
+            href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition"

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../../types';
+import { toDialable } from '../../../lib/whatsappLink';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -568,7 +569,7 @@ function KpiCard({ title, value, icon: Icon, bg, text, border }: {
 }
 
 function FollowupRow({ lead, onNavigate }: { lead: LeadItem; onNavigate: () => void }) {
-  const phone = lead.phone?.replace(/\D/g, '');
+  const phone = toDialable(lead.phone);
   return (
     <div className="flex items-center gap-3 py-2 border-b border-rose-100 last:border-0">
       <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center flex-shrink-0 text-rose-700 font-bold text-xs">

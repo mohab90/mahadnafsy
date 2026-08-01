@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { LEAD_STATUS_CFG } from './LeadSubcomponents';
+import { toDialable } from '../../../../lib/whatsappLink';
 
 type Props = {
   open: boolean;
@@ -13,10 +14,8 @@ type Props = {
   onShowToday: () => void;
 };
 
-function formatWaPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  return digits.startsWith('0') ? `2${digits}` : digits;
-}
+// Delegates to the shared rule — this used to build country code "2".
+const formatWaPhone = (phone: string) => toDialable(phone);
 
 function LeadNotificationRow({
   lead,

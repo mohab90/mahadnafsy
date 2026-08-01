@@ -3,6 +3,7 @@ import { Activity, Award, BookOpen, CalendarDays, CheckCircle, Clock, Copy, Cred
 import type { BranchType, CommunicationRecord, Course, ExtraCertificateRequest, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem, UserSessionData } from '../../types';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { branchLabels, EXTRA_TYPE_LABELS, normBranchKey, statusLabels } from './constants';
+import { toDialable } from '../../lib/whatsappLink';
 
 type ProfileCardProps = {
   isSub: boolean;
@@ -46,7 +47,7 @@ export function UnifiedClientSidebarProfileCard({
             <a href={`tel:${clientPhone}`} className="flex items-center justify-center gap-1.5 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition border border-blue-100">
               <Phone size={13} /> اتصال
             </a>
-            <a href={`https://wa.me/${clientPhone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 py-2 bg-green-50 text-green-700 rounded-xl text-xs font-bold hover:bg-green-100 transition border border-green-100">
+            <a href={`https://wa.me/${toDialable(clientPhone)}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 py-2 bg-green-50 text-green-700 rounded-xl text-xs font-bold hover:bg-green-100 transition border border-green-100">
               <MessageSquare size={13} /> واتساب
             </a>
           </div>

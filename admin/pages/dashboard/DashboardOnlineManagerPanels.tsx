@@ -1,6 +1,7 @@
 import { AlarmClock, Banknote } from 'lucide-react';
 import type { InstallmentEntry, InstallmentPlan, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
+import { toDialable } from '../../lib/whatsappLink';
 
 type DashboardOnlineManagerPanelsProps = {
   followupOpen: boolean;
@@ -16,7 +17,8 @@ type DashboardOnlineManagerPanelsProps = {
 type OverdueEntry = { sub: SubscriberItem; plan: InstallmentPlan; entry: InstallmentEntry };
 type NewPayItem = { sub: SubscriberItem; payment: PaymentHistoryEntry };
 
-const whatsappDigits = (phone: string) => phone.replace(/[^0-9]/g, '');
+// Delegates to the shared rule — this used to build country code "2".
+const whatsappDigits = (phone: string) => toDialable(phone);
 
 export function DashboardOnlineManagerPanels({
   followupOpen,

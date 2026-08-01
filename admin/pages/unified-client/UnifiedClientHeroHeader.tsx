@@ -15,6 +15,7 @@ import {
 
 import type { BranchType, LeadItem, SubscriberItem } from '../../types';
 import { branchLabels, normBranchKey, statusLabels } from './constants';
+import { toDialable } from '../../lib/whatsappLink';
 
 type Props = {
   lead?: LeadItem;
@@ -151,7 +152,7 @@ export function UnifiedClientHeroHeader({
         <div className="flex items-center gap-2 flex-wrap">
           {clientPhone && (
             <>
-              <a href={`https://wa.me/${clientPhone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer"
+              <a href={`https://wa.me/${toDialable(clientPhone)}`} target="_blank" rel="noopener noreferrer"
                 className="px-4 py-2 bg-green-500 hover:bg-green-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
                 <MessageSquare size={14} /> واتس أب
               </a>

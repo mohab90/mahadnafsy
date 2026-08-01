@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowDownRight, CheckCircle2, Download, TrendingDown, Users } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { BulkStubPanel } from '../FinancialPanels';
+import { toDialable } from '../../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type OutstandingSub = {
@@ -176,7 +177,7 @@ export function OutstandingPanel({ notify }: { notify: NotifyFn }) {
                     <td className="py-3 px-3 text-xs text-gray-500">{sub.assigned_sales_name || '—'}</td>
                     <td className="py-3 px-3">
                       {sub.phone && (
-                        <a href={`https://wa.me/${sub.phone.replace(/\D/g, '')}`}
+                        <a href={`https://wa.me/${toDialable(sub.phone)}`}
                           target="_blank" rel="noopener noreferrer"
                           className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg px-2 py-1 transition font-bold">
                           واتساب

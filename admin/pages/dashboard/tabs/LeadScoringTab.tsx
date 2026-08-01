@@ -3,6 +3,7 @@ import { Star, MessageSquare, Send, X, Zap } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
+import { toDialable } from '../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type LeadScoreSort = 'score' | 'date';
@@ -311,7 +312,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
             <tbody className="divide-y divide-gray-50">
               {filtered.slice(0, 50).map(l => {
                 const tier = getScoreTier(l.score);
-                const waUrl = `https://wa.me/${(l.phone || '').replace(/\D/g, '')}`;
+                const waUrl = `https://wa.me/${toDialable(l.phone)}`;
                 return (
                   <tr key={l.id}
                     className={`hover:bg-gray-50 transition border-r-4 ${l.score >= 80 ? 'border-r-red-400' : l.score >= 60 ? 'border-r-orange-400' : l.score >= 40 ? 'border-r-amber-300' : 'border-r-blue-300'}`}>

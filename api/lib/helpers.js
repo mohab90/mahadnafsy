@@ -21,8 +21,10 @@ const PHONE_RE = /^[+\d\s\-().]{7,20}$/;
 // +20xxxxxxxxxx) to the same bare digits, so phone-based dedup checks actually match
 // across formats instead of only catching byte-for-byte identical strings.
 function normalizePhone(phone) {
-  if (!phone) return '';
-  return String(phone).replace(/\D/g, '').replace(/^00/, '').replace(/^20/, '').replace(/^0/, '');
+  // Same value as before, now computed in one place — see lib/phoneNumber.js.
+  // Note this is the *identity* key, not something you can send a message to;
+  // use toDialable for that.
+  return require('./phoneNumber').toIdentity(phone);
 }
 function validate(body, schema) {
   for (const [field, rule] of Object.entries(schema)) {

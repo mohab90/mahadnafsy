@@ -4,6 +4,7 @@ import type { StaffMember, SubscriberItem } from '../../types';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { buildStaffSettingsMetrics } from './dashboardHelpers';
+import { toDialable } from '../../lib/whatsappLink';
 
 type StaffSettingsDraft = {
   name: string;
@@ -785,7 +786,7 @@ export function DashboardStaffSettingsPanel({
                   <p className="text-xs text-gray-500 line-clamp-2 whitespace-pre-line">{tpl.body}</p>
                   {draft?.waNumber && (
                     <a
-                      href={`https://wa.me/${draft.waNumber}?text=${encodeURIComponent(tpl.body)}`}
+                      href={`https://wa.me/${toDialable(draft.waNumber)}?text=${encodeURIComponent(tpl.body)}`}
                       target="_blank" rel="noopener noreferrer"
                       className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-green-700 hover:text-green-900 font-bold">
                       📤 إرسال تجريبي

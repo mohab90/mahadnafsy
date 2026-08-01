@@ -2,6 +2,7 @@ import React from 'react';
 import type { LeadItem, LeadStatus, StaffMember } from '../../types';
 import type { TabKey } from './navigation';
 import { LEAD_STATUS_CFG } from './dashboardShared';
+import { toDialable } from '../../lib/whatsappLink';
 
 type DashboardSalesFollowupPanelProps = {
   open: boolean;
@@ -179,7 +180,7 @@ function LeadRow({ lead, badge, showSalesName }: { lead: LeadItem; badge: React.
     ? Math.floor((Date.now() - new Date(lead.nextFollowUpDate).getTime()) / 86_400_000)
     : null;
   const phoneDigits = (lead.phone || '').replace(/\D/g, '');
-  const whatsappPhone = phoneDigits.startsWith('0') ? `2${phoneDigits}` : phoneDigits;
+  const whatsappPhone = toDialable(phoneDigits);
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition">

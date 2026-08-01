@@ -4,6 +4,7 @@ import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2 } from 'luc
 import { useSiteData } from '../context/SiteDataContext';
 import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
+import { toDialable } from '../lib/whatsappLink';
 
 const Checkout: React.FC = () => {
   useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
@@ -322,7 +323,7 @@ const Checkout: React.FC = () => {
 
                       {whatsapp && (
                         <a
-                          href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، حوّلت لاشتراك: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}`)}`}
+                          href={`https://wa.me/${toDialable(whatsapp)}?text=${encodeURIComponent(`مرحباً، حوّلت لاشتراك: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}`)}`}
                           target="_blank" rel="noreferrer"
                           className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"
                         >
@@ -404,7 +405,7 @@ const Checkout: React.FC = () => {
                             <div className="flex-1 h-px bg-gray-200" />
                           </div>
                           <a
-                            href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد الاشتراك في: ${itemTitle} — ${finalAmount} ${currencySymbol}`)}`}
+                            href={`https://wa.me/${toDialable(whatsapp)}?text=${encodeURIComponent(`مرحباً، أريد الاشتراك في: ${itemTitle} — ${finalAmount} ${currencySymbol}`)}`}
                             target="_blank"
                             rel="noreferrer"
                             className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"

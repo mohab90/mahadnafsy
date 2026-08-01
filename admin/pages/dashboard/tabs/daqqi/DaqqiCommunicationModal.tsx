@@ -1,5 +1,6 @@
 import { MessageCircle, Phone, X } from 'lucide-react';
 import type { CommunicationRecord } from '../../../../types';
+import { toDialable } from '../../../../lib/whatsappLink';
 
 export interface DaqqiCommunicationTarget {
   subscriberId: string;
@@ -65,7 +66,7 @@ export function DaqqiCommunicationModal({ target, type, note, setType, setNote, 
             </a>
             <button onClick={() => {
               const digits = target.phone.replace(/\D/g, '');
-              const whatsappNumber = digits.startsWith('0') ? `2${digits}` : digits;
+              const whatsappNumber = toDialable(digits);
               window.open(`https://wa.me/${whatsappNumber}`, '_blank');
             }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-teal-200 bg-teal-50 text-xs text-teal-700 hover:bg-teal-100 transition">
               <MessageCircle size={12} /> واتساب

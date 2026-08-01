@@ -44,6 +44,7 @@ import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { mysqlForms } from './lib/mysqlapi';
+import { toDialable } from './lib/whatsappLink';
 
 /** Lead Capture Widget — floating "استفسر الآن" form for public visitors */
 const LeadCaptureWidget: React.FC = () => {
@@ -140,7 +141,7 @@ const WaFloat: React.FC = () => {
   if (isAdmin || isStaff) return null;
   return (
     <a
-      href={`https://wa.me/${phone}`}
+      href={`https://wa.me/${toDialable(phone)}`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="تواصل عبر واتساب"

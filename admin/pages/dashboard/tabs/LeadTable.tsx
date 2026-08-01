@@ -5,6 +5,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '../../../types';
 import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
+import { toDialable } from '../../../lib/whatsappLink';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -694,7 +695,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
         const waCourseIds = [...new Set([...(waMenuRow.interestedCourseIds || []), ...(waMenuRow.enrolledCourseId ? [waMenuRow.enrolledCourseId] : [])])];
         const waCourseName = waCourseIds.length > 0 ? (() => { const id = waCourseIds[0]; return id.startsWith('bundle:') ? (bundles.find(b => b.id === id.replace('bundle:', ''))?.title || 'برامجنا') : (courses.find(c => c.id === id)?.title || bundles.find(b => b.id === id)?.title || 'برامجنا'); })() : 'برامجنا';
         const firstName = waMenuRow.name.split(' ')[0];
-        const waPhone = (() => { const d = waMenuRow.phone.replace(/\D/g, ''); return d.startsWith('0') ? '2' + d : d; })();
+        const waPhone = toDialable(waMenuRow.phone);
         const templates = [
           {
             cat: '🟢 تعريف وتواصل أولي',

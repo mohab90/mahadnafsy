@@ -501,6 +501,44 @@ console.log('\n23. Client-identity guard (subscriber lookup by email alone)');
   }
 }
 
+// ── 24. WhatsApp number guard ─────────────────────────────────────────────────
+// A WhatsApp address must carry its country code. Hand-rolled variants of this
+// ("0" → "2", or bare digits) produced numbers that exist nowhere: the provider
+// rejected them, the rejection was logged at warn, and the message just never
+// arrived. Since sign-in, receipts, reminders and OTPs all run over WhatsApp,
+// this is the difference between a working system and a silent one.
+console.log('\n24. WhatsApp number guard (country code on every address)');
+{
+  const HELPERS = ['admin/lib/whatsappLink.ts', 'client/lib/whatsappLink.ts', 'api/lib/phoneNumber.js'];
+  const offenders = [];
+  for (const dir of ['admin', 'client', 'api']) {
+    for (const file of walk(join(ROOT, dir), null)) {
+      const rel = file.replace(/\\/g, '/').replace(ROOT.replace(/\\/g, '/'), '').replace(/^\//, '');
+      if (!/\.(ts|tsx|js)$/.test(rel) || rel.includes('node_modules')) continue;
+      if (HELPERS.includes(rel) || rel.includes('/tests/')) continue;
+      const src = readText(file);
+      if (!src) continue;
+      src.split(/\r?\n/).forEach((line, i) => {
+        // Only the actual smell: an address assembled inline from a raw phone
+        // string. A bare variable is fine — the gate can't follow it, and the
+        // whole-file check below catches the broken rule wherever it is defined.
+        if (!/wa\.me\//.test(line)) return;
+        if (!/\.replace\(/.test(line)) return;
+        if (/toDialable/.test(line)) return;
+        offenders.push(`${rel}:${i + 1}`);
+      });
+      // The rule that was actually wrong, anywhere at all: "0" → "2" yields
+      // country code 2, which is not a country.
+      if (/replace\(\/\^0\/,\s*['"`]2['"`]\)/.test(src)) offenders.push(`${rel} (builds country code "2")`);
+    }
+  }
+  if (offenders.length === 0) {
+    pass('whatsapp number guard: every message address goes through the shared resolver');
+  } else {
+    fail(`whatsapp number guard: ${offenders.length} address(es) built by hand — a missing country code sends to nobody, silently: ${offenders.slice(0, 8).join(', ')}`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {

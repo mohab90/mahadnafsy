@@ -1,6 +1,7 @@
 import { Activity, CheckCircle, Clock, MessageSquare, Phone, Plus, Trash2 } from 'lucide-react';
 import type { CommunicationRecord } from '../../types';
 import { commTypeMeta } from './constants';
+import { toDialable } from '../../lib/whatsappLink';
 
 type UnifiedCommunication = CommunicationRecord & { _src?: 'lead' | 'subscriber' };
 
@@ -49,7 +50,7 @@ export function UnifiedClientCommunicationsPanel({
           <div className="space-y-4">
             {communications.map(comm => {
               const meta = commTypeMeta[comm.type] || commTypeMeta.note;
-              const waPhone = clientPhone.replace(/\D/g, '');
+              const waPhone = toDialable(clientPhone);
               const waMsg = encodeURIComponent(`مرحباً ${clientName}،`);
               const waLink = waPhone ? `https://wa.me/${waPhone}?text=${waMsg}` : null;
               const source = comm._src ?? (isSubscriber ? 'subscriber' : 'lead');

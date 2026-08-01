@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { LeadItem, LeadStatus } from '../../../types';
+import { toDialable } from '../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -199,7 +200,7 @@ const FollowupRemindersTab: React.FC<Props> = () => {
                   <span className={`text-xs font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${b === 'overdue' ? 'bg-red-50 text-red-600 border border-red-200' : b === 'today' ? 'bg-orange-50 text-orange-600 border border-orange-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}`}>
                     <Clock size={11} /> {daysLabel}
                   </span>
-                  <a href={`https://wa.me/2${lead.phone.replace(/^0/, '')}`} target="_blank" rel="noopener noreferrer"
+                  <a href={`https://wa.me/${toDialable(lead.phone)}`} target="_blank" rel="noopener noreferrer"
                     className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-600 font-medium flex items-center gap-1">
                     <MessageSquare size={12} /> واتساب
                   </a>

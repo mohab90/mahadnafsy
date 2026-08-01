@@ -8,6 +8,7 @@ const logger = require('./logger');
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { resolveSecret } = require('./secretResolver');
+const { toDialable } = require('./phoneNumber');
 
 function envSecret(name) {
   try { return resolveSecret(name); } catch (_) { return ''; }
@@ -95,7 +96,16 @@ async function sendWhatsApp(phone, message, options = {}) {
   try {
     const tenantId = typeof options === 'string' ? options : options.tenantId;
     const cfg = await getWaCfg(tenantId || DEFAULT_TENANT);
-    const normalized = phone.replace(/\D/g, '').replace(/^0+/, '');
+    // The delivery address must carry the country code. This used to be
+    // `phone.replace(/\D/g,'').replace(/^0+/,'')`, which turns the way every
+    // Egyptian customer writes their number — 01012345678 — into 1012345678, a
+    // number that exists nowhere. The provider rejected it, the rejection was
+    // logged at warn and swallowed, and the message simply never arrived.
+    const normalized = toDialable(phone);
+    if (!normalized) {
+      logger.warn('[WhatsApp] refusing to send: number is not dialable', { phone: String(phone || '').slice(0, 4) + '…' });
+      return { ok: false, reason: 'invalid_number' };
+    }
     const provider = resolveProvider(cfg);
     return provider === 'meta'
       ? await _sendMeta(normalized, message, cfg)

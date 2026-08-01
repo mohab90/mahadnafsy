@@ -21,6 +21,7 @@ interface AgingReportPanelProps {
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
 }
 
+import { toDialable } from '../../../../lib/whatsappLink';
 const agingBuckets = [
   { label: '90+ يوم', min: 91, max: Infinity, bg: 'bg-red-50', border: 'border-red-200', txt: 'text-red-700' },
   { label: '61-90 يوم', min: 61, max: 90, bg: 'bg-orange-50', border: 'border-orange-200', txt: 'text-orange-700' },
@@ -139,7 +140,7 @@ export function AgingReportPanel({ branchFilter, toEGP, exportCSV }: AgingReport
                   <td className="py-2.5">
                     {row.subscriberPhone && (
                       <a
-                        href={`https://wa.me/${row.subscriberPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`مرحباً ${row.subscriberName}، نذكركم بموعد دفع قسط كورس ${row.title || ''} بمبلغ ${row.outstanding} ${row.currency}. شكراً لتعاملكم معنا.`)}`}
+                        href={`https://wa.me/${toDialable(row.subscriberPhone)}?text=${encodeURIComponent(`مرحباً ${row.subscriberName}، نذكركم بموعد دفع قسط كورس ${row.title || ''} بمبلغ ${row.outstanding} ${row.currency}. شكراً لتعاملكم معنا.`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg px-2 py-1 transition font-bold"

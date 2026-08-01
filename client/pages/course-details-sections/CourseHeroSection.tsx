@@ -3,6 +3,7 @@ import { Check, PlayCircle, Award, Users, Send, Share2, MessageCircle, ShieldChe
 import type { Course } from '../../types';
 import { SafeHtml } from '../../../shared/ui/SafeHtml';
 import { cdnImg } from '../../lib/img';
+import { toDialable } from '../../lib/whatsappLink';
 
 interface CourseHeroSectionProps {
   course: Course;
@@ -140,7 +141,7 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                     <button className="text-gray-500 hover:text-primary-600 text-sm flex items-center gap-1 transition">
                                                   <Share2 size={16} /> {content['courseDetails.actions.share'] || 'مشاركة'}
                     </button>
-                    <a href={`https://wa.me/${(content['footer.whatsapp'] || '201096203090').replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-green-600 text-sm flex items-center gap-1 transition">
+                    <a href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}`} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-green-600 text-sm flex items-center gap-1 transition">
                                                   <MessageCircle size={16} /> {content['courseDetails.actions.whatsapp'] || 'استفسار واتساب'}
                     </a>
                 </div>

@@ -4,6 +4,7 @@ import { BookOpen, CheckCircle, Banknote, Plus, Loader2, Shield, ChevronDown, Tr
 import { mysqlAuth, mysqlForms } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
+import { toDialable } from '../lib/whatsappLink';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
@@ -434,7 +435,7 @@ const Enrollment: React.FC = () => {
                   حسابك جاهز. أرسل لنا واتساب لإتمام الدفع وتفعيل الكورسات.
                 </p>
                 <a
-                  href={`https://wa.me/${whatsappNumber}?text=${registeredWhatsapp}`}
+                  href={`https://wa.me/${toDialable(whatsappNumber)}?text=${registeredWhatsapp}`}
                   target="_blank"
                   rel="noreferrer"
                   className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"

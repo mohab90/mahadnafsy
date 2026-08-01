@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Phone, MapPin, Send, MessageCircle, Facebook, Instagram, Youtube, CheckCircle, Clock } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { toDialable } from '../lib/whatsappLink';
 
 const Contact: React.FC = () => {
   useEffect(() => { document.title = 'تواصل معنا | معهد الدراسات النفسية'; }, []);
@@ -177,7 +178,7 @@ const Contact: React.FC = () => {
                   </div>
                 </a>
                 {whatsapp && (
-                  <a href={`https://wa.me/${whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex items-center gap-4 group">
+                  <a href={`https://wa.me/${toDialable(whatsapp)}`} target="_blank" rel="noreferrer" className="flex items-center gap-4 group">
                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition flex-shrink-0">
                       <MessageCircle size={20} />
                     </div>
@@ -247,7 +248,7 @@ const Contact: React.FC = () => {
                     </a>
                   )}
                   {whatsapp && (
-                    <a href={`https://wa.me/${whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition rounded-xl px-4 py-2 text-sm font-bold">
+                    <a href={`https://wa.me/${toDialable(whatsapp)}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition rounded-xl px-4 py-2 text-sm font-bold">
                       <MessageCircle size={16} /> واتساب
                     </a>
                   )}

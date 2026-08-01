@@ -8,6 +8,7 @@ import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
+import { toDialable } from '../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -34,11 +35,10 @@ function normPhone(p: string) {
   return (p || '').replace(/\D/g, '').replace(/^(002|00)?20/, '').replace(/^0/, '');
 }
 
+// Delegates to the shared rule — this used to build country code "2".
 function waLink(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return null;
-  const intl = digits.startsWith('20') ? digits : digits.startsWith('0') ? `2${digits}` : `20${digits}`;
-  return `https://wa.me/${intl}`;
+  const dialable = toDialable(phone);
+  return dialable ? `https://wa.me/${dialable}` : null;
 }
 
 // Map: clientType → { Arabic label, entity category, badge color }

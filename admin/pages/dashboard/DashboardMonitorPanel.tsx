@@ -1,5 +1,6 @@
 import { Activity, CalendarDays, MessageSquareText, Phone, TrendingUp, Users, X } from 'lucide-react';
 import type { LeadItem, SubscriberItem } from '../../types';
+import { toDialable } from '../../lib/whatsappLink';
 
 type DashboardMonitorPanelProps = {
   open: boolean;
@@ -82,7 +83,7 @@ function ContactButtons({ phone }: { phone: string }) {
       <a href={`tel:${phone}`} className="w-6 h-6 rounded-lg bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 grid place-items-center transition" title="اتصال">
         <Phone size={10} />
       </a>
-      <a href={`https://wa.me/${(phone || '').replace(/\D/g, '').replace(/^0/, '2')}`} target="_blank" rel="noreferrer" className="w-6 h-6 rounded-lg bg-white border border-green-200 text-green-600 hover:bg-green-50 grid place-items-center transition" title="واتساب">
+      <a href={`https://wa.me/${toDialable(phone)}`} target="_blank" rel="noreferrer" className="w-6 h-6 rounded-lg bg-white border border-green-200 text-green-600 hover:bg-green-50 grid place-items-center transition" title="واتساب">
         <MessageSquareText size={10} />
       </a>
     </div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, CreditCard, Eye, MessageCircle, Phone, Search, UserPlus, Users, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import type { DaqqiRound, SubscriberItem } from '../../../../types';
+import { toDialable } from '../../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type ClientTab = 'all' | 'assigned' | 'unassigned';
@@ -171,7 +172,7 @@ export function DaqqiClientsPanel({
                       <div className="grid grid-cols-4 gap-0.5">
                         <button onClick={() => onCommunicate(subscriber)} className="h-7 rounded bg-gray-50 hover:bg-purple-50 flex items-center justify-center" title="تسجيل تواصل"><Phone size={12} /></button>
                         <button onClick={() => onPay(subscriber)} className="h-7 rounded bg-gray-50 hover:bg-green-50 flex items-center justify-center" title="تسجيل دفعة"><CreditCard size={12} /></button>
-                        <button onClick={() => window.open(`https://wa.me/${subscriber.phone.replace(/\D/g, '').replace(/^0/, '20')}`, '_blank', 'noopener,noreferrer')} className="h-7 rounded bg-gray-50 hover:bg-teal-50 flex items-center justify-center" title="واتساب"><MessageCircle size={12} /></button>
+                        <button onClick={() => window.open(`https://wa.me/${toDialable(subscriber.phone)}`, '_blank', 'noopener,noreferrer')} className="h-7 rounded bg-gray-50 hover:bg-teal-50 flex items-center justify-center" title="واتساب"><MessageCircle size={12} /></button>
                         <button onClick={() => navigate(`/client/${subscriber.clientCode || subscriber.id}`)} className="h-7 rounded bg-gray-50 hover:bg-blue-50 flex items-center justify-center" title="عرض الملف"><Eye size={12} /></button>
                         <button onClick={() => onAssign(subscriber.id)} className="h-7 rounded bg-indigo-50 hover:bg-indigo-100 flex items-center justify-center" title="تسكين">🏠</button>
                         <button onClick={() => navigate(`/client/${subscriber.clientCode || subscriber.id}`)} className="h-7 rounded bg-orange-50 hover:bg-orange-100 flex items-center justify-center" title="الملف الكامل"><ArrowLeftRight size={12} /></button>

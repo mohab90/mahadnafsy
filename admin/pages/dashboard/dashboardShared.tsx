@@ -6,6 +6,7 @@ import {
   getDefaultPermsArray,
 } from '../../constants/permissions';
 import type { TabKey } from './navigation';
+import { toDialable } from '../../lib/whatsappLink';
 
 const PERMISSION_LABELS: Record<StaffPermission, string> = {
   // Dashboard overview
@@ -205,7 +206,8 @@ const ROLE_DEFAULT_PERMISSIONS: Record<string, StaffPermission[]> = {
 void (MASTER_ROLE_PERMS as unknown);
 const paymentTypeLabels: Record<PaymentItemType, string> = { course: 'كورس', certificate: 'شهادة', consultation: 'استشارة', book: 'كتاب', carneh: 'كارنيه', other: 'أخرى' };
 // Format phone for WhatsApp: prepend Egypt country code for local numbers
-const formatWaPhone = (p: string | null | undefined) => { const d = (p || '').replace(/\D/g, ''); return d.startsWith('0') ? '2' + d : d; };
+// Delegates to the shared rule — this used to build country code "2".
+const formatWaPhone = (p: string | null | undefined) => toDialable(p);
 
 // Normalize branch id/value for case-insensitive comparison
 // DB stores uppercase ENUM (DAQQI, ONLINE_EGYPT) but admin may configure lowercase (daqqi, online-egypt)

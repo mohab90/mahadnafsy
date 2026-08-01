@@ -13,6 +13,7 @@ import type {
 } from '../../../../types';
 import type { NotifyFn } from '../CrmSettingsModal';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
+import { toDialable } from '../../../../lib/whatsappLink';
 import {
   BRANCH_ENUM_LABELS,
   COMM_ICON,
@@ -910,7 +911,7 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
               className="flex-1 flex items-center justify-center gap-1.5 text-xs border border-gray-200 rounded-xl py-2 hover:bg-gray-50 text-gray-600 font-medium">
               <Phone size={13} /> اتصال
             </a>
-            <a href={`https://wa.me/2${draft.phone.replace(/^0/, '')}`} target="_blank" rel="noreferrer"
+            <a href={`https://wa.me/${toDialable(draft.phone)}`} target="_blank" rel="noreferrer"
               className="flex-1 flex items-center justify-center gap-1.5 text-xs border border-emerald-200 rounded-xl py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium">
               💬 واتساب
             </a>
@@ -996,7 +997,7 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
   const lastComm = (lead.communications && lead.communications.length > 0)
     ? [...lead.communications].sort((a, b) => b.date.localeCompare(a.date))[0]
     : null;
-  const waPhone = `https://wa.me/2${(lead.phone || '').replace(/^0/, '')}`;
+  const waPhone = `https://wa.me/${toDialable(lead.phone)}`;
 
   const rotLevel = getRottenLevel(lead);
   const rotCfg = ROTTEN_CFG[rotLevel];
@@ -1251,12 +1252,9 @@ export const crmSourceLabels: Record<string, { label: string; color: string }> =
   'أخرى':     { label: 'أخرى',     color: 'bg-gray-100 text-gray-600' },
 };
 
+// Delegates to the shared rule — this used to build country code "2".
 export const formatWaPhone = (p: string) => {
-  const d = p.replace(/\D/g, '');
-  if (!d) return p;
-  if (d.startsWith('0')) return '2' + d;
-  if (d.startsWith('2') || d.startsWith('9') || d.startsWith('1')) return d;
-  return d;
+  return toDialable(p);
 };
 
 export const mkPromoCode = (name: string) =>
