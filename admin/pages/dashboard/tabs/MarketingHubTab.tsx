@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
-  Megaphone, Users, TrendingUp, Mail, MessageSquare, Zap, BarChart3,
-  UserPlus, Target, Globe, Bell, Tag, Star, ArrowUpRight, ArrowDownRight,
+  Megaphone, Users, TrendingUp, Mail, Zap, BarChart3,
+  UserPlus, Globe, Bell, Tag, Star, ArrowUpRight, ArrowDownRight,
   Filter, Calendar, Clock, ChevronRight, RefreshCw,
   Smartphone, Send, CheckCircle, 
   Percent, CreditCard, 
@@ -9,7 +9,6 @@ import {
   Hash, Copy, 
   MessageCircle, Inbox, Layers, Award,
 } from 'lucide-react';
-import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { SegmentationTab } from './marketing-hub-sections/SegmentationTab';
 import { AbTestSection } from './marketing-hub-sections/AbTestSection';
 import { useSiteData } from '../../../context/SiteDataContext';

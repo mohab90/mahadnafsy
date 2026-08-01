@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GitMerge, RefreshCw, RotateCcw } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../CrmSettingsModal';

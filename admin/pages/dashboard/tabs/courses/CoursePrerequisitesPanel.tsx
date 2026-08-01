@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Save } from 'lucide-react';
 import type { Course } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';

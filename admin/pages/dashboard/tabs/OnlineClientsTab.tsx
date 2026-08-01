@@ -83,9 +83,7 @@ export default function OnlineClientsTab({
   setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
   setSubWaRow, branchFilter,
 }: Props) {
-  // Collection role — online clients tab state
-  const [collOnlineSubTab, setCollOnlineSubTab] = useState<'all' | 'local' | 'intl' | 'mine'>('all');
-  const [collOnlineSearch, setCollOnlineSearch] = useState('');
+  // Collection role — online clients tab state  const [collOnlineSearch, setCollOnlineSearch] = useState('');
   const [collOnlinePage, setCollOnlinePage] = useState(1);
   const [collOnlineStatusFilter, setCollOnlineStatusFilter] = useState('');
   const [collOnlineDateFrom, setCollOnlineDateFrom] = useState('');
@@ -128,9 +126,7 @@ export default function OnlineClientsTab({
   const [convertRefundReason, setConvertRefundReason] = useState('');
   const [convertRefundAmount, setConvertRefundAmount] = useState('');
   const [convertRefundMethod, setConvertRefundMethod] = useState('');
-  const [convertSaving, setConvertSaving] = useState(false);
-  const [refundActionSaving, setRefundActionSaving] = useState<string|null>(null);
-  // New subscriber popup (online manager)
+  const [convertSaving, setConvertSaving] = useState(false);  // New subscriber popup (online manager)
   const [omNewSubOpen, setOmNewSubOpen] = useState(false);
   const [omNewSubDraft, setOmNewSubDraft] = useState<{name:string;phone:string;email:string;password:string;branch:string;amount:string;currency:'EGP'|'SAR'|'USD';paymentMethod:string;date:string;transactionId:string;note:string;referredBy:string;courses:{courseId:string;accessType:'full'|'limited';videoCount:string;discount:string;customPrice:string}[]}>({ name: '', phone: '', email: '', password: '', branch: '', amount: '', currency: 'EGP', paymentMethod: '', date: new Date().toISOString().slice(0,10), transactionId: '', note: '', referredBy: '', courses: [{courseId:'',accessType:'full',videoCount:'',discount:'',customPrice:''}] });
   const [omNewSubSaving, setOmNewSubSaving] = useState(false);
@@ -189,9 +185,11 @@ export default function OnlineClientsTab({
                 collOnlineViewTab === 'old_data'  ? allCombined :
                 collOnlineViewTab === 'old_local' ? allCombined.filter(s => !isIntlSub(s)) :
                 collOnlineViewTab === 'old_intl'  ? allCombined.filter(isIntlSub) :
-                collOnlineSubTab === 'local' ? allCombined.filter(s => !isIntlSub(s)) :
-                collOnlineSubTab === 'intl'  ? allCombined.filter(isIntlSub) :
-                collOnlineSubTab === 'mine'  ? mineSubsAll :
+                // The collOnlineSubTab branches that used to sit here (local /
+                // intl / mine) were unreachable: nothing in the UI ever called
+                // its setter, so the value stayed 'all' and only this last arm
+                // could run. collOnlineViewTab above is the control that is
+                // actually wired to the tab strip.
                 allCombined;
               const filtered = tabFiltered.filter(s => {
                 // View tab filter — use clientStatus field (set by convert button)

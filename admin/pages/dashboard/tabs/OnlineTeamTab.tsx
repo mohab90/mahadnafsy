@@ -137,9 +137,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   const [payments, setPayments] = useState<OnlinePayment[]>([]);
 
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');
-  const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
-  const [targets, setTargets] = useState<StaffTargets>({});
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('overview');  const [targets, setTargets] = useState<StaffTargets>({});
   const [editingTargets, setEditingTargets] = useState<StaffTargets>({});
   const [editMode, setEditMode] = useState(false);
 

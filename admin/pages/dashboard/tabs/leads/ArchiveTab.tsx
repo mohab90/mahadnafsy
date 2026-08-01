@@ -32,7 +32,6 @@ export interface ArchiveTabProps {
   hideImport?: boolean;
 }
 export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false }: ArchiveTabProps) {
-  const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
@@ -154,7 +153,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
           <div>
             <label className="text-xs font-bold text-gray-600 mb-1 block">ملف CSV أو TSV</label>
             <input type="file" accept=".csv,.tsv,.txt"
-              onChange={e => { const f = e.target.files?.[0] || null; setArchiveFile(f); if (f) parseArchiveFile(f); }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) parseArchiveFile(f); }}
               className="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
           </div>
         </div>

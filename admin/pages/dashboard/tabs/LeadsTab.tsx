@@ -181,11 +181,11 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [convertLeadModal, setConvertLeadModal] = useState<ConvertLeadModalState>({ lead: null, courseId: '', accessMode: 'full' });
   const [leadPayRow, setLeadPayRow] = useState<LeadItem | null>(null);
   const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(createClientPaymentDraft());
-  const [crmContactRow, setCrmContactRow] = useState<LeadItem | null>(null);
-  const [crmContactDraft, setCrmContactDraft] = useState<{
-    type: CommunicationRecord['type']; date: string; notes: string;
-    outcome: string; nextFollowUp: string; newStatus: LeadStatus | '';
-  }>({ type: 'whatsapp', date: new Date().toISOString().slice(0, 16), notes: '', outcome: '', nextFollowUp: '', newStatus: '' });
+  // crmContactRow / crmContactDraft used to live here: the pipeline board set
+  // them when the contact button on a lead card was clicked, but no modal ever
+  // read them back, so the button silently did nothing. Replaced by wiring that
+  // button into the quick-communication modal below, which is the real flow for
+  // logging a contact.
   const [leadsFollowupFilter, setLeadsFollowupFilter] = useState<'all' | 'today' | 'overdue' | 'past3d' | 'past7d' | 'past30d' | 'next3d' | 'next7d' | 'no_followup'>('all');
   const [salesSourceFilter, setSalesSourceFilter] = useState<string>('');
 
@@ -203,6 +203,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     selectLeadForCommunication,
     saveQuickCommunication,
   } = useLeadQuickCommunication({ effectiveLeads, reloadLeads });
+  // Contact button on a kanban lead card → open the quick-communication modal
+  // already targeting that lead, instead of the dead state it used to set.
+  const openContactLog = useCallback((lead: LeadItem) => {
+    selectLeadForCommunication(lead);
+    setShowAddComm(true);
+  }, [selectLeadForCommunication, setShowAddComm]);
   // ── Reminders tab state ──────────────────────────────────────────────────
   const [reminderStaffFilter, setReminderStaffFilter] = useState('');
   const [reminderView, setReminderView] = useState<'list' | 'kanban'>('kanban');
@@ -435,8 +441,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             setSelectedId={setSelectedId}
             handleStatusChange={handleStatusChange}
             openLeadBook={openLeadBook}
-            setCrmContactRow={setCrmContactRow}
-            setCrmContactDraft={setCrmContactDraft}
+            onLogContact={openContactLog}
             instituteBranches={instituteBranches}
             courses={courses}
             bundles={bundles}

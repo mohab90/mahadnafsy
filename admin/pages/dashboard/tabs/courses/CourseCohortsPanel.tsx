@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, UserMinus, UserPlus } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';

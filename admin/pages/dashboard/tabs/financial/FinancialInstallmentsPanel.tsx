@@ -1,4 +1,3 @@
-import React from 'react';
 import { CalendarDays } from 'lucide-react';
 import type { SubscriberItem } from '../../../../types';
 import { InstallmentActions } from './InstallmentActions';

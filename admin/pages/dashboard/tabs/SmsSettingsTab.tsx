@@ -157,10 +157,14 @@ export default function SmsSettingsTab({ notify }: { notify: NotifyFn }) {
         </div>
 
         <div className="flex justify-end">
-          <button onClick={saveSettings} disabled={saving}
+          {/* Also disabled while the initial fetch is in flight. Until it lands
+              the form is still showing DEFAULT_CONFIG, so saving early would
+              overwrite the real provider/sender settings with the defaults —
+              the `loading` flag was being tracked but never actually used. */}
+          <button onClick={saveSettings} disabled={saving || loading}
             className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition disabled:opacity-50">
-            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+            {saving || loading ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+            {loading ? 'جاري تحميل الإعدادات...' : saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
           </button>
         </div>
       </div>

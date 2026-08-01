@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Bundle, CommunicationRecord, Course, LeadItem, LeadStatus } from '../../../../types';
+import type { Bundle, Course, LeadItem, LeadStatus } from '../../../../types';
 import { STATUS_CFG } from '../leadUtils';
 import { LeadCard } from './LeadSubcomponents';
 
@@ -20,15 +20,7 @@ type LeadPipelineBoardProps = {
   setSelectedId: React.Dispatch<React.SetStateAction<string | null>>;
   handleStatusChange: (lead: LeadItem, status: LeadStatus) => void;
   openLeadBook: (lead: LeadItem) => void;
-  setCrmContactRow: React.Dispatch<React.SetStateAction<LeadItem | null>>;
-  setCrmContactDraft: React.Dispatch<React.SetStateAction<{
-    type: CommunicationRecord['type'];
-    date: string;
-    notes: string;
-    outcome: string;
-    nextFollowUp: string;
-    newStatus: LeadStatus | '';
-  }>>;
+  onLogContact: (lead: LeadItem) => void;
   instituteBranches: { id: string; label: string }[];
   courses: Course[];
   bundles: Bundle[];
@@ -49,8 +41,7 @@ export function LeadPipelineBoard({
   setSelectedId,
   handleStatusChange,
   openLeadBook,
-  setCrmContactRow,
-  setCrmContactDraft,
+  onLogContact,
   instituteBranches,
   courses,
   bundles,
@@ -129,17 +120,7 @@ export function LeadPipelineBoard({
                         onSelect={() => canManageLeads && !bulkMode && setSelectedId(lead.id)}
                         onStatusChange={nextStatus => handleStatusChange(lead, nextStatus)}
                         onBook={canManageLeads ? openLeadBook : undefined}
-                        onContact={canManageLeads ? row => {
-                          setCrmContactRow(row);
-                          setCrmContactDraft({
-                            type: 'call',
-                            date: new Date().toISOString().slice(0, 16),
-                            notes: '',
-                            outcome: '',
-                            nextFollowUp: '',
-                            newStatus: '',
-                          });
-                        } : undefined}
+                        onContact={canManageLeads ? onLogContact : undefined}
                         canManageLeads={canManageLeads}
                         instituteBranches={instituteBranches}
                         courses={courses}
