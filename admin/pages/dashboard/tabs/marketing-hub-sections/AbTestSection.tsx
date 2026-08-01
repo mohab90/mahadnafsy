@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
-import { Target, Send } from 'lucide-react';
-import type { LeadItem } from '../../../../types';
-import type { NotifyFn } from './shared';
+import { useState, useMemo } from 'react';
+import { Send, Target } from 'lucide-react';
+import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
-interface Props { leads: LeadItem[]; notify: NotifyFn }
+type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
-export function AbTestSection({ leads, notify }: Props) {
+export function AbTestSection({ leads, notify }: { leads: any[]; notify: NotifyFn }) {
   const [variantA, setVariantA] = useState('');
   const [variantB, setVariantB] = useState('');
   const [splitPct, setSplitPct] = useState(50);
@@ -15,8 +14,7 @@ export function AbTestSection({ leads, notify }: Props) {
 
   const STATUS_W: Record<string, number> = { converted: 100, interested_booking: 85, interested: 70, follow_up: 55, contacted: 40, new: 25, no_answer: 10, not_interested: 0 };
   const SOURCE_W: Record<string, number> = { facebook: 20, google: 22, referral: 25, whatsapp: 18, instagram: 17, organic: 12, tiktok: 15 };
-  // NOTE: followUpDate isn't a real LeadItem field (legacy/typo in original code) — preserved as always-falsy to keep behavior identical
-  const scoreOf = (l: LeadItem) => Math.min(100, (STATUS_W[l.status] ?? 20) + (SOURCE_W[(l.source || '').toLowerCase()] ?? 10) + ((l as unknown as { followUpDate?: string }).followUpDate ? 10 : 0) + (l.notes ? 5 : 0));
+  const scoreOf = (l: any) => Math.min(100, (STATUS_W[l.status] ?? 20) + (SOURCE_W[(l.source || '').toLowerCase()] ?? 10) + (l.followUpDate ? 10 : 0) + (l.notes ? 5 : 0));
 
   const eligible = useMemo(() =>
     leads.filter(l => l.phone && scoreOf(l) >= minScore),
@@ -35,13 +33,13 @@ export function AbTestSection({ leads, notify }: Props) {
       const [rA, rB] = await Promise.all([
         fetch('/api/admin/leads/bulk-whatsapp', {
           method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lead_ids: groupA.map((l) => l.id), message: variantA }),
+          headers: adminAuthHeaders(true),
+          body: JSON.stringify({ lead_ids: groupA.map((l: any) => l.id), message: variantA }),
         }).then(r => r.json()),
         fetch('/api/admin/leads/bulk-whatsapp', {
           method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lead_ids: groupB.map((l) => l.id), message: variantB }),
+          headers: adminAuthHeaders(true),
+          body: JSON.stringify({ lead_ids: groupB.map((l: any) => l.id), message: variantB }),
         }).then(r => r.json()),
       ]);
       if (rA.ok && rB.ok) {
