@@ -250,7 +250,22 @@ function createScheduledJobHandlers({ pool, logger }) {
     }
   }
 
+  // Lead scores factor in age and overdue follow-ups, but were only ever
+  // recomputed when a human saved the lead — so an untouched lead kept day-one's
+  // score and the pipeline ordering drifted away from reality. This decays them
+  // on a schedule instead.
+  async function leadScoreRefresh() {
+    try {
+      const { refreshLeadScores } = require('./leadScoreRefresh');
+      const { scanned, updated } = await refreshLeadScores(pool);
+      if (updated) logger.info(`[jobs] lead scores refreshed scanned=${scanned} updated=${updated}`);
+    } catch (error) {
+      logger.warn('[jobs] lead score refresh failed:', error.message);
+    }
+  }
+
   return {
+    leadScoreRefresh,
     installmentReminder,
     pendingPaymentReminder,
     refreshFxRates,
