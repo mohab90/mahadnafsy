@@ -436,6 +436,33 @@ if (indexDefeats.length === 0) {
   fail(`index-defeat guard: ${indexDefeats.length} indexed column(s) wrapped in a function inside WHERE/JOIN — these force full table scans. Run: node tools/index-defeat-scan.mjs --list`);
 }
 
+// ── 22. Payment ↔ journal guard ───────────────────────────────────────────────
+// Revenue everywhere (dashboards, P&L, the 12-month trend) is summed from
+// journal_entry_lines, never from the payments table. So a payment path that
+// inserts a payments row without posting a double-entry journal is money that
+// exists for the customer and does not exist for accounting — and it fails
+// silently, because the payment itself succeeds. Every file that writes a
+// payments row must go through postPaymentJournal.
+console.log('\n22. Payment ↔ journal guard');
+{
+  // The reconciliation stub writes amount=0/status='pending' placeholder rows for
+  // enrollments that never had a payment. They are deliberately not revenue.
+  const JOURNAL_EXEMPT = new Set(['api/routes/crm-tools.js']);
+  const unjournaled = [];
+  for (const file of walk(join(ROOT, 'api'), '.js')) {
+    const rel = file.replace(/\\/g, '/').replace(ROOT.replace(/\\/g, '/'), '').replace(/^\//, '');
+    if (rel.includes('/tests/') || JOURNAL_EXEMPT.has(rel)) continue;
+    const src = readText(file);
+    if (!/INSERT INTO payments\b/i.test(src)) continue;
+    if (!/postPaymentJournal/.test(src)) unjournaled.push(rel);
+  }
+  if (unjournaled.length === 0) {
+    pass('payment↔journal guard: every payment-writing file posts a double-entry journal');
+  } else {
+    fail(`payment↔journal guard: ${unjournaled.length} file(s) INSERT INTO payments without postPaymentJournal — that revenue never reaches the P&L: ${unjournaled.join(', ')}`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {

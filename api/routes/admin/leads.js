@@ -349,6 +349,18 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
     if (String(req.staffRecord?.role || '').toLowerCase() === 'sales') return res.status(403).json({ error: 'غير مصرح' });
     const { rows, dryRun } = req.body || {};
     if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'لا توجد بيانات للاستيراد' });
+    // Every row costs ~5 queries and the whole import runs in ONE transaction, so an
+    // uncapped array holds the connection and the subscriber row locks for as long as
+    // it takes to chew through it. The 10mb body limit alone allows ~40k rows, which
+    // is minutes of blocked writes for everyone else. Cap it and make the caller split.
+    const IMPORT_MAX_ROWS = Number(process.env.IMPORT_MAX_ROWS || 2000);
+    if (rows.length > IMPORT_MAX_ROWS) {
+      return res.status(413).json({
+        error: `الاستيراد محدود بـ ${IMPORT_MAX_ROWS} صف في المرة الواحدة (أرسلت ${rows.length}). قسّم الملف على دفعات.`,
+        maxRows: IMPORT_MAX_ROWS,
+        received: rows.length,
+      });
+    }
 
     const VALID_NATIONALITY = ['EGYPTIAN','NON_EGYPTIAN_EGYPT','SAUDI_RESIDENT','INTERNATIONAL'];
     const VALID_CURRENCY    = ['EGP','SAR','USD'];
