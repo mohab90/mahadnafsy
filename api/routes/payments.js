@@ -193,6 +193,11 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
       params.push(addDaysToDateOnly(dateTo, 1));
     }
     if (search) {
+      // Left as a contains-scan on purpose. Unlike a client code (^C\d+$) or a
+      // complete email, there is no pattern here that reliably marks an
+      // identifier: a 6+ character alphanumeric string is just as likely to be a
+      // partial phone number or part of a name, so routing it to an exact match
+      // would silently return nothing for a perfectly reasonable search.
       where += ` AND (s.name LIKE ? OR s.phone LIKE ? OR p.transaction_id LIKE ? OR p.item_title LIKE ?)`;
       const q = `%${search}%`;
       params.push(q, q, q, q);

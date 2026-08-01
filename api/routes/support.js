@@ -129,7 +129,18 @@ router.get('/api/admin/cs/inbox', requireAuth, requireAdminOrStaff, requirePermi
     if (status === 'open') where.push(`t.status IN ('open','in_progress')`);
     else if (status) { where.push('t.status = ?'); params.push(status); }
     if (assignee) { where.push('t.assigned_to = ?'); params.push(assignee); }
-    if (q) { where.push('(t.subject LIKE ? OR t.subscriber_name LIKE ? OR t.subscriber_email LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    if (q) {
+      // A complete email address is unambiguous, so match it exactly and let the
+      // index serve it. Anything else (subject text, part of a name) stays a
+      // contains-scan — there is no safe way to guess an identifier from it.
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q)) {
+        where.push('t.subscriber_email = ?');
+        params.push(q);
+      } else {
+        where.push('(t.subject LIKE ? OR t.subscriber_name LIKE ? OR t.subscriber_email LIKE ?)');
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      }
+    }
     const [rows] = await pool.query(
       `SELECT t.id, t.subject, t.subscriber_name, t.subscriber_email, t.status, t.priority,
               t.category, t.department, t.channel, t.assigned_to, t.sla_due_at,
