@@ -40,6 +40,7 @@ const { createSessionBinding, rotateSingleSession, closeSingleSession } = requir
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
 const {
   requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
+  normalizeWhatsAppNumber, isPlausibleNumber,
 } = require('../lib/whatsappOtp');
 
 function hashOtp({ tenantId, email, type, code }) {
@@ -85,13 +86,31 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     transactionStarted = true;
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
+    // Store the WhatsApp identity at signup. Without it a new account has no
+    // phone, and with email sign-in disabled that account could never log in —
+    // registration would be handing out credentials that don't work.
+    //
+    // Left NULL when the number is missing, implausible, or already belongs to
+    // another account: users.phone is UNIQUE per tenant, so reusing one would
+    // fail the whole registration. Such an account simply has no WhatsApp
+    // identity until staff attach a number, which is recoverable; refusing the
+    // signup outright is not.
+    const regPhone = normalizeWhatsAppNumber(phone);
+    let phoneForUser = null;
+    if (isPlausibleNumber(regPhone)) {
+      const [phoneTaken] = await conn.execute(
+        'SELECT id FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, regPhone]
+      );
+      if (!phoneTaken.length) phoneForUser = regPhone;
+      else logger.warn('[register] WhatsApp number already linked to another account');
+    }
     await conn.execute(
       `INSERT INTO users
-         (id, tenant_id, email, password_hash, name, role, active_session_id,
+         (id, tenant_id, email, phone, password_hash, name, role, active_session_id,
           active_session_ip_hash, active_session_started_at, active_session_last_seen_at,
           last_country_code, preferred_currency, last_geo_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
-      [id, tenantId, normalizedEmail, hash, (name || '').trim(), 'user',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
+      [id, tenantId, normalizedEmail, phoneForUser, hash, (name || '').trim(), 'user',
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
     // Also write to registrations table (best-effort)
@@ -227,13 +246,31 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     transactionStarted = true;
     const id = uuidv4();
     const hash = await bcrypt.hash(password, 12);
+    // Store the WhatsApp identity at signup. Without it a new account has no
+    // phone, and with email sign-in disabled that account could never log in —
+    // registration would be handing out credentials that don't work.
+    //
+    // Left NULL when the number is missing, implausible, or already belongs to
+    // another account: users.phone is UNIQUE per tenant, so reusing one would
+    // fail the whole registration. Such an account simply has no WhatsApp
+    // identity until staff attach a number, which is recoverable; refusing the
+    // signup outright is not.
+    const regPhone = normalizeWhatsAppNumber(phone);
+    let phoneForUser = null;
+    if (isPlausibleNumber(regPhone)) {
+      const [phoneTaken] = await conn.execute(
+        'SELECT id FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, regPhone]
+      );
+      if (!phoneTaken.length) phoneForUser = regPhone;
+      else logger.warn('[register] WhatsApp number already linked to another account');
+    }
     await conn.execute(
       `INSERT INTO users
-         (id, tenant_id, email, password_hash, name, role, active_session_id,
+         (id, tenant_id, email, phone, password_hash, name, role, active_session_id,
           active_session_ip_hash, active_session_started_at, active_session_last_seen_at,
           last_country_code, preferred_currency, last_geo_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
-      [id, tenantId, normalizedEmail, hash, (name || '').trim(), 'user',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NOW())`,
+      [id, tenantId, normalizedEmail, phoneForUser, hash, (name || '').trim(), 'user',
         session.sessionId, session.ipHash, clientContext.countryCode, clientContext.currency]
     );
     // Referral attribution (best-effort): credit the referrer + tag the new user.

@@ -68,10 +68,41 @@ async function requestLoginCode({ tenantId, phone }) {
     throw error;
   }
 
-  const [[user]] = await pool.query(
+  let [[user]] = await pool.query(
     'SELECT id FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
     [tenantId, normalized]
   );
+
+  // A paying client added by staff lives in `subscribers` and may have no users
+  // row at all — they never signed up on the site. Without this they'd be
+  // permanently unable to log in now that WhatsApp is the way in. Same recovery
+  // the email reset flow already performs: adopt the subscriber as an account,
+  // keyed on their number. The password hash is deliberately random and
+  // unguessable — this account can only ever be entered by OTP.
+  if (!user) {
+    const [[sub]] = await pool.query(
+      `SELECT id, name, email FROM subscribers
+        WHERE tenant_id=? AND REGEXP_REPLACE(phone,'[^0-9]','') LIKE ?
+          AND is_active=1 LIMIT 1`,
+      [tenantId, `%${normalized}`]
+    );
+    if (sub) {
+      const newId = uuidv4();
+      const lockedHash = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        `INSERT IGNORE INTO users
+           (id, tenant_id, email, phone, password_hash, name, role, is_active)
+         VALUES (?,?,?,?,?,?, 'user', 1)`,
+        [newId, tenantId, sub.email || null, normalized, lockedHash, sub.name || '']
+      );
+      [[user]] = await pool.query(
+        'SELECT id FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
+        [tenantId, normalized]
+      );
+      if (user) logger.info('[wa-otp] adopted an existing subscriber as a WhatsApp account');
+    }
+  }
+
   // Unknown number: still report success so this can't be used to discover which
   // numbers have accounts.
   if (!user) {
