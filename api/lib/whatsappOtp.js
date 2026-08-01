@@ -215,7 +215,38 @@ async function verifyLoginCode({ tenantId, phone, code }) {
   }
 }
 
+/**
+ * Work out the WhatsApp identity to store on a new account.
+ *
+ * Every path that creates a login has to do this now: WhatsApp is the way in, so
+ * an account written without a phone cannot sign in at all — not by number
+ * (there isn't one) and not by email (that path is off). Three of the four
+ * account-creating paths were doing exactly that.
+ *
+ * Returns null when there is no usable number, which is a recoverable state:
+ * staff can attach one later. Refusing the whole operation is not — it would
+ * block creating the account at all.
+ *
+ * @returns {Promise<string|null>} the normalised number to store, or null
+ */
+async function claimWhatsAppIdentity(db, { tenantId, phone }) {
+  const normalized = toIdentity(phone);
+  if (!isPlausible(normalized)) return null;
+  // users.phone is UNIQUE per tenant. A number already linked to someone else
+  // (a family sharing a phone, a duplicate left by an old import) must not be
+  // claimed here or the INSERT takes the whole registration down with it.
+  const [taken] = await db.query(
+    'SELECT id FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, normalized]
+  );
+  if (taken.length) {
+    logger.warn('[identity] WhatsApp number already linked to another account — leaving this one without a number');
+    return null;
+  }
+  return normalized;
+}
+
 module.exports = {
+  claimWhatsAppIdentity,
   normalizeWhatsAppNumber,
   isPlausibleNumber,
   requestLoginCode,

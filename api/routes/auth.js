@@ -40,7 +40,7 @@ const { createSessionBinding, rotateSingleSession, closeSingleSession } = requir
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
 const {
   requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
-  normalizeWhatsAppNumber, isPlausibleNumber,
+  claimWhatsAppIdentity,
 } = require('../lib/whatsappOtp');
 
 function hashOtp({ tenantId, email, type, code }) {
@@ -95,15 +95,7 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     // fail the whole registration. Such an account simply has no WhatsApp
     // identity until staff attach a number, which is recoverable; refusing the
     // signup outright is not.
-    const regPhone = normalizeWhatsAppNumber(phone);
-    let phoneForUser = null;
-    if (isPlausibleNumber(regPhone)) {
-      const [phoneTaken] = await conn.execute(
-        'SELECT id FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, regPhone]
-      );
-      if (!phoneTaken.length) phoneForUser = regPhone;
-      else logger.warn('[register] WhatsApp number already linked to another account');
-    }
+    const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId, phone });
     await conn.execute(
       `INSERT INTO users
          (id, tenant_id, email, phone, password_hash, name, role, active_session_id,
@@ -255,15 +247,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     // fail the whole registration. Such an account simply has no WhatsApp
     // identity until staff attach a number, which is recoverable; refusing the
     // signup outright is not.
-    const regPhone = normalizeWhatsAppNumber(phone);
-    let phoneForUser = null;
-    if (isPlausibleNumber(regPhone)) {
-      const [phoneTaken] = await conn.execute(
-        'SELECT id FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [tenantId, regPhone]
-      );
-      if (!phoneTaken.length) phoneForUser = regPhone;
-      else logger.warn('[register] WhatsApp number already linked to another account');
-    }
+    const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId, phone });
     await conn.execute(
       `INSERT INTO users
          (id, tenant_id, email, phone, password_hash, name, role, active_session_id,
@@ -520,9 +504,12 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
       action = 'reactivated';
     } else {
       const newUserId = uuidv4();
+      // Without a number this account cannot be signed into: WhatsApp OTP has
+      // nothing to send to, and email sign-in is disabled.
+      const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId, phone: phoneVal });
       await conn.execute(
-        'INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,1)',
-        [newUserId, tenantId, normEmail, hash, displayName, 'user']
+        'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,?,1)',
+        [newUserId, tenantId, normEmail, phoneForUser, hash, displayName, 'user']
       );
       // Create subscriber record if not exists
       const [[subExists]] = await conn.execute('SELECT id, branch_id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [tenantId, normEmail]);
@@ -707,25 +694,60 @@ router.post(
   const limit = Math.min(parseInt(req.body?.limit) || 50, 200);
   const conn = await pool.getConnection();
   try {
+    // A subscriber qualifies on a phone OR an email. It used to require an email,
+    // which since the move to WhatsApp sign-in excluded exactly the clients who
+    // most need an account made for them — the ones reached only by number.
     const [rows] = await conn.query(
-      `SELECT s.name, s.email FROM subscribers s
-       WHERE s.tenant_id=? AND s.email IS NOT NULL AND s.email != '' AND s.email LIKE '%@%'
-       AND NOT EXISTS (SELECT 1 FROM users u WHERE u.tenant_id=s.tenant_id AND LOWER(TRIM(u.email))=LOWER(TRIM(s.email)) AND u.is_active=1)
+      `SELECT s.id, s.name, s.email, s.phone FROM subscribers s
+       WHERE s.tenant_id=? AND s.deleted_at IS NULL
+         AND ((s.email IS NOT NULL AND s.email != '' AND s.email LIKE '%@%')
+              OR (s.phone IS NOT NULL AND s.phone != ''))
+         AND NOT EXISTS (
+           SELECT 1 FROM users u
+            WHERE u.tenant_id=s.tenant_id AND u.is_active=1
+              AND (u.id = s.firebase_uid
+                   OR (s.email IS NOT NULL AND s.email != ''
+                       AND LOWER(TRIM(u.email))=LOWER(TRIM(s.email))))
+         )
        LIMIT ?`, [req.tenantId, limit]
     );
-    let created = 0, failed = 0, emailsSent = 0;
+    let created = 0, failed = 0, emailsSent = 0, whatsappsSent = 0, withoutIdentity = 0;
     for (const sub of rows) {
-      const normEmail = sub.email.toLowerCase().trim();
+      const normEmail = String(sub.email || '').toLowerCase().trim();
       try {
         const tempPass = generateTemporaryPassword();
         const hash = await bcrypt.hash(tempPass, 12);
-        const displayName = (sub.name || normEmail).trim();
+        const displayName = (sub.name || normEmail || 'عميل').trim();
+        const newUserId = uuidv4();
+        // Without this the account exists and cannot be entered: no number for
+        // the OTP, and email sign-in is off.
+        const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId: req.tenantId, phone: sub.phone });
+        if (!phoneForUser && !normEmail) { withoutIdentity++; failed++; continue; }
         await conn.execute(
-          'INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,1)',
-          [uuidv4(), req.tenantId, normEmail, hash, displayName, 'user']
+          'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,?,1)',
+          [newUserId, req.tenantId, normEmail || null, phoneForUser, hash, displayName, 'user']
         );
+        // Bind the two records so /api/me/* resolves this client immediately.
+        if (phoneForUser || normEmail) {
+          await conn.execute(
+            'UPDATE subscribers SET firebase_uid=?, updated_at=updated_at WHERE id=? AND tenant_id=? AND firebase_uid IS NULL',
+            [newUserId, sub.id, req.tenantId]
+          ).catch(() => {});
+        }
         created++;
+        // WhatsApp first — it is how they will actually sign in. The temporary
+        // password is a fallback for the recovery hatch, not the main route in.
+        if (phoneForUser) {
+          const waResult = await sendWhatsApp(
+            phoneForUser,
+            `مرحباً ${displayName} 👋\nتم إنشاء حسابك على منصة معهد الدراسات النفسية.\n\nللدخول: افتح mahadnafsy.com واختر "الدخول برقم الواتساب" — هيوصلك كود على نفس الرقم ده.`,
+            { tenantId: req.tenantId }
+          );
+          if (waResult?.ok) whatsappsSent++;
+        }
+        // Email is a secondary copy now, and only possible when there is one.
         try {
+          if (!normEmail) throw new Error('no email');
           await mailer.sendMail({
             tenantId: req.tenantId,
             from: `"معهد الدراسات النفسية" <${process.env.SMTP_USER || 'info@mahadnafsy.com'}>`,
@@ -748,8 +770,8 @@ router.post(
         } catch { /* continue even if email fails */ }
       } catch { failed++; }
     }
-    logger.info(`[bulk-create-accounts] created=${created} failed=${failed} emails=${emailsSent}`);
-    res.json({ ok: true, created, failed, emailsSent, total: rows.length });
+    logger.info(`[bulk-create-accounts] created=${created} failed=${failed} whatsapp=${whatsappsSent} emails=${emailsSent} noIdentity=${withoutIdentity}`);
+    res.json({ ok: true, created, failed, whatsappsSent, emailsSent, withoutIdentity, total: rows.length });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
   finally { conn.release(); }
 });
@@ -1339,12 +1361,15 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
     if (result.affectedRows === 0) {
       // No user account yet — create one using the subscriber's data
       if (!newPassword) return res.status(404).json({ error: 'لم يُعثر على حساب بهذا البريد. يرجى تعيين كلمة مرور لإنشاء الحساب.' });
-      const [[sub]] = await conn.execute('SELECT id, name, email FROM subscribers WHERE id = ? AND tenant_id=?', [id, req.tenantId]);
+      const [[sub]] = await conn.execute('SELECT id, name, email, phone FROM subscribers WHERE id = ? AND tenant_id=?', [id, req.tenantId]);
       if (!sub) return res.status(404).json({ error: 'لم يُعثر على المشترك.' });
       const finalEmail = (newEmail || sub.email).toLowerCase().trim();
+      // Carry the subscriber's number onto the account, or it is created unable
+      // to sign in — WhatsApp OTP has no number and email sign-in is off.
+      const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId: req.tenantId, phone: sub.phone });
       await conn.execute(
-        'INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?)',
-        [sub.id, req.tenantId, finalEmail, await bcrypt.hash(newPassword, 12), sub.name || '', 'client']
+        'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [sub.id, req.tenantId, finalEmail, phoneForUser, await bcrypt.hash(newPassword, 12), sub.name || '', 'client']
       );
       if (finalEmail !== sub.email.toLowerCase().trim()) {
         await conn.execute('UPDATE subscribers SET email = ? WHERE id = ? AND tenant_id=?', [finalEmail, id, req.tenantId]);
