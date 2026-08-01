@@ -97,6 +97,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   const outbox = require('./outbox');
   const email = require('./email');
   const sms = require('./otpProvider');
+  const messenger = require('./messenger');
   const financeOutbox = require('./financeOutbox');
   const leadDealValue = require('./leadDealValue');
   const crmSla = require('./crmSla');
@@ -116,8 +117,16 @@ function startBackgroundScheduler({ pool, logger, port }) {
       await outbox.drain({
         email: ({ recipient, subject, body, html, tenantId }) =>
           email.sendEmail(recipient, subject, html || body || '', { tenantId }),
-        whatsapp: ({ recipient, message, tenantId }) =>
-          sendWhatsApp(recipient, message || '', { tenantId }),
+        // channelId decides which identity it goes out from — the company
+        // number, or the rep's own WhatsApp the campaign was composed against.
+        whatsapp: ({ recipient, message, tenantId, channelId, staffId }) =>
+          sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId }),
+        messenger: async ({ recipient, message, tenantId, channelId }) => {
+          const { getSendableChannel } = require('./messagingChannels');
+          const resolved = await getSendableChannel({ tenantId, channelId, kind: 'messenger' });
+          if (!resolved) return { ok: false, reason: 'not_configured' };
+          return messenger.sendMessengerMessage(recipient, message || '', resolved.credentials);
+        },
         sms: ({ recipient, message, tenantId }) =>
           sms.sendSms({ phone: recipient, message: message || '', tenantId }),
       });

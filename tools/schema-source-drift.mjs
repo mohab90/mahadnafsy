@@ -45,8 +45,20 @@ function stripComments(sql) {
  */
 function splitTopLevel(body) {
   const parts = [];
-  let depth = 0, cur = '';
-  for (const ch of body) {
+  let depth = 0, cur = '', quote = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    // Inside a string literal nothing is structural. Without this a comma in a
+    // COMMENT ('queued, sent, or skipped') splits the clause and the fragments
+    // are then read as column names — the scanner reported phantom columns
+    // called "or" and "as", and the drift gate failed on a correct migration.
+    if (quote) {
+      cur += ch;
+      if (ch === '\\') { cur += body[++i] ?? ''; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; cur += ch; continue; }
     if (ch === '(') { depth++; cur += ch; continue; }
     if (ch === ')') { depth--; cur += ch; continue; }
     if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; continue; }

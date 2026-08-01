@@ -92,10 +92,26 @@ async function _sendGreenApi(normalized, message, cfg) {
   return { ok: true, provider: 'green-api', idMessage: data.idMessage };
 }
 
+/**
+ * Send a WhatsApp message.
+ *
+ * @param {string} phone     any spelling — the address is rebuilt here
+ * @param {string} message
+ * @param {object|string} options
+ *   tenantId   — required in practice; a bare string is accepted for the older
+ *                call style used across the routes
+ *   channelId  — send from this exact identity
+ *   staffId    — send from this employee's own WhatsApp if they have one
+ *
+ * With neither channelId nor staffId this behaves exactly as it did before: the
+ * tenant's default channel, or the legacy site_config credentials when no
+ * channel rows exist yet.
+ */
 async function sendWhatsApp(phone, message, options = {}) {
   try {
-    const tenantId = typeof options === 'string' ? options : options.tenantId;
-    const cfg = await getWaCfg(tenantId || DEFAULT_TENANT);
+    const opts = typeof options === 'string' ? { tenantId: options } : (options || {});
+    const tenantId = opts.tenantId || DEFAULT_TENANT;
+
     // The delivery address must carry the country code. This used to be
     // `phone.replace(/\D/g,'').replace(/^0+/,'')`, which turns the way every
     // Egyptian customer writes their number — 01012345678 — into 1012345678, a
@@ -106,6 +122,41 @@ async function sendWhatsApp(phone, message, options = {}) {
       logger.warn('[WhatsApp] refusing to send: number is not dialable', { phone: String(phone || '').slice(0, 4) + '…' });
       return { ok: false, reason: 'invalid_number' };
     }
+
+    // A registered channel wins. Loaded lazily so this module stays usable in
+    // tests and scripts that never touch the channel registry.
+    const channels = require('./messagingChannels');
+    const resolved = await channels.getSendableChannel({
+      tenantId, channelId: opts.channelId || null, staffId: opts.staffId || null, kind: 'whatsapp',
+    }).catch(error => {
+      // Before migration 184 runs, the table does not exist. Falling back to the
+      // legacy config is what keeps this deployable ahead of the migration.
+      logger.debug?.('[WhatsApp] channel lookup unavailable, using legacy config', error.message);
+      return null;
+    });
+
+    if (resolved) {
+      // Budget is claimed before the send, not after: a personal number that
+      // burns through its allowance gets the employee banned by the provider,
+      // and a crash mid-send must not give the allowance back.
+      const withinBudget = await channels.claimSendBudget(tenantId, resolved.row.id).catch(() => true);
+      if (!withinBudget) {
+        logger.warn('[WhatsApp] channel is out of daily budget', { channelId: resolved.row.id });
+        return { ok: false, reason: 'daily_limit_reached', channelId: resolved.row.id };
+      }
+      const result = resolved.row.provider === 'meta'
+        ? await _sendMeta(normalized, message, resolved.credentials)
+        : await _sendGreenApi(normalized, message, resolved.credentials);
+      // A send is the only honest proof the credentials work, so the channel's
+      // status follows the result rather than whatever it was set at save time.
+      if (result.ok) await channels.markChannelConnected(tenantId, resolved.row.id).catch(() => {});
+      else if (result.reason !== 'not_configured') {
+        await channels.markChannelError(tenantId, resolved.row.id, describeReason(result.reason)).catch(() => {});
+      }
+      return { ...result, channelId: resolved.row.id };
+    }
+
+    const cfg = await getWaCfg(tenantId);
     const provider = resolveProvider(cfg);
     return provider === 'meta'
       ? await _sendMeta(normalized, message, cfg)
@@ -114,6 +165,13 @@ async function sendWhatsApp(phone, message, options = {}) {
     logger.warn('[WhatsApp] sendWhatsApp error:', e.message);
     return { ok: false, reason: e.message };
   }
+}
+
+/** Provider errors arrive as objects; store something a human can act on. */
+function describeReason(reason) {
+  if (!reason) return 'فشل الإرسال';
+  if (typeof reason === 'string') return reason;
+  return reason?.error?.message || reason?.message || JSON.stringify(reason).slice(0, 400);
 }
 
 module.exports = { getWaCfg, invalidateWaCfg, providerCredentialState, sendWhatsApp, resolveProvider };

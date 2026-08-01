@@ -13,16 +13,31 @@ const MAX_ATTEMPTS = 6;
 
 // Enqueue. Pass `conn` to enlist in an existing transaction. `sendAt` (Date or
 // ms-from-epoch) schedules a delayed send (used by the lifecycle journey).
-async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAULT_TENANT, sendAt = null, dedupeKey = null, refType = null, refId = null }, conn = pool) {
+/**
+ * @returns {Promise<string|null>} the queued message id — the existing one when
+ *   dedupeKey matched an earlier enqueue, so a caller that tracks per-recipient
+ *   state (campaigns) can record the row that will actually be delivered rather
+ *   than a id that was never inserted. Callers that ignore it are unaffected.
+ */
+async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAULT_TENANT, sendAt = null, dedupeKey = null, refType = null, refId = null, channelId = null }, conn = pool) {
   const when = sendAt ? new Date(sendAt) : null;
+  const id = uuidv4();
   // dedupeKey (unique) makes re-enqueues within the same period a no-op.
-  await conn.query(
-    `INSERT INTO message_outbox (id, tenant_id, channel, recipient, subject, payload_json, next_attempt_at, dedupe_key, ref_type, ref_id)
-     VALUES (?,?,?,?,?,?, COALESCE(?, NOW()), ?, ?, ?)
+  const [result] = await conn.query(
+    `INSERT INTO message_outbox (id, tenant_id, channel, channel_id, recipient, subject, payload_json, next_attempt_at, dedupe_key, ref_type, ref_id)
+     VALUES (?,?,?,?,?,?,?, COALESCE(?, NOW()), ?, ?, ?)
      ON DUPLICATE KEY UPDATE id = id`,
-    [uuidv4(), tenantId, channel, recipient, subject || null, JSON.stringify(payload || {}),
+    [id, tenantId, channel, channelId, recipient, subject || null, JSON.stringify(payload || {}),
      when && !isNaN(when.getTime()) ? when : null, dedupeKey, refType, refId]
   );
+  // affectedRows is 0 only when ON DUPLICATE KEY matched an existing row and
+  // changed nothing. Anything else — including a driver or a test double that
+  // does not report it — means the insert happened and `id` is the row.
+  if (!dedupeKey || result?.affectedRows !== 0) return id;
+  const [[existing]] = await conn.query(
+    'SELECT id FROM message_outbox WHERE dedupe_key=? LIMIT 1', [dedupeKey]
+  );
+  return existing?.id || null;
 }
 
 async function finalizeCampaign(row, sent, dead) {
@@ -85,7 +100,13 @@ async function drain(senders, limit = 20) {
       const payload = typeof m.payload_json === 'string' ? JSON.parse(m.payload_json) : (m.payload_json || {});
       const send = senders[m.channel];
       if (typeof send !== 'function') throw new Error('no sender for channel ' + m.channel);
-      const delivery = await send({ recipient: m.recipient, subject: m.subject, tenantId: m.tenant_id, ...payload });
+      // channel_id travels with the row so a queued message is delivered from
+      // the identity it was composed for, even if the tenant default changed
+      // between queueing and sending. The payload may still override it.
+      const delivery = await send({
+        recipient: m.recipient, subject: m.subject, tenantId: m.tenant_id,
+        channelId: m.channel_id || null, ...payload,
+      });
       if (delivery?.ok === false) {
         const reason = typeof delivery.reason === 'string' ? delivery.reason : JSON.stringify(delivery.reason);
         throw new Error(reason || `${m.channel} provider rejected the message`);

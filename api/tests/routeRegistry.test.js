@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { routeModules } = require('../lib/registerRoutes');
 
 test('route registry preserves one ordered mount for every router module', () => {
-  assert.equal(routeModules.length, 67);
+  assert.equal(routeModules.length, 70);
   assert.deepEqual(routeModules[0], ['/', '../routes/auth']);
   assert.deepEqual(routeModules.at(-1), ['/', '../routes/tenant-domains']);
 
@@ -17,6 +17,17 @@ test('route registry preserves one ordered mount for every router module', () =>
   assert.ok(routeModules.some(([mountPath, modulePath]) => (
     mountPath === '/' && modulePath === '../routes/whatsapp-webhook'
   )));
+  // Messaging channels, the Messenger webhook and WhatsApp campaigns all mount
+  // at the root alongside the existing webhooks.
+  for (const modulePath of [
+    '../routes/messenger-webhook',
+    '../routes/messaging-channels',
+    '../routes/whatsapp-campaigns',
+  ]) {
+    assert.ok(routeModules.some(([mountPath, candidate]) => (
+      mountPath === '/' && candidate === modulePath
+    )), modulePath);
+  }
   for (const modulePath of [
     '../routes/crm-forecast',
     '../routes/crm-sequences',
