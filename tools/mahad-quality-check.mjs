@@ -463,6 +463,44 @@ console.log('\n22. Payment ↔ journal guard');
   }
 }
 
+// ── 23. Client-identity guard ─────────────────────────────────────────────────
+// "Which subscriber is the signed-in client?" must go through
+// lib/subscriberIdentity.js. Resolving it by email alone silently returns
+// nothing for anyone who signed in with a WhatsApp number and has no email —
+// the client sees an empty account and the server reports no error at all.
+console.log('\n23. Client-identity guard (subscriber lookup by email alone)');
+{
+  // Not client identity: uniqueness checks on submitted input, the sign-in and
+  // signup flows themselves, bulk sends addressed by email, and lookups keyed on
+  // a record's stored email rather than on the caller.
+  const IDENTITY_EXEMPT = new Set([
+    'api/routes/auth.js',
+    'api/routes/admin/subscribers.js',
+    'api/routes/campaigns.js',
+    'api/routes/support.js',
+    'api/routes/client-maintenance.js',
+  ]);
+  const offenders = [];
+  for (const file of walk(join(ROOT, 'api', 'routes'), '.js')) {
+    const rel = file.replace(/\\/g, '/').replace(ROOT.replace(/\\/g, '/'), '').replace(/^\//, '');
+    if (IDENTITY_EXEMPT.has(rel)) continue;
+    const src = readText(file);
+    if (!src) continue;
+    for (const line of src.split(/\r?\n/)) {
+      if (!/FROM subscribers/i.test(line)) continue;
+      if (!/LOWER\(TRIM\(email\)\)/i.test(line)) continue;
+      // firebase_uid in the same predicate means it is at least not email-only.
+      if (/firebase_uid/.test(line)) continue;
+      offenders.push(`${rel}: ${line.trim().slice(0, 90)}`);
+    }
+  }
+  if (offenders.length === 0) {
+    pass('client-identity guard: no route resolves the signed-in client by email alone');
+  } else {
+    fail(`client-identity guard: ${offenders.length} email-only subscriber lookup(s) — WhatsApp-only clients resolve to nothing there. Use lib/subscriberIdentity.js: ${offenders.join(' | ')}`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {

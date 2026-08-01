@@ -17,6 +17,7 @@ const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { logLeadEvent } = require('../lib/crm');
 const { getNextSalesRep } = require('../lib/leadAssignment');
 const { resolveClientContext } = require('../lib/clientContext');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -253,7 +254,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       paymentLinkToken,
     } = req.body || {};
     const { uid, email } = req.user;
-    if (!email || !uid) return res.status(401).json({ error: 'Authenticated customer required' });
+    if (!uid) return res.status(401).json({ error: 'Authenticated customer required' });
+    // The account is the identity, not the body. A WhatsApp-only client has no
+    // email at all and used to be turned away here — unable to buy anything.
+    const identity = await resolveSubscriberRow(req, ['id', 'lead_id', 'email', 'phone']);
+    const accountEmail = String(email || identity?.email || '').toLowerCase().trim();
+    if (!accountEmail && !identity) return res.status(401).json({ error: 'Authenticated customer required' });
     const normalizedType = String(itemType || '').toLowerCase();
     if (!['course', 'bundle', 'consultation', 'certificate'].includes(normalizedType)) {
       return res.status(400).json({ error: 'Invalid item type' });
@@ -262,8 +268,15 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       return res.status(400).json({ error: 'itemId required' });
     }
     const tenantId = scopedTenantId(req);
-    const normalizedEmail = String(customerEmail || email).toLowerCase().trim();
-    if (normalizedEmail !== email.toLowerCase().trim()) return res.status(403).json({ error: 'Checkout email must match the authenticated account' });
+    // A supplied email may never point the checkout at a different account: the
+    // subscriber below is looked up by it. When the account has its own email the
+    // body must match it exactly; when it doesn't, the supplied address is
+    // accepted as contact detail only and the identity stays the account link.
+    const requestedEmail = String(customerEmail || '').toLowerCase().trim();
+    if (accountEmail && requestedEmail && requestedEmail !== accountEmail) {
+      return res.status(403).json({ error: 'Checkout email must match the authenticated account' });
+    }
+    const normalizedEmail = accountEmail || requestedEmail;
     const clientContext = await resolveClientContext(req);
     if (!clientContext.locationResolved) {
       return res.status(503).json({ error: 'Customer location could not be verified', code: 'LOCATION_UNAVAILABLE' });
@@ -315,9 +328,9 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         `SELECT cr.id, cr.price, cr.currency, cr.custom_name, cr.type
            FROM certificate_requests cr
            JOIN subscribers s ON s.id=cr.subscriber_id AND s.tenant_id=cr.tenant_id
-          WHERE cr.id=? AND cr.tenant_id=? AND LOWER(TRIM(s.email))=?
+          WHERE cr.id=? AND cr.tenant_id=? AND (cr.subscriber_id=? OR (?<>'' AND LOWER(TRIM(s.email))=?))
             AND cr.status IN ('PENDING','PRICED') LIMIT 1`,
-        [itemId, tenantId, normalizedEmail]
+        [itemId, tenantId, identity?.id || '', normalizedEmail, normalizedEmail]
       );
       if (!certificate) return res.status(404).json({ error: 'Eligible certificate request not found' });
       expectedAmount = Number(certificate.price) || 0;
@@ -333,7 +346,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
       const therapistId = String(req.body?.therapistId || '').trim();
       if (paymentLink) {
         const [[consultation]] = await conn.query(
-          `SELECT c.id,c.client_email,c.amount,c.currency,t.name AS therapist_name
+          `SELECT c.id,c.client_email,c.subscriber_id,c.amount,c.currency,t.name AS therapist_name
              FROM consultations c
              JOIN therapists t ON t.id=c.therapist_id AND t.tenant_id=c.tenant_id
             WHERE c.id=? AND c.tenant_id=? AND c.deleted_at IS NULL
@@ -341,8 +354,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
           [itemId, tenantId]
         );
         if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
-        if (consultation.client_email
-          && String(consultation.client_email).toLowerCase().trim() !== normalizedEmail) {
+        // Either proof of ownership is enough. Email alone rejected every
+        // WhatsApp-only client outright, since theirs is always the empty string.
+        const ownsBySubscriber = identity?.id && String(consultation.subscriber_id || '') === String(identity.id);
+        const ownsByEmail = normalizedEmail
+          && String(consultation.client_email || '').toLowerCase().trim() === normalizedEmail;
+        if (consultation.client_email && !ownsBySubscriber && !ownsByEmail) {
           return res.status(403).json({ error: 'Consultation belongs to another customer' });
         }
         expectedAmount = Number(consultation.amount) || Number(paymentLink.amount) || 0;
@@ -387,10 +404,14 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
 
     await conn.beginTransaction();
     transactionStarted = true;
-    const [[subscriber]] = await conn.query(
-      'SELECT id, lead_id FROM subscribers WHERE LOWER(TRIM(email))=? AND tenant_id=? LIMIT 1 FOR UPDATE',
-      [normalizedEmail, tenantId]
-    );
+    // Locked by id: the subscriber was already resolved from the account, so the
+    // body cannot steer this at somebody else's record.
+    const [[subscriber]] = identity
+      ? await conn.query(
+        'SELECT id, lead_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+        [identity.id, tenantId]
+      )
+      : [[null]];
     if (paymentLink) {
       const [[lockedLink]] = await conn.query(
         `SELECT id,subscriber_id,expires_at,used_at
@@ -408,10 +429,14 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         throw error;
       }
     }
-    const [[existingLead]] = await conn.query(
-      'SELECT id FROM leads WHERE LOWER(TRIM(email))=? AND tenant_id=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
-      [normalizedEmail, tenantId]
-    );
+    // Guarded: with no email this would match every lead stored with a blank one
+    // and attach this checkout to a stranger's lead.
+    const [[existingLead]] = normalizedEmail
+      ? await conn.query(
+        'SELECT id FROM leads WHERE LOWER(TRIM(email))=? AND tenant_id=? AND hidden=0 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
+        [normalizedEmail, tenantId]
+      )
+      : [[null]];
     const leadId = subscriber?.lead_id || existingLead?.id || uuidv4();
     const crmJson = JSON.stringify({ interestedCourseIds: itemId ? [itemId] : [], itemTitle: canonicalTitle, itemType: normalizedType });
     await conn.query(
@@ -421,17 +446,27 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
           name=VALUES(name), phone=COALESCE(NULLIF(VALUES(phone),''),phone),
           branch=COALESCE(NULLIF(branch,''),VALUES(branch)), branch_id=COALESCE(branch_id,VALUES(branch_id)),
           crm_json=VALUES(crm_json)`,
-      [leadId, tenantId, String(customerName || email.split('@')[0]).trim().slice(0, 255), normalizedEmail,
-       String(customerPhone || '').trim().slice(0, 50), branch, branchId, crmJson]
+      // NULL rather than '' — leads.email is unique per tenant, so a blank string
+      // would make the second email-less checkout collide with the first.
+      // email.split('@') used to throw outright when the account had no email.
+      [leadId, tenantId,
+       String(customerName || normalizedEmail.split('@')[0] || 'عميل').trim().slice(0, 255),
+       normalizedEmail || null,
+       String(customerPhone || identity?.phone || '').trim().slice(0, 50), branch, branchId, crmJson]
     );
+    // Reuse of a recent pending order is keyed on the customer. With no email the
+    // subscriber link is the only safe key — matching on customer_email='' would
+    // hand this checkout somebody else's unclaimed order.
     let pendingOrder = null;
-    if (!paymentLink) {
+    if (!paymentLink && (normalizedEmail || subscriber?.id)) {
+      const ownerSql = normalizedEmail ? 'customer_email=?' : 'subscriber_id=?';
+      const ownerParam = normalizedEmail || subscriber.id;
       [[pendingOrder]] = await conn.query(
         `SELECT id FROM orders
-         WHERE tenant_id=? AND customer_email=? AND type=? AND item_id=? AND status='pending'
+         WHERE tenant_id=? AND ${ownerSql} AND type=? AND item_id=? AND status='pending'
            AND created_at>=DATE_SUB(NOW(), INTERVAL 24 HOUR)
          ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-        [tenantId, normalizedEmail, normalizedType.toUpperCase(), itemId || normalizedType]
+        [tenantId, ownerParam, normalizedType.toUpperCase(), itemId || normalizedType]
       );
     }
     const orderId = pendingOrder?.id || uuidv4();
@@ -453,7 +488,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
          customer_phone=VALUES(customer_phone), notes=VALUES(notes), tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
       [orderId, subscriber?.id || null, itemId || normalizedType, canonicalTitle || normalizedType,
        normalizedType.toUpperCase(), expectedAmount, expectedCurrency,
-       String(customerName || '').trim().slice(0, 255), normalizedEmail, String(customerPhone || '').trim().slice(0, 50),
+       String(customerName || '').trim().slice(0, 255), normalizedEmail || null, String(customerPhone || identity?.phone || '').trim().slice(0, 50),
        normalizedType === 'course' ? itemId : null, normalizedType === 'bundle' ? itemId : null,
        notes, tenantId, branchId]
     );
