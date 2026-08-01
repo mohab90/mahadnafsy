@@ -600,6 +600,15 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
+  // WhatsApp sign-in. requestWaOtp always resolves ok:true even for an unknown
+  // number — the API deliberately won't reveal which numbers have accounts.
+  requestWaOtp: (phone: string) =>
+    apiFetch<{ ok: boolean; expiresInMinutes: number }>('/auth/whatsapp/request-otp', { method: 'POST', body: JSON.stringify({ phone }) }),
+  verifyWaOtp: (phone: string, code: string) =>
+    apiFetch<{
+      ok: boolean; token: string;
+      user: { uid: string; email: string; displayName: string; phone: string };
+    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code }) }),
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean; token: string }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
