@@ -6,26 +6,12 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'loyalty-route' });
 const { pool } = require('../lib/db');
 const { awardPoints, redeemPoints, getBalance, listLedger } = require('../lib/loyalty');
+const { resolveSubscriberId: subscriberIdForUser } = require('../lib/subscriberIdentity');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 function sendError(res, error, message = 'loyalty route failed') {
   logger.error(message, error);
   return res.status(error.statusCode || 500).json({ error: error.message || 'Internal server error' });
-}
-
-async function subscriberIdForUser(req) {
-  const email = String(req.user?.email || '').trim().toLowerCase();
-  const uid = req.user?.uid || '';
-  const [[row]] = await pool.query(
-    `SELECT id FROM subscribers
-     WHERE tenant_id = ?
-       AND deleted_at IS NULL
-       AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?)
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [req.tenantId, uid, email]
-  );
-  return row?.id || null;
 }
 
 // GET /api/me/loyalty

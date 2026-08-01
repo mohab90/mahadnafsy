@@ -39,7 +39,11 @@ test('push ownership and payment creation permission are tenant and finance safe
   const push = read('api/routes/push.js');
   const payments = read('api/routes/subscriber-payments.js');
   const migration = read('api/migrations/104_v25_push_subscription_tenant_identity.sql');
-  assert.match(push, /WHERE tenant_id = \? AND \(firebase_uid = \? OR LOWER\(TRIM\(email\)\) = \?\)/);
+  // Ownership resolution moved to lib/subscriberIdentity.js so push, loyalty and
+  // every /api/me/* route resolve the client the same way — including clients
+  // who sign in by WhatsApp number and have no email at all.
+  assert.match(push, /require\('\.\.\/lib\/subscriberIdentity'\)/);
+  assert.match(push, /resolveSubscriberId\(/);
   assert.match(push, /WHERE tenant_id = \? AND is_active = 1/);
   assert.match(push, /SET is_active = 0 WHERE tenant_id = \? AND endpoint_hash = \?/);
   assert.match(payments, /subscriber-payments'[\s\S]{0,160}requirePermission\('manage_payments'\)/);

@@ -9,6 +9,7 @@ const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { completeCourse, completeCourses } = require('../lib/courseCompletion');
 const { reissueCertificate, revokeCertificate } = require('../lib/certificateLifecycle');
 const { resolveLectureAccess } = require('../lib/learningAccess');
+const { resolveSubscriberId, resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { createMediaTicket, mediaKind, playableRedirect, verifyMediaTicket } = require('../lib/mediaAccess');
 const { streamTenantMedia } = require('../lib/uploadSafety');
 const {
@@ -238,12 +239,11 @@ router.post('/api/me/progress', requireAuth, (_req, res) => res.status(410).json
 // GET /api/me/progress?course_id=xxx — get all lecture completions for subscriber
 router.get('/api/me/progress', requireAuth, async (req, res) => {
   try {
-    const email = req.user.email?.toLowerCase().trim();
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
-    if (!sub) return res.json([]);
+    const subscriberId = await resolveSubscriberId(req);
+    if (!subscriberId) return res.json([]);
     const { course_id } = req.query;
     let sql = 'SELECT lecture_id, course_id, progress_pct, watch_seconds, completed_at FROM lecture_completions WHERE subscriber_id=? AND tenant_id=?';
-    const params = [sub.id, req.tenantId];
+    const params = [subscriberId, req.tenantId];
     if (course_id) { sql += ' AND course_id=?'; params.push(course_id); }
     const [rows] = await pool.query(sql, params);
     res.json(rows);
@@ -275,12 +275,11 @@ router.get('/api/admin/courses/:courseId/progress', requireAuth, requireAdminOrS
 // GET /api/me/lectures/:lectureId/access — check if subscriber can access this lecture
 router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) => {
   try {
-    const email = req.user.email?.toLowerCase().trim();
     // enrollments is the shared access authority for the API and both frontends.
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
-    if (!sub) return res.status(403).json({ accessible: false, reason: 'not_subscribed' });
+    const subscriberId = await resolveSubscriberId(req);
+    if (!subscriberId) return res.status(403).json({ accessible: false, reason: 'not_subscribed' });
     const access = await resolveLectureAccess({
-      tenantId: req.tenantId, subscriberId: sub.id, lectureId: req.params.lectureId,
+      tenantId: req.tenantId, subscriberId, lectureId: req.params.lectureId,
     });
     if (!access.accessible) {
       if (access.reason === 'not_found') return res.status(404).json({ accessible: false, reason: access.reason });
@@ -293,7 +292,7 @@ router.get('/api/me/lectures/:lectureId/access', requireAuth, async (req, res) =
     // Access granted → return the video URL (the public catalog withholds it for paid lectures).
     const kind = mediaKind(lecture.video_url);
     const ticket = createMediaTicket({
-      tenantId: req.tenantId, subscriberId: sub.id, lectureId: lecture.id,
+      tenantId: req.tenantId, subscriberId, lectureId: lecture.id,
     });
     res.json({
       accessible: true,
@@ -443,9 +442,8 @@ router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (r
 // GET /api/me/live-sessions — get upcoming live sessions for enrolled courses
 router.get('/api/me/live-sessions', requireAuth, async (req, res) => {
   try {
-    const email = req.user.email?.toLowerCase().trim();
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, email]);
-    if (!sub) return res.json([]);
+    const subscriberId = await resolveSubscriberId(req);
+    if (!subscriberId) return res.json([]);
     const [rows] = await pool.query(`
       SELECT ls.id, ls.course_id, ls.title, ls.platform, ls.meeting_url,
              ls.meeting_id, ls.meeting_pass, ls.starts_at, ls.duration_min,
@@ -456,7 +454,7 @@ router.get('/api/me/live-sessions', requireAuth, async (req, res) => {
        WHERE ls.tenant_id=? AND e.status='active' AND ls.starts_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
         AND ls.status IN ('scheduled','live')
       ORDER BY ls.starts_at ASC
-    `, [sub.id, req.tenantId]);
+    `, [subscriberId, req.tenantId]);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -859,7 +857,12 @@ router.post('/api/me/waitlist', requireAuth, async (req, res) => {
     const { course_id } = req.body;
     if (!course_id) return res.status(400).json({ error: 'course_id required' });
     conn = await pool.getConnection(); await conn.beginTransaction();
-    const [[sub]] = await conn.query('SELECT id, name, email, phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [req.tenantId, req.user.email.toLowerCase().trim()]);
+    // Resolve by account link first. A WhatsApp-only client has no email, and
+    // req.user.email.toLowerCase() threw on null here before it even queried.
+    const identified = await resolveSubscriberRow(req, ['id'], conn);
+    const [[sub]] = identified
+      ? await conn.query('SELECT id, name, email, phone FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE', [identified.id, req.tenantId])
+      : [[null]];
     if (!sub) { await conn.rollback(); conn.release(); conn = null; return res.status(403).json({ error: 'Subscriber account required' }); }
     const [[course]] = await conn.query('SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL FOR UPDATE', [course_id, req.tenantId]);
     if (!course) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Course not found' }); }
@@ -1092,10 +1095,7 @@ router.get('/api/community/posts/:id', requireAuth, async (req, res) => {
 router.post('/api/community/posts/:id/upvote', requireAuth, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const [[sub]] = await conn.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?))) LIMIT 1',
-      [req.tenantId, req.user.uid || '', req.user.email || '']
-    );
+    const sub = await resolveSubscriberRow(req, ['id'], conn);
     if (!sub) return res.status(403).json({ error: 'Subscriber required' });
     await conn.beginTransaction();
     const [[post]] = await conn.query('SELECT id FROM forum_posts WHERE tenant_id=? AND id=? AND is_hidden=0 FOR UPDATE', [req.tenantId, req.params.id]);

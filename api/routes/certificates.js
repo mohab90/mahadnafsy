@@ -4,6 +4,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool } = require('../lib/db');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { publishRealtimeEvent } = require('../lib/realtime');
 const { getTenantSetting } = require('../lib/tenantSettings');
@@ -318,11 +319,7 @@ router.delete('/api/admin/certificate-requests/:id', requireAuth, requireAdmin, 
 router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
   try {
     const tenantId = req.tenantId || req.user?.tenant_id || 'tenant-default';
-    const email = req.user.email?.toLowerCase().trim();
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL AND LOWER(TRIM(email))=? LIMIT 1',
-      [tenantId, email]
-    );
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(403).json({ error: 'not_subscribed' });
     const b = req.body || {};
     const type = CERT_TYPES.includes(String(b.type || '').toUpperCase()) ? String(b.type).toUpperCase() : 'OTHER';

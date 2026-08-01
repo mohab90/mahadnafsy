@@ -5,6 +5,7 @@ const router = express.Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { parseLimit } = require('../lib/helpers');
 const { logPaymentAudit } = require('../lib/finance');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -350,20 +351,24 @@ router.get('/api/admin/abandoned-checkouts', requireAuth, requireAdmin, async (r
 // Customer-owned orders are the only valid source for manual payment proofs.
 router.get('/api/me/orders', requireAuth, async (req, res) => {
   try {
-    const email = String(req.user?.email || '').toLowerCase().trim();
-    if (!email) return res.status(400).json({ error: 'No email in token' });
-    const [[subscriber]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
-      [req.tenantId, email]
-    );
+    // A WhatsApp-only client has no email in the token; rejecting on that used to
+    // hide their entire order history behind a 400.
+    const subscriber = await resolveSubscriberRow(req, ['id', 'email']);
+    const email = String(subscriber?.email || req.user?.email || '').toLowerCase().trim();
+    if (!subscriber && !email) return res.json([]);
+    // Two independent ownership proofs, either of which is sufficient. Both are
+    // guarded so a null identity can never widen into "every unowned order".
+    const clauses = [];
+    const params = [req.tenantId];
+    if (subscriber?.id) { clauses.push('o.subscriber_id=?'); params.push(subscriber.id); }
+    if (email) { clauses.push("(o.subscriber_id IS NULL AND LOWER(TRIM(o.customer_email))=?)"); params.push(email); }
     const [rows] = await pool.query(
       `SELECT o.id, o.item_id, o.item_title, o.type, o.status, o.amount, o.currency,
               o.payment_method, o.created_at, o.paid_at
        FROM orders o
-       WHERE o.tenant_id=? AND o.deleted_at IS NULL
-         AND (o.subscriber_id=? OR (o.subscriber_id IS NULL AND LOWER(TRIM(o.customer_email))=?))
+       WHERE o.tenant_id=? AND o.deleted_at IS NULL AND (${clauses.join(' OR ')})
        ORDER BY o.created_at DESC LIMIT 100`,
-      [req.tenantId, subscriber?.id || '', email]
+      params
     );
     res.json(rows);
   } catch (error) {

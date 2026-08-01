@@ -99,7 +99,18 @@ async function requestLoginCode({ tenantId, phone }) {
         'SELECT id FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
         [tenantId, normalized]
       );
-      if (user) logger.info('[wa-otp] adopted an existing subscriber as a WhatsApp account');
+      if (user) {
+        // Link the two records immediately. Every /api/me/* route resolves the
+        // client through subscribers.firebase_uid; a subscriber with no email
+        // has nothing else to match on, so without this the adopted account
+        // signs in successfully to an empty dashboard.
+        await pool.query(
+          `UPDATE subscribers SET firebase_uid=?, updated_at=updated_at
+            WHERE id=? AND tenant_id=? AND firebase_uid IS NULL`,
+          [user.id, sub.id, tenantId]
+        ).catch(e => logger.warn('[wa-otp] subscriber link failed:', e.message));
+        logger.info('[wa-otp] adopted an existing subscriber as a WhatsApp account');
+      }
     }
   }
 

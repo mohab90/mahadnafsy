@@ -10,6 +10,7 @@ const logger = require('../lib/logger').child({ module: 'push-route' });
 const { isPushConfigured, publicVapidKey, sendPushNotification } = require('../lib/push');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { requireAuth } = require('../middleware/auth');
+const { resolveSubscriberId } = require('../lib/subscriberIdentity');
 const { publicLimiter } = require('../middleware/rateLimits');
 
 function endpointHash(subscription) {
@@ -20,18 +21,10 @@ function scopedTenantId(req) {
   return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
 }
 
-async function subscriberIdForUser(req) {
-  const email = String(req.user?.email || '').trim().toLowerCase();
-  const uid = req.user?.uid || '';
-  const tenantId = scopedTenantId(req);
-  const [[row]] = await pool.query(
-    `SELECT id FROM subscribers
-     WHERE tenant_id = ? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?)
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [tenantId, uid, email]
-  );
-  return row?.id || null;
+// scopedTenantId falls back for requests that arrive before tenant resolution;
+// the shared resolver reads req.tenantId, so hand it a request that always has one.
+function subscriberIdForUser(req) {
+  return resolveSubscriberId(req.tenantId ? req : { ...req, tenantId: scopedTenantId(req) });
 }
 
 // GET /api/push/vapid-public-key

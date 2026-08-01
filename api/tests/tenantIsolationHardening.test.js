@@ -27,7 +27,14 @@ test('loyalty balances, mutations and ledger reads require the owning tenant', (
   assert.match(library, /async function redeemPoints\(tenantId, subscriberId, points/);
   assert.match(library, /WHERE subscriber_id = \? AND tenant_id = \?/);
   assert.match(library, /UPDATE subscribers SET loyalty_points = \? WHERE id = \? AND tenant_id = \?/);
-  assert.match(route, /WHERE tenant_id = \?[\s\S]{0,120}firebase_uid = \?/);
+  // The lookup itself moved into the shared resolver (routes/loyalty.js and
+  // routes/push.js had drifting copies of it). The guarantee is the same: every
+  // branch of it is scoped to the caller's tenant.
+  assert.match(route, /require\('\.\.\/lib\/subscriberIdentity'\)/);
+  const identity = read('lib/subscriberIdentity.js');
+  const selects = identity.match(/FROM subscribers s[\s\S]*?LIMIT 1/g) || [];
+  assert.ok(selects.length >= 3, 'expected the linked, email and phone lookups');
+  for (const sql of selects) assert.match(sql, /s\.tenant_id=\?/);
   assert.match(route, /getBalance\(req\.tenantId,/);
   assert.match(route, /awardPoints\(req\.tenantId,/);
   assert.match(route, /redeemPoints\(req\.tenantId,/);

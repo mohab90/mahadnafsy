@@ -1,6 +1,7 @@
 'use strict';
 const logger = require('../lib/logger');
 const { listCustomerTimeline } = require('../lib/customerTimeline');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { Router } = require('express');
 const QRCode = require('qrcode');
 const router = Router();
@@ -179,7 +180,7 @@ router.post('/api/courses/:id/rate', requireAuth, async (req, res) => {
     const { rating, comment } = req.body;
     const ratingNum = parseInt(rating, 10);
     if (!ratingNum || ratingNum < 1 || ratingNum > 5) return res.status(400).json({ error: 'rating must be 1–5' });
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً للتقييم' });
     const [[enroll]] = await pool.query("SELECT id FROM enrollments WHERE subscriber_id=? AND course_id=? AND tenant_id=? AND status='active' LIMIT 1", [sub.id, courseId, req.tenantId]);
     if (!enroll) return res.status(403).json({ error: 'يجب أن تكون مسجلاً في الدورة' });
@@ -200,8 +201,8 @@ router.get('/api/courses/:id/ratings', publicLimiter, optionalAuth, async (req, 
     const courseId = req.params.id;
     const [[agg]] = await pool.query('SELECT AVG(rating) AS avg, COUNT(*) AS cnt FROM course_ratings WHERE course_id=? AND tenant_id=?', [courseId, req.tenantId]);
     let myRating = null;
-    if (req.user?.email) {
-      const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email).toLowerCase().trim()]);
+    if (req.user?.uid) {
+      const sub = await resolveSubscriberRow(req, ['id']);
       if (sub) {
         const [[mine]] = await pool.query('SELECT rating, comment FROM course_ratings WHERE course_id=? AND subscriber_id=? AND tenant_id=? LIMIT 1', [courseId, sub.id, req.tenantId]);
         if (mine) myRating = mine;
@@ -249,7 +250,7 @@ router.get('/api/admin/lesson-analytics/:courseId', requireAuth, requireAdminOrS
 // GET /api/me/completions — list digital certificates earned by the subscriber
 router.get('/api/me/completions', requireAuth, async (req, res) => {
   try {
-    const [[sub]] = await pool.query('SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.json([]);
     const [rows] = await pool.query(
       `SELECT cc.*, c.title AS course_title, c.thumbnail AS course_thumbnail
@@ -276,11 +277,7 @@ router.get('/api/me/completions', requireAuth, async (req, res) => {
 // never straddle two tenants' subscriber/course rows even without the filter.
 router.get('/api/me/timeline', requireAuth, async (req, res) => {
   try {
-    const email = String(req.user.email || '').toLowerCase().trim();
-    const [[subscriber]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND deleted_at IS NULL LIMIT 1',
-      [req.tenantId, email]
-    );
+    const subscriber = await resolveSubscriberRow(req, ['id']);
     res.json(subscriber ? await listCustomerTimeline(req.tenantId, subscriber.id) : []);
   } catch (error) {
     logger.error('[customer-timeline]', error.message);
@@ -515,7 +512,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
 // GET /api/referral/my-code — get (or create) referral code for the logged-in subscriber
 router.get('/api/referral/my-code', requireAuth, async (req, res) => {
   try {
-    const [[sub]] = await pool.query('SELECT id, name FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, String(req.user.email || '').toLowerCase().trim()]);
+    const sub = await resolveSubscriberRow(req, ['id', 'name']);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const _refCols = 'id, subscriber_id, code, uses, earnings, created_at';
     let [[ref]] = await pool.query(`SELECT ${_refCols} FROM referral_codes WHERE subscriber_id=? AND tenant_id=? LIMIT 1`, [sub.id, req.tenantId]);
@@ -685,12 +682,7 @@ router.get('/api/content', publicLimiter, async (req, res) => {
 router.get('/api/quizzes', publicLimiter, requireAuth, async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 500);
-    const email = String(req.user?.email || '').toLowerCase().trim();
-    const [[subscriber]] = await pool.query(
-      `SELECT id FROM subscribers
-        WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) AND deleted_at IS NULL LIMIT 1`,
-      [req.tenantId, req.user?.uid || '', email]
-    );
+    const subscriber = await resolveSubscriberRow(req, ['id']);
     if (!subscriber) return res.json([]);
     const [rows] = await pool.query(
       `SELECT id, course_id, title, questions_json, passing_score, required_for_completion,
@@ -717,10 +709,7 @@ router.get('/api/quizzes', publicLimiter, requireAuth, async (req, res) => {
 // actually enrolled in.
 router.get('/api/live-streams', requireAuth, async (req, res) => {
   try {
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1',
-      [req.tenantId, String(req.user?.email || '').toLowerCase().trim()]
-    );
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(403).json({ error: 'يجب أن تكون مشتركاً لعرض البث المباشر' });
     const [rows] = await pool.query(
       `SELECT id, title, instructor_id, instructor_name, scheduled_at, duration_minutes,
@@ -803,14 +792,15 @@ router.get('/api/jobs', publicLimiter, async (req, res) => {
 // GET /api/me/subscriber  — بيانات المشترك لنفسه
 router.get('/api/me/subscriber', requireAuth, async (req, res) => {
   try {
-    const email = req.user.email?.toLowerCase().trim();
-    if (!email) return res.status(400).json({ error: 'No email in token' });
-    // Case-insensitive email lookup (handles mixed-case stored emails)
-    const [[sub]] = await pool.query(
-      `SELECT id, firebase_uid, client_code, lead_id, name, email, phone, branch,
-       is_active, notes, assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
-       crm_json, created_at, updated_at
-       FROM subscribers WHERE LOWER(TRIM(email)) = ? AND tenant_id=? LIMIT 1`, [email, req.tenantId]);
+    // This is the whole client dashboard. It used to hard-reject any token with
+    // no email — which, since WhatsApp sign-in, is every client whose subscriber
+    // record has no email address: they signed in successfully and then could
+    // not load their account at all.
+    const sub = await resolveSubscriberRow(req, [
+      'id', 'firebase_uid', 'client_code', 'lead_id', 'name', 'email', 'phone', 'branch',
+      'is_active', 'notes', 'assigned_sales_id', 'assigned_sales_name',
+      'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'created_at', 'updated_at',
+    ]);
     if (!sub) return res.json(null);
 
     const [enrollments] = await pool.query(
@@ -865,14 +855,22 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
 // GET /api/me/consultations
 router.get('/api/me/consultations', requireAuth, async (req, res) => {
   try {
-    const email = req.user.email?.toLowerCase().trim();
-    if (!email) return res.status(400).json({ error: 'No email in token' });
+    // consultations predates subscriber_id and is still booked by email, so both
+    // are valid ownership proofs. Matching on email alone returned nothing for a
+    // WhatsApp-only client — and the 400 above meant they never got that far.
+    const subscriber = await resolveSubscriberRow(req, ['id', 'email']);
+    const email = String(subscriber?.email || req.user.email || '').toLowerCase().trim();
+    if (!subscriber && !email) return res.json([]);
+    const clauses = [];
+    const params = [];
+    if (subscriber?.id) { clauses.push('c.subscriber_id = ?'); params.push(subscriber.id); }
+    if (email) { clauses.push('c.client_email = ?'); params.push(email); }
     const [rows] = await pool.query(
       `SELECT c.*, t.name AS t_name, t.specialty AS t_specialty, t.image AS t_image
        FROM consultations c
        LEFT JOIN therapists t ON t.id = c.therapist_id
-       WHERE c.client_email = ? AND c.tenant_id=?
-       ORDER BY c.session_date DESC LIMIT 100`, [email, req.tenantId]);
+       WHERE (${clauses.join(' OR ')}) AND c.tenant_id=?
+       ORDER BY c.session_date DESC LIMIT 100`, [...params, req.tenantId]);
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -894,11 +892,7 @@ router.post('/api/me/heartbeat', requireAuth, async (req, res) => {
 // GET /api/me/quiz-attempts - always resolves the subscriber from the token.
 router.get('/api/me/quiz-attempts', requireAuth, async (req, res) => {
   try {
-    const [[subscriber]] = await pool.query(
-      `SELECT id FROM subscribers
-        WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) AND deleted_at IS NULL LIMIT 1`,
-      [req.tenantId, req.user.uid || '', String(req.user.email || '').toLowerCase().trim()]
-    );
+    const subscriber = await resolveSubscriberRow(req, ['id']);
     if (!subscriber) return res.json([]);
     const [rows] = await pool.query(
       `SELECT id, subscriber_id, quiz_id, course_id, score, passed, answers_json, taken_at
@@ -920,11 +914,7 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
   try {
     const { quizId, answers } = req.body || {};
     if (!quizId || !Array.isArray(answers)) return res.status(400).json({ error: 'quizId and answers[] are required' });
-    const emailNorm = (req.user.email || '').toLowerCase().trim();
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
-      [req.tenantId, req.user.uid || '', emailNorm]
-    );
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
 
     const [[quiz]] = await pool.query(

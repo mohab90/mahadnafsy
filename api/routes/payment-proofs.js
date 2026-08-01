@@ -4,6 +4,7 @@ const express = require('express');
 const router  = express.Router();
 const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { tryJson } = require('../lib/helpers');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { postPaymentJournal } = require('../lib/finance');
@@ -60,7 +61,13 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     const tenantId = tenantIdFor(req);
     const normalizedEmail = String(email || '').toLowerCase().trim();
     const { order_id, payment_intent_id, payment_method, proof_image, note } = req.body || {};
-    if (!order_id || !normalizedEmail) return res.status(400).json({ error: 'order_id and authenticated email required' });
+    if (!order_id) return res.status(400).json({ error: 'order_id required' });
+    // Ownership of the order is proven by the subscriber link or by the email on
+    // the order. Requiring the email outright locked out every WhatsApp-only
+    // client: they could place an order and then never submit its receipt.
+    const identity = await resolveSubscriberRow(req, ['id', 'email']);
+    const ownerEmail = normalizedEmail || String(identity?.email || '').toLowerCase().trim();
+    if (!identity && !ownerEmail) return res.status(400).json({ error: 'authenticated identity required' });
     // Validate proof_image: must be a base64 image (data:image/...) or null
     if (proof_image) {
       if (typeof proof_image !== 'string') return res.status(400).json({ error: 'Invalid proof image' });
@@ -72,12 +79,16 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     const safeNote = note ? String(note).slice(0, 500) : null;
     await conn.beginTransaction();
     transactionStarted = true;
+    const ownership = [];
+    const ownershipParams = [];
+    if (identity?.id) { ownership.push('subscriber_id=?'); ownershipParams.push(identity.id); }
+    if (ownerEmail) { ownership.push('LOWER(TRIM(customer_email))=?'); ownershipParams.push(ownerEmail); }
     const [[order]] = await conn.query(
       `SELECT id, type, item_id, item_title, amount, currency, customer_name, customer_email,
               customer_phone, status, subscriber_id, course_id, bundle_id, tenant_id, branch_id
          FROM orders
-        WHERE id=? AND tenant_id=? AND LOWER(TRIM(customer_email))=? LIMIT 1 FOR UPDATE`,
-      [order_id, tenantId, normalizedEmail]
+        WHERE id=? AND tenant_id=? AND (${ownership.join(' OR ')}) LIMIT 1 FOR UPDATE`,
+      [order_id, tenantId, ...ownershipParams]
     );
     if (!order) { await conn.rollback(); transactionStarted = false; return res.status(404).json({ error: 'Order not found' }); }
     if (!isPendingOrder(order.status)) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'Order is not pending payment' }); }
@@ -94,7 +105,7 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
     if (existingProof) { await conn.rollback(); transactionStarted = false; return res.status(409).json({ error: 'A payment proof already exists for this order' }); }
 
     const sub = await ensureSubscriberForOrder(conn, {
-      tenantId, uid, email: normalizedEmail, name: order.customer_name, phone: order.customer_phone,
+      tenantId, uid, email: ownerEmail, name: order.customer_name, phone: order.customer_phone,
       fallbackBranch: branchForId(order.branch_id),
       fallbackBranchId: order.branch_id,
     });
@@ -102,12 +113,12 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
 
     const id = `pp-${uuidv4()}`;
     const intent = await getOrCreatePaymentIntent(conn, {
-      tenantId, order, subscriberId: sub.id, actor: uid || normalizedEmail,
+      tenantId, order, subscriberId: sub.id, actor: uid || ownerEmail,
       idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotency_key,
       requestedIntentId: payment_intent_id || null,
     });
     const attemptId = await createPaymentAttempt(conn, {
-      tenantId, intentId: intent.id, proofId: id, actor: uid || normalizedEmail,
+      tenantId, intentId: intent.id, proofId: id, actor: uid || ownerEmail,
     });
     const reviewPolicy = await getTenantSetting('payment_review_policy', {
       tenantId, fallback: {}, db: conn,
@@ -139,18 +150,13 @@ router.post('/api/me/payment-proof', requireAuth, async (req, res) => {
 // PATCH /api/me/progress — client saves their own lecture progress (no admin needed)
 router.patch('/api/me/progress', requireAuth, async (req, res) => {
   try {
-    const { uid, email } = req.user;
     const tenantId = tenantIdFor(req);
-    const emailNorm = email?.toLowerCase().trim() || '';
-    if (!emailNorm && !uid) return res.status(400).json({ error: 'No identity in token' });
     const { lectureId, pct, watchSeconds } = req.body || {};
     if (!lectureId || pct === undefined) return res.status(400).json({ error: 'lectureId and pct required' });
     const progress = Math.min(100, Math.max(0, Number(pct) || 0));
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
-      [tenantId, uid || '', emailNorm]
-    );
+    const sub = await resolveSubscriberRow(req, ['id', 'name']);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
+    const actor = req.user?.email || req.user?.uid || sub.id;
     const savedProgress = await recordLectureProgress({
       tenantId, subscriberId: sub.id, lectureId, progress, watchSeconds,
     });
@@ -164,12 +170,11 @@ router.patch('/api/me/progress', requireAuth, async (req, res) => {
       try {
         if (savedProgress.courseId) {
           const completion = await completeCourse({
-            tenantId, subscriberId: sub.id, courseId: savedProgress.courseId, actor: emailNorm || uid, requireFullProgress: true,
+            tenantId, subscriberId: sub.id, courseId: savedProgress.courseId, actor, requireFullProgress: true,
           });
           if (!completion.alreadyCompleted) {
             const [[course]] = await pool.query('SELECT title FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [savedProgress.courseId, tenantId]);
-            const [[subInfo]] = await pool.query('SELECT name FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1', [sub.id, tenantId]);
-            await createNotification('certificate', 'إتمام كورس', `${subInfo?.name || emailNorm} أتم كورس "${course?.title || ''}"`, { courseId: savedProgress.courseId, certCode: completion.certificate_code }, req.tenantId);
+            await createNotification('certificate', 'إتمام كورس', `${sub.name || actor} أتم كورس "${course?.title || ''}"`, { courseId: savedProgress.courseId, certCode: completion.certificate_code }, req.tenantId);
             completionData = { completed: true, certCode: completion.certificate_code };
           }
         }
@@ -241,12 +246,8 @@ router.get('/api/admin/subscribers/:id/progress', requireAuth, requireAdminOrSta
 // Client: get own payment proofs
 router.get('/api/me/payment-proofs', requireAuth, async (req, res) => {
   try {
-    const { uid, email } = req.user;
     const tenantId = tenantIdFor(req);
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid = ? OR LOWER(TRIM(email)) = ?) LIMIT 1',
-      [tenantId, uid || '', String(email || '').toLowerCase().trim()]
-    );
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.json([]);
     const [rows] = await pool.query(
       'SELECT id, order_id, payment_intent_id, payment_attempt_id, item_type, amount, currency, course_id, bundle_id, payment_method, note, status, reviewer_note, submitted_at, reviewed_at FROM payment_proofs WHERE subscriber_id = ? AND tenant_id=? ORDER BY submitted_at DESC LIMIT 100',
@@ -293,11 +294,7 @@ router.get('/api/admin/payment-proofs', requireAuth, requireAdminOrStaff, requir
 router.get('/api/me/lecture-notes/:lectureId', requireAuth, async (req, res) => {
   try {
     const tenantId = tenantIdFor(req);
-    const email = req.user.email?.toLowerCase().trim() || '';
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1',
-      [tenantId, req.user.uid || '', email]
-    );
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const access = await resolveLectureAccess({ tenantId, subscriberId: sub.id, lectureId: req.params.lectureId });
     if (!access.accessible) return res.status(403).json({ error: `Lecture access denied: ${access.reason}` });
@@ -315,12 +312,8 @@ router.get('/api/me/lecture-notes/:lectureId', requireAuth, async (req, res) => 
 router.put('/api/me/lecture-notes/:lectureId', requireAuth, async (req, res) => {
   try {
     const tenantId = tenantIdFor(req);
-    const email = req.user.email?.toLowerCase().trim() || '';
     const note = String(req.body?.note || '').slice(0, 10000);
-    const [[sub]] = await pool.query(
-      'SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=?) LIMIT 1',
-      [tenantId, req.user.uid || '', email]
-    );
+    const sub = await resolveSubscriberRow(req, ['id']);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const access = await resolveLectureAccess({ tenantId, subscriberId: sub.id, lectureId: req.params.lectureId });
     if (!access.accessible) return res.status(403).json({ error: `Lecture access denied: ${access.reason}` });
