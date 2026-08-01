@@ -17,6 +17,7 @@ const logger = require('./logger');
 const outbox = require('./outbox');
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
+const { toDialable } = require('./phoneNumber');
 
 const H = (n) => n * 3600 * 1000;
 const money = (a, c) => `${Number(a || 0).toLocaleString()} ${c === 'SAR' ? 'ر.س' : c === 'USD' ? '$' : 'ج.م'}`;
@@ -169,7 +170,11 @@ async function trigger(event, ctx = {}, opts = {}) {
     for (const step of steps) {
       if (cfg.steps[step.key] === false) continue;
       if (opts.channels && !opts.channels.includes(step.channel)) continue;
-      const recipient = step.channel === 'email' ? ctx.email : (ctx.phone || '').replace(/\D/g, '');
+      // Queue the address the provider will actually accept, not the raw digits.
+      // `phone.replace(/\D/g,'')` left the trunk zero on and the country code
+      // off, so the outbox held a recipient that could never be delivered to and
+      // retried it on every drain until it hit the failure cap.
+      const recipient = step.channel === 'email' ? ctx.email : toDialable(ctx.phone);
       if (!recipient) continue;
       const content = step.build(ctx);
       const subject = typeof step.subject === 'function' ? step.subject(ctx) : (step.subject || null);
