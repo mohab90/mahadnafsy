@@ -19,6 +19,7 @@ const { pool } = require('../lib/db');
 const channels = require('../lib/messagingChannels');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { verifyMessengerCredentials } = require('../lib/messenger');
+const { verifyWapilot, listWapilotInstances } = require('../lib/whatsappWapilot');
 const { toDialable } = require('../lib/phoneNumber');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
@@ -104,6 +105,31 @@ router.delete('/api/admin/messaging/channels/:id', ...manage, async (req, res) =
     if (!removed) return res.status(404).json({ error: 'القناة غير موجودة' });
     res.json({ ok: true });
   } catch (error) { fail(res, error, 'channel delete failed'); }
+});
+
+/**
+ * POST /api/admin/messaging/wapilot/instances — what this key can see.
+ *
+ * Lets the admin pick an instance rather than typing its unique name, which is
+ * a string like "instance5000" that is easy to get subtly wrong and produces a
+ * channel that verifies as broken for no visible reason.
+ *
+ * POST rather than GET because the key travels in the body — a key in a query
+ * string ends up in access logs.
+ */
+router.post('/api/admin/messaging/wapilot/instances', ...manage, bulkOperationLimiter, async (req, res) => {
+  try {
+    const apiKey = String(req.body?.apiKey || '').trim();
+    if (!apiKey) return res.status(400).json({ error: 'مفتاح الـAPI مطلوب' });
+    const result = await listWapilotInstances(apiKey);
+    if (!result.ok) {
+      return res.status(502).json({
+        error: 'المفتاح مرفوض من Wapilot',
+        reason: typeof result.reason === 'string' ? result.reason : undefined,
+      });
+    }
+    res.json({ ok: true, instances: result.instances });
+  } catch (error) { fail(res, error, 'wapilot instances failed'); }
 });
 
 // ── Staff: my own WhatsApp ───────────────────────────────────────────────────
@@ -205,6 +231,28 @@ router.post('/api/messaging/channels/:id/test', requireAuth, requireAdminOrStaff
       }
       await channels.markChannelConnected(req.tenantId, channel.id);
       return res.json({ ok: true, pageName: check.pageName || null });
+    }
+
+    // Wapilot exposes a real session-status endpoint, so a channel can be proven
+    // live without messaging anyone. That is strictly better than a test send:
+    // it also catches a session that is logged out but still configured, which a
+    // send would only reveal by failing at the customer's expense.
+    if (channel.provider === 'wapilot') {
+      const resolved = await channels.getSendableChannel({
+        tenantId: req.tenantId, channelId: channel.id, kind: 'whatsapp',
+      });
+      if (!resolved) return res.status(409).json({ error: 'بيانات الاتصال غير محفوظة' });
+      const check = await verifyWapilot(resolved.credentials);
+      if (!check.ok) {
+        await channels.markChannelError(req.tenantId, channel.id,
+          typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من الجلسة');
+        return res.status(502).json({
+          error: 'الجلسة مش شغالة — راجع النسخة في لوحة Wapilot',
+          reason: typeof check.reason === 'string' ? check.reason : undefined,
+        });
+      }
+      await channels.markChannelConnected(req.tenantId, channel.id);
+      return res.json({ ok: true, sessionStatus: check.status, number: check.number, name: check.name });
     }
 
     const to = toDialable(req.body?.to || channel.display_number);

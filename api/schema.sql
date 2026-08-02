@@ -4065,7 +4065,7 @@ CREATE TABLE `messaging_channels` (
   `id` varchar(36) NOT NULL,
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
   `kind` enum('whatsapp','messenger') NOT NULL,
-  `provider` enum('meta','green-api','messenger') NOT NULL,
+  `provider` enum('meta','green-api','wapilot','messenger') NOT NULL,
   `owner_staff_id` varchar(36) DEFAULT NULL,
   `label` varchar(120) NOT NULL,
   `display_number` varchar(32) DEFAULT NULL,

@@ -26,7 +26,7 @@ const { toDialable } = require('./phoneNumber');
 const logger = require('./logger');
 
 const KINDS = ['whatsapp', 'messenger'];
-const PROVIDERS = { whatsapp: ['meta', 'green-api'], messenger: ['messenger'] };
+const PROVIDERS = { whatsapp: ['meta', 'green-api', 'wapilot'], messenger: ['messenger'] };
 const STATUSES = ['pending', 'connected', 'disconnected', 'error'];
 
 const PUBLIC_COLUMNS = `id, tenant_id, kind, provider, owner_staff_id, label, display_number,

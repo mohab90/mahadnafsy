@@ -146,7 +146,9 @@ async function sendWhatsApp(phone, message, options = {}) {
       }
       const result = resolved.row.provider === 'meta'
         ? await _sendMeta(normalized, message, resolved.credentials)
-        : await _sendGreenApi(normalized, message, resolved.credentials);
+        : resolved.row.provider === 'wapilot'
+          ? await require('./whatsappWapilot').sendViaWapilot(normalized, message, resolved.credentials)
+          : await _sendGreenApi(normalized, message, resolved.credentials);
       // A send is the only honest proof the credentials work, so the channel's
       // status follows the result rather than whatever it was set at save time.
       if (result.ok) await channels.markChannelConnected(tenantId, resolved.row.id).catch(() => {});

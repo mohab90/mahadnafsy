@@ -22,12 +22,14 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
-  const [provider, setProvider] = useState<'green-api' | 'meta'>('green-api');
+  const [provider, setProvider] = useState<'green-api' | 'meta' | 'wapilot'>('green-api');
   const [displayNumber, setDisplayNumber] = useState('');
   const [instanceId, setInstanceId] = useState('');
   const [apiToken, setApiToken] = useState('');
   const [metaPhoneId, setMetaPhoneId] = useState('');
   const [metaToken, setMetaToken] = useState('');
+  const [wapilotKey, setWapilotKey] = useState('');
+  const [wapilotInstance, setWapilotInstance] = useState('');
   const [testTo, setTestTo] = useState('');
 
   const load = async () => {
@@ -36,7 +38,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
       const mine = await mysqlAdmin.getMyWhatsappChannel();
       setChannel(mine);
       if (mine) {
-        setProvider(mine.provider === 'meta' ? 'meta' : 'green-api');
+        setProvider(mine.provider === 'meta' ? 'meta' : mine.provider === 'wapilot' ? 'wapilot' : 'green-api');
         setDisplayNumber(mine.display_number || '');
       }
     } catch { notify('error', 'تعذر تحميل بيانات القناة'); }
@@ -44,9 +46,11 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
   };
   useEffect(() => { void load(); }, []);
 
-  const credentialsFromForm = (): Record<string, string> => (provider === 'meta'
-    ? { metaPhoneId: metaPhoneId.trim(), metaToken: metaToken.trim() }
-    : { instanceId: instanceId.trim(), apiToken: apiToken.trim() });
+  const credentialsFromForm = (): Record<string, string> => {
+    if (provider === 'meta') return { metaPhoneId: metaPhoneId.trim(), metaToken: metaToken.trim() };
+    if (provider === 'wapilot') return { apiKey: wapilotKey.trim(), instance: wapilotInstance.trim() };
+    return { instanceId: instanceId.trim(), apiToken: apiToken.trim() };
+  };
 
   const save = async () => {
     const credentials = credentialsFromForm();
@@ -61,6 +65,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
       setChannel(saved);
       // Cleared on purpose: nothing that can send as this person stays in the DOM.
       setInstanceId(''); setApiToken(''); setMetaPhoneId(''); setMetaToken('');
+      setWapilotKey(''); setWapilotInstance('');
       notify('success', 'تم الحفظ — ابعت رسالة اختبار عشان نتأكد إنها شغالة');
     } catch { notify('error', 'فشل الحفظ'); }
     finally { setSaving(false); }
@@ -173,6 +178,7 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                   className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 >
                   <option value="green-api">Green-API (رقمك الشخصي)</option>
+                  <option value="wapilot">Wapilot (رقمك الشخصي)</option>
                   <option value="meta">WhatsApp Cloud API (رقم أعمال)</option>
                 </select>
               </div>
@@ -189,7 +195,26 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
                 )}
               </div>
 
-              {provider === 'green-api' ? (
+              {provider === 'wapilot' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">API Key</label>
+                    <input
+                      type="password" value={wapilotKey} onChange={e => setWapilotKey(e.target.value)}
+                      placeholder={channel?.hasCredentials ? '•••••• (محفوظ)' : ''}
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">اسم النسخة (Instance)</label>
+                    <input
+                      value={wapilotInstance} onChange={e => setWapilotInstance(e.target.value)}
+                      placeholder="instance5000"
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    />
+                  </div>
+                </>
+              ) : provider === 'green-api' ? (
                 <>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Instance ID</label>

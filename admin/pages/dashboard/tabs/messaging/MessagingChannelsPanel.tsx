@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Radio, Plus, Star, Power, Trash2, Send, Loader2, CheckCircle2, AlertTriangle, Building2, User,
 } from 'lucide-react';
-import { mysqlAdmin, type MessagingChannel } from '../../../../lib/mysqlapi';
+import { mysqlAdmin, type MessagingChannel, type WapilotInstance } from '../../../../lib/mysqlapi';
 import { toDialable } from '../../../../lib/whatsappLink';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -20,6 +20,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [wapilotInstances, setWapilotInstances] = useState<WapilotInstance[]>([]);
 
   const [draft, setDraft] = useState({
     kind: 'whatsapp' as 'whatsapp' | 'messenger',
@@ -27,6 +28,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     label: '',
     displayNumber: '',
     instanceId: '', apiToken: '',
+    wapilotKey: '', wapilotInstance: '',
     metaPhoneId: '', metaToken: '',
     pageId: '', pageAccessToken: '',
     dailySendLimit: 1000,
@@ -50,9 +52,13 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     if (draft.kind === 'messenger') {
       return { pageId: draft.pageId.trim(), pageAccessToken: draft.pageAccessToken.trim() };
     }
-    return draft.provider === 'meta'
-      ? { metaPhoneId: draft.metaPhoneId.trim(), metaToken: draft.metaToken.trim() }
-      : { instanceId: draft.instanceId.trim(), apiToken: draft.apiToken.trim() };
+    if (draft.provider === 'meta') {
+      return { metaPhoneId: draft.metaPhoneId.trim(), metaToken: draft.metaToken.trim() };
+    }
+    if (draft.provider === 'wapilot') {
+      return { apiKey: draft.wapilotKey.trim(), instance: draft.wapilotInstance.trim() };
+    }
+    return { instanceId: draft.instanceId.trim(), apiToken: draft.apiToken.trim() };
   };
 
   const add = async () => {
@@ -72,10 +78,31 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
       });
       notify('success', 'تمت إضافة القناة — اختبرها عشان تتأكد');
       setShowAdd(false);
-      setDraft(d => ({ ...d, label: '', displayNumber: '', instanceId: '', apiToken: '', metaPhoneId: '', metaToken: '', pageId: '', pageAccessToken: '' }));
+      setDraft(d => ({ ...d, label: '', displayNumber: '', instanceId: '', apiToken: '', metaPhoneId: '', metaToken: '', pageId: '', pageAccessToken: '', wapilotKey: '', wapilotInstance: '' }));
       await load();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذرت إضافة القناة');
+    } finally { setBusyId(''); }
+  };
+
+  const loadWapilotInstances = async () => {
+    setBusyId('wapilot');
+    try {
+      const result = await mysqlAdmin.listWapilotInstances(draft.wapilotKey.trim());
+      setWapilotInstances(result.instances);
+      if (!result.instances.length) notify('info', 'المفتاح سليم بس مفيش نسخ عليه');
+      // One instance is the common case — picking it saves a click and removes
+      // the chance of leaving the field empty.
+      else if (result.instances.length === 1) {
+        setDraft(d => ({
+          ...d,
+          wapilotInstance: result.instances[0].uniqueName,
+          displayNumber: d.displayNumber || result.instances[0].number || '',
+          label: d.label || result.instances[0].name || '',
+        }));
+      }
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'المفتاح مرفوض');
     } finally { setBusyId(''); }
   };
 
@@ -142,8 +169,13 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               () => mysqlAdmin.testMessagingChannel(channel.id),
               channel.kind === 'messenger' ? 'التوكن سليم — الصفحة متصلة' : 'وصلت الرسالة — القناة شغالة',
             )}
-            disabled={busy || (channel.kind === 'whatsapp' && !channel.display_number)}
-            title={channel.kind === 'whatsapp' && !channel.display_number ? 'أضف رقماً للقناة أولاً' : ''}
+            // Only a test *send* needs a number. Messenger and Wapilot both
+            // verify against the provider instead, so requiring one would block
+            // the check that actually works for them.
+            disabled={busy || (channel.provider === 'green-api' || channel.provider === 'meta'
+              ? !channel.display_number : false)}
+            title={(channel.provider === 'green-api' || channel.provider === 'meta') && !channel.display_number
+              ? 'أضف رقماً للقناة أولاً' : ''}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold hover:bg-green-100 transition disabled:opacity-40"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
@@ -216,6 +248,8 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                   className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white"
                 >
                   <option value="green-api">Green-API</option>
+                  <option value="wapilot">Wapilot</option>
+                  <option value="wapilot">Wapilot</option>
                   <option value="meta">WhatsApp Cloud API</option>
                 </select>
               </div>
@@ -266,6 +300,47 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Access Token</label>
                   <input type="password" value={draft.metaToken} onChange={e => setDraft(d => ({ ...d, metaToken: e.target.value }))}
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono" />
+                </div>
+              </>
+            ) : draft.provider === 'wapilot' ? (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">API Key</label>
+                  <input type="password" value={draft.wapilotKey}
+                    onChange={e => setDraft(d => ({ ...d, wapilotKey: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">النسخة (Instance)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={draft.wapilotInstance}
+                      onChange={e => setDraft(d => ({ ...d, wapilotInstance: e.target.value }))}
+                      className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">— اختر —</option>
+                      {wapilotInstances.map(i => (
+                        <option key={i.uniqueName} value={i.uniqueName}>
+                          {i.name} · {i.number || i.uniqueName} · {i.status}
+                        </option>
+                      ))}
+                    </select>
+                    {/* The unique name is a string like "instance5000" — easy to
+                        mistype into a channel that verifies as broken for no
+                        visible reason. Fetching the list removes the guess. */}
+                    <button
+                      onClick={loadWapilotInstances}
+                      disabled={!draft.wapilotKey.trim() || busyId === 'wapilot'}
+                      className="px-3 py-2 bg-teal-50 text-teal-700 rounded-xl text-xs font-bold hover:bg-teal-100 transition disabled:opacity-40 whitespace-nowrap"
+                    >
+                      {busyId === 'wapilot' ? <Loader2 size={12} className="animate-spin" /> : 'اجلب النسخ'}
+                    </button>
+                  </div>
+                  {wapilotInstances.map(i => i.subscriptionEndsAt && (
+                    <p key={i.uniqueName} className="text-[11px] text-amber-700 mt-1">
+                      اشتراك «{i.name}» ينتهي {new Date(i.subscriptionEndsAt).toLocaleDateString('ar-EG')}
+                    </p>
+                  ))}
                 </div>
               </>
             ) : (

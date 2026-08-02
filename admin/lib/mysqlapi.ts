@@ -116,7 +116,7 @@ export type MessagingChannelStatus = 'pending' | 'connected' | 'disconnected' | 
 export interface MessagingChannel {
   id: string;
   kind: MessagingChannelKind;
-  provider: 'meta' | 'green-api' | 'messenger';
+  provider: 'meta' | 'green-api' | 'wapilot' | 'messenger';
   /** null = the company's own channel; otherwise the employee who owns it */
   owner_staff_id: string | null;
   ownerName?: string | null;
@@ -133,6 +133,17 @@ export interface MessagingChannel {
   isConnected: boolean;
   /** Whether credentials are stored — never what they are. */
   hasCredentials: boolean;
+}
+
+export interface WapilotInstance {
+  uniqueName: string;
+  name: string;
+  status: string;
+  number: string | null;
+  displayName: string | null;
+  subscriptionStatus: string | null;
+  /** A lapsed subscription stops delivery while the session still reports WORKING. */
+  subscriptionEndsAt: string | null;
 }
 
 export interface MessagingChannelInput {
@@ -346,6 +357,8 @@ export const mysqlAdmin = {
     apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}/default`, { method: 'POST' }, A),
   deleteMessagingChannel:  (id: string) =>
     apiFetch<AR>(`/admin/messaging/channels/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
+  listWapilotInstances:    (apiKey: string) =>
+    apiFetch<{ ok: boolean; instances: WapilotInstance[] }>("/admin/messaging/wapilot/instances", { method: "POST", body: JSON.stringify({ apiKey }) }, A),
   testMessagingChannel:    (id: string, to?: string, message?: string) =>
     apiFetch<{ ok: boolean; messageId?: string }>(`/messaging/channels/${encodeURIComponent(id)}/test`, { method: 'POST', body: JSON.stringify({ to, message }) }, A),
 
