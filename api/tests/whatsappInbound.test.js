@@ -99,3 +99,51 @@ test('a Green-API media message with no caption still carries an id and sender',
   assert.equal(message.from, '201012345678');
   assert.equal(message.body, '');
 });
+
+// ── Creating a lead from a stranger's message ────────────────────────────────
+// This path writes into the CRM from an unauthenticated webhook, so the shape
+// of what it writes matters as much as that it writes at all.
+const { identifySender } = require('../lib/whatsappInbound');
+
+/** A db double that records writes and answers lookups from a list of rows. */
+function fakeDb(rows = []) {
+  return {
+    writes: [],
+    async query(sql, params) {
+      if (/INSERT INTO leads/i.test(sql)) {
+        this.writes.push({ sql, params });
+        return [{ affectedRows: 1 }];
+      }
+      if (/FROM subscribers/i.test(sql)) return [[]];
+      if (/FROM leads/i.test(sql)) {
+        const phones = params.slice(1);
+        const hit = rows.find(r => phones.includes(r.phone));
+        return [hit ? [hit] : []];
+      }
+      return [[]];
+    },
+  };
+}
+
+test('a known number resolves to its lead instead of making another', async () => {
+  // The number is stored locally (010…) while the webhook reports it
+  // internationally (2010…) — the match has to survive that.
+  const db = fakeDb([{ id: 'lead-1', name: 'أحمد', phone: '01012345678', assigned_sales_id: 's1' }]);
+  const sender = await identifySender(db, 't1', '201012345678');
+  assert.equal(sender?.id, 'lead-1');
+  assert.equal(db.writes.length, 0, 'must not create a lead for a number we already have');
+});
+
+test('a number nobody has is not resolved, so the caller creates a lead', async () => {
+  const db = fakeDb([{ id: 'lead-1', phone: '01011111111' }]);
+  assert.equal(await identifySender(db, 't1', '201099999999'), null);
+});
+
+test('an undialable sender is never matched to anyone', async () => {
+  // Junk must not collapse into an empty-phone lead and start attaching
+  // strangers' messages to it.
+  const db = fakeDb([{ id: 'lead-1', phone: '' }]);
+  for (const junk of ['', 'abc', '+++', '0']) {
+    assert.equal(await identifySender(db, 't1', junk), null, junk);
+  }
+});

@@ -89,6 +89,28 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
     } finally { setSending(false); }
   };
 
+  /**
+   * Attach an unidentified Messenger conversation to a lead.
+   *
+   * Messenger gives a page-scoped id and nothing else — no phone, no email — so
+   * this match is a one-time human act. Everything on that PSID afterwards, and
+   * everything that already arrived on it, lands on the lead.
+   */
+  const linkMessenger = async () => {
+    if (!selected?.psid) return;
+    const leadId = window.prompt('الصق كود العميل (Lead ID) اللي المحادثة دي بتاعته:');
+    if (!leadId?.trim()) return;
+    try {
+      const result = await mysqlAdmin.linkMessengerToLead(leadId.trim(), selected.psid);
+      notify('success', result.adopted
+        ? `تم الربط، واترحّلت ${result.adopted} رسالة سابقة للعميل`
+        : 'تم الربط');
+      await loadConversations();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر الربط');
+    }
+  };
+
   const messengerBlocked = via === 'messenger' && selected && !selected.messengerWindowOpen;
   const canSend = Boolean(draft.trim()) && !sending && !messengerBlocked
     && Boolean(via === 'whatsapp' ? selected?.phone : selected?.psid);
@@ -176,6 +198,14 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
                   </p>
                   {selected.phone && (
                     <p className="text-xs text-gray-400 font-mono">+{selected.phone}</p>
+                  )}
+                  {selected.psid && !selected.lead_id && (
+                    <button
+                      onClick={linkMessenger}
+                      className="text-[11px] text-sky-600 hover:text-sky-800 font-bold mt-0.5"
+                    >
+                      اربط المحادثة بعميل
+                    </button>
                   )}
                 </div>
                 <div className="flex gap-1">

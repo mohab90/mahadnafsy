@@ -5,6 +5,7 @@ import {
 import {
   mysqlAdmin,
   type WhatsappCampaign, type WhatsappCampaignPreview, type MessagingChannel,
+  type WhatsappCampaignRecipient,
 } from '../../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -20,6 +21,16 @@ const STATUS_STYLE: Record<WhatsappCampaign['status'], string> = {
   sent: 'bg-emerald-100 text-emerald-700',
   failed: 'bg-red-100 text-red-700',
   cancelled: 'bg-gray-200 text-gray-500',
+};
+
+const RECIPIENT_LABEL: Record<string, string> = {
+  queued: 'في الطابور', sent: 'وصلت', failed: 'فشلت', skipped: 'مستبعد',
+};
+const RECIPIENT_STYLE: Record<string, string> = {
+  queued: 'bg-blue-100 text-blue-700',
+  sent: 'bg-emerald-100 text-emerald-700',
+  failed: 'bg-red-100 text-red-700',
+  skipped: 'bg-gray-200 text-gray-600',
 };
 
 const AUDIENCE_LABEL: Record<string, string> = {
@@ -42,6 +53,9 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
   const [busyId, setBusyId] = useState('');
   const [showNew, setShowNew] = useState(false);
   const [preview, setPreview] = useState<{ id: string; data: WhatsappCampaignPreview } | null>(null);
+  // The per-recipient outcome. Loaded on demand rather than with the list: it is
+  // thousands of rows and only ever looked at for one campaign at a time.
+  const [recipients, setRecipients] = useState<{ id: string; data: WhatsappCampaignRecipient[] } | null>(null);
 
   const [draft, setDraft] = useState({
     name: '', messageTemplate: '', audience: 'leads' as WhatsappCampaign['audience'],
@@ -113,6 +127,13 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر الإيقاف');
     } finally { setBusyId(''); }
+  };
+
+  const showRecipients = async (id: string) => {
+    setBusyId(id);
+    try { setRecipients({ id, data: await mysqlAdmin.whatsappCampaignRecipients(id) }); }
+    catch (error) { notify('error', error instanceof Error ? error.message : 'تعذر تحميل التفاصيل'); }
+    finally { setBusyId(''); }
   };
 
   const remove = async (id: string) => {
@@ -361,6 +382,14 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
                       <XCircle size={12} />إيقاف الإرسال
                     </button>
                   )}
+                  {campaign.recipient_count > 0 && (
+                    <button
+                      onClick={() => showRecipients(campaign.id)} disabled={busy}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 rounded-lg text-xs font-bold hover:bg-sky-100 transition disabled:opacity-40"
+                    >
+                      <Users size={12} />مين استلم ومين لأ
+                    </button>
+                  )}
                   {editable && (
                     <button
                       onClick={() => remove(campaign.id)} disabled={busy}
@@ -370,6 +399,38 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
                     </button>
                   )}
                 </div>
+
+                {/* Per-recipient outcome — answers "why didn't Ahmed get it?" */}
+                {recipients?.id === campaign.id && (
+                  <div className="border-t border-gray-100 pt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-gray-600">
+                        {recipients.data.length} مستقبل
+                      </p>
+                      <button onClick={() => setRecipients(null)} className="text-xs text-gray-400 hover:text-gray-700">
+                        إغلاق
+                      </button>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto space-y-1">
+                      {recipients.data.map(row => (
+                        <div key={row.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 rounded-lg px-3 py-1.5">
+                          <span className="text-gray-700 truncate">{row.name || row.phone}</span>
+                          <span className="flex items-center gap-2 shrink-0">
+                            {row.skip_reason && <span className="text-gray-400">{row.skip_reason}</span>}
+                            {row.last_error && !row.skip_reason && (
+                              <span className="text-red-500 truncate max-w-[12rem]" title={row.last_error}>
+                                {row.last_error}
+                              </span>
+                            )}
+                            <span className={`px-2 py-0.5 rounded font-bold ${RECIPIENT_STYLE[row.status]}`}>
+                              {RECIPIENT_LABEL[row.status]}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
