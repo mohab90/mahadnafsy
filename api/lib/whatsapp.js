@@ -156,6 +156,14 @@ async function sendWhatsApp(phone, message, options = {}) {
       return { ...result, channelId: resolved.row.id };
     }
 
+    // Naming a channel that cannot send is an error, not an invitation to use a
+    // different one. Silently substituting the company number here would make
+    // the channel test report success while proving nothing.
+    if (opts.channelId) {
+      logger.warn('[WhatsApp] named channel is unavailable', { channelId: opts.channelId });
+      return { ok: false, reason: 'channel_unavailable', channelId: opts.channelId };
+    }
+
     const cfg = await getWaCfg(tenantId);
     const provider = resolveProvider(cfg);
     return provider === 'meta'

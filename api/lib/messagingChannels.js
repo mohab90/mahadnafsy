@@ -89,17 +89,27 @@ async function getChannelById(tenantId, id, db = pool) {
  */
 async function getSendableChannel({ tenantId, channelId = null, staffId = null, kind = 'whatsapp' }, db = pool) {
   assertKind(kind);
-  const attempts = [];
-  if (channelId) attempts.push(['id = ?', [channelId]]);
-  if (staffId) attempts.push(['owner_staff_id = ? AND kind = ?', [staffId, kind]]);
-  attempts.push(['is_default = 1 AND kind = ? AND owner_staff_id IS NULL', [kind]]);
+  // Naming a channel explicitly is a decision, not a preference: if it cannot
+  // send, the caller must find out rather than have the message quietly go from
+  // the company number instead. Without this the "test this channel" button
+  // would fall through to the default channel and report success — proving
+  // nothing about the credentials it was supposed to be proving.
+  const exclusive = Boolean(channelId);
 
-  for (const [clause, params] of attempts) {
+  const attempts = [];
+  // A named channel is also allowed to be 'pending': being untested is exactly
+  // the state a test send exists to resolve.
+  if (channelId) attempts.push(['id = ?', [channelId], "status IN ('connected','pending')"]);
+  if (staffId) attempts.push(['owner_staff_id = ? AND kind = ?', [staffId, kind], "status='connected'"]);
+  attempts.push(['is_default = 1 AND kind = ? AND owner_staff_id IS NULL', [kind], "status='connected'"]);
+
+  for (const [clause, params, statusClause] of attempts) {
     const [[row]] = await db.query(
       `SELECT * FROM messaging_channels
-        WHERE tenant_id=? AND ${clause} AND is_active=1 AND status='connected' LIMIT 1`,
+        WHERE tenant_id=? AND ${clause} AND is_active=1 AND ${statusClause} LIMIT 1`,
       [tenantId, ...params]
     );
+    if (!row && exclusive) return null;
     if (!row) continue;
     let credentials = null;
     try {
@@ -110,9 +120,13 @@ async function getSendableChannel({ tenantId, channelId = null, staffId = null, 
       // rather than sending with nothing, and make the channel's state visible.
       logger.error('[channels] credentials could not be opened', { channelId: row.id, err: error.message });
       await markChannelError(tenantId, row.id, 'تعذّر فك تشفير بيانات الاتصال — أعد ربط القناة', db).catch(() => {});
+      if (exclusive) return null;
       continue;
     }
-    if (!credentials) continue;
+    if (!credentials) {
+      if (exclusive) return null;
+      continue;
+    }
     return { row, credentials };
   }
   return null;
