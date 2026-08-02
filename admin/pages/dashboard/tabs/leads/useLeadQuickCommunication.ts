@@ -9,6 +9,13 @@ const blankQuickCommunicationDraft = {
   notes: '',
   outcome: '',
   nextFollowUp: '',
+  /**
+   * Actually send the note as a WhatsApp message, not just record that a
+   * conversation happened. Off by default: this box is mostly used to log a
+   * phone call after the fact, and silently messaging a customer because
+   * someone wrote a note would be worse than the extra click.
+   */
+  alsoSend: false,
 };
 
 interface UseLeadQuickCommunicationArgs {
@@ -47,6 +54,21 @@ export function useLeadQuickCommunication({ effectiveLeads, reloadLeads }: UseLe
     const lead = effectiveLeads.find((item) => item.id === addCommDraft.selectedLeadId);
     if (!lead || !addCommDraft.notes.trim()) return;
     try {
+      // Sending goes through the inbox reply path, which delivers from the rep's
+      // own WhatsApp when they have one and records the message itself — so the
+      // lead's timeline shows what the customer actually received, rather than a
+      // note about it. Recording separately would double up the entry.
+      if (addCommDraft.alsoSend && addCommDraft.type === 'whatsapp') {
+        await mysqlAdmin.replyInThread({
+          leadId: lead.id,
+          message: addCommDraft.notes.trim(),
+          via: 'whatsapp',
+        });
+        await reloadLeads();
+        resetQuickCommunication();
+        setShowAddComm(false);
+        return;
+      }
       await mysqlAdmin.addLeadInteraction(lead.id, {
       type: addCommDraft.type,
       date: new Date().toISOString().slice(0, 16).replace('T', ' '),

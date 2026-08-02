@@ -10,6 +10,8 @@ interface QuickCommunicationDraft {
   notes: string;
   outcome: string;
   nextFollowUp: string;
+  /** Send the note as a real WhatsApp message, not just log that a contact happened. */
+  alsoSend: boolean;
 }
 
 interface LeadCommunicationsControlsProps {
@@ -165,12 +167,29 @@ export function LeadCommunicationsControls({
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
             </div>
           </div>
+          {addCommDraft.type === 'whatsapp' && (
+            <label className="flex items-start gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addCommDraft.alsoSend}
+                onChange={e => setAddCommDraft(d => ({ ...d, alsoSend: e.target.checked }))}
+                className="w-4 h-4 accent-emerald-600 mt-0.5"
+              />
+              <span className="text-xs text-emerald-800 leading-relaxed">
+                <b>ابعت الرسالة فعلاً للعميل</b>
+                <br />
+                <span className="text-emerald-700">
+                  هتخرج من واتسابك لو رابطه، وإلا من رقم الشركة — وهتتسجّل في محادثة العميل.
+                </span>
+              </span>
+            </label>
+          )}
           <div className="flex gap-2 pt-1">
             <button
               disabled={!addCommDraft.selectedLeadId || !addCommDraft.notes.trim()}
               onClick={saveQuickCommunication}
               className="flex-1 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 disabled:opacity-50 transition">
-              حفظ التواصل
+              {addCommDraft.alsoSend && addCommDraft.type === 'whatsapp' ? 'إرسال وتسجيل' : 'حفظ التواصل'}
             </button>
             <button onClick={() => setShowAddComm(false)} className="px-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition text-sm">إلغاء</button>
           </div>

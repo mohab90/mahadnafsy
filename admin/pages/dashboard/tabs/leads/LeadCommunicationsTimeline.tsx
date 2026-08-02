@@ -14,6 +14,8 @@ type QuickCommunicationDraft = {
   notes: string;
   outcome: string;
   nextFollowUp: string;
+  /** Send the note as a real WhatsApp message, not just log that a contact happened. */
+  alsoSend: boolean;
 };
 
 type RepCommunicationStats = {
