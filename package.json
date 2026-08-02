@@ -6,7 +6,7 @@
   "scripts": {
     "smoke": "node tools/mahad-api-smoke.mjs",
     "smoke:db": "API_PORT=3001 node tools/mahad-api-smoke.mjs",
-    "lint:api": "npx --yes eslint@8.57.0 --no-eslintrc --env node,es2022 --parser-options=ecmaVersion:2022 --rule \"{\\\"no-undef\\\":\\\"error\\\"}\" api/routes/ api/lib/ api/middleware/ api/server.js",
+    "lint:api": "npx --yes eslint@8.57.0 --no-eslintrc -c api/.eslintrc.cjs api/routes/ api/lib/ api/middleware/ api/server.js",
     "syntax:api": "node tools/check-api-syntax.mjs",
     "lint:admin": "npm --prefix admin run typecheck",
     "lint:client": "npm --prefix client run typecheck",
@@ -28,7 +28,12 @@
     "start:client": "cd client && npx vite --port 3000",
     "install:all": "cd api && npm install && cd ../admin && npm install && cd ../client && npm install"
   },
-  "keywords": ["mahad", "nafsy", "education", "psychology"],
+  "keywords": [
+    "mahad",
+    "nafsy",
+    "education",
+    "psychology"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs"
