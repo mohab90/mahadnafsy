@@ -197,9 +197,19 @@ router.post('/api/admin/messaging/inbox/reply', ...reply, bulkOperationLimiter, 
     }
 
     if (!result?.ok) {
+      // "لم يتم الإرسال" alone leaves the rep with nothing to act on. The
+      // failures that have a specific cause get a specific answer — most of all
+      // the daily cap, which is the one they can do something about.
+      const REASONS = {
+        daily_limit_reached: 'وصلت للحد اليومي لرقمك — جرّب بكرة أو اتواصل مع الإدارة لرفع الحد',
+        invalid_number: 'رقم العميل مش صالح للإرسال',
+        channel_unavailable: 'قناتك مش متصلة — افتح «واتسابي» واختبرها',
+        not_configured: 'مفيش قناة واتساب متصلة — كلّم الإدارة',
+      };
+      const reason = typeof result?.reason === 'string' ? result.reason : null;
       return res.status(502).json({
-        error: 'لم يتم الإرسال',
-        reason: typeof result?.reason === 'string' ? result.reason : undefined,
+        error: (reason && REASONS[reason]) || 'لم يتم الإرسال',
+        reason: reason || undefined,
       });
     }
 

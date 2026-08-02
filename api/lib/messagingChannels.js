@@ -158,7 +158,9 @@ async function createChannel({
     [
       id, tenantId, kind, provider, ownerStaffId || null, trimmedLabel, number,
       credentials ? seal(credentials) : null,
-      credentials ? 'pending' : 'pending',
+      // Always 'pending': saved credentials are a claim, not proof. Only a
+      // successful send (or, for Messenger, a token check) makes it 'connected'.
+      'pending',
       0,
       Number.isFinite(Number(dailySendLimit)) && Number(dailySendLimit) > 0
         ? Math.min(Number(dailySendLimit), 100000) : 1000,
