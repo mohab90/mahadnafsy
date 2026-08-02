@@ -41,6 +41,18 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
   const [via, setVia] = useState<'whatsapp' | 'messenger'>('whatsapp');
   const threadEndRef = useRef<HTMLDivElement>(null);
 
+  // The rep's own saved replies, from their staff preferences. They already
+  // existed but were only reachable outside the system, so the same answers
+  // were retyped all day.
+  const [templates, setTemplates] = useState<{ id: string; title: string; body: string }[]>([]);
+  useEffect(() => {
+    void mysqlAdmin.getMyPreferences()
+      .then(prefs => setTemplates(prefs.waTemplates || []))
+      // Templates are a convenience; failing to load them must not break the
+      // inbox, which is the actual job of this screen.
+      .catch(() => {});
+  }, []);
+
   const loadConversations = async (keepSelection = true) => {
     setLoading(true);
     try {
@@ -264,6 +276,23 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
                     <Clock size={13} className="shrink-0" />
                     عدّت ٢٤ ساعة على آخر رسالة من العميل — ماسنجر مش هيقبل رد نصي. ابعت واتساب.
                   </p>
+                )}
+                {templates.length > 0 && (
+                  <div className="flex gap-1.5 flex-wrap">
+                    {templates.map(template => (
+                      <button
+                        key={template.id}
+                        // Fills the box rather than sending, so the rep can
+                        // adjust it — a template sent verbatim to the wrong
+                        // person is how canned replies get a bad name.
+                        onClick={() => setDraft(template.body)}
+                        title={template.body}
+                        className="px-2.5 py-1 bg-gray-50 hover:bg-sky-50 text-gray-600 hover:text-sky-700 border border-gray-200 rounded-lg text-[11px] font-bold transition"
+                      >
+                        {template.title}
+                      </button>
+                    ))}
+                  </div>
                 )}
                 <div className="flex gap-2 items-end">
                   <textarea
