@@ -196,6 +196,31 @@ export interface WhatsappCampaignRecipient {
   last_error: string | null;
 }
 
+// ── Shared inbox ──────────────────────────────────────────────────────────────
+export interface InboxConversation {
+  lead_id: string | null;
+  subscriber_id: string | null;
+  name: string | null;
+  phone: string | null;
+  psid: string | null;
+  last_at: string;
+  last_message: string | null;
+  last_direction: 'IN' | 'OUT';
+  inbound_count: number;
+  /** false once 24h have passed since the customer last wrote — Meta rejects plain text after that */
+  messengerWindowOpen: boolean;
+}
+
+export interface InboxMessage {
+  id: string;
+  type: 'WHATSAPP' | 'MESSENGER' | string;
+  direction: 'IN' | 'OUT';
+  date: string;
+  notes: string;
+  staff_name: string | null;
+  channel_label: string | null;
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 const A = true; // auth flag
 const post = (path: string, body: unknown) => apiFetch<{ ok: boolean; id?: string; code?: string }>(path, { method: 'POST', body: JSON.stringify(body) }, A);
@@ -345,6 +370,16 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; stopped: number }>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/cancel`, { method: 'POST' }, A),
   whatsappCampaignRecipients: (id: string) =>
     apiFetch<WhatsappCampaignRecipient[]>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/recipients`, {}, A),
+
+  // ── Shared inbox ──────────────────────────────────────────────────────────
+  listInboxConversations: (unansweredOnly = false) =>
+    apiFetch<InboxConversation[]>(`/admin/messaging/inbox${unansweredOnly ? "?unanswered=1" : ""}`, {}, A),
+  getInboxThread:          (key: { leadId?: string; subscriberId?: string }) =>
+    apiFetch<InboxMessage[]>(`/admin/messaging/inbox/thread?${key.leadId ? `leadId=${encodeURIComponent(key.leadId)}` : `subscriberId=${encodeURIComponent(key.subscriberId || "")}`}`, {}, A),
+  replyInThread:           (data: { leadId?: string; subscriberId?: string; message: string; via?: "whatsapp" | "messenger" }) =>
+    apiFetch<{ ok: boolean; id: string; channelId: string | null }>("/admin/messaging/inbox/reply", { method: "POST", body: JSON.stringify(data) }, A),
+  linkMessengerToLead:     (leadId: string, psid: string) =>
+    apiFetch<{ ok: boolean; adopted: number }>("/admin/messaging/inbox/link-messenger", { method: "POST", body: JSON.stringify({ leadId, psid }) }, A),
 
   listAllStaff:            ()             => apiFetch<AR[]>('/admin/staff', {}, A),
   listAllConsultations:    (limit = 500)  => apiFetch<AR[]>(`/admin/consultations?limit=${limit}`, {}, A),

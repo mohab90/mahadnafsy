@@ -109,12 +109,17 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
   const [result] = await db.query(
     `INSERT IGNORE INTO communications
        (id, tenant_id, lead_id, type, direction, provider_message_id, channel_id,
-        date, notes, staff_id, created_at)
-     VALUES (?,?,?, 'MESSENGER', 'IN', ?, ?, ?, ?, ?, NOW())`,
+        date, notes, outcome, staff_id, created_at)
+     VALUES (?,?,?, 'MESSENGER', 'IN', ?, ?, ?, ?, ?, ?, NOW())`,
     [
       id, tenantId, lead?.id || null,
       `msgr:${providerMessageId}`, channelId || null, when,
-      text || '(رسالة ماسنجر بدون نص)', lead?.assigned_sales_id || null,
+      text || '(رسالة ماسنجر بدون نص)',
+      // The PSID is kept on the row itself so messages that arrived before
+      // anyone knew who this was can be adopted onto the lead the moment a
+      // human makes the link. Without it those messages stay orphaned forever.
+      JSON.stringify({ psid: String(psid) }),
+      lead?.assigned_sales_id || null,
     ]
   );
   if (!result.affectedRows) return { recorded: false, reason: 'duplicate' };

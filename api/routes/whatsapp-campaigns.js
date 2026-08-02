@@ -234,6 +234,17 @@ router.post('/api/admin/whatsapp-campaigns/:id/cancel', ...manage, async (req, r
         WHERE tenant_id=? AND ref_type='whatsapp_campaign' AND ref_id=? AND status='pending'`,
       [req.tenantId, campaign.id]
     );
+    // Cancelling writes to the outbox directly, so it never passes through the
+    // drain's finalizeCampaign. Without this the recipient rows would sit at
+    // 'queued' forever and the campaign report would claim messages are still
+    // on their way.
+    await pool.query(
+      `UPDATE whatsapp_campaign_recipients r
+         JOIN message_outbox o ON o.id = r.outbox_id
+          SET r.status='skipped', r.skip_reason='أُلغيت الحملة'
+        WHERE r.tenant_id=? AND r.campaign_id=? AND r.status='queued' AND o.status='dead'`,
+      [req.tenantId, campaign.id]
+    ).catch(() => {});
     await pool.query(
       "UPDATE whatsapp_campaigns SET status='cancelled' WHERE id=? AND tenant_id=?",
       [campaign.id, req.tenantId]

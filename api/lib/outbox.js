@@ -50,8 +50,22 @@ async function finalizeCampaign(row, sent, dead) {
     );
     return;
   }
-  const table = row.ref_type === 'email_campaign' ? 'email_campaigns' : row.ref_type === 'sms_campaign' ? 'sms_campaigns' : null;
+  const table = row.ref_type === 'email_campaign' ? 'email_campaigns'
+    : row.ref_type === 'sms_campaign' ? 'sms_campaigns'
+      : row.ref_type === 'whatsapp_campaign' ? 'whatsapp_campaigns'
+        : null;
   if (!table || !row.ref_id) return;
+
+  // WhatsApp campaigns keep a per-recipient row so "why didn't Ahmed get it?"
+  // has an answer. Without this it would sit at 'queued' forever, even after
+  // the message was delivered or gave up.
+  if (row.ref_type === 'whatsapp_campaign') {
+    await pool.query(
+      `UPDATE whatsapp_campaign_recipients SET status=?
+        WHERE tenant_id=? AND campaign_id=? AND outbox_id=?`,
+      [sent ? 'sent' : dead ? 'failed' : 'queued', row.tenant_id, row.ref_id, row.id]
+    ).catch(() => {});
+  }
   if (sent) await pool.query(`UPDATE ${table} SET sent_count=sent_count+1 WHERE id=? AND tenant_id=?`, [row.ref_id, row.tenant_id]);
   if (dead) await pool.query(`UPDATE ${table} SET fail_count=fail_count+1 WHERE id=? AND tenant_id=?`, [row.ref_id, row.tenant_id]);
   const [[remaining]] = await pool.query(

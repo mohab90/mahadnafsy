@@ -46,6 +46,7 @@ const routeModules = [
   ['/', '../routes/messenger-webhook'],
   ['/', '../routes/messaging-channels'],
   ['/', '../routes/whatsapp-campaigns'],
+  ['/', '../routes/messaging-inbox'],
   ['/', '../routes/profile'],
   ['/', '../routes/staff'],
   ['/', '../routes/core'],

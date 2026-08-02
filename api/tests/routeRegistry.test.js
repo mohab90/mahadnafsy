@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { routeModules } = require('../lib/registerRoutes');
 
 test('route registry preserves one ordered mount for every router module', () => {
-  assert.equal(routeModules.length, 70);
+  assert.equal(routeModules.length, 71);
   assert.deepEqual(routeModules[0], ['/', '../routes/auth']);
   assert.deepEqual(routeModules.at(-1), ['/', '../routes/tenant-domains']);
 
@@ -23,6 +23,7 @@ test('route registry preserves one ordered mount for every router module', () =>
     '../routes/messenger-webhook',
     '../routes/messaging-channels',
     '../routes/whatsapp-campaigns',
+    '../routes/messaging-inbox',
   ]) {
     assert.ok(routeModules.some(([mountPath, candidate]) => (
       mountPath === '/' && candidate === modulePath
