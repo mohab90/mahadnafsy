@@ -83,12 +83,35 @@ test('a recipient is addressed as a chat id, the way the API reports its own', a
   } finally { restore(); }
 });
 
+test('a local number is completed rather than addressed as-is', async () => {
+  // The adapter re-normalises instead of trusting its caller. 01012345678@c.us
+  // is nobody, and a missing country code is the most expensive bug this system
+  // has had — the adapter is the last place it can still be caught.
+  const captured = {};
+  const restore = stubFetch({ json: { success: true } }, captured);
+  try {
+    await sendViaWapilot('01012345678', 'hi', { apiKey: 'K', instance: 'i' });
+    assert.equal(captured.body.chat_id, '201012345678@c.us');
+  } finally { restore(); }
+});
+
+test('an undialable number is refused instead of sent to a wrong address', async () => {
+  const restore = stubFetch({ json: { success: true } });
+  try {
+    for (const junk of ['', 'abc', '0223456789', '+++']) {
+      const result = await sendViaWapilot(junk, 'hi', { apiKey: 'K', instance: 'i' });
+      assert.equal(result.ok, false, junk);
+      assert.equal(result.reason, 'invalid_number', junk);
+    }
+  } finally { restore(); }
+});
+
 test('an address that already carries a suffix is not given a second one', async () => {
   const captured = {};
   const restore = stubFetch({ json: { success: true } }, captured);
   try {
     await sendViaWapilot('201012345678@c.us', 'hi', { apiKey: 'K', instance: 'i' });
-    assert.equal(captured.body.chatId, '201012345678@c.us');
+    assert.equal(captured.body.chat_id, '201012345678@c.us');
   } finally { restore(); }
 });
 
@@ -107,6 +130,30 @@ test('the send path and body field names are configurable per channel', async ()
   } finally { restore(); }
 });
 
+test('the send URL is exactly the one the API answers on', async () => {
+  // Pinned as a literal because the mistake that cost the most here was one
+  // extra path segment: /v2/instances/{i}/send-message returns a catch-all
+  // NOT_FOUND, while /v2/{i}/send-message is the real endpoint.
+  const captured = {};
+  const restore = stubFetch({ json: { success: true } }, captured);
+  try {
+    await sendViaWapilot('201012345678', 'hi', { apiKey: 'K', instance: 'instance5000' });
+    assert.equal(captured.url, 'https://api.wapilot.net/api/v2/instance5000/send-message');
+    assert.ok(!captured.url.includes('/instances/'), 'the send path has no /instances/ segment');
+  } finally { restore(); }
+});
+
+test('the request carries the field names the API validates on', async () => {
+  // Posting an empty body to the live endpoint returns 422 naming chat_id and
+  // text; anything else silently fails validation.
+  const captured = {};
+  const restore = stubFetch({ json: { success: true } }, captured);
+  try {
+    await sendViaWapilot('201012345678', 'أهلاً', { apiKey: 'K', instance: 'i' });
+    assert.deepEqual(Object.keys(captured.body).sort(), ['chat_id', 'text']);
+  } finally { restore(); }
+});
+
 test('the default path substitutes the instance', async () => {
   const captured = {};
   const restore = stubFetch({ json: { success: true } }, captured);
@@ -117,14 +164,25 @@ test('the default path substitutes the instance', async () => {
   } finally { restore(); }
 });
 
-test('a 404 on send says the path is wrong rather than something vague', async () => {
-  // The likeliest real failure while sendPath is still the placeholder — an
-  // admin needs to be told what to change, not just that it failed.
-  const restore = stubFetch({ ok: false, status: 404, json: { success: false, message: 'NOT_FOUND' } });
+test('a 422 surfaces the API\'s own per-field errors', async () => {
+  // Wapilot answers a bad request with a per-field errors object. That detail is
+  // the difference between "لم يتم الإرسال" and knowing what to fix.
+  const restore = stubFetch({ ok: false, status: 422, json: {
+    success: false, message: 'Validation failed.',
+    errors: { chat_id: ['The chat id field is required.'] },
+  } });
   try {
     const result = await sendViaWapilot('201012345678', 'hi', { apiKey: 'K', instance: 'i' });
     assert.equal(result.ok, false);
-    assert.match(result.reason, /مسار الإرسال/);
+    assert.match(result.reason, /chat id field is required/);
+  } finally { restore(); }
+});
+
+test('a rejected key says so rather than reporting a generic failure', async () => {
+  const restore = stubFetch({ ok: false, status: 401, json: { success: false } });
+  try {
+    const result = await sendViaWapilot('201012345678', 'hi', { apiKey: 'K', instance: 'i' });
+    assert.match(result.reason, /مفتاح/);
   } finally { restore(); }
 });
 

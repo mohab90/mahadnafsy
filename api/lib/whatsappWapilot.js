@@ -4,34 +4,41 @@
  *
  * What is verified against the live API, and therefore hardcoded here:
  *   • base is https://api.wapilot.net/api/v2
- *   • auth is `Authorization: Bearer <apiKey>` — the only scheme that answers;
- *     x-api-key and a bare token both return 401
+ *   • auth: `Authorization: Bearer <apiKey>` works everywhere. A dedicated
+ *     `token: <apiKey>` header also authenticates (it is what Wapilot's own
+ *     examples use); `x-api-key`, `api-key`, and a bare unprefixed
+ *     Authorization value all return 401.
  *   • GET /instances                     → { success, instances: [...] }
  *   • GET /instances/{unique}            → { success, instance: {...} }
  *   • GET /instances/{unique}/status     → { success, status, me_id, ... }
  *     status 'WORKING' means the session is live and can send
  *
- * What is NOT verified, and is therefore configuration rather than code: the
- * send endpoint. Wapilot publishes no documentation and every plausible path
- * returns the same generic NOT_FOUND from a catch-all handler, so guessing it
- * would produce an adapter that looks finished and silently fails — the exact
- * failure this codebase has been bitten by before.
+ *   • POST /{unique}/send-message  → { chat_id, text, priority?, send_at? }
+ *     confirmed by posting an empty body and reading the 422 back: it names
+ *     chat_id and text as required, which proves path and auth without
+ *     delivering anything to anyone.
  *
- * So `sendPath` and the two body field names are stored with the channel, with
- * the most likely defaults filled in. When the real spec arrives from Wapilot it
- * is a settings change, not a deploy — and the channel test says immediately
- * whether it is right.
+ * Note the send path has NO /instances/ segment — the instance name sits
+ * directly under /v2/. Every earlier guess included it and got a catch-all
+ * NOT_FOUND, which is why this is spelled out rather than inferred.
+ *
+ * Both `Authorization: Bearer <key>` and `token: <key>` authenticate. Bearer is
+ * used throughout so there is one scheme to reason about.
+ *
+ * The path and field names stay overridable per channel. They are verified
+ * today, but a provider that publishes no documentation can change them without
+ * telling anyone, and a settings change beats an emergency deploy.
  */
 const logger = require('./logger');
+const { toDialable } = require('./phoneNumber');
 
 const BASE = process.env.WAPILOT_BASE_URL || 'https://api.wapilot.net/api/v2';
 const TIMEOUT_MS = Number(process.env.WAPILOT_TIMEOUT_MS || 15000);
 
-// Best guesses, overridable per channel. Deliberately named so an admin editing
-// them knows they are placeholders until a real send succeeds.
-const DEFAULT_SEND_PATH = 'instances/{instance}/send-message';
-const DEFAULT_RECIPIENT_FIELD = 'chatId';
-const DEFAULT_MESSAGE_FIELD = 'message';
+// Verified against the live API — see the 422 probe described above.
+const DEFAULT_SEND_PATH = '{instance}/send-message';
+const DEFAULT_RECIPIENT_FIELD = 'chat_id';
+const DEFAULT_MESSAGE_FIELD = 'text';
 
 function headers(apiKey) {
   return {
@@ -110,7 +117,34 @@ async function listWapilotInstances(apiKey) {
 }
 
 /**
+ * Turn a provider rejection into something an admin can act on.
+ *
+ * Wapilot answers a bad request with 422 and a per-field `errors` object. That
+ * detail is the whole difference between "لم يتم الإرسال" and knowing the
+ * number was malformed, so it is unpacked rather than collapsed into a status
+ * code.
+ */
+function describeFailure(status, data) {
+  if (status === 422 && data?.errors) {
+    const fields = Object.values(data.errors).flat().filter(Boolean);
+    if (fields.length) return fields.join(' · ');
+  }
+  if (status === 404) {
+    return 'مسار الإرسال مرفوض — راجع اسم النسخة في إعدادات القناة';
+  }
+  if (status === 401 || status === 403) {
+    return 'مفتاح الـAPI مرفوض — جدّده من لوحة Wapilot';
+  }
+  return data?.message || `HTTP ${status}`;
+}
+
+/**
  * Send a message.
+ *
+ * `send_at` is deliberately not used even though Wapilot supports it. Campaign
+ * pacing already staggers delivery through the outbox, which works the same for
+ * every provider — and a message already handed to Wapilot with a future
+ * send_at cannot be recalled, so "cancel campaign" would stop being honest.
  *
  * @param {string} dialable full international number, digits only
  * @param {object} credentials { apiKey, instance, sendPath?, recipientField?, messageField? }
@@ -127,9 +161,20 @@ async function sendViaWapilot(dialable, message, credentials = {}) {
   const messageField = credentials.messageField || DEFAULT_MESSAGE_FIELD;
 
   // Wapilot addresses chats the way WhatsApp Web does — the live API reports
-  // me_id as "201200400031@c.us" — so the suffix is added unless the configured
-  // field already carries one.
-  const recipient = /@/.test(dialable) ? dialable : `${dialable}@c.us`;
+  // me_id as "201200400031@c.us" — so the suffix is added unless one is present.
+  //
+  // The number is re-normalised here rather than trusted from the caller. Every
+  // real send already arrives dialable, but a caller that passes 01012345678
+  // would otherwise address 01012345678@c.us, which is nobody. That missing
+  // country code is the single most expensive bug in this system's history, and
+  // an adapter is the last place it can still be caught.
+  const [rawNumber, suffix] = String(dialable).split('@');
+  const normalized = toDialable(rawNumber);
+  if (!normalized) {
+    logger.warn('[Wapilot] refusing to send: number is not dialable');
+    return { ok: false, provider: 'wapilot', reason: 'invalid_number' };
+  }
+  const recipient = `${normalized}@${suffix || 'c.us'}`;
 
   try {
     const response = await fetch(`${BASE}/${path}`, {
@@ -141,13 +186,7 @@ async function sendViaWapilot(dialable, message, credentials = {}) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.success === false) {
       logger.warn('[Wapilot] send failed', { status: response.status, message: data?.message });
-      // A 404 here almost certainly means sendPath is still the placeholder
-      // rather than the real endpoint — say so, rather than leaving an admin to
-      // wonder why a WORKING session will not send.
-      const reason = response.status === 404
-        ? 'مسار الإرسال غير صحيح — عدّله في إعدادات القناة بالمسار الرسمي من Wapilot'
-        : (data?.message || `HTTP ${response.status}`);
-      return { ok: false, provider: 'wapilot', reason };
+      return { ok: false, provider: 'wapilot', reason: describeFailure(response.status, data) };
     }
     return {
       ok: true,
