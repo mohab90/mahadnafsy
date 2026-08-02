@@ -109,6 +109,93 @@ export const mysqlClient = {
   getMyReferralCode: () => apiFetch<{ code: string; uses: number; earnings: number }>('/referral/my-code', {}, true),
 };
 
+// ── Messaging channels ────────────────────────────────────────────────────────
+export type MessagingChannelKind = 'whatsapp' | 'messenger';
+export type MessagingChannelStatus = 'pending' | 'connected' | 'disconnected' | 'error';
+
+export interface MessagingChannel {
+  id: string;
+  kind: MessagingChannelKind;
+  provider: 'meta' | 'green-api' | 'messenger';
+  /** null = the company's own channel; otherwise the employee who owns it */
+  owner_staff_id: string | null;
+  ownerName?: string | null;
+  label: string;
+  display_number: string | null;
+  status: MessagingChannelStatus;
+  last_verified_at: string | null;
+  last_error: string | null;
+  is_default: 0 | 1;
+  is_active: 0 | 1;
+  daily_send_limit: number;
+  sent_today: number;
+  sent_today_date: string | null;
+  isConnected: boolean;
+  /** Whether credentials are stored — never what they are. */
+  hasCredentials: boolean;
+}
+
+export interface MessagingChannelInput {
+  kind: MessagingChannelKind;
+  provider: string;
+  label: string;
+  displayNumber?: string;
+  credentials?: Record<string, string>;
+  ownerStaffId?: string | null;
+  dailySendLimit?: number;
+  makeDefault?: boolean;
+}
+
+export interface WhatsappCampaign {
+  id: string;
+  name: string;
+  message_template: string;
+  channel_id: string | null;
+  audience: 'leads' | 'subscribers' | 'all' | 'manual' | 'segment';
+  audience_filter: Record<string, unknown>;
+  throttle_per_minute: number;
+  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
+  scheduled_at: string | null;
+  sent_at: string | null;
+  recipient_count: number;
+  sent_count: number;
+  fail_count: number;
+  skipped_count: number;
+  variables?: string[];
+  created_at: string;
+}
+
+export interface WhatsappCampaignInput {
+  name: string;
+  messageTemplate: string;
+  audience?: WhatsappCampaign['audience'];
+  audienceFilter?: Record<string, unknown>;
+  channelId?: string | null;
+  throttlePerMinute?: number;
+  scheduledAt?: string | null;
+}
+
+export interface WhatsappCampaignPreview {
+  recipientCount: number;
+  skippedCount: number;
+  capReached: boolean;
+  estimatedMinutes: number;
+  samples: { name: string | null; phone: string; message: string }[];
+  skipReasons: { name: string | null; phone: string; reason: string }[];
+}
+
+export interface WhatsappCampaignRecipient {
+  id: string;
+  subject_type: 'lead' | 'subscriber' | 'manual';
+  phone: string;
+  name: string | null;
+  status: 'queued' | 'sent' | 'failed' | 'skipped';
+  skip_reason: string | null;
+  delivery_status: string | null;
+  provider_status: string | null;
+  last_error: string | null;
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 const A = true; // auth flag
 const post = (path: string, body: unknown) => apiFetch<{ ok: boolean; id?: string; code?: string }>(path, { method: 'POST', body: JSON.stringify(body) }, A);
@@ -221,6 +308,44 @@ export const mysqlAdmin = {
   updateMyProfile:         (data: { name?: string; phone?: string; image?: string | null }) => apiFetch<AR>('/staff/me', { method: 'PATCH', body: JSON.stringify(data) }, A),
   getMyPreferences:        ()             => apiFetch<{ waNumber?: string; waTemplates?: { id: string; title: string; body: string }[]; customTags?: string[] }>('/staff/me/preferences', {}, A),
   saveMyPreferences:       (data: { waNumber?: string; waTemplates?: { id: string; title: string; body: string }[]; customTags?: string[] }) => apiFetch<AR>('/staff/me/preferences', { method: 'PUT', body: JSON.stringify(data) }, A),
+  // ── Messaging channels: who a message is sent from ────────────────────────
+  // Credentials go up but never come back down — the API returns hasCredentials,
+  // never the values, so a compromised admin session cannot read a rep's token.
+  listMessagingChannels:   (kind?: MessagingChannelKind) =>
+    apiFetch<MessagingChannel[]>(`/admin/messaging/channels${kind ? `?kind=${kind}` : ''}`, {}, A),
+  createMessagingChannel:  (data: MessagingChannelInput) =>
+    apiFetch<MessagingChannel>('/admin/messaging/channels', { method: 'POST', body: JSON.stringify(data) }, A),
+  updateMessagingChannel:  (id: string, data: Partial<MessagingChannelInput> & { isActive?: boolean }) =>
+    apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }, A),
+  setDefaultMessagingChannel: (id: string) =>
+    apiFetch<MessagingChannel>(`/admin/messaging/channels/${encodeURIComponent(id)}/default`, { method: 'POST' }, A),
+  deleteMessagingChannel:  (id: string) =>
+    apiFetch<AR>(`/admin/messaging/channels/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
+  testMessagingChannel:    (id: string, to?: string, message?: string) =>
+    apiFetch<{ ok: boolean; messageId?: string }>(`/messaging/channels/${encodeURIComponent(id)}/test`, { method: 'POST', body: JSON.stringify({ to, message }) }, A),
+
+  getMyWhatsappChannel:    ()             => apiFetch<MessagingChannel | null>('/staff/me/whatsapp-channel', {}, A),
+  saveMyWhatsappChannel:   (data: { provider?: string; label?: string; displayNumber?: string; credentials: Record<string, string> }) =>
+    apiFetch<MessagingChannel>('/staff/me/whatsapp-channel', { method: 'PUT', body: JSON.stringify(data) }, A),
+  deleteMyWhatsappChannel: ()             => apiFetch<AR>('/staff/me/whatsapp-channel', { method: 'DELETE' }, A),
+
+  // ── WhatsApp campaigns ────────────────────────────────────────────────────
+  listWhatsappCampaigns:   ()             => apiFetch<WhatsappCampaign[]>('/admin/whatsapp-campaigns', {}, A),
+  createWhatsappCampaign:  (data: WhatsappCampaignInput) =>
+    apiFetch<WhatsappCampaign>('/admin/whatsapp-campaigns', { method: 'POST', body: JSON.stringify(data) }, A),
+  updateWhatsappCampaign:  (id: string, data: Partial<WhatsappCampaignInput>) =>
+    apiFetch<WhatsappCampaign>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }, A),
+  deleteWhatsappCampaign:  (id: string) =>
+    apiFetch<AR>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
+  previewWhatsappCampaign: (id: string) =>
+    apiFetch<WhatsappCampaignPreview>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/preview`, { method: 'POST' }, A),
+  sendWhatsappCampaign:    (id: string) =>
+    apiFetch<{ ok: boolean; queued: number; skipped: number; estimatedMinutes: number }>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/send`, { method: 'POST' }, A),
+  cancelWhatsappCampaign:  (id: string) =>
+    apiFetch<{ ok: boolean; stopped: number }>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/cancel`, { method: 'POST' }, A),
+  whatsappCampaignRecipients: (id: string) =>
+    apiFetch<WhatsappCampaignRecipient[]>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/recipients`, {}, A),
+
   listAllStaff:            ()             => apiFetch<AR[]>('/admin/staff', {}, A),
   listAllConsultations:    (limit = 500)  => apiFetch<AR[]>(`/admin/consultations?limit=${limit}`, {}, A),
   listAllExpenses:         ()             => apiFetch<AR[]>('/admin/expenses', {}, A),

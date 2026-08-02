@@ -554,6 +554,9 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   followup_reminders: 'view_leads',
   sales_hub:          'view_leads',
   marketing_hub:      'view_leads',
+  // Every staff member may connect their own WhatsApp; the admin panels inside
+  // enforce manage_settings server-side.
+  messaging_hub:      'view_dashboard',
   online_hub:         'view_subscribers',
   installment_plans:  'view_financial',
   consultations:      'view_consultations',

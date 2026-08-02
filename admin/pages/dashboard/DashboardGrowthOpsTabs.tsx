@@ -4,6 +4,7 @@ import {
   DaqqiScheduleTab,
   LeadsTab,
   MarketingHubTab,
+  MessagingHubTab,
   OnlineTeamTab,
   SalesHubTab,
 } from './lazyTabs';
@@ -110,6 +111,16 @@ export function DashboardGrowthOpsTabs({
       <Suspense fallback={fallback('border-rose-500')}>
         <TabErrorBoundary>
           <MarketingHubTab notify={notify} />
+        </TabErrorBoundary>
+      </Suspense>
+    );
+  }
+
+  if (activeTab === 'messaging_hub') {
+    return (
+      <Suspense fallback={fallback('border-emerald-500')}>
+        <TabErrorBoundary>
+          <MessagingHubTab notify={notify} />
         </TabErrorBoundary>
       </Suspense>
     );

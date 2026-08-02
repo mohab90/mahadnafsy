@@ -22,6 +22,7 @@ import {
   ListOrdered,
   Mail,
   Megaphone,
+  MessageCircle,
   MessageSquareText,
   Monitor,
   RotateCcw,
@@ -96,6 +97,7 @@ export type TabKey =
   | 'daqqi_attendance'
   | 'sales_hub'
   | 'marketing_hub'
+  | 'messaging_hub'
   | 'online_hub'
   | 'staff_performance'
   | 'retention'
@@ -271,6 +273,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-rose-600',
     items: [
       { key: 'marketing_hub', label: 'مركز التسويق الشامل', icon: Megaphone },
+      { key: 'messaging_hub', label: 'الواتساب والماسنجر', icon: MessageCircle },
     ],
   },
   {
