@@ -201,15 +201,23 @@ router.post('/api/admin/whatsapp-campaigns/:id/send', ...manage, bulkOperationLi
     }, conn);
     await campaigns.recordSkipped({ tenantId: req.tenantId, campaignId: campaign.id, skipped }, conn);
 
+    // Queued messages sit in the outbox until scheduled_at, so saying "sending"
+    // now would have the screen claim messages are going out hours before any
+    // do. sent_at is only stamped when delivery actually starts.
+    const startsLater = campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now();
     await conn.query(
       `UPDATE whatsapp_campaigns
-          SET status='sending', recipient_count=?, skipped_count=?, sent_at=NOW()
+          SET status=?, recipient_count=?, skipped_count=?, sent_at=?
         WHERE id=? AND tenant_id=?`,
-      [queued, skipped.length, campaign.id, req.tenantId]
+      [startsLater ? 'scheduled' : 'sending', queued, skipped.length,
+       startsLater ? null : new Date(), campaign.id, req.tenantId]
     );
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, queued, skipped: skipped.length, estimatedMinutes });
+    res.json({
+      ok: true, queued, skipped: skipped.length, estimatedMinutes,
+      scheduled: Boolean(startsLater), startsAt: startsLater ? campaign.scheduled_at : null,
+    });
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     fail(res, error, 'campaign send failed');

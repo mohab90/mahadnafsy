@@ -365,7 +365,7 @@ export const mysqlAdmin = {
   previewWhatsappCampaign: (id: string) =>
     apiFetch<WhatsappCampaignPreview>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/preview`, { method: 'POST' }, A),
   sendWhatsappCampaign:    (id: string) =>
-    apiFetch<{ ok: boolean; queued: number; skipped: number; estimatedMinutes: number }>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/send`, { method: 'POST' }, A),
+    apiFetch<{ ok: boolean; queued: number; skipped: number; estimatedMinutes: number; scheduled: boolean; startsAt: string | null }>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/send`, { method: 'POST' }, A),
   cancelWhatsappCampaign:  (id: string) =>
     apiFetch<{ ok: boolean; stopped: number }>(`/admin/whatsapp-campaigns/${encodeURIComponent(id)}/cancel`, { method: 'POST' }, A),
   whatsappCampaignRecipients: (id: string) =>

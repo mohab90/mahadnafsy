@@ -134,16 +134,21 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
         )}
 
         <div className="flex flex-wrap gap-2">
-          {channel.kind === 'whatsapp' && (
-            <button
-              onClick={() => act(channel.id, () => mysqlAdmin.testMessagingChannel(channel.id), 'وصلت الرسالة — القناة شغالة')}
-              disabled={busy || !channel.display_number}
-              title={channel.display_number ? '' : 'أضف رقماً للقناة أولاً'}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold hover:bg-green-100 transition disabled:opacity-40"
-            >
-              {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}اختبار
-            </button>
-          )}
+          {/* Messenger verifies by asking Facebook who the token belongs to —
+              it has no recipient to send to until a customer writes in. */}
+          <button
+            onClick={() => act(
+              channel.id,
+              () => mysqlAdmin.testMessagingChannel(channel.id),
+              channel.kind === 'messenger' ? 'التوكن سليم — الصفحة متصلة' : 'وصلت الرسالة — القناة شغالة',
+            )}
+            disabled={busy || (channel.kind === 'whatsapp' && !channel.display_number)}
+            title={channel.kind === 'whatsapp' && !channel.display_number ? 'أضف رقماً للقناة أولاً' : ''}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold hover:bg-green-100 transition disabled:opacity-40"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            {channel.kind === 'messenger' ? 'تحقّق' : 'اختبار'}
+          </button>
           {!channel.owner_staff_id && channel.is_default === 0 && (
             <button
               onClick={() => act(channel.id, () => mysqlAdmin.setDefaultMessagingChannel(channel.id), 'أصبحت القناة الافتراضية')}

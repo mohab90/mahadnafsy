@@ -54,6 +54,42 @@ async function sendMessengerMessage(psid, text, credentials = {}) {
 }
 
 /**
+ * Prove the page credentials work, without messaging anybody.
+ *
+ * WhatsApp channels verify themselves by sending a test message. Messenger
+ * cannot: it has no addressable recipient until someone writes in first. So
+ * without this a Messenger channel could never leave 'pending' — and since
+ * sending requires 'connected', it could never send at all. Asking Graph who
+ * the token belongs to is the honest equivalent.
+ *
+ * @returns {Promise<{ok: boolean, pageName?: string, pageId?: string, reason?: any}>}
+ */
+async function verifyMessengerCredentials(credentials = {}) {
+  const token = credentials.pageAccessToken || credentials.accessToken;
+  if (!token) return { ok: false, reason: 'not_configured' };
+  try {
+    const response = await fetch(
+      `${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(token)}`,
+      { signal: AbortSignal.timeout(Number(process.env.MESSENGER_TIMEOUT_MS || 8000)) }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.id) {
+      logger.warn('[Messenger] credential check failed', data);
+      return { ok: false, reason: data?.error?.message || data };
+    }
+    // A user token would also answer here, so confirm the configured page is the
+    // one the token actually belongs to — otherwise replies would silently go
+    // out from a different page.
+    if (credentials.pageId && String(credentials.pageId) !== String(data.id)) {
+      return { ok: false, reason: 'التوكن ده مش بتاع الصفحة المحددة' };
+    }
+    return { ok: true, pageId: data.id, pageName: data.name };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+/**
  * Is this conversation still repliable with plain text?
  * @param {Date|string|null} lastInboundAt
  */
@@ -138,6 +174,7 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
 
 module.exports = {
   REPLY_WINDOW_MS,
+  verifyMessengerCredentials,
   sendMessengerMessage,
   isWithinReplyWindow,
   extractMessengerMessages,

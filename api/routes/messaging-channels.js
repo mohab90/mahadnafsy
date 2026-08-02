@@ -18,6 +18,7 @@ const logger = require('../lib/logger').child({ module: 'messaging-channels' });
 const { pool } = require('../lib/db');
 const channels = require('../lib/messagingChannels');
 const { sendWhatsApp } = require('../lib/whatsapp');
+const { verifyMessengerCredentials } = require('../lib/messenger');
 const { toDialable } = require('../lib/phoneNumber');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
@@ -183,8 +184,27 @@ router.post('/api/messaging/channels/:id/test', requireAuth, requireAdminOrStaff
     if (channel.owner_staff_id && channel.owner_staff_id !== selfStaffId(req) && !isAdmin) {
       return res.status(403).json({ error: 'غير مصرح باختبار قناة موظف آخر' });
     }
-    if (channel.kind !== 'whatsapp') {
-      return res.status(400).json({ error: 'اختبار الإرسال متاح لقنوات الواتساب فقط' });
+    // Messenger cannot be verified by sending: it has no addressable recipient
+    // until a customer writes in first. Rejecting it here left a Messenger
+    // channel stuck at 'pending' forever, and since sending requires
+    // 'connected', it could never send at all. Ask Graph who the token belongs
+    // to instead — the same proof, without messaging a stranger.
+    if (channel.kind === 'messenger') {
+      const resolved = await channels.getSendableChannel({
+        tenantId: req.tenantId, channelId: channel.id, kind: 'messenger',
+      });
+      if (!resolved) return res.status(409).json({ error: 'بيانات الاتصال غير محفوظة' });
+      const check = await verifyMessengerCredentials(resolved.credentials);
+      if (!check.ok) {
+        await channels.markChannelError(req.tenantId, channel.id,
+          typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من التوكن');
+        return res.status(502).json({
+          error: 'التوكن مرفوض من فيسبوك — راجع بيانات الصفحة',
+          reason: typeof check.reason === 'string' ? check.reason : undefined,
+        });
+      }
+      await channels.markChannelConnected(req.tenantId, channel.id);
+      return res.json({ ok: true, pageName: check.pageName || null });
     }
 
     const to = toDialable(req.body?.to || channel.display_number);

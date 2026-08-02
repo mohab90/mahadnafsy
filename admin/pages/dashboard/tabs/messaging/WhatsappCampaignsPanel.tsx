@@ -59,7 +59,7 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
 
   const [draft, setDraft] = useState({
     name: '', messageTemplate: '', audience: 'leads' as WhatsappCampaign['audience'],
-    channelId: '', throttlePerMinute: 60,
+    channelId: '', throttlePerMinute: 60, scheduledAt: '',
   });
 
   const load = async () => {
@@ -87,10 +87,11 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
         audience: draft.audience,
         channelId: draft.channelId || null,
         throttlePerMinute: draft.throttlePerMinute,
+        scheduledAt: draft.scheduledAt || null,
       });
       notify('success', 'تم إنشاء الحملة — راجع المستقبلين قبل الإرسال');
       setShowNew(false);
-      setDraft(d => ({ ...d, name: '', messageTemplate: '' }));
+      setDraft(d => ({ ...d, name: '', messageTemplate: '', scheduledAt: '' }));
       await load();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر إنشاء الحملة');
@@ -110,7 +111,9 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
     setBusyId(id);
     try {
       const result = await mysqlAdmin.sendWhatsappCampaign(id);
-      notify('success', `تم جدولة ${result.queued} رسالة — هتخلص خلال ${result.estimatedMinutes} دقيقة تقريباً`);
+      notify('success', result.scheduled
+        ? `اتجدولت ${result.queued} رسالة — هتبدأ في الموعد المحدد وتاخد ${result.estimatedMinutes} دقيقة تقريباً`
+        : `تم جدولة ${result.queued} رسالة — هتخلص خلال ${result.estimatedMinutes} دقيقة تقريباً`);
       setPreview(null);
       await load();
     } catch (error) {
@@ -217,6 +220,18 @@ export function WhatsappCampaignsPanel({ notify }: { notify: NotifyFn }) {
               />
               <p className="text-[11px] text-gray-500 mt-1">
                 كل ما قلّت، كل ما كان أأمن على الرقم. 60 رقم معقول.
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">وقت البدء (اختياري)</label>
+              <input
+                type="datetime-local"
+                value={draft.scheduledAt}
+                onChange={e => setDraft(d => ({ ...d, scheduledAt: e.target.value }))}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                سيبها فاضية عشان تبدأ فوراً بعد المعاينة. لو حددت وقت، الرسايل هتستنى لحد الوقت ده.
               </p>
             </div>
           </div>
