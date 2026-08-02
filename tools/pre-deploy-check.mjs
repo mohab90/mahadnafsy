@@ -19,7 +19,11 @@ for (const [name, args] of gates) {
     env: process.env,
     stdio: 'inherit',
     windowsHide: true,
-    shell: false,
+    // npm on Windows is npm.cmd, and since Node 20 (CVE-2024-27980) a .cmd file
+    // can only be spawned through a shell — without this the release gate died
+    // with EINVAL before running a single check, on the one machine the owner
+    // actually runs it from.
+    shell: process.platform === 'win32',
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {

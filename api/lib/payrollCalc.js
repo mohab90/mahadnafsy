@@ -83,6 +83,11 @@ function computePayrollLine(emp = {}, ctx = {}) {
     commission, commissionCount, commissionSource,
     advanceDeduction, instructorEarnings, bonus, deduction,
     grossSalary, totalDeductions, netSalary,
+    // Not used in the arithmetic above, but written into the payslip's
+    // calculation_details so it reconciles. They were in scope when this lived
+    // inline in the route; after extraction the route referenced them as free
+    // variables and every payroll run threw a ReferenceError.
+    totalSales, unpaidLeaveDays,
   };
 }
 

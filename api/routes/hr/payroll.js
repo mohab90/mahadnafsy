@@ -280,6 +280,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         dedSocial, dedTax, absentDays, lateMins,
         absenceDeduction, lateDeduction, commission, commissionCount, commissionSource,
         advanceDeduction, instructorEarnings, grossSalary, totalDeductions, netSalary,
+        totalSales, unpaidLeaveDays,
       } = line;
       totalAmount += netSalary;
 

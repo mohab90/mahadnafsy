@@ -114,3 +114,24 @@ test('a garbage attendance payload cannot silently wipe out a salary', () => {
   assert.equal(r.lateMins, 0);
   assert.equal(r.netSalary, 11000);
 });
+
+test('the payslip detail fields survive the return, not just the arithmetic', () => {
+  // Regression: totalSales and unpaidLeaveDays are not used in the calculation
+  // but ARE written into calculation_details. They were in scope when this code
+  // lived inline in the route; after extraction the route referenced them as
+  // free variables and every payroll run threw a ReferenceError.
+  const line = computePayrollLine(
+    { staff_id: 's1', base_salary: 10000, commission_rate: 5 },
+    { totalSales: 40000, attendance: { unpaid_leave_days: 3, absent_days: 1 } }
+  );
+  assert.equal(line.totalSales, 40000, 'totalSales must be returned for the payslip');
+  assert.equal(line.unpaidLeaveDays, 3, 'unpaidLeaveDays must be returned for the payslip');
+});
+
+test('a payslip line never returns undefined for a detail field', () => {
+  // Defaults matter: JSON.stringify drops undefined keys, so a payslip would be
+  // silently missing the field rather than showing a zero.
+  const line = computePayrollLine({ staff_id: 's1', base_salary: 5000 }, {});
+  assert.equal(typeof line.totalSales, 'number');
+  assert.equal(typeof line.unpaidLeaveDays, 'number');
+});

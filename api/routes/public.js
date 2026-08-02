@@ -938,7 +938,12 @@ router.post('/api/me/quiz-attempts', requireAuth, async (req, res) => {
     if (Number(attempts?.count) >= 10) {
       return res.status(429).json({ error: 'Maximum 10 attempts per quiz within 24 hours' });
     }
-    const result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor: emailNorm }, pool);
+    // Was `emailNorm`, a variable removed when this route stopped resolving the
+    // client by email — a ReferenceError on every quiz submission. The account
+    // is the actor; the subscriber id is the fallback for a WhatsApp-only client
+    // who has no email at all.
+    const actor = req.user?.email || req.user?.uid || sub.id;
+    const result = await recordQuizAttempt({ quiz, subscriberId: sub.id, answers, tenantId: req.tenantId, actor }, pool);
     res.json({ ok: true, ...result });
   } catch (e) {
     logger.error('[quiz-attempt]', e.message);
