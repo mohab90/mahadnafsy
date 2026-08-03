@@ -1,3 +1,10 @@
+-- The COLLATE on the JSON_TABLE side of these joins is required, not cosmetic.
+-- MariaDB gives every JSON_TABLE column utf8mb4_general_ci no matter what the
+-- connection or database collation is (verified: SET NAMES utf8mb4 COLLATE
+-- utf8mb4_unicode_ci still yields COLLATION(j.col) = utf8mb4_general_ci), while
+-- every real column here is utf8mb4_unicode_ci. Comparing them is an outright
+-- error — this migration failed with "Illegal mix of collations" on a rehearsal
+-- against a copy of production, after 82 earlier migrations had already applied.
 INSERT IGNORE INTO course_completions
   (id,tenant_id,subscriber_id,course_id,certificate_code,completed_at,status,version)
 SELECT UUID(),s.tenant_id,s.id,c.id,
@@ -13,7 +20,7 @@ JOIN JSON_TABLE(
     issued_at VARCHAR(40) PATH '$.issuedAt'
   )
 ) j
-JOIN courses c ON c.id=j.course_id AND c.tenant_id=s.tenant_id AND c.deleted_at IS NULL
+JOIN courses c ON c.id=j.course_id COLLATE utf8mb4_unicode_ci AND c.tenant_id=s.tenant_id AND c.deleted_at IS NULL
 WHERE j.course_id IS NOT NULL;
 
 INSERT INTO certificate_lifecycle_events
