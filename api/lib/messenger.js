@@ -120,23 +120,77 @@ function extractMessengerMessages(payload) {
 }
 
 /**
+ * Turn a first Messenger contact into a lead.
+ *
+ * Assigned through the same round-robin the public forms and WhatsApp use, so
+ * it lands in a queue somebody owns. The PSID is stored as the identity because
+ * it is the only one Messenger provides — the name is a placeholder until a rep
+ * asks, which is the natural first thing they will do anyway.
+ *
+ * @returns {Promise<{id, name, assigned_sales_id}|null>}
+ */
+async function createLeadFromMessenger({ tenantId, psid, text }, db = pool) {
+  const { getNextSalesRep } = require('./leadAssignment');
+  const id = uuidv4();
+  const name = 'زائر ماسنجر';
+  try {
+    const rep = await getNextSalesRep(tenantId, db).catch(() => null);
+    const [result] = await db.query(
+      `INSERT INTO leads
+         (id, tenant_id, name, source, status, notes, messenger_psid,
+          messenger_last_inbound_at, assigned_sales_id, assigned_sales_name, hidden, created_at)
+       VALUES (?,?,?, 'messenger_inbound', 'new', ?, ?, NOW(), ?, ?, 0, NOW())`,
+      [id, tenantId, name, String(text || '').slice(0, 500) || null, psid,
+       rep?.id || null, rep?.name || null]
+    );
+    if (!result.affectedRows) return null;
+    logger.info('[messenger] created a lead from a first contact');
+    return { id, name, assigned_sales_id: rep?.id || null };
+  } catch (error) {
+    // uq_leads_tenant_psid: two messages arriving together race here, and the
+    // loser should adopt the row the winner made rather than fail.
+    logger.warn('[messenger] lead creation failed, re-checking', error.message);
+    const [[existing]] = await db.query(
+      `SELECT id, name, assigned_sales_id FROM leads
+        WHERE tenant_id=? AND messenger_psid=? AND hidden=0 LIMIT 1`,
+      [tenantId, psid]
+    );
+    return existing || null;
+  }
+}
+
+/**
  * Record an inbound Messenger message against a lead or subscriber.
  *
- * The PSID is the only identifier available, so the link to a CRM record is
- * built once — when a customer's PSID is first matched to them by a human — and
- * stored on the lead. Until then the message is still recorded and still raises
- * a notification: an unattributed message that a human can see beats a
- * perfectly-attributed one that nobody knows about.
+ * A first contact creates the lead, so the conversation always has a CRM record
+ * to hang from and always appears in someone's pipeline. The PSID is the link:
+ * every later message on it lands on the same lead automatically, and a human
+ * can merge it into an existing customer from the inbox once they know who it
+ * is.
  */
 async function recordInboundMessenger({ tenantId, channelId, providerMessageId, psid, body, timestamp }, db = pool) {
   if (!providerMessageId || !psid) return { recorded: false, reason: 'incomplete' };
   const text = String(body || '').slice(0, 4000).trim();
 
-  const [[lead]] = await db.query(
+  let [[lead]] = await db.query(
     `SELECT id, name, assigned_sales_id FROM leads
       WHERE tenant_id=? AND messenger_psid=? AND hidden=0 LIMIT 1`,
     [tenantId, psid]
   );
+
+  // Someone writing to the page is a lead, exactly as on WhatsApp. Until this
+  // existed, a Messenger conversation had no CRM record at all: the message was
+  // stored with lead_id NULL, so it never appeared on anyone's pipeline and the
+  // rep had nothing to follow up.
+  //
+  // Unlike WhatsApp there is no phone to store — Messenger only ever gives a
+  // page-scoped id — so the PSID is the identity, and the reply goes back
+  // through the same conversation.
+  let isNewLead = false;
+  if (!lead) {
+    lead = await createLeadFromMessenger({ tenantId, psid, text }, db);
+    isNewLead = Boolean(lead);
+  }
 
   const id = uuidv4();
   const at = timestamp ? new Date(Number(timestamp) * 1000) : new Date();
@@ -162,14 +216,14 @@ async function recordInboundMessenger({ tenantId, channelId, providerMessageId, 
 
   await createNotification(
     'messenger',
-    'رسالة ماسنجر جديدة',
+    isNewLead ? '🆕 زائر جديد كلّمنا على الماسنجر' : 'رسالة ماسنجر جديدة',
     `${lead?.name || 'زائر'}: ${text.slice(0, 120) || 'رسالة'}`,
     { leadId: lead?.id || null, psid, communicationId: id },
     tenantId,
     lead?.assigned_sales_id || null
   );
 
-  return { recorded: true, id, leadId: lead?.id || null, matched: Boolean(lead) };
+  return { recorded: true, id, leadId: lead?.id || null, matched: Boolean(lead), createdLead: isNewLead };
 }
 
 module.exports = {

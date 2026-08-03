@@ -40,6 +40,68 @@ async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAUL
   return existing?.id || null;
 }
 
+/**
+ * A message has given up. Tell a human.
+ *
+ * Everything else about a failed send is already visible — the row keeps its
+ * last_error, the campaign counters move — but none of that is looked at unless
+ * someone already suspects a problem. So a customer waiting on a reply that died
+ * in the queue produced silence: the rep believes it was sent, the customer
+ * believes they were ignored.
+ *
+ * The notice goes to whoever owns that customer when the message is addressed to
+ * one, and to everyone otherwise. Campaign messages are deliberately excluded:
+ * a blast to 5,000 people with a 2% failure rate would bury the inbox in 100
+ * notifications that say nothing the campaign report does not already say
+ * better.
+ */
+async function announceDeadLetter(row, error) {
+  if (row.ref_type === 'whatsapp_campaign' || row.ref_type === 'email_campaign' || row.ref_type === 'sms_campaign') {
+    return;
+  }
+  const { createNotification } = require('./notification');
+  const recipient = String(row.recipient || '').slice(0, 40);
+
+  // Find who owns this customer, so the person who will actually chase it is
+  // the one who hears about it. Matched on the address the message went to.
+  let staffId = null;
+  let name = null;
+  try {
+    const [[owner]] = await pool.query(
+      `SELECT s.assigned_cs_id AS staff_id, s.name
+         FROM subscribers s
+        WHERE s.tenant_id=? AND s.phone IN (?, ?) AND s.deleted_at IS NULL
+        LIMIT 1`,
+      [row.tenant_id, recipient, `0${String(recipient).replace(/^20/, '')}`]
+    );
+    if (owner) { staffId = owner.staff_id; name = owner.name; }
+    else {
+      const [[lead]] = await pool.query(
+        `SELECT l.assigned_sales_id AS staff_id, l.name
+           FROM leads l
+          WHERE l.tenant_id=? AND l.phone IN (?, ?) AND l.hidden=0
+          LIMIT 1`,
+        [row.tenant_id, recipient, `0${String(recipient).replace(/^20/, '')}`]
+      );
+      if (lead) { staffId = lead.staff_id; name = lead.name; }
+    }
+  } catch (lookupError) {
+    // Identifying the owner is a nicety; the notification itself is the point.
+    logger.warn('[outbox] dead-letter owner lookup failed', lookupError.message);
+  }
+
+  const channelLabel = row.channel === 'email' ? 'إيميل'
+    : row.channel === 'messenger' ? 'ماسنجر' : 'واتساب';
+  await createNotification(
+    'delivery_failed',
+    `⚠️ رسالة ${channelLabel} لم تصل`,
+    `${name ? `${name} — ` : ''}${recipient}: ${String(error?.message || error || '').slice(0, 140)}`,
+    { outboxId: row.id, channel: row.channel, recipient, refType: row.ref_type || null },
+    row.tenant_id,
+    staffId
+  );
+}
+
 async function finalizeCampaign(row, sent, dead) {
   if (row.ref_type === 'crm_sequence_step' && row.ref_id) {
     await pool.query(
@@ -152,11 +214,15 @@ async function drain(senders, limit = 20) {
            next_attempt_at=DATE_ADD(NOW(),INTERVAL ? MINUTE) WHERE id=? AND tenant_id=? AND locked_by=?`,
         [dead ? 'dead' : 'failed', attempts, String(e.message || e).slice(0, 2000), backoff, m.id, m.tenant_id, workerId]
       );
-      if (dead) await finalizeCampaign(m, false, true);
+      if (dead) {
+        await finalizeCampaign(m, false, true);
+        await announceDeadLetter(m, e).catch(error =>
+          logger.warn('[outbox] dead-letter notice failed', error.message));
+      }
       logger.warn('[outbox] delivery failed', { id: m.id, channel: m.channel, attempts, err: e.message });
     }
   }
   return sent;
 }
 
-module.exports = { enqueue, drain, MAX_ATTEMPTS, finalizeCampaign };
+module.exports = { enqueue, drain, MAX_ATTEMPTS, finalizeCampaign, announceDeadLetter };

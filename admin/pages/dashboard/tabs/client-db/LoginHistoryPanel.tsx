@@ -99,7 +99,7 @@ export function LoginHistoryPanel() {
     const csv = [header, ...body]
       .map(line => line.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
       .join('\n');
-    const url = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' }));
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
     a.download = `login-history-${new Date().toISOString().slice(0, 10)}.csv`;
