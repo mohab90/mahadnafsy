@@ -604,11 +604,17 @@ export const mysqlAuth = {
   // number — the API deliberately won't reveal which numbers have accounts.
   requestWaOtp: (phone: string) =>
     apiFetch<{ ok: boolean; expiresInMinutes: number }>('/auth/whatsapp/request-otp', { method: 'POST', body: JSON.stringify({ phone }) }),
-  verifyWaOtp: (phone: string, code: string) =>
+  /**
+   * Verifying a code both signs in and registers: a number with no account gets
+   * one here. `name` is used only when the account is being created, so a
+   * returning customer can never be renamed by a stale form value.
+   * `created` says which of the two just happened.
+   */
+  verifyWaOtp: (phone: string, code: string, name?: string) =>
     apiFetch<{
-      ok: boolean; token: string;
+      ok: boolean; token: string; created: boolean;
       user: { uid: string; email: string; displayName: string; phone: string };
-    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code }) }),
+    }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name }) }),
   verify2fa: (pendingToken: string, token: string) =>
     apiFetch<{ ok: boolean; token: string }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },

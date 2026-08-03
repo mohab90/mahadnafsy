@@ -23,6 +23,8 @@ const logger = require('./logger');
 
 const CODE_TTL_MINUTES = Math.max(1, Number(process.env.WA_OTP_TTL_MINUTES || 10));
 const MAX_ATTEMPTS = Math.max(1, Number(process.env.WA_OTP_MAX_ATTEMPTS || 5));
+// Codes an unregistered number may be sent per hour, from any source.
+const SIGNUP_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_SIGNUP_CODES_PER_HOUR || 3));
 
 /**
  * Reduce anything a user might type to comparable digits.
@@ -108,11 +110,28 @@ async function requestLoginCode({ tenantId, phone }) {
     }
   }
 
-  // Unknown number: still report success so this can't be used to discover which
-  // numbers have accounts.
-  if (!user) {
-    logger.info('[wa-otp] code requested for an unregistered number');
-    return { ok: true, delivered: false };
+  // A number with no account still gets a code — that IS registration. The
+  // account is created on verification, not here, so an unanswered code leaves
+  // nothing behind.
+  //
+  // This also closes a leak: the old branch returned without sending, so the
+  // response told anyone watching whether a number was registered. Now both
+  // paths do the same work and answer the same way.
+  const isNewAccount = !user;
+  if (isNewAccount) {
+    // The IP limiter cannot carry this alone: once codes reach numbers with no
+    // account, rotating IPs would turn the institute's own WhatsApp into a way
+    // to message strangers. This caps a single number regardless of source.
+    const [[recent]] = await pool.query(
+      `SELECT COUNT(*) AS n FROM otp_codes
+        WHERE tenant_id=? AND phone=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+      [tenantId, normalized]
+    );
+    if (Number(recent?.n || 0) >= SIGNUP_CODES_PER_HOUR) {
+      logger.warn('[wa-otp] per-number signup throttle hit');
+      // Reported as success so the throttle itself cannot be used to probe.
+      return { ok: true, delivered: false, isNewAccount: true };
+    }
   }
 
   const code = generateCode();
@@ -127,7 +146,7 @@ async function requestLoginCode({ tenantId, phone }) {
     await conn.query(
       `INSERT INTO otp_codes (id, tenant_id, user_id, phone, code, type, expires_at)
        VALUES (?,?,?,?,?,'login', DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
-      [id, tenantId, user.id, normalized, hashCode({ tenantId, phone: normalized, code }), CODE_TTL_MINUTES]
+      [id, tenantId, user?.id || null, normalized, hashCode({ tenantId, phone: normalized, code }), CODE_TTL_MINUTES]
     );
     await conn.commit();
   } catch (error) {
@@ -138,7 +157,16 @@ async function requestLoginCode({ tenantId, phone }) {
   }
 
   try {
-    await sendWhatsApp(normalized, `رمز الدخول: ${code}\nصالح لمدة ${CODE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`, { tenantId });
+    // A first-time recipient has no idea why a code just arrived, so the message
+    // says where it came from before it says the number.
+    const opening = isNewAccount
+      ? 'أهلاً بك في معهد الدراسات النفسية 🌿\nرمز إنشاء حسابك'
+      : 'رمز الدخول';
+    await sendWhatsApp(
+      normalized,
+      `${opening}: ${code}\nصالح لمدة ${CODE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`,
+      { tenantId }
+    );
   } catch (error) {
     // Burn the code rather than leaving a live one nobody received.
     await pool.query("UPDATE otp_codes SET used=1, delivery_status='failed' WHERE id=?", [id]).catch(() => {});
@@ -147,14 +175,14 @@ async function requestLoginCode({ tenantId, phone }) {
     failure.statusCode = 503;
     throw failure;
   }
-  return { ok: true, delivered: true };
+  return { ok: true, delivered: true, isNewAccount };
 }
 
 /**
  * Verify a code. Returns the matching user id, or throws 400/429.
  * Consumes the code on success so it can never be replayed.
  */
-async function verifyLoginCode({ tenantId, phone, code }) {
+async function verifyLoginCode({ tenantId, phone, code, name = null }) {
   const normalized = normalizeWhatsAppNumber(phone);
   const digits = String(code || '').replace(/\D/g, '');
   if (!isPlausibleNumber(normalized) || digits.length !== 6) {
@@ -201,12 +229,34 @@ async function verifyLoginCode({ tenantId, phone, code }) {
     }
 
     await conn.query('UPDATE otp_codes SET used=1 WHERE id=?', [row.id]);
-    await conn.query(
-      'UPDATE users SET phone_verified_at = NOW() WHERE id=? AND tenant_id=?',
-      [row.user_id, tenantId]
-    );
+
+    // A code with no user behind it is a signup. The account is created here,
+    // inside the same transaction that consumes the code, so a verified number
+    // and an account either both exist or neither does.
+    let userId = row.user_id;
+    let created = false;
+    if (!userId) {
+      userId = uuidv4();
+      // No password is ever set: this account can only be entered by OTP. A
+      // random hash is stored rather than NULL so nothing downstream can treat
+      // an empty hash as "no password required".
+      const lockedHash = crypto.randomBytes(32).toString('hex');
+      await conn.query(
+        `INSERT INTO users
+           (id, tenant_id, email, phone, phone_verified_at, password_hash, name, role, is_active)
+         VALUES (?,?, NULL, ?, NOW(), ?, ?, 'user', 1)`,
+        [userId, tenantId, normalized, lockedHash, String(name || '').trim().slice(0, 200) || '']
+      );
+      created = true;
+      logger.info('[wa-otp] created an account from a verified WhatsApp number');
+    } else {
+      await conn.query(
+        'UPDATE users SET phone_verified_at = NOW() WHERE id=? AND tenant_id=?',
+        [userId, tenantId]
+      );
+    }
     await conn.commit();
-    return { userId: row.user_id, phone: normalized };
+    return { userId, phone: normalized, created };
   } catch (error) {
     await conn.rollback().catch(() => {});
     throw error;

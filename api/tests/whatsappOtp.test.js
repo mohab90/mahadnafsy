@@ -52,3 +52,47 @@ test('a normalised number is always safe to store and compare', () => {
   assert.match(out, /^\d+$/, 'must be digits only');
   assert.ok(isPlausibleNumber(out));
 });
+
+// ── Signup by WhatsApp ───────────────────────────────────────────────────────
+// Registration and sign-in are one flow now, and that flow creates accounts from
+// an unauthenticated endpoint — so what it will and will not do matters.
+const { readFileSync } = require('node:fs');
+const otpSource = readFileSync(require.resolve('../lib/whatsappOtp'), 'utf8');
+const requestFn = otpSource.slice(
+  otpSource.indexOf('async function requestLoginCode'),
+  otpSource.indexOf('async function verifyLoginCode')
+);
+const verifyFn = otpSource.slice(otpSource.indexOf('async function verifyLoginCode'));
+
+test('every exit from the request path reports success', () => {
+  // An existing number and a brand-new one must be indistinguishable from
+  // outside. Any exit that reports something else is an enumeration oracle.
+  const exits = requestFn.match(/return \{[^}]*\}/g) || [];
+  assert.ok(exits.length >= 2, 'expected several exits from requestLoginCode');
+  for (const exit of exits) assert.match(exit, /ok: true/, `this exit leaks: ${exit}`);
+});
+
+test('an account created by OTP can never be entered by password', () => {
+  // A random hash rather than NULL or '': an empty hash is the kind of value a
+  // comparison elsewhere could read as "no password required".
+  assert.match(verifyFn, /INSERT INTO users/, 'verification must be able to create the account');
+  assert.match(verifyFn, /randomBytes\(32\)/, 'the password hash must be random, not empty');
+  assert.ok(!/password_hash[^,)]*NULL/i.test(verifyFn), 'a NULL password hash must never be written');
+});
+
+test('the account is created in the same transaction that consumes the code', () => {
+  // Otherwise a crash between the two burns the code and leaves no account, and
+  // the customer cannot get back in until a new one is issued.
+  const consume = verifyFn.indexOf("UPDATE otp_codes SET used=1 WHERE id=?");
+  const insert = verifyFn.indexOf('INSERT INTO users');
+  const commit = verifyFn.indexOf('conn.commit()', insert);
+  assert.ok(consume > 0 && insert > consume, 'the code is consumed before the account is made');
+  assert.ok(commit > insert, 'both happen before the commit');
+});
+
+test('a per-number signup throttle exists and is windowed', () => {
+  // The IP limiter cannot carry this alone: rotating IPs would turn the
+  // institute's own WhatsApp into a way to message any number repeatedly.
+  assert.match(requestFn, /SIGNUP_CODES_PER_HOUR/, 'a per-number cap must exist');
+  assert.match(requestFn, /INTERVAL 1 HOUR/, 'the cap must be measured over a window');
+});

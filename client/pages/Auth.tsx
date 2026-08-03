@@ -16,6 +16,7 @@ const Auth: React.FC = () => {
   const [waStep, setWaStep] = useState(0);
   const [waPhone, setWaPhone] = useState('');
   const [waCode, setWaCode] = useState('');
+  const [waName, setWaName] = useState('');
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
@@ -76,9 +77,12 @@ const Auth: React.FC = () => {
         setLoading(true);
         setNotice(null);
         try {
-            const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode);
+            const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined);
             localStorage.setItem('mahad-token', result.token);
-            setNotice({ type: 'success', text: 'تم تسجيل الدخول.' });
+            setNotice({
+                type: 'success',
+                text: result.created ? 'أهلاً بك! تم إنشاء حسابك.' : 'تم تسجيل الدخول.',
+            });
             refreshAuth();   // navigation is handled by the effect watching authUser
         } catch (err) {
             const msg = err instanceof Error ? err.message : '';
@@ -385,15 +389,17 @@ const Auth: React.FC = () => {
             )}
           </div>
         ) : waMode ? (
-          /* ── Sign in with a WhatsApp number ──────────────────────────────
-             Offered next to email + password, not instead of it: if the
-             WhatsApp path fails for anyone, they still have a way in. */
+          /* ── WhatsApp number + code ──────────────────────────────────────
+             This is registration and sign-in at once: a number with no account
+             gets one on verification, so the customer never has to decide which
+             they are doing. Email + password stays reachable as a fallback. */
           <div className="space-y-4 animate-fade-in">
             {waStep === 0 ? (
               <form className="space-y-4" onSubmit={handleWaRequest}>
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                   <div className="text-3xl mb-1">💬</div>
-                  <p className="text-green-800 font-bold text-sm">هنبعتلك رمز الدخول على واتساب</p>
+                  <p className="text-green-800 font-bold text-sm">هنبعتلك رمز على واتساب</p>
+                  <p className="text-green-700 text-xs mt-1">جديد أو عندك حساب — نفس الخطوة</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">رقم الواتساب</label>
@@ -405,6 +411,21 @@ const Auth: React.FC = () => {
                   />
                   <p className="text-xs text-gray-400 mt-1">اكتب الرقم بأي صيغة — 01… أو ‎+20…</p>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    الاسم <span className="text-gray-400 font-normal">(لو حساب جديد)</span>
+                  </label>
+                  {/* Collected here rather than after verification so a new
+                      customer is never stopped mid-flow to be asked. It is
+                      ignored for a returning number, so a stale value can
+                      never rename anyone. */}
+                  <input
+                    type="text" value={waName}
+                    onChange={e => setWaName(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                    placeholder="اسمك"
+                  />
+                </div>
                 <button
                   type="submit" disabled={loading || !waPhone.trim()}
                   className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition disabled:opacity-60"
@@ -415,9 +436,10 @@ const Auth: React.FC = () => {
             ) : (
               <form className="space-y-4" onSubmit={handleWaVerify}>
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                  {/* Conditional wording: the API returns success for an unknown
-                      number too, so it can't be used to discover accounts. */}
-                  <p className="text-green-800 font-bold text-sm">لو الرقم مسجّل عندنا، وصلك رمز من 6 أرقام على واتساب</p>
+                  {/* Says the same thing whether or not the number is
+                      registered — the API deliberately answers identically, so
+                      the wording must not give away what it withholds. */}
+                  <p className="text-green-800 font-bold text-sm">بعتنا رمز من 6 أرقام على واتساب</p>
                   <p className="text-green-700 font-mono text-sm mt-1" dir="ltr">{waPhone}</p>
                 </div>
                 <div>

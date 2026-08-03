@@ -2322,7 +2322,7 @@ CREATE TABLE `orders` (
 CREATE TABLE `otp_codes` (
   `id` varchar(36) NOT NULL,
   `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
-  `user_id` varchar(36) NOT NULL,
+  `user_id` varchar(36) DEFAULT NULL COMMENT 'NULL until the account exists — a WhatsApp signup code precedes its user',
   `email` varchar(255) NOT NULL,
   `code` char(64) NOT NULL,
   `type` enum('password_reset','2fa','login') NOT NULL DEFAULT 'password_reset',

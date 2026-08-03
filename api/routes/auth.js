@@ -1002,8 +1002,11 @@ router.post('/api/auth/whatsapp/request-otp', otpLimiter, async (req, res) => {
 router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
   const tenantId = req.tenantId || 'tenant-default';
   try {
-    const { userId, phone } = await verifyLoginCode({
-      tenantId, phone: req.body?.phone, code: req.body?.code,
+    // `name` only matters on a first verification — it becomes the new account's
+    // name. For a returning customer it is ignored, so a stale value in a
+    // client-side form can never rename someone.
+    const { userId, phone, created } = await verifyLoginCode({
+      tenantId, phone: req.body?.phone, code: req.body?.code, name: req.body?.name,
     });
 
     const [[user]] = await pool.query(
@@ -1045,7 +1048,24 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
         code: 'ACCOUNT_SHARING_LOCKED',
       });
     }
-    res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '', phone } });
+    // A WhatsApp signup is a registration, so it feeds the CRM exactly like the
+    // email one did. Without this a customer could sign up, and sales would
+    // never see them: the account exists, but nobody has a lead to follow up.
+    if (created) {
+      require('../lib/lifecycle').trigger('lead_created', {
+        name: user.name || '',
+        phone,
+        tenantId,
+      }, { dedupeKey: `wa-signup:${user.id}` })
+        .catch(err => logger.warn('[wa-otp] lead_created journey failed', { error: err.message }));
+    }
+
+    // `created` lets the client greet a brand-new customer differently from a
+    // returning one, and lets it ask for a name it did not collect up front.
+    res.json({
+      ok: true, token, created: Boolean(created),
+      user: { uid: user.id, email: user.email, displayName: user.name || '', phone },
+    });
   } catch (e) {
     if (e.statusCode) {
       await logLoginAttempt({ email: null, req, status: 'failed', failureReason: 'wa_otp_invalid' }).catch(() => {});
