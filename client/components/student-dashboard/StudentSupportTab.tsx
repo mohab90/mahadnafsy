@@ -1,7 +1,7 @@
 import React from 'react';
 import { MessageSquare } from 'lucide-react';
 
-const API_SUPPORT = import.meta.env.VITE_API_URL || 'https://mahadnafsy.com/api';
+const API_SUPPORT = import.meta.env.VITE_API_URL || '/api';
 
 type SupportTicket = {
   id: string;

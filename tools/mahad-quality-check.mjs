@@ -539,6 +539,50 @@ console.log('\n24. WhatsApp number guard (country code on every address)');
   }
 }
 
+// ── 25. Cross-environment API base guard ─────────────────────────────────────
+// A build is a file; the origin it talks to must be decided by where it is
+// served, not by what was compiled into it. client/.env.production pinned the
+// live API, so the staging bundle — same build, different host — sent a slice
+// of its traffic to production: support tickets written to live data, keepalive
+// pings on the live server. The failure is silent from both ends. Every
+// deployment serves the client and the API from one origin, so the base is
+// always relative.
+console.log('\n25. Cross-environment API base (no live host compiled into a build)');
+{
+  const offenders = [];
+  const LIVE_HOST = /https?:\/\/[a-z0-9.-]*mahadnafsy\.com/i;
+  for (const dir of ['client', 'admin']) {
+    for (const name of ['.env', '.env.local', '.env.production', '.env.staging']) {
+      const src = readText(join(ROOT, dir, name));
+      if (!src) continue;
+      src.split(/\r?\n/).forEach((line, i) => {
+        if (/^\s*#/.test(line)) return;
+        if (/^\s*VITE_API_URL\s*=/.test(line) && LIVE_HOST.test(line)) {
+          offenders.push(`${dir}/${name}:${i + 1}`);
+        }
+      });
+    }
+    for (const file of walk(join(ROOT, dir), null)) {
+      const rel = file.replace(/\\/g, '/').replace(ROOT.replace(/\\/g, '/'), '').replace(/^\//, '');
+      if (!/\.(ts|tsx)$/.test(rel) || rel.includes('node_modules')) continue;
+      const src = readText(file);
+      if (!src) continue;
+      src.split(/\r?\n/).forEach((line, i) => {
+        // `VITE_API_URL || 'https://…mahadnafsy.com/api'` — the fallback is what
+        // a build without the variable set actually ships with.
+        if (!/VITE_API_URL/.test(line)) return;
+        if (!LIVE_HOST.test(line)) return;
+        offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+  }
+  if (offenders.length === 0) {
+    pass('api base guard: builds resolve the API from their own origin');
+  } else {
+    fail(`api base guard: ${offenders.length} site(s) compile a live host into the bundle — a staging build silently writes to production: ${offenders.slice(0, 8).join(', ')}`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {

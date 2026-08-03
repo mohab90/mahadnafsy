@@ -184,7 +184,7 @@ const ScrollToTop = () => {
 /** Server keepalive — silently pings /api/health every 5 minutes to prevent Hostinger shared
  *  hosting from suspending the Node.js process between requests */
 const ServerKeepalive: React.FC = () => {
-  const API = import.meta.env.VITE_API_URL || 'https://mahadnafsy.com/api';
+  const API = import.meta.env.VITE_API_URL || '/api';
   useEffect(() => {
     const ping = () => {
       fetch(`${API}/health`, { method: 'GET', cache: 'no-store' })

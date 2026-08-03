@@ -67,7 +67,7 @@ const ScrollToTop: React.FC = () => {
 
 /** Server keepalive — pings /api/health every 5 minutes */
 const ServerKeepalive: React.FC = () => {
-  const API = import.meta.env.VITE_API_URL || 'https://admin.mahadnafsy.com/api';
+  const API = import.meta.env.VITE_API_URL || '/api';
   React.useEffect(() => {
     const ping = () => fetch(`${API}/health`, { method: 'GET', cache: 'no-store' }).catch(() => {});
     ping();
