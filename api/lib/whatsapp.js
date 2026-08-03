@@ -193,4 +193,6 @@ function describeReason(reason) {
   return reason?.error?.message || reason?.message || JSON.stringify(reason).slice(0, 400);
 }
 
-module.exports = { getWaCfg, invalidateWaCfg, providerCredentialState, sendWhatsApp, resolveProvider };
+module.exports = {
+  describeReason, getWaCfg, invalidateWaCfg, providerCredentialState, resolveProvider, sendWhatsApp,
+};

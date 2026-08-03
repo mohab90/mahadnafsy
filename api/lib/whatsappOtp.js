@@ -16,7 +16,7 @@
 const crypto = require('crypto');
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
-const { sendWhatsApp } = require('./whatsapp');
+const { describeReason, sendWhatsApp } = require('./whatsapp');
 const { toIdentity, isPlausible } = require('./phoneNumber');
 const { resolveSecret } = require('./secretResolver');
 const logger = require('./logger');
@@ -156,25 +156,49 @@ async function requestLoginCode({ tenantId, phone }) {
     conn.release();
   }
 
+  // sendWhatsApp reports failure by RETURNING { ok:false, reason } — it throws
+  // only on a bug in its own call frame. Awaiting it inside a try/catch and
+  // acting on the throw therefore caught almost nothing: a dead channel, a
+  // rejected number, an exhausted daily budget or an unreachable provider all
+  // came back as a resolved promise, the code stayed live and unsent, and the
+  // caller was told it had been delivered. The user then waits for a message
+  // that does not exist and burns their hourly quota retrying.
+  let result;
   try {
     // A first-time recipient has no idea why a code just arrived, so the message
     // says where it came from before it says the number.
     const opening = isNewAccount
       ? 'أهلاً بك في معهد الدراسات النفسية 🌿\nرمز إنشاء حسابك'
       : 'رمز الدخول';
-    await sendWhatsApp(
+    result = await sendWhatsApp(
       normalized,
       `${opening}: ${code}\nصالح لمدة ${CODE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`,
       { tenantId }
     );
   } catch (error) {
+    result = { ok: false, reason: error.message };
+  }
+
+  if (!result?.ok) {
     // Burn the code rather than leaving a live one nobody received.
-    await pool.query("UPDATE otp_codes SET used=1, delivery_status='failed' WHERE id=?", [id]).catch(() => {});
-    logger.error('[wa-otp] delivery failed', { error: error.message });
+    const reason = String(describeReason(result?.reason)).slice(0, 80);
+    await pool.query(
+      "UPDATE otp_codes SET used=1, delivery_status='failed', delivery_error_code=? WHERE id=?",
+      [reason, id]
+    ).catch(() => {});
+    logger.error('[wa-otp] delivery failed', { reason });
     const failure = new Error('تعذّر إرسال الرمز عبر واتساب. حاول لاحقاً.');
     failure.statusCode = 503;
     throw failure;
   }
+
+  // Recorded on success too, so a code that never arrived can be told apart
+  // from one that did. Nothing wrote these before, which left every delivery
+  // question unanswerable from the row itself.
+  await pool.query(
+    "UPDATE otp_codes SET delivery_status='accepted', provider_message_id=?, sent_at=NOW() WHERE id=?",
+    [result.idMessage || null, id]
+  ).catch(() => {});
   return { ok: true, delivered: true, isNewAccount };
 }
 
