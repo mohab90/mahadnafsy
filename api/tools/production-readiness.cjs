@@ -389,13 +389,32 @@ async function main() {
     const cfg = await getWaCfg();
     const provider = resolveProvider(cfg);
     const { metaReady, greenReady } = providerCredentialState(cfg);
+    // Sends now resolve through messaging_channels — the company number, a
+    // rep's own number, or a Wapilot instance, each with its own sealed
+    // credentials. Reading only the legacy tenant-level whatsapp_config would
+    // fail a system that sends perfectly well, and pass one whose only
+    // configured provider is a stale row nothing routes to any more.
+    const [channelRows] = await pool.query(
+      `SELECT provider, COUNT(*) AS n
+         FROM messaging_channels
+        WHERE kind = 'whatsapp' AND status = 'connected' AND is_active = 1
+        GROUP BY provider`
+    ).catch(() => [[]]);
+    const connectedChannels = channelRows.reduce((sum, row) => sum + Number(row.n || 0), 0);
+    const legacyReady = provider === 'meta' ? metaReady : greenReady;
     check(
       'whatsapp-config',
-      provider === 'meta' ? metaReady : greenReady,
-      'WhatsApp provider credentials must be configured',
-      JSON.stringify({ provider, metaReady, greenReady })
+      legacyReady || connectedChannels > 0,
+      'WhatsApp must have a connected channel or configured tenant credentials',
+      JSON.stringify({
+        provider,
+        metaReady,
+        greenReady,
+        connectedChannels,
+        byProvider: channelRows.map(row => `${row.provider}:${row.n}`),
+      })
     );
-    if (liveExternal && (provider === 'meta' ? metaReady : greenReady)) {
+    if (liveExternal && legacyReady) {
       const recipient = process.env.WHATSAPP_TEST_RECIPIENT;
       if (!hasReal(recipient)) {
         check('whatsapp-live-send', false, 'WHATSAPP_TEST_RECIPIENT is required for a live delivery test');

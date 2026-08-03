@@ -1,10 +1,19 @@
 'use strict';
 const logger = require('./logger');
-// ── WhatsApp helper — supports two providers, chosen in the admin panel ────────
-//   • 'meta'      → WhatsApp Cloud API (graph.facebook.com)  — token + phoneId
-//   • 'green-api' → Green-API gateway                        — instanceId + apiToken
-// All creds come from site_config.whatsapp_config (entered in the admin), with
-// env vars as fallback so nothing has to be edited on the server.
+// ── WhatsApp helper ───────────────────────────────────────────────────────────
+// Two ways to send, and they are not equivalent:
+//
+//   1. messaging_channels (the current path) — the company number, a rep's own
+//      number, or a Wapilot instance. Each row carries its own sealed
+//      credentials, so 'wapilot' exists only here. sendWhatsApp() resolves a
+//      channel first and only falls back to the tenant config below.
+//   2. site_config.whatsapp_config (legacy, tenant-wide) — 'meta' (token +
+//      phoneId) or 'green-api' (instanceId + apiToken), with env vars as a
+//      fallback so nothing has to be edited on the server.
+//
+// resolveProvider() and providerCredentialState() answer for (2) only. Anything
+// asking "is WhatsApp configured?" has to look at both, or it will report on a
+// channel no message actually travels through.
 const { getTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { resolveSecret } = require('./secretResolver');
