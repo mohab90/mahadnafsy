@@ -13,6 +13,49 @@ Environment=NODE_ENV=production
 Environment=UV_THREADPOOL_SIZE=8
 Environment=PROCESS_MANAGER=systemd
 ExecStart=/usr/bin/node server.js
+
+# ── Signing secrets ──────────────────────────────────────────────────────────
+# NODE_ENV=production turns on criticalProductionPolicy(), which refuses to
+# boot unless the four signing secrets are independent AND carry provenance
+# saying they came from a managed store rather than a dotenv on disk.
+#
+# systemd credentials are that managed store. It reads each root-only file
+# below and hands it to this unit alone under %d. The values never enter the
+# environment block, so they cannot leak through `ps e`, /proc/PID/environ, a
+# crash dump, or any child process — which is the whole point of the policy.
+# The app reads them through resolveSecret()'s *_FILE support.
+#
+# Create the sources first, each independent and at least 48 chars:
+#   install -d -m 700 /etc/mahad/secrets
+#   for f in jwt session otp audit; do
+#     openssl rand -hex 36 | tr -d "\n" > /etc/mahad/secrets/$f
+#     chmod 400 /etc/mahad/secrets/$f
+#   done
+# and leave JWT_SECRET / SESSION_BINDING_SECRET / OTP_HMAC_SECRET /
+# AUDIT_HMAC_SECRET unset in /etc/mahad/api.env — resolveSecret() rejects a
+# secret that is configured both inline and by file.
+LoadCredential=jwt:/etc/mahad/secrets/jwt
+LoadCredential=session:/etc/mahad/secrets/session
+LoadCredential=otp:/etc/mahad/secrets/otp
+LoadCredential=audit:/etc/mahad/secrets/audit
+Environment=JWT_SECRET_FILE=%d/jwt
+Environment=SESSION_BINDING_SECRET_FILE=%d/session
+Environment=OTP_HMAC_SECRET_FILE=%d/otp
+Environment=AUDIT_HMAC_SECRET_FILE=%d/audit
+
+# Provenance the boot-time policy verifies. Bump the two ROTATED_AT dates and
+# the four references whenever the secrets are rotated; the policy fails the
+# boot once they pass 370 days.
+Environment=AUTH_SECRET_SOURCE=platform-secret
+Environment=AUTH_SECRET_PROVIDER=systemd-credentials
+Environment=AUTH_SECRET_ROTATED_AT=2026-08-03
+Environment=JWT_SECRET_REFERENCE=systemd-cred:mahad/jwt@2026-08-03
+Environment=SESSION_BINDING_SECRET_REFERENCE=systemd-cred:mahad/session@2026-08-03
+Environment=OTP_HMAC_SECRET_REFERENCE=systemd-cred:mahad/otp@2026-08-03
+Environment=AUDIT_SECRET_SOURCE=platform-secret
+Environment=AUDIT_SECRET_PROVIDER=systemd-credentials
+Environment=AUDIT_SECRET_REFERENCE=systemd-cred:mahad/audit@2026-08-03
+Environment=AUDIT_SECRET_ROTATED_AT=2026-08-03
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s

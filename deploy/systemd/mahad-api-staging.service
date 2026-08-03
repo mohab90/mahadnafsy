@@ -1,0 +1,45 @@
+[Unit]
+Description=Mahad API (staging)
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/mahad-staging/api
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+User=root
+LimitNOFILE=65536
+
+# Staging keeps its own log. It used to append to /var/log/mahad-api.log, the
+# production log, which made a staging crash loop look like a production one.
+StandardOutput=append:/var/log/mahad-api-staging.log
+StandardError=append:/var/log/mahad-api-staging.log
+
+# Same managed-secret injection as production — see deploy/systemd/mahad-api.service
+# for why. Staging runs with NODE_ENV=production on purpose: that flag also drives
+# CORS lock-down, background jobs, audit enforcement and production logging, so a
+# staging box without it would not be rehearsing the thing we are about to ship.
+LoadCredential=jwt:/etc/mahad-staging/secrets/jwt
+LoadCredential=session:/etc/mahad-staging/secrets/session
+LoadCredential=otp:/etc/mahad-staging/secrets/otp
+LoadCredential=audit:/etc/mahad-staging/secrets/audit
+Environment=JWT_SECRET_FILE=%d/jwt
+Environment=SESSION_BINDING_SECRET_FILE=%d/session
+Environment=OTP_HMAC_SECRET_FILE=%d/otp
+Environment=AUDIT_HMAC_SECRET_FILE=%d/audit
+
+Environment=AUTH_SECRET_SOURCE=platform-secret
+Environment=AUTH_SECRET_PROVIDER=systemd-credentials
+Environment=AUTH_SECRET_ROTATED_AT=2026-08-03
+Environment=JWT_SECRET_REFERENCE=systemd-cred:mahad-staging/jwt@2026-08-03
+Environment=SESSION_BINDING_SECRET_REFERENCE=systemd-cred:mahad-staging/session@2026-08-03
+Environment=OTP_HMAC_SECRET_REFERENCE=systemd-cred:mahad-staging/otp@2026-08-03
+Environment=AUDIT_SECRET_SOURCE=platform-secret
+Environment=AUDIT_SECRET_PROVIDER=systemd-credentials
+Environment=AUDIT_SECRET_REFERENCE=systemd-cred:mahad-staging/audit@2026-08-03
+Environment=AUDIT_SECRET_ROTATED_AT=2026-08-03
+
+[Install]
+WantedBy=multi-user.target
