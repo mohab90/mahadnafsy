@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, Phone, Settings, TrendingUp, UserX, Users } from 'lucide-react';
+import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, Phone, TrendingUp, UserX, Users } from 'lucide-react';
 
 export type SubTabKey =
   | 'pipeline' | 'table' | 'communications' | 'reminders' | 'quotes'
@@ -37,13 +37,14 @@ export function LeadSubTabs({
     ...(!isSalesOnly ? [['performance', 'أداء الفريق', TrendingUp] as [SubTabKey, string, ElementType]] : []),
     ...(canManageDuplicates ? [['duplicates', 'مراجعة التكرار', GitMerge] as [SubTabKey, string, ElementType]] : []),
     ...(!isSalesOnly ? [['localNew', 'محلي جديد', UserX] as [SubTabKey, string, ElementType]] : []),
-    ['dawliNew', 'دولي جديد', Globe],
+    // 'دولي جديد' (dawliNew) removed: LeadArchiveViews.tsx renders it with a
+    // hardcoded empty row set — it has never shown any data. Reachable only
+    // via setSubTab('dawliNew') directly now, not as a visible tab.
     ['dawliOld', 'دولي قديم', Globe],
     ...(!isSalesOnly ? [['archive', 'محلي قديم', Archive] as [SubTabKey, string, ElementType]] : []),
-    // Editing the stage rules changes what every status transition allows, so it
-    // sits behind the same gate as duplicate merging rather than being visible
-    // to every rep.
-    ...(canManageDuplicates ? [['pipelineSettings', 'إعداد المراحل', Settings] as [SubTabKey, string, ElementType]] : []),
+    // 'إعداد المراحل' (pipelineSettings) moved into the الإعدادات menu
+    // (LeadsTabHeader's actions dropdown) — one less top-level tab, same
+    // canManageDuplicates gate, reached via setSubTab('pipelineSettings').
   ];
 
   return (

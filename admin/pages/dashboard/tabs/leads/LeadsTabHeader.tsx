@@ -114,7 +114,7 @@ export function LeadsTabHeader({
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition border border-gray-200"
             >
               <Settings size={15} />
-              إجراءات
+              الإعدادات
               <ChevronDown size={14} className={`transition-transform ${showActionsMenu ? 'rotate-180' : ''}`} />
             </button>
             {showActionsMenu && (
@@ -126,6 +126,14 @@ export function LeadsTabHeader({
                   >
                     <Settings size={14} className="text-indigo-500 flex-shrink-0" /> إعدادات CRM
                   </button>
+                  {canManageDuplicates && (
+                    <button
+                      onClick={() => { setSubTab('pipelineSettings'); onCloseActionsMenu(); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition text-right"
+                    >
+                      <Settings size={14} className="text-purple-500 flex-shrink-0" /> إعداد المراحل
+                    </button>
+                  )}
                   <div className="border-t border-gray-100 my-0.5" />
                   <div className="px-3 py-1.5">
                     <CsvImportButton notify={notify} onImported={() => {}} />
