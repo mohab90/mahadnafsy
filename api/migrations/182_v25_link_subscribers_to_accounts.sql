@@ -17,16 +17,39 @@
 -- users.phone is already normalised (digits, no country code, no leading zero)
 -- by migration 181, so match it against the tail of the subscriber's number,
 -- which may be stored as 010…, +2010…, 002010… or bare.
+--
+-- uq_subscribers_tenant_firebase means one account can only ever be linked to
+-- one subscriber. The NOT EXISTS guard below only catches a link already made
+-- BEFORE this statement runs — it cannot see two subscriber rows this SAME
+-- UPDATE is about to link to the SAME account, since the subquery reads a
+-- snapshot rather than the in-flight batch. Found rehearsing against a real
+-- production snapshot: one account's number matched two real subscriber
+-- records (a company-alias email and a personal email for the same person),
+-- which aborted the migration the same way an already-linked account would.
+-- The `ambiguous` derived table excludes any account matched by more than one
+-- eligible subscriber, rather than guessing which one is authoritative — the
+-- same safe-skip an unresolved account already falls back to (email lookup,
+-- or the on-the-fly repair in subscriberIdentity.js on next sign-in).
 UPDATE subscribers s
   JOIN users u
     ON u.tenant_id = s.tenant_id
    AND u.phone IS NOT NULL
    AND REGEXP_REPLACE(s.phone, '[^0-9]', '') LIKE CONCAT('%', u.phone)
+  LEFT JOIN (
+    SELECT u2.id AS user_id
+      FROM subscribers s2
+      JOIN users u2
+        ON u2.tenant_id = s2.tenant_id AND u2.phone IS NOT NULL
+       AND REGEXP_REPLACE(s2.phone, '[^0-9]', '') LIKE CONCAT('%', u2.phone)
+     WHERE s2.firebase_uid IS NULL AND s2.phone IS NOT NULL AND s2.deleted_at IS NULL
+     GROUP BY u2.id
+    HAVING COUNT(*) > 1
+  ) ambiguous ON ambiguous.user_id = u.id
    SET s.firebase_uid = u.id
  WHERE s.firebase_uid IS NULL
    AND s.phone IS NOT NULL
    AND s.deleted_at IS NULL
-   -- uq_subscribers_tenant_firebase: never hand one account to two subscribers.
+   AND ambiguous.user_id IS NULL
    AND NOT EXISTS (
      SELECT 1 FROM (SELECT tenant_id, firebase_uid FROM subscribers) AS taken
       WHERE taken.tenant_id = s.tenant_id
@@ -34,15 +57,28 @@ UPDATE subscribers s
    );
 
 -- ── By email, for accounts that have one ─────────────────────────────────────
+-- Same same-batch-collision reasoning as above, in case a data-quality issue
+-- ever leaves two subscriber rows sharing one normalised email.
 UPDATE subscribers s
   JOIN users u
     ON u.tenant_id = s.tenant_id
    AND u.email IS NOT NULL AND u.email <> ''
    AND LOWER(TRIM(u.email)) = LOWER(TRIM(s.email))
+  LEFT JOIN (
+    SELECT u2.id AS user_id
+      FROM subscribers s2
+      JOIN users u2
+        ON u2.tenant_id = s2.tenant_id AND u2.email IS NOT NULL AND u2.email <> ''
+       AND LOWER(TRIM(u2.email)) = LOWER(TRIM(s2.email))
+     WHERE s2.firebase_uid IS NULL AND s2.email IS NOT NULL AND s2.email <> '' AND s2.deleted_at IS NULL
+     GROUP BY u2.id
+    HAVING COUNT(*) > 1
+  ) ambiguous ON ambiguous.user_id = u.id
    SET s.firebase_uid = u.id
  WHERE s.firebase_uid IS NULL
    AND s.email IS NOT NULL AND s.email <> ''
    AND s.deleted_at IS NULL
+   AND ambiguous.user_id IS NULL
    AND NOT EXISTS (
      SELECT 1 FROM (SELECT tenant_id, firebase_uid FROM subscribers) AS taken
       WHERE taken.tenant_id = s.tenant_id

@@ -45,14 +45,38 @@ ALTER TABLE IF EXISTS otp_codes
 -- an old import) would violate uq_users_tenant_phone and abort the whole
 -- migration. A skipped account simply keeps signing in by email until someone
 -- assigns it a number, which is the safe failure direction.
+--
+-- The NOT EXISTS guard alone only catches a number already claimed BEFORE
+-- this statement runs — it cannot see a collision between two rows this SAME
+-- UPDATE is about to write, since the subquery reads a snapshot rather than
+-- the in-flight batch. Found rehearsing against a real production snapshot:
+-- real accounts do share a normalized number (a personal email and a
+-- company-alias email for the same person, or a genuine duplicate signup),
+-- which aborted the migration the same way an already-claimed number would.
+--
+-- The ambiguity check is a derived table computed once (a single GROUP BY
+-- pass), not a per-row correlated subquery — a correlated version re-scanned
+-- `leads` for every candidate row and, rehearsed against production's ~12.7k
+-- leads, was still running after several minutes. A migration that locks
+-- `users`/`leads` for that long on a live database is its own outage.
 UPDATE users u
   JOIN subscribers s
     ON s.tenant_id = u.tenant_id
    AND LOWER(TRIM(s.email)) = LOWER(TRIM(u.email))
+  LEFT JOIN (
+    SELECT tenant_id, REGEXP_REPLACE(phone, '[^0-9]', '') AS norm_phone
+      FROM subscribers
+     WHERE phone IS NOT NULL
+       AND LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '')) BETWEEN 9 AND 15
+     GROUP BY tenant_id, REGEXP_REPLACE(phone, '[^0-9]', '')
+    HAVING COUNT(DISTINCT LOWER(TRIM(email))) > 1
+  ) ambiguous ON ambiguous.tenant_id = s.tenant_id
+             AND ambiguous.norm_phone = REGEXP_REPLACE(s.phone, '[^0-9]', '')
    SET u.phone = REGEXP_REPLACE(s.phone, '[^0-9]', '')
  WHERE u.phone IS NULL
    AND s.phone IS NOT NULL
    AND LENGTH(REGEXP_REPLACE(s.phone, '[^0-9]', '')) BETWEEN 9 AND 15
+   AND ambiguous.norm_phone IS NULL
    AND NOT EXISTS (
      SELECT 1 FROM (SELECT tenant_id, phone FROM users) AS taken
       WHERE taken.tenant_id = u.tenant_id
@@ -63,10 +87,20 @@ UPDATE users u
   JOIN leads l
     ON l.tenant_id = u.tenant_id
    AND LOWER(TRIM(l.email)) = LOWER(TRIM(u.email))
+  LEFT JOIN (
+    SELECT tenant_id, REGEXP_REPLACE(phone, '[^0-9]', '') AS norm_phone
+      FROM leads
+     WHERE phone IS NOT NULL
+       AND LENGTH(REGEXP_REPLACE(phone, '[^0-9]', '')) BETWEEN 9 AND 15
+     GROUP BY tenant_id, REGEXP_REPLACE(phone, '[^0-9]', '')
+    HAVING COUNT(DISTINCT LOWER(TRIM(email))) > 1
+  ) ambiguous ON ambiguous.tenant_id = l.tenant_id
+             AND ambiguous.norm_phone = REGEXP_REPLACE(l.phone, '[^0-9]', '')
    SET u.phone = REGEXP_REPLACE(l.phone, '[^0-9]', '')
  WHERE u.phone IS NULL
    AND l.phone IS NOT NULL
    AND LENGTH(REGEXP_REPLACE(l.phone, '[^0-9]', '')) BETWEEN 9 AND 15
+   AND ambiguous.norm_phone IS NULL
    AND NOT EXISTS (
      SELECT 1 FROM (SELECT tenant_id, phone FROM users) AS taken
       WHERE taken.tenant_id = u.tenant_id

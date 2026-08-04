@@ -13,12 +13,21 @@
 -- Scoped to text/decimal columns with JSON_VALID guards, so there is no cast
 -- risk. Idempotent (only touches empty columns), safe to re-run.
 
+-- branch carries a fixed ENUM. Older crm_json was written before that enum
+-- existed, so it holds values that were never valid members — a literal
+-- string "null" (from code that stringified a JS null instead of omitting
+-- the key) and pre-normalization spellings like "online-egypt". Writing
+-- either straight into the column aborts the whole migration under strict
+-- mode ("Data truncated for column 'branch'") on any database old enough to
+-- carry them — found by rehearsing this migration against a real production
+-- snapshot before deploy, where it failed on exactly this. Normalize casing/
+-- separators first, then only write values that land on an actual member.
 UPDATE leads
-SET branch = JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.branch'))
+SET branch = REPLACE(UPPER(JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.branch'))), '-', '_')
 WHERE (branch IS NULL OR branch = '')
   AND crm_json IS NOT NULL AND JSON_VALID(crm_json)
-  AND JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.branch')) IS NOT NULL
-  AND JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.branch')) <> '';
+  AND REPLACE(UPPER(JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.branch'))), '-', '_')
+      IN ('DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER');
 
 UPDATE leads
 SET client_code = JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.clientCode'))
@@ -53,14 +62,25 @@ WHERE (interested_course_ids_json IS NULL OR interested_course_ids_json = '')
 
 -- Dates are only copied when they parse; a malformed string is left alone
 -- rather than silently becoming NULL or the zero date.
+--
+-- Both target columns are DATETIME, and real crm_json has entries like
+-- "2026-06-10 15:09" (date + time) alongside plain "2026-06-10" ones — under
+-- strict mode STR_TO_DATE(..., '%Y-%m-%d') rejects the former outright
+-- ("Truncated incorrect date value") because the format string doesn't
+-- account for the trailing time, aborting the whole migration. Found the
+-- same way as the branch fix above: rehearsing against a real production
+-- snapshot. Taking just the leading 10 characters before parsing keeps the
+-- date and drops the time-of-day, which matches what these columns' own
+-- "_date"/"follow_up" naming already implies they're meant to hold; a plain
+-- 10-character date string is unaffected by the LEFT().
 UPDATE leads
-SET next_follow_up_date = STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.nextFollowUpDate')), '%Y-%m-%d')
+SET next_follow_up_date = STR_TO_DATE(LEFT(JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.nextFollowUpDate')), 10), '%Y-%m-%d')
 WHERE next_follow_up_date IS NULL
   AND crm_json IS NOT NULL AND JSON_VALID(crm_json)
   AND JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.nextFollowUpDate')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}';
 
 UPDATE leads
-SET last_follow_up = STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.lastFollowUp')), '%Y-%m-%d')
+SET last_follow_up = STR_TO_DATE(LEFT(JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.lastFollowUp')), 10), '%Y-%m-%d')
 WHERE last_follow_up IS NULL
   AND crm_json IS NOT NULL AND JSON_VALID(crm_json)
   AND JSON_UNQUOTE(JSON_EXTRACT(crm_json, '$.lastFollowUp')) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}';
