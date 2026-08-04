@@ -13,12 +13,9 @@ const { generateTemporaryPassword, generateNumericCode } = require('../lib/secur
 const { pool, getStaffIdByEmail, requireDb } = require('../lib/db');
 const { sanitize, validate, EMAIL_RE, PHONE_RE } = require('../lib/helpers');
 const { sendEmail: sendEmailBase, htmlEmail, mailer } = require('../lib/email');
-const { getNextClientCode } = require('../lib/mappers');
-const { logLeadEvent } = require('../lib/crm');
 const { describeReason, sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { branchIdForBranch } = require('../lib/branches');
-const { getNextSalesRep } = require('../lib/leadAssignment');
 const { grantCourseSelections } = require('../lib/entitlements');
 const {
   JWT_SECRET, signAccessToken, setAuthCookie, clearAuthCookie, tokenExpiryMs, revokeToken,
@@ -134,60 +131,13 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
         [uuidv4(), id, (name || '').trim(), normalizedEmail || '', phone || '', clientContext.countryCode, interest || '']
       );
     } catch { /* registrations table may not exist — ignore */ }
-    // Generate ONE shared client code — same code on both lead and subscriber for this person
-    let sharedClientCode = null;
-    try { sharedClientCode = await getNextClientCode(conn); } catch (codeErr) { logger.warn('[register] Could not get client code:', codeErr.message); }
-    // Auto-create lead in CRM so admin sees new registrations in العملاء المحتملين (best-effort)
-    let createdLeadId = null;
-    try {
-      // Check for existing lead with same phone or email first
-      const normalizedPhone = (phone || '').replace(/\D/g, '');
-      let existingLeadId = null;
-      if (normalizedPhone.length >= 7) {
-        const [[byPhone]] = await conn.execute(
-          'SELECT id FROM leads WHERE tenant_id=? AND REGEXP_REPLACE(phone, "[^0-9]", "") = ? AND hidden = 0 LIMIT 1',
-          [tenantId, normalizedPhone]
-        );
-        if (byPhone) existingLeadId = byPhone.id;
-      }
-      if (!existingLeadId) {
-        const [[byEmail]] = await conn.execute(
-          'SELECT id FROM leads WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND hidden = 0 LIMIT 1',
-          [tenantId, normalizedEmail]
-        );
-        if (byEmail) existingLeadId = byEmail.id;
-      }
-      if (existingLeadId) {
-        // Update existing lead with better name/code instead of creating duplicate
-        createdLeadId = existingLeadId;
-        const newName = (name || '').trim();
-        await conn.execute(
-          'UPDATE leads SET name=IF(LENGTH(?)>0,?,name), email=?, phone=COALESCE(NULLIF(?,\'\'),phone), client_code=COALESCE(client_code,?), branch=COALESCE(NULLIF(branch,\'\'),?), branch_id=COALESCE(branch_id,?) WHERE id=? AND tenant_id=?',
-          [newName, newName, normalizedEmail, phone || '', sharedClientCode, branch, branchIdForBranch(branch), existingLeadId, tenantId]
-        );
-        logger.info(`[register] Reused existing lead ${existingLeadId} for ${normalizedEmail}`);
-      } else {
-        const leadId = uuidv4();
-        createdLeadId = leadId;
-        const salesRep = await getNextSalesRep(tenantId, conn, { branch });
-        await conn.execute(
-          `INSERT INTO leads
-             (id, tenant_id, client_code, name, email, phone, source, status, hidden,
-              branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, ?, ?, ?, ?, NOW())`,
-          [leadId, tenantId, sharedClientCode,
-           (name || '').trim() || (normalizedEmail ? normalizedEmail.split('@')[0] : '') || (phone || '').trim() || 'عميل جديد',
-           normalizedEmail, phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
-        );
-        logger.info(`[register] Created lead ${leadId} code=${sharedClientCode} for ${normalizedEmail}`);
-        await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }, tenantId, conn);
-      }
-    } catch (leadErr) {
-      logger.error('[register] Could not create lead:', leadErr.message);
-      throw leadErr;
-    }
-    // NOTE: No subscriber record created on register — client stays in عملاء محتملين until admin manually
-    // converts them after payment (admin moves them to عملاء الأونلاين and assigns a course).
+    // Neither a lead nor a subscriber is created on register anymore — the
+    // account lands in "التسجيلات" (api/routes/registrations.js) until
+    // staff explicitly send it to the CRM as a lead or promote it straight
+    // to an online client. This block used to auto-create a lead here
+    // unconditionally, which meant every self-registration became a
+    // "potential client" whether or not that was ever true.
+    const createdLeadId = null;
     await conn.commit();
     transactionStarted = false;
     const token = signAccessToken({
@@ -199,24 +149,23 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     // Best-effort referral tracking
     if (ref) {
       pool.query('UPDATE referral_codes SET uses = uses + 1 WHERE code = ? AND tenant_id=?', [String(ref).trim().toUpperCase(), tenantId]).catch(() => {});
-      if (createdLeadId) pool.query("UPDATE leads SET notes = CONCAT(IFNULL(notes,''), ?) WHERE id=? AND tenant_id=?", [`\n[مُحال من كود: ${ref}]`, createdLeadId, tenantId]).catch(() => {});
     }
 
-    // Welcome message for the new lead, through the lifecycle journey rather
-    // than a direct send. The direct sendWhatsApp() call this replaces was
-    // fire-and-forget: a momentary WhatsApp outage lost the message for good,
-    // a repeated registration could double-send it, it ignored the journey
+    // Welcome message through the lifecycle journey rather than a direct
+    // send. The direct sendWhatsApp() call this replaces was fire-and-
+    // forget: a momentary WhatsApp outage lost the message for good, a
+    // repeated registration could double-send it, it ignored the journey
     // toggles in Settings, and nothing recorded whether it was delivered.
-    // Routing it through the outbox gives retry, dedupe and an audit trail —
-    // and the same lead_created step already used by the public capture forms,
-    // so a lead now gets the same welcome no matter which door it came in by.
+    // Routing it through the outbox gives retry, dedupe and an audit trail.
+    // Keyed to the account (not a lead, which no longer exists at this
+    // point) so a retried registration can't double-fire it.
     if (phone || normalizedEmail) {
       require('../lib/lifecycle').trigger('lead_created', {
         name: (name || '').trim(),
         email: normalizedEmail,
         phone,
         tenantId,
-      }, { dedupeKey: createdLeadId ? `lead:${createdLeadId}` : undefined })
+      }, { dedupeKey: `signup:${id}` })
         .catch(err => logger.warn('[register] lead_created journey failed', { error: err.message }));
     }
     // Enqueue registration email sequence (best-effort)
@@ -309,49 +258,9 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
         [uuidv4(), id, (name || '').trim(), normalizedEmail || '', phone || '', clientContext.countryCode, interest || '']
       );
     } catch { /* ignore */ }
-    let sharedClientCode = null;
-    try { sharedClientCode = await getNextClientCode(conn); } catch { }
-    try {
-      const normalizedPhone = (phone || '').replace(/\D/g, '');
-      let existingLeadId = null;
-      if (normalizedPhone.length >= 7) {
-        const [[byPhone]] = await conn.execute('SELECT id FROM leads WHERE tenant_id=? AND REGEXP_REPLACE(phone, "[^0-9]", "") = ? AND hidden = 0 LIMIT 1', [tenantId, normalizedPhone]);
-        if (byPhone) existingLeadId = byPhone.id;
-      }
-      if (!existingLeadId) {
-        const [[byEmail]] = await conn.execute('SELECT id FROM leads WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND hidden = 0 LIMIT 1', [tenantId, normalizedEmail]);
-        if (byEmail) existingLeadId = byEmail.id;
-      }
-      if (existingLeadId) {
-        const newName = (name || '').trim();
-        await conn.execute(
-          'UPDATE leads SET name=IF(LENGTH(?)>0,?,name), email=?, phone=COALESCE(NULLIF(?,\'\'),phone), client_code=COALESCE(client_code,?), branch=COALESCE(NULLIF(branch,\'\'),?), branch_id=COALESCE(branch_id,?) WHERE id=? AND tenant_id=?',
-          [newName, newName, normalizedEmail, phone || '', sharedClientCode, branch, branchIdForBranch(branch), existingLeadId, tenantId]
-        );
-      } else {
-        const leadId = uuidv4();
-        const [[salesRep]] = await conn.execute(
-          `SELECT s.id, s.name FROM staff s
-           LEFT JOIN leads l ON l.assigned_sales_id=s.id AND l.tenant_id=? AND l.hidden=0
-           WHERE s.tenant_id=? AND s.is_active=1 AND UPPER(s.role) IN ('SALES','MANAGER')
-           GROUP BY s.id, s.name ORDER BY COUNT(l.id) ASC, s.name ASC LIMIT 1`,
-          [tenantId, tenantId]
-        );
-        await conn.execute(
-          `INSERT INTO leads
-             (id, tenant_id, client_code, name, email, phone, source, status, hidden,
-              branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, ?, ?, ?, ?, NOW())`,
-          [leadId, tenantId, sharedClientCode,
-           (name || '').trim() || (normalizedEmail ? normalizedEmail.split('@')[0] : '') || (phone || '').trim() || 'عميل جديد',
-           normalizedEmail, phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
-        );
-        await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }, tenantId, conn);
-      }
-    } catch (leadErr) {
-      logger.error('[user/signup] Could not create lead:', leadErr.message);
-      throw leadErr;
-    }
+    // Neither a lead nor a subscriber is created here anymore — see the
+    // matching comment on /api/auth/register above. The account lands in
+    // "التسجيلات" until staff explicitly triage it.
     await conn.commit();
     transactionStarted = false;
     const token = signAccessToken({

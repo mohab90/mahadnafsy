@@ -455,6 +455,7 @@ export function DashboardNavigation(props: Props) {
                   tabs={[
                     { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
                     { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
+                    { key: 'registrations', label: 'التسجيلات', icon: UserPlus },
                     { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                     { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                     { key: 'overview', label: 'إحصائيات', icon: BarChart3 },

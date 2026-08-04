@@ -74,6 +74,7 @@ export type TabKey =
   | 'notifications'
   | 'daqqi_schedule'
   | 'client'
+  | 'registrations'
   | 'customer_inbox'
   | 'join_us'
   | 'contacts'
@@ -201,6 +202,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
       { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
+      { key: 'registrations', label: 'التسجيلات', icon: UserPlus },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
       { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
     ],

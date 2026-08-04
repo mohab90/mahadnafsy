@@ -113,6 +113,14 @@ export const mysqlClient = {
 export type MessagingChannelKind = 'whatsapp' | 'messenger';
 export type MessagingChannelStatus = 'pending' | 'connected' | 'disconnected' | 'error';
 
+export interface RegistrationItem {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  name: string | null;
+  created_at: string;
+}
+
 export interface MessagingChannel {
   id: string;
   kind: MessagingChannelKind;
@@ -366,6 +374,13 @@ export const mysqlAdmin = {
   saveMyWhatsappChannel:   (data: { provider?: string; label?: string; displayNumber?: string; credentials: Record<string, string> }) =>
     apiFetch<MessagingChannel>('/staff/me/whatsapp-channel', { method: 'PUT', body: JSON.stringify(data) }, A),
   deleteMyWhatsappChannel: ()             => apiFetch<AR>('/staff/me/whatsapp-channel', { method: 'DELETE' }, A),
+
+  // ── التسجيلات (self-registered, not yet a lead or an online client) ──────
+  listRegistrations:       ()             => apiFetch<RegistrationItem[]>('/admin/registrations', {}, A),
+  convertRegistrationToOnline: (userId: string, branch?: string) =>
+    apiFetch<{ ok: boolean; subscriberId: string }>(`/admin/registrations/${encodeURIComponent(userId)}/convert-online`, { method: 'POST', body: JSON.stringify({ branch }) }, A),
+  convertRegistrationToLead: (userId: string, branch?: string) =>
+    apiFetch<{ ok: boolean; leadId: string }>(`/admin/registrations/${encodeURIComponent(userId)}/convert-lead`, { method: 'POST', body: JSON.stringify({ branch }) }, A),
 
   // ── WhatsApp campaigns ────────────────────────────────────────────────────
   listWhatsappCampaigns:   ()             => apiFetch<WhatsappCampaign[]>('/admin/whatsapp-campaigns', {}, A),
