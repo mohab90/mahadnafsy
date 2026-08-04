@@ -247,17 +247,18 @@ const Auth: React.FC = () => {
                 </button>
               </div>
             ) : otpStep === 0 ? (
-              /* ── Step 1: Enter email ── */
+              /* ── Step 1: Enter identifier ── */
               <form className="space-y-4" onSubmit={handleForgotPassword}>
-                <p className="text-sm text-gray-600">أدخل بريدك الإلكتروني وسنُرسل لك كود التحقق.</p>
+                <p className="text-sm text-gray-600">أدخل بريدك الإلكتروني أو رقم هاتفك وسنُرسل لك كود التحقق.</p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني أو رقم الهاتف</label>
                   <input
-                    type="email"
+                    type="text"
+                    dir="ltr"
                     value={forgotEmail}
                     onChange={e => setForgotEmail(e.target.value)}
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="example@domain.com"
+                    placeholder="example@domain.com أو 01012345678"
                     required
                   />
                 </div>
@@ -273,10 +274,10 @@ const Auth: React.FC = () => {
               /* ── Step 2: Enter OTP ── */
               <form className="space-y-4" onSubmit={handleVerifyOtp}>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
-                  <div className="text-3xl mb-2">📧</div>
-                  <p className="text-blue-800 font-bold text-sm">تم إرسال كود مكون من 6 أرقام إلى</p>
-                  <p className="text-blue-700 font-mono text-sm mt-1">{forgotEmail}</p>
-                  <p className="text-xs text-gray-500 mt-1">تحقق من مجلد البريد المزعج (Spam) إذا لم تجده</p>
+                  <div className="text-3xl mb-2">🔐</div>
+                  <p className="text-blue-800 font-bold text-sm">تم إرسال كود مكون من 6 أرقام على واتساب أو البريد الإلكتروني إلى</p>
+                  <p className="text-blue-700 font-mono text-sm mt-1" dir="ltr">{forgotEmail}</p>
+                  <p className="text-xs text-gray-500 mt-1">تحقق من واتساب، أو من مجلد البريد المزعج (Spam) إذا لم تجده</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">كود التحقق</label>

@@ -8,11 +8,11 @@ const Auth: React.FC = () => {
   useEffect(() => { document.title = 'تسجيل الدخول | معهد الدراسات النفسية'; }, []);
   const [isLogin, setIsLogin] = useState(true);
   // WhatsApp sign-in: step 0 = enter number, step 1 = enter the code.
-  // Default ON: WhatsApp is the way in now. The email form stays reachable
-  // behind "الدخول بالبريد الإلكتروني" as a recovery path for accounts that
-  // don't have a number yet — the server rejects it unless
-  // AUTH_ALLOW_EMAIL_LOGIN=1, and shows a clear message when it does.
-  const [waMode, setWaMode] = useState(true);
+  // Default OFF: most existing customers only ever had an email account, so
+  // the identifier + password form (which now also accepts a phone number in
+  // the same field) is what they land on. WhatsApp sign-in/registration stays
+  // one tap away via "الدخول برقم الواتساب".
+  const [waMode, setWaMode] = useState(false);
   const [waStep, setWaStep] = useState(0);
   const [waPhone, setWaPhone] = useState('');
   const [waCode, setWaCode] = useState('');
@@ -303,17 +303,18 @@ const Auth: React.FC = () => {
                 </button>
               </div>
             ) : otpStep === 0 ? (
-              /* ── Step 1: Enter email ── */
+              /* ── Step 1: Enter identifier ── */
               <form className="space-y-4" onSubmit={handleForgotPassword}>
-                <p className="text-sm text-gray-600">أدخل بريدك الإلكتروني وسنُرسل لك كود التحقق.</p>
+                <p className="text-sm text-gray-600">أدخل بريدك الإلكتروني أو رقم هاتفك وسنُرسل لك كود التحقق.</p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني أو رقم الهاتف</label>
                   <input
-                    type="email"
+                    type="text"
+                    dir="ltr"
                     value={forgotEmail}
                     onChange={e => setForgotEmail(e.target.value)}
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="example@domain.com"
+                    placeholder="example@domain.com أو 01012345678"
                     required
                   />
                 </div>
@@ -329,14 +330,15 @@ const Auth: React.FC = () => {
               /* ── Step 2: Enter OTP ── */
               <form className="space-y-4" onSubmit={handleVerifyOtp}>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
-                  <div className="text-3xl mb-2">📧</div>
-                  {/* Worded conditionally on purpose: the API deliberately returns
-                      success even when no account matches, so it can't be used to
-                      discover which emails are registered. Claiming "تم الإرسال"
-                      outright made a silent no-send look identical to a real one. */}
-                  <p className="text-blue-800 font-bold text-sm">إذا كان هناك حساب مسجّل بهذا البريد، فقد أرسلنا إليه كوداً من 6 أرقام</p>
-                  <p className="text-blue-700 font-mono text-sm mt-1">{forgotEmail}</p>
-                  <p className="text-xs text-gray-500 mt-1">تحقق من مجلد البريد المزعج (Spam). إذا لم يصلك الكود خلال دقائق، فغالباً لا يوجد حساب بهذا البريد — جرّب بريداً آخر أو تواصل مع الدعم.</p>
+                  <div className="text-3xl mb-2">🔐</div>
+                  {/* Worded conditionally, and channel-neutral, on purpose: the
+                      API deliberately returns success even when no account
+                      matches (so it can't be used to discover which accounts
+                      exist), and it never reveals whether the code went out
+                      over WhatsApp or email. */}
+                  <p className="text-blue-800 font-bold text-sm">إذا كان هناك حساب مسجّل، فقد أرسلنا كوداً من 6 أرقام على واتساب أو البريد الإلكتروني</p>
+                  <p className="text-blue-700 font-mono text-sm mt-1" dir="ltr">{forgotEmail}</p>
+                  <p className="text-xs text-gray-500 mt-1">تحقق من واتساب، أو من مجلد البريد المزعج (Spam). إذا لم يصلك الكود خلال دقائق، فغالباً لا يوجد حساب بهذه البيانات — جرّب بيانات أخرى أو تواصل مع الدعم.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">كود التحقق</label>
@@ -470,7 +472,7 @@ const Auth: React.FC = () => {
               onClick={() => { setWaMode(false); setWaStep(0); setWaCode(''); setNotice(null); }}
               className="w-full text-primary-600 text-sm font-medium hover:underline"
             >
-              الدخول بالبريد الإلكتروني بدلاً من ذلك
+              الدخول بالبريد الإلكتروني أو رقم الهاتف بدلاً من ذلك
             </button>
           </div>
         ) : (
@@ -516,11 +518,15 @@ const Auth: React.FC = () => {
                </>
            )}
            <div>
-               <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+               <label className="block text-sm font-medium text-gray-700 mb-1">
+                 {isLogin ? 'البريد الإلكتروني أو رقم الهاتف' : 'البريد الإلكتروني'}
+               </label>
                              <input
-                                 type="email"
+                                 type={isLogin ? 'text' : 'email'}
+                                 dir={isLogin ? 'ltr' : undefined}
                                  value={email}
                                  onChange={(e) => setEmail(e.target.value)}
+                                 placeholder={isLogin ? 'example@domain.com أو 01012345678' : undefined}
                                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
                              />
            </div>

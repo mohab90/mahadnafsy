@@ -15,7 +15,7 @@ const { sanitize, validate, EMAIL_RE, PHONE_RE } = require('../lib/helpers');
 const { sendEmail: sendEmailBase, htmlEmail, mailer } = require('../lib/email');
 const { getNextClientCode } = require('../lib/mappers');
 const { logLeadEvent } = require('../lib/crm');
-const { sendWhatsApp } = require('../lib/whatsapp');
+const { describeReason, sendWhatsApp } = require('../lib/whatsapp');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { branchIdForBranch } = require('../lib/branches');
 const { getNextSalesRep } = require('../lib/leadAssignment');
@@ -40,8 +40,9 @@ const { createSessionBinding, rotateSingleSession, closeSingleSession } = requir
 const { getSharingLock, enforceSharingLimit } = require('../lib/accountSharingGuard');
 const {
   requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
-  claimWhatsAppIdentity,
+  claimWhatsAppIdentity, normalizeWhatsAppNumber, isPlausibleNumber,
 } = require('../lib/whatsappOtp');
+const { toDialable } = require('../lib/phoneNumber');
 
 function hashOtp({ tenantId, email, type, code }) {
   const secret = String(resolveSecret('OTP_HMAC_SECRET') || JWT_SECRET);
@@ -780,53 +781,55 @@ router.post(
 // POST /api/auth/login
 router.post('/api/auth/login', loginLimiter, requireDb,
   validateBody({
-    email:    v => isEmail(v)         || 'Email address is invalid',
+    email:    v => isEmail(v) || isPlausibleNumber(normalizeWhatsAppNumber(v)) || 'البريد الإلكتروني أو رقم الهاتف غير صحيح',
     password: v => isString(v, 200)   || 'Password is required',
   }),
   async (req, res) => {
-  // WhatsApp OTP is the intended way in. Email + password is disabled by
-  // default and stays reachable only as a recovery hatch: set
-  // AUTH_ALLOW_EMAIL_LOGIN=1 to turn it back on instantly.
-  //
-  // Why a switch instead of deleting the route: staff and admins sign in here
-  // too, and users.phone is only populated where migration 181 could find a
-  // number (subscribers, then leads) — anyone it couldn't match, or whose
-  // number was skipped as a duplicate, has no WhatsApp identity yet. Removing
-  // this outright would lock those accounts, including admin accounts, out of
-  // the system with no way back in.
-  if (String(process.env.AUTH_ALLOW_EMAIL_LOGIN || '') !== '1') {
-    return res.status(403).json({
-      error: 'تسجيل الدخول أصبح عبر رقم الواتساب. استخدم "الدخول برقم الواتساب".',
-      code: 'EMAIL_LOGIN_DISABLED',
-    });
-  }
-  const { email, password } = req.body || {};
+  // Identifier is an email OR a WhatsApp number typed into the same field;
+  // whichever shape it has decides which column it's looked up against.
+  // Email login is a permanent, first-class path — most existing customers
+  // only ever had an email account, and a missing env var must never be able
+  // to lock all of them out again the way it did when this was gated behind
+  // AUTH_ALLOW_EMAIL_LOGIN.
+  const { email: rawIdentifier, password } = req.body || {};
+  const identifierIsEmail = isEmail(rawIdentifier);
+  const email = identifierIsEmail ? rawIdentifier.toLowerCase().trim() : null;
+  const phoneIdentity = identifierIsEmail ? null : normalizeWhatsAppNumber(rawIdentifier);
+  const logIdentifier = identifierIsEmail ? email : phoneIdentity;
   let conn;
   try {
     conn = await pool.getConnection();
-    const [rows] = await conn.execute(
-      `SELECT id, email, name, password_hash, session_version, totp_enabled
-       FROM users WHERE tenant_id=? AND email = ? AND is_active = 1`,
-      [req.tenantId, email.toLowerCase().trim()]);
+    const [rows] = identifierIsEmail
+      ? await conn.execute(
+          `SELECT id, email, name, password_hash, session_version, totp_enabled
+           FROM users WHERE tenant_id=? AND email = ? AND is_active = 1`,
+          [req.tenantId, email])
+      : await conn.execute(
+          `SELECT id, email, name, password_hash, session_version, totp_enabled
+           FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1`,
+          [req.tenantId, phoneIdentity]);
     if (rows.length === 0) {
-      // No users record — check if they exist as a subscriber (admin-added clients)
-      // If found, show a helpful error directing them to use forgot-password to set a password
-      const [[subExists]] = await conn.execute(
-        'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1',
-        [req.tenantId, email.toLowerCase().trim()]
-      );
+      // No users record — check if they exist as a subscriber (admin-added clients).
+      // Subscribers are only keyed by email, so this hint doesn't apply to a
+      // phone identifier.
+      const [[subExists]] = identifierIsEmail
+        ? await conn.execute(
+            'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1',
+            [req.tenantId, email]
+          )
+        : [[null]];
       conn.release();
       conn = null;
       if (subExists) {
-        logger.info('[login] subscriber exists but no users record — directing to reset:', email.toLowerCase().trim());
-        await logLoginAttempt({ email: email.toLowerCase().trim(), req, status: 'failed', failureReason: 'password_not_set' });
+        logger.info('[login] subscriber exists but no users record — directing to reset:', logIdentifier);
+        await logLoginAttempt({ email: logIdentifier, req, status: 'failed', failureReason: 'password_not_set' });
         return res.status(401).json({
           error: '\u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u0644\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0639\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0636\u063a\u0637 \u0639\u0644\u0649 "\u0646\u0633\u064a\u062a \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" \u0644\u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062c\u062f\u064a\u062f\u0629.',
           needsPasswordReset: true,
         });
       }
-      logger.info('[login] no active account for:', email.toLowerCase().trim());
-      await logLoginAttempt({ email: email.toLowerCase().trim(), req, status: 'failed', failureReason: 'account_not_found' });
+      logger.info('[login] no active account for:', logIdentifier);
+      await logLoginAttempt({ email: logIdentifier, req, status: 'failed', failureReason: 'account_not_found' });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const user = rows[0];
@@ -849,7 +852,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     }
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
-      logger.info('[login] wrong password for:', email.toLowerCase().trim());
+      logger.info('[login] wrong password for:', logIdentifier);
       await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'failed', failureReason: 'wrong_password' });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -1078,57 +1081,70 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
 
 router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
   const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId: req.tenantId });
-  const { email } = req.body || {};
-  if (!email) return res.status(400).json({ error: 'البريد الإلكتروني مطلوب' });
-  const safeEmail = email.toLowerCase().trim();
+  const { email: rawIdentifier } = req.body || {};
+  if (!rawIdentifier) return res.status(400).json({ error: 'البريد الإلكتروني أو رقم الهاتف مطلوب' });
+  const identifierIsEmail = isEmail(rawIdentifier);
+  const safeEmail = identifierIsEmail ? rawIdentifier.toLowerCase().trim() : null;
+  const phoneIdentity = identifierIsEmail ? null : normalizeWhatsAppNumber(rawIdentifier);
+  const logIdentifier = identifierIsEmail ? safeEmail : phoneIdentity;
   try {
     let user = null;
 
-    // 1. Check users table (primary auth table — registered via website)
-    const [[existingUser]] = await pool.query('SELECT id, name FROM users WHERE tenant_id=? AND email = ? AND is_active = 1 LIMIT 1', [req.tenantId, safeEmail]);
-    if (existingUser) {
-      user = existingUser;
-    } else {
-      // 2. Fallback: check subscribers table — admin-added clients don't have a users record
-      const [[sub]] = await pool.query('SELECT id, name, email FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1', [req.tenantId, safeEmail]);
-      if (sub) {
-        // Auto-create a users record so they can authenticate going forward
-        // Use a locked (un-guessable) password hash — they MUST reset via OTP
-        const tempHash = await bcrypt.hash(uuidv4() + Date.now(), 10); // random unhittable hash
-        const newUserId = uuidv4();
-        await pool.query(
-          'INSERT IGNORE INTO users (id, tenant_id, email, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,1)',
-          [newUserId, req.tenantId, safeEmail, tempHash, sub.name || safeEmail.split('@')[0], 'user']
-        );
-        // Fetch back the inserted (or pre-existing race-condition) record
-        const [[createdUser]] = await pool.query('SELECT id, name FROM users WHERE tenant_id=? AND email = ? LIMIT 1', [req.tenantId, safeEmail]);
-        if (createdUser) {
-          user = createdUser;
-          logger.info('[forgot-password] auto-created users record for subscriber:', safeEmail);
+    if (identifierIsEmail) {
+      // 1. Check users table (primary auth table — registered via website)
+      const [[existingUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND email = ? AND is_active = 1 LIMIT 1', [req.tenantId, safeEmail]);
+      if (existingUser) {
+        user = existingUser;
+      } else {
+        // 2. Fallback: check subscribers table — admin-added clients don't have a users record
+        const [[sub]] = await pool.query('SELECT id, name, email FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1', [req.tenantId, safeEmail]);
+        if (sub) {
+          // Auto-create a users record so they can authenticate going forward
+          // Use a locked (un-guessable) password hash — they MUST reset via OTP
+          const tempHash = await bcrypt.hash(uuidv4() + Date.now(), 10); // random unhittable hash
+          const newUserId = uuidv4();
+          await pool.query(
+            'INSERT IGNORE INTO users (id, tenant_id, email, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,1)',
+            [newUserId, req.tenantId, safeEmail, tempHash, sub.name || safeEmail.split('@')[0], 'user']
+          );
+          // Fetch back the inserted (or pre-existing race-condition) record
+          const [[createdUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND email = ? LIMIT 1', [req.tenantId, safeEmail]);
+          if (createdUser) {
+            user = createdUser;
+            logger.info('[forgot-password] auto-created users record for subscriber:', safeEmail);
+          }
         }
       }
+    } else {
+      // Phone identifier — only the users table carries a phone; there is no
+      // subscriber-fallback equivalent for it.
+      const [[existingUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1 LIMIT 1', [req.tenantId, phoneIdentity]);
+      if (existingUser) user = existingUser;
     }
 
     // Always return success to prevent user enumeration
     if (!user) {
-      logger.info('[forgot-password] no active account found for:', safeEmail);
+      logger.info('[forgot-password] no active account found for:', logIdentifier);
       return res.json({ ok: true });
     }
 
     const otp = generateNumericCode();
     const otpId = uuidv4();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+    // The OTP row is always keyed by the account's real email — even when the
+    // customer typed a phone to get here, or delivery goes out over WhatsApp
+    // below — so verify-otp only ever needs one lookup shape.
     const otpConn = await pool.getConnection();
     try {
       await otpConn.beginTransaction();
       await otpConn.query(
         "UPDATE otp_codes SET used=1 WHERE tenant_id=? AND email=? AND type='password_reset' AND used=0",
-        [req.tenantId, safeEmail]
+        [req.tenantId, user.email]
       );
       await otpConn.query(
         `INSERT INTO otp_codes (id, tenant_id, user_id, email, code, type, expires_at) VALUES (?,?,?,?,?,?,?)`,
-        [otpId, req.tenantId, user.id, safeEmail, hashOtp({
-          tenantId: req.tenantId, email: safeEmail, type: 'password_reset', code: otp,
+        [otpId, req.tenantId, user.id, user.email, hashOtp({
+          tenantId: req.tenantId, email: user.email, type: 'password_reset', code: otp,
         }), 'password_reset', expiresAt]
       );
       await otpConn.commit();
@@ -1138,8 +1154,33 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
     } finally {
       otpConn.release();
     }
+
+    // WhatsApp first — it's the number the account actually answers on. Email
+    // is the fallback for accounts with no phone on file, or when the send
+    // itself fails. The response never says which channel was used (or
+    // whether one was): that would let a guess distinguish a real account
+    // from a made-up one.
+    const dialable = user.phone ? toDialable(user.phone) : '';
+    if (dialable) {
+      const sent = await sendWhatsApp(
+        dialable,
+        `رمز إعادة تعيين كلمة المرور: ${otp}\nصالح لمدة 15 دقيقة. لا تشاركه مع أحد.`,
+        { tenantId: req.tenantId }
+      ).catch(e => ({ ok: false, reason: e.message }));
+      if (sent.ok) {
+        await pool.query(
+          `UPDATE otp_codes
+              SET delivery_status='accepted', provider_message_id=?, sent_at=NOW()
+            WHERE id=? AND tenant_id=?`,
+          [sent.idMessage || null, otpId, req.tenantId]
+        );
+        logger.info('[forgot-password] OTP sent via WhatsApp for account:', user.email);
+        return res.json({ ok: true });
+      }
+      logger.warn('[forgot-password] WhatsApp delivery failed, falling back to email:', describeReason(sent.reason));
+    }
     try {
-      const delivery = await sendEmail(safeEmail, 'رمز إعادة تعيين كلمة المرور',
+      const delivery = await sendEmail(user.email, 'رمز إعادة تعيين كلمة المرور',
         `<p>أهلاً ${user.name || ''}،</p>
          <p>تلقّينا طلب إعادة تعيين كلمة المرور لحسابك.</p>
          <div class="otp-box">${otp}</div>
@@ -1151,10 +1192,10 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
           WHERE id=? AND tenant_id=?`,
         [String(delivery.messageId || '').slice(0, 255) || null, otpId, req.tenantId]
       );
-      logger.info('[forgot-password] OTP sent to:', safeEmail);
+      logger.info('[forgot-password] OTP sent via email to:', user.email);
       res.json({ ok: true });
     } catch (mailErr) {
-      logger.error('[forgot-password] SMTP error for', safeEmail, ':', mailErr.message);
+      logger.error('[forgot-password] SMTP error for', user.email, ':', mailErr.message);
       await pool.query(
         `UPDATE otp_codes
             SET used=1, delivery_status='failed', delivery_error_code=?
@@ -1171,9 +1212,25 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
 
 // POST /api/auth/verify-otp — verify OTP and return a short-lived reset token
 router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
-  const { email, code, type = 'password_reset' } = req.body || {};
-  if (!email || !code) return res.status(400).json({ error: 'البريد والرمز مطلوبان' });
-  const safeEmail = email.toLowerCase().trim();
+  const { email: rawIdentifier, code, type = 'password_reset' } = req.body || {};
+  if (!rawIdentifier || !code) return res.status(400).json({ error: 'البريد أو رقم الهاتف والرمز مطلوبان' });
+  let safeEmail;
+  if (isEmail(rawIdentifier)) {
+    safeEmail = rawIdentifier.toLowerCase().trim();
+  } else {
+    // The OTP row is always keyed by the account's real email (see
+    // forgot-password), so a phone identifier has to be resolved first.
+    const phoneIdentity = normalizeWhatsAppNumber(rawIdentifier);
+    const [[byPhone]] = await pool.query(
+      'SELECT email FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
+      [req.tenantId, phoneIdentity]
+    );
+    // Deliberately fall through to the ordinary "code incorrect or expired"
+    // rejection below rather than a distinct error — an unresolvable phone
+    // must not read differently from a wrong code, or it becomes a way to
+    // probe which numbers have accounts.
+    safeEmail = byPhone ? byPhone.email : `unresolved:${phoneIdentity}`;
+  }
   let conn;
   try {
     conn = await pool.getConnection();
