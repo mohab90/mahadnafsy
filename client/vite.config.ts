@@ -25,6 +25,10 @@ export default defineConfig(({ mode }) => {
     const appBase = env.VITE_APP_BASE || (mode === 'production' ? '/' : '/');
     const apiTarget = env.VITE_API_PROXY_TARGET || 'https://mahadnafsy.com';
     const isLocalTarget = apiTarget.startsWith('http://');
+    // Lets the dev proxy reach a backend sitting behind HTTP Basic Auth (e.g.
+    // a staging gate) — http-proxy does not pick this up from userinfo
+    // embedded in the target URL, it needs its own `auth` option.
+    const apiProxyBasicAuth = env.VITE_API_PROXY_BASIC_AUTH || '';
     const d = new Date();
     const buildVersion = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
     return {
@@ -36,6 +40,7 @@ export default defineConfig(({ mode }) => {
             target: apiTarget,
             changeOrigin: true,
             secure: !isLocalTarget,
+            ...(apiProxyBasicAuth ? { auth: apiProxyBasicAuth } : {}),
             ...(isLocalTarget ? {} : { headers: { origin: 'https://mahadnafsy.com' } }),
           },
         },

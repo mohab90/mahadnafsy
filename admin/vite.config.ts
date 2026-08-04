@@ -7,6 +7,10 @@ export default defineConfig(({ mode }) => {
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:3101';
   const appBase = env.VITE_APP_BASE || '/';
   const isLocalApiProxy = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(apiProxyTarget);
+  // Lets the dev proxy reach a backend sitting behind HTTP Basic Auth (e.g. a
+  // staging gate) — http-proxy does not pick this up from userinfo embedded
+  // in the target URL, it needs its own `auth` option.
+  const apiProxyBasicAuth = env.VITE_API_PROXY_BASIC_AUTH || '';
   return {
     server: {
       port: 4000,
@@ -16,6 +20,7 @@ export default defineConfig(({ mode }) => {
           target: apiProxyTarget,
           changeOrigin: true,
           secure: !isLocalApiProxy,
+          ...(apiProxyBasicAuth ? { auth: apiProxyBasicAuth } : {}),
           ...(isLocalApiProxy ? {} : {
             headers: {
               origin: apiProxyTarget,
