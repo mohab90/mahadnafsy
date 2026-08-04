@@ -29,7 +29,11 @@ const JWT_MAX_AGE_SECONDS = Math.max(300, Number(process.env.JWT_MAX_AGE_SECONDS
 const AUTH_COOKIE = `HttpOnly; Path=/; Max-Age=${JWT_MAX_AGE_SECONDS}; SameSite=None; Secure`;
 
 function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaVerified = false }) {
-  if (!uid || !email || !tenantId || !sessionId || !Number.isInteger(Number(sessionVersion))) {
+  // email is not the identity anchor — uid is (every downstream auth check
+  // re-fetches the user row by uid, not by trusting this claim for anything
+  // security-critical). A phone-only account genuinely has none, so it's
+  // optional here; everything else still has to be present.
+  if (!uid || !tenantId || !sessionId || !Number.isInteger(Number(sessionVersion))) {
     throw new Error('Complete access-token identity is required');
   }
   return jwt.sign(

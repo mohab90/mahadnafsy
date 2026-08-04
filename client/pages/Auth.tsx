@@ -162,18 +162,25 @@ const Auth: React.FC = () => {
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (!email.trim() || !password.trim()) {
-            setNotice({ type: 'error', text: 'يرجى إدخال البريد الإلكتروني وكلمة المرور.' });
-            return;
-        }        if (!isLogin) {
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email.trim())) {
-                setNotice({ type: 'error', text: 'يرجى إدخال بريد إلكتروني صحيح (example@domain.com).' });
+        if (isLogin) {
+            if (!email.trim() || !password.trim()) {
+                setNotice({ type: 'error', text: 'يرجى إدخال البريد الإلكتروني أو رقم الهاتف وكلمة المرور.' });
                 return;
             }
-            if (!fullName.trim()) {
-                setNotice({ type: 'error', text: 'يرجى إدخال الاسم الكامل.' });
+        } else {
+            // Phone (WhatsApp) is the required identity at signup — email and
+            // name are optional. Matches login, which already accepts email or
+            // phone as the same identifier field.
+            if (!phone.trim() || !password.trim()) {
+                setNotice({ type: 'error', text: 'يرجى إدخال رقم الهاتف (واتساب) وكلمة المرور.' });
                 return;
+            }
+            if (email.trim()) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email.trim())) {
+                    setNotice({ type: 'error', text: 'البريد الإلكتروني غير صحيح (example@domain.com) — أو اتركه فارغاً.' });
+                    return;
+                }
             }
             if (password.length < 8) {
                 setNotice({ type: 'error', text: 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.' });
@@ -481,7 +488,7 @@ const Auth: React.FC = () => {
            {!isLogin && (
                <>
                    <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل</label>
+                       <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل <span className="text-gray-400 font-normal">(اختياري)</span></label>
                                              <input
                                                  type="text"
                                                  value={fullName}
@@ -491,8 +498,8 @@ const Auth: React.FC = () => {
                                              />
                    </div>
                    <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
-                       <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none" placeholder="+20 10xxxxxxxxx" />
+                       <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف (واتساب)</label>
+                       <input type="tel" dir="ltr" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none text-left" placeholder="01012345678" />
                    </div>
                    <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -519,7 +526,7 @@ const Auth: React.FC = () => {
            )}
            <div>
                <label className="block text-sm font-medium text-gray-700 mb-1">
-                 {isLogin ? 'البريد الإلكتروني أو رقم الهاتف' : 'البريد الإلكتروني'}
+                 {isLogin ? 'البريد الإلكتروني أو رقم الهاتف' : <>البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span></>}
                </label>
                              <input
                                  type={isLogin ? 'text' : 'email'}
@@ -593,16 +600,20 @@ const Auth: React.FC = () => {
                              {loading ? 'جاري التنفيذ...' : isLogin ? 'دخول' : 'تسجيل حساب جديد'}
            </button>
         </form>
-
-        <div className="mt-6 text-center text-sm">
-            <p className="text-gray-600">
-                {isLogin ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'} {' '}
-                <button onClick={() => setIsLogin(!isLogin)} className="text-primary-600 font-bold hover:underline">
-                    {isLogin ? 'أنشئ حساباً' : 'سجل دخولك'}
-                </button>
-            </p>
-        </div>
           </>
+        )}
+        {/* Fixed on the login page regardless of which mode (email/phone or
+            WhatsApp) is showing — only hidden mid-verification (2FA / password
+            reset), where switching to registration mid-flow makes no sense. */}
+        {!twoFaStep && !forgotMode && (
+          <div className="mt-6 text-center text-sm">
+              <p className="text-gray-600">
+                  {isLogin ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'} {' '}
+                  <button onClick={() => { setIsLogin(!isLogin); setWaMode(false); setNotice(null); }} className="text-primary-600 font-bold hover:underline">
+                      {isLogin ? 'أنشئ حساباً' : 'سجل دخولك'}
+                  </button>
+              </p>
+          </div>
         )}
       </div>
     </div>

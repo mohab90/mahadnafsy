@@ -54,18 +54,25 @@ function hashOtp({ tenantId, email, type, code }) {
 // AUTH ROUTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-// POST /api/auth/register
+// POST /api/auth/register — phone (WhatsApp) is the required identity; email
+// is optional, matching login (which already accepts either as the
+// identifier). A signup with no phone at all used to be allowed and would
+// then be unreachable by anyone once email sign-in was ever disabled — see
+// claimWhatsAppIdentity below for why a COLLIDING number is still allowed
+// through with a warning rather than blocking the signup outright.
 router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota('users'),
   validateBody({
-    email:    v => isEmail(v)            || 'Email address is invalid',
+    email:    v => v === undefined || v === null || v === '' || isEmail(v) || 'البريد الإلكتروني غير صحيح',
+    phone:    v => isPlausibleNumber(normalizeWhatsAppNumber(v)) || 'رقم الهاتف (واتساب) مطلوب وصحيح',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
   const { email, password, name, phone, interest, ref } = req.body || {};
+  const hasEmail = isEmail(email);
+  const normalizedEmail = hasEmail ? email.toLowerCase().trim() : null;
   let conn;
   let transactionStarted = false;
   try {
-    const normalizedEmail = email.toLowerCase().trim();
     const tenantId = req.tenantId || 'tenant-default';
     const clientContext = await resolveClientContext(req);
     if (!clientContext.locationResolved) {
@@ -74,15 +81,26 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     const branch = clientContext.branch;
     const session = createSessionBinding(req);
     conn = await pool.getConnection();
-    const [[protectedStaff]] = await conn.execute(
-      'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
-      [tenantId, normalizedEmail]
-    );
-    if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
-      return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
+    if (hasEmail) {
+      const [[protectedStaff]] = await conn.execute(
+        'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+        [tenantId, normalizedEmail]
+      );
+      if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
+        return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
+      }
+      const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ?', [tenantId, normalizedEmail]);
+      if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
     }
-    const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ?', [tenantId, normalizedEmail]);
-    if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
+    // Phone is the required identity now, so a number already claimed by
+    // another account must reject the signup rather than silently proceeding
+    // without one — that would hand out credentials for an account nothing
+    // can ever sign into (email sign-in is optional and may not exist here).
+    const [[phoneTaken]] = await conn.execute(
+      'SELECT id FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
+      [tenantId, normalizeWhatsAppNumber(phone)]
+    );
+    if (phoneTaken) return res.status(409).json({ error: 'رقم الهاتف مستخدم بالفعل', code: 'PHONE_ALREADY_REGISTERED' });
     await conn.beginTransaction();
     transactionStarted = true;
     const id = uuidv4();
@@ -95,7 +113,9 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
     // another account: users.phone is UNIQUE per tenant, so reusing one would
     // fail the whole registration. Such an account simply has no WhatsApp
     // identity until staff attach a number, which is recoverable; refusing the
-    // signup outright is not.
+    // signup outright is not. (The already-claimed case is now caught above
+    // before the transaction even opens, since phone is required here — this
+    // still guards the race between that check and this claim.)
     const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId, phone });
     await conn.execute(
       `INSERT INTO users
@@ -111,7 +131,7 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       await conn.execute(
         `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', clientContext.countryCode, interest || '']
+        [uuidv4(), id, (name || '').trim(), normalizedEmail || '', phone || '', clientContext.countryCode, interest || '']
       );
     } catch { /* registrations table may not exist — ignore */ }
     // Generate ONE shared client code — same code on both lead and subscriber for this person
@@ -155,8 +175,9 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
              (id, tenant_id, client_code, name, email, phone, source, status, hidden,
               branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
            VALUES (?, ?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, ?, ?, ?, ?, NOW())`,
-          [leadId, tenantId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail,
-           phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
+          [leadId, tenantId, sharedClientCode,
+           (name || '').trim() || (normalizedEmail ? normalizedEmail.split('@')[0] : '') || (phone || '').trim() || 'عميل جديد',
+           normalizedEmail, phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
         );
         logger.info(`[register] Created lead ${leadId} code=${sharedClientCode} for ${normalizedEmail}`);
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }, tenantId, conn);
@@ -173,7 +194,7 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       uid: id, email: normalizedEmail, tenantId, sessionVersion: 1, sessionId: session.sessionId,
     });
     setAuthCookie(res, token);
-    res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
+    res.json({ ok: true, token, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
 
     // Best-effort referral tracking
     if (ref) {
@@ -199,7 +220,9 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
         .catch(err => logger.warn('[register] lead_created journey failed', { error: err.message }));
     }
     // Enqueue registration email sequence (best-effort)
-    enqueueEmailSequence({ tenantId, triggerEvent: 'registration', recipientEmail: email, recipientName: (name || '').trim() }).catch(error => logger.warn('[register] sequence enqueue failed', { error: error.message }));
+    if (normalizedEmail) {
+      enqueueEmailSequence({ tenantId, triggerEvent: 'registration', recipientEmail: normalizedEmail, recipientName: (name || '').trim() }).catch(error => logger.warn('[register] sequence enqueue failed', { error: error.message }));
+    }
   } catch (err) {
     if (transactionStarted && conn) await conn.rollback().catch(() => {});
     logger.error('[auth/register]', err);
@@ -207,17 +230,21 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
   } finally { if (conn) conn.release(); }
 });
 // Alias — WAF on shared hosting may block /api/auth/ paths; this exposes the same handler under /api/user/signup
+// This is the route the client actually calls (client/lib/mysqlapi.ts registers
+// against /user/signup, not /auth/register) — keep both in sync.
 router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('users'),
   validateBody({
-    email:    v => isEmail(v)            || 'Email address is invalid',
+    email:    v => v === undefined || v === null || v === '' || isEmail(v) || 'البريد الإلكتروني غير صحيح',
+    phone:    v => isPlausibleNumber(normalizeWhatsAppNumber(v)) || 'رقم الهاتف (واتساب) مطلوب وصحيح',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
   }),
   async (req, res) => {
   const { email, password, name, phone, interest, ref } = req.body || {};
+  const hasEmail = isEmail(email);
+  const normalizedEmail = hasEmail ? email.toLowerCase().trim() : null;
   let conn;
   let transactionStarted = false;
   try {
-    const normalizedEmail = email.toLowerCase().trim();
     const tenantId = req.tenantId || 'tenant-default';
     const clientContext = await resolveClientContext(req);
     if (!clientContext.locationResolved) {
@@ -226,15 +253,25 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     const branch = clientContext.branch;
     const session = createSessionBinding(req);
     conn = await pool.getConnection();
-    const [[protectedStaff]] = await conn.execute(
-      'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
-      [tenantId, normalizedEmail]
-    );
-    if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
-      return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
+    if (hasEmail) {
+      const [[protectedStaff]] = await conn.execute(
+        'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+        [tenantId, normalizedEmail]
+      );
+      if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normalizedEmail)) {
+        return res.status(403).json({ error: 'Staff accounts require an administrator invitation', code: 'STAFF_INVITATION_REQUIRED' });
+      }
+      const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ?', [tenantId, normalizedEmail]);
+      if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
     }
-    const [existing] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ?', [tenantId, normalizedEmail]);
-    if (existing.length > 0) return res.status(409).json({ error: 'Email already registered' });
+    // Phone is the required identity now — a number already claimed by another
+    // account must reject the signup, not proceed without one. See the
+    // matching comment on /api/auth/register.
+    const [[phoneTaken]] = await conn.execute(
+      'SELECT id FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
+      [tenantId, normalizeWhatsAppNumber(phone)]
+    );
+    if (phoneTaken) return res.status(409).json({ error: 'رقم الهاتف مستخدم بالفعل', code: 'PHONE_ALREADY_REGISTERED' });
     await conn.beginTransaction();
     transactionStarted = true;
     const id = uuidv4();
@@ -262,12 +299,14 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     if (ref) {
       const refCode = String(ref).trim().toUpperCase();
       conn.query('UPDATE referral_codes SET uses = uses + 1 WHERE tenant_id=? AND code = ?', [tenantId, refCode]).catch(() => {});
-      conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, email.toLowerCase().trim()]).catch(() => {});
+      if (normalizedEmail) {
+        conn.query('UPDATE subscribers SET referred_by = ? WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND (referred_by IS NULL OR referred_by = "")', [refCode, tenantId, normalizedEmail]).catch(() => {});
+      }
     }
     try {
       await conn.execute(
         `INSERT IGNORE INTO registrations (id, uid, name, email, phone, country, interest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [uuidv4(), id, (name || '').trim(), email.toLowerCase().trim(), phone || '', clientContext.countryCode, interest || '']
+        [uuidv4(), id, (name || '').trim(), normalizedEmail || '', phone || '', clientContext.countryCode, interest || '']
       );
     } catch { /* ignore */ }
     let sharedClientCode = null;
@@ -303,8 +342,9 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
              (id, tenant_id, client_code, name, email, phone, source, status, hidden,
               branch, branch_id, assigned_sales_id, assigned_sales_name, created_at)
            VALUES (?, ?, ?, ?, ?, ?, 'تسجيل دخول', 'new', 0, ?, ?, ?, ?, NOW())`,
-          [leadId, tenantId, sharedClientCode, (name || '').trim() || email.split('@')[0], normalizedEmail,
-           phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
+          [leadId, tenantId, sharedClientCode,
+           (name || '').trim() || (normalizedEmail ? normalizedEmail.split('@')[0] : '') || (phone || '').trim() || 'عميل جديد',
+           normalizedEmail, phone || '', branch, branchIdForBranch(branch), salesRep?.id || null, salesRep?.name || null]
         );
         await logLeadEvent(leadId, 'created', 'تسجيل جديد عبر الموقع', { source: 'تسجيل دخول', phone, status: 'new' }, tenantId, conn);
       }
@@ -318,7 +358,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
       uid: id, email: normalizedEmail, tenantId, sessionVersion: 1, sessionId: session.sessionId,
     });
     setAuthCookie(res, token);
-    res.json({ ok: true, token, user: { uid: id, email: email.toLowerCase().trim(), displayName: (name || '').trim() } });
+    res.json({ ok: true, token, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
     if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId }).catch(() => {});
   } catch (err) {
     if (transactionStarted) await conn.rollback().catch(() => {});
