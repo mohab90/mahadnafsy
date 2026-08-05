@@ -20,7 +20,6 @@ import {
   Headphones,
   LayoutDashboard,
   ListOrdered,
-  Mail,
   Megaphone,
   MessageCircle,
   MessageSquareText,
@@ -76,6 +75,7 @@ export type TabKey =
   | 'client'
   | 'registrations'
   | 'customer_inbox'
+  | 'service_hub'
   | 'join_us'
   | 'contacts'
   | 'analytics'
@@ -229,13 +229,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-rose-500',
     items: [
       { key: 'customer_inbox', label: 'Inbox خدمة العملاء', icon: Headphones },
-      { key: 'tickets', label: 'تذاكر الدعم', icon: Mail },
-      { key: 'faq_manager', label: 'قاعدة المعرفة (FAQ)', icon: BookOpen },
-      { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
-      { key: 'cert_requests', label: 'طلبات الشهادات', icon: Star },
-      { key: 'contacts', label: 'رسائل التواصل', icon: Mail },
-      { key: 'consultations', label: 'الاستشارات', icon: CalendarCheck2 },
-      { key: 'nps_dashboard', label: 'رضا العملاء (NPS)', icon: TrendingUp },
+      // Was 8 items (tickets/faq_manager/refund_requests/cert_requests/
+      // contacts/consultations/nps_dashboard each a separate page) — all
+      // moved into ServiceHubTab as subtabs, unchanged, so nothing lost.
+      { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
     ],
   },
   {

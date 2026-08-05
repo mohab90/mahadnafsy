@@ -10,6 +10,7 @@ import {
   CashFlowTab,
   ConsultationCalendarTab,
   CustomerInboxTab,
+  ServiceHubTab,
   DaqqiAttendanceTab,
   DaqqiTeamTab,
   DripCampaignsTab,
@@ -86,6 +87,7 @@ function DaqqiStatsWithAttendance({ notify }: { notify: NotifyFn }) {
 
 const notifyTabs: NotifyTabEntry[] = [
   { key: 'customer_inbox', Component: CustomerInboxTab, spinner: 'primary' },
+  { key: 'service_hub', Component: ServiceHubTab, spinner: 'primary' },
   { key: 'tasks_board', Component: TasksBoardTab, spinner: 'primary' },
   { key: 'followup_reminders', Component: FollowupRemindersTab, spinner: 'primary' },
   { key: 'installment_plans', Component: InstallmentPlansTab, spinner: 'primary' },
