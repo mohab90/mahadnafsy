@@ -360,7 +360,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                   src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
                   className="w-full h-full"
                   allow="autoplay; encrypted-media; picture-in-picture"
-                  referrerPolicy="no-referrer"
+                  // "no-referrer" broke playback outright: YouTube's embed
+                  // player uses the Referer header to validate the embedding
+                  // domain, and with it stripped it serves "Error 153: Video
+                  // player configuration error" instead of the video —
+                  // reproduced live 2026-08-05. strict-origin-when-cross-origin
+                  // sends only the bare origin (https://mahadnafsy.com), same
+                  // as the free promo-video player, which never had this bug.
+                  referrerPolicy="strict-origin-when-cross-origin"
                   title={selected.title}
                 />
                 <div

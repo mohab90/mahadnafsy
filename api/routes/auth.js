@@ -607,7 +607,7 @@ router.get('/api/admin/subscribers/:id/activity', requireAuth, requireAdminOrOnl
   try {
     // Look up the subscriber's email first
     const [[sub]] = await pool.query('SELECT email FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1', [id, req.tenantId]);
-    if (!sub) return res.json({ login_count: 0, last_login: null });
+    if (!sub || !sub.email) return res.json({ login_count: 0, last_login: null });
     const [[user]] = await pool.query(
       'SELECT login_count, last_login FROM users WHERE tenant_id=? AND LOWER(TRIM(email)) = ? LIMIT 1',
       [req.tenantId, sub.email.toLowerCase().trim()]
@@ -893,10 +893,10 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
     let isAdmin = ADMIN_EMAILS.includes(u.email) || ADMIN_UIDS.includes(u.id);
     if (!isAdmin) {
       // Also grant admin access to staff with full-access roles (manager, admin, daqqi_manager, online_manager)
-      const [[staff]] = await conn.execute(
+      const [[staff]] = u.email ? await conn.execute(
         `SELECT role FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1`,
         [req.tenantId, u.email.toLowerCase().trim()]
-      );
+      ) : [[null]];
       if (staff && FULL_ACCESS_ROLES_AUTH.includes(String(staff.role || '').toLowerCase())) isAdmin = true;
     }
     // Surface the user's phone (users table has none) — prefer subscriber, then most recent lead.
@@ -1406,7 +1406,9 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
       if (!newPassword) return res.status(404).json({ error: 'لم يُعثر على حساب بهذا البريد. يرجى تعيين كلمة مرور لإنشاء الحساب.' });
       const [[sub]] = await conn.execute('SELECT id, name, email, phone FROM subscribers WHERE id = ? AND tenant_id=?', [id, req.tenantId]);
       if (!sub) return res.status(404).json({ error: 'لم يُعثر على المشترك.' });
-      const finalEmail = (newEmail || sub.email).toLowerCase().trim();
+      const finalEmailRaw = newEmail || sub.email;
+      if (!finalEmailRaw) return res.status(400).json({ error: 'لا يوجد بريد إلكتروني — أدخل بريدًا جديدًا لإنشاء الحساب' });
+      const finalEmail = finalEmailRaw.toLowerCase().trim();
       // Carry the subscriber's number onto the account, or it is created unable
       // to sign in — WhatsApp OTP has no number and email sign-in is off.
       const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId: req.tenantId, phone: sub.phone });
@@ -1414,7 +1416,7 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
         'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [sub.id, req.tenantId, finalEmail, phoneForUser, await bcrypt.hash(newPassword, 12), sub.name || '', 'client']
       );
-      if (finalEmail !== sub.email.toLowerCase().trim()) {
+      if (finalEmail !== (sub.email || '').toLowerCase().trim()) {
         await conn.execute('UPDATE subscribers SET email = ? WHERE id = ? AND tenant_id=?', [finalEmail, id, req.tenantId]);
       }
     } else if (newEmail) {

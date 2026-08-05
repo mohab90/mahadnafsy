@@ -321,7 +321,14 @@ router.get('/api/media/lectures/:lectureId', publicLimiter, async (req, res) => 
       return res.status(404).json({ error: 'Media is unavailable' });
     }
     res.set('Cache-Control', 'private, no-store');
-    res.set('Referrer-Policy', 'no-referrer');
+    // NOT "no-referrer": a redirect response's own Referrer-Policy header
+    // overrides the iframe's policy for that hop (per the HTTP-redirect fetch
+    // algorithm), so this was stripping the referrer YouTube's embed player
+    // needs to validate the embedding domain — it served "Error 153: Video
+    // player configuration error" instead of the video for every gated
+    // lecture. strict-origin-when-cross-origin still hides the specific
+    // lecture URL, just not the bare origin.
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     return res.redirect(302, target);
   } catch {
     return res.status(500).json({ error: 'Unable to resolve media' });
