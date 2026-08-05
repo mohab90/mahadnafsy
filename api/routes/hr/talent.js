@@ -272,10 +272,15 @@ router.post(
       return res.status(400).json({ error: 'Active tenant branch is required', code: 'INVALID_STAFF_BRANCH' });
     }
     const staffId = uuidv4();
+    // `joined_at` is NOT NULL with no column default, so leaving it out made
+    // every hire fail with "Field 'joined_at' doesn't have a default value" —
+    // surfaced to the UI as a bare Internal server error. Set it alongside
+    // hire_date (same day the record is created); activation stays a separate
+    // manual step, which is why is_active is still 0.
     await conn.query(
       `INSERT INTO staff
-         (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type, hire_date)
-       VALUES (?,?,?,?,?,?,?, 0, 'FULL_TIME', CURDATE())`,
+         (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type, hire_date, joined_at)
+       VALUES (?,?,?,?,?,?,?, 0, 'FULL_TIME', CURDATE(), NOW())`,
       [staffId, req.tenantId, branch.id, a.name, a.email, a.phone || '', role]
     );
     await conn.query(

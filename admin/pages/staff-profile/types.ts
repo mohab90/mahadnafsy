@@ -49,7 +49,9 @@ export interface StaffProfileData {
 export interface StaffMessage {
   id: string;
   author_name: string;
-  direction: 'to_staff' | 'from_staff';
+  /** peer_broadcast = a colleague's team message that landed in this thread. */
+  direction: 'to_staff' | 'from_staff' | 'peer_broadcast';
+  broadcast_label?: string | null;
   body: string;
   read_at: string | null;
   created_at: string;

@@ -533,9 +533,16 @@ export const mysqlAdmin = {
   getStaffProfile:  (id: string) => apiFetch<AR>(`/admin/hr/staff/${encodeURIComponent(id)}/profile`, {}, A),
   listStaffMessages: (id: string) => apiFetch<AR[]>(`/admin/hr/staff/${encodeURIComponent(id)}/messages`, {}, A),
   sendStaffMessage: (id: string, body: string) => post(`/admin/hr/staff/${encodeURIComponent(id)}/messages`, { body }),
+  // Period-scoped scorecard (today/yesterday/week/days15/month/months3).
+  getStaffReport: (id: string, period: string) =>
+    apiFetch<AR>(`/admin/hr/staff/${encodeURIComponent(id)}/report?period=${encodeURIComponent(period)}`, {}, A),
+  // Group messaging: all staff / a role / a branch / specific people.
+  getBroadcastAudiences: () => apiFetch<AR>('/admin/hr/staff/broadcast-audiences', {}, A),
+  sendStaffBroadcast: (payload: AR) => post('/admin/hr/staff/broadcast', payload),
   // Employee's own thread (their side of the same conversation).
   listMyStaffMessages: () => apiFetch<AR[]>('/staff/me/messages', {}, A),
-  sendMyStaffMessage:  (body: string) => post('/staff/me/messages', { body }),
+  sendMyStaffMessage:  (body: string, scope: 'management' | 'team' = 'management') =>
+    post('/staff/me/messages', { body, scope }),
 
   // ── التوظيف / الانترفيوهات (job_applicants pipeline) ──
   listHrApplicants: (stage?: string) => apiFetch<AR[]>(`/admin/hr/applicants${stage ? `?stage=${encodeURIComponent(stage)}` : ''}`, {}, A),

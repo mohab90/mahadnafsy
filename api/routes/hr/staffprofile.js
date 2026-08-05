@@ -32,6 +32,44 @@ function toIsoDate(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
+/**
+ * The report windows the owner asked for. Each returns a half-open [from, to)
+ * range so every query stays sargable against the date indexes.
+ */
+const PERIODS = {
+  today:   { label: 'اليوم',        days: 0 },
+  yesterday: { label: 'أمس',       days: 1, shift: 1 },
+  week:    { label: 'آخر 7 أيام',   days: 7 },
+  days15:  { label: 'آخر 15 يوم',   days: 15 },
+  month:   { label: 'آخر 30 يوم',   days: 30 },
+  months3: { label: 'آخر 3 شهور',   days: 90 },
+};
+
+function periodRange(key) {
+  const spec = PERIODS[key] || PERIODS.month;
+  const dayMs = 86400000;
+  const startOfToday = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z').getTime();
+  if (key === 'yesterday') {
+    return {
+      from: new Date(startOfToday - dayMs).toISOString().slice(0, 10),
+      to: new Date(startOfToday).toISOString().slice(0, 10),
+      label: spec.label,
+    };
+  }
+  if (key === 'today') {
+    return {
+      from: new Date(startOfToday).toISOString().slice(0, 10),
+      to: new Date(startOfToday + dayMs).toISOString().slice(0, 10),
+      label: spec.label,
+    };
+  }
+  return {
+    from: new Date(startOfToday - (spec.days - 1) * dayMs).toISOString().slice(0, 10),
+    to: new Date(startOfToday + dayMs).toISOString().slice(0, 10),
+    label: spec.label,
+  };
+}
+
 /** Month keys from `from` (YYYY-MM) through the current month, inclusive. */
 function monthSpan(fromIso) {
   const start = new Date(`${String(fromIso || '').slice(0, 7)}-01T00:00:00Z`);
@@ -258,12 +296,117 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
   }
 });
 
+/**
+ * GET /api/admin/hr/staff/:id/report?period=today|yesterday|week|days15|month|months3
+ * A period-scoped scorecard. Separate from /profile so switching the period
+ * re-fetches only the numbers that change, not the whole tenure series.
+ */
+router.get('/api/admin/hr/staff/:id/report', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const key = String(req.query.period || 'month');
+    if (!PERIODS[key]) return res.status(400).json({ error: 'period غير مدعوم' });
+    const { from, to, label } = periodRange(key);
+    const { id } = req.params;
+
+    const [[money], [leadRow], [commRow], [taskRow], [payRows], [callRows]] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) bookings, COALESCE(SUM(amount_egp),0) revenue,
+                COALESCE(MAX(amount_egp),0) biggest
+           FROM payments
+          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
+            AND date>=? AND date<?`,
+        [req.tenantId, id, from, to]
+      ),
+      pool.query(
+        `SELECT COUNT(*) leads, SUM(status IN ('converted','won')) converted,
+                SUM(status='lost') lost, SUM(status='new') untouched
+           FROM leads
+          WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL
+            AND created_at>=? AND created_at<?`,
+        [req.tenantId, id, from, to]
+      ),
+      pool.query(
+        `SELECT COUNT(*) touches, SUM(type='CALL') calls, SUM(type='WHATSAPP') whatsapp,
+                SUM(type='MEETING') meetings
+           FROM communications
+          WHERE tenant_id=? AND staff_id=? AND date>=? AND date<?`,
+        [req.tenantId, id, from, to]
+      ),
+      pool.query(
+        `SELECT SUM(status='done') done,
+                SUM(status<>'done' AND status<>'cancelled') open
+           FROM tasks
+          WHERE tenant_id=? AND assigned_to=? AND created_at>=? AND created_at<?`,
+        [req.tenantId, id, from, to]
+      ),
+      // Raw rows for the day-by-day breakdown, folded into days in JS below.
+      // Kept as two flat sargable reads (both hit idx_pay_staff_date /
+      // idx_comm_tenant_staff_date) rather than grouping by a date-truncating
+      // function on the indexed column, which would defeat those indexes. For
+      // one employee over at most 90 days the row count is trivial to fold.
+      pool.query(
+        `SELECT date, amount_egp FROM payments
+          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
+            AND date>=? AND date<?`,
+        [req.tenantId, id, from, to]
+      ),
+      pool.query(
+        `SELECT date FROM communications
+          WHERE tenant_id=? AND staff_id=? AND type='CALL' AND date>=? AND date<?`,
+        [req.tenantId, id, from, to]
+      ),
+    ]);
+
+    // Dense day series across the window so the chart has no holes.
+    const days = new Map();
+    for (let t = new Date(`${from}T00:00:00.000Z`).getTime();
+      t < new Date(`${to}T00:00:00.000Z`).getTime(); t += 86400000) {
+      days.set(new Date(t).toISOString().slice(0, 10), { day: new Date(t).toISOString().slice(0, 10), bookings: 0, revenue: 0, calls: 0 });
+    }
+    const bump = (raw, apply) => {
+      const key = toIsoDate(raw);
+      if (!key) return;
+      if (!days.has(key)) days.set(key, { day: key, bookings: 0, revenue: 0, calls: 0 });
+      apply(days.get(key));
+    };
+    for (const row of payRows) {
+      bump(row.date, slot => { slot.bookings += 1; slot.revenue += Number(row.amount_egp || 0); });
+    }
+    for (const row of callRows) bump(row.date, slot => { slot.calls += 1; });
+
+    const leads = Number(leadRow[0]?.leads || 0);
+    const converted = Number(leadRow[0]?.converted || 0);
+    res.json({
+      period: { key, label, from, to },
+      revenue: Number(money[0]?.revenue || 0),
+      bookings: Number(money[0]?.bookings || 0),
+      biggestSale: Number(money[0]?.biggest || 0),
+      leads,
+      converted,
+      lost: Number(leadRow[0]?.lost || 0),
+      untouched: Number(leadRow[0]?.untouched || 0),
+      conversionRate: leads > 0 ? Math.round((converted / leads) * 100) : 0,
+      touches: Number(commRow[0]?.touches || 0),
+      calls: Number(commRow[0]?.calls || 0),
+      whatsapp: Number(commRow[0]?.whatsapp || 0),
+      meetings: Number(commRow[0]?.meetings || 0),
+      tasksDone: Number(taskRow[0]?.done || 0),
+      tasksOpen: Number(taskRow[0]?.open || 0),
+      daily: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    });
+  } catch (e) {
+    logger.error('[hr/staff-report]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Management ↔ employee thread ─────────────────────────────────────────────
 
 router.get('/api/admin/hr/staff/:id/messages', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, staff_id, author_staff_id, author_name, direction, body, read_at, created_at
+      `SELECT id, staff_id, author_staff_id, author_name, direction,
+              broadcast_id, broadcast_label, body, read_at, created_at
          FROM staff_messages
         WHERE tenant_id=? AND staff_id=?
         ORDER BY created_at ASC LIMIT 300`,
@@ -317,6 +460,158 @@ router.post('/api/admin/hr/staff/:id/messages', requireAuth, requireAdminOrStaff
   }
 });
 
+// ── Broadcasts: management → a whole team, a role, a branch, or a set ────────
+
+const ROLE_LABEL_AR = {
+  SALES: 'المبيعات', COLLECTION: 'التحصيل', SUPPORT: 'خدمة العملاء',
+  ACCOUNTANT: 'الحسابات', HR: 'الموارد البشرية', MANAGER: 'المديرين',
+  ADMIN: 'الإدارة', INSTRUCTOR: 'المحاضرين', TRAINER: 'المدربين',
+  CONSULTANT: 'الاستشاريين', EXPERT: 'الخبراء', RECEPTION_DAQQI: 'ريسبشن الدقي',
+  DAQQI_MANAGER: 'مديري الدقي', ONLINE_MANAGER: 'مديري الأونلاين',
+  SALES_COLLECTION_MANAGER: 'مديري المبيعات والتحصيل', OTHER: 'أخرى',
+};
+
+/**
+ * Resolve a broadcast target into recipients + a human label. Every branch is
+ * tenant-scoped and active-only, so a broadcast can never reach another
+ * tenant's staff or a deactivated/deleted account.
+ */
+async function resolveAudience(req, body) {
+  const target = String(body?.target || '').trim();
+  if (target === 'all') {
+    const [rows] = await pool.query(
+      'SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL',
+      [req.tenantId]
+    );
+    return { rows, label: 'كل الفريق' };
+  }
+  if (target === 'role') {
+    const role = String(body?.role || '').trim().toUpperCase();
+    if (!role) return { error: 'الدور مطلوب' };
+    const [rows] = await pool.query(
+      'SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND UPPER(role)=?',
+      [req.tenantId, role]
+    );
+    return { rows, label: `فريق ${ROLE_LABEL_AR[role] || role}` };
+  }
+  if (target === 'branch') {
+    const branchValue = String(body?.branchId || '').trim();
+    if (!branchValue) return { error: 'الفرع مطلوب' };
+    const [[branch]] = await pool.query(
+      `SELECT id, label FROM branches
+        WHERE tenant_id=? AND is_active=1 AND (id=? OR branch_key=? OR slug=?) LIMIT 1`,
+      [req.tenantId, branchValue, branchValue, branchValue]
+    );
+    if (!branch) return { error: 'الفرع غير موجود' };
+    const [rows] = await pool.query(
+      'SELECT id, name FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND branch_id=?',
+      [req.tenantId, branch.id]
+    );
+    return { rows, label: `فرع ${branch.label}` };
+  }
+  if (target === 'staff') {
+    const ids = Array.isArray(body?.staffIds) ? body.staffIds.filter(Boolean).slice(0, 200) : [];
+    if (ids.length === 0) return { error: 'اختر موظفًا واحدًا على الأقل' };
+    const [rows] = await pool.query(
+      `SELECT id, name FROM staff
+        WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL
+          AND id IN (${ids.map(() => '?').join(',')})`,
+      [req.tenantId, ...ids]
+    );
+    return { rows, label: rows.length === 1 ? `${rows[0].name}` : `${rows.length} موظفين محددين` };
+  }
+  return { error: 'نوع الإرسال غير مدعوم' };
+}
+
+/** Fan a body out to an audience as one thread row + one notification each. */
+async function fanOut({ req, audience, label, body, direction, authorId, authorName, notifTitle }) {
+  const broadcastId = uuidv4();
+  const rows = audience.map(person => [
+    uuidv4(), req.tenantId, person.id, authorId || null, authorName,
+    direction, broadcastId, label, body,
+  ]);
+  await pool.query(
+    `INSERT INTO staff_messages
+       (id, tenant_id, staff_id, author_staff_id, author_name, direction, broadcast_id, broadcast_label, body)
+     VALUES ${rows.map(() => '(?,?,?,?,?,?,?,?,?)').join(',')}`,
+    rows.flat()
+  );
+  // Notifications are best-effort and must not fail the send.
+  await Promise.all(audience.map(person => createNotification(
+    'info', notifTitle, body.slice(0, 180),
+    { broadcastId, broadcastLabel: label }, req.tenantId, person.id
+  ).catch(() => {})));
+  return broadcastId;
+}
+
+router.post('/api/admin/hr/staff/broadcast', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  try {
+    const body = String(req.body?.body || '').trim();
+    if (!body) return res.status(400).json({ error: 'نص الرسالة مطلوب' });
+    if (body.length > MAX_BODY) return res.status(400).json({ error: 'الرسالة طويلة جدًا' });
+    const audience = await resolveAudience(req, req.body);
+    if (audience.error) return res.status(400).json({ error: audience.error });
+    if (!audience.rows.length) return res.status(400).json({ error: 'لا يوجد موظفون مطابقون لهذا الاختيار' });
+
+    const broadcastId = await fanOut({
+      req, audience: audience.rows, label: audience.label, body,
+      direction: 'to_staff',
+      authorId: req.staffRecord?.id || null,
+      authorName: req.staffRecord?.name || req.user?.email || 'الإدارة',
+      notifTitle: 'رسالة من الإدارة',
+    });
+    await writeAuditEvent({
+      action: 'hr.staff.broadcast_sent', entityType: 'staff_broadcast', entityId: broadcastId,
+      metadata: { label: audience.label, recipients: audience.rows.length }, req,
+    });
+    res.json({ ok: true, broadcastId, label: audience.label, recipients: audience.rows.length });
+  } catch (e) {
+    logger.error('[hr/staff-broadcast]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** Audience options for the composer — roles/branches that actually have staff. */
+router.get('/api/admin/hr/staff/broadcast-audiences', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const [[roles], [branches], [[total]]] = await Promise.all([
+      pool.query(
+        `SELECT UPPER(role) role, COUNT(*) count FROM staff
+          WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL
+          GROUP BY UPPER(role) ORDER BY count DESC`,
+        [req.tenantId]
+      ),
+      pool.query(
+        `SELECT b.id, b.label, COUNT(s.id) count
+           FROM branches b
+           LEFT JOIN staff s ON s.branch_id=b.id AND s.tenant_id=b.tenant_id
+                            AND s.is_active=1 AND s.deleted_at IS NULL
+          WHERE b.tenant_id=? AND b.is_active=1
+          GROUP BY b.id, b.label HAVING count>0 ORDER BY count DESC`,
+        [req.tenantId]
+      ),
+      pool.query(
+        'SELECT COUNT(*) total FROM staff WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL',
+        [req.tenantId]
+      ),
+    ]);
+    res.json({
+      total: Number(total?.total || 0),
+      // A staff row with a blank role still has to be reachable, so it is kept
+      // and given a readable label rather than rendering as an empty option.
+      roles: roles.map(r => ({
+        role: r.role,
+        label: ROLE_LABEL_AR[r.role] || r.role || 'بدون دور محدد',
+        count: Number(r.count),
+      })),
+      branches: branches.map(b => ({ id: b.id, label: b.label, count: Number(b.count) })),
+    });
+  } catch (e) {
+    logger.error('[hr/broadcast-audiences]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Employee side: read + reply on their own thread ──────────────────────────
 // Deliberately keyed off the caller's own resolved staff row rather than an id
 // in the URL, so an employee can only ever read or post to their own thread.
@@ -326,7 +621,8 @@ router.get('/api/staff/me/messages', requireAuth, async (req, res) => {
     const me = await _resolveStaffByUser(req);
     if (!me) return res.status(404).json({ error: 'Staff record not found' });
     const [rows] = await pool.query(
-      `SELECT id, author_name, direction, body, read_at, created_at
+      `SELECT id, author_name, direction, broadcast_id, broadcast_label,
+              body, read_at, created_at
          FROM staff_messages
         WHERE tenant_id=? AND staff_id=?
         ORDER BY created_at ASC LIMIT 300`,
@@ -351,6 +647,46 @@ router.post('/api/staff/me/messages', requireAuth, async (req, res) => {
     const body = String(req.body?.body || '').trim();
     if (!body) return res.status(400).json({ error: 'نص الرسالة مطلوب' });
     if (body.length > MAX_BODY) return res.status(400).json({ error: 'الرسالة طويلة جدًا' });
+    // 'team' = broadcast to everyone sharing my role; anything else replies to
+    // management on my own thread (the default, and the original behaviour).
+    const scope = String(req.body?.scope || 'management');
+
+    if (scope === 'team') {
+      const [[myRole]] = await pool.query(
+        'SELECT UPPER(role) role FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
+        [me.id, req.tenantId]
+      );
+      const role = myRole?.role || '';
+      const [teammates] = await pool.query(
+        `SELECT id, name FROM staff
+          WHERE tenant_id=? AND is_active=1 AND deleted_at IS NULL AND UPPER(role)=? AND id<>?`,
+        [req.tenantId, role, me.id]
+      );
+      const label = `فريق ${ROLE_LABEL_AR[role] || role}`;
+      // The sender's own copy is 'from_staff' (they authored it, and it shows on
+      // their thread as outgoing); teammates get 'peer_broadcast' so their view
+      // attributes it to a colleague rather than to management.
+      const broadcastId = teammates.length
+        ? await fanOut({
+          req, audience: teammates, label, body,
+          direction: 'peer_broadcast', authorId: me.id, authorName: me.name || '',
+          notifTitle: `رسالة جماعية من ${me.name || 'زميل'}`,
+        })
+        : uuidv4();
+      await pool.query(
+        `INSERT INTO staff_messages
+           (id, tenant_id, staff_id, author_staff_id, author_name, direction, broadcast_id, broadcast_label, body)
+         VALUES (?,?,?,?,?, 'from_staff', ?,?,?)`,
+        [uuidv4(), req.tenantId, me.id, me.id, me.name || '', broadcastId, label, body]
+      );
+      // Management still gets visibility on team chatter.
+      await createNotification(
+        'hr', 'رسالة جماعية من موظف', `${me.name || ''} → ${label}: ${body.slice(0, 140)}`,
+        { broadcastId, staffId: me.id }, req.tenantId
+      ).catch(() => {});
+      return res.json({ ok: true, broadcastId, label, recipients: teammates.length });
+    }
+
     const id = uuidv4();
     await pool.query(
       `INSERT INTO staff_messages (id, tenant_id, staff_id, author_staff_id, author_name, direction, body)

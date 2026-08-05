@@ -11,6 +11,8 @@ import StaffRankCard from './staff-profile/StaffRankCard';
 import StaffAchievements from './staff-profile/StaffAchievements';
 import StaffMessagesPanel from './staff-profile/StaffMessagesPanel';
 import StaffTasksPanel from './staff-profile/StaffTasksPanel';
+import StaffPeriodReport from './staff-profile/StaffPeriodReport';
+import StaffBroadcastPanel from './staff-profile/StaffBroadcastPanel';
 import { fmtMoney as fmtMoneyEgp, fmtNum, monthLabel, type StaffProfileData } from './staff-profile/types';
 import type { StaffMember, StaffPermission } from '../types';
 import {
@@ -450,85 +452,111 @@ const StaffProfile: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* ── Sticky top bar ── */}
-      <div className="sticky top-0 bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex items-center gap-4 shadow-sm z-20">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition"
-          title="رجوع"
-        >
-          <ArrowRight size={18} />
-        </button>
-        {staff.image ? (
-          <img src={staff.image} alt={staff.name} className="w-11 h-11 rounded-full object-cover border border-gray-200 flex-shrink-0" />
-        ) : (
-          <div className="w-11 h-11 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-black flex-shrink-0">
-            {staff.name.charAt(0)}
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <nav className="flex items-center gap-1 text-xs text-gray-400 mb-0.5">
-            <button onClick={() => navigate('/dashboard/staff_management')} className="hover:text-primary-600 transition">الموظفون</button>
-            <ChevronRight size={12} className="text-gray-300" />
-            <span className="text-gray-600 font-medium truncate">{staff.name}</span>
-          </nav>
-          <h1 className="flex items-center gap-2 text-lg font-bold text-gray-900">
-            <span className="truncate">{staff.name}</span>
-            {profile?.rank.position && (
-              <span
-                className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700 border border-amber-200"
-                title={`ترتيبه ${profile.rank.position} من ${profile.rank.outOf} على إيراد الشهر الحالي`}
-              >
-                <Trophy size={11} /> #{profile.rank.position}
-                <span className="font-bold opacity-60">/{profile.rank.outOf}</span>
-              </span>
-            )}
-          </h1>
-          <p className="text-xs text-gray-500">
-            {ROLE_LABELS[staff.role] ?? staff.role}
-            {staff.commissionRate ? ` · عمولة ${staff.commissionRate}%` : ''}
-            {staff.joinedAt ? ` · ${getTenure(staff.joinedAt)}` : ''}
-            {staff.status === 'inactive' && <span className="mr-2 text-red-500 font-bold">· غير نشط</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {staff.phone && (
-            <a href={`https://wa.me/${formatWaPhone(staff.phone)}`} target="_blank" rel="noopener noreferrer"
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-green-100 text-green-700 hover:bg-green-200 transition" title="واتساب">
-              <Phone size={16} />
-            </a>
-          )}
-          {staff.email && (
-            <a href={`mailto:${staff.email}`}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition" title="البريد الإلكتروني">
-              <Mail size={16} />
-            </a>
-          )}
-          {isAdmin && currentStaff?.id !== staff.id && (
-            <button
-              onClick={() => void handleDelete()}
-              disabled={deleting}
-              className="flex items-center gap-1.5 px-3 h-9 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition text-xs font-bold disabled:opacity-50"
-              title="حذف الموظف"
-            >
-              <Trash2 size={14} /> {deleting ? 'جارٍ الحذف...' : 'حذف'}
+    <div className="min-h-screen bg-slate-50" dir="rtl">
+      {/* ── Hero header — identity, standing and quick actions in one band ── */}
+      <div className="relative overflow-hidden bg-gradient-to-l from-slate-900 via-indigo-900 to-violet-800 text-white">
+        {/* soft light blooms so the band reads as a designed surface, not a block */}
+        <div className="pointer-events-none absolute -top-24 right-10 h-64 w-64 rounded-full bg-violet-500/30 blur-[90px]" />
+        <div className="pointer-events-none absolute -bottom-28 left-0 h-64 w-64 rounded-full bg-indigo-400/25 blur-[90px]" />
+
+        <div className="relative z-10 mx-auto max-w-6xl px-4 md:px-8 pt-5 pb-6">
+          <nav className="mb-4 flex items-center gap-1 text-xs text-white/50">
+            <button onClick={() => navigate(-1)}
+              className="mr-1 grid h-7 w-7 place-items-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20"
+              title="رجوع">
+              <ArrowRight size={15} />
             </button>
-          )}
+            <button onClick={() => navigate('/dashboard/staff_management')} className="transition hover:text-white">الموظفون</button>
+            <ChevronRight size={12} className="opacity-40" />
+            <span className="truncate font-medium text-white/80">{staff.name}</span>
+          </nav>
+
+          <div className="flex flex-wrap items-start justify-between gap-5">
+            <div className="flex min-w-0 items-center gap-4">
+              {staff.image ? (
+                <img src={staff.image} alt={staff.name}
+                  className="h-20 w-20 shrink-0 rounded-2xl object-cover ring-4 ring-white/15 shadow-xl" />
+              ) : (
+                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-white/15 text-3xl font-black ring-4 ring-white/10 shadow-xl">
+                  {staff.name.charAt(0)}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate text-2xl font-black tracking-tight">{staff.name}</h1>
+                  {staff.status === 'inactive' && (
+                    <span className="rounded-full bg-red-500/25 px-2 py-0.5 text-[11px] font-bold text-red-200">غير نشط</span>
+                  )}
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-lg bg-white/15 px-2 py-1 font-bold">{ROLE_LABELS[staff.role] ?? staff.role}</span>
+                  {staff.joinedAt && <span className="text-white/60">{getTenure(staff.joinedAt)}</span>}
+                  {staff.commissionRate ? <span className="text-white/60">· عمولة {staff.commissionRate}%</span> : null}
+                </div>
+                {/* Headline stats, so the band answers "how is this person doing?" */}
+                {profile && (
+                  <div className="mt-3 flex flex-wrap gap-4 text-xs">
+                    <span><b className="text-base font-black">{fmtMoneyEgp(profile.lifetime.revenue)}</b><span className="text-white/50"> إيراد كلي</span></span>
+                    <span><b className="text-base font-black">{fmtNum(profile.lifetime.bookings)}</b><span className="text-white/50"> حجز</span></span>
+                    <span><b className="text-base font-black">{fmtNum(profile.today.calls)}</b><span className="text-white/50"> مكالمة اليوم</span></span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-3">
+              {profile?.rank.position && (
+                <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-center backdrop-blur-sm ring-1 ring-white/15"
+                  title={`ترتيبه ${profile.rank.position} من ${profile.rank.outOf} على إيراد الشهر الحالي`}>
+                  <div className="flex items-center justify-center gap-1.5 text-amber-300">
+                    <Trophy size={14} />
+                    <span className="text-xl font-black leading-none">#{profile.rank.position}</span>
+                  </div>
+                  <p className="mt-1 text-[10px] font-bold text-white/60">من {profile.rank.outOf} في الفريق</p>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                {staff.phone && (
+                  <a href={`https://wa.me/${formatWaPhone(staff.phone)}`} target="_blank" rel="noopener noreferrer"
+                    className="grid h-9 w-9 place-items-center rounded-full bg-emerald-500/90 text-white transition hover:bg-emerald-400" title="واتساب">
+                    <Phone size={16} />
+                  </a>
+                )}
+                {staff.email && (
+                  <a href={`mailto:${staff.email}`}
+                    className="grid h-9 w-9 place-items-center rounded-full bg-sky-500/90 text-white transition hover:bg-sky-400" title="البريد الإلكتروني">
+                    <Mail size={16} />
+                  </a>
+                )}
+                <button onClick={() => setActiveTab('messages')}
+                  className="flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-bold text-indigo-800 transition hover:bg-indigo-50"
+                  title="مراسلة الموظف">
+                  <MessageSquare size={14} /> رسالة
+                </button>
+                {isAdmin && currentStaff?.id !== staff.id && (
+                  <button onClick={() => void handleDelete()} disabled={deleting}
+                    className="flex h-9 items-center gap-1.5 rounded-full bg-red-500/20 px-3 text-xs font-bold text-red-200 transition hover:bg-red-500/30 disabled:opacity-50"
+                    title="حذف الموظف">
+                    <Trash2 size={14} /> {deleting ? 'جارٍ...' : 'حذف'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ── Tab bar ── */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8">
-        <div className="flex gap-0 overflow-x-auto">
+      {/* ── Tab bar — sticks under the hero while scrolling ── */}
+      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur px-4 md:px-8">
+        <div className="mx-auto flex max-w-6xl gap-0 overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-5 py-3.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
-                  ? 'border-primary-600 text-primary-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-indigo-600 text-indigo-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
               {tab.icon}
@@ -591,9 +619,12 @@ const StaffProfile: React.FC = () => {
           </div>
         )}
 
-        {/* ══ MESSAGES TAB — two-way thread with the employee ══ */}
+        {/* ══ MESSAGES TAB — 1:1 thread + group broadcast composer ══ */}
         {activeTab === 'messages' && (
-          <StaffMessagesPanel staffId={staff.id} staffName={staff.name} notify={notify} />
+          <div className="space-y-6">
+            <StaffMessagesPanel staffId={staff.id} staffName={staff.name} notify={notify} />
+            <StaffBroadcastPanel staffMembers={staffMembers} notify={notify} />
+          </div>
         )}
 
         {/* ══ TASKS TAB ══ */}
@@ -602,6 +633,11 @@ const StaffProfile: React.FC = () => {
         )}
 
         {/* ══ REPORTS TAB ══ */}
+        {activeTab === 'reports' && (
+          <div className="mb-6">
+            <StaffPeriodReport staffId={staff.id} notify={notify} />
+          </div>
+        )}
         {activeTab === 'reports' && perf && (
           <div className="space-y-6">
             {/* Period cards */}

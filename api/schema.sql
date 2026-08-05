@@ -3069,13 +3069,16 @@ CREATE TABLE `staff_messages` (
   `staff_id` varchar(36) NOT NULL,
   `author_staff_id` varchar(36) DEFAULT NULL,
   `author_name` varchar(255) NOT NULL DEFAULT '',
-  `direction` enum('to_staff','from_staff') NOT NULL DEFAULT 'to_staff',
+  `direction` enum('to_staff','from_staff','peer_broadcast') NOT NULL DEFAULT 'to_staff',
+  `broadcast_id` varchar(36) DEFAULT NULL,
+  `broadcast_label` varchar(160) DEFAULT NULL,
   `body` text NOT NULL,
   `read_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_staff_messages_thread` (`tenant_id`,`staff_id`,`created_at`),
-  KEY `idx_staff_messages_unread` (`tenant_id`,`staff_id`,`direction`,`read_at`)
+  KEY `idx_staff_messages_unread` (`tenant_id`,`staff_id`,`direction`,`read_at`),
+  KEY `idx_staff_messages_broadcast` (`tenant_id`,`broadcast_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

@@ -80,15 +80,21 @@ export default function StaffMessagesPanel({
         ) : (
           messages.map(message => {
             const fromManagement = message.direction === 'to_staff';
+            const fromPeer = message.direction === 'peer_broadcast';
             return (
-              <div key={message.id} className={`flex ${fromManagement ? 'justify-start' : 'justify-end'}`}>
+              <div key={message.id} className={`flex ${fromManagement || fromPeer ? 'justify-start' : 'justify-end'}`}>
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                    fromManagement ? 'bg-indigo-600 text-white' : 'border border-gray-200 bg-white text-gray-800'
+                    fromManagement ? 'bg-indigo-600 text-white'
+                      : fromPeer ? 'border border-violet-200 bg-violet-50 text-violet-900'
+                        : 'border border-gray-200 bg-white text-gray-800'
                   }`}
                 >
-                  <p className={`mb-1 text-[10px] font-bold ${fromManagement ? 'text-indigo-200' : 'text-gray-400'}`}>
-                    {fromManagement ? `الإدارة · ${message.author_name}` : message.author_name || staffName}
+                  <p className={`mb-1 text-[10px] font-bold ${fromManagement ? 'text-indigo-200' : fromPeer ? 'text-violet-500' : 'text-gray-400'}`}>
+                    {fromManagement ? `الإدارة · ${message.author_name}`
+                      : fromPeer ? `زميل · ${message.author_name}`
+                        : message.author_name || staffName}
+                    {message.broadcast_label ? ` · 📣 ${message.broadcast_label}` : ''}
                     {' · '}
                     {new Date(message.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
                     {fromManagement && (message.read_at ? ' · تم الاطلاع' : ' · لم يُقرأ')}

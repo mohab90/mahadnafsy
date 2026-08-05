@@ -11,7 +11,9 @@ type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves' | 'message
 type MyMessage = {
   id: string;
   author_name: string;
-  direction: 'to_staff' | 'from_staff';
+  /** peer_broadcast = a colleague's team message that landed in my thread. */
+  direction: 'to_staff' | 'from_staff' | 'peer_broadcast';
+  broadcast_label?: string | null;
   body: string;
   read_at: string | null;
   created_at: string;
@@ -200,15 +202,21 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     } finally { setLoadingMessages(false); }
   }, [notify]);
   useEffect(() => { if (activeSection === 'messages') void fetchMyMessages(); }, [activeSection, fetchMyMessages]);
+  // 'management' = reply on my own thread; 'team' = broadcast to everyone with
+  // my role (each teammate gets it in their own thread, attributed to me).
+  const [messageScope, setMessageScope] = useState<'management' | 'team'>('management');
   const sendMyMessage = async () => {
     const body = messageDraft.trim();
     if (!body) return;
+    if (messageScope === 'team' && !window.confirm('إرسال هذه الرسالة لكل أعضاء فريقك؟')) return;
     setSendingMessage(true);
     try {
-      await mysqlAdmin.sendMyStaffMessage(body);
+      const result = await mysqlAdmin.sendMyStaffMessage(body, messageScope) as unknown as { recipients?: number; label?: string };
       setMessageDraft('');
       await fetchMyMessages(true);
-      notify('success', 'تم إرسال رسالتك للإدارة');
+      notify('success', messageScope === 'team'
+        ? `تم الإرسال إلى ${result.recipients ?? 0} من ${result.label || 'فريقك'}`
+        : 'تم إرسال رسالتك للإدارة');
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر إرسال الرسالة');
     } finally { setSendingMessage(false); }
@@ -480,11 +488,16 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
               </div>
             ) : myMessages.map(message => {
               const mine = message.direction === 'from_staff';
+              const fromPeer = message.direction === 'peer_broadcast';
               return (
                 <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${mine ? 'bg-slate-700 text-white' : 'bg-white border border-gray-200 text-gray-800'}`}>
-                    <p className={`mb-1 text-[10px] font-bold ${mine ? 'text-slate-300' : 'text-gray-400'}`}>
-                      {mine ? 'أنا' : `الإدارة · ${message.author_name}`}
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                    mine ? 'bg-slate-700 text-white'
+                      : fromPeer ? 'bg-violet-50 border border-violet-200 text-violet-900'
+                        : 'bg-white border border-gray-200 text-gray-800'}`}>
+                    <p className={`mb-1 text-[10px] font-bold ${mine ? 'text-slate-300' : fromPeer ? 'text-violet-500' : 'text-gray-400'}`}>
+                      {mine ? 'أنا' : fromPeer ? `زميل · ${message.author_name}` : `الإدارة · ${message.author_name}`}
+                      {message.broadcast_label ? ` · 📣 ${message.broadcast_label}` : ''}
                       {' · '}
                       {new Date(message.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
                     </p>
@@ -495,15 +508,33 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
             })}
             <div ref={messagesEndRef}/>
           </div>
-          <div className="flex items-end gap-2 border-t border-gray-100 p-4">
-            <textarea value={messageDraft} onChange={e => setMessageDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void sendMyMessage(); } }}
-              rows={2} placeholder="اكتب رسالتك للإدارة... (Ctrl+Enter للإرسال)"
-              className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"/>
-            <button onClick={() => void sendMyMessage()} disabled={sendingMessage || !messageDraft.trim()}
-              className="flex items-center gap-1.5 rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">
-              <Send size={15}/> {sendingMessage ? 'جارٍ...' : 'إرسال'}
-            </button>
+          <div className="border-t border-gray-100 p-4 space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {([['management', 'للإدارة'], ['team', '📣 لكل فريقي']] as const).map(([key, label]) => (
+                <button key={key} onClick={() => setMessageScope(key)}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                    messageScope === key ? 'border-slate-700 bg-slate-700 text-white' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+              {messageScope === 'team' && (
+                <span className="self-center text-[11px] text-violet-600 font-bold">ستوصل لكل زملائك بنفس الدور الوظيفي</span>
+              )}
+            </div>
+            <div className="flex items-end gap-2">
+              <textarea value={messageDraft} onChange={e => setMessageDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void sendMyMessage(); } }}
+                rows={2}
+                placeholder={messageScope === 'team' ? 'اكتب رسالة جماعية لفريقك... (Ctrl+Enter للإرسال)' : 'اكتب رسالتك للإدارة... (Ctrl+Enter للإرسال)'}
+                className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"/>
+              <button onClick={() => void sendMyMessage()} disabled={sendingMessage || !messageDraft.trim()}
+                className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 ${
+                  messageScope === 'team' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-slate-700 hover:bg-slate-800'
+                }`}>
+                <Send size={15}/> {sendingMessage ? 'جارٍ...' : 'إرسال'}
+              </button>
+            </div>
           </div>
         </div>
       )}

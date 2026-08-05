@@ -37,7 +37,12 @@ function kindOf(value?: string): Kind {
 
 export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
   const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications } = useSiteData();
-  const [group, setGroup] = useState<Group>(initialType === 'staff' ? 'staff' : 'teaching');
+  // Staff-first by default: the owner asked for الموظفون to be the first and
+  // default group, so only an explicit instructor/consultant entry point
+  // (initialType) opens on the teaching side.
+  const [group, setGroup] = useState<Group>(
+    initialType === 'instructor' || initialType === 'consultant' ? 'teaching' : 'staff',
+  );
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status | 'all'>('all');
   const [kind, setKind] = useState<Kind | 'all'>(initialType);
@@ -128,8 +133,8 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
 
       <div className="flex gap-2 border-b border-gray-200">
         {([
-          ['teaching', 'المحاضرون والاستشاريون', GraduationCap],
           ['staff', 'الموظفون', BriefcaseBusiness],
+          ['teaching', 'المحاضرون والاستشاريون', GraduationCap],
         ] as const).map(([key, label, Icon]) => (
           <button key={key} onClick={() => { setGroup(key); setKind('all'); }}
             className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold ${group === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500'}`}>
