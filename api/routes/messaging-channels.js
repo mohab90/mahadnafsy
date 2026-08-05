@@ -75,7 +75,29 @@ router.post('/api/admin/messaging/channels', ...manage, async (req, res) => {
       makeDefault: Boolean(makeDefault),
       createdBy: req.user?.email || req.staffRecord?.name || 'admin',
     });
-    res.status(201).json(channel);
+    // A freshly-saved channel used to sit at status='pending' until someone
+    // separately remembered to press "اختبار الاتصال" — and getSendableChannel's
+    // default-channel lookup only ever considers status='connected' ones, so a
+    // channel could go unused for hours (this one did — created 2026-08-04
+    // 22:08, the underlying Wapilot session was WORKING the whole time, but
+    // every OTP/notification send silently found no sendable default channel
+    // until a manual test call the next morning finally verified it). Testing
+    // what was just entered, right when it's entered, closes that window —
+    // it is not "trusting saved credentials without proof" (the thing the
+    // pending-by-default design was guarding against): it's the exact same
+    // live-session check the manual test button runs, just no longer
+    // dependent on someone remembering to click it.
+    if (kind === 'whatsapp' && provider === 'wapilot' && credentials) {
+      const check = await verifyWapilot(credentials);
+      if (check.ok) {
+        await channels.markChannelConnected(req.tenantId, channel.id, pool, check.number);
+      } else {
+        await channels.markChannelError(req.tenantId, channel.id,
+          typeof check.reason === 'string' ? check.reason : 'تعذّر التحقق من الجلسة عند الحفظ');
+      }
+    }
+    const fresh = await channels.getChannelById(req.tenantId, channel.id);
+    res.status(201).json(fresh || channel);
   } catch (error) { fail(res, error, 'channel create failed'); }
 });
 
@@ -251,7 +273,7 @@ router.post('/api/messaging/channels/:id/test', requireAuth, requireAdminOrStaff
           reason: typeof check.reason === 'string' ? check.reason : undefined,
         });
       }
-      await channels.markChannelConnected(req.tenantId, channel.id);
+      await channels.markChannelConnected(req.tenantId, channel.id, pool, check.number);
       return res.json({ ok: true, sessionStatus: check.status, number: check.number, name: check.name });
     }
 

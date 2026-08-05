@@ -210,12 +210,20 @@ async function setDefaultChannel(tenantId, id, kind, db = pool) {
   return getChannelById(tenantId, id, db);
 }
 
-async function markChannelConnected(tenantId, id, db = pool) {
+// `number`, when the caller has it (Wapilot's own status check reports the
+// connected session's real number), replaces display_number — the value
+// entered when the channel was created is what someone typed, not
+// necessarily what the session that actually got linked reports itself as.
+// Leaving the stale typed value in place after a verified session proves
+// otherwise is exactly the kind of thing that looks like a second bug on
+// top of whatever made verification necessary in the first place.
+async function markChannelConnected(tenantId, id, db = pool, number = null) {
   await db.query(
     `UPDATE messaging_channels
-        SET status='connected', last_verified_at=NOW(), last_error=NULL
+        SET status='connected', last_verified_at=NOW(), last_error=NULL,
+            display_number=COALESCE(?, display_number)
       WHERE tenant_id=? AND id=?`,
-    [tenantId, id]
+    [number || null, tenantId, id]
   );
 }
 
