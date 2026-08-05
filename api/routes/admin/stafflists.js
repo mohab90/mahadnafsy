@@ -84,13 +84,21 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     } else if (scope === 'assigned_sales') {
       const staffId = req.staffRecord?.id;
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      scopeClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
-      scopeParams.push(staffId, staffId, staffId);
+      // crm_json used to be an OR-fallback here for a NULL assigned_sales_id column,
+      // back when nothing ever actively cleared the column while crm_json still held
+      // a value. A bulk unassign proved that assumption false: crm_json is a
+      // write-once snapshot from creation time, never invalidated by later
+      // reassignment/unassignment, so matching on it let unassigned records
+      // resurface as "still mine" (and, worse, get silently reassigned back — see
+      // the auto-backfill this scope used to feed at /api/staff/my-subscribers).
+      // The column is the only field every assignment code path keeps current.
+      scopeClause = `(s.assigned_sales_id = ? OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
+      scopeParams.push(staffId, staffId);
     } else if (scope === 'assigned_cs') {
       const staffId = req.staffRecord?.id;
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      scopeClause = `(s.assigned_cs_id = ? OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?))`;
-      scopeParams.push(staffId, staffId);
+      scopeClause = `s.assigned_cs_id = ?`;
+      scopeParams.push(staffId);
     }
     // scope === 'all' falls through with scopeClause = '1=1' (no extra restriction)
 
@@ -235,10 +243,10 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
         paymentHistory,  // authoritative from payments table
         extraCertificateRequests: certificatesBySub[r.id] || [],
         branch: (() => { const rb = r.branch || crm.branch || null; if (!rb) return null; const nb = rb.toUpperCase().replace(/[-\s]/g,'_'); return ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'].includes(nb) ? nb : rb; })(),
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
-        assignedCsId: r.assigned_cs_id || crm.assignedCsId || null,
-        assignedCsName: r.assigned_cs_name || crm.assignedCsName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
+        assignedCsId: r.assigned_cs_id || null,
+        assignedCsName: r.assigned_cs_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
@@ -273,12 +281,14 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
       params.push(...ADMIN_EMAILS.map(e => e.toLowerCase()));
     } else if (scope === 'assigned_sales') {
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      whereClause = `(s.assigned_sales_id = ? OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?) OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
-      params.push(staffId, staffId, staffId);
+      // See the matching comment on /api/admin/subscribers above — crm_json is a
+      // stale creation-time snapshot, not a live mirror of the column.
+      whereClause = `(s.assigned_sales_id = ? OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
+      params.push(staffId, staffId);
     } else if (scope === 'assigned_cs') {
       if (!staffId) return res.status(403).json({ error: 'Staff record required' });
-      whereClause = `(s.assigned_cs_id = ? OR (s.crm_json IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedCollectionId')) = ?))`;
-      params.push(staffId, staffId);
+      whereClause = `s.assigned_cs_id = ?`;
+      params.push(staffId);
     } else if (scope.startsWith('branch:')) {
       const branches = branchesFromScope(scope); // e.g. 'DAQQI' or 'ONLINE_EGYPT,ONLINE_SAUDI'
       whereClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
@@ -384,10 +394,10 @@ router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePe
         extraCertificateRequests: staffCertificatesBySub[r.id] || [],
         branch: (nb && VALID_BRANCHES.has(nb)) ? nb : rb,
         clientType: r.client_type || null,
-        assignedSalesId:   r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
-        assignedCsId:      r.assigned_cs_id || crm.assignedCsId || null,
-        assignedCsName:    r.assigned_cs_name || crm.assignedCsName || null,
+        assignedSalesId:   r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
+        assignedCsId:      r.assigned_cs_id || null,
+        assignedCsName:    r.assigned_cs_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
@@ -444,8 +454,8 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
         leadType: r.lead_type || crm.leadType || 'course',
         enrolledCourseId: r.enrolled_course_id || crm.enrolledCourseId || '',
         interestLevel: r.interest_level || crm.interestLevel || 'medium',
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
         interestedCourseIds: tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []),
         createdAt: r.created_at, updatedAt: r.updated_at,
         communications: Array.isArray(crm.communications) ? crm.communications : [],
@@ -468,30 +478,22 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
        LEFT JOIN leads l ON l.id = s.lead_id AND l.tenant_id=s.tenant_id
        WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND (
              s.assigned_sales_id = ?
-          OR (s.assigned_sales_id IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(s.crm_json, '$.assignedSalesId')) = ?)
           OR (s.lead_id IS NOT NULL AND l.assigned_sales_id = ?))
        ORDER BY s.created_at DESC LIMIT 2000`,
-      [req.tenantId, staffId, staffId, staffId]
+      [req.tenantId, staffId, staffId]
     );
     if (rows.length === 0) return res.json([]);
 
-    // Auto-backfill: fix any rows that came via crm_json fallback (missing assigned_sales_id column)
-    const toBackfill = rows.filter(r => !r.assigned_sales_id);
-    if (toBackfill.length > 0) {
-      // Fire-and-forget background update — don't block the response
-      Promise.all(toBackfill.map(r => {
-        const crm = parseCrm(r.crm_json);
-        const salesName = crm.assignedSalesName || null;
-        const rawBranch = r.branch || crm.branch || null;
-
-        const normB = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
-        const branchVal = (normB && VALID_BRANCHES.has(normB)) ? normB : null;
-        return pool.query(
-          'UPDATE subscribers SET assigned_sales_id=?, assigned_sales_name=COALESCE(assigned_sales_name,?), branch=COALESCE(branch,?) WHERE id=? AND tenant_id=?',
-          [staffId, salesName, branchVal, r.id, req.tenantId]
-        ).catch(() => {});
-      })).catch(() => {});
-    }
+    // An "auto-backfill" used to live here: any row that only matched via the
+    // crm_json OR-fallback above (assigned_sales_id column NULL) got silently
+    // UPDATEd back to this staff member's id, on every GET of this list. That
+    // matched the crm_json fallback's premise at the time — crm_json was assumed
+    // to only ever hold a value that was still true. A bulk unassign broke that
+    // assumption at scale (crm_json keeps whatever was true at creation, forever,
+    // regardless of later reassignment/unassignment): the fallback alone made
+    // unassigned subscribers reappear in "my subscribers", and this backfill made
+    // that reappearance permanent again the moment the rep so much as loaded
+    // their list. Removed along with the fallback it depended on.
 
     const ids = rows.map(r => r.id);
     const enrollmentProjection = await loadEnrollmentProjection(req.tenantId, ids);
@@ -534,8 +536,8 @@ router.get('/api/staff/my-subscribers', requireAuth, requireAdminOrStaff, requir
         clientCode, paymentHistory,
         branch: (() => { const rb = r.branch || crm.branch || null; if (!rb) return null; const nb = rb.toUpperCase().replace(/[-\s]/g,'_'); return ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'].includes(nb) ? nb : rb; })(),
         clientType: r.client_type || null,
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
@@ -601,10 +603,10 @@ router.get('/api/staff/my-collection-clients', requireAuth, requireAdminOrStaff,
         certificates: completionProjection[r.id] || [],
         clientCode, paymentHistory,
         branch: (() => { const rb = r.branch || crm.branch || null; if (!rb) return null; const nb = rb.toUpperCase().replace(/[-\s]/g,'_'); return ['DAQQI','TAGAMOA','ONLINE_EGYPT','ONLINE_SAUDI','ONLINE_ABROAD','OTHER'].includes(nb) ? nb : rb; })(),
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
-        assignedCollectionId: r.assigned_cs_id || crm.assignedCollectionId || null,
-        assignedCollectionName: r.assigned_cs_name || crm.assignedCollectionName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
+        assignedCollectionId: r.assigned_cs_id || null,
+        assignedCollectionName: r.assigned_cs_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       };
     }));
@@ -669,10 +671,10 @@ router.get('/api/staff/my-daqqi-clients', requireAuth, requireAdminOrStaff, requ
         certificates: completionProjection[r.id] || [],
         clientCode, paymentHistory,
         branch: 'DAQQI',
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
-        assignedCsId: r.assigned_cs_id || crm.assignedCollectionId || null,
-        assignedCsName: r.assigned_cs_name || crm.assignedCollectionName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
+        assignedCsId: r.assigned_cs_id || null,
+        assignedCsName: r.assigned_cs_name || null,
         status: crm.status || (r.is_active ? 'active' : 'inactive'),
         installmentPlans: crm.installmentPlans || [],
       };

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { routeModules } = require('../lib/registerRoutes');
 
 test('route registry preserves one ordered mount for every router module', () => {
-  assert.equal(routeModules.length, 71);
+  assert.equal(routeModules.length, 72);
   assert.deepEqual(routeModules[0], ['/', '../routes/auth']);
   assert.deepEqual(routeModules.at(-1), ['/', '../routes/tenant-domains']);
 

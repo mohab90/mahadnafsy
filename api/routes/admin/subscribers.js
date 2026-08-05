@@ -102,8 +102,8 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
             return res.status(403).json({ error: 'ليس لديك صلاحية الوصول لهذا العميل' });
           }
         } else {
-          const assignedId = r.assigned_sales_id || crm.assignedSalesId || null;
-          const assignedCsId = r.assigned_cs_id || crm.assignedCsId || null;
+          const assignedId = r.assigned_sales_id || null;
+          const assignedCsId = r.assigned_cs_id || null;
           if (assignedId !== staffId && assignedCsId !== staffId) {
             // Also check via lead linkage
             if (r.lead_id) {
@@ -212,10 +212,10 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         // it — every one has its payments in the table) and is removed.
         clientCode, paymentHistory, certificates, extraCertificateRequests,
         branch, clientType: r.client_type || null,
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
-        assignedCsId: r.assigned_cs_id || crm.assignedCsId || crm.assignedCollectionId || null,
-        assignedCsName: r.assigned_cs_name || crm.assignedCsName || crm.assignedCollectionName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
+        assignedCsId: r.assigned_cs_id || null,
+        assignedCsName: r.assigned_cs_name || null,
         updatedAt: safeIsoString(r.updated_at) || null,
       }});
     }
@@ -234,7 +234,7 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
       if (!isAdminReq) {
         const staffRole2 = (req.staffRecord?.role || '').toLowerCase();
         const fullAccessRoles2 = ['online_manager', 'daqqi_manager', 'manager'];
-        if (!fullAccessRoles2.includes(staffRole2) && r.assigned_sales_id !== staffId && (crm.assignedCsId || r.assigned_cs_id) !== staffId) {
+        if (!fullAccessRoles2.includes(staffRole2) && r.assigned_sales_id !== staffId && r.assigned_cs_id !== staffId) {
           return res.status(403).json({ error: 'ليس لديك صلاحية الوصول لهذا العميل' });
         }
       }
@@ -245,8 +245,8 @@ router.get('/api/staff/client/:code', requireAuth, requireAdminOrStaff, requireP
         id: r.id, name: r.name, email: r.email, phone: r.phone,
         source: r.source, status, notes: r.notes, createdAt: r.created_at,
         ...crm, interestedCourseIds, clientCode,
-        assignedSalesId: r.assigned_sales_id || crm.assignedSalesId || null,
-        assignedSalesName: r.assigned_sales_name || crm.assignedSalesName || null,
+        assignedSalesId: r.assigned_sales_id || null,
+        assignedSalesName: r.assigned_sales_name || null,
         clientType: r.client_type || null,
       }});
     }
