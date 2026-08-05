@@ -5,15 +5,25 @@ import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested
 
 type OtpConfig = Record<string, any>;
 
+// These defaults describe intent, not live behavior — see the banner
+// rendered below. The real forgot-password/OTP send path (api/routes/auth.js)
+// is hardcoded to try WhatsApp first via the messaging_channels/Wapilot
+// integration (قنوات المراسلة, تحت التسويق), then falls back to the app's
+// own SMTP for email. It never reads this page's saved config at all —
+// found 2026-08-05 while chasing a real WhatsApp OTP delivery failure: the
+// actual fix was in messaging_channels, not here. Kept whatsapp-first here
+// too so an admin who has never saved anything doesn't see a default that
+// contradicts what the owner explicitly wants (WhatsApp primary, email
+// optional) — even though saving this form doesn't change delivery order.
 const DEFAULT_CONFIG: OtpConfig = {
-  preferred_channel: 'email',
-  fallback_order: ['email', 'whatsapp', 'sms'],
+  preferred_channel: 'whatsapp',
+  fallback_order: ['whatsapp', 'email', 'sms'],
   length: 6,
   expiry_minutes: 10,
   resend_cooldown_seconds: 60,
   max_attempts: 5,
   email: { enabled: true, provider: 'smtp', from_email: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', secure: false },
-  whatsapp: { enabled: false, provider: 'greenapi', instance_id: '', api_token: '', template: 'رمز التحقق الخاص بك هو {{code}}' },
+  whatsapp: { enabled: true, provider: 'greenapi', instance_id: '', api_token: '', template: 'رمز التحقق الخاص بك هو {{code}}' },
   sms: { enabled: false, provider: 'vonage', api_key: '', api_secret: '', sender_id: 'MAHAD' },
 };
 
@@ -73,6 +83,9 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
   return (
     <div className="space-y-5" dir="rtl">
       <SectionHeader title="إعدادات OTP والقنوات" subtitle="توحيد Email وWhatsApp وSMS مع fallback واضح وقواعد انتهاء ومحاولات." icon={<KeyRound size={22} />} tone="rose" />
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+        القواعد هنا وصفية فقط ومش بتتحكم في إرسال فعلي — استعادة كلمة المرور وأكواد الدخول بترسل واتساب أولًا دايمًا (ثم بريد احتياطي)، من خلال قناة واتساب الفعلية المُدارة في <b>الإعدادات ← الواتساب والماسنجر</b>. لو الواتساب مش بيوصل، راجع حالة القناة هناك، مش هنا.
+      </div>
       <Card title="قواعد OTP">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
           <Field label="القناة الأساسية">

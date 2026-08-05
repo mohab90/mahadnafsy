@@ -37,12 +37,18 @@ const DEFAULT_LEAD_SOURCE_CONNECTORS = {
   api_sources: [],
 };
 
+// getOtpProviderConfig() below is currently unreferenced by any route —
+// the real forgot-password/OTP send path (api/routes/auth.js) is hardcoded
+// to WhatsApp-first via the messaging_channels/Wapilot integration, then
+// SMTP for email, and never reads this config. Kept the default in sync
+// with that actual behavior (WhatsApp primary) rather than leaving it
+// contradicting it in case this ever gets wired up.
 const DEFAULT_OTP_PROVIDER = {
-  active_channel: 'email',
+  active_channel: 'whatsapp',
   code_ttl_minutes: 15,
   max_attempts: 5,
   email: { enabled: true, from_name: '', smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', secure: false },
-  whatsapp: { enabled: false, provider: 'green_api', instance_id: '', api_token: '', template: 'رمز التحقق الخاص بك: {{code}}' },
+  whatsapp: { enabled: true, provider: 'green_api', instance_id: '', api_token: '', template: 'رمز التحقق الخاص بك: {{code}}' },
   sms: { enabled: false, provider: '', sender_id: '', api_key: '', api_secret: '', template: 'رمز التحقق الخاص بك: {{code}}' },
 };
 
