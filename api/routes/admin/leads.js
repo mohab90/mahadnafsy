@@ -213,14 +213,24 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
          safeNotes||null, hidden||0, salesId, salesName, JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson]
       );
     } else {
+      // `hidden` used to be silently dropped here — extracted from the body
+      // at the top of this handler but never referenced in this UPDATE (only
+      // the INSERT branch above used it). Every "hide/unhide" click on an
+      // existing lead (the eye icon in LeadTable.tsx, which POSTs the whole
+      // row back with just that one field flipped) looked like it worked —
+      // 200 OK, updated_at bumped — but the column never actually changed.
+      // COALESCE(?,hidden) so a caller that omits `hidden` entirely (sends
+      // undefined → NULL) still leaves the existing value untouched, same
+      // pattern as assigned_sales_id/branch/client_type below.
       const [updated] = await conn.query(
         `UPDATE leads SET name=?, email=?, phone=?, source=?, notes=?, client_code=COALESCE(client_code,?),
            assigned_sales_id=COALESCE(?,assigned_sales_id), assigned_sales_name=COALESCE(?,assigned_sales_name),
            crm_json=?, branch=COALESCE(NULLIF(?,''),branch), branch_id=COALESCE(?,branch_id), client_type=COALESCE(?,client_type),
-           interested_course_ids_json=COALESCE(?,interested_course_ids_json)
+           interested_course_ids_json=COALESCE(?,interested_course_ids_json), hidden=COALESCE(?,hidden)
          WHERE id=? AND tenant_id=?`,
         [safeName||'', safeEmail||null, safePhone, safeSource||null, safeNotes||null, code, salesId, salesName,
-         JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson, id, tenantId]
+         JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
+         typeof hidden === 'boolean' ? (hidden ? 1 : 0) : null, id, tenantId]
       );
       if (!updated.affectedRows) {
         await conn.rollback();
