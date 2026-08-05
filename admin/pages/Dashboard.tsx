@@ -139,8 +139,21 @@ const Dashboard: React.FC = () => {
 
   // -- Pre-memoized ask_ai computations (must be inside Dashboard after useSiteData) ----------------------
 
-  const toast = useToast();
-  const notify = (type: 'success' | 'error' | 'info', text: string) => toast.show(text, type);
+  // notify must be a stable reference: it used to be recreated on every
+  // Dashboard render, and every tab's `useEffect(..., [notify])` fetch-once
+  // hook saw that as a changed dependency and re-fired. Normally invisible
+  // (a successful fetch just calls setState, doesn't touch notify again),
+  // but a tab whose initial fetch fails calls notify('error', ...) inside
+  // the same effect — which re-renders Dashboard, mints a new notify, and
+  // re-fires the effect. Confirmed live: OtpSettingsTab's OTP-config fetch
+  // was failing, and the resulting tight loop hammered
+  // /api/admin/sys-config?section=otp_provider dozens of times a second
+  // until the rate limiter started 429-ing it too — staff could not reliably
+  // open أو save واتساب/OTP channel settings. toast.show is already stable
+  // (useCallback([]) in shared/ui/Toast.tsx); notify only needed to stop
+  // being rebuilt on top of it.
+  const { show: toastShow } = useToast();
+  const notify = useCallback((type: 'success' | 'error' | 'info', text: string) => toastShow(text, type), [toastShow]);
   useRealtimeEvents<{ action?: string; entity?: string; actor?: string }>(
     'admin:mutation',
     (event) => {
