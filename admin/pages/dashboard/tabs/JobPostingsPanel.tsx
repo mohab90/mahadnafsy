@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2 } from 'lucide-react';
-import { BRANCHES, BRANCH_LABELS_AR } from '../../../constants/branches';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -8,11 +7,37 @@ interface Job { id: string; title: string; branch: string | null; employment_typ
 const EMP_TYPES: [string, string][] = [['full_time', 'دوام كامل'], ['part_time', 'دوام جزئي'], ['contract', 'عقد'], ['intern', 'تدريب']];
 const blank = (): Partial<Job> => ({ title: '', branch: null, employment_type: 'full_time', description: '', requirements: '', salary_min: null, salary_max: null, status: 'open' });
 
+// Static fallback only — kept in case the branches table is ever empty
+// (should not happen once seeded, but a job posting UI showing zero branch
+// options with no explanation would be a confusing regression).
+const FALLBACK_BRANCH_LABELS: Record<string, string> = {
+  DAQQI: 'فرع الدقي', TAGAMOA: 'فرع التجمع', ONLINE_EGYPT: 'أونلاين محلي (مصر)',
+  ONLINE_SAUDI: 'أونلاين سعودي', ONLINE_ABROAD: 'أونلاين دولي', OTHER: 'أخرى',
+};
+
 export default function JobPostingsPanel({ notify }: { notify: Notify }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Job> | null>(null);
   const [busy, setBusy] = useState(false);
+  // The real `branches` table — includes internal-only ones (e.g. an
+  // admin-only office) on purpose, since this dropdown IS the HR/staff
+  // context they're meant for. Not content['institute.branches']: that's a
+  // separate, customer-facing list this tenant has never populated.
+  const [realBranches, setRealBranches] = useState<{ id: string; label: string; internal_only?: boolean }[]>([]);
+  useEffect(() => {
+    fetch('/api/admin/hr/branches', { credentials: 'include', headers: adminAuthHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setRealBranches(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+  const branchOptions = useMemo(
+    () => realBranches.length > 0
+      ? realBranches.map(b => [b.id, b.internal_only ? `${b.label} (داخلي)` : b.label] as [string, string])
+      : Object.entries(FALLBACK_BRANCH_LABELS),
+    [realBranches],
+  );
+  const branchLabel = useMemo(() => Object.fromEntries(branchOptions), [branchOptions]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -64,7 +89,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-gray-800 text-sm">{j.title}</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{EMP_TYPES.find(e => e[0] === j.employment_type)?.[1] || j.employment_type}</span>
-                    {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{BRANCH_LABELS_AR[j.branch as keyof typeof BRANCH_LABELS_AR] || j.branch}</span>}
+                    {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{branchLabel[j.branch] || j.branch}</span>}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{j.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
                     <span className="text-[10px] text-gray-500">{Number(j.applicant_count || 0)} متقدم</span>
                     {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
@@ -94,7 +119,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
             </div>
             <select className={inp} value={editing.branch || ''} onChange={e => setEditing({ ...editing, branch: e.target.value || null })}>
               <option value="">كل الفروع (غير محدد بفرع)</option>
-              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS_AR[b]}</option>)}
+              {branchOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
             </select>
             <textarea className={inp} rows={3} placeholder="وصف الوظيفة" value={editing.description || ''} onChange={e => setEditing({ ...editing, description: e.target.value })} />
             <textarea className={inp} rows={2} placeholder="المتطلبات" value={editing.requirements || ''} onChange={e => setEditing({ ...editing, requirements: e.target.value })} />

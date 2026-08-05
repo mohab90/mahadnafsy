@@ -23,7 +23,8 @@ const InstituteGallery = React.lazy(() => import('./pages/InstituteGallery'));
 const Contact = React.lazy(() => import('./pages/Contact'));
 const Faq = React.lazy(() => import('./pages/Faq'));
 const TicketRating = React.lazy(() => import('./pages/TicketRating'));
-const JoinUs = React.lazy(() => import('./pages/JoinUs'));
+const JoinTeaching = React.lazy(() => import('./pages/JoinTeaching'));
+const JoinStaff = React.lazy(() => import('./pages/JoinStaff'));
 const Enrollment = React.lazy(() => import('./pages/Enrollment'));
 const Courses = React.lazy(() => import('./pages/Courses'));
 const CertificateVerify = React.lazy(() => import('./pages/CertificateVerify'));
@@ -329,8 +330,8 @@ const AppShell: React.FC = () => {
               <Route path="/contact" element={lazyPage(<Contact />)} />
               <Route path="/faq" element={lazyPage(<Faq />)} />
               <Route path="/ticket-rating" element={lazyPage(<TicketRating />)} />
-              <Route path="/join" element={lazyPage(<JoinUs />)} />
-              <Route path="/join-us" element={lazyPage(<JoinUs />)} />
+              <Route path="/join" element={lazyPage(<JoinTeaching />)} />
+              <Route path="/join-us" element={lazyPage(<JoinStaff />)} />
               <Route path="/enroll" element={lazyPage(<Enrollment />)} />
               <Route path="/certificate/:code" element={lazyPage(<CertificateVerify />)} />
               <Route path="*" element={<NotFound />} />

@@ -68,6 +68,7 @@ interface SiteDataShape {
   addJoinUsApplication: (item: JoinUsApplication) => Promise<boolean>;
   updateJoinUsApplication: (item: JoinUsApplication) => Promise<boolean>;
   deleteJoinUsApplication: (id: string) => Promise<boolean>;
+  reloadJoinUsApplications: () => Promise<void>;
   contactMessages: ContactMessage[];
   addContactMessage: (item: ContactMessage) => Promise<boolean>;
   updateContactMessage: (item: ContactMessage) => Promise<boolean>;
@@ -254,7 +255,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addSubscriber, updateSubscriber, deleteSubscriber,
     addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkAssignClientCodes, bulkRedistributeLeads,
     addOrder, updateOrderStatus, deleteOrder,
-    addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication,
+    addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications,
     reloadLeads, reloadSubscribers, reloadOrders, recordSubscriberPayment,
   } = useCrmCoreState(
     initial.subscribers || defaultSubscribers,
@@ -420,7 +421,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setOrders, setJoinUsApplications, setContactMessages, setDaqqiRounds,
     setAutomationWorkflows, setDiscounts, setNotifications, setAdminAiConfigLocal,
     setAiAgentConfigState, setMessagingChannelsState, setFbLeadAdsConfigState,
-    reloadOrders,
+    reloadOrders, reloadJoinUsApplications,
   });
   // ── Community + catalog loader (public, non-admin) ──────────────────────────
   // Admin catalog is loaded by the bootstrap above. Non-admin guests load via MySQL.
@@ -664,6 +665,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     addJoinUsApplication,
     updateJoinUsApplication,
     deleteJoinUsApplication,
+    reloadJoinUsApplications,
     contactMessages,
     addContactMessage,
     updateContactMessage,

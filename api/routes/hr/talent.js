@@ -98,7 +98,7 @@ async function createJoinApplication(data) {
         data.specialty, data.experience || '', data.type, data.linkedin || null, data.message || null,
       ]
     );
-    const applicantId = await convertJoinUs(data, { db: conn });
+    const applicantId = await convertJoinUs(data, { jobId: data.job_id || undefined, db: conn });
     await conn.commit();
     return { id: data.id, applicantId };
   } catch (error) {

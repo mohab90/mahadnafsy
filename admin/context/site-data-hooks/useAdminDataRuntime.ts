@@ -51,6 +51,7 @@ interface RuntimeState {
   setMessagingChannelsState: Setter<MessagingChannelsConfig | null>;
   setFbLeadAdsConfigState: Setter<FacebookLeadAdsConfig | null>;
   reloadOrders: () => Promise<void>;
+  reloadJoinUsApplications: () => Promise<void>;
 }
 
 type StaffWire = StaffMember & {
@@ -131,7 +132,7 @@ export function useAdminDataRuntime(state: RuntimeState): void {
     setOrders, setJoinUsApplications, setContactMessages, setDaqqiRounds,
     setAutomationWorkflows, setDiscounts, setNotifications, setAdminAiConfigLocal,
     setAiAgentConfigState, setMessagingChannelsState, setFbLeadAdsConfigState,
-    reloadOrders,
+    reloadOrders, reloadJoinUsApplications,
   } = state;
 
   useEffect(() => {
@@ -297,8 +298,17 @@ export function useAdminDataRuntime(state: RuntimeState): void {
   useEffect(() => {
     if (!authUser?.email || authUser.isAdmin !== true) return;
     let cancelled = false;
+    // Separate from lastCRMWriteRef (which only guards "was there a recent
+    // edit"): without this, every tab alt-out-and-back fires 'visibilitychange'
+    // with no spacing of its own, so a user who checks WhatsApp a few times an
+    // hour was re-fetching the entire leads+subscribers dataset (13k+ rows,
+    // several MB) on every return — the repeated full-table re-renders this
+    // caused were reported as the admin panel "feeling stuck" switching tabs.
+    let lastRefreshAt = 0;
     const silentRefresh = async () => {
       if (cancelled || Date.now() - lastCRMWriteRef.current < 180_000) return;
+      if (cancelled || Date.now() - lastRefreshAt < 90_000) return;
+      lastRefreshAt = Date.now();
       try {
         const [leadsRes, subscribersRes, roundsRes, expensesRes] = await Promise.allSettled([
           mysqlAdmin.listAllLeads(),
@@ -320,6 +330,7 @@ export function useAdminDataRuntime(state: RuntimeState): void {
         if (roundsRes.status === 'fulfilled' && (roundsRes.value as unknown[]).length > 0) setDaqqiRounds(roundsRes.value as unknown as DaqqiRound[]);
         if (expensesRes.status === 'fulfilled') setExpenses(expensesRes.value as unknown as ExpenseItem[]);
         void reloadOrders();
+        void reloadJoinUsApplications();
       } catch {
         // Polling is best-effort; the last confirmed server state remains visible.
       }

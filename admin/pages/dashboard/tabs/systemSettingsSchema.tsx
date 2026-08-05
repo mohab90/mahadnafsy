@@ -37,7 +37,13 @@ export const SECTIONS = [
 
 export type SectionKey = typeof SECTIONS[number]['key'];
 
-export interface ListItem { key: string; label: string; is_active: boolean; icon?: string; symbol?: string; code?: string; flag?: string; is_default?: boolean; }
+export interface ListItem {
+  key: string; label: string; is_active: boolean;
+  icon?: string; symbol?: string; code?: string; flag?: string; is_default?: boolean;
+  /** Branches only: usable for job postings/staff, excluded from the public
+   * "الفرع الأقرب" picker on the website. */
+  internal_only?: boolean;
+}
 export interface CertItem { type: string; label: string; egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number; }
 export interface ExchangeRates { sar_to_egp: number; usd_to_egp: number; }
 export interface General {
@@ -93,7 +99,7 @@ export function parseContentSections(raw: Record<string, string>): Partial<Recor
   let branches: ListItem[] = [];
   try {
     branches = JSON.parse(raw['institute.branches'] || '[]')
-      .map((b: { id: string; label: string }) => ({ key: b.id, label: b.label, is_active: true }));
+      .map((b: { id: string; label: string; internal_only?: boolean }) => ({ key: b.id, label: b.label, is_active: true, internal_only: b.internal_only === true }));
   } catch {}
 
   const pmStr = raw['finance.payment_methods'] || DEFAULT_PAYMENT_METHODS.join('||');
@@ -124,7 +130,7 @@ export function parseContentSections(raw: Record<string, string>): Partial<Recor
 export function buildContentPatch(key: SectionKey, value: SectionData): Record<string, string> {
   switch (key) {
     case 'branches': {
-      const list = (value as ListItem[]).map(b => ({ id: b.key, label: b.label }));
+      const list = (value as ListItem[]).map(b => ({ id: b.key, label: b.label, internal_only: b.internal_only === true }));
       return { 'institute.branches': JSON.stringify(list) };
     }
     case 'payment_methods': {

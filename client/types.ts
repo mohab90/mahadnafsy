@@ -440,6 +440,11 @@ export interface JoinUsApplication {
   status: 'new' | 'reviewed' | 'accepted' | 'rejected';
   createdAt: string;
   adminNote?: string;
+  /** The specific job posting applied to (employee applications only) — lets
+   * the submission attach directly to that job instead of the generic talent
+   * pool. Optional: instructor/consultant applications and free-form employee
+   * applications with no listing picked leave this unset. */
+  jobId?: string;
 }
 
 export interface ContactMessage {

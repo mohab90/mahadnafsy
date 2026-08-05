@@ -40,6 +40,12 @@ function contentBranches(content) {
       type: ['online', 'physical', 'hybrid', 'other'].includes(raw?.branch_type)
         ? raw.branch_type
         : (normalized.includes('online') ? 'online' : 'physical'),
+      // Usable for job postings / staff assignment but excluded from the
+      // public "الفرع الأقرب" picker (filtered client-side on the same flag,
+      // read straight off this same content['institute.branches'] list) —
+      // distinct from `is_active`, which already gates whether a job posting
+      // may reference the branch at all.
+      internalOnly: raw?.internal_only === true,
     };
   });
 }
@@ -68,12 +74,13 @@ async function saveContentAndBranchCatalog(req, content) {
       for (const branch of branches) {
         await conn.query(
           `INSERT INTO branches
-             (id, tenant_id, branch_key, slug, label, branch_type, timezone, currency, is_active)
-           VALUES (?,?,?,?,?,?, 'Africa/Cairo', 'EGP', 1)
+             (id, tenant_id, branch_key, slug, label, branch_type, timezone, currency, is_active, internal_only)
+           VALUES (?,?,?,?,?,?, 'Africa/Cairo', 'EGP', 1, ?)
            ON DUPLICATE KEY UPDATE
              branch_key=VALUES(branch_key), slug=VALUES(slug),
-             label=VALUES(label), branch_type=VALUES(branch_type), is_active=1`,
-          [uuidv4(), req.tenantId, branch.branchKey, branch.slug, branch.label, branch.type]);
+             label=VALUES(label), branch_type=VALUES(branch_type), is_active=1,
+             internal_only=VALUES(internal_only)`,
+          [uuidv4(), req.tenantId, branch.branchKey, branch.slug, branch.label, branch.type, branch.internalOnly ? 1 : 0]);
       }
     }
     await conn.commit();

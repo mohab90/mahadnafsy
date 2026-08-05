@@ -389,6 +389,30 @@ export function useCrmCoreState(
     return true;
   };
 
+  // Nothing refreshed join-us applications after the initial page load — not
+  // the 2-minute silent-refresh (it never listed join-us) and no manual
+  // control existed on the tab. A submission made after the admin's own
+  // session had already bootstrapped just never showed up short of a full
+  // page reload, which is what the owner's report of freshly-submitted
+  // applications "not appearing" traced back to.
+  const reloadJoinUsApplications = async (): Promise<void> => {
+    try {
+      const fresh = await mysqlAdmin.listAllJoinUs();
+      const normalized = (fresh as unknown as Array<Record<string, unknown>>).map(row => ({
+        ...row,
+        status: String(row.status || 'NEW').toLowerCase(),
+        createdAt: String(row.createdAt ?? row.created_at ?? ''),
+        adminNote: (row.adminNote ?? row.admin_note) as string | undefined,
+        convertedApplicantId: (row.convertedApplicantId ?? row.converted_applicant_id) as string | undefined,
+        applicantStage: (row.applicantStage ?? row.applicant_stage) as JoinUsApplication['applicantStage'],
+        hiredStaffId: (row.hiredStaffId ?? row.hired_staff_id) as string | undefined,
+      })) as unknown as JoinUsApplication[];
+      setJoinUsApplications(normalized);
+    } catch {
+      // Best-effort — the last successfully loaded state stays visible.
+    }
+  };
+
   const addJoinUsApplication = async (item: JoinUsApplication): Promise<boolean> => {
     try {
       await mysqlForms.submitJoinUs(item as unknown as Record<string, unknown>);
@@ -433,7 +457,7 @@ export function useCrmCoreState(
     addSubscriber, updateSubscriber, deleteSubscriber,
     addLead, addPublicLead, updateLead, markLeadsConverted, deleteLead, bulkAssignClientCodes, bulkRedistributeLeads,
     addOrder, updateOrderStatus, deleteOrder,
-    addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication,
+    addJoinUsApplication, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications,
     reloadLeads, reloadSubscribers, reloadOrders, recordSubscriberPayment,
   };
 }

@@ -84,6 +84,24 @@ async function validateJobReferences(db, tenantId, departmentId, branchValue) {
   return branch ? { branch: branch.branch_key } : { error: 'Branch does not belong to tenant or is inactive' };
 }
 
+// GET /api/admin/hr/branches — the real `branches` table (ground truth for
+// job_postings.branch / staff.branch_id), NOT content['institute.branches']
+// (a separate, customer-facing "الفرع الأقرب" list that this tenant has
+// never actually populated — so it's not a usable source for this picker).
+// Includes internal-only branches (e.g. an admin-only office) on purpose:
+// this endpoint backs HR/job-posting UI, which is exactly where those
+// belong; the public site never calls it.
+router.get('/api/admin/hr/branches', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT branch_key AS id, label, internal_only FROM branches
+        WHERE tenant_id=? AND is_active=1 ORDER BY label`,
+      [req.tenantId]
+    );
+    res.json(rows.map(r => ({ ...r, internal_only: Boolean(r.internal_only) })));
+  } catch (e) { logger.error('[hr/branches]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const [rows] = await pool.query(`

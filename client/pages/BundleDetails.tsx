@@ -391,8 +391,9 @@ const BundleDetails: React.FC = () => {
                 <div>
                   <label className="block text-sm mb-1 text-gray-300">{content['bundleDetails.form.branchLabel'] || 'الفرع المفضل'}</label>
                   {(() => {
-                    let dynBranches: { id: string; label: string }[] = [];
+                    let dynBranches: { id: string; label: string; internal_only?: boolean }[] = [];
                     try { dynBranches = JSON.parse(content['institute.branches'] || '[]'); } catch {}
+                    dynBranches = dynBranches.filter(b => !b.internal_only);
                     return (
                       <select value={bundleLeadBranch} onChange={(e) => setBundleLeadBranch(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 focus:ring-primary-500 focus:outline-none text-gray-300">
                         <option value="">{content['bundleDetails.form.branchPlaceholder'] || 'اختر الفرع الأقرب إليك'}</option>

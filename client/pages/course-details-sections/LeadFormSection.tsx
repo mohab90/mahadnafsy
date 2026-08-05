@@ -24,8 +24,9 @@ export const LeadFormSection: React.FC<LeadFormSectionProps> = ({
   leadNotice,
   onSubmit,
 }) => {
-  let branchOptions: { id: string; label: string }[] = [];
+  let branchOptions: { id: string; label: string; internal_only?: boolean }[] = [];
   try { branchOptions = JSON.parse(content['institute.branches'] || '[]'); } catch {}
+  branchOptions = branchOptions.filter(b => !b.internal_only);
 
   return (
     <section id="lead-form" className="bg-gray-900 text-white p-8 rounded-3xl shadow-xl mt-8">

@@ -750,15 +750,30 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
 // POST /api/join-us  (طلب انضمام)
 router.post('/api/join-us', contactLimiter, async (req, res) => {
   try {
-    const { name, email, phone, specialty, experience, type, linkedin, message } = req.body;
+    const { name, email, phone, specialty, experience, type, linkedin, message, jobId } = req.body;
     const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'required|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000' });
     if (verr) return res.status(400).json({ error: verr });
     const id = uuidv4();
     const safeType = ['INSTRUCTOR', 'CONSULTANT', 'EMPLOYEE'].includes(String(type || '').toUpperCase())
       ? String(type).toUpperCase() : 'INSTRUCTOR';
+    // Applying from a specific job listing's "قدّم الآن" list must land the
+    // applicant on THAT posting, not the generic talent pool it silently fell
+    // into before (jobId was collected on the form but never sent). Re-checked
+    // against the tenant's own open postings rather than trusted as-is — a
+    // client-supplied id could otherwise attach an application to another
+    // tenant's job or a closed/deleted one.
+    let targetJobId = null;
+    if (jobId) {
+      const [[job]] = await pool.query(
+        `SELECT id FROM job_postings WHERE id=? AND tenant_id=? AND status='open' AND id <> 'job-talent-pool' LIMIT 1`,
+        [jobId, req.tenantId]
+      ).catch(() => [[null]]);
+      if (job) targetJobId = job.id;
+    }
     const { applicantId } = await require('./hr/talent').createJoinApplication({
       id, tenant_id: req.tenantId, branch_id: req.tenantBranchId || null,
       name, email, phone, specialty, experience, type: safeType, linkedin, message,
+      job_id: targetJobId,
     });
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
     await Promise.all([
@@ -776,10 +791,17 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
 router.get('/api/jobs', publicLimiter, async (req, res) => {
   try {
     const [rows] = await pool.query(
+      // The internal "talent pool" placeholder job (auto-created per tenant
+      // to hold un-targeted applications — see talentPoolJobId() in
+      // hr/talent.js, id shape "talent-<tenantId>") was excluded here by a
+      // stale literal 'job-talent-pool' that never matched the real id
+      // shape, so it has been listed on the public careers page as an actual
+      // open position. Excluded by prefix instead, matching how it's
+      // actually generated.
       `SELECT j.id, j.title, j.branch, j.employment_type, j.description, j.requirements,
               j.salary_min, j.salary_max, j.created_at, d.name AS department
          FROM job_postings j LEFT JOIN hr_departments d ON d.id = j.department_id
-        WHERE j.status='open' AND j.id <> 'job-talent-pool' AND j.tenant_id=?
+        WHERE j.status='open' AND j.id NOT LIKE 'talent-%' AND j.tenant_id=?
         ORDER BY j.created_at DESC LIMIT 50`, [req.tenantId]).catch(() => [[]]);
     res.json(rows);
   } catch (e) { logger.error('[jobs]', e.message); res.status(500).json({ error: 'Internal server error' }); }

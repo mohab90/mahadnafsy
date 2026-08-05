@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
+import { Briefcase, CheckCircle, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import { COLOR, type ListItem } from './systemSettingsSchema';
 
 type ColorStyle = typeof COLOR[string];
@@ -86,7 +86,9 @@ export const ListSection: React.FC<{ data: ListItem[]; mutate: (v: ListItem[]) =
   const [newIcon, setNewIcon] = useState('');
   const showIcon = SHOW_ICON_FOR.includes(sectionKey);
 
+  const isBranches = sectionKey === 'branches';
   const toggle = (idx: number) => mutate(items.map((it, i) => i === idx ? { ...it, is_active: !it.is_active } : it));
+  const toggleInternal = (idx: number) => mutate(items.map((it, i) => i === idx ? { ...it, internal_only: !it.internal_only } : it));
   const updateLabel = (idx: number, label: string) => mutate(items.map((it, i) => i === idx ? { ...it, label } : it));
   const updateIcon = (idx: number, icon: string) => mutate(items.map((it, i) => i === idx ? { ...it, icon } : it));
   const remove = (idx: number) => mutate(items.filter((_, i) => i !== idx));
@@ -100,6 +102,11 @@ export const ListSection: React.FC<{ data: ListItem[]; mutate: (v: ListItem[]) =
 
   return (
     <div className="space-y-1.5">
+      {isBranches && (
+        <p className="text-xs text-gray-400 px-1 flex items-center gap-1">
+          <Briefcase size={12} /> فرع "داخلي" يظهر للموظفين عند اختيار فرع لوظيفة أو موظف، ولا يظهر أبدًا لعملاء الموقع.
+        </p>
+      )}
       {items.map((item, idx) => (
         <div key={idx} className={`bg-white border rounded-xl flex items-center gap-3 px-4 py-3 transition ${item.is_active ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
           {showIcon && (
@@ -108,6 +115,13 @@ export const ListSection: React.FC<{ data: ListItem[]; mutate: (v: ListItem[]) =
           )}
           <input value={item.label} onChange={e => updateLabel(idx, e.target.value)}
             className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+          {isBranches && (
+            <button onClick={() => toggleInternal(idx)}
+              className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition flex items-center gap-1 whitespace-nowrap ${item.internal_only ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-amber-300'}`}
+              title="داخلي فقط — لا يظهر لعملاء الموقع">
+              <Briefcase size={12} /> {item.internal_only ? 'داخلي' : 'عام'}
+            </button>
+          )}
           <button onClick={() => toggle(idx)} className="p-1.5 rounded-lg hover:bg-gray-100 transition" title={item.is_active ? 'إيقاف' : 'تفعيل'}>
             {item.is_active ? <CheckCircle size={15} className="text-green-500" /> : <EyeOff size={15} className="text-gray-300" />}
           </button>

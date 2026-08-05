@@ -436,8 +436,9 @@ const Home: React.FC = () => {
                                   <select value={offerLeadBranch} onChange={(e) => setOfferLeadBranch(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white">
                                       <option value="">{content['home.offer.formBranchPlaceholder'] || 'اختر الفرع الأقرب إليك'}</option>
                                       {(() => {
-                                        let db: { id: string; label: string }[] = [];
+                                        let db: { id: string; label: string; internal_only?: boolean }[] = [];
                                         try { db = JSON.parse(content['institute.branches'] || '[]'); } catch {}
+                                        db = db.filter(b => !b.internal_only);
                                         return db.length > 0
                                           ? db.map(b => <option key={b.id} value={b.id}>{b.label}</option>)
                                           : (<>
@@ -760,11 +761,11 @@ const Home: React.FC = () => {
               <Phone size={18} />
               تواصل معنا
             </Link>
-            <Link to="/join?type=instructor" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
+            <Link to="/join" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
               <GraduationCap size={18} />
               انضم إلينا كمحاضر
             </Link>
-            <Link to="/join?type=employee" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
+            <Link to="/join-us" className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2">
               <Briefcase size={18} />
               انضم إلينا كموظف
             </Link>

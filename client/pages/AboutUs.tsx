@@ -178,14 +178,14 @@ const AboutUs: React.FC = () => {
               تواصل معنا
             </Link>
             <Link
-              to="/join?type=instructor"
+              to="/join"
               className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2"
             >
               <GraduationCap size={18} />
               انضم إلينا كمحاضر
             </Link>
             <Link
-              to="/join?type=employee"
+              to="/join-us"
               className="bg-primary-600 border border-primary-400 text-white font-bold px-8 py-3 rounded-xl hover:bg-primary-500 transition flex items-center gap-2"
             >
               <Briefcase size={18} />

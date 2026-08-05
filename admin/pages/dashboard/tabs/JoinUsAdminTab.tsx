@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { BriefcaseBusiness, CalendarCheck, GraduationCap, Mail, Phone, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { BriefcaseBusiness, CalendarCheck, GraduationCap, Mail, Phone, RefreshCw, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { JoinUsApplication } from '../../../types';
@@ -36,12 +36,24 @@ function kindOf(value?: string): Kind {
 }
 
 export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
-  const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication } = useSiteData();
+  const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications } = useSiteData();
   const [group, setGroup] = useState<Group>(initialType === 'staff' ? 'staff' : 'teaching');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status | 'all'>('all');
   const [kind, setKind] = useState<Kind | 'all'>(initialType);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // The tab's own data can be minutes stale — the shared bootstrap loads it
+  // once at login and only otherwise refreshes on a 2-minute background timer
+  // — so a submission made just now (from another browser, e.g. an applicant
+  // on the public site) wouldn't show without this. Refresh whenever staff
+  // actually open the tab, not just on the wider app's schedule.
+  useEffect(() => { void reloadJoinUsApplications(); }, [reloadJoinUsApplications]);
+  const refresh = async () => {
+    setRefreshing(true);
+    try { await reloadJoinUsApplications(); } finally { setRefreshing(false); }
+  };
 
   const groupOf = (app: JoinUsApplication): Group => kindOf(app.type) === 'staff' ? 'staff' : 'teaching';
   const rows = useMemo(() => {
@@ -91,8 +103,20 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   return (
     <div className="space-y-5" dir="rtl">
       <section className="rounded-2xl bg-gradient-to-l from-indigo-700 to-violet-600 p-6 text-white">
-        <h2 className="flex items-center gap-2 text-2xl font-black"><GraduationCap /> طلبات الانضمام</h2>
-        <p className="mt-1 text-sm text-indigo-100">كل طلب موقع يدخل تلقائيًا لمسار التوظيف ويظل مرتبطًا حتى التعيين.</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-2xl font-black"><GraduationCap /> طلبات الانضمام</h2>
+            <p className="mt-1 text-sm text-indigo-100">كل طلب موقع يدخل تلقائيًا لمسار التوظيف ويظل مرتبطًا حتى التعيين.</p>
+          </div>
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25 transition disabled:opacity-60"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            تحديث
+          </button>
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {(Object.keys(STATUS) as Status[]).map(key => (
             <span key={key} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold">
