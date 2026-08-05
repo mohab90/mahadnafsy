@@ -290,9 +290,17 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {
-    const { name, email, phone, cv_url, notes } = req.body;
+    const { name, email, phone, cv_url, notes, stage } = req.body;
     const validationError = validateApplicant(req.body);
     if (validationError) return res.status(400).json({ error: validationError });
+    // Only 'interview' is accepted here — the two legal hops from the default
+    // 'applied' (applied→screening→interview) are performed below, same as
+    // the join-us "نقل للمقابلات" one-click path; any other requested stage
+    // would either be a no-op (applied) or need transitions this endpoint
+    // doesn't own the rules for, so it's rejected rather than guessed at.
+    if (stage !== undefined && stage !== 'interview') {
+      return res.status(400).json({ error: "stage must be 'interview' when provided" });
+    }
     const id = uuidv4();
     await conn.beginTransaction(); transactionStarted = true;
     const [created] = await conn.query(
@@ -306,9 +314,19 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: 'Job not found or no longer accepts applicants', code: 'JOB_NOT_ACCEPTING_APPLICANTS' });
     }
+    if (stage === 'interview') {
+      await conn.query(
+        "UPDATE job_applicants SET stage='screening', updated_by=? WHERE id=? AND tenant_id=?",
+        [req.staffRecord?.id || null, id, req.tenantId]
+      );
+      await conn.query(
+        "UPDATE job_applicants SET stage='interview', updated_by=? WHERE id=? AND tenant_id=?",
+        [req.staffRecord?.id || null, id, req.tenantId]
+      );
+    }
     await writeAuditEvent({
       action: 'hr.applicant.created', entityType: 'job_applicant', entityId: id,
-      metadata: { job_id: req.params.jobId, source: 'manual' }, req, db: conn,
+      metadata: { job_id: req.params.jobId, source: 'manual', stage: stage || 'applied' }, req, db: conn,
     });
     const [[row]] = await conn.query(
       `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, interview_rating, updated_by, created_at, updated_at

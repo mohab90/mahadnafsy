@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowRight, Phone, Mail, Shield, Eye, EyeOff, Save, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock } from 'lucide-react';
+import { ArrowRight, Phone, Mail, Shield, Eye, EyeOff, Save, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Camera, Trash2 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { toDialable } from '../lib/whatsappLink';
 import { mysqlAdmin, mysqlAuth } from '../lib/mysqlapi';
+import { compressImageFile } from '../lib/imageBudget';
 import type { StaffMember, StaffPermission } from '../types';
 import {
   ROLE_DEFAULT_PERMISSIONS as MASTER_ROLE_PERMS,
@@ -183,7 +184,7 @@ const ATTENDANCE_STATUS_LABEL: Record<string, { label: string; cls: string }> = 
 const StaffProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { staffMembers, leads, subscribers, reloadStaffMembers, updateStaffMember, addStaffMember, isAdmin } = useSiteData();
+  const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin } = useSiteData();
 
   const [activeTab, setActiveTab] = useState<Tab>('reports');
   const [draft, setDraft] = useState<StaffMember | null>(null);
@@ -191,8 +192,13 @@ const StaffProfile: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const staff = useMemo(() => staffMembers.find(s => s.id === id), [staffMembers, id]);
+  const currentStaff = useMemo(
+    () => staffMembers.find(row => row.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
+    [staffMembers, authUser?.email],
+  );
 
   // Initialise draft when staff loads
   React.useEffect(() => {
@@ -294,9 +300,19 @@ const StaffProfile: React.FC = () => {
   const convRate = perf && perf.total > 0 ? Math.round((perf.converted / perf.total) * 100) : 0;
 
   // ── Save handler ─────────────────────────────────────────────────────────────
+  // Salary changes go through /admin/hr/salary (pending approval by another
+  // HR staff member) rather than being written directly — ported from the
+  // old EmployeeProfileModal (HRTab.tsx) so this page has the exact same
+  // guard: ported over, not reinvented, since it's the one that actually
+  // matters (self-approving your own raise).
   const handleSave = async () => {
     if (!draft) return;
     if (!draft.name || !draft.email) { setSaveMsg('❌ الاسم والبريد الإلكتروني مطلوبان'); return; }
+    const salaryChanged = Number(draft.salary || 0) !== Number(staff.salary || 0);
+    if (salaryChanged && currentStaff?.id === draft.id) {
+      setSaveMsg('❌ لا يمكنك تعديل راتبك بنفسك؛ يلزم موظف HR آخر');
+      return;
+    }
     setSaving(true);
     setSaveMsg('');
     const payload: StaffMember = { ...draft };
@@ -305,10 +321,44 @@ const StaffProfile: React.FC = () => {
         await createStaffAccount(payload, password.trim());
         await reloadStaffMembers();
       } else {
-        const saved = staff.id === payload.id
-          ? await updateStaffMember(payload)
-          : await addStaffMember(payload);
-        if (!saved) throw new Error('تعذر حفظ بيانات الموظف');
+        await mysqlAdmin.updateHrEmployee(payload.id, {
+          name: payload.name.trim(),
+          email: payload.email.trim().toLowerCase(),
+          phone: payload.phone.trim(),
+          image: payload.image || null,
+          specialization: payload.specialization || null,
+          joined_at: payload.joinedAt?.slice(0, 10) || null,
+          notes: payload.notes || null,
+          national_id: payload.nationalId || null,
+          address: payload.address || null,
+          hr_notes: payload.hrNotes || null,
+          commission_rate: Number(payload.commissionRate) || 0,
+          monthly_target: Number(payload.monthlyTarget) || 0,
+          monthly_target_type: payload.monthlyTargetType || 'egp',
+          monthly_bonus: Number(payload.monthlyBonus) || 0,
+          ...(isAdmin ? { role: payload.role } : {}),
+        });
+        let salaryPending = false;
+        if (salaryChanged) {
+          const effectiveDate = new Date();
+          effectiveDate.setUTCDate(1);
+          effectiveDate.setUTCMonth(effectiveDate.getUTCMonth() + 1);
+          await mysqlAdmin.adminPost('/admin/hr/salary', {
+            staff_id: payload.id,
+            base_salary: Number(payload.salary) || 0,
+            currency: 'EGP',
+            effective_from: effectiveDate.toISOString().slice(0, 10),
+          });
+          salaryPending = true;
+        }
+        await reloadStaffMembers();
+        if (salaryPending) {
+          setDraft(d => d ? { ...d, salary: staff.salary } : d);
+          setSaveMsg('ℹ️ تم حفظ البيانات وإرسال تعديل الراتب للاعتماد');
+          setSaving(false);
+          setTimeout(() => setSaveMsg(''), 4000);
+          return;
+        }
       }
     } catch (err: unknown) {
       setSaving(false);
@@ -318,6 +368,22 @@ const StaffProfile: React.FC = () => {
     setSaving(false);
     setSaveMsg('✅ تم حفظ البيانات بنجاح');
     setTimeout(() => setSaveMsg(''), 3000);
+  };
+
+  // Soft-delete (is_active=0) — same superadmin-only endpoint the old
+  // EmployeeProfileModal used (api/routes/staff.js DELETE /api/admin/staff/:id).
+  const handleDelete = async () => {
+    if (currentStaff?.id === staff.id) { setSaveMsg('❌ لا يمكنك حذف حسابك الخاص'); return; }
+    if (!window.confirm(`حذف ${staff.name} نهائيًا من قائمة الموظفين النشطين؟ سجله وتاريخه المالي يبقى محفوظًا، ويمكن إعادة تفعيله لاحقًا.`)) return;
+    setDeleting(true);
+    try {
+      const ok = await deleteStaffMember(staff.id);
+      if (!ok) throw new Error('تعذر حذف الموظف — قد تحتاج صلاحية سوبر أدمن');
+      navigate('/dashboard/staff_management');
+    } catch (err: unknown) {
+      setDeleting(false);
+      setSaveMsg(`❌ ${err instanceof Error ? err.message : 'تعذر حذف الموظف'}`);
+    }
   };
 
   const handlePasswordReset = async () => {
@@ -350,6 +416,13 @@ const StaffProfile: React.FC = () => {
         >
           <ArrowRight size={18} />
         </button>
+        {staff.image ? (
+          <img src={staff.image} alt={staff.name} className="w-11 h-11 rounded-full object-cover border border-gray-200 flex-shrink-0" />
+        ) : (
+          <div className="w-11 h-11 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-black flex-shrink-0">
+            {staff.name.charAt(0)}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <nav className="flex items-center gap-1 text-xs text-gray-400 mb-0.5">
             <button onClick={() => navigate('/dashboard/staff_management')} className="hover:text-primary-600 transition">الموظفون</button>
@@ -375,6 +448,16 @@ const StaffProfile: React.FC = () => {
               className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition" title="البريد الإلكتروني">
               <Mail size={16} />
             </a>
+          )}
+          {isAdmin && currentStaff?.id !== staff.id && (
+            <button
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition text-xs font-bold disabled:opacity-50"
+              title="حذف الموظف"
+            >
+              <Trash2 size={14} /> {deleting ? 'جارٍ الحذف...' : 'حذف'}
+            </button>
           )}
         </div>
       </div>
@@ -735,6 +818,40 @@ const StaffProfile: React.FC = () => {
 
             <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-5">
               <h3 className="text-base font-bold text-gray-800 flex items-center gap-2"><Shield size={16} /> البيانات الأساسية</h3>
+
+              <div className="flex items-center gap-4">
+                <div className="relative w-20 h-20 flex-shrink-0">
+                  {draft.image ? (
+                    <img src={draft.image} alt={draft.name} className="w-20 h-20 rounded-2xl object-cover border border-gray-200" />
+                  ) : (
+                    <div className="w-20 h-20 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center text-2xl font-black">
+                      {draft.name.charAt(0) || '?'}
+                    </div>
+                  )}
+                  <label className="absolute -bottom-1.5 -left-1.5 w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center cursor-pointer hover:bg-primary-700 transition shadow">
+                    <Camera size={13} />
+                    <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      try {
+                        const dataUrl = await compressImageFile(file, { maxPx: 320, maxBytes: 45_000 });
+                        setDraft(d => d ? { ...d, image: dataUrl } : d);
+                      } catch {
+                        setSaveMsg('❌ الصورة كبيرة جداً أو تعذّر ضغطها — جرّب صورة أصغر');
+                      }
+                    }} />
+                  </label>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-600 mb-1">صورة الموظف</p>
+                  <p className="text-xs text-gray-400">اضغط على أيقونة الكاميرا لرفع صورة (تُضغط تلقائيًا لحجم مناسب)</p>
+                  {draft.image && (
+                    <button type="button" onClick={() => setDraft(d => d ? { ...d, image: undefined } : d)}
+                      className="mt-1.5 text-xs font-bold text-red-500 hover:underline">إزالة الصورة</button>
+                  )}
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>

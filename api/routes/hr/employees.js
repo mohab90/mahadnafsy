@@ -223,7 +223,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       });
     }
     const allowed = [
-      'name','email','phone','specialization','joined_at','notes',
+      'name','email','phone','image','specialization','joined_at','notes',
       'department_id','manager_id','employment_type','hire_date','birth_date','bank_name',
       'national_id','address','hr_notes','commission_rate','monthly_target',
       'monthly_target_type','monthly_bonus',

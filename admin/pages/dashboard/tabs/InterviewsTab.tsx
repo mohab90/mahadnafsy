@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, RefreshCw, Star, UserCheck, XCircle } from 'lucide-react';
+import { CalendarCheck, Plus, RefreshCw, Star, UserCheck, UserPlus, X, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -28,6 +28,107 @@ interface JobApplicant {
 
 const STARS = [1, 2, 3, 4, 5] as const;
 
+interface JobOption { id: string; title: string; status: string; }
+
+const emptyForm = () => ({ jobId: '', name: '', email: '', phone: '', specialty: '', notes: '' });
+
+// Standalone entry point into the interview stage — before this, the only
+// way in was طلبات الانضمام's "نقل للمقابلات", which requires a candidate to
+// already exist as a website submission. Staff who source a candidate
+// themselves (referral, LinkedIn, a walk-in) had no way to add them here
+// directly. Reuses POST .../applicants?stage=interview (added alongside this)
+// so it goes through the exact same applied→screening→interview hops as
+// every other interview candidate, just in one step.
+const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdded: () => void }> = ({ notify, onClose, onAdded }) => {
+  const [jobs, setJobs] = useState<JobOption[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [form, setForm] = useState(emptyForm());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    mysqlAdmin.listHrJobs()
+      .then(all => setJobs((all as unknown as JobOption[]).filter(j => j.status === 'open' || j.status === 'draft')))
+      .catch(() => notify('error', 'تعذر تحميل قائمة الوظائف'))
+      .finally(() => setLoadingJobs(false));
+  }, [notify]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.jobId || !form.name.trim()) { notify('error', 'اختر الوظيفة واكتب اسم المرشح'); return; }
+    setSaving(true);
+    try {
+      await mysqlAdmin.createHrApplicant(form.jobId, {
+        name: form.name.trim(),
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        notes: [form.specialty.trim() ? `التخصص: ${form.specialty.trim()}` : '', form.notes.trim()].filter(Boolean).join('\n') || undefined,
+        stage: 'interview',
+      });
+      notify('success', `تمت إضافة ${form.name.trim()} مباشرة في مرحلة المقابلة`);
+      onAdded();
+      onClose();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّرت إضافة المرشح');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <form onClick={e => e.stopPropagation()} onSubmit={submit} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-3" dir="rtl">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-base font-bold text-gray-900"><UserPlus size={18} className="text-violet-600" /> إضافة انترفيو مباشر</h3>
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-gray-500">لإضافة مرشح وصل لك مباشرة (توصية، LinkedIn، ...) — بدون المرور بطلبات الانضمام. يدخل الآن في مرحلة المقابلة مباشرة.</p>
+
+        <div>
+          <label className="mb-1 block text-xs font-bold text-gray-600">الوظيفة *</label>
+          <select required value={form.jobId} onChange={e => setForm(f => ({ ...f, jobId: e.target.value }))}
+            disabled={loadingJobs} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white disabled:opacity-50">
+            <option value="">{loadingJobs ? 'جاري التحميل...' : 'اختر وظيفة'}</option>
+            {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+          </select>
+          {!loadingJobs && jobs.length === 0 && <p className="mt-1 text-xs text-amber-600">لا توجد وظائف مفتوحة حاليًا — أضف وظيفة من تبويب التوظيف أولًا.</p>}
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-bold text-gray-600">اسم المرشح *</label>
+          <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-bold text-gray-600">الهاتف</label>
+            <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} dir="ltr"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold text-gray-600">البريد الإلكتروني</label>
+            <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} dir="ltr"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-bold text-gray-600">التخصص</label>
+          <input value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-bold text-gray-600">ملاحظات</label>
+          <textarea rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none" />
+        </div>
+
+        <button type="submit" disabled={saving || loadingJobs}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">
+          <Plus size={15} /> {saving ? 'جارٍ الإضافة...' : 'إضافة للمقابلة'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 // "الانترفيوهات" — a dedicated, nameable stop between طلبات الانضمام and
 // الموظفون. The pipeline itself (applied→screening→interview→offer→hired)
 // already existed (see hr-sections/RecruitmentPipelinePanel.tsx and
@@ -40,6 +141,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -127,6 +229,13 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">مقابلة: {counts.interview}</span>
           <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">عرض وظيفي: {counts.offer}</span>
           <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-violet-600 text-white hover:bg-violet-700 transition"
+          >
+            <UserPlus size={14} />
+            إضافة انترفيو
+          </button>
+          <button
             onClick={load}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition disabled:opacity-50"
@@ -136,6 +245,8 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           </button>
         </div>
       </div>
+
+      {showAddModal && <AddInterviewModal notify={notify} onClose={() => setShowAddModal(false)} onAdded={load} />}
 
       {loading ? (
         <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">

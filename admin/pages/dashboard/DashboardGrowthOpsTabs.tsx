@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   DaqqiScheduleTab,
@@ -53,8 +54,12 @@ export function DashboardGrowthOpsTabs({
   isReceptionDaqqi,
   canDeleteSubscriber,
   leadsSalesTargets,
-  setStaffProfileModalId,
+  setStaffProfileModalId: _setStaffProfileModalId,
 }: Props) {
+  // Was wired to setStaffProfileModalId — a piece of state nothing ever
+  // rendered a modal from, so "ملف" on a sales rep silently did nothing.
+  // Now opens the real dedicated staff page instead.
+  const navigate = useNavigate();
   if (activeTab === 'leads') {
     return (
       <Suspense fallback={fallback('border-primary-500')}>
@@ -99,7 +104,7 @@ export function DashboardGrowthOpsTabs({
           <SalesHubTab
             notify={notify}
             salesTargets={leadsSalesTargets}
-            onOpenStaffProfile={setStaffProfileModalId}
+            onOpenStaffProfile={(staffId: string) => navigate(`/staff/${staffId}`)}
           />
         </TabErrorBoundary>
       </Suspense>
