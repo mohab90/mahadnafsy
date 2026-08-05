@@ -119,6 +119,8 @@ export interface RegistrationItem {
   phone: string | null;
   name: string | null;
   created_at: string;
+  /** 'محلي' (Egyptian mobile) | 'دولي' (kept its own country code) | null (no usable phone) */
+  origin: 'محلي' | 'دولي' | null;
 }
 
 export interface MessagingChannel {
@@ -381,6 +383,8 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; subscriberId: string }>(`/admin/registrations/${encodeURIComponent(userId)}/convert-online`, { method: 'POST', body: JSON.stringify({ branch }) }, A),
   convertRegistrationToLead: (userId: string, branch?: string) =>
     apiFetch<{ ok: boolean; leadId: string }>(`/admin/registrations/${encodeURIComponent(userId)}/convert-lead`, { method: 'POST', body: JSON.stringify({ branch }) }, A),
+  deleteRegistration: (userId: string) =>
+    apiFetch<AR>(`/admin/registrations/${encodeURIComponent(userId)}`, { method: 'DELETE' }, A),
 
   // ── WhatsApp campaigns ────────────────────────────────────────────────────
   listWhatsappCampaigns:   ()             => apiFetch<WhatsappCampaign[]>('/admin/whatsapp-campaigns', {}, A),
