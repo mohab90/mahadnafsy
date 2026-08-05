@@ -63,6 +63,18 @@ export function LeadDuplicateReviewPanel({
 
   useEffect(() => { void load(); }, [load]);
 
+  const mergeOne = async (group: DuplicateGroup, index: number) => {
+    const targetId = targets[index] || group.targetId;
+    const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== targetId);
+    if (!sourceIds.length) return { ok: true, merged: 0 };
+    try {
+      await mysqlAdmin.mergeLeads(targetId, sourceIds);
+      return { ok: true, merged: sourceIds.length };
+    } catch {
+      return { ok: false, merged: 0 };
+    }
+  };
+
   const merge = async (group: DuplicateGroup, index: number) => {
     const targetId = targets[index] || group.targetId;
     const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== targetId);
@@ -71,16 +83,44 @@ export function LeadDuplicateReviewPanel({
       `سيتم دمج ${sourceIds.length} سجل داخل "${target?.name || targetId}". يمكن فك الدمج لاحقًا. هل تؤكد؟`
     )) return;
     setBusyId(`merge-${index}`);
-    try {
-      await mysqlAdmin.mergeLeads(targetId, sourceIds);
-      notify('success', `تم دمج ${sourceIds.length} سجل مع الاحتفاظ بسجل استرجاع`);
+    const result = await mergeOne(group, index);
+    if (result.ok) {
+      notify('success', `تم دمج ${result.merged} سجل مع الاحتفاظ بسجل استرجاع`);
       onChanged();
       await load();
-    } catch {
+    } else {
       notify('error', 'فشل الدمج؛ لم يتم تغيير السجلات');
-    } finally {
-      setBusyId('');
     }
+    setBusyId('');
+  };
+
+  // Runs every group's merge sequentially (each keeps its own chosen radio
+  // target — defaulting to the group's suggested target if the reviewer
+  // never touched it), one at a time rather than in parallel: these are
+  // real writes with an audit trail each, and running them one-by-one keeps
+  // a mid-batch failure isolated to the group that actually failed instead
+  // of racing several merges against the same underlying leads table.
+  const mergeAll = async () => {
+    const total = groups.reduce((sum, g, i) => sum + (g.leads.length - (targets[i] || g.targetId ? 1 : 0)), 0);
+    if (!groups.length) return;
+    if (!window.confirm(`سيتم دمج كل المجموعات الـ${groups.length} دفعة واحدة (${total} سجل تقريبًا داخل سجلاتها الرئيسية). العملية قابلة للتراجع لكل مجموعة على حدة لاحقًا. متأكد؟`)) return;
+    setBusyId('merge-all');
+    let mergedGroups = 0;
+    let mergedRecords = 0;
+    let failedGroups = 0;
+    for (let i = 0; i < groups.length; i++) {
+      const result = await mergeOne(groups[i], i);
+      if (result.ok) { mergedGroups += 1; mergedRecords += result.merged; }
+      else failedGroups += 1;
+    }
+    if (failedGroups === 0) {
+      notify('success', `تم دمج ${mergedGroups} مجموعة (${mergedRecords} سجل) بنجاح`);
+    } else {
+      notify('error', `تم دمج ${mergedGroups} مجموعة، وفشل ${failedGroups} — راجعها يدويًا`);
+    }
+    onChanged();
+    await load();
+    setBusyId('');
   };
 
   const unmerge = async (row: MergeHistory) => {
@@ -109,9 +149,20 @@ export function LeadDuplicateReviewPanel({
           <h3 className="font-bold text-gray-900">مراجعة التكرار قبل الدمج</h3>
           <p className="mt-1 text-xs text-gray-600">لا يتم حذف أي Lead تلقائيًا. اختر السجل الرئيسي وراجع البيانات ثم أكد الدمج.</p>
         </div>
-        <button onClick={() => void load()} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm">
-          <RefreshCw size={14} /> تحديث
-        </button>
+        <div className="flex items-center gap-2">
+          {groups.length > 0 && (
+            <button
+              disabled={busyId !== ''}
+              onClick={() => void mergeAll()}
+              className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+            >
+              <GitMerge size={14} /> {busyId === 'merge-all' ? 'جاري دمج الكل...' : `دمج الكل (${groups.length})`}
+            </button>
+          )}
+          <button onClick={() => void load()} disabled={busyId !== ''} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm disabled:opacity-50">
+            <RefreshCw size={14} /> تحديث
+          </button>
+        </div>
       </div>
 
       {groups.length === 0 ? (
@@ -121,7 +172,7 @@ export function LeadDuplicateReviewPanel({
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3">
             <span className="text-sm font-bold text-gray-800">مجموعة #{index + 1} · {group.leads.length} سجلات</span>
             <button
-              disabled={busyId === `merge-${index}`}
+              disabled={busyId !== ''}
               onClick={() => void merge(group, index)}
               className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
             >
