@@ -157,6 +157,64 @@ router.post('/api/admin/hr/join-us/:id/to-applicant', requireAuth, requireAdminO
   }
 });
 
+// "نقل للمقابلات" — the one-click version of طلبات الانضمام ← الانترفيوهات
+// the owner asked for. Reuses the exact same convertJoinUs the manual
+// to-applicant path uses (so a candidate that was already pulled into the
+// pipeline some other way is just fast-forwarded, not duplicated), then
+// walks it through the two legal transitions (applied → screening →
+// interview) inside the same transaction — it does NOT weaken
+// APPLICANT_TRANSITIONS to allow a direct jump; it just performs the two
+// permitted hops atomically so the caller only needs one click.
+router.post('/api/admin/hr/join-us/:id/to-interview', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[j]] = await conn.query(
+      'SELECT * FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]
+    );
+    if (!j) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
+    const appId = await convertJoinUs(j, { jobId: req.body.job_id, actorId: req.staffRecord?.id, db: conn });
+    const [[applicant]] = await conn.query(
+      'SELECT stage FROM job_applicants WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [appId, req.tenantId]
+    );
+    if (!applicant) { await conn.rollback(); return res.status(500).json({ error: 'Applicant row missing after conversion' }); }
+    if (applicant.stage === 'applied') {
+      await conn.query(
+        "UPDATE job_applicants SET stage='screening', updated_by=? WHERE id=? AND tenant_id=?",
+        [req.staffRecord?.id || null, appId, req.tenantId]
+      );
+    }
+    if (applicant.stage === 'applied' || applicant.stage === 'screening') {
+      await conn.query(
+        "UPDATE job_applicants SET stage='interview', updated_by=? WHERE id=? AND tenant_id=?",
+        [req.staffRecord?.id || null, appId, req.tenantId]
+      );
+    }
+    await writeAuditEvent({
+      action: 'hr.applicant.moved_to_interview',
+      entityType: 'job_applicant',
+      entityId: appId,
+      metadata: { source_id: j.id, from_stage: applicant.stage },
+      req, db: conn,
+    });
+    const [[app]] = await conn.query(
+      `SELECT id, job_id, name, email, phone, stage, source, specialty, applicant_type, interview_rating
+       FROM job_applicants WHERE id=? AND tenant_id=?`,
+      [appId, req.tenantId]
+    );
+    await conn.commit();
+    res.json({ ok: true, applicant: app });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    logger.error('[hr/to-interview]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    conn.release();
+  }
+});
+
 router.post(
   '/api/admin/hr/applicants/:appId/hire',
   requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), requireTenantQuota('staff'),

@@ -1705,6 +1705,7 @@ CREATE TABLE `job_applicants` (
   `applicant_type` varchar(30) DEFAULT NULL COMMENT 'INSTRUCTOR|CONSULTANT|EMPLOYEE',
   `linkedin` varchar(300) DEFAULT NULL,
   `hired_staff_id` varchar(36) DEFAULT NULL COMMENT 'staff.id created when applicant is hired',
+  `interview_rating` tinyint(4) DEFAULT NULL COMMENT '1-5, set at or after the interview stage',
   PRIMARY KEY (`id`),
   KEY `idx_applicants_source` (`source`,`source_id`),
   UNIQUE KEY `uq_job_applicants_tenant_id` (`tenant_id`,`id`),

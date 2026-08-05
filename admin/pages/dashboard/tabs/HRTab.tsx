@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload } from 'lucide-react';
+import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -140,12 +140,13 @@ function getMonthsOfService(joinedAt: string) {
 const fmt = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 const fmtMoney = (n: number) => `${fmt(n)} ج.م`;
 
-function EmployeeProfileModal({ member, performance, period, onClose, onSave }: {
+function EmployeeProfileModal({ member, performance, period, onClose, onSave, onDelete }: {
   member: StaffMember;
   performance?: PerformanceRow;
   period: string;
   onClose: () => void;
   onSave: (u: StaffMember) => Promise<boolean>;
+  onDelete: (member: StaffMember) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState<StaffMember>({ ...member });
   const [subTab, setSubTab] = useState<'info' | 'performance' | 'salary' | 'absences'>('info');
@@ -188,7 +189,10 @@ function EmployeeProfileModal({ member, performance, period, onClose, onSave }: 
                   <button onClick={() => { setDraft({ ...member }); setEditing(false); }} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition"><X size={14}/></button>
                 </>
               ) : (
-                <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"><Edit3 size={13}/> تعديل</button>
+                <>
+                  <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"><Edit3 size={13}/> تعديل</button>
+                  <button onClick={async () => { if (await onDelete(member)) onClose(); }} className="flex items-center gap-1 px-3 py-1.5 bg-red-500/80 hover:bg-red-500 rounded-lg text-sm font-bold transition"><Trash2 size={13}/> حذف</button>
+                </>
               )}
               <button onClick={onClose} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition"><X size={14}/></button>
             </div>
@@ -673,6 +677,26 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       return false;
     }
   }, [currentStaff?.id, isAdmin, notify, reloadStaffMembers, selectedMember?.salary]);
+
+  // Soft-delete (is_active=0) via the existing superadmin-only endpoint —
+  // was already built (api/routes/staff.js DELETE /api/admin/staff/:id) but
+  // had no UI trigger anywhere in the admin app.
+  const handleDelete = useCallback(async (member: StaffMember) => {
+    if (currentStaff?.id === member.id) {
+      notify('error', 'لا يمكنك حذف حسابك الخاص');
+      return false;
+    }
+    if (!window.confirm(`حذف ${member.name} نهائيًا من قائمة الموظفين النشطين؟ سجله وتاريخه المالي يبقى محفوظًا، ويمكن إعادة تفعيله لاحقًا.`)) return false;
+    try {
+      await mysqlAdmin.deleteStaff(member.id);
+      await reloadStaffMembers();
+      notify('success', `تم حذف ${member.name}`);
+      return true;
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر حذف الموظف — قد تحتاج صلاحية سوبر أدمن');
+      return false;
+    }
+  }, [currentStaff?.id, notify, reloadStaffMembers]);
 
   const uniqueRoles = [...new Set(safeStaff.map(s => s.role))];
 
@@ -1180,6 +1204,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
           period={perfMonth}
           onClose={() => setSelectedMember(null)}
           onSave={handleSave}
+          onDelete={handleDelete}
         />
       )}
     </div>

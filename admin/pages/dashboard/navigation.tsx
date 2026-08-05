@@ -132,6 +132,7 @@ export type TabKey =
   | 'offboarding'
   | 'staff_applications'
   | 'lecturer_applications'
+  | 'interviews'
   | 'settings_hub'
   | 'system_settings'
   | 'payment_settings'
@@ -266,6 +267,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },
       { key: 'instructors', label: 'المحاضرون والخبراء', icon: GraduationCap },
       { key: 'join_us', label: 'طلبات الانضمام', icon: GraduationCap },
+      { key: 'interviews', label: 'الانترفيوهات', icon: CalendarCheck2 },
     ],
   },
   {

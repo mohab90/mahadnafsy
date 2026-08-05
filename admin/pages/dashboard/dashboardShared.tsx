@@ -596,6 +596,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   lecturer_applications: 'view_join_us',
   customer_inbox:     'manage_inbox',
   join_us:            'view_join_us',
+  interviews:         'view_hr',
   contacts:           'view_contacts',
   tickets:            'manage_inbox',
   faq_manager:        'manage_inbox',

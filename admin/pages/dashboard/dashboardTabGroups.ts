@@ -77,6 +77,7 @@ export const contentHubRouteTabs = new Set<string>([
   'enps_dashboard',
   'offboarding',
   'registrations',
+  'interviews',
 ]);
 
 export const growthOpsTabs = new Set<string>([

@@ -29,6 +29,10 @@ function validateApplicant(body, partial = false) {
     const cvUrl = String(body.cv_url).trim();
     if (!/^https:\/\//i.test(cvUrl) && !cvUrl.startsWith('/uploads/')) return 'cv_url must use HTTPS or an uploaded file';
   }
+  if (body.interview_rating !== undefined && body.interview_rating !== null) {
+    const rating = Number(body.interview_rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return 'interview_rating must be an integer from 1 to 5';
+  }
   return null;
 }
 
@@ -238,7 +242,7 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
       params.push(String(req.query.stage));
     }
     const [rows] = await pool.query(
-      `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,
+      `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
               a.source,a.source_id,a.specialty,a.applicant_type,a.linkedin,a.hired_staff_id,
               a.created_at,a.updated_at,j.title job_title,j.branch job_branch
          FROM job_applicants a
@@ -289,7 +293,7 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
       metadata: { job_id: req.params.jobId, source: 'manual' }, req, db: conn,
     });
     const [[row]] = await conn.query(
-      `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, updated_by, created_at, updated_at
+      `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, interview_rating, updated_by, created_at, updated_at
        FROM job_applicants WHERE id=? AND tenant_id=?`, [id, req.tenantId]
     );
     await conn.commit(); transactionStarted = false;
@@ -309,7 +313,7 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
     const { appId } = req.params;
     const validationError = validateApplicant(req.body, true);
     if (validationError) return res.status(400).json({ error: validationError });
-    const fields = ['name','email','phone','cv_url','notes','stage','stage_notes'];
+    const fields = ['name','email','phone','cv_url','notes','stage','stage_notes','interview_rating'];
     await conn.beginTransaction(); transactionStarted = true;
     const [[current]] = await conn.query(
       'SELECT stage FROM job_applicants WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
@@ -356,7 +360,7 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
       req, db: conn,
     });
     const [[row]] = await conn.query(
-      `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, updated_by, created_at, updated_at
+      `SELECT id, job_id, name, email, phone, cv_url, notes, stage, stage_notes, interview_rating, updated_by, created_at, updated_at
        FROM job_applicants WHERE id=? AND tenant_id=?`, [appId, req.tenantId]
     );
     await conn.commit(); transactionStarted = false;

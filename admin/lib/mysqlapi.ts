@@ -529,6 +529,12 @@ export const mysqlAdmin = {
   deleteStaff:      (id: string) => del(`/admin/staff/${id}`),
   createStaffAccount: (o: AR) => post('/admin/staff-account', o),
 
+  // ── التوظيف / الانترفيوهات (job_applicants pipeline) ──
+  listHrApplicants: (stage?: string) => apiFetch<AR[]>(`/admin/hr/applicants${stage ? `?stage=${encodeURIComponent(stage)}` : ''}`, {}, A),
+  updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
+  hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),
+  moveJoinUsToInterview: (id: string) => post(`/admin/hr/join-us/${encodeURIComponent(id)}/to-interview`, {}),
+
   // ── Sales targets (per-staff, per-month — single source of truth) ──
   listSalesTargets: (period?: string) => apiFetch<AR[]>(`/admin/sales-targets${period ? `?period=${encodeURIComponent(period)}` : ''}`, {}, A),
   saveSalesTarget:  (o: AR) => post('/admin/sales-targets', o),

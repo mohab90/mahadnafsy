@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { BriefcaseBusiness, GraduationCap, Mail, Phone, Trash2 } from 'lucide-react';
+import { BriefcaseBusiness, CalendarCheck, GraduationCap, Mail, Phone, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { JoinUsApplication } from '../../../types';
 
 type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
@@ -40,6 +41,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status | 'all'>('all');
   const [kind, setKind] = useState<Kind | 'all'>(initialType);
+  const [movingId, setMovingId] = useState<string | null>(null);
 
   const groupOf = (app: JoinUsApplication): Group => kindOf(app.type) === 'staff' ? 'staff' : 'teaching';
   const rows = useMemo(() => {
@@ -63,6 +65,27 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   const remove = async (app: JoinUsApplication) => {
     if (app.convertedApplicantId) return;
     if (window.confirm('حذف الطلب غير المرتبط بمسار التوظيف نهائيًا؟')) await deleteJoinUsApplication(app.id);
+  };
+
+  const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
+  const moveToInterview = async (app: JoinUsApplication) => {
+    setMovingId(app.id);
+    try {
+      await mysqlAdmin.moveJoinUsToInterview(app.id);
+      setJustMoved(prev => new Set(prev).add(app.id));
+      // The conversion happens through a dedicated pipeline endpoint, not the
+      // generic join-us update this tab otherwise uses — updateJoinUsApplication
+      // would try to PUT server-controlled fields (convertedApplicantId) back
+      // through a route that doesn't accept them. justMoved is enough to
+      // confirm success inline; the full "داخل HR: مقابلة" badge picks up
+      // the real state next time this page's data source refreshes.
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('site-persist-error', {
+        detail: { field: 'join-us-to-interview', name: error instanceof Error ? error.message : app.id },
+      }));
+    } finally {
+      setMovingId(null);
+    }
   };
 
   return (
@@ -118,6 +141,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${STATUS[appStatus].className}`}>{STATUS[appStatus].label}</span>
                       <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{KIND_LABEL[kindOf(app.type)]}</span>
                       {app.convertedApplicantId && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">داخل HR: {STAGE_LABEL[app.applicantStage || 'applied'] || app.applicantStage}</span>}
+                      {!app.convertedApplicantId && justMoved.has(app.id) && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">✓ نُقل للمقابلات</span>}
                       {app.hiredStaffId && <span className="rounded-lg bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">موظف مرتبط</span>}
                     </div>
                     <h3 className="text-lg font-bold text-gray-900">{app.name}</h3>
@@ -135,6 +159,16 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                       {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
                     </select>
                     <button onClick={() => editNote(app)} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">ملاحظة HR</button>
+                    {!app.convertedApplicantId && !justMoved.has(app.id) && (
+                      <button
+                        disabled={movingId === app.id}
+                        onClick={() => moveToInterview(app)}
+                        title="ينقله لقسم الانترفيوهات لتقييم المقابلة"
+                        className="flex items-center justify-center gap-1 rounded-xl bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 disabled:opacity-40"
+                      >
+                        <CalendarCheck size={13} /> {movingId === app.id ? 'جارٍ النقل...' : 'نقل للمقابلات'}
+                      </button>
+                    )}
                     <button disabled={Boolean(app.convertedApplicantId)} onClick={() => remove(app)}
                       title={app.convertedApplicantId ? 'الطلب جزء من سجل التوظيف ولا يمكن حذفه' : undefined}
                       className="flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
