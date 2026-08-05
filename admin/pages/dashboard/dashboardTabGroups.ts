@@ -65,6 +65,18 @@ export const contentHubRouteTabs = new Set<string>([
   'system_settings',
   'staff_applications',
   'lecturer_applications',
+  // These four are registered in GeneralDashboardTabs' notifyTabs but were
+  // never added here, so Dashboard.tsx's `contentHubRouteTabs.has(activeTab)`
+  // gate never mounted <DashboardContentHubRoutes> for them: the nav item
+  // switched activeTab, but nothing rendered (confirmed live — clicking
+  // "قاعدة المعرفة (FAQ)", "تقارير وتحليلات HR", "رضا الموظفين (eNPS)" or
+  // "إنهاء الخدمة" showed just the empty shell). registrations is the new
+  // تسجيلات tab, added here so it doesn't ship with the same gap.
+  'faq_manager',
+  'hr_analytics',
+  'enps_dashboard',
+  'offboarding',
+  'registrations',
 ]);
 
 export const growthOpsTabs = new Set<string>([
