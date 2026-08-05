@@ -528,6 +528,14 @@ export const mysqlAdmin = {
   updateHrEmployee: (id: string, o: AR) => put(`/admin/hr/employees/${encodeURIComponent(id)}`, o),
   deleteStaff:      (id: string) => del(`/admin/staff/${id}`),
   createStaffAccount: (o: AR) => post('/admin/staff-account', o),
+  // Server-computed staff profile: whole-employment monthly series, today's
+  // counters, leaderboard rank, lifetime records, task rollup — one call.
+  getStaffProfile:  (id: string) => apiFetch<AR>(`/admin/hr/staff/${encodeURIComponent(id)}/profile`, {}, A),
+  listStaffMessages: (id: string) => apiFetch<AR[]>(`/admin/hr/staff/${encodeURIComponent(id)}/messages`, {}, A),
+  sendStaffMessage: (id: string, body: string) => post(`/admin/hr/staff/${encodeURIComponent(id)}/messages`, { body }),
+  // Employee's own thread (their side of the same conversation).
+  listMyStaffMessages: () => apiFetch<AR[]>('/staff/me/messages', {}, A),
+  sendMyStaffMessage:  (body: string) => post('/staff/me/messages', { body }),
 
   // ── التوظيف / الانترفيوهات (job_applicants pipeline) ──
   listHrApplicants: (stage?: string) => apiFetch<AR[]>(`/admin/hr/applicants${stage ? `?stage=${encodeURIComponent(stage)}` : ''}`, {}, A),

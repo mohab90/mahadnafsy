@@ -237,15 +237,25 @@ test('website recruiting is atomic, tenant linked and never a fire-and-forget HR
   const talent = source('routes/hr/talent.js');
   const migration = source('migrations/133_v25_hr_recruiting_integrity.sql');
   const clientContext = source('../client/context/SiteDataContext.tsx');
-  const joinUsPage = source('../client/pages/JoinUs.tsx');
+  // The single JoinUs.tsx was split into two distinct pages (teaching track vs
+  // staff/careers track). Both must keep the same submit contract, so assert
+  // against each rather than dropping the coverage.
+  const joinPages = [
+    source('../client/pages/JoinTeaching.tsx'),
+    source('../client/pages/JoinStaff.tsx'),
+  ];
   assert.match(publicRoutes, /await require\('\.\/hr\/talent'\)\.createJoinApplication/);
   assert.doesNotMatch(publicRoutes, /join-us→pipeline/);
   assert.match(talent, /createJoinApplication/);
-  assert.match(talent, /convertJoinUs\(data, \{ db: conn \}\)/);
+  // createJoinApplication forwards an optional job_id so an application made
+  // from a specific posting attaches to it instead of the generic talent pool.
+  assert.match(talent, /convertJoinUs\(data, \{ jobId: data\.job_id \|\| undefined, db: conn \}\)/);
   assert.match(clientContext, /const addJoinUsApplication = async[\s\S]{0,180}await mysqlForms\.submitJoinUs/);
-  assert.match(joinUsPage, /await addJoinUsApplication/);
-  assert.match(joinUsPage, /setSubmitted\(true\)/);
-  assert.match(joinUsPage, /submitError/);
+  for (const joinUsPage of joinPages) {
+    assert.match(joinUsPage, /await addJoinUsApplication/);
+    assert.match(joinUsPage, /setSubmitted\(true\)/);
+    assert.match(joinUsPage, /submitError/);
+  }
   assert.match(migration, /fk_job_applicants_job_tenant/);
   assert.match(migration, /fk_join_us_applicant_tenant/);
   assert.match(migration, /fk_onboarding_items_parent_tenant/);

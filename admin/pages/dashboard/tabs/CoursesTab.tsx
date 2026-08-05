@@ -265,9 +265,15 @@ const saveCourse = async () => {
     notify('error', 'المحاضر المختار غير موجود في قائمة المحاضرين.');
     return;
   }
+  // An unlinked lecturer is NOT a reason to refuse the save. This used to hard-
+  // return here, and since no therapist in this tenant has a staff account
+  // linked, it blocked creating *any* course at all — the reported bug. The
+  // staff link only unlocks two optional extras (an instructor revenue share
+  // via instructor_rates, and the lecturer opening their own course from their
+  // own login); the course itself is perfectly valid with just the name, and
+  // courses.instructor_id is nullable precisely for that. Warn and continue.
   if (!selectedInstructor.staffId) {
-    notify('error', 'اربط المحاضر بحساب موظف محاضر/مدرب أولاً لضمان الصلاحيات والتحليلات.');
-    return;
+    notify('info', 'تنبيه: المحاضر غير مرتبط بحساب موظف — سيُحفظ الكورس باسمه فقط، بدون نسبة إيراد أو دخول خاص له.');
   }
   let parsedDetails: Record<string, string> = {};
   try {
@@ -654,8 +660,17 @@ const saveChapter = async () => {
                 setCourseDraft({ ...courseDraft, instructor: e.target.value, instructorId: therapist?.staffId });
               }}>
                 <option value="">اختر المحاضر</option>
-                {therapists.map((row) => <option key={row.id} value={row.name}>{row.name}</option>)}
+                {/* The ● marks lecturers linked to a staff account. Only those can
+                    receive an instructor revenue share (instructor_rates) or open
+                    their own course from their login — an unlinked lecturer still
+                    works fine, their name just shows on the course. */}
+                {therapists.map((row) => (
+                  <option key={row.id} value={row.name}>
+                    {row.name}{row.staffId ? ' ●' : ''}
+                  </option>
+                ))}
               </select>
+              <p className="text-[10px] text-gray-400 mt-1">● = مرتبط بحساب موظف (يستحق نسبة إيراد ويقدر يفتح كورسه). بدون ربط الكورس يتحفظ عادي باسم المحاضر فقط.</p>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">رابط صورة الغلاف</label>

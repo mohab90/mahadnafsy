@@ -426,6 +426,7 @@ CREATE TABLE `communications` (
   KEY `idx_comm_tenant_lead_date` (`tenant_id`,`lead_id`,`date`),
   KEY `idx_comm_tenant_subscriber_date` (`tenant_id`,`subscriber_id`,`date`),
   KEY `idx_comm_tenant_direction_date` (`tenant_id`,`direction`,`date`),
+  KEY `idx_comm_tenant_staff_date` (`tenant_id`,`staff_id`,`date`),
   CONSTRAINT `fk_comm_lead` FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_comm_subscriber` FOREIGN KEY (`subscriber_id`) REFERENCES `subscribers` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -3058,6 +3059,23 @@ CREATE TABLE `staff` (
   KEY `idx_staff_tenant` (`tenant_id`),
   KEY `idx_staff_tenant_branch_active` (`tenant_id`,`branch_id`,`is_active`,`deleted_at`),
   KEY `idx_staff_deleted` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `staff_messages` (
+  `id` varchar(36) NOT NULL,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `staff_id` varchar(36) NOT NULL,
+  `author_staff_id` varchar(36) DEFAULT NULL,
+  `author_name` varchar(255) NOT NULL DEFAULT '',
+  `direction` enum('to_staff','from_staff') NOT NULL DEFAULT 'to_staff',
+  `body` text NOT NULL,
+  `read_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_staff_messages_thread` (`tenant_id`,`staff_id`,`created_at`),
+  KEY `idx_staff_messages_unread` (`tenant_id`,`staff_id`,`direction`,`read_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

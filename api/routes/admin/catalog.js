@@ -93,12 +93,32 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota(
       if (anyRow && !anyRow.owned) return res.status(404).json({ error: 'Course not found' });
     }
     if (instructorId) {
+      // Tenant + active check only, deliberately NOT a role check. This used to
+      // also require LOWER(role) IN ('instructor','trainer'), which blocked
+      // course creation outright: the admin UI's lecturer dropdown is fed from
+      // `therapists` (the public instructor directory) and sends
+      // therapist.staff_id, but a linked staff account is a normal employee row
+      // whose role is whatever they actually are — this tenant has no
+      // instructor/trainer staff at all (its roles are sales/collection/
+      // manager/admin/reception_daqqi/other/online_manager), so every linked
+      // lecturer was rejected with "not an active tenant instructor".
+      // What instructor_id is really for still holds with any role: revenue
+      // share (instructor_rates.staff_id join in lib/paymentCompensation.js),
+      // offboarding reassignment, and the instructor-scoped course filters —
+      // and those filters only ever *narrow* access for a requester who is
+      // themselves instructor/trainer, so naming e.g. a manager here grants
+      // nobody anything extra. The tenant/active/not-deleted guard is the part
+      // that carries the security weight (no cross-tenant or dangling refs).
       const [[instructor]] = await pool.query(
-        `SELECT id FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL
-          AND LOWER(role) IN ('instructor','trainer') LIMIT 1`,
+        `SELECT id FROM staff WHERE tenant_id=? AND id=? AND is_active=1 AND deleted_at IS NULL LIMIT 1`,
         [req.tenantId, instructorId]
       );
-      if (!instructor) return res.status(400).json({ error: 'Assigned instructor is not an active tenant instructor' });
+      if (!instructor) {
+        return res.status(400).json({
+          error: 'المحاضر المختار غير مرتبط بحساب موظف نشط. اربط المحاضر بموظف من صفحة المحاضرين، أو اختر محاضرًا آخر.',
+          code: 'INSTRUCTOR_STAFF_LINK_INVALID',
+        });
+      }
     }
 
     await pool.query(

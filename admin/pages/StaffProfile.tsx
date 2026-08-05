@@ -1,10 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowRight, Phone, Mail, Shield, Eye, EyeOff, Save, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Camera, Trash2 } from 'lucide-react';
+import { ArrowRight, Phone, Mail, Shield, Eye, EyeOff, Save, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Camera, Trash2, LayoutDashboard, MessageSquare, ListChecks, Trophy } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { toDialable } from '../lib/whatsappLink';
 import { mysqlAdmin, mysqlAuth } from '../lib/mysqlapi';
 import { compressImageFile } from '../lib/imageBudget';
+import StaffTimelineChart from './staff-profile/StaffTimelineChart';
+import StaffTodayStrip from './staff-profile/StaffTodayStrip';
+import StaffRankCard from './staff-profile/StaffRankCard';
+import StaffAchievements from './staff-profile/StaffAchievements';
+import StaffMessagesPanel from './staff-profile/StaffMessagesPanel';
+import StaffTasksPanel from './staff-profile/StaffTasksPanel';
+import { fmtMoney as fmtMoneyEgp, fmtNum, monthLabel, type StaffProfileData } from './staff-profile/types';
 import type { StaffMember, StaffPermission } from '../types';
 import {
   ROLE_DEFAULT_PERMISSIONS as MASTER_ROLE_PERMS,
@@ -20,6 +27,18 @@ const fmt = (n: number) => n.toLocaleString('ar-EG-u-nu-latn');
 
 // Delegates to the shared rule — this used to build country code "2".
 const formatWaPhone = (p: string) => toDialable(p);
+
+/** "منضم منذ سنة و3 شهور" — tenure, shown next to the name. */
+const getTenure = (joinedAt: string) => {
+  const ms = Date.now() - new Date(joinedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const months = ms / (30.44 * 86400000);
+  if (months < 1) return `منضم منذ ${Math.max(1, Math.round(ms / 86400000))} يوم`;
+  if (months < 12) return `منضم منذ ${Math.round(months)} شهر`;
+  const years = Math.floor(months / 12);
+  const rest = Math.round(months % 12);
+  return `منضم منذ ${years} سنة${rest > 0 ? ` و${rest} شهر` : ''}`;
+};
 
 const ROLE_LABELS: Record<string, string> = {
   instructor: 'محاضر', trainer: 'مدرب', expert: 'خبير', sales: 'مسئول مبيعات',
@@ -165,7 +184,7 @@ const createStaffAccount = async (staff: StaffMember, password: string): Promise
   await mysqlAdmin.createStaffAccount({ ...staff, staffId: staff.id, password } as unknown as Record<string, unknown>);
 };
 
-type Tab = 'reports' | 'attendance' | 'activity' | 'bookings' | 'settings';
+type Tab = 'overview' | 'reports' | 'messages' | 'tasks' | 'attendance' | 'activity' | 'bookings' | 'settings';
 
 interface AttendanceLog {
   id: string; date: string; check_in: string | null; check_out: string | null;
@@ -186,13 +205,35 @@ const StaffProfile: React.FC = () => {
   const navigate = useNavigate();
   const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin } = useSiteData();
 
-  const [activeTab, setActiveTab] = useState<Tab>('reports');
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [draft, setDraft] = useState<StaffMember | null>(null);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Server-computed profile (whole-employment series, today's counters, rank,
+  // lifetime records, task rollup). Kept separate from the client-side `perf`
+  // below, which can only see the leads/subscribers the browser already holds.
+  const [profile, setProfile] = useState<StaffProfileData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState('');
+  React.useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setProfileLoading(true);
+    setProfileError('');
+    mysqlAdmin.getStaffProfile(id)
+      .then(data => { if (!cancelled) setProfile(data as unknown as StaffProfileData); })
+      .catch(error => { if (!cancelled) setProfileError(error instanceof Error ? error.message : 'تعذر تحميل ملف الأداء'); })
+      .finally(() => { if (!cancelled) setProfileLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
+  const notify = React.useCallback((type: 'success' | 'error' | 'info', text: string) => {
+    setSaveMsg(`${type === 'error' ? '❌' : type === 'info' ? 'ℹ️' : '✅'} ${text}`);
+    setTimeout(() => setSaveMsg(''), 3500);
+  }, []);
 
   const staff = useMemo(() => staffMembers.find(s => s.id === id), [staffMembers, id]);
   const currentStaff = useMemo(
@@ -397,8 +438,11 @@ const StaffProfile: React.FC = () => {
     setTimeout(() => setSaveMsg(''), 4000);
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard size={15} /> },
     { key: 'reports', label: 'التقارير', icon: <BarChart3 size={15} /> },
+    { key: 'messages', label: 'المراسلات', icon: <MessageSquare size={15} /> },
+    { key: 'tasks', label: 'المهام', icon: <ListChecks size={15} />, badge: profile ? profile.tasks.todo + profile.tasks.inProgress : undefined },
     { key: 'attendance', label: 'الحضور والانصراف', icon: <Clock size={15} /> },
     { key: 'activity', label: 'سجل النشاط', icon: <Activity size={15} /> },
     { key: 'bookings', label: 'الحجوزات', icon: <CreditCard size={15} /> },
@@ -429,10 +473,22 @@ const StaffProfile: React.FC = () => {
             <ChevronRight size={12} className="text-gray-300" />
             <span className="text-gray-600 font-medium truncate">{staff.name}</span>
           </nav>
-          <h1 className="text-lg font-bold text-gray-900 truncate">{staff.name}</h1>
+          <h1 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+            <span className="truncate">{staff.name}</span>
+            {profile?.rank.position && (
+              <span
+                className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-700 border border-amber-200"
+                title={`ترتيبه ${profile.rank.position} من ${profile.rank.outOf} على إيراد الشهر الحالي`}
+              >
+                <Trophy size={11} /> #{profile.rank.position}
+                <span className="font-bold opacity-60">/{profile.rank.outOf}</span>
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-gray-500">
             {ROLE_LABELS[staff.role] ?? staff.role}
             {staff.commissionRate ? ` · عمولة ${staff.commissionRate}%` : ''}
+            {staff.joinedAt ? ` · ${getTenure(staff.joinedAt)}` : ''}
             {staff.status === 'inactive' && <span className="mr-2 text-red-500 font-bold">· غير نشط</span>}
           </p>
         </div>
@@ -477,13 +533,73 @@ const StaffProfile: React.FC = () => {
             >
               {tab.icon}
               {tab.label}
+              {tab.badge ? (
+                <span className="rounded-full bg-indigo-100 px-1.5 text-[10px] font-black text-indigo-700">{tab.badge}</span>
+              ) : null}
             </button>
           ))}
         </div>
       </div>
 
       {/* ── Page body ── */}
-      <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+
+        {/* ══ OVERVIEW TAB — the professional at-a-glance profile ══ */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {profileLoading ? (
+              <div className="py-20 text-center">
+                <span className="inline-block h-7 w-7 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+                <p className="mt-3 text-sm text-gray-400">جاري تحميل ملف الأداء...</p>
+              </div>
+            ) : profileError ? (
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm font-bold text-red-700">
+                {profileError}
+              </div>
+            ) : profile ? (
+              <>
+                <StaffTodayStrip data={profile} />
+
+                {/* Lifetime record — the "ورقة الموظف" summary line */}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {[
+                    { label: 'إجمالي الإيراد المحقق', value: fmtMoneyEgp(profile.lifetime.revenue), hint: `${fmtNum(profile.lifetime.bookings)} حجز` },
+                    { label: 'إجمالي المكالمات', value: fmtNum(profile.lifetime.calls), hint: 'منذ الانضمام' },
+                    {
+                      label: 'معدل التحويل',
+                      value: profile.lifetime.leads > 0 ? `${Math.round((profile.lifetime.converted / profile.lifetime.leads) * 100)}%` : '—',
+                      hint: `${fmtNum(profile.lifetime.converted)} من ${fmtNum(profile.lifetime.leads)} ليد`,
+                    },
+                    { label: 'أكبر عملية بيع', value: fmtMoneyEgp(profile.lifetime.biggestSale), hint: profile.lifetime.bestMonth ? `أفضل شهر: ${monthLabel(profile.lifetime.bestMonth.ym)}` : '—' },
+                  ].map(card => (
+                    <div key={card.label} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                      <p className="text-[11px] font-bold text-gray-400">{card.label}</p>
+                      <p className="mt-1 text-xl font-black text-gray-900">{card.value}</p>
+                      <p className="mt-0.5 text-[11px] text-gray-400">{card.hint}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <StaffTimelineChart timeline={profile.timeline} />
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <StaffRankCard data={profile} />
+                  <StaffAchievements data={profile} />
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {/* ══ MESSAGES TAB — two-way thread with the employee ══ */}
+        {activeTab === 'messages' && (
+          <StaffMessagesPanel staffId={staff.id} staffName={staff.name} notify={notify} />
+        )}
+
+        {/* ══ TASKS TAB ══ */}
+        {activeTab === 'tasks' && (
+          <StaffTasksPanel staffId={staff.id} staffName={staff.name} notify={notify} />
+        )}
 
         {/* ══ REPORTS TAB ══ */}
         {activeTab === 'reports' && perf && (

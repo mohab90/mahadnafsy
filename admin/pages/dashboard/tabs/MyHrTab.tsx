@@ -1,11 +1,21 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
-import { User, FileText, Activity, Calendar, Star, Plus, X, CheckCircle, XCircle } from 'lucide-react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { User, FileText, Activity, Calendar, Star, Plus, X, CheckCircle, XCircle, MessageSquare, Send, RefreshCw } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { ActivityLogItem, AuthUser, StaffMember } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves';
+type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves' | 'messages';
+
+type MyMessage = {
+  id: string;
+  author_name: string;
+  direction: 'to_staff' | 'from_staff';
+  body: string;
+  read_at: string | null;
+  created_at: string;
+};
 
 type ActivityLogRecord = ActivityLogItem & {
   staffId?: string;
@@ -173,11 +183,43 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     } catch { notify('error', 'خطأ في الاتصال'); }
   }, [leaveForm, me?.id, notify, fetchMyLeaves]);
 
+  // ── My thread with management (same conversation the HR staff page shows) ──
+  const [myMessages, setMyMessages] = useState<MyMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageDraft, setMessageDraft] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fetchMyMessages = useCallback(async (scroll = false) => {
+    setLoadingMessages(true);
+    try {
+      const rows = await mysqlAdmin.listMyStaffMessages();
+      setMyMessages(rows as unknown as MyMessage[]);
+      if (scroll) setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    } catch {
+      notify('error', 'تعذر تحميل الرسائل');
+    } finally { setLoadingMessages(false); }
+  }, [notify]);
+  useEffect(() => { if (activeSection === 'messages') void fetchMyMessages(); }, [activeSection, fetchMyMessages]);
+  const sendMyMessage = async () => {
+    const body = messageDraft.trim();
+    if (!body) return;
+    setSendingMessage(true);
+    try {
+      await mysqlAdmin.sendMyStaffMessage(body);
+      setMessageDraft('');
+      await fetchMyMessages(true);
+      notify('success', 'تم إرسال رسالتك للإدارة');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر إرسال الرسالة');
+    } finally { setSendingMessage(false); }
+  };
+
   const SECTIONS = [
     { key: 'overview', label: 'نظرة عامة', icon: User },
     { key: 'activity', label: 'سجل النشاط', icon: Activity },
     { key: 'performance', label: 'أدائي', icon: Star },
     { key: 'leaves', label: 'إجازاتي', icon: Calendar },
+    { key: 'messages', label: 'رسائل الإدارة', icon: MessageSquare },
   ] as const;
 
   if (!me && !authUser) {
@@ -414,6 +456,55 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* My thread with management — the employee's side of the same
+          conversation shown on their HR staff page. */}
+      {activeSection === 'messages' && (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+            <h3 className="flex items-center gap-2 font-bold text-gray-800"><MessageSquare size={17} className="text-slate-600"/> رسائلي مع الإدارة</h3>
+            <button onClick={() => void fetchMyMessages()} disabled={loadingMessages}
+              className="flex items-center gap-1.5 bg-gray-100 text-gray-600 rounded-xl px-3 py-1.5 text-xs font-bold hover:bg-gray-200 disabled:opacity-50">
+              <RefreshCw size={13} className={loadingMessages ? 'animate-spin' : ''}/> تحديث
+            </button>
+          </div>
+          <div className="max-h-[420px] overflow-y-auto bg-gray-50/60 p-5 space-y-3">
+            {loadingMessages && myMessages.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-10">جاري التحميل...</p>
+            ) : myMessages.length === 0 ? (
+              <div className="text-center py-10">
+                <MessageSquare size={30} className="mx-auto mb-2 text-gray-300"/>
+                <p className="text-sm text-gray-400">لا توجد رسائل. يمكنك مراسلة الإدارة من الأسفل.</p>
+              </div>
+            ) : myMessages.map(message => {
+              const mine = message.direction === 'from_staff';
+              return (
+                <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${mine ? 'bg-slate-700 text-white' : 'bg-white border border-gray-200 text-gray-800'}`}>
+                    <p className={`mb-1 text-[10px] font-bold ${mine ? 'text-slate-300' : 'text-gray-400'}`}>
+                      {mine ? 'أنا' : `الإدارة · ${message.author_name}`}
+                      {' · '}
+                      {new Date(message.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                    </p>
+                    <p className="whitespace-pre-wrap leading-relaxed">{message.body}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef}/>
+          </div>
+          <div className="flex items-end gap-2 border-t border-gray-100 p-4">
+            <textarea value={messageDraft} onChange={e => setMessageDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void sendMyMessage(); } }}
+              rows={2} placeholder="اكتب رسالتك للإدارة... (Ctrl+Enter للإرسال)"
+              className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"/>
+            <button onClick={() => void sendMyMessage()} disabled={sendingMessage || !messageDraft.trim()}
+              className="flex items-center gap-1.5 rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">
+              <Send size={15}/> {sendingMessage ? 'جارٍ...' : 'إرسال'}
+            </button>
+          </div>
         </div>
       )}
     </div>
