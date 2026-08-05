@@ -1128,6 +1128,23 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
       }
       logger.warn('[forgot-password] WhatsApp delivery failed, falling back to email:', describeReason(sent.reason));
     }
+    // Phone-only accounts (registration no longer requires an email — see
+    // /api/user/signup) can reach here with user.email === null. Falling
+    // through used to call sendEmail(null, ...), which SMTP always rejects,
+    // producing the same generic "email delivery failed" error a real bounce
+    // would — misleading for an account that never had an email to try. Fail
+    // with the true reason instead of a fabricated SMTP one.
+    if (!user.email) {
+      await pool.query(
+        `UPDATE otp_codes SET used=1, delivery_status='failed', delivery_error_code=? WHERE id=? AND tenant_id=?`,
+        ['NO_CHANNEL_AVAILABLE', otpId, req.tenantId]
+      ).catch(() => {});
+      logger.warn('[forgot-password] no deliverable channel (no email on file, WhatsApp unavailable) for:', logIdentifier);
+      return res.status(503).json({
+        error: 'تعذر إرسال رمز الاسترجاع الآن؛ خدمة واتساب غير متاحة مؤقتاً ولا يوجد بريد إلكتروني مسجل على الحساب. تواصل مع الدعم لاستعادة كلمة المرور.',
+        code: 'NO_RECOVERY_CHANNEL',
+      });
+    }
     try {
       const delivery = await sendEmail(user.email, 'رمز إعادة تعيين كلمة المرور',
         `<p>أهلاً ${user.name || ''}،</p>
