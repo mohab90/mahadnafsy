@@ -84,6 +84,11 @@ export const growthOpsTabs = new Set<string>([
   'daqqi_schedule',
   'sales_hub',
   'marketing_hub',
+  // DashboardGrowthOpsTabs.tsx has always handled activeTab === 'messaging_hub'
+  // (renders MessagingHubTab), but this Set never listed it, so the mount
+  // gate at Dashboard.tsx (`growthOpsTabs.has(activeTab)`) always skipped it —
+  // clicking "الواتساب والماسنجر" rendered nothing. Confirmed live.
+  'messaging_hub',
   'online_hub',
 ]);
 
