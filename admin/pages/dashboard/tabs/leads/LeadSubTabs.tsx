@@ -40,8 +40,11 @@ export function LeadSubTabs({
     // 'دولي جديد' (dawliNew) removed: LeadArchiveViews.tsx renders it with a
     // hardcoded empty row set — it has never shown any data. Reachable only
     // via setSubTab('dawliNew') directly now, not as a visible tab.
-    ['dawliOld', 'دولي قديم', Globe],
-    ...(!isSalesOnly ? [['archive', 'محلي قديم', Archive] as [SubTabKey, string, ElementType]] : []),
+    // A rep works the data, they don't source it — so for them these are two
+    // plain views ("داتا دولي" / "محلي قديم") with the import and bulk-assign
+    // panels stripped out. Management keeps the full tooling.
+    ['dawliOld', isSalesOnly ? 'داتا دولي' : 'دولي قديم', Globe],
+    ['archive', 'محلي قديم', Archive],
     // 'إعداد المراحل' (pipelineSettings) moved into the الإعدادات menu
     // (LeadsTabHeader's actions dropdown) — one less top-level tab, same
     // canManageDuplicates gate, reached via setSubTab('pipelineSettings').

@@ -5,6 +5,7 @@ import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { buildStaffSettingsMetrics } from './dashboardHelpers';
 import { toDialable } from '../../lib/whatsappLink';
+import MyWorkRecordPanel from './staff-settings/MyWorkRecordPanel';
 
 type StaffSettingsDraft = {
   name: string;
@@ -341,6 +342,9 @@ export function DashboardStaffSettingsPanel({
           ))}
         </div>
       </div>
+
+      {/* ── Record, targets, thread and resignation ──────────── */}
+      <MyWorkRecordPanel notify={notify} />
 
       {/* ── HR Self-Service Section ──────────────────────────── */}
       {loadingMyHr ? (

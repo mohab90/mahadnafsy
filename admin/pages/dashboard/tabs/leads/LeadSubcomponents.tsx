@@ -14,6 +14,7 @@ import type {
 import type { NotifyFn } from '../CrmSettingsModal';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
 import { toDialable } from '../../../../lib/whatsappLink';
+import { courseBadgeLabel, isRawCourse } from './leadCourseLabel';
 import {
   BRANCH_ENUM_LABELS,
   COMM_ICON,
@@ -1057,13 +1058,14 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
       {(lead.interestedCourseIds?.length || 0) > 0 && (
         <div className="flex flex-wrap gap-0.5 mb-1.5">
           {(lead.interestedCourseIds || []).slice(0, 2).map(id => {
-            const resolvedId = id.startsWith('bundle:') ? id.replace('bundle:', '') : id;
-            const cTitle = courses.find(c => c.id === id)?.title
-              || bundles.find(b => b.id === resolvedId)?.title
-              || bundles.find(b => b.id === id)?.title;
-            if (!cTitle) return null;
+            const raw = isRawCourse(id);
+            const cTitle = courseBadgeLabel(id, courses, bundles);
+            // courseBadgeLabel falls back to the id itself; an unresolvable real
+            // id is noise on a card this small, but a raw name is the point.
+            if (!cTitle || (!raw && cTitle === id)) return null;
             return (
-              <span key={id} className="inline-flex items-center text-[9px] bg-primary-50 text-primary-700 border border-primary-200 px-1.5 py-0.5 rounded-full">
+              <span key={id} className={`inline-flex items-center text-[9px] border px-1.5 py-0.5 rounded-full ${
+                raw ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-primary-50 text-primary-700 border-primary-200'}`}>
                 🎓 {cTitle.length > 16 ? cTitle.slice(0, 16) + '…' : cTitle}
               </span>
             );

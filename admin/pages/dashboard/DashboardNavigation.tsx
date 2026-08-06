@@ -5,6 +5,7 @@ import {
   ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
   LogOut, Monitor, RotateCcw, Shield, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, X, MessageSquareText,
+  Home,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -345,6 +346,10 @@ export function DashboardNavigation(props: Props) {
             {isSalesOnly && (
               <CompactRoleNav
                 tabs={[
+                  // staff_home is where the rep lands at login, but nothing in
+                  // this bar pointed back at it — leave the page and it was gone
+                  // for the rest of the session.
+                  { key: 'staff_home', label: 'الرئيسية', icon: Home },
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
                   { key: 'online_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
@@ -364,6 +369,7 @@ export function DashboardNavigation(props: Props) {
             {isCollectionRole && (
               <CompactRoleNav
                 tabs={[
+                  { key: 'staff_home', label: 'الرئيسية', icon: Home },
                   { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },

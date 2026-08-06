@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 import { toDialable } from '../../../lib/whatsappLink';
+import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -178,9 +179,11 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         totalPaid: 0,
         assignedSalesName: l.assignedSalesName || '',
         courseIds: [l.enrolledCourseId, ...(l.interestedCourseIds || [])].filter(Boolean) as string[],
+        // An imported free-text course still counts as a course name here —
+        // otherwise the database view shows a blank for rows that do carry one.
         courseNames: [l.enrolledCourseId, ...(l.interestedCourseIds || [])]
           .filter(Boolean)
-          .map(id => courses.find(c => c.id === id)?.title)
+          .map(id => (isRawCourse(id as string) ? rawCourseText(id as string) : courses.find(c => c.id === id)?.title))
           .filter(Boolean)
           .join('، '),
       }));

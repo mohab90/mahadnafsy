@@ -176,7 +176,13 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       await conn.rollback();
       return res.status(400).json({ error: 'Invalid lead branch' });
     }
-    // Auto-assign to sales on new lead if not already assigned
+    // Auto-assign to sales on new lead if not already assigned.
+    // `skipAutoAssign` lets a caller opt out and land the lead in the
+    // unassigned pool instead — bulk imports use it, because round-robin
+    // scattering a thousand archived rows across the team the instant they
+    // arrive is the opposite of the manual distribution the desk wants.
+    const skipAutoAssign = crmData.skipAutoAssign === true;
+    delete crmData.skipAutoAssign;
     let salesId   = crmData.assignedSalesId   || null;
     let salesName = crmData.assignedSalesName || null;
     if (staffRole === 'sales') {
@@ -184,7 +190,7 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       salesName = req.staffRecord.name || salesName;
       crmData.assignedSalesId = salesId;
       crmData.assignedSalesName = salesName;
-    } else if (isNew && !salesId) {
+    } else if (isNew && !salesId && !skipAutoAssign) {
       const rep = await getNextSalesRep(req.tenantId, conn, { branch: branchVal });
       if (rep) { salesId = rep.id; salesName = rep.name; crmData.assignedSalesId = rep.id; crmData.assignedSalesName = rep.name; }
     }

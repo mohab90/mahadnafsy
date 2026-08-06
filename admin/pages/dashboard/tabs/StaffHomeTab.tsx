@@ -224,9 +224,11 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       {/* ── Header + Refresh ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-gray-900">بوابتي الشخصية</h2>
+          <h2 className="text-xl font-extrabold text-gray-900">الرئيسية — شغل النهاردة</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {' · '}
+            <span className="text-gray-400">المتابعات والمهام المستحقة الآن — الأرقام التفصيلية في «إحصائياتي» وبياناتك الوظيفية في «ملفي الشخصي»</span>
           </p>
         </div>
         <button

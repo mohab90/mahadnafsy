@@ -6,6 +6,7 @@ import type { NotifyFn } from '../CrmSettingsModal';
 import { LeadTable } from '../LeadTable';
 import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 import { BRANCH_LABELS_AR, normalizeBranch, type BranchKey } from '../../../../constants/branches';
+import { toRawCourse } from './leadCourseLabel';
 
 /**
  * Header keys are compared with separators and case stripped, so
@@ -111,7 +112,14 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   const [bulkSelectedLeadIds, setBulkSelectedLeadIds] = useState<Set<string>>(new Set());
   const [bulkAssigning2, setBulkAssigning2] = useState(false);
   const [bulkQuantity, setBulkQuantity] = useState('');
+  // Where imported / distributed rows should live. 'archive' keeps them grouped
+  // under this tab's source so the desk can work through the batch; 'main'
+  // releases them into the ordinary lead flow (pipeline, table, follow-ups).
+  const [importDest, setImportDest] = useState<'archive' | 'main'>('archive');
+  const [assignDest, setAssignDest] = useState<'keep' | 'archive' | 'main'>('keep');
   const ARCHIVE_PAGE_SIZE = 100;
+  const mainSource = `${defaultSource} — موزّع`;
+  const showDeskTools = canManageLeads && !isSalesOnly;
 
   const parseArchiveFile = (file: File) => {
     setArchiveParseErr('');
@@ -158,25 +166,29 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     let created = 0, dupes = 0, errors = 0;
     for (const row of toImport) {
       try {
-        // A course name that matched a real course becomes a proper interest
-        // link; one that didn't is kept verbatim in the notes so the
-        // information from the sheet is never silently dropped.
-        const noteParts = [
-          row._notes,
-          row._courseRaw && !row._courseId ? `الكورس المطلوب: ${row._courseRaw}` : '',
-        ].filter(Boolean);
+        // The course goes in the course column either way: a name that matched
+        // the catalogue becomes a real interest link, one that didn't is kept as
+        // free text behind the `raw:` prefix. It used to be shoved into the notes,
+        // where nobody filters or reports on it.
+        const courseEntry = row._courseId
+          ? row._courseId
+          : (row._courseRaw ? toRawCourse(row._courseRaw) : '');
         await addLead({
           name: row._name,
           phone: row._phone,
           email: row._email || undefined,
-          notes: noteParts.join(' — ') || undefined,
+          notes: row._notes || undefined,
           branch: (row._branchKey || undefined) as LeadItem['branch'],
           rawBranch: row._branchRaw || undefined,
-          interestedCourseIds: row._courseId ? [row._courseId] : undefined,
-          source: archiveSource || 'استيراد قديم',
+          interestedCourseIds: courseEntry ? [courseEntry] : undefined,
+          // Imported rows land in the unassigned pool. Round-robin scattering a
+          // whole archive across the team the moment it arrives is exactly what
+          // the desk does not want — distribution is a deliberate step.
+          skipAutoAssign: true,
+          source: importDest === 'archive' ? (archiveSource || 'استيراد قديم') : mainSource,
           status: 'new',
           hidden: false,
-        });
+        } as Partial<LeadItem> & { skipAutoAssign: boolean; rawBranch?: string });
         created++;
       } catch (err: unknown) {
         const msg = (err as Error).message || '';
@@ -186,7 +198,12 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     }
     setArchiveImportResult({ created, dupes, errors });
     setArchiveImporting(false);
-    if (created > 0) notify('success', `تم استيراد ${created} عميل بنجاح`);
+    await reloadLeads();
+    if (created > 0) {
+      notify('success', importDest === 'archive'
+        ? `تم استيراد ${created} عميل — موجودون في تاب ${defaultSource} بانتظار التوزيع`
+        : `تم استيراد ${created} عميل — ظاهرون في جدول الداتا بانتظار التوزيع`);
+    }
   };
 
   const archiveLeads = leads.filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource));
@@ -209,15 +226,22 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     for (const lid of bulkSelectedLeadIds) {
       const lead = leads.find(l => l.id === lid);
       if (!lead) continue;
+      // The rep's tabs split on `source` exactly like this one does, so moving a
+      // distributed batch between "the data table" and "the archive tab" is a
+      // matter of which source it carries. 'keep' leaves it where it is.
+      const source = assignDest === 'main' ? mainSource
+        : assignDest === 'archive' ? (archiveSource || defaultSource)
+        : lead.source;
       if (bulkAssignRole === 'sales') {
-        await updateLead({ ...lead, assignedSalesId: staff.id, assignedSalesName: staff.name });
+        await updateLead({ ...lead, source, assignedSalesId: staff.id, assignedSalesName: staff.name });
       } else {
-        await updateLead({ ...lead, assignedCollectionId: staff.id, assignedCollectionName: staff.name } as typeof lead);
+        await updateLead({ ...lead, source, assignedCollectionId: staff.id, assignedCollectionName: staff.name } as typeof lead);
       }
       done++;
     }
     setBulkAssigning2(false);
     setBulkSelectedLeadIds(new Set());
+    await reloadLeads();
     notify('success', `تم تعيين ${done} عميل إلى ${staff.name}`);
   };
 
@@ -229,7 +253,10 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       </div>
 
       {/* ── Section 1: Import CSV ── */}
-      {canManageLeads && !hideImport && (
+      {/* Sourcing and distributing data is a desk job, not a rep's. A rep holds
+          `manage_leads` (they edit their own leads), so that permission alone was
+          never the right gate here — it is why reps were seeing an import box. */}
+      {showDeskTools && !hideImport && (
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Upload size={14} className="text-indigo-500" /> استيراد ملف CSV / Excel
@@ -242,12 +269,23 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
               className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-48" />
           </div>
           <div>
+            <label className="text-xs font-bold text-gray-600 mb-1 block">وجهة الداتا</label>
+            <select value={importDest} onChange={e => setImportDest(e.target.value as 'archive' | 'main')}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[190px]">
+              <option value="archive">تبقى في تاب {defaultSource}</option>
+              <option value="main">تنزل في جدول الداتا</option>
+            </select>
+          </div>
+          <div>
             <label className="text-xs font-bold text-gray-600 mb-1 block">ملف CSV أو TSV</label>
             <input type="file" accept=".csv,.tsv,.txt"
               onChange={e => { const f = e.target.files?.[0]; if (f) parseArchiveFile(f); }}
               className="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
           </div>
         </div>
+        <p className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+          الداتا المستوردة تصل <strong>بدون مندوب مبيعات</strong> — التوزيع يدوي من قسم «تعيين جماعي لموظف» بالأسفل.
+        </p>
         <div className="space-y-1">
           <p className="text-[11px] text-gray-500">
             الأعمدة المدعومة:
@@ -310,7 +348,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
                           {r._courseRaw ? (
                             r._courseId
                               ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700" title={courseTitle}>{courseTitle}</span>
-                              : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700" title="لم يُطابق كورسًا — سيُحفظ في الملاحظات">{r._courseRaw}</span>
+                              : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700" title="لم يُطابق كورسًا في الكتالوج — سيُحفظ كنص في عمود الكورسات">{r._courseRaw}</span>
                           ) : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="py-1.5 px-3 text-gray-500">{r._email}</td>
@@ -340,7 +378,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       )}
 
       {/* ── Section 2: Bulk Assign ── */}
-      {canManageLeads && <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+      {showDeskTools && <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Users size={14} className="text-emerald-500" /> تعيين جماعي لموظف
         </h3>
@@ -357,6 +395,15 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             <select value={bulkAssignSrc} onChange={e => setBulkAssignSrc(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[180px]">
               <option value="">اختر الموظف...</option>
               {staffForAssign.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-600 mb-1 block">وجهة الداتا بعد التوزيع</label>
+            <select value={assignDest} onChange={e => setAssignDest(e.target.value as 'keep' | 'archive' | 'main')}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[200px]">
+              <option value="keep">اتركها مكانها</option>
+              <option value="main">انزلها في جدول الداتا</option>
+              <option value="archive">أبقها في تاب {defaultSource}</option>
             </select>
           </div>
           <button disabled={!bulkAssignSrc || bulkSelectedLeadIds.size === 0 || bulkAssigning2} onClick={doBulkAssign}

@@ -78,6 +78,7 @@ import {
   _normalizeClientDate,
   type CertPricingMap,
 } from './dashboard/dashboardShared';
+import { realCourseIds } from './dashboard/tabs/leads/leadCourseLabel';
 
 const _BUILD = '20260502';
 
@@ -519,7 +520,9 @@ const Dashboard: React.FC = () => {
     } else {
       const lead = (usesStaffScopedData ? salesOwnLeads : leads).find(l => l.id === clientId);
       if (lead) {
-        const defaultCourseId = lead.interestedCourseIds?.[0] || lead.enrolledCourseId || '';
+        // realCourseIds() drops imported free-text course names (`raw:` entries),
+        // which are display-only and would otherwise be pre-filled as a courseId.
+        const defaultCourseId = realCourseIds(lead.interestedCourseIds)[0] || lead.enrolledCourseId || '';
         setLeadPayRow(lead);
         setLeadPayDraft(createClientPaymentDraft({
           courseId: defaultCourseId,

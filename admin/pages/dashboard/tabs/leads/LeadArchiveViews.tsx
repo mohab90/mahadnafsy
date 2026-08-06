@@ -51,18 +51,27 @@ export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsPr
     );
   }
 
+  // A rep gets a plain list — no import, no bulk assign — so the heading should
+  // not advertise tooling they cannot see.
+  const salesOnly = archiveProps.isSalesOnly;
+
   if (subTab === 'dawliOld') {
     return (
       <ArchiveTab
         {...archiveProps}
-        title="دولي قديم - الاستيراد والتعيين الجماعي"
+        title={salesOnly ? 'داتا دولي' : 'دولي قديم - الاستيراد والتعيين الجماعي'}
         defaultSource="دولي قديم"
       />
     );
   }
 
   if (subTab === 'archive') {
-    return <ArchiveTab {...archiveProps} />;
+    return (
+      <ArchiveTab
+        {...archiveProps}
+        title={salesOnly ? 'محلي قديم' : undefined}
+      />
+    );
   }
 
   return null;

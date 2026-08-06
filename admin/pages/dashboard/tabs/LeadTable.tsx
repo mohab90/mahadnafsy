@@ -6,6 +6,7 @@ import type { BranchType, Bundle, LeadItem, LeadStatus, SubscriberItem } from '.
 import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './leadUtils';
 import { crmStatusLabels } from '../dashboardShared';
 import { toDialable } from '../../../lib/whatsappLink';
+import { courseBadgeLabel, isRawCourse } from './leads/leadCourseLabel';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -313,16 +314,16 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                           <>
                             <div className="flex flex-wrap gap-1 mb-1">
                               {partialCourseIds.map(cid => {
-                                let displayTitle: string;
-                                if (cid.startsWith('bundle:')) {
-                                  const bId = cid.replace('bundle:', '');
-                                  displayTitle = bundles.find(b => b.id === bId)?.title || bundles.find(b => b.id === cid)?.title || cid;
-                                } else {
-                                  displayTitle = courses.find(x => x.id === cid)?.title || bundles.find(b => b.id === cid)?.title || cid;
-                                }
+                                // A `raw:` entry is a course name imported from a
+                                // sheet that matched nothing in the catalogue. It
+                                // still belongs in this column, just marked as
+                                // unlinked so nobody reads it as a real enrolment.
+                                const raw = isRawCourse(cid);
+                                const displayTitle = courseBadgeLabel(cid, courses, bundles);
                                 return (
-                                  <span key={cid} className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
-                                    <span className="truncate max-w-[90px]">{displayTitle}</span>
+                                  <span key={cid} className={`inline-flex items-center gap-1 text-[10px] border rounded-full px-2 py-0.5 ${
+                                    raw ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                    <span className="truncate max-w-[90px]" title={raw ? `${displayTitle} — غير مرتبط بكورس في الكتالوج` : displayTitle}>{displayTitle}</span>
                                     {canManageLeads && (
                                       <button onClick={() => updateLead({ ...row, interestedCourseIds: interestedCourseIds.filter(x => x !== cid) })}
                                         className="text-blue-400 hover:text-red-500 font-bold leading-none">×</button>

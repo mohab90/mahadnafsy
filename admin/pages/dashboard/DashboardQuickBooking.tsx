@@ -5,6 +5,7 @@ import type { LeadItem, SubscriberItem } from '../../types';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../lib/branchCurrency';
+import { realCourseIds } from './tabs/leads/leadCourseLabel';
 
 type DashboardQuickBookingProps = {
   open: boolean;
@@ -180,7 +181,7 @@ function LeadResults({
               onClose();
               setLeadPayRow(lead);
               setLeadPayDraft(createClientPaymentDraft({
-                courseId: lead.interestedCourseIds?.[0] || lead.enrolledCourseId || '',
+                courseId: realCourseIds(lead.interestedCourseIds)[0] || lead.enrolledCourseId || '',
                 currency: currencyForBranch(lead.branch),
                 branch: lead.branch || '',
                 email: lead.email || '',

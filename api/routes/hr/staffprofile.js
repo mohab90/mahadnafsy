@@ -301,99 +301,102 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
  * A period-scoped scorecard. Separate from /profile so switching the period
  * re-fetches only the numbers that change, not the whole tenure series.
  */
+async function buildStaffReport(tenantId, id, key) {
+  const { from, to, label } = periodRange(key);
+
+  const [[money], [leadRow], [commRow], [taskRow], [payRows], [callRows]] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) bookings, COALESCE(SUM(amount_egp),0) revenue,
+              COALESCE(MAX(amount_egp),0) biggest
+         FROM payments
+        WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
+          AND date>=? AND date<?`,
+      [tenantId, id, from, to]
+    ),
+    pool.query(
+      `SELECT COUNT(*) leads, SUM(status IN ('converted','won')) converted,
+              SUM(status='lost') lost, SUM(status='new') untouched
+         FROM leads
+        WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL
+          AND created_at>=? AND created_at<?`,
+      [tenantId, id, from, to]
+    ),
+    pool.query(
+      `SELECT COUNT(*) touches, SUM(type='CALL') calls, SUM(type='WHATSAPP') whatsapp,
+              SUM(type='MEETING') meetings
+         FROM communications
+        WHERE tenant_id=? AND staff_id=? AND date>=? AND date<?`,
+      [tenantId, id, from, to]
+    ),
+    pool.query(
+      `SELECT SUM(status='done') done,
+              SUM(status<>'done' AND status<>'cancelled') open
+         FROM tasks
+        WHERE tenant_id=? AND assigned_to=? AND created_at>=? AND created_at<?`,
+      [tenantId, id, from, to]
+    ),
+    // Raw rows for the day-by-day breakdown, folded into days in JS below.
+    // Kept as two flat sargable reads (both hit idx_pay_staff_date /
+    // idx_comm_tenant_staff_date) rather than grouping by a date-truncating
+    // function on the indexed column, which would defeat those indexes. For
+    // one employee over at most 90 days the row count is trivial to fold.
+    pool.query(
+      `SELECT date, amount_egp FROM payments
+        WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
+          AND date>=? AND date<?`,
+      [tenantId, id, from, to]
+    ),
+    pool.query(
+      `SELECT date FROM communications
+        WHERE tenant_id=? AND staff_id=? AND type='CALL' AND date>=? AND date<?`,
+      [tenantId, id, from, to]
+    ),
+  ]);
+
+  // Dense day series across the window so the chart has no holes.
+  const days = new Map();
+  for (let t = new Date(`${from}T00:00:00.000Z`).getTime();
+    t < new Date(`${to}T00:00:00.000Z`).getTime(); t += 86400000) {
+    days.set(new Date(t).toISOString().slice(0, 10), { day: new Date(t).toISOString().slice(0, 10), bookings: 0, revenue: 0, calls: 0 });
+  }
+  const bump = (raw, apply) => {
+    const dayKey = toIsoDate(raw);
+    if (!dayKey) return;
+    if (!days.has(dayKey)) days.set(dayKey, { day: dayKey, bookings: 0, revenue: 0, calls: 0 });
+    apply(days.get(dayKey));
+  };
+  for (const row of payRows) {
+    bump(row.date, slot => { slot.bookings += 1; slot.revenue += Number(row.amount_egp || 0); });
+  }
+  for (const row of callRows) bump(row.date, slot => { slot.calls += 1; });
+
+  const leads = Number(leadRow[0]?.leads || 0);
+  const converted = Number(leadRow[0]?.converted || 0);
+  return {
+    period: { key, label, from, to },
+    revenue: Number(money[0]?.revenue || 0),
+    bookings: Number(money[0]?.bookings || 0),
+    biggestSale: Number(money[0]?.biggest || 0),
+    leads,
+    converted,
+    lost: Number(leadRow[0]?.lost || 0),
+    untouched: Number(leadRow[0]?.untouched || 0),
+    conversionRate: leads > 0 ? Math.round((converted / leads) * 100) : 0,
+    touches: Number(commRow[0]?.touches || 0),
+    calls: Number(commRow[0]?.calls || 0),
+    whatsapp: Number(commRow[0]?.whatsapp || 0),
+    meetings: Number(commRow[0]?.meetings || 0),
+    tasksDone: Number(taskRow[0]?.done || 0),
+    tasksOpen: Number(taskRow[0]?.open || 0),
+    daily: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
+  };
+}
+
 router.get('/api/admin/hr/staff/:id/report', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const key = String(req.query.period || 'month');
     if (!PERIODS[key]) return res.status(400).json({ error: 'period غير مدعوم' });
-    const { from, to, label } = periodRange(key);
-    const { id } = req.params;
-
-    const [[money], [leadRow], [commRow], [taskRow], [payRows], [callRows]] = await Promise.all([
-      pool.query(
-        `SELECT COUNT(*) bookings, COALESCE(SUM(amount_egp),0) revenue,
-                COALESCE(MAX(amount_egp),0) biggest
-           FROM payments
-          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
-            AND date>=? AND date<?`,
-        [req.tenantId, id, from, to]
-      ),
-      pool.query(
-        `SELECT COUNT(*) leads, SUM(status IN ('converted','won')) converted,
-                SUM(status='lost') lost, SUM(status='new') untouched
-           FROM leads
-          WHERE tenant_id=? AND assigned_sales_id=? AND deleted_at IS NULL
-            AND created_at>=? AND created_at<?`,
-        [req.tenantId, id, from, to]
-      ),
-      pool.query(
-        `SELECT COUNT(*) touches, SUM(type='CALL') calls, SUM(type='WHATSAPP') whatsapp,
-                SUM(type='MEETING') meetings
-           FROM communications
-          WHERE tenant_id=? AND staff_id=? AND date>=? AND date<?`,
-        [req.tenantId, id, from, to]
-      ),
-      pool.query(
-        `SELECT SUM(status='done') done,
-                SUM(status<>'done' AND status<>'cancelled') open
-           FROM tasks
-          WHERE tenant_id=? AND assigned_to=? AND created_at>=? AND created_at<?`,
-        [req.tenantId, id, from, to]
-      ),
-      // Raw rows for the day-by-day breakdown, folded into days in JS below.
-      // Kept as two flat sargable reads (both hit idx_pay_staff_date /
-      // idx_comm_tenant_staff_date) rather than grouping by a date-truncating
-      // function on the indexed column, which would defeat those indexes. For
-      // one employee over at most 90 days the row count is trivial to fold.
-      pool.query(
-        `SELECT date, amount_egp FROM payments
-          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
-            AND date>=? AND date<?`,
-        [req.tenantId, id, from, to]
-      ),
-      pool.query(
-        `SELECT date FROM communications
-          WHERE tenant_id=? AND staff_id=? AND type='CALL' AND date>=? AND date<?`,
-        [req.tenantId, id, from, to]
-      ),
-    ]);
-
-    // Dense day series across the window so the chart has no holes.
-    const days = new Map();
-    for (let t = new Date(`${from}T00:00:00.000Z`).getTime();
-      t < new Date(`${to}T00:00:00.000Z`).getTime(); t += 86400000) {
-      days.set(new Date(t).toISOString().slice(0, 10), { day: new Date(t).toISOString().slice(0, 10), bookings: 0, revenue: 0, calls: 0 });
-    }
-    const bump = (raw, apply) => {
-      const key = toIsoDate(raw);
-      if (!key) return;
-      if (!days.has(key)) days.set(key, { day: key, bookings: 0, revenue: 0, calls: 0 });
-      apply(days.get(key));
-    };
-    for (const row of payRows) {
-      bump(row.date, slot => { slot.bookings += 1; slot.revenue += Number(row.amount_egp || 0); });
-    }
-    for (const row of callRows) bump(row.date, slot => { slot.calls += 1; });
-
-    const leads = Number(leadRow[0]?.leads || 0);
-    const converted = Number(leadRow[0]?.converted || 0);
-    res.json({
-      period: { key, label, from, to },
-      revenue: Number(money[0]?.revenue || 0),
-      bookings: Number(money[0]?.bookings || 0),
-      biggestSale: Number(money[0]?.biggest || 0),
-      leads,
-      converted,
-      lost: Number(leadRow[0]?.lost || 0),
-      untouched: Number(leadRow[0]?.untouched || 0),
-      conversionRate: leads > 0 ? Math.round((converted / leads) * 100) : 0,
-      touches: Number(commRow[0]?.touches || 0),
-      calls: Number(commRow[0]?.calls || 0),
-      whatsapp: Number(commRow[0]?.whatsapp || 0),
-      meetings: Number(commRow[0]?.meetings || 0),
-      tasksDone: Number(taskRow[0]?.done || 0),
-      tasksOpen: Number(taskRow[0]?.open || 0),
-      daily: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
-    });
+    res.json(await buildStaffReport(req.tenantId, req.params.id, key));
   } catch (e) {
     logger.error('[hr/staff-report]', e.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -701,6 +704,175 @@ router.post('/api/staff/me/messages', requireAuth, async (req, res) => {
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[staff/me/messages/send]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Employee side: their own scorecard, targets and resignation ──────────────
+// Same rule as the thread above: the staff row is resolved from the caller, so
+// there is no id to tamper with and no permission to grant. An employee seeing
+// their own numbers needs no HR permission — requiring `view_hr` here would
+// have meant granting reps read access to the whole HR module.
+
+router.get('/api/staff/me/report', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.status(404).json({ error: 'Staff record not found' });
+    const key = String(req.query.period || 'month');
+    if (!PERIODS[key]) return res.status(400).json({ error: 'period غير مدعوم' });
+    res.json(await buildStaffReport(req.tenantId, me.id, key));
+  } catch (e) {
+    logger.error('[staff/me/report]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * The last 12 months of target vs. actual. The employee asked "what was my
+ * target last month and did I hit it" — a single current-month number cannot
+ * answer that, so the series is returned whole and the UI picks the window.
+ */
+router.get('/api/staff/me/targets', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.status(404).json({ error: 'Staff record not found' });
+    const months = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      months.push(d.toISOString().slice(0, 7));
+    }
+    const oldest = `${months[months.length - 1]}-01`;
+    const [[targets], [actuals]] = await Promise.all([
+      pool.query(
+        `SELECT period, revenue_target revenueTarget, leads_target leadsTarget
+           FROM sales_targets WHERE tenant_id=? AND staff_id=? AND period>=?`,
+        [req.tenantId, me.id, months[months.length - 1]]
+      ),
+      // Half-open range on the indexed date column — no DATE_FORMAT in the
+      // WHERE clause, so idx_pay_staff_date still applies. Bucketing by month
+      // happens on the (small) result set.
+      pool.query(
+        `SELECT date, amount_egp FROM payments
+          WHERE tenant_id=? AND staff_id=? AND status='paid' AND deleted_at IS NULL
+            AND date>=?`,
+        [req.tenantId, me.id, oldest]
+      ),
+    ]);
+    const targetBy = new Map(targets.map(t => [t.period, t]));
+    const actualBy = new Map();
+    for (const row of actuals) {
+      const iso = toIsoDate(row.date);
+      if (!iso) continue;
+      const period = iso.slice(0, 7);
+      actualBy.set(period, (actualBy.get(period) || 0) + Number(row.amount_egp || 0));
+    }
+    res.json(months.map(period => {
+      const target = Number(targetBy.get(period)?.revenueTarget || 0);
+      const actual = actualBy.get(period) || 0;
+      return {
+        period,
+        revenueTarget: target,
+        leadsTarget: Number(targetBy.get(period)?.leadsTarget || 0),
+        actualRevenue: actual,
+        achievedPct: target > 0 ? Math.round((actual / target) * 100) : null,
+      };
+    }));
+  } catch (e) {
+    logger.error('[staff/me/targets]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/api/staff/me/resignation', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.status(404).json({ error: 'Staff record not found' });
+    const [rows] = await pool.query(
+      `SELECT id, last_working_day, reason_note, status, hr_note, created_at, decided_at
+         FROM staff_resignations
+        WHERE tenant_id=? AND staff_id=? ORDER BY created_at DESC LIMIT 20`,
+      [req.tenantId, me.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    logger.error('[staff/me/resignation/list]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * A resignation *request*, not an offboarding. staff_offboarding deliberately
+ * refuses to let an employee start their own exit process — that stays HR's
+ * call. This is the notice that reaches HR so they can start it.
+ */
+router.post('/api/staff/me/resignation', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.status(404).json({ error: 'Staff record not found' });
+    const note = String(req.body?.reasonNote || '').trim();
+    const lastDay = String(req.body?.lastWorkingDay || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastDay)) return res.status(400).json({ error: 'آخر يوم عمل مطلوب' });
+    if (note.length > MAX_BODY) return res.status(400).json({ error: 'النص طويل جدًا' });
+    const [[pending]] = await pool.query(
+      `SELECT id FROM staff_resignations
+        WHERE tenant_id=? AND staff_id=? AND status='pending' LIMIT 1`,
+      [req.tenantId, me.id]
+    );
+    if (pending) return res.status(409).json({ error: 'لديك طلب استقالة قيد المراجعة بالفعل' });
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO staff_resignations
+         (id, tenant_id, staff_id, staff_name, last_working_day, reason_note)
+       VALUES (?,?,?,?,?,?)`,
+      [id, req.tenantId, me.id, me.name || '', lastDay, note || null]
+    );
+    await createNotification(
+      'hr', 'طلب استقالة', `${me.name || ''} — آخر يوم عمل ${lastDay}`,
+      { resignationId: id, staffId: me.id }, req.tenantId
+    ).catch(() => {});
+    res.json({ ok: true, id });
+  } catch (e) {
+    logger.error('[staff/me/resignation/create]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── HR side: see and decide on resignation requests ──────────────────────────
+
+router.get('/api/admin/hr/resignations', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT r.id, r.staff_id, r.staff_name, r.last_working_day, r.reason_note,
+              r.status, r.hr_note, r.created_at, r.decided_at, s.role
+         FROM staff_resignations r
+         LEFT JOIN staff s ON s.id = r.staff_id AND s.tenant_id = r.tenant_id
+        WHERE r.tenant_id=? ORDER BY r.created_at DESC LIMIT 200`,
+      [req.tenantId]
+    );
+    res.json(rows);
+  } catch (e) {
+    logger.error('[hr/resignations/list]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/api/admin/hr/resignations/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
+  try {
+    const status = String(req.body?.status || '');
+    if (!['accepted', 'declined', 'withdrawn'].includes(status)) {
+      return res.status(400).json({ error: 'status غير مدعوم' });
+    }
+    const [result] = await pool.query(
+      `UPDATE staff_resignations SET status=?, hr_note=?, decided_by=?, decided_at=NOW()
+        WHERE id=? AND tenant_id=? AND status='pending'`,
+      [status, String(req.body?.hrNote || '').slice(0, MAX_BODY) || null,
+        req.staffRecord?.id || null, req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'الطلب غير موجود أو تم البت فيه' });
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error('[hr/resignations/decide]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

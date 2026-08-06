@@ -4036,6 +4036,25 @@ CREATE TABLE IF NOT EXISTS staff_offboarding (
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 
+-- staff_resignations — from migrations/194_v25_staff_resignations.sql
+CREATE TABLE IF NOT EXISTS staff_resignations (
+  id VARCHAR(36) NOT NULL,
+  tenant_id VARCHAR(64) NOT NULL DEFAULT 'tenant-default',
+  staff_id VARCHAR(36) NOT NULL,
+  staff_name VARCHAR(255) DEFAULT NULL,
+  last_working_day DATE NOT NULL,
+  reason_note TEXT DEFAULT NULL,
+  status ENUM('pending','accepted','declined','withdrawn') NOT NULL DEFAULT 'pending',
+  hr_note TEXT DEFAULT NULL,
+  decided_by VARCHAR(36) DEFAULT NULL,
+  decided_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  INDEX idx_resign_tenant_staff (tenant_id, staff_id, created_at),
+  INDEX idx_resign_tenant_status (tenant_id, status)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
 -- faq_entries — from migrations/093_faq_entries.sql
 CREATE TABLE IF NOT EXISTS faq_entries (
   id VARCHAR(36) NOT NULL DEFAULT (UUID()),

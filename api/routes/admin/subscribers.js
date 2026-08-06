@@ -654,16 +654,28 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     const rawClientType = crmData.clientType || s.client_type || null;
     const clientTypeVal = (rawClientType && VALID_CLIENT_TYPES.has(rawClientType.toUpperCase())) ? rawClientType.toUpperCase() : (rawClientType || null);
     if (existingSub) {
+      // COALESCE alone cannot express "unassign": a caller that omits the field
+      // and one that explicitly sends null both arrive here as NULL, so the old
+      // owner stuck forever and a subscriber left behind by a departed rep could
+      // never be freed. Same defect that was just fixed on leads. Distinguish the
+      // two — an explicitly present null clears, an absent key leaves it alone.
+      const clearCs    = Object.prototype.hasOwnProperty.call(crmData, 'assignedCollectionId') && !crmData.assignedCollectionId;
+      const clearSales = Object.prototype.hasOwnProperty.call(crmData, 'assignedSalesId') && !crmData.assignedSalesId;
       await conn.query(
         `UPDATE subscribers SET name=?, email=?, phone=?, firebase_uid=COALESCE(?,firebase_uid),
            client_code=COALESCE(client_code, ?), is_active=?, notes=COALESCE(?,notes),
-           assigned_cs_id=COALESCE(?,assigned_cs_id), assigned_cs_name=COALESCE(?,assigned_cs_name),
-           assigned_sales_id=COALESCE(?,assigned_sales_id), assigned_sales_name=COALESCE(?,assigned_sales_name),
+           assigned_cs_id=IF(?,NULL,COALESCE(?,assigned_cs_id)),
+           assigned_cs_name=IF(?,NULL,COALESCE(?,assigned_cs_name)),
+           assigned_sales_id=IF(?,NULL,COALESCE(?,assigned_sales_id)),
+           assigned_sales_name=IF(?,NULL,COALESCE(?,assigned_sales_name)),
            branch=COALESCE(?,branch), branch_id=COALESCE(NULLIF(?,''),branch_id),
            client_type=COALESCE(?,client_type), crm_json=?
          WHERE id=? AND tenant_id=?`,
         [safeName||'', safeEmail, safePhone, firebaseUid || firebase_uid || null, code, active?1:0,
-         safeNotes||null, csId, csName, salesId, salesName, branchVal, branchIdVal, clientTypeVal,
+         safeNotes||null,
+         clearCs ? 1 : 0, csId, clearCs ? 1 : 0, csName,
+         clearSales ? 1 : 0, salesId, clearSales ? 1 : 0, salesName,
+         branchVal, branchIdVal, clientTypeVal,
          JSON.stringify(crmData), id, tenantId]
       );
     } else {
