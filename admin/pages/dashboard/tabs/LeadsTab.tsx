@@ -51,6 +51,7 @@ import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
+import { isArchiveSource } from './leads/leadSourceGroups';
 
 const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
 const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));
@@ -238,9 +239,13 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     ),
     [staffMembers]
   );
-  // "محلي جديد" pool — same filter as the sub-tab badge count.
+  // "محلي جديد" pool — must stay in step with the customFilter in
+  // LeadArchiveViews, including the archive-source exclusion: an imported
+  // archive is unassigned on purpose and belongs to its own tab, not here.
   const unassignedLeads = useMemo(() =>
-    leads.filter(l => !l.hidden && !l.assignedSalesId && !['converted', 'lost'].includes(l.status)),
+    leads.filter(l => !l.hidden && !l.assignedSalesId
+      && !isArchiveSource(l.source)
+      && !['converted', 'lost'].includes(l.status)),
     [leads]
   );
   const {

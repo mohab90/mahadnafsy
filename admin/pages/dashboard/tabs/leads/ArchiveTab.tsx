@@ -6,7 +6,7 @@ import type { NotifyFn } from '../CrmSettingsModal';
 import { LeadTable } from '../LeadTable';
 import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 import { BRANCH_LABELS_AR, normalizeBranch, type BranchKey } from '../../../../constants/branches';
-import { toRawCourse } from './leadCourseLabel';
+import { courseBadgeLabel, matchCourseOrBundle, toRawCourse } from './leadCourseLabel';
 
 /**
  * Header keys are compared with separators and case stripped, so
@@ -60,19 +60,8 @@ function matchBranch(raw: string, options: { id: string; label: string }[]): Bra
   return null;
 }
 
-/** Free-text course from a sheet → a real course id, if one matches. */
-function matchCourse(raw: string, courses: Course[]): string | null {
-  if (!raw) return null;
-  const needle = normKey(raw);
-  if (!needle) return null;
-  const exact = courses.find(course => normKey(course.title) === needle);
-  if (exact) return exact.id;
-  const partial = courses.find(course => {
-    const hay = normKey(course.title);
-    return hay.length > 3 && (hay.includes(needle) || needle.includes(hay));
-  });
-  return partial ? partial.id : null;
-}
+// Course matching lives in leadCourseLabel.ts — it also searches bundles and
+// folds Arabic spelling variants, which plain normKey() could not.
 
 export interface ArchiveTabProps {
   leads: LeadItem[];
@@ -148,7 +137,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
         // Resolved now (not at import time) so the preview can show whether each
         // branch/course actually matched before anything is written.
         row._branchKey = matchBranch(row._branchRaw, branchOptions) || '';
-        row._courseId = matchCourse(row._courseRaw, courses) || '';
+        row._courseId = matchCourseOrBundle(row._courseRaw, courses, bundles) || '';
         row._id     = `arch-${Date.now()}-${i}`;
         rows.push(row);
       }
@@ -334,7 +323,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
                 <tbody>
                   {archiveParsed.slice(0, 200).map((r) => {
                     const hasRequired = r._name && r._phone;
-                    const courseTitle = r._courseId ? courses.find(c => c.id === r._courseId)?.title : '';
+                    const courseTitle = r._courseId ? courseBadgeLabel(r._courseId, courses, bundles) : '';
                     return (
                       <tr key={r._id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${!hasRequired ? 'opacity-50' : ''}`}>
                         <td className="py-1.5 px-3"><input type="checkbox" checked={archiveSelectedIds.has(r._id)} disabled={!hasRequired} onChange={e => { const next = new Set(archiveSelectedIds); e.target.checked ? next.add(r._id) : next.delete(r._id); setArchiveSelectedIds(next); }} className="w-3.5 h-3.5" /></td>

@@ -2,6 +2,7 @@ import { Globe } from 'lucide-react';
 import { LeadTable } from '../LeadTable';
 import type { Bundle, Course, StaffMember, SubscriberItem } from '../../../../types';
 import { ArchiveTab, type ArchiveTabProps } from './ArchiveTab';
+import { isArchiveSource } from './leadSourceGroups';
 
 type LeadArchiveViewsProps = ArchiveTabProps & {
   subTab: string;
@@ -14,7 +15,9 @@ export function LeadArchiveViews({ subTab, ...archiveProps }: LeadArchiveViewsPr
         {...archiveProps}
         title="محلي جديد — عملاء بلا مندوب مبيعات"
         hideImport
-        customFilter={lead => !lead.hidden && !lead.assignedSalesId && !['converted', 'lost'].includes(lead.status)}
+        customFilter={lead => !lead.hidden && !lead.assignedSalesId
+          && !isArchiveSource(lead.source)
+          && !['converted', 'lost'].includes(lead.status)}
       />
     );
   }

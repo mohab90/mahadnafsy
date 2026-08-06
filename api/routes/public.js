@@ -163,10 +163,22 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
     const lookup = req.params.id;
     const [[row]] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`, [req.tenantId, lookup, lookup]);
     if (!row) return res.status(404).json({ error: 'Not found' });
+    // course_lectures / course_chapters carry no tenant_id of their own — they
+    // inherit tenancy from the parent course, and the rest of the codebase
+    // scopes them by joining `courses` (see routes/core/catalog.js). This route
+    // filtered on a column that does not exist, so *every* public course detail
+    // page returned 500: "Unknown column 'tenant_id' in 'WHERE'".
     const [lectures] = await pool.query(
-      'SELECT id, course_id, chapter_id, title, description, video_url, duration, is_preview, sort_order, is_published, lecture_type, drip_unlock_days FROM course_lectures WHERE course_id = ? AND tenant_id=? ORDER BY sort_order ASC', [row.id, req.tenantId]);
+      `SELECT l.id, l.course_id, l.chapter_id, l.title, l.description, l.video_url, l.duration,
+              l.is_preview, l.sort_order, l.is_published, l.lecture_type, l.drip_unlock_days
+         FROM course_lectures l
+         JOIN courses c ON c.id = l.course_id AND c.tenant_id = ?
+        WHERE l.course_id = ? ORDER BY l.sort_order ASC`, [req.tenantId, row.id]);
     const [chapters] = await pool.query(
-      'SELECT id, course_id, title, sort_order FROM course_chapters WHERE course_id = ? AND tenant_id=? ORDER BY sort_order ASC', [row.id, req.tenantId]);
+      `SELECT ch.id, ch.course_id, ch.title, ch.sort_order
+         FROM course_chapters ch
+         JOIN courses c ON c.id = ch.course_id AND c.tenant_id = ?
+        WHERE ch.course_id = ? ORDER BY ch.sort_order ASC`, [req.tenantId, row.id]);
     const previewLimit = await getPreviewLimit(req.tenantId);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json({ ...mapCourse(row), lectures: lectures.map((r, i) => publicLecture(r, i, previewLimit)), chapters: chapters.map(mapChapter) });

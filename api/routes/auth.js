@@ -1380,35 +1380,74 @@ router.post('/api/admin/force-reset-password', requireAuth, requireSuperAdmin, a
 router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOrOnlineManager, async (req, res) => {
   const { id } = req.params;
   const { currentEmail, newEmail, newPassword } = req.body || {};
-  if (!currentEmail) return res.status(400).json({ error: 'currentEmail required' });
   if (!newEmail && !newPassword) return res.status(400).json({ error: 'Nothing to update' });
   const conn = await pool.getConnection();
   try {
     // Validate minimal password length
     if (newPassword && newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    // This handler used to require `currentEmail` and address the account by
+    // email alone — so a phone-only customer (an ordinary case here: WhatsApp
+    // OTP sign-in, no email on file) could never have their password reset.
+    // The online manager just got "currentEmail required". Resolve the account
+    // from the subscriber instead, and only fall back to email matching.
+    const [[subscriber]] = await conn.execute(
+      'SELECT id, name, email, phone FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+      [id, req.tenantId]
+    );
+    let account = null;
+    const emailKey = String(currentEmail || subscriber?.email || '').toLowerCase().trim();
+    if (emailKey) {
+      [[account]] = await conn.execute(
+        'SELECT id, email FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, emailKey]);
+    }
+    if (!account && subscriber) {
+      // Accounts created from a subscriber reuse the subscriber id (see the
+      // INSERT below), and phone is the other stable identifier.
+      [[account]] = await conn.execute(
+        'SELECT id, email FROM users WHERE tenant_id=? AND id=? LIMIT 1', [req.tenantId, subscriber.id]);
+      if (!account && subscriber.phone) {
+        [[account]] = await conn.execute(
+          'SELECT id, email FROM users WHERE tenant_id=? AND phone=? LIMIT 1', [req.tenantId, subscriber.phone]);
+      }
+    }
+    if (!account && !subscriber) return res.status(404).json({ error: 'لم يُعثر على المشترك.' });
     // Validate new email not already taken by another user
-    if (newEmail && newEmail.toLowerCase().trim() !== currentEmail.toLowerCase().trim()) {
-      const [[existing]] = await conn.execute('SELECT id FROM users WHERE tenant_id=? AND email = ? LIMIT 1', [req.tenantId, newEmail.toLowerCase().trim()]);
-      if (existing) return res.status(409).json({ error: `البريد الإلكتروني ${newEmail} مسجل بالفعل لمستخدم آخر` });
+    const newEmailKey = newEmail ? newEmail.toLowerCase().trim() : null;
+    if (newEmailKey && newEmailKey !== String(account?.email || '').toLowerCase().trim()) {
+      const [[existing]] = await conn.execute(
+        'SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, newEmailKey]);
+      if (existing && existing.id !== account?.id) {
+        return res.status(409).json({ error: `البريد الإلكتروني ${newEmail} مسجل بالفعل لمستخدم آخر` });
+      }
     }
     // Build dynamic UPDATE for users table
     const sets = [];
     const params = [];
-    if (newEmail) { sets.push('email = ?'); params.push(newEmail.toLowerCase().trim()); }
+    if (newEmailKey) { sets.push('email = ?'); params.push(newEmailKey); }
     if (newPassword) { sets.push('password_hash = ?'); params.push(await bcrypt.hash(newPassword, 12)); }
     sets.push('session_version = session_version + 1');
     sets.push('active_session_id = NULL', 'active_session_ip_hash = NULL',
       'active_session_started_at = NULL', 'active_session_last_seen_at = NULL');
-    params.push(req.tenantId, currentEmail.toLowerCase().trim());
-    const [result] = await conn.execute(`UPDATE users SET ${sets.join(', ')} WHERE tenant_id=? AND email = ?`, params);
+    // Address the row by id — the account was resolved above by email, id or
+    // phone, so this works for a customer with no email at all.
+    let result = { affectedRows: 0 };
+    if (account) {
+      params.push(req.tenantId, account.id);
+      [result] = await conn.execute(`UPDATE users SET ${sets.join(', ')} WHERE tenant_id=? AND id = ?`, params);
+    }
     if (result.affectedRows === 0) {
       // No user account yet — create one using the subscriber's data
-      if (!newPassword) return res.status(404).json({ error: 'لم يُعثر على حساب بهذا البريد. يرجى تعيين كلمة مرور لإنشاء الحساب.' });
-      const [[sub]] = await conn.execute('SELECT id, name, email, phone FROM subscribers WHERE id = ? AND tenant_id=?', [id, req.tenantId]);
+      if (!newPassword) return res.status(404).json({ error: 'لم يُعثر على حساب لهذا العميل. يرجى تعيين كلمة مرور لإنشاء الحساب.' });
+      const sub = subscriber;
       if (!sub) return res.status(404).json({ error: 'لم يُعثر على المشترك.' });
       const finalEmailRaw = newEmail || sub.email;
-      if (!finalEmailRaw) return res.status(400).json({ error: 'لا يوجد بريد إلكتروني — أدخل بريدًا جديدًا لإنشاء الحساب' });
-      const finalEmail = finalEmailRaw.toLowerCase().trim();
+      // A phone-only account is legitimate: the customer signs in with WhatsApp
+      // OTP. Only refuse when there is neither an email nor a number to bind to.
+      if (!finalEmailRaw && !sub.phone) {
+        return res.status(400).json({ error: 'لا يوجد بريد إلكتروني ولا رقم هاتف — أضف أحدهما أولًا' });
+      }
+      const finalEmail = finalEmailRaw ? finalEmailRaw.toLowerCase().trim() : null;
       // Carry the subscriber's number onto the account, or it is created unable
       // to sign in — WhatsApp OTP has no number and email sign-in is off.
       const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId: req.tenantId, phone: sub.phone });
@@ -1416,16 +1455,17 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
         'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [sub.id, req.tenantId, finalEmail, phoneForUser, await bcrypt.hash(newPassword, 12), sub.name || '', 'client']
       );
-      if (finalEmail !== (sub.email || '').toLowerCase().trim()) {
+      if (finalEmail && finalEmail !== (sub.email || '').toLowerCase().trim()) {
         await conn.execute('UPDATE subscribers SET email = ? WHERE id = ? AND tenant_id=?', [finalEmail, id, req.tenantId]);
       }
-    } else if (newEmail) {
+    } else if (newEmailKey) {
       // If email changed, sync subscribers table too
-      await conn.execute('UPDATE subscribers SET email = ? WHERE id = ? AND tenant_id=?', [newEmail.toLowerCase().trim(), id, req.tenantId]);
+      await conn.execute('UPDATE subscribers SET email = ? WHERE id = ? AND tenant_id=?', [newEmailKey, id, req.tenantId]);
     }
     if (result.affectedRows) {
-      invalidateIdentity(req.tenantId, '', currentEmail);
-      if (newEmail) invalidateIdentity(req.tenantId, '', newEmail);
+      const previousEmail = account?.email || currentEmail;
+      if (previousEmail) invalidateIdentity(req.tenantId, '', previousEmail);
+      if (newEmailKey) invalidateIdentity(req.tenantId, '', newEmailKey);
     }
     res.json({ ok: true, temporaryPassword: newPassword });
   } catch (err) {
