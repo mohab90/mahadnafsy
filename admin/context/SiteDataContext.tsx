@@ -122,6 +122,8 @@ interface SiteDataShape {
   deleteCommunityEvent: (id: string) => Promise<boolean>;
   getCourseLectures: (courseId: string) => CourseLectureItem[];
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  /** Save many keys in a single request — see useContentState. */
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
   mergeContent: (data: Record<string, string>) => void;
   addContentKey: (key: string, value: string) => Promise<boolean>;
   removeContentKey: (key: string) => Promise<boolean>;
@@ -281,7 +283,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     useContactMessagesState((initial as typeof seedData & { contactMessages?: ContactMessage[] }).contactMessages || [], track);
   // Reconciled: restores live brand-theme preview-on-save (applyBrandTheme for
   // BRAND_KEYS) that was silently lost in the same revert as above.
-  const { content, setContent, contentRef, setContentValue, mergeContent, addContentKey, removeContentKey } =
+  const { content, setContent, contentRef, setContentValue, setContentValues, mergeContent, addContentKey, removeContentKey } =
     useContentState(initial.content, lastLocalConfigWriteRef, track);
   const {
     courseQuizzes, setCourseQuizzes, addCourseQuiz, updateCourseQuiz, deleteCourseQuiz,
@@ -631,6 +633,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     deleteCommunityEvent,
     getCourseLectures,
     setContentValue,
+    setContentValues,
     mergeContent,
     addContentKey,
     removeContentKey,

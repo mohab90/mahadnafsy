@@ -124,6 +124,7 @@ const Dashboard: React.FC = () => {
     deleteOrder,
     addOrder,
     setContentValue,
+    setContentValues,
     mergeContent,
     addContentKey,
     removeContentKey,
@@ -827,6 +828,9 @@ const Dashboard: React.FC = () => {
                   policyDrafts={policyDrafts}
                   setPolicyDrafts={setPolicyDrafts}
                   setContentValue={setContentValue}
+                  setContentValues={setContentValues}
+                  setActiveTab={setActiveTab}
+                  setContentHubSubTab={setContentHubSubTab}
                   notify={notify}
                   contentEdits={contentEdits}
                   setContentEdits={setContentEdits}
@@ -1142,6 +1146,7 @@ const Dashboard: React.FC = () => {
                   policyDrafts={policyDrafts}
                   setPolicyDrafts={setPolicyDrafts}
                   setContentValue={setContentValue}
+                  setContentValues={setContentValues}
                   notify={notify}
                   instituteBranches={instituteBranches}
                   homeOfferFields={homeOfferFields}

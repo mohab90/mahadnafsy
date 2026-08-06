@@ -10,6 +10,7 @@ type DashboardFooterSettingsPanelProps = {
   policyDrafts: Record<string, string>;
   setPolicyDrafts: Dispatch<SetStateAction<Record<string, string>>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
   notify: Notify;
   instituteBranches: InstituteBranch[];
 };
@@ -19,6 +20,7 @@ export function DashboardFooterSettingsPanel({
   policyDrafts,
   setPolicyDrafts,
   setContentValue,
+  setContentValues,
   notify,
   instituteBranches,
 }: DashboardFooterSettingsPanelProps) {
@@ -28,11 +30,10 @@ export function DashboardFooterSettingsPanel({
       <h3 className="font-bold text-gray-900 text-lg">إعدادات الفوتر والتواصل الاجتماعي</h3>
       <button
         onClick={async () => {
-          const entries = Object.entries(policyDrafts)
-            .filter(([key]) => key.startsWith('footer.') || key === 'institute.logo');
-          const saved = await Promise.all(entries.map(([key, value]) => setContentValue(key, value)));
-          if (!saved.every(Boolean)) {
-            notify('error', 'تعذر حفظ بعض إعدادات الفوتر على السيرفر.');
+          const entries = Object.fromEntries(Object.entries(policyDrafts)
+            .filter(([key]) => key.startsWith('footer.') || key === 'institute.logo'));
+          if (!await setContentValues(entries)) {
+            notify('error', 'تعذر حفظ إعدادات الفوتر على السيرفر.');
             return;
           }
           setPolicyDrafts(prev => {

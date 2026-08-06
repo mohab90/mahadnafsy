@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { Plus, Save, Trash2, X } from 'lucide-react';
+import { ExternalLink, Plus, Save, Trash2, X } from 'lucide-react';
+import { contentEditorFor, type ContentEditorHome } from './contentFields';
 
 type ContentMap = Record<string, string>;
 type NotifyFn = (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
@@ -9,6 +10,7 @@ interface DashboardContentHubAdvancedPanelProps {
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
   notify: NotifyFn;
   contentEdits: ContentMap;
   setContentEdits: Dispatch<SetStateAction<ContentMap>>;
@@ -21,6 +23,8 @@ interface DashboardContentHubAdvancedPanelProps {
   setSearchText: Dispatch<SetStateAction<string>>;
   filteredContent: [string, string][];
   removeContentKey: (key: string) => Promise<boolean>;
+  setActiveTab: (tab: string) => void;
+  setContentHubSubTab: (tab: string) => void;
 }
 
 export function DashboardContentHubAdvancedPanel({
@@ -28,6 +32,7 @@ export function DashboardContentHubAdvancedPanel({
   policyDrafts,
   setPolicyDrafts,
   setContentValue,
+  setContentValues,
   notify,
   contentEdits,
   setContentEdits,
@@ -40,8 +45,14 @@ export function DashboardContentHubAdvancedPanel({
   setSearchText,
   filteredContent,
   removeContentKey,
+  setActiveTab,
+  setContentHubSubTab,
 }: DashboardContentHubAdvancedPanelProps) {
   const videoKeys = ['video.autoplay', 'video.muted', 'video.loop', 'video.heroUrl'];
+  const openEditor = (home: ContentEditorHome) => {
+    setActiveTab(home.tab);
+    if (home.subTab) setContentHubSubTab(home.subTab);
+  };
 
   return (
     <div className="space-y-4">
@@ -104,9 +115,9 @@ export function DashboardContentHubAdvancedPanel({
           <button
             onClick={async () => {
               const keys = videoKeys.filter((key) => policyDrafts[key] !== undefined);
-              const saved = await Promise.all(keys.map((key) => setContentValue(key, policyDrafts[key])));
-              if (!saved.every(Boolean)) {
-                notify('error', 'تعذر حفظ بعض إعدادات الفيديو.');
+              const edits = Object.fromEntries(keys.map((key) => [key, policyDrafts[key]]));
+              if (!await setContentValues(edits)) {
+                notify('error', 'تعذر حفظ إعدادات الفيديو.');
                 return;
               }
               setPolicyDrafts((prev) => {
@@ -129,14 +140,13 @@ export function DashboardContentHubAdvancedPanel({
           {Object.keys(contentEdits).length > 0 && (
             <button
               onClick={async () => {
-                const entries = Object.entries(contentEdits);
-                const saved = await Promise.all(entries.map(([key, value]) => setContentValue(key, value)));
-                if (!saved.every(Boolean)) {
-                  notify('error', 'تعذر حفظ بعض تعديلات المحتوى.');
+                const count = Object.keys(contentEdits).length;
+                if (!await setContentValues(contentEdits)) {
+                  notify('error', 'تعذر حفظ تعديلات المحتوى.');
                   return;
                 }
                 setContentEdits({});
-                notify('success', `تم حفظ ${entries.length} تعديل بنجاح.`);
+                notify('success', `تم حفظ ${count} تعديل بنجاح.`);
               }}
               className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary-700 transition"
             >
@@ -164,6 +174,30 @@ export function DashboardContentHubAdvancedPanel({
             {filteredContent.map(([key, savedValue]) => {
               const isDirty = contentEdits[key] !== undefined && contentEdits[key] !== savedValue;
               const displayValue = contentEdits[key] !== undefined ? contentEdits[key] : savedValue;
+              const owner = contentEditorFor(key);
+              // A key with a dedicated editor is read-only here. Two inputs for
+              // the same value is how "عدّلت الفوتر من مكان ومظهرش" happens.
+              if (owner) {
+                return (
+                  <tr key={key} className="border-b border-gray-50 align-top">
+                    <td className="py-3 font-medium text-gray-700 pr-1">{key}</td>
+                    <td className="py-3">
+                      <div className="w-full border border-gray-200 bg-gray-50 text-gray-500 rounded-lg px-3 py-2 min-h-[3rem] whitespace-pre-wrap text-xs">
+                        {savedValue || <span className="text-gray-300">— فارغ —</span>}
+                      </div>
+                    </td>
+                    <td className="py-3 pl-2">
+                      <button
+                        onClick={() => openEditor(owner)}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-lg text-xs font-bold hover:bg-sky-100 transition whitespace-nowrap"
+                        title={`يتم تعديله من: ${owner.label}`}
+                      >
+                        <ExternalLink size={11} /> {owner.label}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }
               return (
                 <tr key={key} className={`border-b border-gray-50 align-top ${isDirty ? 'bg-amber-50/50' : ''}`}>
                   <td className="py-3 font-medium text-gray-700 pr-1">

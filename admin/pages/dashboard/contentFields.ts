@@ -56,6 +56,9 @@ export const homeOfferFields: ContentField[] = [
   { key: 'home.offer.oldPrice', label: 'السعر قبل الخصم', multiline: false },
   { key: 'home.offer.newPrice', label: 'السعر الحالي', multiline: false },
   { key: 'home.offer.discount', label: 'نسبة الخصم', multiline: false },
+  // Read by Home.tsx to price the 24h offer (defaults to 45 when unset) and had
+  // no editor at all, so the discount could not be changed from the panel.
+  { key: 'home.offer.discountPercent', label: 'نسبة الخصم رقمًا (مثال: 45) — تُحتسب في سعر العرض', multiline: false },
   { key: 'home.offer.validUntil', label: 'صلاحية العرض', multiline: false },
   { key: 'home.offer.formBadge', label: 'نموذج العرض: الشارة', multiline: false },
   { key: 'home.offer.registerFor', label: 'نص التسجيل لـ', multiline: false },
@@ -214,3 +217,52 @@ export const policySections: { title: string; fields: ContentField[] }[] = [
     ],
   },
 ];
+
+// ── One editor per key ────────────────────────────────────────────────────────
+// The raw key/value table under "متقدم" can edit every key in the document,
+// which meant anything with a proper editor had at least two places it could be
+// changed from — footer text, page copy, the 24h offer — and edits made in one
+// place were invisible in the other. This registry names the single owning
+// editor for each key; the raw table defers to it and links there instead of
+// offering a second input.
+//
+// Built from the field lists themselves, so it cannot drift from them.
+export type ContentEditorHome = {
+  /** Dashboard tab to open. */
+  tab: string;
+  /** Sub-tab inside content_hub, when the editor lives there. */
+  subTab?: string;
+  /** What the admin should look for once they arrive. */
+  label: string;
+};
+
+const OWNED_KEYS: [ContentEditorHome, string[]][] = [
+  [{ tab: 'content_hub', subTab: 'home_offer', label: 'المحتوى ← الصفحة الرئيسية والعرض' },
+    homeOfferFields.map(f => f.key).concat(['offer.courseId', 'offer.timerStartedAt'])],
+  [{ tab: 'content_hub', subTab: 'about_page', label: 'المحتوى ← صفحة عن المعهد' }, aboutPageFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_courses', label: 'المحتوى ← صفحة الكورسات' }, pageCoursesFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_bundles', label: 'المحتوى ← صفحة الباقات' }, pageBundlesFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_consultations', label: 'المحتوى ← صفحة الاستشارات' }, pageConsultationsFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_instructors', label: 'المحتوى ← صفحة المحاضرين' }, pageInstructorsFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_contact', label: 'المحتوى ← صفحة التواصل' }, pageContactFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_joinus', label: 'المحتوى ← صفحة انضم إلينا' }, pageJoinUsFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'page_community', label: 'المحتوى ← صفحة المجتمع' }, pageCommunityFields.map(f => f.key)],
+  [{ tab: 'content_hub', subTab: 'policies', label: 'المحتوى ← السياسات القانونية' },
+    policySections.flatMap(s => s.fields.map(f => f.key))],
+  [{ tab: 'content_hub', subTab: 'footer_settings', label: 'المحتوى ← إعدادات الفوتر' },
+    ['footer.description', 'footer.phone', 'footer.email', 'footer.whatsapp', 'footer.address',
+      'footer.facebook', 'footer.instagram', 'footer.youtube', 'institute.logo']],
+];
+
+const KEY_OWNER = new Map<string, ContentEditorHome>();
+for (const [home, keys] of OWNED_KEYS) {
+  for (const key of keys) KEY_OWNER.set(key, home);
+}
+
+/** The one editor that owns this key, or null when the raw table is its home. */
+export function contentEditorFor(key: string): ContentEditorHome | null {
+  return KEY_OWNER.get(key) ?? null;
+}
+
+/** Every key that has a dedicated editor — used by tests and the raw table. */
+export const OWNED_CONTENT_KEYS: ReadonlySet<string> = new Set(KEY_OWNER.keys());

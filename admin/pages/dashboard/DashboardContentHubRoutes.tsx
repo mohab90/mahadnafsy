@@ -22,6 +22,7 @@ interface Props {
   policyDrafts: ContentMap;
   setPolicyDrafts: React.Dispatch<React.SetStateAction<ContentMap>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
   notify: NotifyFn;
   instituteBranches: InstituteBranch[];
   homeOfferFields: ContentField[];
@@ -49,6 +50,7 @@ export function DashboardContentHubRoutes({
   policyDrafts,
   setPolicyDrafts,
   setContentValue,
+  setContentValues,
   notify,
   instituteBranches,
   homeOfferFields,
@@ -84,6 +86,7 @@ export function DashboardContentHubRoutes({
                 policyDrafts={policyDrafts}
                 setPolicyDrafts={setPolicyDrafts}
                 setContentValue={setContentValue}
+                setContentValues={setContentValues}
                 notify={notify}
                 instituteBranches={instituteBranches}
               />
@@ -97,6 +100,7 @@ export function DashboardContentHubRoutes({
                 policyDrafts={policyDrafts}
                 setPolicyDrafts={setPolicyDrafts}
                 setContentValue={setContentValue}
+                setContentValues={setContentValues}
                 notify={notify}
               />
             )}
@@ -109,6 +113,7 @@ export function DashboardContentHubRoutes({
                 policyDrafts={policyDrafts}
                 setPolicyDrafts={setPolicyDrafts}
                 setContentValue={setContentValue}
+                setContentValues={setContentValues}
                 notify={notify}
               />
             )}
@@ -119,6 +124,7 @@ export function DashboardContentHubRoutes({
                 policyDrafts={policyDrafts}
                 setPolicyDrafts={setPolicyDrafts}
                 setContentValue={setContentValue}
+                setContentValues={setContentValues}
                 notify={notify}
               />
             )}
@@ -128,6 +134,9 @@ export function DashboardContentHubRoutes({
                 policyDrafts={policyDrafts}
                 setPolicyDrafts={setPolicyDrafts}
                 setContentValue={setContentValue}
+                setContentValues={setContentValues}
+                setActiveTab={setActiveTab}
+                setContentHubSubTab={setContentHubSubTab}
                 notify={notify}
                 contentEdits={contentEdits}
                 setContentEdits={setContentEdits}

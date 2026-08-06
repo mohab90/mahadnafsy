@@ -11,6 +11,7 @@ type DashboardHomeOfferPanelProps = {
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
   notify: NotifyFn;
   courses: Course[];
   offerSelectedCourseId: string;
@@ -23,19 +24,19 @@ export function DashboardHomeOfferPanel({
   policyDrafts,
   setPolicyDrafts,
   setContentValue,
+  setContentValues,
   notify,
   courses,
   offerSelectedCourseId,
   setOfferSelectedCourseId,
 }: DashboardHomeOfferPanelProps) {
   const saveFields = async () => {
-    const saved = await Promise.all(fields.map((field) => {
-      const value = policyDrafts[field.key] ?? content[field.key] ?? '';
-      return setContentValue(field.key, value);
-    }));
-    notify(saved.every(Boolean) ? 'success' : 'error', saved.every(Boolean)
+    const edits = Object.fromEntries(fields.map((field) =>
+      [field.key, policyDrafts[field.key] ?? content[field.key] ?? '']));
+    const ok = await setContentValues(edits);
+    notify(ok ? 'success' : 'error', ok
       ? 'تم حفظ إعدادات الصفحة الرئيسية بنجاح.'
-      : 'تعذر حفظ بعض إعدادات الصفحة الرئيسية.');
+      : 'تعذر حفظ إعدادات الصفحة الرئيسية.');
   };
 
   const applySelectedCourse = async () => {
@@ -59,11 +60,14 @@ export function DashboardHomeOfferPanel({
     if (egpOriginal > 0 && egpPrice > 0) {
       const pct = Math.round(((egpOriginal - egpPrice) / egpOriginal) * 100);
       updates.push(['home.offer.discount', `خصم ${pct}%`]);
+      // Home.tsx prices the offer from this number (defaulting to 45 when
+      // unset), so writing only the display text left the maths on the old rate.
+      updates.push(['home.offer.discountPercent', String(pct)]);
     }
-    const saved = await Promise.all(updates.map(([key, value]) => setContentValue(key, value)));
-    notify(saved.every(Boolean) ? 'success' : 'error', saved.every(Boolean)
+    const ok = await setContentValues(Object.fromEntries(updates));
+    notify(ok ? 'success' : 'error', ok
       ? `تم تطبيق كورس "${selected.title}" على قسم العرض بنجاح.`
-      : 'تعذر حفظ إعدادات العرض كاملة على السيرفر.');
+      : 'تعذر حفظ إعدادات العرض على السيرفر.');
   };
 
   return (

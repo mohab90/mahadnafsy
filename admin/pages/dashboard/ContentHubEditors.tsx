@@ -17,6 +17,8 @@ type BaseProps = {
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  /** Saves a whole form in one request — see useContentState.setContentValues. */
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
   notify: NotifyFn;
 };
 
@@ -64,7 +66,7 @@ export function ContentHubSimpleEditor({
   content,
   policyDrafts,
   setPolicyDrafts,
-  setContentValue,
+  setContentValues,
   notify,
 }: SimpleEditorProps) {
   return (
@@ -75,12 +77,14 @@ export function ContentHubSimpleEditor({
           <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
           <button
             onClick={async () => {
-              const saved = await Promise.all(fields.map((field) => {
-                const value = policyDrafts[field.key] ?? content[field.key] ?? '';
-                return setContentValue(field.key, value);
-              }));
-              notify(saved.every(Boolean) ? 'success' : 'error',
-                saved.every(Boolean) ? successMessage : 'تعذر حفظ بعض الحقول على السيرفر.');
+              // One request for the whole form. The per-field loop this replaces
+              // posted the entire content document once per field, so a failure
+              // part-way through left the page half-saved while the fields that
+              // went first had already reported success.
+              const edits = Object.fromEntries(fields.map((field) =>
+                [field.key, policyDrafts[field.key] ?? content[field.key] ?? '']));
+              const ok = await setContentValues(edits);
+              notify(ok ? 'success' : 'error', ok ? successMessage : 'تعذر حفظ الحقول على السيرفر.');
             }}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
           >
@@ -107,7 +111,7 @@ export function ContentHubPoliciesEditor({
   content,
   policyDrafts,
   setPolicyDrafts,
-  setContentValue,
+  setContentValues,
   notify,
 }: BaseProps & { sections: PolicySection[] }) {
   return (
@@ -118,15 +122,16 @@ export function ContentHubPoliciesEditor({
           <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
           <button
             onClick={async () => {
-              const saved = await Promise.all(sections.flatMap((section) =>
-                section.fields.map((field) => {
-                  const value = policyDrafts[field.key] ?? content[field.key] ?? '';
-                  return setContentValue(field.key, value);
-                })
-              ));
-              notify(saved.every(Boolean) ? 'success' : 'error', saved.every(Boolean)
+              // Privacy and terms save together in one write. As 27 separate
+              // full-document posts, a failure part-way through could leave
+              // terms.* unsaved while the page still said "تم الحفظ".
+              const edits = Object.fromEntries(sections.flatMap((section) =>
+                section.fields.map((field) =>
+                  [field.key, policyDrafts[field.key] ?? content[field.key] ?? ''])));
+              const ok = await setContentValues(edits);
+              notify(ok ? 'success' : 'error', ok
                 ? 'تم حفظ نصوص السياسات القانونية بنجاح.'
-                : 'تعذر حفظ بعض نصوص السياسات على السيرفر.');
+                : 'تعذر حفظ نصوص السياسات على السيرفر.');
             }}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
           >
@@ -171,7 +176,7 @@ export function ContentHubGenericPageEditor({
   content,
   policyDrafts,
   setPolicyDrafts,
-  setContentValue,
+  setContentValues,
   notify,
 }: GenericPageEditorProps) {
   const tabCfg = pageConfigs[activeTab] || (activeTab === 'content_hub' ? pageConfigs[contentHubSubTab] : null);
@@ -188,11 +193,10 @@ export function ContentHubGenericPageEditor({
           <button onClick={() => setPolicyDrafts({})} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">إعادة تحميل</button>
           <button
             onClick={async () => {
-              const saved = await Promise.all(tabCfg.fields.map(field =>
-                setContentValue(field.key, policyDrafts[field.key] ?? content[field.key] ?? '')
-              ));
-              notify(saved.every(Boolean) ? 'success' : 'error',
-                saved.every(Boolean) ? tabCfg.msg : 'تعذر حفظ بعض الحقول على السيرفر.');
+              const edits = Object.fromEntries(tabCfg.fields.map(field =>
+                [field.key, policyDrafts[field.key] ?? content[field.key] ?? '']));
+              const ok = await setContentValues(edits);
+              notify(ok ? 'success' : 'error', ok ? tabCfg.msg : 'تعذر حفظ الحقول على السيرفر.');
             }}
             className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-bold"
           >

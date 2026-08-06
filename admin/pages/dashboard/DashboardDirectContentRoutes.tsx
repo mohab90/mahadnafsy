@@ -32,6 +32,9 @@ interface DashboardDirectContentRoutesProps {
   policyDrafts: ContentMap;
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
+  setContentValues: (entries: Record<string, string>) => Promise<boolean>;
+  setActiveTab: (tab: TabKey) => void;
+  setContentHubSubTab: (tab: TabKey) => void;
   notify: NotifyFn;
   contentEdits: ContentMap;
   setContentEdits: Dispatch<SetStateAction<ContentMap>>;
@@ -73,6 +76,9 @@ export function DashboardDirectContentRoutes({
   policyDrafts,
   setPolicyDrafts,
   setContentValue,
+  setContentValues,
+  setActiveTab,
+  setContentHubSubTab,
   notify,
   contentEdits,
   setContentEdits,
@@ -114,6 +120,9 @@ export function DashboardDirectContentRoutes({
           policyDrafts={policyDrafts}
           setPolicyDrafts={setPolicyDrafts}
           setContentValue={setContentValue}
+          setContentValues={setContentValues}
+          setActiveTab={setActiveTab}
+          setContentHubSubTab={setContentHubSubTab}
           notify={notify}
           contentEdits={contentEdits}
           setContentEdits={setContentEdits}
@@ -136,6 +145,7 @@ export function DashboardDirectContentRoutes({
           policyDrafts={policyDrafts}
           setPolicyDrafts={setPolicyDrafts}
           setContentValue={setContentValue}
+          setContentValues={setContentValues}
           notify={notify}
         />
       )}
@@ -149,6 +159,7 @@ export function DashboardDirectContentRoutes({
           policyDrafts={policyDrafts}
           setPolicyDrafts={setPolicyDrafts}
           setContentValue={setContentValue}
+          setContentValues={setContentValues}
           notify={notify}
         />
       )}
@@ -160,6 +171,7 @@ export function DashboardDirectContentRoutes({
           policyDrafts={policyDrafts}
           setPolicyDrafts={setPolicyDrafts}
           setContentValue={setContentValue}
+          setContentValues={setContentValues}
           notify={notify}
           courses={courses}
           offerSelectedCourseId={offerSelectedCourseId}
@@ -183,6 +195,7 @@ export function DashboardDirectContentRoutes({
         policyDrafts={policyDrafts}
         setPolicyDrafts={setPolicyDrafts}
         setContentValue={setContentValue}
+                setContentValues={setContentValues}
         notify={notify}
       />
 
