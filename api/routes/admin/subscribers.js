@@ -1,4 +1,5 @@
 'use strict';
+const { toIdentity } = require('../../lib/phoneNumber');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
 const bcrypt   = require('../../lib/passwordHash');
@@ -585,8 +586,12 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     const safeName  = sanitize(name,  300);
     const safeEmailRaw = (email || '').toLowerCase().trim().substring(0, 255);
     const safeEmail = safeEmailRaw || null; // use NULL (not '') so UNIQUE constraint allows multiple clients without email
-    const safePhoneRaw = (phone || '').replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30);
-    const safePhone = safePhoneRaw || null; // store NULL not '' so UNIQUE constraint works
+    // Store the IDENTITY form, not the raw typing. Sanitising alone (which is
+    // what this did) left '+20 10 63212089' and '01063212089' as two different
+    // strings, so uq_subs_tenant_phone saw two people and the duplicate check
+    // below never matched — 40 real duplicates got in that way. toIdentity()
+    // collapses every spelling of one number onto a single comparable key.
+    const safePhone = toIdentity(phone) || null; // NULL not '' so UNIQUE allows many blanks
     const safeNotes = sanitize(notes, 2000);
     // Auto-generate client_code if not provided — never allow a subscriber to be saved without one
     let code = clientCode || client_code || null;

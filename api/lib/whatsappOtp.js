@@ -319,8 +319,30 @@ async function claimWhatsAppIdentity(db, { tenantId, phone }) {
   return normalized;
 }
 
+/**
+ * Who already owns this number? Returns the account id, or null.
+ *
+ * Every phone column is stored in identity form (migration 196), so a single
+ * equality is enough — but callers must normalise the *input* first, which is
+ * why this helper exists rather than each route hand-rolling the query. Before
+ * the migration 90% of stored numbers were in some other spelling, so this
+ * lookup silently missed them: "forgot my password" by number quietly failed
+ * for almost everyone, and a returning customer could register a second
+ * account on the same number.
+ */
+async function findAccountByPhone(db, { tenantId, phone, excludeId = null }) {
+  const normalized = toIdentity(phone);
+  if (!isPlausible(normalized)) return null;
+  const params = [tenantId, normalized];
+  let sql = 'SELECT id, email, name, is_active FROM users WHERE tenant_id=? AND phone=?';
+  if (excludeId) { sql += ' AND id<>?'; params.push(excludeId); }
+  const [[row]] = await db.query(`${sql} LIMIT 1`, params);
+  return row || null;
+}
+
 module.exports = {
   claimWhatsAppIdentity,
+  findAccountByPhone,
   normalizeWhatsAppNumber,
   isPlausibleNumber,
   requestLoginCode,

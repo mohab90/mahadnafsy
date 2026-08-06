@@ -11,6 +11,7 @@ const {
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireTenantQuota } = require('../../middleware/tenantQuota');
 const bcrypt = require('bcryptjs');
+const { toIdentity } = require('../../lib/phoneNumber');
 const { PERMISSIONS } = require('../../constants/permissions');
 
 // Lower-case permission keys, the form stored in staff.permissions_json.
@@ -306,7 +307,7 @@ router.post(
          (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type,
           hire_date, joined_at, specialization, permissions_json)
        VALUES (?,?,?,?,?,?,?,?, 'FULL_TIME', CURDATE(), NOW(), ?, ?)`,
-      [staffId, req.tenantId, branch.id, a.name, loginEmail, a.phone || '', role,
+      [staffId, req.tenantId, branch.id, a.name, loginEmail, toIdentity(a.phone) || '', role,
         activate ? 1 : 0, position,
         requestedPermissions ? JSON.stringify(requestedPermissions) : null]
     );
@@ -325,7 +326,7 @@ router.post(
       } else {
         await conn.query(
           'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,?,1)',
-          [uuidv4(), req.tenantId, loginEmail, a.phone || null, passwordHash, a.name || '', 'staff']);
+          [uuidv4(), req.tenantId, loginEmail, toIdentity(a.phone) || null, passwordHash, a.name || '', 'staff']);
       }
     }
     await conn.query(

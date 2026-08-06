@@ -1,0 +1,13 @@
+-- Phone identity: `leads` was the one customer table with no uniqueness on the
+-- number at all, so the same person could be imported or captured any number of
+-- times. users and subscribers already had uq_*_tenant_phone.
+--
+-- Safe to apply only AFTER every stored number is in identity form (see the
+-- normalisation pass run before this migration): the index compares the stored
+-- string, so '01012345678' and '1012345678' would otherwise both be allowed and
+-- the constraint would be decorative — which is exactly how 42 duplicate
+-- accounts, 40 duplicate subscribers and 54 duplicate leads got in.
+--
+-- NULL is permitted many times over in a MySQL UNIQUE index, so leads captured
+-- without a number (chat, email, walk-in) are unaffected.
+CREATE UNIQUE INDEX uq_leads_tenant_phone ON leads (tenant_id, phone);
