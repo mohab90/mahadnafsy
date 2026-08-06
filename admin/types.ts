@@ -317,6 +317,9 @@ export type StaffPermission =
   | 'manage_financial'
   // Reports & analytics
   | 'view_reports'
+  // Running the sales team (targets, quotas, sales offers) — deliberately
+  // separate from view_reports, which also opens company-wide analytics.
+  | 'manage_sales_team'
   // Messaging & inbox
   | 'manage_inbox'
   | 'manage_notifications'
@@ -356,6 +359,12 @@ export interface StaffMember {
   commissionRate?: number;   // percentage, e.g. 10 = 10%
   firebaseUid?: string;
   permissions?: StaffPermission[];
+  /**
+   * Overrides the role's default data reach. Empty string / undefined = use the
+   * role default. Needed for hybrid jobs (HR lead who also runs sales), where
+   * the single `role` column cannot express both.
+   */
+  dataScope?: '' | 'all' | 'none' | 'assigned_sales' | 'assigned_cs' | string;
   // ── HR fields ────────────────────────────────────────────────────────────
   salary?: number;                           // Monthly base salary (EGP)
   monthlyTargetType?: 'egp' | 'clients';    // Target is revenue or client count

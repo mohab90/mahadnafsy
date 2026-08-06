@@ -3,6 +3,7 @@ const { Router } = require('express');
 const router = Router();
 const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
+const { PERMISSIONS, normalizeDataScope } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 
@@ -210,7 +211,13 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       await conn.rollback(); transactionStarted = false;
       return res.status(404).json({ error: 'Employee not found' });
     }
-    const protectedCompensation = ['commission_rate', 'monthly_target', 'monthly_target_type', 'monthly_bonus', 'is_active'];
+    // Self-mutation guard. `permissions`/`data_scope` belong here for the same
+    // reason compensation does: they are the two fields whose whole purpose is
+    // to limit what this person can reach, so nobody edits their own.
+    const protectedCompensation = [
+      'commission_rate', 'monthly_target', 'monthly_target_type', 'monthly_bonus', 'is_active',
+      'permissions', 'permissions_json', 'data_scope', 'dataScope',
+    ];
     if (String(req.staffRecord?.id || '') === String(id) && protectedCompensation.some(key => req.body[key] !== undefined)) {
       await conn.rollback(); transactionStarted = false;
       return res.status(409).json({ error: 'لا يجوز تعديل بياناتك التعويضية أو حالة حسابك بنفسك', code: 'HR_SELF_MUTATION' });
@@ -231,6 +238,34 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     if (req.isSuperAdmin && req.body.role !== undefined) allowed.push('role');
     const updates = {};
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k] ?? null; }
+
+    // Access control fields. The staff-profile page has shown a full permission
+    // grid and a data-scope picker for a while, but neither was in `allowed`, so
+    // every tick the admin made was silently dropped on save and the account
+    // kept running on its role defaults — which is exactly why staff accounts
+    // showed sections nobody had granted them. Super-admin only: granting
+    // permissions is an authority change, not an HR data edit.
+    if (req.isSuperAdmin) {
+      const rawPerms = req.body.permissions !== undefined ? req.body.permissions : req.body.permissions_json;
+      if (rawPerms !== undefined) {
+        const list = Array.isArray(rawPerms) ? rawPerms : tryJson(rawPerms, null);
+        if (!Array.isArray(list)) {
+          await conn.rollback(); transactionStarted = false;
+          return res.status(400).json({ error: 'permissions must be an array' });
+        }
+        const known = new Set(Object.values(PERMISSIONS));
+        const unknown = list.map(String).filter(p => !known.has(p));
+        if (unknown.length) {
+          await conn.rollback(); transactionStarted = false;
+          return res.status(400).json({ error: `Unknown permission(s): ${unknown.join(', ')}` });
+        }
+        // An empty grid means "fall back to the role defaults" (resolvePermissions
+        // ignores an empty array), so store NULL rather than '[]' to say so plainly.
+        updates.permissions_json = list.length ? JSON.stringify([...new Set(list.map(String))]) : null;
+      }
+      const rawScope = req.body.data_scope !== undefined ? req.body.data_scope : req.body.dataScope;
+      if (rawScope !== undefined) updates.data_scope = normalizeDataScope(rawScope);
+    }
     if (!Object.keys(updates).length) {
       await conn.rollback(); transactionStarted = false;
       return res.status(400).json({ error: 'Nothing to update' });
@@ -309,7 +344,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       action: 'hr.employee.updated',
       entityType: 'staff',
       entityId: id,
-      severity: ['email','role','commission_rate','monthly_bonus'].some(key => updates[key] !== undefined)
+      severity: ['email','role','commission_rate','monthly_bonus','permissions_json','data_scope'].some(key => updates[key] !== undefined)
         ? 'critical'
         : 'warning',
       metadata: { fields: Object.keys(updates) },

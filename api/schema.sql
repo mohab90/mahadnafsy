@@ -3031,6 +3031,7 @@ CREATE TABLE `staff` (
   `notes` text DEFAULT NULL,
   `commission_rate` decimal(5,2) DEFAULT NULL,
   `permissions_json` text DEFAULT NULL,
+  `data_scope` varchar(64) DEFAULT NULL,
   `totp_secret` varchar(64) DEFAULT NULL,
   `totp_enabled` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),

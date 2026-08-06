@@ -128,7 +128,7 @@ router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, require
 // (manager / admin / sales_collection_manager / online_manager / hr) and
 // excludes sales; super-admins bypass permission checks entirely. Reads stay
 // open on view_leads so the team leaderboard keeps working for everyone.
-router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
+router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('manage_sales_team'), async (req, res) => {
   try {
     const { staffId, period } = req.body || {};
     if (!staffId || !/^\d{4}-\d{2}$/.test(period || '')) return res.status(400).json({ error: 'staffId and period (YYYY-MM) required' });

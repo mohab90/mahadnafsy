@@ -24,7 +24,12 @@ async function findActiveStaff(req, email, { includePermissions = false, query }
   if (typeof query !== 'function') throw new TypeError('findActiveStaff requires a query function');
   const tenantId = getTrustedTenantId(req);
   if (!tenantId || !String(email || '').trim()) return null;
-  const fields = includePermissions ? 'id, role, permissions_json, tenant_id' : 'id, role, tenant_id';
+  // data_scope always travels with the record: it is the per-staff override for
+  // the role-keyed DATA_SCOPE table, and leadScope()/resolveFinancialScope()
+  // read it off req.staffRecord on every request, not just permission-aware ones.
+  const fields = includePermissions
+    ? 'id, role, data_scope, permissions_json, tenant_id'
+    : 'id, role, data_scope, tenant_id';
   const [[staff]] = await query(
     `SELECT ${fields} FROM staff
      WHERE tenant_id = ?

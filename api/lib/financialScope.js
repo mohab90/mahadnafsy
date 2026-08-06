@@ -1,6 +1,6 @@
 'use strict';
 
-const { DATA_SCOPE, VALID_BRANCHES } = require('../constants/permissions');
+const { VALID_BRANCHES, resolveDataScope } = require('../constants/permissions');
 const { branchIdForBranch, normalizeBranch } = require('./branches');
 
 class FinancialScopeError extends Error {
@@ -12,8 +12,10 @@ class FinancialScopeError extends Error {
 }
 
 function resolveFinancialScope(req, { requestedBranch = null, allowAssigned = false } = {}) {
-  const role = String(req.staffRecord?.role || '').toLowerCase();
-  const dataScope = req.isSuperAdmin ? 'all' : (DATA_SCOPE[role] || 'none');
+  const dataScope = resolveDataScope(req.staffRecord, {
+    isSuperAdmin: req.isSuperAdmin,
+    fallback: 'none',
+  });
   const normalizedRequested = requestedBranch
     ? normalizeBranch(requestedBranch, null)
     : null;

@@ -13,7 +13,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { hasPermission, PERMISSIONS } = require('../constants/permissions');
+const { hasPermission, normalizeDataScope, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
 
@@ -120,6 +120,10 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, requireTenantQuo
     const isActive = s.is_active !== undefined ? s.is_active : (s.status === 'inactive' ? 0 : 1);
     const permissionsJson = s.permissions_json
       || (Array.isArray(s.permissions) ? JSON.stringify(s.permissions) : null);
+    // Per-staff override for the role-keyed DATA_SCOPE. Anything the validator
+    // does not recognise becomes NULL, i.e. "fall back to the role default" —
+    // an unparsable value must never widen someone's reach.
+    const dataScope = normalizeDataScope(s.dataScope ?? s.data_scope);
     // Sales-target / bonus fields (camelCase from frontend or snake_case direct).
     // `undefined` is coalesced to null so the field is cleared rather than left stale.
     const numOrNull = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
@@ -136,10 +140,10 @@ router.post('/api/admin/staff', requireAuth, requireSuperAdmin, requireTenantQuo
     }
 
     await pool.query(
-      `INSERT INTO staff (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
-      [id, req.tenantId, s.branch_id || 'branch-other', firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
+      `INSERT INTO staff (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, data_scope, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), data_scope=VALUES(data_scope), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
+      [id, req.tenantId, s.branch_id || 'branch-other', firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
     res.json({ ok: true, id });
   } catch (e) {
@@ -158,7 +162,7 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermissi
     const canViewSensitive = req.isSuperAdmin === true || hasPermission(req.staffRecord, PERMISSIONS.VIEW_STAFF);
     const [rows] = await pool.query(
       `SELECT s.id,s.firebase_uid,s.name,s.email,s.phone,s.role,s.is_active,s.image,
-              s.specialization,s.joined_at,s.created_at,s.notes,s.commission_rate,s.permissions_json,
+              s.specialization,s.joined_at,s.created_at,s.notes,s.commission_rate,s.permissions_json,s.data_scope,
               s.monthly_target,s.monthly_target_type,s.monthly_leads_target,s.monthly_bonus,
               s.national_id,s.address,s.hr_notes,s.department_id,d.name AS department_name,
               ss.base_salary
@@ -197,6 +201,7 @@ router.get('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermissi
       departmentId: canViewSensitive ? (r.department_id || null) : undefined,
       department: canViewSensitive ? (r.department_name || '') : undefined,
       permissions: canViewSensitive ? (r.permissions_json ? tryJson(r.permissions_json, []) : []) : [],
+      dataScope: canViewSensitive ? (r.data_scope || '') : undefined,
     })));
   } catch (e) {
     routeError(res, e);

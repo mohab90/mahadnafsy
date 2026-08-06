@@ -15,7 +15,7 @@ const { logLeadEvent } = require('../../lib/crm');
 const { branchesFromScope } = require('../../lib/leadAccess');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { ADMIN_EMAILS, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
-const { DATA_SCOPE, VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../constants/permissions');
+const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES, normalizeDataScope, resolveDataScope } = require('../../constants/permissions');
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { keyset } = require('../../lib/pagination');
@@ -67,9 +67,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
     // only ever see Dokki clients) got every branch's subscribers with full payment
     // history. /api/staff/subscribers already scopes correctly by DATA_SCOPE; apply
     // the same rule here since this is the endpoint the admin app actually calls.
-    const role    = (req.staffRecord?.role || '').toLowerCase();
     const isSuper = !!req.isSuperAdmin;
-    const scope   = isSuper ? 'all' : (DATA_SCOPE[role] || 'assigned_sales');
+    const scope   = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
     if (scope === 'none') return res.json([]);
 
     const adminExclusions = ADMIN_EMAILS.length > 0
@@ -262,9 +261,8 @@ router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePe
 router.get('/api/staff/subscribers', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const staffId  = req.staffRecord?.id;
-    const role     = (req.staffRecord?.role || '').toLowerCase();
     const isSuper  = !!req.isSuperAdmin;
-    const scope    = isSuper ? 'all' : (DATA_SCOPE[role] || 'assigned_sales');
+    const scope    = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
     if (scope === 'none') return res.json([]);
 
     let whereClause = '1=1';
@@ -413,11 +411,15 @@ router.get('/api/staff/leads', requireAuth, requireAdminOrStaff, requirePermissi
     const staffId = req.staffRecord?.id;
     const role    = (req.staffRecord?.role || '').toLowerCase();
     const isSuper = !!req.isSuperAdmin;
-    const scope   = isSuper ? 'all' : (DATA_SCOPE[role] || 'assigned_sales');
+    const scope   = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
 
-    // Roles that should NOT see leads at all
+    // Roles that should NOT see leads at all. Skipped when the staff row carries
+    // an explicit data_scope: that column exists precisely to describe a hybrid
+    // job (an HR lead who also runs sales), and a role blocklist would silently
+    // override the scope the admin deliberately set.
     const noLeadsRoles = new Set(['collection', 'support', 'hr', 'accountant', 'trainer', 'instructor']);
-    if (!isSuper && noLeadsRoles.has(role)) return res.json([]);
+    const scopedByHand = Boolean(normalizeDataScope(req.staffRecord?.data_scope));
+    if (!isSuper && !scopedByHand && noLeadsRoles.has(role)) return res.json([]);
     if (scope === 'none') return res.json([]);
 
     let whereClause = 'hidden = 0';

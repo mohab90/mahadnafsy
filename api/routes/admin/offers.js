@@ -56,7 +56,7 @@ router.get('/api/admin/sales-offers', requireAuth, requireAdminOrStaff, requireP
 });
 
 // POST /api/admin/sales-offers — create or update
-router.post('/api/admin/sales-offers', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
+router.post('/api/admin/sales-offers', requireAuth, requireAdminOrStaff, requirePermission('manage_sales_team'), async (req, res) => {
   try {
     const b = req.body || {};
     const title = String(b.title || '').trim().slice(0, 255);
@@ -112,7 +112,7 @@ router.post('/api/admin/sales-offers', requireAuth, requireAdminOrStaff, require
   }
 });
 
-router.delete('/api/admin/sales-offers/:id', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
+router.delete('/api/admin/sales-offers/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_sales_team'), async (req, res) => {
   try {
     const [r] = await pool.query('DELETE FROM sales_offers WHERE id=? AND tenant_id=?', [req.params.id, req.tenantId]);
     if (!r.affectedRows) return res.status(404).json({ error: 'العرض غير موجود' });

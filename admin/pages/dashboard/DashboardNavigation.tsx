@@ -236,17 +236,30 @@ export function DashboardNavigation(props: Props) {
                     <UserCheck size={15} />
                   </button>
                 )}
-                <button
-                  onClick={() => setActiveTab(currentStaff ? 'staff_home' : 'my_hr')}
-                  className={`w-8 h-8 rounded-xl grid place-items-center transition ${
-                    activeTab === 'staff_home' || activeTab === 'my_hr' || activeTab === 'staff_settings'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
-                  }`}
-                  title="حسابي وملفي الوظيفي"
-                >
-                  <UserCog size={15} />
-                </button>
+                {/* Personal pages. This used to be one icon that only ever
+                    opened staff_home; ملفي الشخصي was reachable solely through a
+                    card inside that page, so employees on the full nav could not
+                    find their own account. All three are named and reachable. */}
+                <div className="flex items-center rounded-xl bg-gray-100 p-0.5 gap-0.5">
+                  {([
+                    ['staff_home',     'الرئيسية',       Home],
+                    ['staff_settings', 'ملفي الشخصي',    UserCog],
+                    ['my_hr',          'ملفي الوظيفي',   FileText],
+                  ] as const).map(([tab, label, Icon]) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`w-7 h-7 rounded-lg grid place-items-center transition ${
+                        activeTab === tab
+                          ? 'bg-indigo-600 text-white'
+                          : 'hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
+                      }`}
+                      title={label}
+                    >
+                      <Icon size={14} />
+                    </button>
+                  ))}
+                </div>
                 {/* Staff messages used to be visible one employee at a time,
                     inside each profile page — so an incoming message went unseen
                     until someone opened that person's file. */}

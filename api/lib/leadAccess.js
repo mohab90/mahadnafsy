@@ -1,6 +1,6 @@
 'use strict';
 
-const { DATA_SCOPE } = require('../constants/permissions');
+const { resolveDataScope } = require('../constants/permissions');
 
 // A branch scope may name one branch ('branch:DAQQI') or several
 // ('branch:ONLINE_EGYPT,ONLINE_SAUDI'). Roles that oversee a group of branches —
@@ -13,7 +13,7 @@ function branchesFromScope(scope) {
 
 function leadScope({ tenantId, staffRecord, isSuperAdmin }, alias = 'l') {
   if (!staffRecord || isSuperAdmin) return { scope: 'all', sql: '', params: [], none: false };
-  const scope = DATA_SCOPE[String(staffRecord.role || '').toLowerCase()] || 'assigned_sales';
+  const scope = resolveDataScope(staffRecord, { fallback: 'assigned_sales' });
   if (scope === 'none') return { scope, sql: ' AND 1=0', params: [], none: true };
   if (scope === 'assigned_sales') {
     return { scope, sql: ` AND ${alias}.assigned_sales_id=?`, params: [staffRecord.id], none: false };

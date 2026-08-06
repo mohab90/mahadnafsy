@@ -84,6 +84,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_financial: 'عرض النظام المحاسبي',
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',
   view_reports: 'عرض التقارير والإحصائيات',
+  manage_sales_team: 'إدارة فريق المبيعات (التارجت والعروض)',
   manage_inbox: 'إدارة صندوق الوارد والمحادثات',
   manage_notifications: 'إدارة الإشعارات',
   manage_channel_settings: 'إعدادات قنوات التواصل',
@@ -356,6 +357,10 @@ const StaffProfile: React.FC = () => {
       setSaveMsg('❌ لا يمكنك تعديل راتبك بنفسك؛ يلزم موظف HR آخر');
       return;
     }
+    const samePerms = JSON.stringify([...(draft.permissions || [])].sort())
+      === JSON.stringify([...(staff.permissions || [])].sort());
+    const accessChanged = currentStaff?.id !== draft.id
+      && (!samePerms || (draft.dataScope || '') !== (staff.dataScope || ''));
     setSaving(true);
     setSaveMsg('');
     const payload: StaffMember = { ...draft };
@@ -380,6 +385,15 @@ const StaffProfile: React.FC = () => {
           monthly_target_type: payload.monthlyTargetType || 'egp',
           monthly_bonus: Number(payload.monthlyBonus) || 0,
           ...(isAdmin ? { role: payload.role } : {}),
+          // Access control travels with the save; the server drops both unless
+          // the caller is a super admin. Before this, the permission grid and
+          // the scope picker on this page edited nothing that ever persisted.
+          // Only sent when actually changed and never for your own record —
+          // the server rejects self-edits of these two fields outright.
+          ...(isAdmin && accessChanged ? {
+            permissions: payload.permissions || [],
+            data_scope: payload.dataScope || null,
+          } : {}),
         });
         let salaryPending = false;
         if (salaryChanged) {
@@ -1182,6 +1196,41 @@ const StaffProfile: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* ── Data reach ──
+                  Permissions decide which *screens* open; this decides which
+                  *rows* the server returns. They used to be welded together
+                  through the single `role` column, so a hybrid job (HR lead who
+                  also runs sales) got HR's scope — 'none' — and every sales
+                  screen came back empty or 403. */}
+              <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/50">
+                <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wide mb-2">
+                  🎯 نطاق البيانات — الصفوف اللي الموظف يشوفها فعلاً
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {([
+                    ['',               'حسب الوظيفة (افتراضي)'],
+                    ['all',            'كل الداتا'],
+                    ['assigned_sales', 'المُسنَد له كمبيعات فقط'],
+                    ['assigned_cs',    'المُسنَد له كخدمة عملاء فقط'],
+                    ['none',           'لا يرى أي داتا عملاء'],
+                  ] as const).map(([val, label]) => (
+                    <button key={val || 'default'} type="button"
+                      onClick={() => setDraft({ ...draft, dataScope: val })}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition ${
+                        (draft.dataScope || '') === val
+                          ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                          : 'bg-white text-amber-700 border-amber-200 hover:border-amber-400'
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-amber-600 mt-2">
+                  سيب الافتراضي إلا لو الموظف بيشتغل في أكتر من قسم — ساعتها الوظيفة الواحدة
+                  مش كفاية تعبّر عن اللي المفروض يشوفه.
+                </p>
+              </div>
 
               {/* Grouped permission categories */}
               <div className="p-5 space-y-3">

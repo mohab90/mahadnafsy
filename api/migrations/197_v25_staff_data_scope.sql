@@ -1,0 +1,12 @@
+-- Per-staff data scope override.
+--
+-- DATA_SCOPE (api/constants/permissions.js) is keyed by role, and a staff row
+-- carries exactly one role. Hybrid jobs break that: an HR lead who also runs
+-- sales is stored as role='hr', whose scope is 'none', so leadScope() appends
+-- `AND 1=0` and resolveFinancialScope() throws FINANCIAL_SCOPE_UNSUPPORTED —
+-- the permission list says yes while the data layer says no.
+--
+-- NULL keeps the role default, so every existing staff row behaves exactly as
+-- before. Accepted values: 'all' | 'none' | 'assigned_sales' | 'assigned_cs' |
+-- 'branch:CODE[,CODE...]' — validated in normalizeDataScope().
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS data_scope VARCHAR(64) DEFAULT NULL;

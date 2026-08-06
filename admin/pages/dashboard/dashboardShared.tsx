@@ -51,6 +51,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',
   // Reports
   view_reports: 'عرض التقارير والإحصائيات',
+  manage_sales_team: 'إدارة فريق المبيعات (التارجت والعروض)',
   // Messaging & inbox
   manage_inbox: 'إدارة صندوق الوارد والمحادثات',
   manage_notifications: 'إدارة الإشعارات',
@@ -542,23 +543,31 @@ const _normalizeClientDate = (d: unknown): string => {
 };
 
 const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
-  overview:           'view_dashboard',
+  // The company-wide overview, not a personal home page — every employee has
+  // view_dashboard, so mapping it there put the whole الإدارة group in every
+  // staff member's sidebar. Personal landing pages are staff_home / my_hr.
+  overview:           'view_reports',
   kpi_dashboard:      'view_reports',
   analytics:          'view_reports',
   ask_ai:             'ask_ai',
   ai_dev:             'ai_dev',
   tasks_board:        'view_reports',
-  online_clients:     'view_subscribers',
+  // Running the online-clients desk, not merely reading a subscriber record:
+  // sales reps hold view_subscribers so they can see who a lead converted into,
+  // and gating this on it put the whole الأونلاين group in their sidebar.
+  online_clients:     'manage_subscribers',
   client:             'view_client_db',
   registrations:      'view_leads',
   leads:              'view_leads',
   followup_reminders: 'view_leads',
   sales_hub:          'view_leads',
-  marketing_hub:      'view_leads',
-  // Every staff member may connect their own WhatsApp; the admin panels inside
-  // enforce manage_settings server-side.
-  messaging_hub:      'view_dashboard',
-  online_hub:         'view_subscribers',
+  // Both live under التسويق. marketing_hub on view_leads and messaging_hub on
+  // view_dashboard meant every sales rep — and every employee at all — saw a
+  // marketing section they have no business in. Campaign tooling and channel
+  // configuration are the same job, so they share the same permission.
+  marketing_hub:      'manage_channel_settings',
+  messaging_hub:      'manage_channel_settings',
+  online_hub:         'manage_subscribers',
   installment_plans:  'view_financial',
   consultations:      'view_consultations',
   community:          'view_community',
@@ -614,7 +623,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   sales_reports:      'view_reports',
   // Writing targets is a manager action (see POST /api/admin/sales-targets):
   // matched to the API gate so a sales rep doesn't see a tab that 403s.
-  sales_goals:        'view_reports',
+  sales_goals:        'manage_sales_team',
   online_team:        'view_staff',
   subscriptions:     'view_financial',
   lead_scoring:       'manage_leads',

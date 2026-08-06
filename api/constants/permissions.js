@@ -77,6 +77,11 @@ const PERMISSIONS = Object.freeze({
   // Reports
   VIEW_REPORTS:             'view_reports',
   VIEW_ACTIVITY:            'view_activity',
+  // Running the sales team (targets, quotas, sales offers). Split out of
+  // view_reports, which also opens company-wide analytics: a sales manager
+  // needs to set a rep's target without being handed the KPI dashboard,
+  // retention analysis and expense analytics along with it.
+  MANAGE_SALES_TEAM:        'manage_sales_team',
   // Messaging
   MANAGE_INBOX:             'manage_inbox',
   MANAGE_NOTIFICATIONS:     'manage_notifications',
@@ -115,6 +120,7 @@ const ROLE_PERMS = Object.freeze({
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial', 'view_reports', 'view_activity',
+    'manage_sales_team',
     'view_staff', 'view_client_db',
     'view_courses', 'manage_courses', 'manage_lectures',
     'view_consultations', 'manage_consultations',
@@ -126,6 +132,7 @@ const ROLE_PERMS = Object.freeze({
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial', 'view_reports', 'view_activity',
+    'manage_sales_team',
     'view_staff', 'view_client_db',
     'view_consultations', 'manage_consultations',
     'manage_inbox', 'manage_notifications', 'manage_daqqi', 'bulk_whatsapp',
@@ -138,6 +145,7 @@ const ROLE_PERMS = Object.freeze({
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
     'view_reports', 'view_activity',
+    'manage_sales_team',
     'view_staff',
     'view_client_db',
     'manage_inbox', 'manage_notifications',
@@ -278,6 +286,42 @@ const DATA_SCOPE = Object.freeze({
   [ROLES.OTHER]:       'none',
 });
 
+// ── 5b. PER-STAFF DATA SCOPE OVERRIDE ─────────────────────────────────────────
+// DATA_SCOPE above is keyed by role, and a staff row carries exactly one role.
+// That breaks for hybrid jobs: an HR lead who also runs sales gets role='hr',
+// whose scope is 'none', so every lead query becomes `AND 1=0` and every
+// financial aggregate throws FINANCIAL_SCOPE_UNSUPPORTED — the permissions say
+// yes and the data layer says no. `staff.data_scope` lets one person's scope be
+// set independently of their role; NULL keeps the role default, so nothing
+// changes for anyone who does not have an override.
+const VALID_SCOPE_KINDS = new Set(['all', 'none', 'assigned_sales', 'assigned_cs']);
+
+function normalizeDataScope(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (VALID_SCOPE_KINDS.has(raw)) return raw;
+  if (raw.startsWith('branch:')) {
+    const branches = raw.slice(7).split(',')
+      .map(b => b.trim().toUpperCase())
+      .filter(b => VALID_BRANCHES.has(b));
+    if (!branches.length) return null;
+    return `branch:${[...new Set(branches)].join(',')}`;
+  }
+  return null;
+}
+
+/**
+ * Effective data scope for a staff record.
+ * Priority: super admin > per-staff override > role default > caller fallback.
+ */
+function resolveDataScope(staffRecord, { isSuperAdmin = false, fallback = 'none' } = {}) {
+  if (isSuperAdmin) return 'all';
+  if (!staffRecord) return fallback;
+  const override = normalizeDataScope(staffRecord.data_scope);
+  if (override) return override;
+  return DATA_SCOPE[String(staffRecord.role || '').toLowerCase()] || fallback;
+}
+
 // ── 6. HELPER: resolve permissions for a staff record ─────────────────────────
 /**
  * Returns the effective permission list for a staff record.
@@ -363,6 +407,8 @@ module.exports = {
   ROLE_PERMS,
   FULL_ACCESS_ROLES,
   DATA_SCOPE,
+  normalizeDataScope,
+  resolveDataScope,
   resolvePermissions,
   hasPermission,
   setRoleOverrides,

@@ -175,13 +175,24 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'kpi_dashboard', label: 'لوحة KPI للمدير', icon: BarChart3 },
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
-      { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
       { key: 'retention', label: 'تحليل الاستبقاء', icon: TrendingUp },
       { key: 'cohort_analysis', label: 'تحليل Cohort', icon: Users },
       { key: 'revenue_sources', label: 'مصادر الإيراد', icon: BarChart3 },
       { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
+    ],
+  },
+  {
+    // Its own heading rather than an item under الإدارة: ask_ai is granted to
+    // sales reps and support, and hanging it off the management group made an
+    // "الإدارة" section appear for people who have no management pages at all.
+    key: 'assistant',
+    label: 'مساعد AI',
+    icon: Zap,
+    color: 'text-fuchsia-600',
+    items: [
+      { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
     ],
   },
   {

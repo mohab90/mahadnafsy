@@ -76,7 +76,10 @@ test('CRM operational views share the canonical role and branch scope', () => {
   const admin = read('routes/admin/leads.js');
   const advanced = read('routes/crm-advanced.js');
   const ops = read('routes/crm-ops.js');
-  assert.match(access, /DATA_SCOPE/);
+  // Scope resolution moved behind resolveDataScope() so a per-staff
+  // `staff.data_scope` override can beat the role-keyed DATA_SCOPE table —
+  // needed for hybrid jobs whose single role cannot express their reach.
+  assert.match(access, /resolveDataScope\(staffRecord/);
   assert.match(access, /assigned_sales/);
   assert.match(access, /assigned_cs/);
   assert.match(access, /scope\.startsWith\('branch:'\)/);
