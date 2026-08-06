@@ -412,6 +412,31 @@ const SYS_DEFAULTS = {
     invoice_prefix:          'INV',
     session_duration_default:   60,
   },
+  // Payment gateway. The settings screen (admin PaymentSettingsTab) has always
+  // read and written this section, but it was never declared here — so every
+  // save came back "Unknown section: payment_gateway" and no Paymob credential
+  // could be stored at all. Shape mirrors DEFAULT_CONFIG in that component.
+  payment_gateway: {
+    active_provider: 'manual',
+    mode: 'sandbox',
+    manual: {
+      enabled: true,
+      require_proof_review: true,
+      supported_methods: ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'],
+    },
+    paymob: {
+      enabled: false,
+      merchant_id: '',
+      api_key: '',
+      secret_key: '',
+      hmac_secret: '',
+      integration_id_card: '',
+      integration_id_wallet: '',
+      iframe_id: '',
+      webhook_url: '/api/webhooks/paymob',
+      callback_url: '/success',
+    },
+  },
 };
 
 // GET /api/admin/sys-config — get all sections or specific section

@@ -19,7 +19,7 @@ const { sendWhatsApp } = require('../lib/whatsapp');
 const { optionalAuth, requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { setOnlineUser } = require('../lib/onlineUsers');
 const { publicLimiter, contactLimiter } = require('../middleware/rateLimits');
-const { resolveClientContext } = require('../lib/clientContext');
+const { resolveClientContext, getClientIp, hashClientIp } = require('../lib/clientContext');
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ROUTES (no auth required)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,8 +145,10 @@ async function getPreviewLimit(tenantId) {
     const content = await cached(`site_content:${tenantId}`, 5 * 60 * 1000, () =>
       getTenantSetting('content', { tenantId, fallback: {} }));
     const n = Number(content['courseDetails.previewLectureLimit']);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
-  } catch { return 2; }
+    // One free lecture per course by default (was 2). Overridable per tenant
+    // through courseDetails.previewLectureLimit in site content.
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+  } catch { return 1; }
 }
 // Public-safe lecture: expose the real video URL only for free-previewable lectures
 // (explicit is_preview, or within the first `previewLimit` of the course by position).
@@ -916,6 +918,18 @@ router.post('/api/me/heartbeat', requireAuth, async (req, res) => {
       name: req.user.name || req.user.email?.split('@')[0] || '',
       email: req.user.email || '',
     });
+    // Keep the session's recorded address current. The session is no longer
+    // pinned to it (see hasCurrentSession), but the sessions view and the
+    // sharing guard both read it, so a stale hash from the original sign-in
+    // would misrepresent where the account is actually being used from.
+    const currentIp = getClientIp(req);
+    if (currentIp) {
+      pool.query(
+        `UPDATE users SET active_session_ip_hash=?, active_session_last_seen_at=NOW()
+          WHERE tenant_id=? AND id=? AND active_session_id IS NOT NULL`,
+        [hashClientIp(currentIp), req.tenantId, String(req.user.uid)]
+      ).catch(() => {});
+    }
     res.json({ ok: true });
   } catch (error) {
     logger.error('[heartbeat]', error.message);

@@ -282,9 +282,15 @@ test('CRM reminders render in their own tab and heavy lead views stay deferred',
     leads.indexOf("subTab === 'reminders'"),
     leads.indexOf("subTab === 'performance'"),
   );
+  // 'الاتصالات' was merged into 'المتابعات': one tab, two views switched by
+  // followupView. Both panels must therefore render under subTab='reminders',
+  // and communications must no longer be a top-level tab of its own.
   assert.match(remindersSection, /<LeadRemindersPanel/);
-  assert.equal((leads.match(/subTab === 'communications'/g) || []).length, 1);
-  assert.match(tabs, /\['communications', 'الاتصالات'/);
+  assert.match(remindersSection, /<LeadCommunicationsTimeline/);
+  assert.match(leads, /followupView === 'followups'/);
+  assert.match(leads, /followupView === 'calls'/);
+  assert.equal((leads.match(/subTab === 'communications'/g) || []).length, 0);
+  assert.doesNotMatch(tabs, /\['communications', 'الاتصالات'/);
   assert.match(tabs, /\['reminders', 'المتابعات'/);
   assert.match(remoteReminders, /subTab !== 'reminders'/);
   assert.match(leads, /const LeadTable = React\.lazy/);

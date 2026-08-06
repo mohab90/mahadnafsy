@@ -10,6 +10,7 @@ import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../../types';
 import { toDialable } from '../../../lib/whatsappLink';
 import SalesMotivationCard from './staff-home/SalesMotivationCard';
+import { SalesOffersStrip, type SalesOffer } from './leads/SalesOffersPanel';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -68,6 +69,12 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
   const [myTasks, setMyTasks] = useState<any[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeOffers, setActiveOffers] = useState<SalesOffer[]>([]);
+  const [offersCatalog, setOffersCatalog] = useState<{
+    courses: { id: string; title: string }[];
+    bundles: { id: string; title: string }[];
+    branchOptions: { id: string; label: string }[];
+  }>({ courses: [], bundles: [], branchOptions: [] });
 
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = new Date().toISOString().slice(0, 7);
@@ -181,6 +188,24 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     loadTasks();
   }, [loadHrData, loadTasks]);
 
+  // Active offers + just enough catalogue to name what each one applies to.
+  useEffect(() => {
+    const get = (url: string) => fetch(url, { credentials: 'include', headers: adminAuthHeaders() })
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+    void Promise.all([
+      get('/api/admin/sales-offers?activeOnly=1'),
+      get('/api/courses'),
+      get('/api/bundles'),
+    ]).then(([offers, courses, bundles]) => {
+      setActiveOffers(Array.isArray(offers) ? offers : []);
+      setOffersCatalog({
+        courses: Array.isArray(courses) ? courses.map((c: { id: string; title: string }) => ({ id: c.id, title: c.title })) : [],
+        bundles: Array.isArray(bundles) ? bundles.map((b: { id: string; title: string }) => ({ id: b.id, title: b.title })) : [],
+        branchOptions: [],
+      });
+    });
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await Promise.allSettled([loadHrData(), loadTasks()]);
@@ -283,6 +308,10 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
 
       {/* ── Permanent motivation block (sales & collection) ──────────────── */}
       {(isSalesRole || isCollectionRole) && (
+        <>
+        {/* Offers management has published — the point of an offer is that the
+            rep sees it without going to look for it. */}
+        <SalesOffersStrip offers={activeOffers} catalog={offersCatalog} />
         <SalesMotivationCard
           stats={{
             name: staff.name || '',
@@ -297,6 +326,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
             monthlyTargetType: (staff as StaffMember & { monthlyTargetType?: 'egp' | 'clients' }).monthlyTargetType,
           }}
         />
+        </>
       )}
 
       {/* ── KPI Cards ───────────────────────────────────────────────────── */}

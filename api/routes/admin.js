@@ -7,4 +7,5 @@ router.use(require('./admin/catalog'));
 router.use(require('./admin/stafflists'));
 router.use(require('./admin/subscribers'));
 router.use(require('./admin/leads'));
+router.use(require('./admin/offers'));
 module.exports = router;

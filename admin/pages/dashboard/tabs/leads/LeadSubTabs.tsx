@@ -31,9 +31,10 @@ export function LeadSubTabs({
   const tabs: [SubTabKey, string, ElementType][] = [
     ['pipeline', 'البايبلاين', Columns],
     ['table', 'الجدول', Users],
-    ['communications', 'الاتصالات', Phone],
+    // 'الاتصالات' is now a view inside 'المتابعات' (LeadsTab renders both under
+    // subTab='reminders'), not a tab of its own — same data, one less tab.
     ['reminders', 'المتابعات', AlarmClock],
-    ['quotes', 'العروض السعرية', FileText],
+    ['quotes', 'العروض', FileText],
     ...(!isSalesOnly ? [['performance', 'أداء الفريق', TrendingUp] as [SubTabKey, string, ElementType]] : []),
     ...(canManageDuplicates ? [['duplicates', 'مراجعة التكرار', GitMerge] as [SubTabKey, string, ElementType]] : []),
     ...(!isSalesOnly ? [['localNew', 'محلي جديد', UserX] as [SubTabKey, string, ElementType]] : []),

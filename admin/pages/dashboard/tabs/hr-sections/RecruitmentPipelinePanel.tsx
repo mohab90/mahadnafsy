@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BriefcaseBusiness, Loader2, RefreshCw, UserCheck } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import StaffOnboardModal, { type OnboardResult } from './StaffOnboardModal';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
@@ -37,6 +38,7 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
   const [filter, setFilter] = useState<Stage | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [hireTarget, setHireTarget] = useState<Applicant | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,16 +78,31 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
     }
   };
 
-  const hire = async (applicant: Applicant) => {
-    if (!window.confirm(`إنشاء سجل موظف غير نشط لـ${applicant.name}؟ التفعيل خطوة منفصلة.`)) return;
-    setBusy(applicant.id);
+  // Hiring used to be a bare confirm() that created an inactive record with a
+  // guessed role, no login and no job title — three things the desk then had to
+  // go and fix. It now opens the same dialog used to add an employee directly.
+  const submitHire = async (result: OnboardResult) => {
+    if (!hireTarget) return;
+    setBusy(hireTarget.id);
     try {
-      const response = await fetch(`/api/admin/hr/applicants/${applicant.id}/hire`, {
+      const response = await fetch(`/api/admin/hr/applicants/${hireTarget.id}/hire`, {
         method: 'POST', credentials: 'include', headers: adminAuthHeaders(true),
-        body: JSON.stringify({ branch_id: applicant.job_branch || undefined }),
+        body: JSON.stringify({
+          branch_id: result.branchId || hireTarget.job_branch || undefined,
+          email: result.email,
+          password: result.password || undefined,
+          role: result.role,
+          position: result.position || undefined,
+          permissions: result.permissions || undefined,
+          activate: result.activate,
+        }),
       });
-      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'فشل التعيين');
-      notify('success', `تم إنشاء سجل ${applicant.name} كموظف غير نشط في انتظار التفعيل`);
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || 'فشل التعيين');
+      notify('success', body?.activated
+        ? `تم تعيين ${hireTarget.name} وتنشيط حسابه — يقدر يدخل بالإيميل وكلمة المرور`
+        : `تم إنشاء سجل ${hireTarget.name} — التفعيل خطوة منفصلة`);
+      setHireTarget(null);
       await load();
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'فشل التعيين');
@@ -129,7 +146,7 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
                       {NEXT[applicant.stage].map(stage => <button key={stage} disabled={busy === applicant.id} onClick={() => void changeStage(applicant, stage)} className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600 disabled:opacity-40">{LABEL[stage]}</button>)}
-                      {applicant.stage === 'offer' && <button disabled={busy === applicant.id} onClick={() => void hire(applicant)} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs font-bold text-white disabled:opacity-40"><UserCheck size={12} /> تعيين</button>}
+                      {applicant.stage === 'offer' && <button disabled={busy === applicant.id} onClick={() => setHireTarget(applicant)} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs font-bold text-white disabled:opacity-40"><UserCheck size={12} /> تعيين</button>}
                       {applicant.stage === 'hired' && <span className="text-xs font-bold text-emerald-700">مرتبط بالموظف</span>}
                     </div>
                   </td>
@@ -139,6 +156,22 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
           </table>
         </div>
       )}
+
+      <StaffOnboardModal
+        open={Boolean(hireTarget)}
+        title={`تعيين ${hireTarget?.name || ''}`}
+        submitLabel="تعيين الموظف"
+        initial={{
+          name: hireTarget?.name || '',
+          email: hireTarget?.email || '',
+          phone: hireTarget?.phone || '',
+          position: hireTarget?.job_title || '',
+          branchId: hireTarget?.job_branch || '',
+        }}
+        onClose={() => setHireTarget(null)}
+        onSubmit={submitHire}
+        notify={notify}
+      />
     </section>
   );
 }

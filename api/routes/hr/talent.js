@@ -10,6 +10,11 @@ const {
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireTenantQuota } = require('../../middleware/tenantQuota');
+const bcrypt = require('bcryptjs');
+const { PERMISSIONS } = require('../../constants/permissions');
+
+// Lower-case permission keys, the form stored in staff.permissions_json.
+const ALL_PERMISSIONS = Object.values(PERMISSIONS).map(String);
 
 const ROLE_FOR_TYPE = { INSTRUCTOR: 'instructor', CONSULTANT: 'consultant', EMPLOYEE: 'support' };
 const STAFF_ROLES = new Set([
@@ -238,9 +243,18 @@ router.post(
       await conn.rollback();
       return res.status(409).json({ error: 'Applicant must reach the offer stage before hiring', code: 'OFFER_STAGE_REQUIRED' });
     }
-    if (!a.email) {
+    // The login email can be chosen at hire time — an applicant who applied
+    // without one (or with a personal address the desk does not want as the
+    // work login) used to be a dead end here.
+    const loginEmail = String(req.body.email || a.email || '').toLowerCase().trim();
+    if (!loginEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(loginEmail)) {
       await conn.rollback();
-      return res.status(400).json({ error: 'Applicant email is required before hiring' });
+      return res.status(400).json({ error: 'حدد بريدًا إلكترونيًا صحيحًا لحساب الموظف' });
+    }
+    const password = String(req.body.password || '');
+    if (password && password.length < 8) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'كلمة المرور 8 أحرف على الأقل' });
     }
     const role = String(req.body.role || ROLE_FOR_TYPE[String(a.applicant_type || '').toUpperCase()] || 'support').toUpperCase();
     if (!STAFF_ROLES.has(role)) {
@@ -249,7 +263,7 @@ router.post(
     }
     const [[existing]] = await conn.query(
       'SELECT id FROM staff WHERE LOWER(TRIM(email))=? AND tenant_id=? LIMIT 1 FOR UPDATE',
-      [String(a.email).toLowerCase().trim(), req.tenantId]
+      [loginEmail, req.tenantId]
     );
     if (existing) {
       await conn.rollback();
@@ -277,12 +291,43 @@ router.post(
     // surfaced to the UI as a bare Internal server error. Set it alongside
     // hire_date (same day the record is created); activation stays a separate
     // manual step, which is why is_active is still 0.
+    // Explicit permission overrides, when the desk wants something other than
+    // the role default. Validated against the master list so a typo cannot
+    // grant a permission that does not exist (or hide one that should).
+    const requestedPermissions = Array.isArray(req.body.permissions)
+      ? req.body.permissions.filter(p => ALL_PERMISSIONS.includes(String(p))).map(String)
+      : null;
+    const position = String(req.body.position || '').trim().slice(0, 255) || null;
+    // A hire with a password is ready to work; without one, activation stays a
+    // separate manual step (the original behaviour).
+    const activate = Boolean(password) && req.body.activate !== false;
     await conn.query(
       `INSERT INTO staff
-         (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type, hire_date, joined_at)
-       VALUES (?,?,?,?,?,?,?, 0, 'FULL_TIME', CURDATE(), NOW())`,
-      [staffId, req.tenantId, branch.id, a.name, a.email, a.phone || '', role]
+         (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type,
+          hire_date, joined_at, specialization, permissions_json)
+       VALUES (?,?,?,?,?,?,?,?, 'FULL_TIME', CURDATE(), NOW(), ?, ?)`,
+      [staffId, req.tenantId, branch.id, a.name, loginEmail, a.phone || '', role,
+        activate ? 1 : 0, position,
+        requestedPermissions ? JSON.stringify(requestedPermissions) : null]
     );
+    if (password) {
+      // Reuse the login row if one already exists for this address (a former
+      // customer being hired), otherwise create it.
+      const passwordHash = await bcrypt.hash(password, 12);
+      const [[existingUser]] = await conn.query(
+        'SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, loginEmail]);
+      if (existingUser) {
+        await conn.query(
+          `UPDATE users SET password_hash=?, name=?, is_active=1,
+             session_version=session_version+1, active_session_id=NULL, active_session_ip_hash=NULL
+            WHERE id=? AND tenant_id=?`,
+          [passwordHash, a.name || '', existingUser.id, req.tenantId]);
+      } else {
+        await conn.query(
+          'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,?,1)',
+          [uuidv4(), req.tenantId, loginEmail, a.phone || null, passwordHash, a.name || '', 'staff']);
+      }
+    }
     await conn.query(
       "UPDATE job_applicants SET stage='hired', hired_staff_id=?, updated_by=? WHERE id=? AND tenant_id=?",
       [staffId, req.staffRecord?.id || null, a.id, req.tenantId]
@@ -298,14 +343,23 @@ router.post(
       entityType: 'staff',
       entityId: staffId,
       severity: 'warning',
-      metadata: { applicant_id: a.id, role, branch_id: branch.id, activation_required: true },
+      metadata: {
+        applicant_id: a.id, role, branch_id: branch.id, position,
+        login_created: Boolean(password), activated: activate,
+        permission_overrides: requestedPermissions ? requestedPermissions.length : 0,
+      },
       req,
       db: conn,
     });
     await conn.commit();
-    await createNotification('hr', 'New hire awaiting activation', `${a.name} (${role})`, { staffId }, req.tenantId)
+    await createNotification('hr',
+      activate ? 'تم تعيين موظف جديد' : 'New hire awaiting activation',
+      `${a.name} (${role})${position ? ` — ${position}` : ''}`, { staffId }, req.tenantId)
       .catch(error => logger.error('[hr/hire-notification]', error.message));
-    res.json({ ok: true, staffId, role, activation_required: true });
+    res.json({
+      ok: true, staffId, role, position, email: loginEmail,
+      activated: activate, activation_required: !activate,
+    });
   } catch (error) {
     await conn.rollback();
     logger.error('[hr/hire]', error.message);

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AlarmClock, Phone } from 'lucide-react';
 import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
 import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { Suspense } from 'react';
@@ -64,6 +65,7 @@ const LeadRemindersPanel = React.lazy(() => import('./leads/LeadRemindersPanel')
 const CrmQuotesWorkspace = React.lazy(() => import('./leads/CrmQuotesWorkspace').then(module => ({ default: module.CrmQuotesWorkspace })));
 const CrmCoachingPanel = React.lazy(() => import('./leads/CrmCoachingPanel').then(module => ({ default: module.CrmCoachingPanel })));
 const LeadPipelineSettings = React.lazy(() => import('./leads/LeadPipelineSettings').then(module => ({ default: module.LeadPipelineSettings })));
+const SalesOffersPanel = React.lazy(() => import('./leads/SalesOffersPanel'));
 const LeadTable = React.lazy(() => import('./LeadTable').then(module => ({ default: module.LeadTable })));
 const QuickEditPanel = React.lazy(() => import('./leads/LeadSubcomponents').then(module => ({ default: module.QuickEditPanel })));
 
@@ -108,6 +110,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     staleSelected, setStaleSelected, dueToday, dueTodayLoading,
     refreshStaleLeads, refreshDueToday, sendStaleBulkWhatsapp,
   } = useLeadRemoteReminders(subTab, notify);
+  const [followupView, setFollowupView] = useState<'followups' | 'calls'>('followups');
   const [rottenFilter, setRottenFilter] = useState(false);
   const [showHiddenLeads, setShowHiddenLeads] = useState(false);
   const [waRepId, setWaRepId] = useState<string | null>(null);
@@ -147,6 +150,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const canExportLeads = isAdmin || hasStaffPermission(permissionSubject, 'export_leads');
   const canBulkWhatsApp = isAdmin || hasStaffPermission(permissionSubject, 'bulk_whatsapp');
   const canManageLeads = isAdmin || hasStaffPermission(permissionSubject, 'manage_leads');
+  // Publishing an offer changes what a course may be sold for, so it sits behind
+  // the same manager-level gate as sales targets — not `manage_leads`, which
+  // every rep holds.
+  const canViewReports = isAdmin || hasStaffPermission(permissionSubject, 'view_reports');
   const { effectiveLeads, effectiveSubs } = useLeadEffectiveRecords({
     leads,
     subscribers,
@@ -527,7 +534,22 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </div>
       )}
 
-      {subTab === 'communications' && (
+      {/* اتصالات merged into متابعات: one tab, two views. متابعات stays the
+          default and keeps its own data untouched; الاتصالات is now a view
+          inside it rather than a separate top-level tab. */}
+      {subTab === 'reminders' && (
+        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm" dir="rtl">
+          {([['followups', 'المتابعات', AlarmClock], ['calls', 'الاتصالات', Phone]] as const).map(([key, label, Icon]) => (
+            <button key={key} type="button" onClick={() => setFollowupView(key)}
+              className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition ${
+                followupView === key ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {subTab === 'reminders' && followupView === 'calls' && (
         <Suspense fallback={<LeadSectionFallback />}>
           <LeadCommunicationsTimeline
             todayStr={commTodayStr}
@@ -560,7 +582,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </Suspense>
       )}
 
-      {subTab === 'reminders' && (
+      {subTab === 'reminders' && followupView === 'followups' && (
         <Suspense fallback={<LeadSectionFallback />}>
           <LeadRemindersPanel
             overdueCount={overdue.length}
@@ -603,15 +625,28 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         </Suspense>
       )}
 
+      {/* 'العروض' now covers both: offers management publishes to the whole
+          sales team, and the per-client price quotes that already lived here. */}
       {subTab === 'quotes' && (
         <Suspense fallback={<LeadSectionFallback />}>
-          <CrmQuotesWorkspace
-            leads={effectiveLeads}
-            courses={courses}
-            bundles={bundles}
-            subscribers={salesOwnSubscribers || subscribers}
-            notify={notify}
-          />
+          <div className="space-y-6">
+            <SalesOffersPanel
+              courses={courses}
+              bundles={bundles}
+              branchOptions={instituteBranches}
+              canManage={canViewReports}
+              notify={notify}
+            />
+            <div className="border-t border-gray-100 pt-5">
+              <CrmQuotesWorkspace
+                leads={effectiveLeads}
+                courses={courses}
+                bundles={bundles}
+                subscribers={salesOwnSubscribers || subscribers}
+                notify={notify}
+              />
+            </div>
+          </div>
         </Suspense>
       )}
 

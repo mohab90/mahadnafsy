@@ -4,27 +4,13 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { RegistrationItem } from '../../../lib/mysqlapi';
 import { BRANCH_ENUM_LABELS } from './leadUtils';
+import PaymentModal, { type PaymentDraft } from '../../../components/PaymentModal';
+import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
+import { currencyForBranch } from '../../../lib/branchCurrency';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
-type BookingDraft = {
-  branch: string;
-  itemId: string; // courseId, or 'bundle:<id>'
-  amount: string;
-  currency: 'EGP' | 'SAR' | 'USD';
-  paymentMethod: string;
-  note: string;
-};
-
-const blankBooking = (branch: string): BookingDraft => ({
-  branch,
-  itemId: '',
-  amount: '',
-  currency: branch === 'ONLINE_SAUDI' ? 'SAR' : 'EGP',
-  paymentMethod: '',
-  note: '',
-});
 
 // Self-registered accounts (/api/user/signup) that staff haven't triaged yet
 // — neither a CRM lead nor an online client. Two explicit outcomes per row:
@@ -37,7 +23,9 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bookingRow, setBookingRow] = useState<RegistrationItem | null>(null);
-  const [draft, setDraft] = useState<BookingDraft>(blankBooking('ONLINE_EGYPT'));
+  // The shared PaymentDraft, so this dialog is the same one used to record a
+  // payment anywhere else in the dashboard — same fields, same validation.
+  const [draft, setDraft] = useState<PaymentDraft>(() => createClientPaymentDraft({ branch: 'ONLINE_EGYPT' }));
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(() => {
@@ -79,38 +67,28 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
 
   const openBooking = (row: RegistrationItem) => {
     const branch = row.origin === 'دولي' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT';
-    setDraft(blankBooking(branch));
+    setDraft(createClientPaymentDraft({
+      branch, currency: currencyForBranch(branch), email: row.email || '',
+    }));
     setBookingRow(row);
   };
 
-  const itemPrice = useMemo(() => {
-    if (!draft.itemId) return 0;
-    if (draft.itemId.startsWith('bundle:')) {
-      const b = bundles.find(x => x.id === draft.itemId.replace('bundle:', ''));
-      return (b?.price as unknown as Record<string, number>)?.[draft.currency] || 0;
-    }
-    const c = courses.find(x => x.id === draft.itemId);
-    return (c?.price as unknown as Record<string, number>)?.[draft.currency] || 0;
-  }, [draft.itemId, draft.currency, courses, bundles]);
-
-  const submitBooking = async () => {
+  const submitBooking = async (paid: PaymentDraft) => {
     if (!bookingRow) return;
-    const amount = Number(draft.amount);
-    if (!draft.itemId) { notify('error', 'اختر الكورس أو المسار الأول'); return; }
-    if (!Number.isFinite(amount) || amount <= 0) { notify('error', 'أدخل مبلغ صحيح'); return; }
-    if (!draft.paymentMethod) { notify('error', 'اختر وسيلة الدفع'); return; }
     setSubmitting(true);
     try {
-      const { subscriberId } = await mysqlAdmin.convertRegistrationToOnline(bookingRow.id, draft.branch);
-      const isBundle = draft.itemId.startsWith('bundle:');
+      const branch = paid.branch || 'ONLINE_EGYPT';
+      const { subscriberId } = await mysqlAdmin.convertRegistrationToOnline(bookingRow.id, branch);
+      // courseId carries the shared modal's `bundle:<id>` convention.
+      const isBundle = (paid.courseId || '').startsWith('bundle:');
       await mysqlAdmin.saveSubscriberPayment(subscriberId, {
-        amount: draft.amount,
-        currency: draft.currency,
-        paymentType: 'course',
-        courseId: isBundle ? undefined : draft.itemId,
-        bundleId: isBundle ? draft.itemId.replace('bundle:', '') : undefined,
-        paymentMethod: draft.paymentMethod,
-        note: draft.note || undefined,
+        amount: paid.amount,
+        currency: paid.currency,
+        paymentType: paid.paymentType || 'course',
+        courseId: isBundle ? undefined : (paid.courseId || undefined),
+        bundleId: isBundle ? paid.courseId.replace('bundle:', '') : undefined,
+        paymentMethod: paid.paymentMethod,
+        note: paid.note || undefined,
         status: 'paid',
       });
       notify('success', 'تم التحويل لعميل أونلاين وتسجيل الحجز');
@@ -223,87 +201,26 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
         </div>
       )}
 
-      {/* ── Booking confirmation modal — required before converting to an online client ── */}
+      {/* Booking confirmation before converting to an online client — uses the
+          SHARED PaymentModal, the same dialog as recording a payment anywhere
+          else. It used to be a bespoke form with its own fields and its own
+          look, which is what made this page feel like a different system. */}
       {bookingRow && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !submitting && setBookingRow(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
-              <ExternalLink size={18} className="text-emerald-600" />
-              تأكيد الحجز — {bookingRow.name || bookingRow.phone}
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              محتاجين نتأكد الكورس والمبلغ قبل ما نحوّله لعميل أونلاين — ده بيسجّل حجز ودفعة حقيقية.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-gray-700 mb-1 block">الفرع</label>
-                <select value={draft.branch} onChange={e => setDraft(d => ({ ...d, branch: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                  {Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => (
-                    <option key={id} value={id}>{label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700 mb-1 block">الكورس / المسار *</label>
-                <select value={draft.itemId} onChange={e => setDraft(d => ({ ...d, itemId: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                  <option value="">— اختر —</option>
-                  {bundles.length > 0 && (
-                    <optgroup label="📌 المسارات">
-                      {bundles.map(b => <option key={b.id} value={`bundle:${b.id}`}>{b.title}</option>)}
-                    </optgroup>
-                  )}
-                  <optgroup label="🎓 الكورسات">
-                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </optgroup>
-                </select>
-                {itemPrice > 0 && <p className="text-[11px] text-gray-400 mt-1">السعر المعتمد: {itemPrice.toLocaleString()} {draft.currency}</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-1 block">المبلغ المدفوع *</label>
-                  <input type="number" min="0" value={draft.amount} onChange={e => setDraft(d => ({ ...d, amount: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="0" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-700 mb-1 block">العملة</label>
-                  <select value={draft.currency} onChange={e => setDraft(d => ({ ...d, currency: e.target.value as BookingDraft['currency'] }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="EGP">جنيه مصري</option>
-                    <option value="SAR">ريال سعودي</option>
-                    <option value="USD">دولار</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700 mb-1 block">وسيلة الدفع *</label>
-                <select value={draft.paymentMethod} onChange={e => setDraft(d => ({ ...d, paymentMethod: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                  <option value="">— اختر —</option>
-                  <option value="فودافون كاش">فودافون كاش</option>
-                  <option value="تحويل بنكي">تحويل بنكي</option>
-                  <option value="فيزا">فيزا / بطاقة</option>
-                  <option value="كاش">كاش</option>
-                  <option value="أخرى">أخرى</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700 mb-1 block">ملاحظة</label>
-                <textarea rows={2} value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={submitBooking} disabled={submitting}
-                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-50">
-                  {submitting ? 'جارٍ الحفظ...' : 'تأكيد وتحويل لعميل أونلاين'}
-                </button>
-                <button onClick={() => setBookingRow(null)} disabled={submitting}
-                  className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-300 disabled:opacity-50">إلغاء</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PaymentModal
+          mode="subscriber"
+          subject={{
+            id: bookingRow.id,
+            name: bookingRow.name || bookingRow.phone || bookingRow.email || 'عميل',
+            phone: bookingRow.phone || '',
+            email: bookingRow.email || '',
+            branch: draft.branch,
+          }}
+          draft={draft}
+          setDraft={setDraft}
+          onSubmit={(paid) => submitBooking(paid)}
+          onClose={() => { if (!submitting) setBookingRow(null); }}
+          branchOptions={Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => ({ id, label }))}
+        />
       )}
     </div>
   );

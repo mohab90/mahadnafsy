@@ -109,7 +109,10 @@ const CourseDetails: React.FC = () => {
                             ? 'full'   // enrolled with no explicit limit = full access
                             : 'preview';
         const previewLimitRaw = Number(content['courseDetails.previewLectureLimit'] || 1);
-        const previewLimit = Number.isFinite(previewLimitRaw) && previewLimitRaw > 0 ? Math.floor(previewLimitRaw) : 2;
+        // Must match getPreviewLimit() in api/routes/public.js — the server is
+        // what actually withholds the video URLs, so a larger number here would
+        // only render locks the API never opens.
+        const previewLimit = Number.isFinite(previewLimitRaw) && previewLimitRaw > 0 ? Math.floor(previewLimitRaw) : 1;
         const limitedCountRaw = typeof rawAccess === 'object' ? Number(rawAccess.lectureLimit || 1) : 1;
         const limitedCount = Number.isFinite(limitedCountRaw) && limitedCountRaw > 0 ? Math.floor(limitedCountRaw) : 1;
         const unlockedLectureCount =

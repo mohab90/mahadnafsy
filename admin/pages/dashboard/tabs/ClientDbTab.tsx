@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Search, Users, UserCheck, UserPlus, MessageSquare,
   CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin, type RegistrationItem } from '../../../lib/mysqlapi';
 import { useBranches } from '../../../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
@@ -20,7 +21,7 @@ type ClientRow = {
   name: string;
   phone: string;
   email: string;
-  type: 'subscriber' | 'lead';
+  type: 'subscriber' | 'lead' | 'registration';
   clientType: string | null;  // new taxonomy e.g. ONLINE_LOCAL_NEW
   subType: 'online' | 'daqqi' | 'regular' | null; // derived for filters/stats
   status: string;
@@ -95,9 +96,16 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const branches = useBranches();
   const navigate = useNavigate();
 
+  // Registrations are their own pool server-side (they are neither leads nor
+  // subscribers), so they need their own fetch to appear in this combined view.
+  const [registrations, setRegistrations] = useState<RegistrationItem[]>([]);
+  useEffect(() => {
+    mysqlAdmin.listRegistrations().then(setRegistrations).catch(() => setRegistrations([]));
+  }, []);
+
   const [view, setView] = useState<'clients' | 'accounts' | 'logins'>('clients');
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'subscriber' | 'subscriber_online' | 'subscriber_daqqi' | 'subscriber_regular' | 'lead' | 'lead_local' | 'lead_intl' | 'registration'>('all');
   const [branchFilter, setBranchFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
   const [sort, setSort] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'amount_desc'>('date_desc');
@@ -188,8 +196,41 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
           .join('، '),
       }));
 
-    return [...rawSubs, ...rawLeads];
-  }, [effectiveSubs, effectiveLeads, courses]);
+    // Self-registered accounts that are neither a subscriber nor a lead yet.
+    // They were invisible here entirely — someone who signed up on the site
+    // could not be found in the client database at all, which is the one place
+    // staff search when a caller says "I already have an account". Shown with
+    // whatever we know, and de-duplicated against both other sources.
+    const leadPhones = new Set(rawLeads.map(l => normPhone(l.phone)).filter(p => p.length >= 7));
+    const leadEmails = new Set(rawLeads.map(l => l.email.toLowerCase()).filter(Boolean));
+    const rawRegistrations: ClientRow[] = registrations
+      .filter(r => {
+        const rp = normPhone(r.phone || '');
+        const re = (r.email || '').toLowerCase();
+        const dup = (rp.length >= 7 && (subPhones.has(rp) || leadPhones.has(rp)))
+          || (re && (subEmails.has(re) || leadEmails.has(re)));
+        return !dup;
+      })
+      .map(r => ({
+        id: r.id,
+        clientCode: '',
+        name: r.name || '',
+        phone: r.phone || '',
+        email: r.email || '',
+        type: 'registration' as const,
+        clientType: null,
+        subType: null,
+        status: 'registration',
+        branch: '',
+        createdAt: r.created_at || '',
+        totalPaid: 0,
+        assignedSalesName: '',
+        courseIds: [],
+        courseNames: '',
+      }));
+
+    return [...rawSubs, ...rawLeads, ...rawRegistrations];
+  }, [effectiveSubs, effectiveLeads, courses, registrations]);
 
   const allCourseOptions = useMemo(() => {
     const ids = new Set(allClients.flatMap(c => c.courseIds));
@@ -212,6 +253,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         if (typeFilter === 'lead' && c.type !== 'lead') return false;
         if (typeFilter === 'lead_local' && (c.type !== 'lead' || !c.clientType?.includes('LOCAL'))) return false;
         if (typeFilter === 'lead_intl' && (c.type !== 'lead' || !c.clientType?.includes('INTL'))) return false;
+        if (typeFilter === 'registration' && c.type !== 'registration') return false;
         if (branchFilter && c.branch?.toUpperCase() !== branchFilter) return false;
         if (courseFilter && !c.courseIds.includes(courseFilter)) return false;
         if (q) {
@@ -374,6 +416,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
             <option value="lead">عملاء محتملون (كل)</option>
             <option value="lead_local">عملاء محتملون محليون</option>
             <option value="lead_intl">عملاء محتملون دوليون</option>
+            <option value="registration">تسجيلات الموقع (غير مصنَّفة)</option>
           </select>
 
           {/* Branch filter */}
@@ -492,16 +535,23 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                 const isSelected = selectedIds.has(rowKey);
                 const wa = waLink(c.phone);
                 const profilePath = `/client/${c.clientCode || c.id}`;
+                const isRegistration = c.type === 'registration';
                 const typeInfo = c.clientType ? CLIENT_TYPE_INFO[c.clientType] : null;
-                const typeLabel = typeInfo
-                  ? typeInfo.label
-                  : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل');
-                const typeColor = typeInfo
-                  ? typeInfo.color
-                  : (c.subType ? SUB_TYPE_COLOR[c.subType] : 'bg-amber-100 text-amber-700');
-                const entityLabel = typeInfo
-                  ? typeInfo.entity
-                  : (c.type === 'subscriber' ? 'مشترك' : 'عميل محتمل');
+                const typeLabel = isRegistration
+                  ? 'تسجيل موقع'
+                  : typeInfo
+                    ? typeInfo.label
+                    : (c.subType ? SUB_TYPE_LABEL[c.subType] : 'عميل محتمل');
+                const typeColor = isRegistration
+                  ? 'bg-slate-100 text-slate-700'
+                  : typeInfo
+                    ? typeInfo.color
+                    : (c.subType ? SUB_TYPE_COLOR[c.subType] : 'bg-amber-100 text-amber-700');
+                const entityLabel = isRegistration
+                  ? 'لم يُصنَّف بعد'
+                  : typeInfo
+                    ? typeInfo.entity
+                    : (c.type === 'subscriber' ? 'مشترك' : 'عميل محتمل');
                 return (
                   <tr key={rowKey} className={`transition ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
                     {/* Checkbox */}
@@ -584,7 +634,11 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                         )}
                         {/* Booking/payment — all client types */}
                         <button
-                          onClick={() => onBook ? onBook(c.id, c.type) : navigate(profilePath, { state: { openTab: 'payments' } })}
+                          onClick={() => {
+                            if (c.type === 'registration') { notify('info', 'حوّل التسجيل من صفحة «التسجيلات» الأول — لسه مش عميل'); return; }
+                            if (onBook) onBook(c.id, c.type);
+                            else navigate(profilePath, { state: { openTab: 'payments' } });
+                          }}
                           className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition"
                           title="حجز / دفعة"
                         >

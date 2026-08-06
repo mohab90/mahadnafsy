@@ -121,12 +121,23 @@ router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requ
     if (existing) { await conn.rollback(); return res.status(409).json({ error: 'Already an online client' }); }
     const subscriberId = uuidv4();
     const clientCode = await getNextClientCode(conn);
+    // is_active=1. This used to insert 0, and the online-clients list drops
+    // anything inactive (`if (s.isActive === false) return false`) — so the
+    // conversion reported success and the customer then appeared nowhere.
+    // Converting is already a deliberate staff action; there is nothing left to
+    // gate behind an inactive flag.
+    //
+    // clientStatus='active' in crm_json for the same reason: the view tabs in
+    // OnlineClientsTab switch on it, and a row with no status falls through
+    // every named tab.
     await conn.query(
       `INSERT INTO subscribers
-         (id, firebase_uid, client_code, name, email, phone, branch, branch_id, is_active, tenant_id, created_at)
-       VALUES (?,?,?,?,?,?,?,?,0,?,NOW())`,
+         (id, firebase_uid, client_code, name, email, phone, branch, branch_id, is_active, tenant_id, created_at, crm_json, source)
+       VALUES (?,?,?,?,?,?,?,?,1,?,NOW(),?,?)`,
       [subscriberId, userId, clientCode, (user.name || '').trim() || null, user.email, user.phone || '',
-       branch, branchIdForBranch(branch), tenantId]
+       branch, branchIdForBranch(branch), tenantId,
+       JSON.stringify({ clientStatus: 'active', convertedFromRegistrationId: userId, convertedAt: new Date().toISOString() }),
+       'تسجيل موقع']
     );
     await conn.commit();
     logger.info(`[registrations] converted ${userId} to online client ${subscriberId}`);

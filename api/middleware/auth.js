@@ -48,17 +48,34 @@ async function activeIdentity(tenantId, payload) {
   return identity;
 }
 
+// Pin the session to the exact IP it was opened from? Off by default.
+//
+// It used to be unconditional, and it was ejecting people constantly: `trust
+// proxy` is on, so req.ip is the real client address, and Egyptian mobile
+// carriers (the 196.x / 178.x CGNAT ranges in login_history) hand out a new
+// address whenever a phone changes cell or moves between WiFi and data. Every
+// one of those rotations failed the equality check and forced a fresh sign-in,
+// which is what "بيخرج كل شوية" was.
+//
+// What actually stops account sharing is the pair below it — one live session
+// id per account, so a second sign-in evicts the first — plus
+// lib/accountSharingGuard.js, which locks an account that logs in from more
+// than ACCOUNT_MAX_DISTINCT_IPS networks inside a rolling window. That guard
+// exists precisely because, in its own words, phones re-IP constantly; hard
+// pinning contradicted it. Set SESSION_PIN_IP=true to restore the old
+// behaviour on a fixed-line-only deployment.
+const SESSION_PIN_IP = String(process.env.SESSION_PIN_IP || '').toLowerCase() === 'true';
+
 function hasCurrentSession(payload, identity, req) {
-  const requestIp = getClientIp(req);
-  return Boolean(
-    identity?.active
-    && Number.isInteger(Number(payload.sv))
+  if (!identity?.active) return false;
+  const sessionMatches = Number.isInteger(Number(payload.sv))
     && Number(payload.sv) === identity.sessionVersion
-    && payload.sid
-    && payload.sid === identity.sessionId
-    && requestIp
-    && hashClientIp(requestIp) === identity.sessionIpHash
-  );
+    && Boolean(payload.sid)
+    && payload.sid === identity.sessionId;
+  if (!sessionMatches) return false;
+  if (!SESSION_PIN_IP) return true;
+  const requestIp = getClientIp(req);
+  return Boolean(requestIp && hashClientIp(requestIp) === identity.sessionIpHash);
 }
 
 // Kept as a compatibility hook for callers. Session truth is intentionally

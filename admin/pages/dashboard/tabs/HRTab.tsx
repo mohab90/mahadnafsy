@@ -1,12 +1,13 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, Trash2 } from 'lucide-react';
+import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, Trash2, UserPlus } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { StaffMember, StaffRole } from '../../../types';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import HrPolicyPanel from './hr-sections/HrPolicyPanel';
+import StaffOnboardModal, { type OnboardResult } from './hr-sections/StaffOnboardModal';
 import HrCompensationApprovals from './hr-sections/HrCompensationApprovals';
 import HrAppraisalsPanel from './hr-sections/HrAppraisalsPanel';
 import HrAdvancesPanel from './hr-sections/HrAdvancesPanel';
@@ -152,6 +153,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     role: currentStaff.role as RoleKey,
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   }, 'manage_financial'));
+  const [showAddStaff, setShowAddStaff] = useState(false);
   const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('directory');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -510,6 +512,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               <option value="inactive">غير نشط</option>
             </select>
             <span className="text-sm text-gray-400 self-center">{filtered.length} موظف</span>
+            {/* HR had no way at all to add an employee — the only door into the
+                staff table was the interview→hire flow. */}
+            <button type="button" onClick={() => setShowAddStaff(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
+              <UserPlus size={15} /> إضافة موظف جديد
+            </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.length === 0 ? (
@@ -957,6 +965,45 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         </div>
       )}
 
+      <StaffOnboardModal
+        open={showAddStaff}
+        title="إضافة موظف جديد"
+        submitLabel="إنشاء الموظف"
+        onClose={() => setShowAddStaff(false)}
+        notify={notify}
+        onSubmit={async (result: OnboardResult) => {
+          try {
+            // Two writes on purpose: the staff row, then the login. Creating the
+            // login is optional — a record can exist before the person has
+            // credentials — so it must not be folded into the staff insert.
+            const staffId = `staff-${Date.now()}`;
+            await mysqlAdmin.saveStaff({
+              id: staffId,
+              name: result.name,
+              email: result.email,
+              phone: result.phone,
+              role: result.role,
+              specialization: result.position || null,
+              branch_id: result.branchId || undefined,
+              is_active: result.activate ? 1 : 0,
+              permissions: result.permissions || undefined,
+            } as unknown as Record<string, unknown>);
+            if (result.password) {
+              await mysqlAdmin.createStaffAccount({
+                staffId, name: result.name, email: result.email,
+                role: result.role, password: result.password,
+              } as unknown as Record<string, unknown>);
+            }
+            await reloadStaffMembers();
+            setShowAddStaff(false);
+            notify('success', result.password
+              ? `تم إنشاء ${result.name} — يقدر يدخل بالإيميل وكلمة المرور`
+              : `تم إنشاء ${result.name} — بدون حساب دخول`);
+          } catch (error) {
+            notify('error', error instanceof Error ? error.message : 'تعذر إنشاء الموظف');
+          }
+        }}
+      />
     </div>
   );
 };
