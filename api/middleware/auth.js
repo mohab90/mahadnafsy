@@ -68,11 +68,27 @@ const SESSION_PIN_IP = String(process.env.SESSION_PIN_IP || '').toLowerCase() ==
 
 function hasCurrentSession(payload, identity, req) {
   if (!identity?.active) return false;
-  const sessionMatches = Number.isInteger(Number(payload.sv))
-    && Number(payload.sv) === identity.sessionVersion
-    && Boolean(payload.sid)
-    && payload.sid === identity.sessionId;
-  if (!sessionMatches) return false;
+
+  // session_version is the revocation counter: a password change, a forced
+  // sign-out, or a sharing lock bumps it and every existing token dies. That
+  // check applies to everybody.
+  if (!Number.isInteger(Number(payload.sv)) || Number(payload.sv) !== identity.sessionVersion) return false;
+  if (!payload.sid) return false;
+
+  // active_session_id is the ONE-DEVICE rule, and it only makes sense for
+  // customers. It is there to stop a paid account being shared around, so the
+  // asset it protects is course video.
+  //
+  // Applying it to staff was the remaining cause of "the system logs me out
+  // every few minutes": every login rotates session_version and replaces
+  // active_session_id, so an owner with the dashboard open on a laptop and
+  // anything else open on a phone — or the admin panel plus the public site,
+  // which are the same account — evicted himself on each sign-in. Staff sharing
+  // a password is not the piracy threat; content piracy is. Staff therefore get
+  // concurrent devices, and lose nothing else: revocation, MFA and the sharing
+  // guard all still apply to them.
+  if (payload.stf !== true && payload.sid !== identity.sessionId) return false;
+
   if (!SESSION_PIN_IP) return true;
   const requestIp = getClientIp(req);
   return Boolean(requestIp && hashClientIp(requestIp) === identity.sessionIpHash);

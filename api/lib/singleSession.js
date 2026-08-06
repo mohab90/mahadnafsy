@@ -9,8 +9,19 @@ function createSessionBinding(req) {
   return { sessionId: uuidv4(), ipHash: hashClientIp(ip) };
 }
 
+/**
+ * @param {boolean} allowConcurrent  Keep other devices signed in.
+ *   session_version is the revocation counter — every issued token carries it,
+ *   so bumping it invalidates ALL of an account's tokens. Doing that on every
+ *   login means one live device per account, which is the point for customers
+ *   (a shared password must not multiply access to paid video) but wrong for
+ *   staff: it silently signed the owner out of his laptop whenever he opened the
+ *   dashboard on a phone, or the public site under the same account. Staff pass
+ *   true here; the new session id is still recorded so the sessions view and the
+ *   sharing guard keep working.
+ */
 async function rotateSingleSession(pool, {
-  userId, tenantId, req, countryCode = null, currency = null,
+  userId, tenantId, req, countryCode = null, currency = null, allowConcurrent = false,
 }) {
   const binding = createSessionBinding(req);
   const conn = await pool.getConnection();
@@ -23,7 +34,9 @@ async function rotateSingleSession(pool, {
       [userId, tenantId]
     );
     if (!user) throw new Error('Active user not found');
-    const sessionVersion = Number(user.session_version) + 1;
+    const sessionVersion = allowConcurrent
+      ? Number(user.session_version)
+      : Number(user.session_version) + 1;
     const [updated] = await conn.query(
       `UPDATE users
           SET session_version=?, active_session_id=?, active_session_ip_hash=?,

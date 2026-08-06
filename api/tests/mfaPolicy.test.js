@@ -12,7 +12,12 @@ const securityUi = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'SecurityDa
 const ipUi = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'IpWhitelistTab.tsx');
 
 test('MFA factors are owned by auth users and successful TOTP produces an MFA-authenticated JWT', () => {
-  assert.match(authRoute, /SELECT id, email, name, password_hash, session_version, totp_enabled/);
+  // The login lookup also resolves whether the account is staff, so the issued
+  // token can carry the concurrent-device flag without the auth middleware ever
+  // querying `staff` itself (authTenantIsolation pins that separately).
+  assert.match(authRoute, /SELECT u\.id, u\.email, u\.name, u\.password_hash, u\.session_version, u\.totp_enabled/);
+  assert.match(authRoute, /AS is_staff/);
+  assert.match(authRoute, /isStaff: Boolean\(user\.is_staff\)/);
   assert.match(authRoute, /UPDATE users SET totp_enabled=1 WHERE id=\? AND tenant_id=\?/);
   assert.match(authRoute, /rotateSingleSession\(pool/);
   assert.match(authRoute, /mfaVerified: true/);

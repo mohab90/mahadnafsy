@@ -98,10 +98,30 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
 
   // Registrations are their own pool server-side (they are neither leads nor
   // subscribers), so they need their own fetch to appear in this combined view.
+  // The standalone "التسجيلات" page is gone: it was a second place showing the
+  // same people with its own table and its own bespoke dialogs, and it is the
+  // client database people actually search.
   const [registrations, setRegistrations] = useState<RegistrationItem[]>([]);
-  useEffect(() => {
+  const [regBusy, setRegBusy] = useState<string | null>(null);
+  const loadRegistrations = () =>
     mysqlAdmin.listRegistrations().then(setRegistrations).catch(() => setRegistrations([]));
-  }, []);
+  useEffect(() => { void loadRegistrations(); }, []);
+
+  const convertRegistration = async (id: string, to: 'online' | 'lead', name: string) => {
+    setRegBusy(id);
+    try {
+      if (to === 'online') await mysqlAdmin.convertRegistrationToOnline(id, 'ONLINE_EGYPT');
+      else await mysqlAdmin.convertRegistrationToLead(id);
+      // Drop it from the registration pool locally; the subscriber/lead it became
+      // arrives with the next context refresh.
+      setRegistrations(prev => prev.filter(r => r.id !== id));
+      notify('success', to === 'online'
+        ? `تم تحويل ${name || 'العميل'} لعميل أونلاين`
+        : `تم تحويل ${name || 'العميل'} لعميل محتمل`);
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر التحويل');
+    } finally { setRegBusy(null); }
+  };
 
   const [view, setView] = useState<'clients' | 'accounts' | 'logins'>('clients');
   const [search, setSearch] = useState('');
@@ -571,7 +591,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                     {/* Name + email */}
                     <td className="px-3 py-3">
                       <button
-                        onClick={() => navigate(profilePath)}
+                        onClick={() => { if (!isRegistration) navigate(profilePath); }}
                         className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline text-sm text-right transition"
                       >
                         {c.name}
@@ -612,14 +632,33 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                     {/* Actions */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1.5 justify-center">
-                        {/* Open profile */}
-                        <button
-                          onClick={() => navigate(profilePath)}
-                          className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 transition"
-                          title="فتح ملف العميل"
-                        >
-                          <ExternalLink size={13} />
-                        </button>
+                        {/* Open profile — a registration has no client record
+                            yet, so there is no profile page to open. Offer the
+                            two conversions instead. */}
+                        {isRegistration ? (
+                          <>
+                            <button
+                              onClick={() => void convertRegistration(c.id, 'online', c.name)}
+                              disabled={regBusy === c.id}
+                              className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[11px] font-bold transition disabled:opacity-50"
+                              title="تحويل لعميل أونلاين"
+                            >أونلاين</button>
+                            <button
+                              onClick={() => void convertRegistration(c.id, 'lead', c.name)}
+                              disabled={regBusy === c.id}
+                              className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 text-[11px] font-bold transition disabled:opacity-50"
+                              title="تحويل لعميل محتمل"
+                            >محتمل</button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => navigate(profilePath)}
+                            className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 transition"
+                            title="فتح ملف العميل"
+                          >
+                            <ExternalLink size={13} />
+                          </button>
+                        )}
                         {/* WhatsApp */}
                         {wa && (
                           <a

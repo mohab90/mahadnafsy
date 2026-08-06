@@ -750,12 +750,16 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     conn = await pool.getConnection();
     const [rows] = identifierIsEmail
       ? await conn.execute(
-          `SELECT id, email, name, password_hash, session_version, totp_enabled
-           FROM users WHERE tenant_id=? AND email = ? AND is_active = 1`,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
+                  EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
+                          AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
+           FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1`,
           [req.tenantId, email])
       : await conn.execute(
-          `SELECT id, email, name, password_hash, session_version, totp_enabled
-           FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1`,
+          `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
+                  EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
+                          AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
+           FROM users u WHERE u.tenant_id=? AND u.phone = ? AND u.is_active = 1`,
           [req.tenantId, phoneIdentity]);
     if (rows.length === 0) {
       // No users record — check if they exist as a subscriber (admin-added clients).
@@ -823,11 +827,16 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     }
     const session = await rotateSingleSession(pool, {
       userId: user.id, tenantId: req.tenantId || 'tenant-default', req,
+      allowConcurrent: Boolean(user.is_staff),
     });
     invalidateIdentity(req.tenantId, user.id, user.email);
     const token = signAccessToken({
       uid: user.id, email: user.email, tenantId: req.tenantId || 'tenant-default',
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+      // Signed into the token so middleware/auth.js never queries `staff` itself
+      // (every staff lookup there must go through the tenant-scoped helper).
+      // Decides concurrent-device allowance only — it grants no permission.
+      isStaff: Boolean(user.is_staff),
     });
     // Link subscriber record to this user account (best-effort)
     pool.query(

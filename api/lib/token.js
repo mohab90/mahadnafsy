@@ -28,7 +28,7 @@ const JWT_EXPIRY = process.env.JWT_EXPIRY || '7d';
 const JWT_MAX_AGE_SECONDS = Math.max(300, Number(process.env.JWT_MAX_AGE_SECONDS) || 7 * 24 * 60 * 60);
 const AUTH_COOKIE = `HttpOnly; Path=/; Max-Age=${JWT_MAX_AGE_SECONDS}; SameSite=None; Secure`;
 
-function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaVerified = false }) {
+function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaVerified = false, isStaff = false }) {
   // email is not the identity anchor — uid is (every downstream auth check
   // re-fetches the user row by uid, not by trusting this claim for anything
   // security-critical). A phone-only account genuinely has none, so it's
@@ -40,6 +40,10 @@ function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaV
     {
       uid, email, tid: tenantId, sv: Number(sessionVersion),
       sid: sessionId, mfa: mfaVerified === true, jti: uuidv4(),
+      // Signed at login so the auth middleware never has to query       // itself — middleware/auth.js is required to route every staff lookup
+      // through the tenant-scoped findActiveStaff helper. Grants no permission;
+      // it only decides whether concurrent devices are allowed.
+      stf: isStaff === true,
     },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRY }
