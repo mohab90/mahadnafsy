@@ -121,7 +121,14 @@ router.get('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, require
 });
 
 // POST /api/admin/sales-targets  (upsert one {staffId, period, revenueTarget, leadsTarget})
-router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('manage_leads'), async (req, res) => {
+// Deliberately gated on 'view_reports', NOT 'manage_leads': manage_leads is a
+// default sales-rep permission, so a rep could set their own (or a colleague's)
+// revenue target and thereby decide whether they "hit target" — the same target
+// the scorecards and bonus views read. view_reports is exactly the manager set
+// (manager / admin / sales_collection_manager / online_manager / hr) and
+// excludes sales; super-admins bypass permission checks entirely. Reads stay
+// open on view_leads so the team leaderboard keeps working for everyone.
+router.post('/api/admin/sales-targets', requireAuth, requireAdminOrStaff, requirePermission('view_reports'), async (req, res) => {
   try {
     const { staffId, period } = req.body || {};
     if (!staffId || !/^\d{4}-\d{2}$/.test(period || '')) return res.status(400).json({ error: 'staffId and period (YYYY-MM) required' });

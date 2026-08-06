@@ -5,6 +5,73 @@ import type { Bundle, Course, LeadItem, LeadStatus, StaffMember, SubscriberItem 
 import type { NotifyFn } from '../CrmSettingsModal';
 import { LeadTable } from '../LeadTable';
 import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
+import { BRANCH_LABELS_AR, normalizeBranch, type BranchKey } from '../../../../constants/branches';
+
+/**
+ * Header keys are compared with separators and case stripped, so
+ * "اختر_الفرع_", "اختر الفرع" and "الفرع" are all the same column, and
+ * "phone_number" / "phone number" / "PhoneNumber" all match too. The previous
+ * version compared raw lowercased headers, which is why a real export with a
+ * `phone_number` column imported nothing: no alias matched, so every row failed
+ * the name+phone requirement and was silently skipped.
+ */
+const normKey = (value: string) => String(value || '')
+  .replace(/^﻿/, '')
+  .trim()
+  .toLowerCase()
+  .replace(/[_\s\-().[\]/\\]+/g, '');
+
+const COLUMN_ALIASES = {
+  name: ['fullname', 'name', 'الاسم', 'اسم', 'اسمالعميل', 'الاسمالكامل', 'الاسمبالكامل'],
+  phone: ['phonenumber', 'phone', 'mobile', 'mobilenumber', 'whatsapp', 'الهاتف', 'الموبايل',
+    'رقمالهاتف', 'رقمالموبايل', 'تليفون', 'التليفون', 'موبايل', 'رقم', 'رقمالواتس', 'واتساب'],
+  branch: ['اخترالفرع', 'الفرع', 'branch', 'الفرعالاقرب', 'فرع'],
+  course: ['الكورس', 'course', 'الدبلومة', 'الدبلوم', 'الكورسالمطلوب', 'البرنامج', 'coursename'],
+  email: ['email', 'البريدالالكتروني', 'ايميل', 'الايميل', 'mail'],
+  notes: ['notes', 'ملاحظات', 'ملاحظة', 'note', 'comment'],
+} as const;
+
+const pick = (row: Record<string, string>, aliases: readonly string[]) => {
+  for (const alias of aliases) {
+    const hit = row[alias];
+    if (hit && hit.trim()) return hit.trim();
+  }
+  return '';
+};
+
+/** Free-text branch from a sheet → canonical BranchKey, or null to keep raw. */
+function matchBranch(raw: string, options: { id: string; label: string }[]): BranchKey | null {
+  if (!raw) return null;
+  const direct = normalizeBranch(raw);
+  if (direct) return direct;
+  const needle = normKey(raw);
+  // Arabic label match, e.g. "الجيزة - الدقي" or "فرع الدقي" → DAQQI.
+  for (const [key, label] of Object.entries(BRANCH_LABELS_AR)) {
+    const hay = normKey(label);
+    if (hay && (hay.includes(needle) || needle.includes(hay))) return key as BranchKey;
+  }
+  // Then the tenant's own configured branch list, if it has one.
+  for (const option of options) {
+    if (normKey(option.label) === needle || normKey(option.id) === needle) {
+      return normalizeBranch(option.id);
+    }
+  }
+  return null;
+}
+
+/** Free-text course from a sheet → a real course id, if one matches. */
+function matchCourse(raw: string, courses: Course[]): string | null {
+  if (!raw) return null;
+  const needle = normKey(raw);
+  if (!needle) return null;
+  const exact = courses.find(course => normKey(course.title) === needle);
+  if (exact) return exact.id;
+  const partial = courses.find(course => {
+    const hay = normKey(course.title);
+    return hay.length > 3 && (hay.includes(needle) || needle.includes(hay));
+  });
+  return partial ? partial.id : null;
+}
 
 export interface ArchiveTabProps {
   leads: LeadItem[];
@@ -56,18 +123,24 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       const lines = text.split(/\r?\n/).filter(l => l.trim());
       if (lines.length < 2) { setArchiveParseErr('الملف فارغ أو لا يحتوي على بيانات'); return; }
       const delim = text.includes('\t') ? '\t' : ',';
-      const headers = lines[0].split(delim).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+      const headers = lines[0].split(delim).map(h => normKey(h.replace(/^["']|["']$/g, '')));
       const rows: Record<string, string>[] = [];
       for (let i = 1; i < lines.length; i++) {
         const vals = lines[i].split(delim).map(v => v.replace(/^["']|["']$/g, '').trim());
         if (vals.every(v => !v)) continue;
         const row: Record<string, string> = {};
         headers.forEach((h, idx) => { row[h] = vals[idx] || ''; });
-        row._name  = row['name'] || row['الاسم'] || row['اسم'] || row['full_name'] || '';
-        row._phone = row['phone'] || row['mobile'] || row['الهاتف'] || row['الموبايل'] || row['رقم الهاتف'] || '';
-        row._email = row['email'] || row['البريد الالكتروني'] || row['ايميل'] || '';
-        row._notes = row['notes'] || row['ملاحظات'] || '';
-        row._id    = `arch-${Date.now()}-${i}`;
+        row._name   = pick(row, COLUMN_ALIASES.name);
+        row._phone  = pick(row, COLUMN_ALIASES.phone);
+        row._email  = pick(row, COLUMN_ALIASES.email);
+        row._notes  = pick(row, COLUMN_ALIASES.notes);
+        row._branchRaw = pick(row, COLUMN_ALIASES.branch);
+        row._courseRaw = pick(row, COLUMN_ALIASES.course);
+        // Resolved now (not at import time) so the preview can show whether each
+        // branch/course actually matched before anything is written.
+        row._branchKey = matchBranch(row._branchRaw, branchOptions) || '';
+        row._courseId = matchCourse(row._courseRaw, courses) || '';
+        row._id     = `arch-${Date.now()}-${i}`;
         rows.push(row);
       }
       setArchiveParsed(rows);
@@ -85,7 +158,25 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     let created = 0, dupes = 0, errors = 0;
     for (const row of toImport) {
       try {
-        await addLead({ name: row._name, phone: row._phone, email: row._email || undefined, notes: row._notes || undefined, source: archiveSource || 'استيراد قديم', status: 'new', hidden: false });
+        // A course name that matched a real course becomes a proper interest
+        // link; one that didn't is kept verbatim in the notes so the
+        // information from the sheet is never silently dropped.
+        const noteParts = [
+          row._notes,
+          row._courseRaw && !row._courseId ? `الكورس المطلوب: ${row._courseRaw}` : '',
+        ].filter(Boolean);
+        await addLead({
+          name: row._name,
+          phone: row._phone,
+          email: row._email || undefined,
+          notes: noteParts.join(' — ') || undefined,
+          branch: (row._branchKey || undefined) as LeadItem['branch'],
+          rawBranch: row._branchRaw || undefined,
+          interestedCourseIds: row._courseId ? [row._courseId] : undefined,
+          source: archiveSource || 'استيراد قديم',
+          status: 'new',
+          hidden: false,
+        });
         created++;
       } catch (err: unknown) {
         const msg = (err as Error).message || '';
@@ -157,9 +248,19 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
               className="text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
           </div>
         </div>
-        <p className="text-[11px] text-gray-400">
-          الأعمدة المدعومة: <code className="bg-gray-100 px-1 rounded">name / الاسم</code> &nbsp; <code className="bg-gray-100 px-1 rounded">phone / الهاتف</code> &nbsp; <code className="bg-gray-100 px-1 rounded">email</code> &nbsp; <code className="bg-gray-100 px-1 rounded">notes / ملاحظات</code>
-        </p>
+        <div className="space-y-1">
+          <p className="text-[11px] text-gray-500">
+            الأعمدة المدعومة:
+            <code className="bg-indigo-50 text-indigo-700 px-1 rounded mx-1 font-bold">اختر_الفرع_</code>
+            <code className="bg-indigo-50 text-indigo-700 px-1 rounded mx-1 font-bold">full_name</code>
+            <code className="bg-indigo-50 text-indigo-700 px-1 rounded mx-1 font-bold">phone_number</code>
+            <code className="bg-indigo-50 text-indigo-700 px-1 rounded mx-1 font-bold">الكورس</code>
+          </p>
+          <p className="text-[10px] text-gray-400">
+            الاسم والهاتف إلزاميان. تُقبل أيضًا مسميات بديلة (name / الاسم، phone / الهاتف / الموبايل، الفرع، email، notes / ملاحظات)،
+            وفروق الشرطة السفلية والمسافات والحروف الكبيرة لا تهم.
+          </p>
+        </div>
         {archiveParseErr && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 flex items-center gap-2">
             <AlertCircle size={15} /> {archiveParseErr}
@@ -181,6 +282,8 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
                     <th className="py-2 px-3 text-right font-bold text-gray-600 w-8"><input type="checkbox" checked={archiveSelectedIds.size === archiveParsed.length} onChange={e => setArchiveSelectedIds(e.target.checked ? new Set(archiveParsed.map(r => r._id)) : new Set())} className="w-3.5 h-3.5" /></th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">الاسم</th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">الهاتف</th>
+                    <th className="py-2 px-3 text-right font-bold text-gray-600">الفرع</th>
+                    <th className="py-2 px-3 text-right font-bold text-gray-600">الكورس</th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">الإيميل</th>
                     <th className="py-2 px-3 text-right font-bold text-gray-600">ملاحظة</th>
                   </tr>
@@ -188,11 +291,28 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
                 <tbody>
                   {archiveParsed.slice(0, 200).map((r) => {
                     const hasRequired = r._name && r._phone;
+                    const courseTitle = r._courseId ? courses.find(c => c.id === r._courseId)?.title : '';
                     return (
                       <tr key={r._id} className={`border-b border-gray-50 hover:bg-gray-50/50 ${!hasRequired ? 'opacity-50' : ''}`}>
                         <td className="py-1.5 px-3"><input type="checkbox" checked={archiveSelectedIds.has(r._id)} disabled={!hasRequired} onChange={e => { const next = new Set(archiveSelectedIds); e.target.checked ? next.add(r._id) : next.delete(r._id); setArchiveSelectedIds(next); }} className="w-3.5 h-3.5" /></td>
                         <td className="py-1.5 px-3 font-bold text-gray-900">{r._name || <span className="text-red-400">مطلوب</span>}</td>
                         <td className="py-1.5 px-3 font-mono text-gray-600">{r._phone || <span className="text-red-400">مطلوب</span>}</td>
+                        {/* Green = mapped to a real branch/course; amber = kept as
+                            raw text so nothing is lost but nothing is guessed. */}
+                        <td className="py-1.5 px-3">
+                          {r._branchRaw ? (
+                            r._branchKey
+                              ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">{BRANCH_LABELS_AR[r._branchKey as BranchKey] || r._branchKey}</span>
+                              : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700" title="لم يُطابق فرعًا معروفًا — سيُحفظ كنص">{r._branchRaw}</span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-1.5 px-3">
+                          {r._courseRaw ? (
+                            r._courseId
+                              ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700" title={courseTitle}>{courseTitle}</span>
+                              : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700" title="لم يُطابق كورسًا — سيُحفظ في الملاحظات">{r._courseRaw}</span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
                         <td className="py-1.5 px-3 text-gray-500">{r._email}</td>
                         <td className="py-1.5 px-3 text-gray-500 max-w-[120px] truncate">{r._notes}</td>
                       </tr>

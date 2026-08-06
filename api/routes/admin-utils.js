@@ -11,6 +11,7 @@ const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
+const { leadScope } = require('../lib/leadAccess');
 
 // Timers belong to the central worker. Starting them from a route module made
 // every clustered API process send the same reminders and summaries again.
@@ -201,9 +202,22 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, bulkOpera
 // GET /api/admin/export/leads — export leads as CSV
 router.get('/api/admin/export/leads', requireAuth, requireAdminOrStaff, requirePermission('export_leads'), bulkOperationLimiter, async (req, res) => {
   try {
+    // `export_leads` is granted to the sales role by default, and this query
+    // used to be tenant-wide — so any rep could export up to 10,000 of the
+    // whole CRM's leads (colleagues' clients, phones, deal values). The export
+    // must obey exactly the same row-level scope as the on-screen lists:
+    // assigned_sales for a rep, the branch set for a branch role, everything
+    // for admins/managers.
+    const scope = leadScope(req, 'leads');
+    if (scope.none) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
+      return res.send('﻿');
+    }
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, status, source, assigned_sales_name AS assigned_to_name, deal_value, next_follow_up_date AS follow_up_date, created_at
-       FROM leads WHERE tenant_id=? AND hidden=0 ORDER BY created_at DESC LIMIT 10000`, [req.tenantId]
+       FROM leads WHERE tenant_id=? AND hidden=0${scope.sql} ORDER BY created_at DESC LIMIT 10000`,
+      [req.tenantId, ...scope.params]
     );
     const cols = [
       { key: 'id', label: 'ID' },

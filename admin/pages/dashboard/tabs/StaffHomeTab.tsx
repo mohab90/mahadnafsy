@@ -9,6 +9,7 @@ import {
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../../types';
 import { toDialable } from '../../../lib/whatsappLink';
+import SalesMotivationCard from './staff-home/SalesMotivationCard';
 
 type TabKey = string;
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -277,6 +278,24 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
           </div>
         )}
       </div>
+
+      {/* ── Permanent motivation block (sales & collection) ──────────────── */}
+      {(isSalesRole || isCollectionRole) && (
+        <SalesMotivationCard
+          stats={{
+            name: staff.name || '',
+            convertedThisMonth: stats.convertedThisMonth,
+            convRate: stats.convRate,
+            callsThisMonth: stats.callsThisMonth,
+            revenueThisMonth: stats.revenueThisMonth,
+            overdueCount: stats.overdueFollowups.length,
+            todayFollowupCount: stats.todayFollowups.length,
+            last7: stats.last7,
+            monthlyTarget: (staff as StaffMember & { monthlyTarget?: number }).monthlyTarget,
+            monthlyTargetType: (staff as StaffMember & { monthlyTargetType?: 'egp' | 'clients' }).monthlyTargetType,
+          }}
+        />
+      )}
 
       {/* ── KPI Cards ───────────────────────────────────────────────────── */}
       {(isSalesRole || isCollectionRole) && (

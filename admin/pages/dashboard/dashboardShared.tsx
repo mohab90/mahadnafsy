@@ -612,7 +612,9 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   forecast:           'view_reports',
   sales_team:         'view_staff',
   sales_reports:      'view_reports',
-  sales_goals:        'manage_leads',
+  // Writing targets is a manager action (see POST /api/admin/sales-targets):
+  // matched to the API gate so a sales rep doesn't see a tab that 403s.
+  sales_goals:        'view_reports',
   online_team:        'view_staff',
   subscriptions:     'view_financial',
   lead_scoring:       'manage_leads',

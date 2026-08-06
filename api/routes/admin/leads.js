@@ -222,13 +222,23 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
       // COALESCE(?,hidden) so a caller that omits `hidden` entirely (sends
       // undefined → NULL) still leaves the existing value untouched, same
       // pattern as assigned_sales_id/branch/client_type below.
+      // COALESCE alone made "unassign" impossible: a caller that omits
+      // assignedSalesId and one that explicitly sends null both arrive as NULL,
+      // so the column kept the previous rep forever — a lead belonging to a
+      // departed rep could never be freed, and a redistribution that cleared
+      // the field silently kept the old owner (same failure shape as the
+      // crm_json stale-assignment bug). Distinguish the two: an explicitly
+      // present null clears, an absent key still leaves the value untouched.
+      const clearSales = Object.prototype.hasOwnProperty.call(crmData, 'assignedSalesId') && !crmData.assignedSalesId;
       const [updated] = await conn.query(
         `UPDATE leads SET name=?, email=?, phone=?, source=?, notes=?, client_code=COALESCE(client_code,?),
-           assigned_sales_id=COALESCE(?,assigned_sales_id), assigned_sales_name=COALESCE(?,assigned_sales_name),
+           assigned_sales_id=IF(?,NULL,COALESCE(?,assigned_sales_id)),
+           assigned_sales_name=IF(?,NULL,COALESCE(?,assigned_sales_name)),
            crm_json=?, branch=COALESCE(NULLIF(?,''),branch), branch_id=COALESCE(?,branch_id), client_type=COALESCE(?,client_type),
            interested_course_ids_json=COALESCE(?,interested_course_ids_json), hidden=COALESCE(?,hidden)
          WHERE id=? AND tenant_id=?`,
-        [safeName||'', safeEmail||null, safePhone, safeSource||null, safeNotes||null, code, salesId, salesName,
+        [safeName||'', safeEmail||null, safePhone, safeSource||null, safeNotes||null, code,
+         clearSales ? 1 : 0, salesId, clearSales ? 1 : 0, salesName,
          JSON.stringify(crmToStore), branchVal, branchId, leadClientTypeVal, courseIdsJson,
          typeof hidden === 'boolean' ? (hidden ? 1 : 0) : null, id, tenantId]
       );

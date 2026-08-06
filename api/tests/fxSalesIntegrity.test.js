@@ -31,5 +31,10 @@ test('sales goals, targets, actuals and performance are tenant scoped', () => {
   assert.match(route, /FROM leads WHERE tenant_id=\?/);
   assert.match(route, /FROM payments WHERE tenant_id=\?/);
   assert.match(route, /SUM\(amount_egp\).*actual_revenue/);
-  assert.match(route, /requirePermission\('manage_leads'\)/);
+  // Target reads stay open to the sales role (the team leaderboard needs them),
+  // but writing a target must not be: manage_leads is a default sales-rep
+  // permission, so gating the write on it let a rep set the very target their
+  // own scorecard is measured against. Pin the manager-level gate instead.
+  assert.match(route, /router\.get\('\/api\/admin\/sales-targets'[\s\S]{0,160}requirePermission\('view_leads'\)/);
+  assert.match(route, /router\.post\('\/api\/admin\/sales-targets'[\s\S]{0,700}requirePermission\('view_reports'\)/);
 });
