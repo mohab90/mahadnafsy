@@ -88,7 +88,7 @@ interface SiteDataShape {
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
   updateSubscriber: (item: SubscriberItem) => Promise<boolean>;
   deleteSubscriber: (id: string) => Promise<boolean>;
-  addLead: (item: LeadItem) => Promise<void>;
+  addLead: (item: LeadItem, opts?: { skipReload?: boolean }) => Promise<void>;
   addPublicLead: (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }) => Promise<void>;
   updateLead: (item: LeadItem) => Promise<boolean>;
   markLeadsConverted: (ids: string[]) => void;

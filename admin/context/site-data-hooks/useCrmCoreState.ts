@@ -226,10 +226,17 @@ export function useCrmCoreState(
     return true;
   };
 
-  const addLead = async (item: LeadItem): Promise<void> => {
+  /**
+   * `skipReload` is for bulk importers. reloadLeads() re-fetches the entire
+   * lead table (paged, 5k at a time — 16k rows today), so reloading after every
+   * single row turned a 2,000-row import into ~2,000 full table reads: it ran
+   * for the best part of an hour and the grid showed stale, half-imported state
+   * the whole time. The caller reloads once when the batch is done.
+   */
+  const addLead = async (item: LeadItem, opts?: { skipReload?: boolean }): Promise<void> => {
     lastCRMWriteRef.current = Date.now();
     await mysqlAdmin.saveLead(item as unknown as Record<string, unknown>);
-    await reloadLeads();
+    if (!opts?.skipReload) await reloadLeads();
     track('create', 'lead', item.name);
   };
 

@@ -170,7 +170,12 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
   }
 });
 
-router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, requirePermission('view_settings'), async (req, res) => {
+// Read is gated on 'view_leads', not 'view_settings'. This payload is the lead
+// sources / stage labels the leads screen needs to render at all, and the leads
+// screen is a rep's main workspace — requiring a settings permission meant every
+// rep got "تعذر تحميل إعدادات CRM" on every visit, with the source dropdowns
+// falling back to defaults. Writing still needs full admin (PUT below).
+router.get('/api/admin/crm-settings', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
   try {
     res.json(await getTenantSetting('crm_settings', { tenantId: req.tenantId, fallback: {} }));
   } catch (e) { routeError(res, e); }

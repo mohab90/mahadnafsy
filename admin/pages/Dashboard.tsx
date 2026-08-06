@@ -770,6 +770,7 @@ const Dashboard: React.FC = () => {
           onlineMgrFollowupBadge={onlineMgrFollowupBadge}
           setOnlineMgrNewEventsOpen={setOnlineMgrNewEventsOpen}
           onlineMgrNewEventsBadge={onlineMgrNewEventsBadge}
+          notify={notify}
         />
 
         <div className="grid grid-cols-1 gap-6 items-start">

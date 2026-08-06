@@ -708,6 +708,64 @@ router.post('/api/staff/me/messages', requireAuth, async (req, res) => {
   }
 });
 
+// ── Bell-style inbox: unread counts + a flat recent feed ─────────────────────
+// The thread endpoints above are per-employee. These two back the messages icon
+// in the header, which has to answer "is there anything new" without loading a
+// thread first.
+
+router.get('/api/staff/me/messages/unread-count', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.json({ unread: 0 });
+    const [[row]] = await pool.query(
+      `SELECT COUNT(*) n FROM staff_messages
+        WHERE tenant_id=? AND staff_id=? AND direction<>'from_staff' AND read_at IS NULL`,
+      [req.tenantId, me.id]
+    );
+    res.json({ unread: Number(row?.n || 0) });
+  } catch (e) {
+    logger.error('[staff/me/messages/unread]', e.message);
+    res.json({ unread: 0 });
+  }
+});
+
+router.get('/api/admin/hr/staff-messages/inbox', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT m.id, m.staff_id, m.author_name, m.body, m.read_at, m.created_at,
+              s.name staff_name, s.role
+         FROM staff_messages m
+         LEFT JOIN staff s ON s.id = m.staff_id AND s.tenant_id = m.tenant_id
+        WHERE m.tenant_id=? AND m.direction='from_staff'
+        ORDER BY m.created_at DESC LIMIT 60`,
+      [req.tenantId]
+    );
+    const [[unread]] = await pool.query(
+      `SELECT COUNT(*) n FROM staff_messages
+        WHERE tenant_id=? AND direction='from_staff' AND read_at IS NULL`,
+      [req.tenantId]
+    );
+    res.json({ unread: Number(unread?.n || 0), messages: rows });
+  } catch (e) {
+    logger.error('[hr/staff-messages/inbox]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/hr/staff-messages/mark-read', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE staff_messages SET read_at=NOW()
+        WHERE tenant_id=? AND direction='from_staff' AND read_at IS NULL`,
+      [req.tenantId]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error('[hr/staff-messages/mark-read]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Employee side: their own scorecard, targets and resignation ──────────────
 // Same rule as the thread above: the staff row is resolved from the caller, so
 // there is no id to tamper with and no permission to grant. An employee seeing
@@ -780,6 +838,124 @@ router.get('/api/staff/me/targets', requireAuth, async (req, res) => {
     }));
   } catch (e) {
     logger.error('[staff/me/targets]', e.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * The employee's HR file as an HR officer would look at it: the pay trajectory
+ * (is it going up, and by how much), the documents on file, and — the part a
+ * self-service portal usually omits — what is *missing*, so the employee can
+ * chase it instead of discovering the gap when payroll or a contract renewal
+ * hits.
+ */
+router.get('/api/staff/me/hr-file', requireAuth, async (req, res) => {
+  try {
+    const me = await _resolveStaffByUser(req);
+    if (!me) return res.status(404).json({ error: 'Staff record not found' });
+
+    const [[profileRows], [payrollRows], [docRows], [structureRows]] = await Promise.all([
+      pool.query(
+        `SELECT s.id, s.name, s.email, s.phone, s.role, s.image, s.employment_type,
+                s.joined_at, s.hire_date, s.commission_rate, s.branch_id,
+                d.name department_name
+           FROM staff s
+           LEFT JOIN hr_departments d ON d.id=s.department_id AND d.tenant_id=s.tenant_id
+          WHERE s.tenant_id=? AND s.id=? AND s.deleted_at IS NULL LIMIT 1`,
+        [req.tenantId, me.id]
+      ),
+      pool.query(
+        `SELECT pr.year, pr.month, pi.net_salary, pi.base_salary, pi.total_allowances,
+                pi.commission, pi.bonus,
+                (COALESCE(pi.late_deductions,0)+COALESCE(pi.absence_deductions,0)
+                 +COALESCE(pi.advance_deductions,0)) deductions
+           FROM payroll_items pi
+           JOIN payroll_runs pr ON pr.id=pi.payroll_run_id AND pr.tenant_id=pi.tenant_id
+          WHERE pi.tenant_id=? AND pi.staff_id=? AND pr.status IN ('APPROVED','PAID')
+          ORDER BY pr.year DESC, pr.month DESC LIMIT 18`,
+        [req.tenantId, me.id]
+      ),
+      pool.query(
+        `SELECT id, title, category, file_name, expiry_date, created_at
+           FROM employee_documents
+          WHERE staff_id=? AND tenant_id=? AND deleted_at IS NULL
+          ORDER BY created_at DESC LIMIT 50`,
+        [me.id, req.tenantId]
+      ),
+      pool.query(
+        `SELECT base_salary, housing_allowance, transport_allowance, effective_from, status
+           FROM salary_structures
+          WHERE tenant_id=? AND staff_id=? ORDER BY effective_from DESC LIMIT 10`,
+        [req.tenantId, me.id]
+      ),
+    ]);
+
+    const profile = profileRows[0] || null;
+    // Oldest-first so a chart reads left→right in time order.
+    const payroll = payrollRows.slice().reverse().map(r => ({
+      period: `${r.year}-${String(r.month).padStart(2, '0')}`,
+      net: Number(r.net_salary || 0),
+      base: Number(r.base_salary || 0),
+      allowances: Number(r.total_allowances || 0),
+      commission: Number(r.commission || 0),
+      bonus: Number(r.bonus || 0),
+      deductions: Number(r.deductions || 0),
+    }));
+
+    // Trend over the payslips we actually have — first vs last, not a guess.
+    let trend = null;
+    if (payroll.length >= 2) {
+      const first = payroll[0].net;
+      const last = payroll[payroll.length - 1].net;
+      trend = {
+        direction: last > first ? 'up' : last < first ? 'down' : 'flat',
+        changePct: first > 0 ? Math.round(((last - first) / first) * 100) : null,
+        from: payroll[0].period, to: payroll[payroll.length - 1].period,
+        fromNet: first, toNet: last,
+      };
+    }
+
+    const REQUIRED_DOCS = [
+      { category: 'contract', label: 'عقد العمل' },
+      { category: 'id', label: 'صورة البطاقة' },
+      { category: 'certificate', label: 'المؤهل الدراسي' },
+    ];
+    const have = new Set(docRows.map(d => d.category));
+    const today = new Date().toISOString().slice(0, 10);
+
+    const gaps = [];
+    for (const doc of REQUIRED_DOCS) {
+      if (!have.has(doc.category)) gaps.push({ kind: 'document', label: doc.label, severity: 'high' });
+    }
+    for (const doc of docRows) {
+      const exp = toIsoDate(doc.expiry_date);
+      if (exp && exp < today) gaps.push({ kind: 'expired', label: `${doc.title} — منتهي في ${exp}`, severity: 'high' });
+    }
+    if (!profile?.phone) gaps.push({ kind: 'field', label: 'رقم الهاتف', severity: 'medium' });
+    if (!profile?.email) gaps.push({ kind: 'field', label: 'البريد الإلكتروني', severity: 'medium' });
+    if (!profile?.image) gaps.push({ kind: 'field', label: 'الصورة الشخصية', severity: 'low' });
+    if (!profile?.department_name) gaps.push({ kind: 'field', label: 'القسم', severity: 'low' });
+    if (!profile?.joined_at && !profile?.hire_date) gaps.push({ kind: 'field', label: 'تاريخ التعيين', severity: 'medium' });
+    if (!structureRows.some(s => s.status === 'APPROVED')) {
+      gaps.push({ kind: 'salary', label: 'هيكل راتب معتمد', severity: 'high' });
+    }
+
+    // Completeness over a fixed denominator so the number means the same thing
+    // for everyone: 3 required documents + 5 profile fields + a salary structure.
+    const CHECKS = REQUIRED_DOCS.length + 5 + 1;
+    const completeness = Math.max(0, Math.round(((CHECKS - gaps.length) / CHECKS) * 100));
+
+    res.json({
+      profile,
+      payroll,
+      trend,
+      documents: docRows.map(d => ({ ...d, expiry_date: toIsoDate(d.expiry_date) })),
+      salaryStructures: structureRows.map(s => ({ ...s, effective_from: toIsoDate(s.effective_from) })),
+      gaps,
+      completeness,
+    });
+  } catch (e) {
+    logger.error('[staff/me/hr-file]', e.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

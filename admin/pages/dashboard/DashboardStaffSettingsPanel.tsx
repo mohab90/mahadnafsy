@@ -1,11 +1,20 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { Settings2, TrendingUp } from 'lucide-react';
+import { Award, BriefcaseBusiness, LayoutDashboard, Settings2, TrendingUp } from 'lucide-react';
 import type { StaffMember, SubscriberItem } from '../../types';
 import { adminAuthHeaders } from '../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { buildStaffSettingsMetrics } from './dashboardHelpers';
 import { toDialable } from '../../lib/whatsappLink';
 import MyWorkRecordPanel from './staff-settings/MyWorkRecordPanel';
+import MyHrFilePanel from './staff-settings/MyHrFilePanel';
+
+type ProfileTabKey = 'overview' | 'record' | 'hr' | 'settings';
+const PROFILE_TABS: [ProfileTabKey, string, typeof Settings2][] = [
+  ['overview', 'نظرة عامة', LayoutDashboard],
+  ['record', 'سجلي ومراسلاتي', Award],
+  ['hr', 'ملفي الوظيفي', BriefcaseBusiness],
+  ['settings', 'الإعدادات', Settings2],
+];
 
 type StaffSettingsDraft = {
   name: string;
@@ -112,6 +121,7 @@ export function DashboardStaffSettingsPanel({
 }: DashboardStaffSettingsPanelProps) {
   const [savedWaNumber, setSavedWaNumber] = useState('');
   const [disciplinaryBusy, setDisciplinaryBusy] = useState('');
+  const [profileTab, setProfileTab] = useState<ProfileTabKey>('overview');
   const [appealTarget, setAppealTarget] = useState('');
   const [appealNote, setAppealNote] = useState('');
 
@@ -245,6 +255,19 @@ export function DashboardStaffSettingsPanel({
         </div>
       </div>
 
+      {/* Tabs — the page had grown to six unrelated stacked sections and the HR
+          half was buried under a screen of scrolling. */}
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm">
+        {PROFILE_TABS.map(([key, label, Icon]) => (
+          <button key={key} type="button" onClick={() => setProfileTab(key)}
+            className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition ${
+              profileTab === key ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <Icon size={15} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {profileTab === 'overview' && (<>
       {/* Performance metrics row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -343,8 +366,12 @@ export function DashboardStaffSettingsPanel({
         </div>
       </div>
 
-      {/* ── Record, targets, thread and resignation ──────────── */}
-      <MyWorkRecordPanel notify={notify} />
+      </>)}
+
+      {profileTab === 'record' && <MyWorkRecordPanel notify={notify} />}
+
+      {profileTab === 'hr' && (<>
+      <MyHrFilePanel />
 
       {/* ── HR Self-Service Section ──────────────────────────── */}
       {loadingMyHr ? (
@@ -670,7 +697,9 @@ export function DashboardStaffSettingsPanel({
           </div>
         </>
       )}
+      </>)}
 
+      {profileTab === 'settings' && (<>
       {/* Settings form */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -880,6 +909,7 @@ export function DashboardStaffSettingsPanel({
           </div>
         </div>
       </div>
+      </>)}
     </div>
   );
 }

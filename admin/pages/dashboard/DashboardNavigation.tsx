@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { mysqlAdmin, mysqlAuth } from '../../lib/mysqlapi';
+import MessagesBell from './MessagesBell';
 import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
 
@@ -60,7 +61,10 @@ type Props = {
   onlineMgrFollowupBadge: number;
   setOnlineMgrNewEventsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   onlineMgrNewEventsBadge: number;
+  notify: Notify;
 };
+
+type Notify = (kind: 'success' | 'error' | 'warning' | 'info', message: string) => void;
 
 type CompactTab = { key: TabKey; label: string; icon: React.ComponentType<{ size?: number }> };
 
@@ -77,6 +81,7 @@ type CompactRoleNavProps = {
   salesDataLoading: boolean;
   staffNotifBadge: number;
   setSalesNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  notify: Notify;
   extraTabsSlot?: React.ReactNode;
   extraHeaderButtons?: React.ReactNode;
 };
@@ -84,7 +89,7 @@ type CompactRoleNavProps = {
 function CompactRoleNav({
   tabs, activeTab, setActiveTab, activeButtonClass, avatarClass, spinnerBorderClass,
   roleBadge, roleBadgeClass, currentStaff, salesDataLoading, staffNotifBadge,
-  setSalesNotifOpen, extraTabsSlot, extraHeaderButtons,
+  setSalesNotifOpen, notify, extraTabsSlot, extraHeaderButtons,
 }: CompactRoleNavProps) {
   const navigate = useNavigate();
   return (
@@ -121,6 +126,7 @@ function CompactRoleNav({
             <Bell size={13} />
             {staffNotifBadge > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold grid place-items-center">{staffNotifBadge > 9 ? '9+' : staffNotifBadge}</span>}
           </button>
+          <MessagesBell mode="staff" notify={notify} compact />
           {extraHeaderButtons}
           <button
             onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
@@ -142,7 +148,7 @@ export function DashboardNavigation(props: Props) {
     notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread,
     pendingProofsCount, inboxUnreadCount, currentStaff, salesDataLoading, staffNotifBadge,
     setSalesNotifOpen, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen, setOnlineMgrFollowupOpen,
-    onlineMgrFollowupBadge, setOnlineMgrNewEventsOpen, onlineMgrNewEventsBadge,
+    onlineMgrFollowupBadge, setOnlineMgrNewEventsOpen, onlineMgrNewEventsBadge, notify,
   } = props;
   const navigate = useNavigate();
 
@@ -241,6 +247,10 @@ export function DashboardNavigation(props: Props) {
                 >
                   <UserCog size={15} />
                 </button>
+                {/* Staff messages used to be visible one employee at a time,
+                    inside each profile page — so an incoming message went unseen
+                    until someone opened that person's file. */}
+                <MessagesBell mode="management" notify={notify} />
                 <div className="relative flex-shrink-0" ref={notifRef}>
                   <button
                     onClick={async () => {
@@ -361,7 +371,7 @@ export function DashboardNavigation(props: Props) {
                 avatarClass="bg-primary-100 text-primary-700"
                 spinnerBorderClass="border-primary-400"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
-                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
             )}
 
@@ -382,7 +392,7 @@ export function DashboardNavigation(props: Props) {
                 avatarClass="bg-teal-100 text-teal-700"
                 spinnerBorderClass="border-teal-400"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
-                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
             )}
 
@@ -402,7 +412,7 @@ export function DashboardNavigation(props: Props) {
                 avatarClass="bg-orange-100 text-orange-700"
                 spinnerBorderClass="border-orange-400"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
-                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
             )}
 
@@ -424,7 +434,7 @@ export function DashboardNavigation(props: Props) {
                 spinnerBorderClass="border-purple-400"
                 roleBadge="مدير الدقي" roleBadgeClass="bg-purple-100 text-purple-700"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
-                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
             )}
 
@@ -448,7 +458,7 @@ export function DashboardNavigation(props: Props) {
                 spinnerBorderClass="border-indigo-400"
                 roleBadge="مدير المبيعات والتحصيل" roleBadgeClass="bg-indigo-100 text-indigo-700"
                 currentStaff={currentStaff} salesDataLoading={salesDataLoading}
-                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
               />
             )}
 
@@ -473,7 +483,7 @@ export function DashboardNavigation(props: Props) {
                   spinnerBorderClass="border-emerald-400"
                   roleBadge="مسئول الأونلاين" roleBadgeClass="bg-emerald-100 text-emerald-700"
                   currentStaff={currentStaff} salesDataLoading={salesDataLoading}
-                  staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen}
+                  staffNotifBadge={staffNotifBadge} setSalesNotifOpen={setSalesNotifOpen} notify={notify}
                   extraTabsSlot={
                     <div className="relative">
                       <button

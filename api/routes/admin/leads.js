@@ -293,8 +293,12 @@ router.post('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermiss
     if (isNew) {
       await logLeadEventStrict(id, 'created', `تم إضافة الليد من: ${source || 'غير محدد'}`, { source, status: normalizedNew, name, phone }, tenantId, conn);
       if (salesId) await logLeadEventStrict(id, 'assigned', `تعيين تلقائي للمبيعات: ${salesName || salesId}`, { salesId, salesName, auto: true }, tenantId, conn);
-      // Automation #4: Auto-set follow-up date to +2 days if none specified
-      if (!crmData.nextFollowUpDate) {
+      // Automation #4: Auto-set follow-up date to +2 days if none specified.
+      // Only for a lead that has an owner. An unassigned lead — every row of a
+      // bulk archive import — has nobody to do the following up, so stamping it
+      // with a date due in two days just manufactures thousands of overdue
+      // follow-ups against a rep who has not even been given the lead yet.
+      if (!crmData.nextFollowUpDate && salesId) {
         const followUpDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         await conn.query('UPDATE leads SET next_follow_up_date=? WHERE id=? AND tenant_id=? AND next_follow_up_date IS NULL', [followUpDate, id, tenantId]);
         await logLeadEventStrict(id, 'followup_set', `موعد متابعة تلقائي: ${followUpDate}`, { date: followUpDate, auto: true }, tenantId, conn);

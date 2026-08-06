@@ -77,7 +77,7 @@ function matchCourse(raw: string, courses: Course[]): string | null {
 export interface ArchiveTabProps {
   leads: LeadItem[];
   staffMembers: StaffMember[];
-  addLead: (l: Partial<LeadItem>) => Promise<unknown>;
+  addLead: (l: Partial<LeadItem>, opts?: { skipReload?: boolean }) => Promise<unknown>;
   updateLead: (l: LeadItem) => void | Promise<boolean>;
   reloadLeads: () => void | Promise<void>;
   notify: NotifyFn;
@@ -115,6 +115,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   // Where imported / distributed rows should live. 'archive' keeps them grouped
   // under this tab's source so the desk can work through the batch; 'main'
   // releases them into the ordinary lead flow (pipeline, table, follow-ups).
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [importDest, setImportDest] = useState<'archive' | 'main'>('archive');
   const [assignDest, setAssignDest] = useState<'keep' | 'archive' | 'main'>('keep');
   const ARCHIVE_PAGE_SIZE = 100;
@@ -188,16 +189,20 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
           source: importDest === 'archive' ? (archiveSource || 'استيراد قديم') : mainSource,
           status: 'new',
           hidden: false,
-        } as Partial<LeadItem> & { skipAutoAssign: boolean; rawBranch?: string });
+        } as Partial<LeadItem> & { skipAutoAssign: boolean; rawBranch?: string },
+        // One reload at the end, not one per row — see addLead in useCrmCoreState.
+        { skipReload: true });
         created++;
       } catch (err: unknown) {
         const msg = (err as Error).message || '';
         if (msg.includes('409') || msg.includes('مسجل')) dupes++;
         else errors++;
       }
+      setImportProgress({ done: created + dupes + errors, total: toImport.length });
     }
     setArchiveImportResult({ created, dupes, errors });
     setArchiveImporting(false);
+    setImportProgress(null);
     await reloadLeads();
     if (created > 0) {
       notify('success', importDest === 'archive'
@@ -364,6 +369,21 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
               className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 disabled:opacity-60 transition">
               {archiveImporting ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> جارٍ الاستيراد...</> : <><Upload size={15} /> استيراد {archiveSelectedIds.size} عميل</>}
             </button>
+            {/* A few thousand rows take minutes; without a counter the screen
+                looks frozen and people reload mid-import. */}
+            {importProgress && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] font-bold text-gray-600">
+                  <span>{importProgress.done} من {importProgress.total}</span>
+                  <span>{Math.round((importProgress.done / importProgress.total) * 100)}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-full rounded-full bg-indigo-500 transition-all"
+                    style={{ width: `${(importProgress.done / importProgress.total) * 100}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-400">لا تغلق الصفحة حتى ينتهي الاستيراد.</p>
+              </div>
+            )}
           </>
         )}
         {archiveImportResult && (
