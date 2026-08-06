@@ -182,6 +182,25 @@ router.put('/api/admin/settings/email', requireAuth, requireAdmin, async (req, r
   } catch (e) { logger.error('[email-settings]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET delivery health — did the last real send actually go out?
+//
+// Receipt and password-reset emails are sent from inside other flows, each of
+// which catches its own send error so the flow itself still succeeds. That
+// meant SMTP auth could fail for weeks (535 5.7.8) with nothing on screen to
+// say so. This reports the last success, the last failure and its reason.
+router.get('/api/admin/settings/email/health', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { getDeliveryHealth } = require('../lib/email');
+    const health = getDeliveryHealth(req.tenantId);
+    res.json({
+      ...health,
+      healthy: health.failuresSinceSuccess === 0,
+      // Nothing has been sent since the last restart — not proof of health.
+      unknown: !health.lastSuccessAt && !health.lastFailureAt,
+    });
+  } catch (e) { logger.error('[email-health]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // POST send a test email to verify the configured SMTP end-to-end.
 router.post('/api/admin/settings/email/test', requireAuth, requireAdmin, async (req, res) => {
   try {

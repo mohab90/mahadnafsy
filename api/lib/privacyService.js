@@ -65,11 +65,11 @@ async function buildSubscriberExport({ tenantId, subscriberId, db = pool }) {
     orders: q('SELECT * FROM orders WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]),
     paymentProofs: q('SELECT * FROM payment_proofs WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]),
     enrollments: q('SELECT * FROM enrollments WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]),
-    lectureProgress: q(
-      `SELECT lp.* FROM lecture_progress lp JOIN subscribers s ON s.id=lp.subscriber_id
-       WHERE s.tenant_id=? AND lp.subscriber_id=?`,
-      [tenantId, subscriberId]
-    ),
+    // `lecture_progress` (migrations 001/007) has no writer anywhere in the
+    // codebase and 0 rows in production — every progress path goes through
+    // lecture_completions, which carries progress_pct and watch_seconds as well
+    // as the completion flag. Querying the dead table made the export look like
+    // it covered viewing history twice while one half was always empty.
     lectureCompletions: q('SELECT * FROM lecture_completions WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]),
     courseCompletions: q('SELECT * FROM course_completions WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]),
     quizAttempts: q('SELECT * FROM quiz_attempts WHERE tenant_id=? AND subscriber_id=?', [tenantId, subscriberId]),

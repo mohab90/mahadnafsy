@@ -129,15 +129,57 @@ async function sendEmail(to, subject, bodyHtml, options = {}) {
     to = to.to;
   }
   const tenantId = options.tenantId || DEFAULT_TENANT;
-  const c = await getEmailConfig(tenantId);
-  const transport = await getTransport(tenantId);
-  const info = await transport.sendMail({
-    from: `"${c.senderName}" <${c.senderAddress}>`,
-    to, subject,
-    html: htmlEmail(subject, bodyHtml, c),
-  });
-  assertRecipientAccepted(to, info);
-  return info;
+  try {
+    const c = await getEmailConfig(tenantId);
+    const transport = await getTransport(tenantId);
+    const info = await transport.sendMail({
+      from: `"${c.senderName}" <${c.senderAddress}>`,
+      to, subject,
+      html: htmlEmail(subject, bodyHtml, c),
+    });
+    assertRecipientAccepted(to, info);
+    recordDelivery(tenantId, null);
+    return info;
+  } catch (error) {
+    recordDelivery(tenantId, error);
+    throw error;
+  }
+}
+
+// ── Delivery health ──────────────────────────────────────────────────────────
+// SMTP auth failing (535) is silent from the panel's side: every caller catches
+// its own send error and moves on, so receipts simply stop arriving and nobody
+// finds out until a customer complains. Every send now records its outcome here
+// and GET /api/admin/settings/email/health reports it.
+const deliveryHealth = new Map();
+
+function recordDelivery(tenantId, error) {
+  const key = String(tenantId || DEFAULT_TENANT);
+  const state = deliveryHealth.get(key) || {
+    lastSuccessAt: null, lastFailureAt: null, lastError: null, failuresSinceSuccess: 0,
+  };
+  if (error) {
+    state.lastFailureAt = new Date().toISOString();
+    state.lastError = String(error.message || error).slice(0, 300);
+    state.failuresSinceSuccess += 1;
+    // One line per failure would flood; the first after a healthy run is the
+    // one worth seeing in the log.
+    if (state.failuresSinceSuccess === 1) {
+      logger.error('[email] delivery started failing', { tenantId: key, err: state.lastError });
+    }
+  } else {
+    state.lastSuccessAt = new Date().toISOString();
+    state.failuresSinceSuccess = 0;
+    state.lastError = null;
+  }
+  deliveryHealth.set(key, state);
+}
+
+function getDeliveryHealth(tenantId = DEFAULT_TENANT) {
+  const key = String(tenantId || DEFAULT_TENANT);
+  return deliveryHealth.get(key) || {
+    lastSuccessAt: null, lastFailureAt: null, lastError: null, failuresSinceSuccess: 0,
+  };
 }
 
 function mailbox(value) {
@@ -163,16 +205,23 @@ function assertRecipientAccepted(to, info) {
 const mailer = {
   async sendMail(opts) {
     const tenantId = opts?.tenantId || DEFAULT_TENANT;
-    const c = await getEmailConfig(tenantId);
-    const transport = await getTransport(tenantId);
-    const { tenantId: _tenantId, ...mailOptions } = opts || {};
-    const info = await transport.sendMail({ from: `"${c.senderName}" <${c.senderAddress}>`, ...mailOptions });
-    assertRecipientAccepted(mailOptions.to, info);
-    return info;
+    try {
+      const c = await getEmailConfig(tenantId);
+      const transport = await getTransport(tenantId);
+      const { tenantId: _tenantId, ...mailOptions } = opts || {};
+      const info = await transport.sendMail({ from: `"${c.senderName}" <${c.senderAddress}>`, ...mailOptions });
+      assertRecipientAccepted(mailOptions.to, info);
+      recordDelivery(tenantId, null);
+      return info;
+    } catch (error) {
+      recordDelivery(tenantId, error);
+      throw error;
+    }
   },
   async verify(tenantId = DEFAULT_TENANT) { return (await getTransport(tenantId)).verify(); },
 };
 
 module.exports = {
   mailer, sendEmail, htmlEmail, getEmailConfig, invalidateEmailConfig, assertRecipientAccepted,
+  getDeliveryHealth,
 };
