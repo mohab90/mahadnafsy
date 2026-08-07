@@ -320,6 +320,7 @@ export type StaffPermission =
   // Running the sales team (targets, quotas, sales offers) — deliberately
   // separate from view_reports, which also opens company-wide analytics.
   | 'manage_sales_team'
+  | 'manage_certificates'
   // Messaging & inbox
   | 'manage_inbox'
   | 'manage_notifications'

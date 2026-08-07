@@ -83,6 +83,7 @@ export const PERMISSIONS = {
   VIEW_REPORTS:             'view_reports',
   VIEW_ACTIVITY:            'view_activity',
   MANAGE_SALES_TEAM:        'manage_sales_team',
+  MANAGE_CERTIFICATES:      'manage_certificates',
   MANAGE_INBOX:             'manage_inbox',
   MANAGE_NOTIFICATIONS:     'manage_notifications',
   MANAGE_CHANNEL_SETTINGS:  'manage_channel_settings',
@@ -141,6 +142,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   view_reports:            'عرض التقارير',
   view_activity:           'عرض سجل النشاط',
   manage_sales_team:       'إدارة فريق المبيعات (التارجت والعروض)',
+  manage_certificates:     'الشهادات (الأسعار والطلبات)',
   manage_inbox:            'إدارة الرسائل الواردة',
   manage_notifications:    'إدارة الإشعارات',
   manage_channel_settings: 'إعدادات قنوات التواصل',
@@ -193,6 +195,10 @@ export const PERMISSION_CATEGORIES: { label: string; perms: PermissionKey[] }[] 
     perms: ['manage_sales_team'],
   },
   {
+    label: 'الشهادات',
+    perms: ['manage_certificates'],
+  },
+  {
     label: 'فريق العمل والموارد البشرية',
     perms: ['view_staff', 'manage_staff', 'view_hr', 'manage_hr', 'view_join_us', 'manage_join_us', 'view_contacts', 'manage_contacts'],
   },
@@ -241,6 +247,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_staff', 'view_client_db',
     'view_consultations', 'manage_consultations',
     'manage_inbox', 'manage_notifications', 'manage_daqqi', 'bulk_whatsapp',
+    'manage_certificates',
   ],
 
   sales_collection_manager: [

@@ -255,6 +255,11 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // moved into ServiceHubTab as subtabs, unchanged, so nothing lost.
       { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
       { key: 'consultation_calendar', label: 'تقويم الاستشارات', icon: CalendarDays },
+      // Certificates are a customer request workflow, not site content — they were
+      // under المحتوى, which meant seeing them required manage_content and the
+      // whole page-editor section with it.
+      { key: 'cert_requests', label: 'طلبات الشهادات', icon: FileText },
+      { key: 'cert_pricing', label: 'أسعار الشهادات الإضافية', icon: Tag },
     ],
   },
   {
@@ -320,8 +325,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'course_waitlist', label: 'قوائم الانتظار', icon: Clock },
       { key: 'live_streams', label: 'البث المباشر', icon: Video },
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
-      { key: 'cert_pricing', label: 'أسعار الشهادات الإضافية', icon: Tag },
-      { key: 'cert_requests', label: 'طلبات الشهادات', icon: FileText },
     ],
   },
   {

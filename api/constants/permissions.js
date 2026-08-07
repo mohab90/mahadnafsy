@@ -82,6 +82,10 @@ const PERMISSIONS = Object.freeze({
   // needs to set a rep's target without being handed the KPI dashboard,
   // retention analysis and expense analytics along with it.
   MANAGE_SALES_TEAM:        'manage_sales_team',
+  // Certificate pricing and issuance requests. Previously mapped to
+  // manage_content, which also opens every page-content editor — a branch
+  // manager who only handles certificates should not get the whole site.
+  MANAGE_CERTIFICATES:      'manage_certificates',
   // Messaging
   MANAGE_INBOX:             'manage_inbox',
   MANAGE_NOTIFICATIONS:     'manage_notifications',
@@ -136,6 +140,7 @@ const ROLE_PERMS = Object.freeze({
     'view_staff', 'view_client_db',
     'view_consultations', 'manage_consultations',
     'manage_inbox', 'manage_notifications', 'manage_daqqi', 'bulk_whatsapp',
+    'manage_certificates',
   ],
 
   [ROLES.SALES_COLLECTION_MANAGER]: [

@@ -84,6 +84,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   view_financial: 'عرض النظام المحاسبي',
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',
   view_reports: 'عرض التقارير والإحصائيات',
+  manage_certificates: 'الشهادات (الأسعار والطلبات)',
   manage_sales_team: 'إدارة فريق المبيعات (التارجت والعروض)',
   manage_inbox: 'إدارة صندوق الوارد والمحادثات',
   manage_notifications: 'إدارة الإشعارات',

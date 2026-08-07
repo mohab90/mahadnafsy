@@ -51,6 +51,7 @@ const PERMISSION_LABELS: Record<StaffPermission, string> = {
   manage_financial: 'إدارة النظام المحاسبي (تعديل)',
   // Reports
   view_reports: 'عرض التقارير والإحصائيات',
+  manage_certificates: 'الشهادات (الأسعار والطلبات)',
   manage_sales_team: 'إدارة فريق المبيعات (التارجت والعروض)',
   // Messaging & inbox
   manage_inbox: 'إدارة صندوق الوارد والمحادثات',
@@ -671,8 +672,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   policies:           'manage_content',
   footer_settings:    'manage_content',
   institute_gallery:  'manage_content',
-  cert_pricing:       'manage_content',
-  cert_requests:      'manage_content',
+  cert_pricing:       'manage_certificates',
+  cert_requests:      'manage_certificates',
   content:            'manage_content',
   content_hub:        'manage_content',
 };
