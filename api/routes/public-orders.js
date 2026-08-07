@@ -190,6 +190,10 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
 
 // ── Paymob: reserve pending order before payment (client calls this before iframe) ─────────
 // No auth required — consultations and certificates don't require login.
+// Reserve a seat, i.e. insert the pending order that the Paymob redirect is
+// about to be created for. StandalonePayment.tsx calls this immediately before
+// /api/payments/paymob-init, so the gateway check below is deliberate: without
+// it, a disabled gateway would leave behind a pending order nobody can ever pay.
 router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
   let conn;
   try {

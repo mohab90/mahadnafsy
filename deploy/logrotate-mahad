@@ -1,0 +1,16 @@
+# /etc/logrotate.d/mahad
+#
+# watchdog.log and mahad-db-backup.log had no rotation at all — they grow for
+# ever. They are small today (8 KB), but the watchdog appends every minute, and
+# a full disk stops MariaDB, which stops everything.
+/var/www/mahad-api/watchdog.log
+/var/log/mahad-db-backup.log
+{
+    weekly
+    rotate 8
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
