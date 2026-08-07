@@ -118,7 +118,10 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
     const offset = parseOffset(req.query.offset);
     const data = await cached(`courses:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
-        `SELECT ${COURSE_LIST_COLS} FROM courses WHERE tenant_id=? AND is_published = 1
+        `SELECT ${COURSE_LIST_COLS},
+                (SELECT COUNT(DISTINCT e.subscriber_id) FROM enrollments e
+                  WHERE e.course_id = courses.id AND e.tenant_id = courses.tenant_id) AS enrolled_count
+           FROM courses WHERE tenant_id=? AND is_published = 1
          ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
@@ -163,7 +166,12 @@ const publicLecture = (r, positionInCourse, previewLimit) => {
 router.get('/api/courses/:id', publicLimiter, async (req, res) => {
   try {
     const lookup = req.params.id;
-    const [[row]] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`, [req.tenantId, lookup, lookup]);
+    const [[row]] = await pool.query(
+      `SELECT ${COURSE_COLS},
+              (SELECT COUNT(DISTINCT e.subscriber_id) FROM enrollments e
+                WHERE e.course_id = courses.id AND e.tenant_id = courses.tenant_id) AS enrolled_count
+         FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`,
+      [req.tenantId, lookup, lookup]);
     if (!row) return res.status(404).json({ error: 'Not found' });
     // course_lectures / course_chapters carry no tenant_id of their own — they
     // inherit tenancy from the parent course, and the rest of the codebase

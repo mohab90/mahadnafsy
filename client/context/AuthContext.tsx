@@ -21,7 +21,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Auth: restore session via httpOnly cookie (credentials: 'include' in all API calls)
   useEffect(() => {
+    // ApiError carries the HTTP status; read it instead of guessing from the
+    // message. /api/auth/me answers 401 with "Account disabled or unavailable",
+    // which matches none of the substrings this used to look for — so every
+    // signed-out visitor was treated as a transient failure and retried three
+    // times, four identical 401s spread over 24 seconds on every page load.
     const isAuthError = (err: unknown) => {
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 401 || status === 403) return true;
       const msg = err instanceof Error ? err.message : String(err);
       return msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized')
         || msg.includes('Forbidden') || msg.includes('token') || msg.includes('expired');
@@ -71,8 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAuth = () => {
     mysqlAuth.me().then((user) => setAuthUser(user)).catch((err) => {
+      const status = (err as { status?: number } | null)?.status;
       const msg = err instanceof Error ? err.message : String(err);
-      const isAuthErr = msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized')
+      const isAuthErr = status === 401 || status === 403
+        || msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized')
         || msg.includes('Forbidden') || msg.includes('token') || msg.includes('expired');
       if (isAuthErr) { localStorage.removeItem('mahad-token'); setAuthUser(null); }
     });
