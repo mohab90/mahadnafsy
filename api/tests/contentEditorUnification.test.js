@@ -22,6 +22,7 @@ const FIELD_LISTS = [
   'aboutPageFields', 'homeOfferFields', 'pageCoursesFields', 'pageBundlesFields',
   'pageConsultationsFields', 'pageInstructorsFields', 'pageContactFields',
   'pageJoinUsFields', 'pageCommunityFields', 'policySections',
+  'pageCourseDetailsFields', 'pageBundleDetailsFields', 'pageMiscFields',
 ];
 
 test('no content key is offered by two different editors', () => {
@@ -73,6 +74,26 @@ test('content forms save in one request, not one request per field', () => {
   const hook = read('context', 'site-data-hooks', 'useContentState.ts');
   assert.match(hook, /const setContentValues = \(entries: Record<string, string>\)/);
   assert.match(hook, /queueContentMutation\(keys, 'update'/);
+});
+
+test('the course and bundle detail pages are fully editable', () => {
+  // 118 strings between these two pages used to be code defaults with no editor
+  // anywhere in the panel — the two pages that actually sell the courses.
+  const client = path.join(__dirname, '..', '..', 'client');
+  const editable = new Set(FIELD_LISTS.flatMap(keysOf));
+  const missing = [];
+  for (const [page, prefix] of [['CourseDetails', 'courseDetails.'], ['BundleDetails', 'bundleDetails.']]) {
+    const files = fs.readdirSync(path.join(client, 'pages'))
+      .filter(f => f.startsWith(page) && /\.tsx?$/.test(f));
+    assert.ok(files.length, `no ${page} page found`);
+    for (const f of files) {
+      const src = fs.readFileSync(path.join(client, 'pages', f), 'utf8');
+      for (const m of src.matchAll(/content\[['"]([^'"]+)['"]\]/g)) {
+        if (m[1].startsWith(prefix) && !editable.has(m[1])) missing.push(m[1]);
+      }
+    }
+  }
+  assert.deepEqual([...new Set(missing)], [], `read by the page with no editor: ${missing.join(', ')}`);
 });
 
 test('every home.offer key the site reads has an editor', () => {

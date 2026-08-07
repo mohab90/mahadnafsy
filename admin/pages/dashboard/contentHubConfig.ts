@@ -24,6 +24,12 @@ export const CONTENT_HUB_TABS: ContentHubTab[] = [
   { key: 'page_instructors', label: 'صفحة الخبراء', icon: 'E' },
   { key: 'page_contact', label: 'صفحة التواصل', icon: '@' },
   { key: 'page_joinus', label: 'صفحة انضم إلينا', icon: '+' },
+  // The two busiest sales pages on the site had no editor at all — 118 strings
+  // between them (FAQ answers, guarantee text, lead-form labels, the whole
+  // learning-path map) lived only as code defaults.
+  { key: 'page_course_details', label: 'تفاصيل الكورس', icon: 'D' },
+  { key: 'page_bundle_details', label: 'تفاصيل المسار', icon: 'P' },
+  { key: 'page_misc', label: 'إعدادات متفرقة', icon: '~' },
   { key: 'hub_advanced', label: 'متقدم', icon: '*' },
 ];
 

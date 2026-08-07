@@ -8,8 +8,11 @@ import { ContentHubGenericPageEditor, ContentHubPoliciesEditor, ContentHubSimple
 import {
   aboutPageFields,
   homeOfferFields,
+  pageBundleDetailsFields,
   pageBundlesFields,
   pageCommunityFields,
+  pageCourseDetailsFields,
+  pageMiscFields,
   pageConsultationsFields,
   pageContactFields,
   pageCoursesFields,
@@ -190,12 +193,15 @@ export function DashboardDirectContentRoutes({
           page_contact: { title: 'محتوى صفحة تواصل معنا', subtitle: 'تعديل عناوين ونصوص صفحة التواصل مع المعهد', fields: pageContactFields, msg: 'تم حفظ محتوى صفحة التواصل بنجاح.' },
           page_joinus: { title: 'محتوى صفحة انضم إلينا', subtitle: 'تعديل عناوين وإحصائيات ومزايا صفحة الانضمام للمحاضرين والمستشارين', fields: pageJoinUsFields, msg: 'تم حفظ محتوى صفحة انضم إلينا بنجاح.' },
           page_community: { title: 'محتوى صفحة المجتمع', subtitle: 'تعديل عناوين أقسام صفحة مجتمع المعهد النفسي', fields: pageCommunityFields, msg: 'تم حفظ محتوى صفحة المجتمع بنجاح.' },
+          page_course_details: { title: 'محتوى صفحة تفاصيل الكورس', subtitle: 'كل نص يظهر داخل صفحة الدبلومة: الأسعار والمزايا والضمان والأسئلة الشائعة ونموذج الاهتمام', fields: pageCourseDetailsFields, msg: 'تم حفظ محتوى صفحة تفاصيل الكورس بنجاح.' },
+          page_bundle_details: { title: 'محتوى صفحة تفاصيل المسار', subtitle: 'نصوص صفحة المسار التعليمي: خريطة المحطات والشهادة والمهارات ونموذج الالتحاق', fields: pageBundleDetailsFields, msg: 'تم حفظ محتوى صفحة تفاصيل المسار بنجاح.' },
+          page_misc: { title: 'إعدادات محتوى متفرقة', subtitle: 'الأيقونة وتعليمات الدفع ونصوص الجلسة السريعة والكورس المميز', fields: pageMiscFields, msg: 'تم حفظ الإعدادات المتفرقة بنجاح.' },
         }}
         content={content}
         policyDrafts={policyDrafts}
         setPolicyDrafts={setPolicyDrafts}
         setContentValue={setContentValue}
-                setContentValues={setContentValues}
+        setContentValues={setContentValues}
         notify={notify}
       />
 
