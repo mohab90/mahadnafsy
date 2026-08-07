@@ -1,8 +1,11 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
+  AlarmClock,
   BarChart3,
   Bell,
+  Mail,
+  Tag,
   BookOpen,
   Bot,
   Briefcase,
@@ -207,6 +210,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
       { key: 'sales_hub', label: 'فريق المبيعات والتقارير', icon: Users },
       { key: 'followup_reminders', label: 'تذكيرات المتابعة', icon: Bell },
+      // Built, wired to a renderer, and reachable from nothing — only by typing
+      // the URL. Surfaced here so the pages that exist can actually be opened.
+      { key: 'lead_scoring', label: 'تقييم وترتيب الليدز', icon: TrendingUp },
+      { key: 'forecast', label: 'توقعات المبيعات', icon: BarChart3 },
     ],
   },
   {
@@ -219,6 +226,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
       { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
+      { key: 'subscriptions', label: 'الاشتراكات المتكررة', icon: RotateCcw },
     ],
   },
   {
@@ -246,6 +254,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // contacts/consultations/nps_dashboard each a separate page) — all
       // moved into ServiceHubTab as subtabs, unchanged, so nothing lost.
       { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
+      { key: 'consultation_calendar', label: 'تقويم الاستشارات', icon: CalendarDays },
     ],
   },
   {
@@ -270,9 +279,12 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Briefcase,
     color: 'text-purple-600',
     items: [
-      { key: 'hr', label: 'نظام HR', icon: Briefcase },
+      // 'نظام HR' and 'الموظفون' were two menu items rendering the identical
+      // component with identical props (HrTab, whose default sub-tab is the staff
+      // directory) — the same page twice. One entry, named for both jobs. The
+      // staff_management key still routes, so links into it keep working.
+      { key: 'hr', label: 'نظام HR والموظفون', icon: Briefcase },
       { key: 'hr_analytics', label: 'تقارير وتحليلات HR', icon: BarChart3 },
-      { key: 'staff_management', label: 'الموظفون', icon: Users },
       { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },
       { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },
       { key: 'instructors', label: 'المحاضرون والخبراء', icon: GraduationCap },
@@ -288,6 +300,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'marketing_hub', label: 'مركز التسويق الشامل', icon: Megaphone },
       { key: 'messaging_hub', label: 'الواتساب والماسنجر', icon: MessageCircle },
+      { key: 'email_campaigns', label: 'حملات البريد', icon: Mail },
+      { key: 'sms_campaigns', label: 'حملات SMS', icon: MessageSquareText },
+      { key: 'drip_campaigns', label: 'حملات التنقيط (Drip)', icon: AlarmClock },
+      { key: 'notif_inbox', label: 'إدارة صندوق الإشعارات', icon: Bell },
     ],
   },
   {
@@ -304,6 +320,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'course_waitlist', label: 'قوائم الانتظار', icon: Clock },
       { key: 'live_streams', label: 'البث المباشر', icon: Video },
       { key: 'community', label: 'إدارة المجتمع', icon: MessageSquareText },
+      { key: 'cert_pricing', label: 'أسعار الشهادات الإضافية', icon: Tag },
+      { key: 'cert_requests', label: 'طلبات الشهادات', icon: FileText },
     ],
   },
   {
@@ -317,6 +335,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'payment_settings', label: 'بوابات الدفع', icon: CreditCard },
       { key: 'lead_sources_settings', label: 'مصادر الليد والداتا', icon: UserPlus },
       { key: 'otp_settings', label: 'OTP والقنوات', icon: Shield },
+      { key: 'sms_settings', label: 'إعدادات SMS', icon: MessageSquareText },
+      { key: 'branch_workspaces', label: 'مساحات عمل الفروع', icon: FolderKanban },
+      { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
+      { key: 'ip_whitelist', label: 'قائمة IP المسموحة', icon: Shield },
       { key: 'messaging_agent', label: 'عميل المراسلة AI', icon: Bot },
       { key: 'admin_ai_settings', label: 'إعدادات AI', icon: Settings2 },
       { key: 'server_monitor', label: 'مراقبة السيرفر', icon: Activity },

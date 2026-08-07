@@ -262,21 +262,34 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
     setEditMode(true);
   };
   const saveEdit = async () => {
-    try {
-      await Promise.all([
-        ...onlineTeam.map((staff) => mysqlAdmin.saveSalesTarget({
-          staffId: staff.id, period: month(), leadsTarget: editingTargets[staff.id] || 0,
-        })),
-        ...collectionTeam.map((staff) => mysqlAdmin.saveSalesTarget({
-          staffId: staff.id, period: month(), revenueTarget: editingTargets[staff.id] || 0,
-        })),
-      ]);
-      setTargets(editingTargets);
-      setEditMode(false);
-      notify('success', 'تم حفظ الأهداف في قاعدة البيانات');
-    } catch {
-      notify('error', 'تعذر حفظ بعض أهداف الفريق');
+    // One request per staff member, so a failure part-way through used to leave
+    // some targets saved while Promise.all rejected, the state update was skipped
+    // and the table went back to showing the *old* numbers — a screen that
+    // disagreed with the database. Only changed rows are sent, and whatever did
+    // land is applied to the table so the two always match.
+    const pending = [
+      ...onlineTeam.map(s => ({ staff: s, body: { staffId: s.id, period: month(), leadsTarget: editingTargets[s.id] || 0 } })),
+      ...collectionTeam.map(s => ({ staff: s, body: { staffId: s.id, period: month(), revenueTarget: editingTargets[s.id] || 0 } })),
+    ].filter(({ staff }) => (editingTargets[staff.id] || 0) !== (targets[staff.id] || 0));
+
+    if (!pending.length) { setEditMode(false); notify('info', 'لا يوجد تغيير في الأهداف'); return; }
+
+    const results = await Promise.allSettled(pending.map(p => mysqlAdmin.saveSalesTarget(p.body)));
+    const saved: StaffTargets = { ...targets };
+    const failed: string[] = [];
+    results.forEach((r, i) => {
+      const { staff } = pending[i];
+      if (r.status === 'fulfilled') saved[staff.id] = editingTargets[staff.id] || 0;
+      else failed.push(staff.name || staff.id);
+    });
+    setTargets(saved);
+    if (failed.length) {
+      notify('error', `تعذر حفظ هدف: ${failed.join('، ')} — الباقي اتحفظ`);
+      setEditingTargets(saved);
+      return;
     }
+    setEditMode(false);
+    notify('success', `تم حفظ ${pending.length} هدف في قاعدة البيانات`);
   };
   const cancelEdit = () => setEditMode(false);
 

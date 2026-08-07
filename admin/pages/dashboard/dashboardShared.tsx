@@ -642,7 +642,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   security_dashboard: 'view_security',
   ip_whitelist:       'manage_security',
   sms_settings:       'manage_channel_settings',
-  notif_inbox:        'manage_notifications',
+  // Managing the notification inbox is a marketing/ops tool, not something every
+  // employee who can receive notifications should see — manage_notifications is
+  // held by sales reps and support, which would have put the whole التسويق group
+  // in their sidebar the moment this became a menu item.
+  notif_inbox:        'manage_channel_settings',
   email_campaigns:    'manage_channel_settings',
   sms_campaigns:      'manage_channel_settings',
   drip_campaigns:     'manage_channel_settings',

@@ -3,7 +3,7 @@ const express  = require('express');
 const router   = express.Router();
 const { uuidv4 } = require('../lib/id');
 
-const { pool } = require('../lib/db');
+const { pool, cacheInvalidate } = require('../lib/db');
 const { tryJson, validate } = require('../lib/helpers');
 const { enqueueEmailSequence } = require('../lib/emailSequence');
 const { completeCourse, completeCourses } = require('../lib/courseCompletion');
@@ -345,6 +345,10 @@ router.patch('/api/admin/lectures/:lectureId/drip', requireAuth, requireAdmin, a
       [days, req.params.lectureId, req.tenantId]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Lecture not found' });
+    // drip_unlock_days is part of the GET /api/lectures payload, which is cached
+    // for five minutes — without this the new unlock schedule did not reach the
+    // customer's LMS until the cache expired.
+    cacheInvalidate('courses', 'lectures');
     res.json({ ok: true, drip_unlock_days: days });
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });

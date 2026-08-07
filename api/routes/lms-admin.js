@@ -89,7 +89,11 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
       [id, courseId, chapterId, title, lectureType, videoUrl, duration, normalizedDurationSeconds,
         normalizedSortOrder, description, isPreview, isPublished, normalizedDripDays]
     );
-    cacheInvalidate('courses');
+    // 'courses' alone left GET /api/lectures and GET /api/chapters serving their
+    // own 5-minute caches, so a lecture that was added, renamed, reordered,
+    // published or unpublished stayed invisible to customers for up to five
+    // minutes after the panel had already said "تم الحفظ".
+    cacheInvalidate('courses', 'lectures', 'chapters');
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -127,7 +131,7 @@ router.post('/api/admin/chapters', requireAuth, requireAdmin, async (req, res) =
        ON DUPLICATE KEY UPDATE title=VALUES(title), sort_order=VALUES(sort_order)`,
       [id, courseId, title, Number(sortOrder)]
     );
-    cacheInvalidate('courses');
+    cacheInvalidate('courses', 'lectures', 'chapters');
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -243,7 +247,6 @@ router.post('/api/admin/therapists', requireAuth, requireAdmin, async (req, res)
     }
     await conn.commit();
     cacheInvalidate('therapists');
-    cacheInvalidate('courses');
     res.json({ ok: true, id });
   } catch (e) {
     if (conn) await conn.rollback().catch(() => {});

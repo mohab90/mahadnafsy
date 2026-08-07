@@ -68,11 +68,11 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
   finally { conn.release(); }
 });
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses'); res.json({ ok: true }); }
+  try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 router.delete('/api/admin/chapters/:id', requireAuth, requireAdmin, async (req, res) => {
-  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses'); res.json({ ok: true }); }
+  try { await pool.query('DELETE ch FROM course_chapters ch JOIN courses c ON c.id=ch.course_id WHERE ch.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 // GET /api/admin/therapists — all therapists (including inactive) with slots
