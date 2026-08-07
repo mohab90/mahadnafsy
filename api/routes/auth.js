@@ -1074,10 +1074,43 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
         }
       }
     } else {
-      // Phone identifier — only the users table carries a phone; there is no
-      // subscriber-fallback equivalent for it.
       const [[existingUser]] = await pool.query('SELECT id, name, email, phone FROM users WHERE tenant_id=? AND phone = ? AND is_active = 1 LIMIT 1', [req.tenantId, phoneIdentity]);
-      if (existingUser) user = existingUser;
+      if (existingUser) {
+        user = existingUser;
+      } else {
+        // Same fallback the email branch has had all along: a client added by an
+        // admin has a subscribers row and no users row. Without this, a paying
+        // customer who types their WhatsApp number gets the silent "ok" below and
+        // no code ever arrives — so "just use forgot password" could not work for
+        // them however many times they tried.
+        const [[sub]] = await pool.query(
+          `SELECT id, name, email, phone FROM subscribers
+            WHERE tenant_id=? AND phone = ? AND is_active = 1 AND deleted_at IS NULL
+            LIMIT 1`,
+          [req.tenantId, phoneIdentity]
+        );
+        if (sub) {
+          // Locked, un-guessable hash: the only way in is the OTP they are about
+          // to receive. Email stays NULL when the subscriber has none — phone is
+          // the identity here.
+          const tempHash = await bcrypt.hash(uuidv4() + Date.now(), 10);
+          const newUserId = uuidv4();
+          await pool.query(
+            `INSERT IGNORE INTO users (id, tenant_id, email, phone, password_hash, name, role, is_active)
+             VALUES (?,?,?,?,?,?,?,1)`,
+            [newUserId, req.tenantId, sub.email ? String(sub.email).toLowerCase().trim() : null,
+              phoneIdentity, tempHash, sub.name || '', 'user']
+          );
+          const [[createdUser]] = await pool.query(
+            'SELECT id, name, email, phone FROM users WHERE tenant_id=? AND phone = ? LIMIT 1',
+            [req.tenantId, phoneIdentity]
+          );
+          if (createdUser) {
+            user = createdUser;
+            logger.info('[forgot-password] auto-created users record for subscriber by phone:', phoneIdentity);
+          }
+        }
+      }
     }
 
     // Always return success to prevent user enumeration
@@ -1095,9 +1128,13 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
     const otpConn = await pool.getConnection();
     try {
       await otpConn.beginTransaction();
+      // Keyed by user_id, not email: an account with no email (phone-only
+      // registration, or a subscriber claimed by number) has email NULL, and
+      // `email=NULL` matches nothing in SQL — so older codes were never
+      // invalidated for exactly the accounts that rely on WhatsApp.
       await otpConn.query(
-        "UPDATE otp_codes SET used=1 WHERE tenant_id=? AND email=? AND type='password_reset' AND used=0",
-        [req.tenantId, user.email]
+        "UPDATE otp_codes SET used=1 WHERE tenant_id=? AND user_id=? AND type='password_reset' AND used=0",
+        [req.tenantId, user.id]
       );
       await otpConn.query(
         `INSERT INTO otp_codes (id, tenant_id, user_id, email, code, type, expires_at) VALUES (?,?,?,?,?,?,?)`,
@@ -1189,33 +1226,43 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
 router.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   const { email: rawIdentifier, code, type = 'password_reset' } = req.body || {};
   if (!rawIdentifier || !code) return res.status(400).json({ error: 'البريد أو رقم الهاتف والرمز مطلوبان' });
-  let safeEmail;
+  // Resolve the account first, then look the code up by its id. The row used to
+  // be found by email, which silently never matched for an account whose email
+  // is NULL (phone-only registration, or a subscriber claimed by number): the
+  // code arrived on WhatsApp and every attempt to enter it answered "الرمز غير
+  // صحيح" forever. The hash still covers the email value so codes already in
+  // flight stay valid.
+  let account = null;
   if (isEmail(rawIdentifier)) {
-    safeEmail = rawIdentifier.toLowerCase().trim();
+    const safeEmail = rawIdentifier.toLowerCase().trim();
+    const [[byEmail]] = await pool.query(
+      'SELECT id, email FROM users WHERE tenant_id=? AND email=? AND is_active=1 LIMIT 1',
+      [req.tenantId, safeEmail]
+    );
+    account = byEmail || { id: null, email: safeEmail };
   } else {
-    // The OTP row is always keyed by the account's real email (see
-    // forgot-password), so a phone identifier has to be resolved first.
     const phoneIdentity = normalizeWhatsAppNumber(rawIdentifier);
     const [[byPhone]] = await pool.query(
-      'SELECT email FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
+      'SELECT id, email FROM users WHERE tenant_id=? AND phone=? AND is_active=1 LIMIT 1',
       [req.tenantId, phoneIdentity]
     );
     // Deliberately fall through to the ordinary "code incorrect or expired"
     // rejection below rather than a distinct error — an unresolvable phone
     // must not read differently from a wrong code, or it becomes a way to
     // probe which numbers have accounts.
-    safeEmail = byPhone ? byPhone.email : `unresolved:${phoneIdentity}`;
+    account = byPhone || { id: null, email: `unresolved:${phoneIdentity}` };
   }
+  const safeEmail = account.email;
   let conn;
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [[row]] = await conn.query(
       `SELECT id, user_id FROM otp_codes
-        WHERE tenant_id=? AND email=? AND code=? AND type=? AND used=0
+        WHERE tenant_id=? AND user_id=? AND code=? AND type=? AND used=0
           AND delivery_status='accepted' AND expires_at > NOW()
         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-      [req.tenantId, safeEmail, hashOtp({
+      [req.tenantId, account.id, hashOtp({
         tenantId: req.tenantId, email: safeEmail, type, code,
       }), type]
     );
