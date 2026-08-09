@@ -214,6 +214,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // the URL. Surfaced here so the pages that exist can actually be opened.
       { key: 'lead_scoring', label: 'تقييم وترتيب الليدز', icon: TrendingUp },
       { key: 'forecast', label: 'توقعات المبيعات', icon: BarChart3 },
+      // Not dead code, despite being unreachable: the sales hub's own "الأهداف"
+      // sub-tab only *displays* targets, so this is the only screen in the panel
+      // that can set a rep's monthly target. Unreachable meant nobody could.
+      { key: 'sales_goals', label: 'تحديد أهداف المبيعات', icon: Target },
     ],
   },
   {

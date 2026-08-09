@@ -26,9 +26,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": false,
-    "strictBindCallApply": true
+    "strict": true
   },
   "include": ["**/*.ts", "**/*.tsx"]
 }

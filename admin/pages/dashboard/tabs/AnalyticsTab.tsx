@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BarChart3, Download, TrendingUp, UserCheck, BookOpen, Receipt, Star, Tag,
   Wallet, Clock, Layers, UserPlus, CalendarCheck2, MessageSquareText,

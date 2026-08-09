@@ -1,4 +1,4 @@
-﻿import { lazy } from 'react';
+import { lazy } from 'react';
 
 export const ActivityTab = lazy(() => import('./tabs/ActivityTab'));
 export const AdminAiSettingsTab = lazy(() => import('./tabs/AdminAiSettingsTab'));

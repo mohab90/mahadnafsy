@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Save } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
