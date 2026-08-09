@@ -17,7 +17,7 @@ import { courseBadgeLabel, matchCourseOrBundle, toRawCourse } from './leadCourse
  * the name+phone requirement and was silently skipped.
  */
 const normKey = (value: string) => String(value || '')
-  .replace(/^﻿/, '')
+  .replace(/^FEFF/, '')
   .trim()
   .toLowerCase()
   .replace(/[_\s\-().[\]/\\]+/g, '');

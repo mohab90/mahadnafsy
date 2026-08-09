@@ -35,7 +35,7 @@ module.exports = {
   // every one of those as an error for referencing a rule it does not know.
   // Turning those rules on is a separate decision with a real backlog behind
   // it, and not this change.
-  plugins: ['react-hooks', '@typescript-eslint'],
+  plugins: ['react-hooks', '@typescript-eslint', 'jsx-a11y'],
   rules: {
     // Silently wrong data
     'no-dupe-keys': 'error',
@@ -72,5 +72,15 @@ module.exports = {
     'no-misleading-character-class': 'error',
     'no-irregular-whitespace': 'error',
     'no-loss-of-precision': 'error',
+
+    // Accessibility — basic mechanical checks (not a substitute for manual review)
+    'jsx-a11y/alt-text': 'error',
+    'jsx-a11y/aria-props': 'error',
+    'jsx-a11y/aria-proptypes': 'error',
+    'jsx-a11y/aria-unsupported-elements': 'error',
+    'jsx-a11y/role-has-required-aria-props': 'error',
+    'jsx-a11y/role-supports-aria-props': 'error',
+    'jsx-a11y/img-redundant-alt': 'error',
+    'jsx-a11y/no-redundant-roles': 'error',
   },
 };

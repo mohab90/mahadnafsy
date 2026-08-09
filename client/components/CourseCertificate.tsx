@@ -120,6 +120,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
           }}>
             <img
               src={LOGO_URL}
+              alt=""
               style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'contain' }}
               onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
@@ -204,6 +205,7 @@ const CourseCertificate: React.FC<CourseCertificateProps> = ({
               }}>
                 <img
                   src={LOGO_URL}
+                  alt=""
                   style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'contain', flexShrink: 0 }}
                   onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />

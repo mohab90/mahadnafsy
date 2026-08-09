@@ -144,7 +144,7 @@ router.post('/api/auth/register', registerLimiter, requireDb, requireTenantQuota
       uid: id, email: normalizedEmail, tenantId, sessionVersion: 1, sessionId: session.sessionId,
     });
     setAuthCookie(res, token);
-    res.json({ ok: true, token, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
+    res.json({ ok: true, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
 
     // Best-effort referral tracking
     if (ref) {
@@ -267,7 +267,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
       uid: id, email: normalizedEmail, tenantId, sessionVersion: 1, sessionId: session.sessionId,
     });
     setAuthCookie(res, token);
-    res.json({ ok: true, token, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
+    res.json({ ok: true, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
     if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId }).catch(() => {});
   } catch (err) {
     if (transactionStarted) await conn.rollback().catch(() => {});
@@ -866,7 +866,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
         code: 'ACCOUNT_SHARING_LOCKED',
       });
     }
-    res.json({ ok: true, token, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
+    res.json({ ok: true, user: { uid: user.id, email: user.email, displayName: user.name || '' } });
   } catch (err) {
     logger.error('[auth/login]', err);
     if (!res.headersSent) {
@@ -1544,7 +1544,7 @@ router.post('/api/auth/refresh', requireAuth, async (req, res) => {
       mfaVerified: req.user.mfa_verified,
     });
     setAuthCookie(res, token);
-    res.json({ ok: true, token });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Refresh failed' });
   }
@@ -1637,7 +1637,7 @@ router.post('/api/auth/2fa/enable', requireAuth, loginLimiter, async (req, res) 
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: true,
     });
     setAuthCookie(res, fullToken);
-    res.json({ ok: true, token: fullToken, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
+    res.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
   } catch (e) {
     logger.error('[2fa/enable]', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -1694,7 +1694,7 @@ router.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
     });
     setAuthCookie(res, token);
-    res.json({ ok: true, token, message: 'تم تعطيل المصادقة الثنائية' });
+    res.json({ ok: true, message: 'تم تعطيل المصادقة الثنائية' });
   } catch (e) {
     logger.error('[2fa/disable]', e);
     res.status(500).json({ error: 'Internal server error' });
@@ -1751,7 +1751,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
     });
     setAuthCookie(res, fullToken);
     await logLoginAttempt({ userId: payload.uid, email: payload.email, req, tenantId: payload.tid || req.tenantId, status: '2fa_success' });
-    res.json({ ok: true, token: fullToken });
+    res.json({ ok: true });
   } catch (e) {
     logger.error('[2fa/verify]', e);
     res.status(500).json({ error: 'Internal server error' });
