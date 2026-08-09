@@ -597,18 +597,18 @@ router.get('/api/lectures', publicLimiter, async (req, res) => {
     const data = await cached(`lectures:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT cl.id, cl.course_id, cl.chapter_id, cl.title, cl.description, cl.video_url, cl.duration,
-                cl.is_preview, cl.sort_order, cl.is_published, cl.lecture_type, cl.drip_unlock_days
+                cl.is_preview, cl.sort_order, cl.is_published, cl.lecture_type, cl.drip_unlock_days,
+                (SELECT COUNT(*) FROM course_lectures cl2
+                 WHERE cl2.course_id = cl.course_id
+                   AND cl2.is_published = 1
+                   AND cl2.sort_order < cl.sort_order) AS position_in_course
          FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
          WHERE cl.is_published=1 AND c.tenant_id=?
          ORDER BY cl.course_id, cl.sort_order ASC LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
       const previewLimit = await getPreviewLimit(req.tenantId);
-      const posByCourse = {};
-      return rows.map(r => {
-        const pos = (posByCourse[r.course_id] = (posByCourse[r.course_id] ?? -1) + 1);
-        return publicLecture(r, pos, previewLimit);
-      });
+      return rows.map(r => publicLecture(r, r.position_in_course, previewLimit));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);

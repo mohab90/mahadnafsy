@@ -42,6 +42,20 @@
       "runtimeArgs": ["vite", "--port", "4020", "--strictPort"],
       "cwd": "admin",
       "port": 4020
+    },
+    {
+      "name": "live-admin",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "4030", "--strictPort", "--mode", "live"],
+      "cwd": "admin",
+      "port": 4030
+    },
+    {
+      "name": "live-client",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "3030", "--strictPort", "--mode", "live"],
+      "cwd": "client",
+      "port": 3030
     }
   ]
 }

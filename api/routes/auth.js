@@ -851,7 +851,6 @@ router.post('/api/auth/login', loginLimiter, requireDb,
     // NOTE: Do NOT auto-create a subscriber record on login.
     // Only real paid subscribers (created by admin staff) should appear in the subscribers table.
     // Unenrolled users will see the "حسابك قيد المراجعة" screen after login — this is intentional.
-    // Set httpOnly cookie (secure, 7-day expiry) + return token in body for backward compat
     setAuthCookie(res, token);
     await logLoginAttempt({ userId: user.id, email: user.email, req, status: 'success' });
     // Runs AFTER the attempt is recorded so the current IP counts. If this login
@@ -1023,8 +1022,12 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
 
     // `created` lets the client greet a brand-new customer differently from a
     // returning one, and lets it ask for a name it did not collect up front.
+    // The token goes out only as the httpOnly cookie set above. Echoing it in
+    // the body too would put it back within reach of any injected script, which
+    // is the whole thing the cookie migration removed — the WhatsApp OTP path
+    // was the one login route still doing it.
     res.json({
-      ok: true, token, created: Boolean(created),
+      ok: true, created: Boolean(created),
       user: { uid: user.id, email: user.email, displayName: user.name || '', phone },
     });
   } catch (e) {

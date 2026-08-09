@@ -77,8 +77,7 @@ const Auth: React.FC = () => {
         setLoading(true);
         setNotice(null);
         try {
-            const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined);
-            localStorage.setItem('mahad-token', result.token);
+            await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined);
             setNotice({
                 type: 'success',
                 text: result.created ? 'أهلاً بك! تم إنشاء حسابك.' : 'تم تسجيل الدخول.',
@@ -147,8 +146,7 @@ const Auth: React.FC = () => {
         setNotice(null);
         try {
             if (!twoFaTempToken) throw new Error('Missing 2FA session');
-            const result = await mysqlAuth.verify2fa(twoFaTempToken, twoFaCode);
-            localStorage.setItem('mahad-token', result.token);
+            await mysqlAuth.verify2fa(twoFaTempToken, twoFaCode);
             setTwoFaStep(false);
             setTwoFaCode('');
             setTwoFaTempToken('');
@@ -200,11 +198,9 @@ const Auth: React.FC = () => {
                     setTwoFaStep(true);
                     return;
                 }
-                if (!result.token) throw new Error('Login did not return a session token');
-                localStorage.setItem('mahad-token', result.token); // keep for backward compat with existing sessions
                 setNotice({ type: 'success', text: 'تم تسجيل الدخول بنجاح.' });
             } else {
-                const result = await mysqlAuth.register({
+                await mysqlAuth.register({
                     email: email.trim(),
                     password,
                     name: fullName.trim(),
@@ -212,7 +208,6 @@ const Auth: React.FC = () => {
                     country,
                     interest,
                 });
-                localStorage.setItem('mahad-token', result.token);
                 setNotice({ type: 'success', text: 'تم إنشاء الحساب وتسجيل الدخول.' });
             }
             // Refresh auth state so isAdmin and authUser update immediately
