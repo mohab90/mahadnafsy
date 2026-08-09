@@ -195,9 +195,9 @@ if (appTsx.includes('ErrorBoundary')) pass('ErrorBoundary used in App.tsx');
 else warn('ErrorBoundary not wired in App.tsx');
 
 const tsconfig = readText(join(ROOT, 'admin/tsconfig.json')) || '';
-if (tsconfig.includes('"strictNullChecks": true'))
-  pass('TypeScript strictNullChecks enabled');
-else warn('strictNullChecks not enabled in tsconfig.json');
+if (tsconfig.includes('"strict": true'))
+  pass('TypeScript strict mode enabled');
+else warn('strict mode not enabled in tsconfig.json');
 
 if (tsconfig.includes('"forceConsistentCasingInFileNames": true'))
   pass('TypeScript forceConsistentCasingInFileNames enabled');
