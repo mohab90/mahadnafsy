@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
-const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8').replace(/\r\n/g, '\n');
 const { addCohortMember } = require('../lib/learningCohorts');
 
 function cohortDb({ maxStudents = null, memberCount = 0, status = 'active' } = {}) {

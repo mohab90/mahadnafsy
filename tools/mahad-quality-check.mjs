@@ -583,6 +583,85 @@ console.log('\n25. Cross-environment API base (no live host compiled into a buil
   }
 }
 
+// ── 26. Paid-video guard ─────────────────────────────────────────────────────
+// Course video is the asset the whole subscription protects, so a public route
+// may only ever hand out a *previewable* lecture's URL. The way that broke was
+// not a missing check but a positional one: /api/lectures is paginated, and the
+// free-preview rank was the row's index in the response, so the counter
+// restarted at 0 on every page. With the default limit of one free lecture per
+// course, `GET /api/lectures?limit=1&offset=N` therefore returned lecture N+1 at
+// "position 0" — the real video_url of a paid lecture, to an anonymous caller.
+// The rank must come from the database (ROW_NUMBER over the course partition),
+// which is independent of LIMIT/OFFSET.
+console.log('\n26. Paid-video guard (public lecture rank is computed in SQL)');
+{
+  const offenders = [];
+  const publicRoutes = ['api/routes/public.js'];
+  for (const rel of publicRoutes) {
+    const src = readText(join(ROOT, rel));
+    if (!src) continue;
+
+    // Any public SELECT of video_url must rank in SQL, not by array index. The
+    // rank expression lives in lib/previewRank.js so both public lecture queries
+    // rank identically by construction — accept either the shared helper or a
+    // literal ROW_NUMBER, but not neither.
+    if (/video_url/.test(src) && !/courseRankSql\(/.test(src) && !/ROW_NUMBER\(\)\s*OVER/i.test(src)) {
+      offenders.push(`${rel}: selects video_url without a SQL-computed lecture rank`);
+    }
+    // The gate itself must be the shared one. A route-local reimplementation is
+    // how the two public lecture queries drifted apart in the first place.
+    if (/video_url/.test(src) && !/require\(.*lib\/previewRank.*\)/.test(src)) {
+      offenders.push(`${rel}: does not use the shared lib/previewRank gate`);
+    }
+    // The exact regression: passing a .map() index straight into publicLecture().
+    src.split(/\r?\n/).forEach((line, i) => {
+      if (!/publicLecture\(/.test(line)) return;
+      if (/\.map\(\s*\(\s*\w+\s*,\s*(i|idx|index)\s*\)\s*=>/.test(line) && /publicLecture\(\s*\w+\s*,\s*(i|idx|index)\b/.test(line)) {
+        offenders.push(`${rel}:${i + 1}: lecture rank taken from the response index`);
+      }
+    });
+    // The per-response counter that caused the leak.
+    if (/posByCourse/.test(src)) {
+      offenders.push(`${rel}: per-response preview counter (posByCourse) reintroduced`);
+    }
+    // A public lecture list must exclude drafts. Only queries that actually hand
+    // out the URL matter — the view-counter UPDATE and the admin-gated
+    // lesson-analytics SELECT touch course_lectures without exposing video_url.
+    for (const m of src.matchAll(/SELECT[\s\S]{0,600}?FROM course_lectures[\s\S]{0,400}?(?=`)/gi)) {
+      if (!/video_url/i.test(m[0])) continue;
+      if (!/is_published\s*=\s*1/i.test(m[0])) {
+        offenders.push(`${rel}: a public course_lectures query selects video_url without filtering is_published=1`);
+      }
+    }
+  }
+  // The shared gate must exist and must not fall back to a bare Number() cast.
+  // Number() maps null, '', '   ', [] and false all onto 0, and 0 is the one rank
+  // that IS free — so a bare cast hands out the paid URL for any row whose rank
+  // the query failed to produce. This check is static (the tool runs without a
+  // build or a server); the fail-closed *behaviour* is asserted directly in
+  // api/tests/publicVideoProtection.test.js, which calls the gate with each of
+  // those values.
+  {
+    const gate = readText(join(ROOT, 'api', 'lib', 'previewRank.js'));
+    if (!gate) {
+      offenders.push('api/lib/previewRank.js: shared paid-video gate is missing');
+    } else {
+      if (!/typeof value === 'number'/.test(gate) || !/value >= 0/.test(gate)) {
+        offenders.push('api/lib/previewRank.js: rank validation no longer rejects negative/non-integer ranks');
+      }
+      if (!/Number\.isInteger/.test(gate)) {
+        offenders.push('api/lib/previewRank.js: rank validation no longer requires an integer');
+      }
+    }
+  }
+
+  if (offenders.length === 0) {
+    pass('paid-video guard: public lecture URLs are gated on a SQL-computed rank');
+  } else {
+    fail(`paid-video guard: ${offenders.length} issue(s) — a paid lecture's video_url can reach an anonymous caller: ${offenders.slice(0, 6).join(' | ')}`);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`);
 if (warnings === 0) {

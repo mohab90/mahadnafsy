@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const { calculateLeaveDays } = require('../lib/hrPolicy');
 
 const root = path.join(__dirname, '..');
-const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
+const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8').replace(/\r\n/g, '\n');
 const source = relativePath => read(...relativePath.split('/'));
 const auth = read('middleware', 'auth.js');
 const attendance = read('routes', 'hr', 'attendance.js');

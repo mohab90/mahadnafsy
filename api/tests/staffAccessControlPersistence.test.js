@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = (...p) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8');
+const read = (...p) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8').replace(/\r\n/g, '\n');
 const employees = read('routes', 'hr', 'employees.js');
 const staffRoute = read('routes', 'staff.js');
 const authTenant = read('lib', 'authTenant.js');

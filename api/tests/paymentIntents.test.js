@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { idempotencyHash } = require('../lib/paymentIntents');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 
 test('payment intent idempotency is tenant/provider/order scoped and irreversible', () => {
   const input = { tenantId: 'tenant-a', orderId: 'order-1', provider: 'manual', key: 'retry-key' };

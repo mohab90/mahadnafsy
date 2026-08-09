@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { currency, dateOnly, money, sha256, signedMoney, buildCloseChecklist } = require('../lib/financeOperations');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 
 test('finance operation inputs are bounded and deterministic', () => {
   assert.equal(currency('sar'), 'SAR');

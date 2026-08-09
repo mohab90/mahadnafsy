@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 const scope = read('lib/tenantScope.js');
 const quota = read('middleware/tenantQuota.js');
 const saas = read('routes/saas-admin.js');

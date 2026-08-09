@@ -8,7 +8,7 @@ const { duplicateGroups } = require('../lib/leadMerge');
 const { leadScope } = require('../lib/leadAccess');
 const { normalizeLeadStatus } = require('../lib/leadState');
 
-const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8').replace(/\r\n/g, '\n');
 
 test('duplicate grouping joins normalized phone/email matches transitively', () => {
   const groups = duplicateGroups([

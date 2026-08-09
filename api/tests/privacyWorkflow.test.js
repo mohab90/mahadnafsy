@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { evidenceHash } = require('../lib/privacyService');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 
 test('privacy export is self-service, tenant scoped, consistent and excludes auth secrets', () => {
   const route = read('routes/privacy.js');

@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8').replace(/\r\n/g, '\n');
 
 test('activity log schema, writes and reads are tenant owned', () => {
   const migration = read('migrations', '139_v25_activity_log_tenant_integrity.sql');

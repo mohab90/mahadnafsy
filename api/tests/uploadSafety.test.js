@@ -10,7 +10,7 @@ const {
   resolveTenantMediaPath,
 } = require('../lib/uploadSafety');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 
 test('upload signatures are verified from bytes, not browser MIME claims', () => {
   const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(16)]);

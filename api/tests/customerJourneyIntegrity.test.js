@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8').replace(/\r\n/g, '\n');
 
 test('journey states use one canonical vocabulary at API boundaries', () => {
   const { JOURNEY_STATES, normalizeJourneyState } = require('../lib/journeyStates');

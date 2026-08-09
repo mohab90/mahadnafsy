@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
-const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
+const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8').replace(/\r\n/g, '\n');
 
 test('client and admin registration wait for the real auth API before reporting success', () => {
   for (const relativePath of ['client/pages/Auth.tsx', 'admin/pages/Auth.tsx']) {

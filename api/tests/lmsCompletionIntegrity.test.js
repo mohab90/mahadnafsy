@@ -17,7 +17,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { completeCourse, completeCourses } = require('../lib/courseCompletion');
 
-const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8').replace(/\r\n/g, '\n');
 
 // Minimal mock connection: routes each conn.query() call by matching a
 // substring of the SQL against a caller-supplied table of {match, rows}.

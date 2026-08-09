@@ -9,7 +9,7 @@ const {
   verifyAuditRows,
 } = require('../lib/auditTrail');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 
 function row(previousHash, overrides = {}) {
   const base = {

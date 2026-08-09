@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+const read = (...parts) => fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8').replace(/\r\n/g, '\n');
 const authRoute = read('routes', 'auth.js');
 const authMiddleware = read('middleware', 'auth.js');
 const adminConfig = read('routes', 'misc', 'admincfg.js');

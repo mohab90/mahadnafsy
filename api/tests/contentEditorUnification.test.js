@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const admin = (...p) => path.join(__dirname, '..', '..', 'admin', ...p);
-const read = (...p) => fs.readFileSync(admin(...p), 'utf8');
+const read = (...p) => fs.readFileSync(admin(...p), 'utf8').replace(/\r\n/g, '\n');
 
 const fields = read('pages', 'dashboard', 'contentFields.ts');
 

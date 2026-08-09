@@ -13,6 +13,7 @@ const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz } = require('../lib/mappers');
+const { applyPreviewGate, courseRankSql } = require('../lib/previewRank');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
@@ -156,11 +157,30 @@ async function getPreviewLimit(tenantId) {
 // Public-safe lecture: expose the real video URL only for free-previewable lectures
 // (explicit is_preview, or within the first `previewLimit` of the course by position).
 // Everything else is withheld — enrolled users fetch it from the auth-gated access endpoint.
-const publicLecture = (r, positionInCourse, previewLimit) => {
-  const m = mapLecture(r);
-  if (!m.isPreview && positionInCourse >= previewLimit) m.videoUrl = '';
-  return m;
-};
+//
+// `positionInCourse` MUST be the lecture's true rank inside its course, never its
+// index in the current response. It used to be an index into the result array,
+// which leaked every paid video URL in the catalogue: /api/lectures is public and
+// paginated, the counter restarted at 0 on each page, and the default previewLimit
+// is 1 — so `GET /api/lectures?limit=1&offset=N` handed lecture N+1 position 0 and
+// returned its real video_url to an unauthenticated caller. The rank is now
+// computed by the database (ROW_NUMBER over the course partition) so it is
+// independent of LIMIT/OFFSET. A missing/invalid rank is treated as "not
+// previewable" rather than "position 0" — the safe direction to fail in.
+// Only a real integer, or a string of digits, counts as a rank. Number() is not
+// used as the gate on its own because it maps too many "no value" inputs onto 0,
+// and 0 is the one position that IS free: Number(null), Number(''), Number('  '),
+// Number([]) and Number(false) are all 0. Any of those reaching this function
+// means the query did not produce a rank for the row, and treating that as
+// "position 0" hands out the paid URL — the original leak, arrived at from a
+// different direction. Digit strings are accepted because mysql2 returns BIGINT
+// as a string depending on driver config.
+//
+// The decision itself lives in lib/previewRank.js so it can be unit-tested
+// without loading this router (which pulls in the MySQL pool through
+// lib/mappers.js and would keep the test process alive).
+const publicLecture = (r, positionInCourse, previewLimit) =>
+  applyPreviewGate(mapLecture(r), positionInCourse, previewLimit);
 
 // GET /api/courses/:id  (accepts id OR slug)
 router.get('/api/courses/:id', publicLimiter, async (req, res) => {
@@ -178,12 +198,31 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
     // scopes them by joining `courses` (see routes/core/catalog.js). This route
     // filtered on a column that does not exist, so *every* public course detail
     // page returned 500: "Unknown column 'tenant_id' in 'WHERE'".
+    // is_published is filtered here for the same reason /api/lectures filters it:
+    // this is the public course page. Without it, unpublished (draft) lectures were
+    // listed to anonymous visitors, and — because the preview rank is positional —
+    // a draft sitting at sort_order 0 also consumed the free-preview slot and
+    // shifted the real first lecture out of it.
+    //
+    // The rank is computed in SQL even though this query is unpaginated, so that
+    // "the free-preview rank comes from the database" holds for every public
+    // lecture query without exception. The leak in /api/lectures came from an
+    // array index that was correct until the query around it changed; leaving one
+    // route on the old pattern just preserves that trap.
     const [lectures] = await pool.query(
-      `SELECT l.id, l.course_id, l.chapter_id, l.title, l.description, l.video_url, l.duration,
-              l.is_preview, l.sort_order, l.is_published, l.lecture_type, l.drip_unlock_days
-         FROM course_lectures l
-         JOIN courses c ON c.id = l.course_id AND c.tenant_id = ?
-        WHERE l.course_id = ? ORDER BY l.sort_order ASC`, [req.tenantId, row.id]);
+      `SELECT id, course_id, chapter_id, title, description, video_url, duration,
+              is_preview, sort_order, is_published, lecture_type, drip_unlock_days,
+              course_pos
+         FROM (
+           SELECT l.id, l.course_id, l.chapter_id, l.title, l.description, l.video_url,
+                  l.duration, l.is_preview, l.sort_order, l.is_published,
+                  l.lecture_type, l.drip_unlock_days,
+                  ${courseRankSql('l')} AS course_pos
+             FROM course_lectures l
+             JOIN courses c ON c.id = l.course_id AND c.tenant_id = ?
+            WHERE l.course_id = ? AND l.is_published = 1
+         ) ranked
+        ORDER BY sort_order ASC, id ASC`, [req.tenantId, row.id]);
     const [chapters] = await pool.query(
       `SELECT ch.id, ch.course_id, ch.title, ch.sort_order
          FROM course_chapters ch
@@ -191,7 +230,11 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
         WHERE ch.course_id = ? ORDER BY ch.sort_order ASC`, [req.tenantId, row.id]);
     const previewLimit = await getPreviewLimit(req.tenantId);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
-    res.json({ ...mapCourse(row), lectures: lectures.map((r, i) => publicLecture(r, i, previewLimit)), chapters: chapters.map(mapChapter) });
+    res.json({
+      ...mapCourse(row),
+      lectures: lectures.map(r => publicLecture(r, r.course_pos, previewLimit)),
+      chapters: chapters.map(mapChapter),
+    });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -595,20 +638,30 @@ router.get('/api/lectures', publicLimiter, async (req, res) => {
     const limit  = parseLimit(req.query.limit, 500, 5000);
     const offset = parseOffset(req.query.offset);
     const data = await cached(`lectures:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
+      // course_pos is the lecture's rank within its own course, computed before
+      // LIMIT/OFFSET is applied. Ranking in SQL rather than counting rows in the
+      // response is what keeps paid video URLs withheld on every page: a
+      // per-response counter restarts at 0 on each page and marked deep lectures
+      // as free previews. Do not replace this with an array index.
       const [rows] = await pool.query(
-        `SELECT cl.id, cl.course_id, cl.chapter_id, cl.title, cl.description, cl.video_url, cl.duration,
-                cl.is_preview, cl.sort_order, cl.is_published, cl.lecture_type, cl.drip_unlock_days
-         FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
-         WHERE cl.is_published=1 AND c.tenant_id=?
-         ORDER BY cl.course_id, cl.sort_order ASC LIMIT ? OFFSET ?`,
+        `SELECT id, course_id, chapter_id, title, description, video_url, duration,
+                is_preview, sort_order, is_published, lecture_type, drip_unlock_days,
+                course_pos
+           FROM (
+             SELECT cl.id, cl.course_id, cl.chapter_id, cl.title, cl.description,
+                    cl.video_url, cl.duration, cl.is_preview, cl.sort_order,
+                    cl.is_published, cl.lecture_type, cl.drip_unlock_days,
+                    ${courseRankSql('cl')} AS course_pos
+               FROM course_lectures cl
+               JOIN courses c ON c.id = cl.course_id
+              WHERE cl.is_published = 1 AND c.tenant_id = ?
+           ) ranked
+          ORDER BY course_id, sort_order ASC
+          LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
       const previewLimit = await getPreviewLimit(req.tenantId);
-      const posByCourse = {};
-      return rows.map(r => {
-        const pos = (posByCourse[r.course_id] = (posByCourse[r.course_id] ?? -1) + 1);
-        return publicLecture(r, pos, previewLimit);
-      });
+      return rows.map(r => publicLecture(r, r.course_pos, previewLimit));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -1019,3 +1072,6 @@ router.get('/api/faq', publicLimiter, async (req, res) => {
 });
 
 module.exports = router;
+
+// Exported for tests: the paid-video gate. See tests/publicVideoProtection.test.js.
+module.exports.publicLecture = publicLecture;

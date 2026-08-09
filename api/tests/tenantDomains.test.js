@@ -9,7 +9,7 @@ const {
   verifyDnsOwnership,
 } = require('../lib/tenantDomains');
 
-const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8').replace(/\r\n/g, '\n');
 
 test('custom domain normalization accepts public DNS names and rejects local/invalid hosts', () => {
   assert.equal(normalizeDomain('https://Academy.Example.com/'), 'academy.example.com');

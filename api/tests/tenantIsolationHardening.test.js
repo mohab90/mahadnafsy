@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = relativePath => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+const read = relativePath => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8').replace(/\r\n/g, '\n');
 
 test('profile identity and interest lead writes are tenant scoped and retry safe', () => {
   const profile = read('routes/profile.js');
