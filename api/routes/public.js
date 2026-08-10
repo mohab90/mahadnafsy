@@ -180,7 +180,11 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
     // page returned 500: "Unknown column 'tenant_id' in 'WHERE'".
     const [lectures] = await pool.query(
       `SELECT l.id, l.course_id, l.chapter_id, l.title, l.description, l.video_url, l.duration,
-              l.is_preview, l.sort_order, l.is_published, l.lecture_type, l.drip_unlock_days
+              l.is_preview, l.sort_order, l.is_published, l.lecture_type, l.drip_unlock_days,
+              (SELECT COUNT(*) FROM course_lectures l2
+               WHERE l2.course_id = l.course_id
+                 AND l2.is_published = 1
+                 AND l2.sort_order < l.sort_order) AS position_in_course
          FROM course_lectures l
          JOIN courses c ON c.id = l.course_id AND c.tenant_id = ?
         WHERE l.course_id = ? ORDER BY l.sort_order ASC`, [req.tenantId, row.id]);
@@ -191,7 +195,7 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
         WHERE ch.course_id = ? ORDER BY ch.sort_order ASC`, [req.tenantId, row.id]);
     const previewLimit = await getPreviewLimit(req.tenantId);
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
-    res.json({ ...mapCourse(row), lectures: lectures.map((r, i) => publicLecture(r, i, previewLimit)), chapters: chapters.map(mapChapter) });
+    res.json({ ...mapCourse(row), lectures: lectures.map(r => publicLecture(r, r.position_in_course, previewLimit)), chapters: chapters.map(mapChapter) });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
