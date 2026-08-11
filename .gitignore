@@ -51,3 +51,7 @@ tmp/
 
 # local npm cache (from e2e install)
 .npm-cache/
+
+# Claude local configuration
+Claude-ADMX.zip
+Claude.mobileconfig
