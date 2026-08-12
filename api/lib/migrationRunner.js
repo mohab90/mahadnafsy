@@ -53,7 +53,13 @@ function splitStatements(sql) {
 }
 
 function checksumOf(sql) {
-  return crypto.createHash('sha256').update(sql).digest('hex').slice(0, 16);
+  // Normalised before hashing so the checksum tracks what the migration *does*,
+  // not how the file travelled. `git archive <commit>:api` exports a subtree, so
+  // the repository-root .gitattributes does not apply to it and the files come
+  // out CRLF when packaged on Windows — every checksum then mismatched a
+  // database recorded from an LF deploy, and migrate:verify failed against
+  // migrations that were never touched.
+  return crypto.createHash('sha256').update(String(sql).replace(/\r\n/g, '\n')).digest('hex').slice(0, 16);
 }
 
 function splitAlterActions(sql) {

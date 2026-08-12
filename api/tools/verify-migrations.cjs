@@ -14,7 +14,11 @@ const requested = (process.env.MIGRATION_VERIFY_VERSIONS || '144,145,146,147,148
   .filter(Boolean);
 
 function checksum(file) {
-  return crypto.createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex').slice(0, 16);
+  // Must match checksumOf() in lib/migrationRunner.js exactly, including the
+  // line-ending normalisation — the runner records the value this compares to.
+  return crypto.createHash('sha256')
+    .update(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    .digest('hex').slice(0, 16);
 }
 
 (async () => {
