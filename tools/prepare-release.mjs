@@ -64,7 +64,11 @@ if (archive.status !== 0) throw new Error(archive.stderr.trim() || 'git archive 
 const artifacts = [{ component: 'api', path: artifact }];
 for (const build of requiredBuilds) {
   const target = path.join(artifactDir, `${release}-${build.name}.tgz`);
-  const packed = spawnSync('tar', ['-czf', target, '-C', build.directory, '.'], {
+  // --force-local: without it tar reads the colon in an absolute Windows path
+  // (D:\...) as a host:path remote spec and tries to open a network connection,
+  // so packaging a release fails outright on a Windows machine. No effect on
+  // POSIX paths, which contain no colon.
+  const packed = spawnSync('tar', ['--force-local', '-czf', target, '-C', build.directory, '.'], {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
