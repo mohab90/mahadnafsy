@@ -10,7 +10,7 @@ const Checkout: React.FC = () => {
   useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { courses, bundles, therapists, content, currency, authUser, subscribers } = useSiteData();
+  const { courses, bundles, therapists, content, currency, authUser, subscribers, mySubscriberId } = useSiteData();
   const paymentLinkToken = searchParams.get('paymentToken') || searchParams.get('token');
   const [paymentLink, setPaymentLink] = useState<{
     item_type: string; item_id: string; amount: number; currency: 'EGP' | 'SAR' | 'USD';
@@ -60,13 +60,18 @@ const Checkout: React.FC = () => {
       setCustomerName(authUser.displayName || authUser.email?.split('@')[0] || '');
       setCustomerEmail(authUser.email || '');
       // Pre-fill phone from existing subscriber record, else from the auth profile (lead phone).
-      const sub = subscribers.find(
-        s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim()
-      );
+      // Prefer the id the server resolved for this account. Re-deriving it by
+      // matching on email finds nothing for a client who signed in by WhatsApp
+      // number and has no email — and, because subscribers.email is nullable,
+      // the unguarded .toLowerCase() it used to do crashed this whole page for
+      // exactly those customers.
+      const email = (authUser.email || '').toLowerCase().trim();
+      const sub = subscribers.find(s => s.id === mySubscriberId)
+        ?? (email ? subscribers.find(s => (s.email || '').toLowerCase().trim() === email) : undefined);
       const phone = sub?.phone || (authUser as { phone?: string }).phone || '';
       if (phone) setCustomerPhone(phone);
     }
-  }, [authUser, subscribers]);
+  }, [authUser, subscribers, mySubscriberId]);
 
   // Determine Item details
   let itemTitle = '';
@@ -131,13 +136,18 @@ const Checkout: React.FC = () => {
     setPayLoading(true);
     setPayError('');
     try {
+      // The session is the httpOnly cookie, which fetch sends on its own for a
+      // same-origin /api call. Requiring a localStorage token here blocked
+      // every checkout once the cookie migration stopped writing one — the
+      // signed-in gate is `authUser` above, and the route runs requireAuth.
+      // A legacy token is still forwarded when one happens to be present.
       const token = localStorage.getItem('mahad-token');
-      if (!token) throw new Error('سجّل الدخول أولاً لإتمام الطلب');
       const idempotencyStorageKey = `checkout-idempotency:${type}:${id || subtype || 'item'}:${paymentLinkToken || ''}`;
       const idempotencyKey = sessionStorage.getItem(idempotencyStorageKey) || crypto.randomUUID();
       sessionStorage.setItem(idempotencyStorageKey, idempotencyKey);
       const response = await fetch('/api/public/checkout-intent', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
@@ -191,6 +201,7 @@ const Checkout: React.FC = () => {
       const token = localStorage.getItem('mahad-token');
       const intentRes = await fetch('/api/me/payment-intents', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ order_id: orderId, provider: 'manual', idempotency_key: `checkout:${orderId}` }),
       });
@@ -198,6 +209,7 @@ const Checkout: React.FC = () => {
       if (!intentRes.ok || !intent.id) throw new Error(intent.error || 'تعذّر تجهيز عملية الدفع');
       const res = await fetch('/api/me/payment-proof', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           order_id: orderId,
