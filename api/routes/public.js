@@ -179,15 +179,21 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
     // filtered on a column that does not exist, so *every* public course detail
     // page returned 500: "Unknown column 'tenant_id' in 'WHERE'".
     const [lectures] = await pool.query(
+      // ROW_NUMBER, not COUNT(sort_order < …): sort_order is NOT NULL DEFAULT 0
+      // with no unique key, so any lectures created without an explicit order
+      // tie on 0 — and counting "how many sort before me" then hands every one
+      // of them position 0, i.e. a free video URL for the whole course. The
+      // window function breaks ties on id, so positions are always distinct.
+      // is_published is filtered here too; unpublished drafts were being served
+      // publicly *and* shifting published lectures into the free window.
       `SELECT l.id, l.course_id, l.chapter_id, l.title, l.description, l.video_url, l.duration,
               l.is_preview, l.sort_order, l.is_published, l.lecture_type, l.drip_unlock_days,
-              (SELECT COUNT(*) FROM course_lectures l2
-               WHERE l2.course_id = l.course_id
-                 AND l2.is_published = 1
-                 AND l2.sort_order < l.sort_order) AS position_in_course
+              ROW_NUMBER() OVER (PARTITION BY l.course_id
+                                 ORDER BY l.sort_order ASC, l.id ASC) - 1 AS position_in_course
          FROM course_lectures l
          JOIN courses c ON c.id = l.course_id AND c.tenant_id = ?
-        WHERE l.course_id = ? ORDER BY l.sort_order ASC`, [req.tenantId, row.id]);
+        WHERE l.course_id = ? AND l.is_published = 1
+        ORDER BY l.sort_order ASC, l.id ASC`, [req.tenantId, row.id]);
     const [chapters] = await pool.query(
       `SELECT ch.id, ch.course_id, ch.title, ch.sort_order
          FROM course_chapters ch
@@ -600,15 +606,16 @@ router.get('/api/lectures', publicLimiter, async (req, res) => {
     const offset = parseOffset(req.query.offset);
     const data = await cached(`lectures:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
+        // Same tie problem as /api/courses/:id — see the note there. The window
+        // runs over the whole filtered set before LIMIT/OFFSET, so a lecture's
+        // position stays the position it holds in its course, not in the page.
         `SELECT cl.id, cl.course_id, cl.chapter_id, cl.title, cl.description, cl.video_url, cl.duration,
                 cl.is_preview, cl.sort_order, cl.is_published, cl.lecture_type, cl.drip_unlock_days,
-                (SELECT COUNT(*) FROM course_lectures cl2
-                 WHERE cl2.course_id = cl.course_id
-                   AND cl2.is_published = 1
-                   AND cl2.sort_order < cl.sort_order) AS position_in_course
+                ROW_NUMBER() OVER (PARTITION BY cl.course_id
+                                   ORDER BY cl.sort_order ASC, cl.id ASC) - 1 AS position_in_course
          FROM course_lectures cl JOIN courses c ON c.id=cl.course_id
          WHERE cl.is_published=1 AND c.tenant_id=?
-         ORDER BY cl.course_id, cl.sort_order ASC LIMIT ? OFFSET ?`,
+         ORDER BY cl.course_id, cl.sort_order ASC, cl.id ASC LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
       const previewLimit = await getPreviewLimit(req.tenantId);
