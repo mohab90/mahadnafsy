@@ -55,6 +55,11 @@ for component in api admin client; do
   FILES+=("$tgz" "$sha")
 done
 FILES+=("$MANIFEST")
+# The activation scripts ship with the release rather than being read from
+# /opt/mahad/current: on a first deploy that symlink does not exist yet, and on
+# any later one it points at the *previous* release — so activation would run
+# the old script against the new artifact.
+FILES+=("$ROOT/deploy/activate-release.sh" "$ROOT/deploy/activate-static-release.sh")
 echo "checksums: all three components verified locally"
 
 # ── Stage ────────────────────────────────────────────────────────────────────
@@ -74,12 +79,12 @@ echo "staged  : checksums re-verified on the server"
 # follow only if the API came up, so the frontends are never newer than the API
 # they talk to.
 echo "activating api…"
-ssh "${SSH_OPTS[@]}" -t "$TARGET" "sudo bash /opt/mahad/current/deploy/activate-release.sh \
+ssh "${SSH_OPTS[@]}" -t "$TARGET" "sudo bash $REMOTE_STAGING/activate-release.sh \
   '$REMOTE_STAGING/$RELEASE-api.tgz' '$REMOTE_STAGING/$RELEASE-api.tgz.sha256' '$RELEASE'"
 
 for component in client admin; do
   echo "activating $component…"
-  ssh "${SSH_OPTS[@]}" -t "$TARGET" "sudo bash /opt/mahad/current/deploy/activate-static-release.sh \
+  ssh "${SSH_OPTS[@]}" -t "$TARGET" "sudo bash $REMOTE_STAGING/activate-static-release.sh \
     $component '$REMOTE_STAGING/$RELEASE-$component.tgz' \
     '$REMOTE_STAGING/$RELEASE-$component.tgz.sha256' '$RELEASE'"
 done
