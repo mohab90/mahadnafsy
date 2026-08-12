@@ -39,9 +39,30 @@ const requiredBuilds = ['admin', 'client'].map(name => ({
   name,
   directory: path.join(root, name, 'dist'),
 }));
+
+// The frontends are rebuilt here rather than packaged from whatever dist/
+// happens to be on disk.
+//
+// Checking only that index.html existed meant a release could pair an API taken
+// from `git archive <commit>` — always exactly the commit — with a bundle built
+// hours earlier from different source. That shipped silently: the API carried
+// the fix, the UI did not, and the release id said both were the same commit.
 for (const build of requiredBuilds) {
+  console.log(`[release] building ${build.name}…`);
+  fs.rmSync(build.directory, { recursive: true, force: true });
+  const built = spawnSync('npm', ['--prefix', build.name, 'run', 'build'], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+    shell: process.platform === 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (built.error) throw built.error;
+  if (built.status !== 0) {
+    throw new Error(`${build.name} build failed:\n${(built.stderr || built.stdout || '').slice(-1500)}`);
+  }
   if (!fs.existsSync(path.join(build.directory, 'index.html'))) {
-    throw new Error(`${build.name}/dist is missing; run the reviewed production build before packaging`);
+    throw new Error(`${build.name} build produced no index.html`);
   }
 }
 
