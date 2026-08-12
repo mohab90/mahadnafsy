@@ -320,6 +320,24 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const certRequests = subject.extraCertificateRequests || [];
 
+  // Base price per certificate type, from الإعدادات ← تسعير الشهادات.
+  //
+  // Picking a type used to show no price at all unless the client already had a
+  // certificate request carrying one, so a first-time certificate had nothing to
+  // pay against and the amount had to be typed from memory. The settings hold
+  // four tiers per type; the tier follows the payment currency, since that is
+  // what the rest of this dialog is already denominated in.
+  const certPricing: Record<string, { egyptianEGP?: number; residentEGP?: number; residentSAR?: number; foreignUSD?: number }> =
+    (() => { try { return JSON.parse(content['extra_cert_pricing'] || '{}'); } catch { return {}; } })();
+
+  const certBasePrice = (type: string, currency: string): number => {
+    const tiers = certPricing[type];
+    if (!tiers) return 0;
+    if (currency === 'SAR') return Number(tiers.residentSAR) || 0;
+    if (currency === 'USD') return Number(tiers.foreignUSD) || 0;
+    return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
+  };
+
   const paymentMethods: string[] = content['finance.payment_methods']
     ? content['finance.payment_methods'].split('||').map((s: string) => s.trim()).filter(Boolean)
     : ['كاش', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'أخرى'];
@@ -591,7 +609,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       <button
                         key={opt.cid}
                         type="button"
-                        onClick={() => set({ courseId: opt.cid, certReqId: '', customExpected: '', discountPct: '' })}
+                        onClick={() => {
+                          // Re-apply the type's base price: this reset
+                          // customExpected unconditionally, so choosing the
+                          // course after the certificate type wiped the price
+                          // that had just been filled in.
+                          const base = d.certType ? certBasePrice(d.certType, d.currency) : 0;
+                          set({ courseId: opt.cid, certReqId: '', customExpected: base > 0 ? String(base) : '', discountPct: '' });
+                        }}
                         className={`w-full flex items-center justify-between rounded-xl px-3 py-2.5 border-2 text-right transition ${d.courseId === opt.cid ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-white hover:border-red-300 hover:bg-red-50/30'}`}
                       >
                         <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -653,14 +678,50 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         })}
                       </div>
                     ) : (
-                      <select
-                        value={d.certType}
-                        onChange={e => set({ certType: e.target.value })}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-red-400"
-                      >
-                        <option value="">— نوع الشهادة —</option>
-                        {Object.entries(certTypeLabels).map(([v, lb]) => <option key={v} value={v}>{lb}</option>)}
-                      </select>
+                      <>
+                        <select
+                          value={d.certType}
+                          onChange={e => {
+                            const type = e.target.value;
+                            const base = certBasePrice(type, d.currency);
+                            // Selecting a type fills the expected total from the
+                            // price list, so the remaining amount is computed
+                            // rather than remembered. An explicit override the
+                            // user already typed is left alone.
+                            const upd: Partial<PaymentDraft> = { certType: type };
+                            if (base > 0 && !d.customExpected) upd.customExpected = String(base);
+                            set(upd);
+                          }}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-red-400"
+                        >
+                          <option value="">— نوع الشهادة —</option>
+                          {Object.entries(certTypeLabels).map(([v, lb]) => {
+                            const base = certBasePrice(v, d.currency);
+                            return <option key={v} value={v}>{lb}{base > 0 ? ` — ${base.toLocaleString()} ${d.currency}` : ''}</option>;
+                          })}
+                        </select>
+                        {d.certType && (
+                          certBasePrice(d.certType, d.currency) > 0 ? (
+                            <p className="mt-1 text-[11px] text-gray-600">
+                              <span className="font-semibold">السعر الأساسي: </span>
+                              {certBasePrice(d.certType, d.currency).toLocaleString()} {d.currency}
+                              {Number(_amtPaid) > 0 && (
+                                <> {' · '}
+                                  <span className="text-green-700 font-semibold">تدفع الآن: {Number(_amtPaid).toLocaleString()}</span>
+                                  {' · '}
+                                  <span className="text-amber-600 font-bold">
+                                    متبقٍ: {Math.max(0, certBasePrice(d.certType, d.currency) - Number(_amtPaid)).toLocaleString()}
+                                  </span>
+                                </>
+                              )}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-amber-600">
+                              لم يُضبط سعر أساسي لهذا النوع — أدخله من الإعدادات ← تسعير الشهادات.
+                            </p>
+                          )
+                        )}
+                      </>
                     )}
                   </div>
                 )}
