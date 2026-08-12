@@ -828,7 +828,7 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; idMessage?: string }>('/admin/whatsapp-proxy/send', { method: 'POST', body: JSON.stringify({ phone, message }) }, A),
 
   // ── Refresh Token ──
-  refreshToken: () => apiFetch<{ ok: boolean; token: string }>('/auth/refresh', { method: 'POST', body: '{}' }, A),
+  refreshToken: () => apiFetch<{ ok: boolean }>('/auth/refresh', { method: 'POST', body: '{}' }, A),
 
   // ── Promo Codes ──
   listPromoCodes: () => apiFetch<AR[]>('/admin/promo-codes', {}, A),
@@ -874,14 +874,12 @@ export const mysqlPaymob = {
 export const mysqlAuth = {
   login: (email: string, password: string) =>
     apiFetch<{
-      ok: boolean;
-      token?: string;
-      user?: AuthUser;
+      ok: boolean;      user?: AuthUser;
       totpRequired?: boolean;
       pendingToken?: string;
     }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (data: { email: string; password: string; name?: string; phone?: string; country?: string; interest?: string }) =>
-    apiFetch<{ ok: boolean; token: string; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
+    apiFetch<{ ok: boolean; user: AuthUser }>('/user/signup', { method: 'POST', body: JSON.stringify(data) }, true),
   me: () => apiFetch<AuthUser>('/auth/me', {}, true),
   updateProfile: (name: string) =>
     apiFetch<{ ok: boolean }>('/auth/update-profile', { method: 'PUT', body: JSON.stringify({ name }) }, true),
@@ -898,15 +896,15 @@ export const mysqlAuth = {
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
   verify2fa: (pendingToken: string, token: string) =>
-    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
+    apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   get2faStatus: () =>
     apiFetch<{ enabled: boolean }>('/auth/2fa/status'),
   setup2fa: () =>
     apiFetch<{ secret: string; qrDataUrl: string; otpAuthUrl: string }>('/auth/2fa/setup', { method: 'POST' }),
   enable2fa: (token: string) =>
-    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+    apiFetch<{ ok: boolean }>('/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
   disable2fa: (token?: string) =>
-    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
+    apiFetch<{ ok: boolean }>('/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
 };
 

@@ -77,7 +77,10 @@ const Auth: React.FC = () => {
         setLoading(true);
         setNotice(null);
         try {
-            await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined);
+            // The session itself lives in the httpOnly cookie the API just set —
+            // nothing to stash here. `created` is still read from the body to
+            // greet a brand-new customer differently from a returning one.
+            const result = await mysqlAuth.verifyWaOtp(waPhone.trim(), waCode, waName.trim() || undefined);
             setNotice({
                 type: 'success',
                 text: result.created ? 'أهلاً بك! تم إنشاء حسابك.' : 'تم تسجيل الدخول.',
@@ -430,6 +433,9 @@ const Auth: React.FC = () => {
                     placeholder="اسمك"
                   />
                 </div>
+                {notice && (
+                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                )}
                 <button
                   type="submit" disabled={loading || !waPhone.trim()}
                   className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition disabled:opacity-60"
@@ -455,6 +461,12 @@ const Auth: React.FC = () => {
                     placeholder="000000"
                   />
                 </div>
+                {/* Without this the step failed in total silence: the code was
+                    accepted, the error was swallowed, and nothing on screen
+                    changed. Every other form in this file already shows it. */}
+                {notice && (
+                  <div className={`rounded-lg px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>{notice.text}</div>
+                )}
                 <button
                   type="submit" disabled={loading || waCode.length !== 6}
                   className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition disabled:opacity-60"
