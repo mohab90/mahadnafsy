@@ -1,0 +1,108 @@
+# Mahad on the existing Traefik host.
+#
+# Traefik already owns :80 and :443, terminates TLS and renews Let's Encrypt
+# certificates, so nothing here binds a host port or handles a certificate. It
+# runs with providers.docker.exposedbydefault=false, which is why every service
+# below opts in explicitly with `traefik.enable=true`.
+#
+#   cp deploy/docker/.env.example .env   # then fill it in
+#   docker compose build
+#   docker compose run --rm migrate
+#   docker compose up -d
+#
+# The database is NOT defined here. DEPLOY.md requires managed MySQL with TLS,
+# PITR and tested backups, and readiness:production:live refuses to pass without
+# that evidence — a MySQL container on this same host would satisfy none of it.
+
+name: mahad
+
+services:
+  # One-shot. Applies numbered migrations and verifies them, then exits.
+  # Run it before `up` on every release: the API image deliberately does not
+  # migrate on boot, so two replicas can never race the same schema change.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: [.env]
+    environment:
+      RUN_MIGRATIONS_ON_STARTUP: "false"
+    command: sh -c "npm run migrate && npm run migrate:verify"
+    networks: [mahad]
+    restart: "no"
+    profiles: [tools]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # Traefik is the only hop in front of the API, so exactly one set of
+      # X-Forwarded-* headers is trustworthy. A wrong count here either
+      # discards the real client IP or lets a client forge it.
+      TRUST_PROXY_HOPS: "1"
+    volumes:
+      - mahad-uploads:/app/uploads
+      - mahad-cache:/var/cache/mahad
+    networks: [mahad]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: mahad_mahad
+
+      # /api on either domain reaches this service directly — the SPA
+      # containers do not proxy it, so there is only ever one hop.
+      traefik.http.routers.mahad-api.rule: "(Host(`${CLIENT_DOMAIN}`) || Host(`${ADMIN_DOMAIN}`)) && PathPrefix(`/api`)"
+      traefik.http.routers.mahad-api.entrypoints: websecure
+      traefik.http.routers.mahad-api.tls.certresolver: letsencrypt
+      traefik.http.routers.mahad-api.priority: "100"
+      traefik.http.routers.mahad-api.middlewares: mahad-stripgeo
+      traefik.http.services.mahad-api.loadbalancer.server.port: "3001"
+
+      # Geo headers are decided at the edge, never by the caller. The
+      # standalone nginx config blanks these too; dropping them here keeps the
+      # container path from being the weaker of the two.
+      traefik.http.middlewares.mahad-stripgeo.headers.customrequestheaders.CF-IPCountry: ""
+      traefik.http.middlewares.mahad-stripgeo.headers.customrequestheaders.X-Country-Code: ""
+
+  client:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.static
+      args: { APP: client }
+    restart: unless-stopped
+    networks: [mahad]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: mahad_mahad
+      traefik.http.routers.mahad-client.rule: "Host(`${CLIENT_DOMAIN}`)"
+      traefik.http.routers.mahad-client.entrypoints: websecure
+      traefik.http.routers.mahad-client.tls.certresolver: letsencrypt
+      traefik.http.routers.mahad-client.priority: "10"
+      traefik.http.services.mahad-client.loadbalancer.server.port: "80"
+
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.static
+      args: { APP: admin }
+    restart: unless-stopped
+    networks: [mahad]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: mahad_mahad
+      traefik.http.routers.mahad-admin.rule: "Host(`${ADMIN_DOMAIN}`)"
+      traefik.http.routers.mahad-admin.entrypoints: websecure
+      traefik.http.routers.mahad-admin.tls.certresolver: letsencrypt
+      traefik.http.routers.mahad-admin.priority: "10"
+      traefik.http.services.mahad-admin.loadbalancer.server.port: "80"
+
+networks:
+  mahad:
+
+volumes:
+  mahad-uploads:
+  mahad-cache:
