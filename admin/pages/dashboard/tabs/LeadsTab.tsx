@@ -40,7 +40,7 @@ interface LeadsTabProps {
   salesOwnSubscribers?: SubscriberItem[];
   salesDataLoading?: boolean;
   fetchSalesData?: () => void;
-  setActiveTab?: (tab: string) => void;
+  setActiveTab?: (tab: TabKey) => void;
   branchFilter?: string;
 }
 
@@ -53,6 +53,7 @@ import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
 import { useLeadRemoteReminders } from './leads/useLeadRemoteReminders';
 import { isArchiveSource } from './leads/leadSourceGroups';
+import type { TabKey } from '../navigation';
 
 const LeadArchiveViews = React.lazy(() => import('./leads/LeadArchiveViews').then(module => ({ default: module.LeadArchiveViews })));
 const LeadCommunicationsTimeline = React.lazy(() => import('./leads/LeadCommunicationsTimeline').then(module => ({ default: module.LeadCommunicationsTimeline })));

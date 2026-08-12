@@ -4,6 +4,7 @@ import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { toDialable } from '../../../lib/whatsappLink';
+import { numericTooltip } from '../../../lib/chartFormat';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type LeadScoreSort = 'score' | 'date';
@@ -210,7 +211,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={90} />
             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <Tooltip formatter={(v: number) => [v, 'عدد الليدات']} />
+            <Tooltip formatter={numericTooltip(v => [v, 'عدد الليدات'])} />
             <Bar dataKey="count" radius={[0, 4, 4, 0]} name="عدد الليدات">
               {distribution.map((d, i) => <Cell key={i} fill={d.fill} />)}
             </Bar>

@@ -22,7 +22,9 @@ type UnifiedClientCoursesTabProps = {
   setAccessPresets: React.Dispatch<React.SetStateAction<Record<string, AccessPreset>>>;
   manualLimitDraft: Record<string, string>;
   setManualLimitDraft: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  applyAccessLevel: (courseId: string, mode: CourseAccessSetting['mode'], lectureLimit?: number) => void | Promise<void>;
+  // 'preview' is a display state, not something this action can set: the
+  // implementation and mysqlAdmin.updateEnrollmentAccess both take only these two.
+  applyAccessLevel: (courseId: string, mode: 'full' | 'limited', lectureLimit?: number) => void | Promise<void>;
   isAdmin: boolean;
 };
 

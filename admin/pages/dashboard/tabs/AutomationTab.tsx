@@ -4,12 +4,13 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { AutomationWorkflow, AutomationTrigger, AutomationAction } from '../../../types';
+import type { TabKey } from '../navigation';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 interface Props {
   notify: NotifyFn;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: (tab: TabKey) => void;
 }
 
 type WorkflowDraft = {

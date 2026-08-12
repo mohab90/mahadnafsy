@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { DollarSign, TrendingDown, TrendingUp, PieChart as PieIcon, BarChart3 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { numericTooltip } from '../../../lib/chartFormat';
 
 type Range = 'month' | '3months' | '6months' | 'all';
 
@@ -138,7 +139,7 @@ export default function ExpenseAnalyticsTab() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => fmtMoney(v)} />
-              <Tooltip formatter={(v: number) => [`${fmtMoney(v)} ج`, '']} />
+              <Tooltip formatter={numericTooltip(v => [`${fmtMoney(v)} ج`, ''])} />
               <Legend />
               <Bar dataKey="إيراد" fill="#10b981" radius={[4,4,0,0]} />
               <Bar dataKey="مصروفات" fill="#f87171" radius={[4,4,0,0]} />

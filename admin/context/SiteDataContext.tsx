@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
-import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream } from '../types';
+import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, NewLeadDraft, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream } from '../types';
 import { mysqlCatalog, mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
 import { useDiscountsState } from './site-data-hooks/useDiscountsState';
@@ -88,7 +88,7 @@ interface SiteDataShape {
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
   updateSubscriber: (item: SubscriberItem) => Promise<boolean>;
   deleteSubscriber: (id: string) => Promise<boolean>;
-  addLead: (item: LeadItem, opts?: { skipReload?: boolean }) => Promise<void>;
+  addLead: (item: NewLeadDraft, opts?: { skipReload?: boolean }) => Promise<void>;
   addPublicLead: (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }) => Promise<void>;
   updateLead: (item: LeadItem) => Promise<boolean>;
   markLeadsConverted: (ids: string[]) => void;

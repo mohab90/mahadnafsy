@@ -5,13 +5,14 @@ import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type {
-  Bundle, Course, LeadItem, LeadStatus, StaffMember, SubscriberItem,
+  Bundle, Course, LeadItem, LeadStatus, NewLeadDraft, StaffMember, SubscriberItem,
 } from '../../../../types';
 import { STATUS_CFG } from '../leadUtils';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
 import type { NotifyFn } from '../CrmSettingsModal';
 import type { ConvertLeadModalState } from './ConvertLeadModal';
 import { buildCsv } from './leadCsvUtils';
+import type { TabKey } from '../../navigation';
 
 type AsyncReload = () => Promise<void>;
 type StatusTimer = ReturnType<typeof setTimeout>;
@@ -19,7 +20,7 @@ type StatusTimer = ReturnType<typeof setTimeout>;
 interface LeadActionsParams {
   notify: NotifyFn;
   updateLead: (lead: LeadItem) => Promise<boolean>;
-  addLead: (lead: LeadItem) => Promise<unknown>;
+  addLead: (lead: NewLeadDraft) => Promise<unknown>;
   reloadLeads: AsyncReload;
   reloadSubscribers: AsyncReload;
   bulkRedistributeLeads: (scope: 'unassigned') => Promise<number>;
@@ -28,7 +29,7 @@ interface LeadActionsParams {
     payment: Record<string, unknown>,
   ) => Promise<{ status: string; approvalRequired?: boolean }>;
   fetchSalesData?: () => void | Promise<void>;
-  setActiveDashboardTab?: (tab: string) => void;
+  setActiveDashboardTab?: (tab: TabKey) => void;
   salesReps: StaffMember[];
   leads: LeadItem[];
   effectiveLeads: LeadItem[];

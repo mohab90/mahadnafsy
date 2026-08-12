@@ -7,6 +7,7 @@ import type { CrmSettings, NotifyFn } from '../CrmSettingsModal';
 import { ConvertLeadModal, type ConvertLeadModalState } from './ConvertLeadModal';
 import { AddLeadModal, BulkWhatsAppModal, WhatsAppRepModal } from './LeadSubcomponents';
 import { LeadSalesNotificationsPanel } from './LeadSalesNotificationsPanel';
+import type { TabKey } from '../../navigation';
 
 const PaymentModal = React.lazy(() => import('../../../../components/PaymentModal'));
 
@@ -30,7 +31,7 @@ interface LeadModalsHostProps {
   currentStaff: StaffMember | null;
   setSalesNotifOpen: (open: boolean) => void;
   setLeadsFollowupFilter: (filter: 'all' | 'today' | 'overdue') => void;
-  setActiveDashboardTab?: (tab: string) => void;
+  setActiveDashboardTab?: (tab: TabKey) => void;
   showSettings: boolean;
   setShowSettings: (open: boolean) => void;
   notify: NotifyFn;

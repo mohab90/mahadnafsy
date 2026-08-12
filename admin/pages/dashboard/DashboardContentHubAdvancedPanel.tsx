@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { ExternalLink, Plus, Save, Trash2, X } from 'lucide-react';
 import { contentEditorFor, type ContentEditorHome } from './contentFields';
+import type { TabKey } from './navigation';
 
 type ContentMap = Record<string, string>;
 type NotifyFn = (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
@@ -23,8 +24,11 @@ interface DashboardContentHubAdvancedPanelProps {
   setSearchText: Dispatch<SetStateAction<string>>;
   filteredContent: [string, string][];
   removeContentKey: (key: string) => Promise<boolean>;
-  setActiveTab: (tab: string) => void;
-  setContentHubSubTab: (tab: string) => void;
+  // TabKey, not string: the setters these are wired to only accept known tab
+  // keys, so declaring them as taking any string made the real setters
+  // unassignable to the prop.
+  setActiveTab: (tab: TabKey) => void;
+  setContentHubSubTab: (tab: TabKey) => void;
 }
 
 export function DashboardContentHubAdvancedPanel({

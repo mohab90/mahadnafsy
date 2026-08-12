@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
+import type { NotifyFn } from '../../types';
 import {
   AnalyticsTab,
   BalanceSheetTab,
@@ -58,8 +59,13 @@ import {
   WebhooksTab,
 } from './lazyTabs';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type NotifyTab = React.ElementType<{ notify: NotifyFn }>;
+// Imported, not redeclared: the local copy omitted 'warning', so every tab
+// component that types its notify prop from types.ts was unassignable here.
+// Some tabs in this table take an optional `initial` alongside notify (the
+// financial reports hub opens on a named sub-report). The table only ever
+// passes notify, but the type has to admit the wider prop shape or those
+// components are not assignable to it at all.
+type NotifyTab = React.ElementType<{ notify: NotifyFn; initial?: string }>;
 
 type NotifyTabEntry = {
   key: TabKey;

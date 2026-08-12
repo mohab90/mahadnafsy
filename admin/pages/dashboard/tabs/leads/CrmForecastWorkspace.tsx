@@ -5,6 +5,7 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { numericTooltip } from '../../../../lib/chartFormat';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type Period = {
@@ -266,7 +267,7 @@ export default function CrmForecastWorkspace({ notify }: { notify?: NotifyFn }) 
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="period" />
             <YAxis tickFormatter={money} />
-            <Tooltip formatter={(value: number) => `${money(value)} ج.م`} />
+            <Tooltip formatter={numericTooltip(value => `${money(value)} ج.م`)} />
             <Area dataKey="actual" name="فعلي" stroke="#059669" fill="#d1fae5" />
             <Area dataKey="weighted" name="مرجّح" stroke="#4f46e5" fill="#e0e7ff" />
             <Area dataKey="commit" name="Commit" stroke="#ea580c" fill="#ffedd5" />

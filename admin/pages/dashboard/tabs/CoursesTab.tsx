@@ -13,6 +13,7 @@ import type { LessonAnalyticsRow } from './courses/LessonAnalyticsModal';
 import { DiscountsView } from './courses/DiscountsView';
 import { CoursePrerequisitesPanel } from './courses/CoursePrerequisitesPanel';
 import { CourseCohortsPanel } from './courses/CourseCohortsPanel';
+import type { TabKey } from '../navigation';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type RichField = 'shortDescription' | 'description';
@@ -59,7 +60,7 @@ const safeTherapistImageSrc = (image: string | undefined, name?: string) => {
 interface Props {
   notify: NotifyFn;
   activeTab: string;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: (tab: TabKey) => void;
   lectureCourseId: string;
   setLectureCourseId: (id: string) => void;
   subscriberCourseFilter: string;
@@ -736,7 +737,7 @@ const saveChapter = async () => {
                       return;
                     }
                     setSubscriberCourseFilter(courseDraft.id);
-                    setActiveTab('subscribers');
+                    setActiveTab('client');
                   }}
                   className="px-3 py-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-sm font-bold"
                 >
@@ -953,10 +954,10 @@ const saveChapter = async () => {
           getCourseLectures={getCourseLectures}
           onEditCourse={startEditCourse}
           onOpenLectures={(courseId) => { setLectureCourseId(courseId); setActiveTab('lectures'); }}
-          onOpenSubscribers={(courseId) => { setSubscriberCourseFilter(courseId); setActiveTab('subscribers'); }}
+          onOpenSubscribers={(courseId) => { setSubscriberCourseFilter(courseId); setActiveTab('client'); }}
           onShowAccessStats={(course, accessStats) => {
             setSubscriberCourseFilter(course.id);
-            setActiveTab('subscribers');
+            setActiveTab('client');
             notify('info', `إحصائيات وصول ${course.title}: Full ${accessStats.full} / Preview ${accessStats.preview} / Limited ${accessStats.limited}`);
           }}
           onOpenAnalytics={(courseId) => { setAnalyticsCourseId(courseId); loadLessonAnalytics(courseId); }}

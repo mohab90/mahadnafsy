@@ -466,8 +466,10 @@ const Security2FASection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
     if (token.length !== 6) return;
     setWorking(true);
     try {
-      const result = await mysqlAuth.enable2fa(token);
-      localStorage.setItem('mahad-token', result.token);
+      // The re-issued session comes back as the httpOnly cookie. Writing
+      // result.token here stored the literal string "undefined" once the API
+      // stopped echoing tokens, and sent it as `Bearer undefined` from then on.
+      await mysqlAuth.enable2fa(token);
       setStatus('enabled');
       setStep('idle');
       setToken('');
@@ -480,8 +482,7 @@ const Security2FASection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
   const doDisable = async () => {
     setWorking(true);
     try {
-      const result = await mysqlAuth.disable2fa(token || undefined);
-      localStorage.setItem('mahad-token', result.token);
+      await mysqlAuth.disable2fa(token || undefined);
       setStatus('disabled');
       setStep('idle');
       setToken('');

@@ -3,6 +3,8 @@
 // Pure configuration: each entry maps a site_config content key to its Arabic
 // editor label. No component state involved.
 
+import type { TabKey } from './navigation';
+
 export interface ContentField {
   key: string;
   label: string;
@@ -376,9 +378,9 @@ export const pageMiscFields: ContentField[] = [
 // Built from the field lists themselves, so it cannot drift from them.
 export type ContentEditorHome = {
   /** Dashboard tab to open. */
-  tab: string;
+  tab: TabKey;
   /** Sub-tab inside content_hub, when the editor lives there. */
-  subTab?: string;
+  subTab?: TabKey;
   /** What the admin should look for once they arrive. */
   label: string;
 };

@@ -232,6 +232,14 @@ export interface PaymentRecord {
   transactionId?: string;
 }
 
+/**
+ * What addLead actually needs. The row is POSTed straight to the API, which
+ * assigns the id and fills the defaults, so requiring a whole LeadItem here was
+ * wrong: bulk import legitimately creates leads that have no id yet. Only the
+ * name is genuinely read on this side (for the activity feed).
+ */
+export type NewLeadDraft = Partial<LeadItem> & { name: string };
+
 export interface LeadItem {
   id: string;
   clientCode?: string;   // Stable unified client URL code, e.g. "CLT-A1B2C3"

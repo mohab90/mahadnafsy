@@ -8,6 +8,7 @@ import type { ConsultationItem, Course, LeadItem, OrderItem, StaffMember, Subscr
 import { AnalyticsTab } from '../lazyTabs';
 import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import type { TabKey } from '../navigation';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -54,7 +55,7 @@ interface Props {
   kpiModal: KpiModal;
   setKpiModal: (m: KpiModal) => void;
   notify: NotifyFn;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: (tab: TabKey) => void;
   navigate: (path: string) => void;
 }
 

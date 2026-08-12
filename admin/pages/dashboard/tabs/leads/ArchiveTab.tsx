@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { AlertCircle, Archive, Upload, Users } from 'lucide-react';
-import type { Bundle, Course, LeadItem, LeadStatus, StaffMember, SubscriberItem } from '../../../../types';
+import type { Bundle, Course, LeadItem, LeadStatus, NewLeadDraft, StaffMember, SubscriberItem } from '../../../../types';
 import type { NotifyFn } from '../CrmSettingsModal';
 import { LeadTable } from '../LeadTable';
 import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
@@ -17,7 +17,7 @@ import { courseBadgeLabel, matchCourseOrBundle, toRawCourse } from './leadCourse
  * the name+phone requirement and was silently skipped.
  */
 const normKey = (value: string) => String(value || '')
-  .replace(/^FEFF/, '')
+  .replace(/^\uFEFF/, '')
   .trim()
   .toLowerCase()
   .replace(/[_\s\-().[\]/\\]+/g, '');
@@ -66,7 +66,7 @@ function matchBranch(raw: string, options: { id: string; label: string }[]): Bra
 export interface ArchiveTabProps {
   leads: LeadItem[];
   staffMembers: StaffMember[];
-  addLead: (l: Partial<LeadItem>, opts?: { skipReload?: boolean }) => Promise<unknown>;
+  addLead: (l: NewLeadDraft, opts?: { skipReload?: boolean }) => Promise<unknown>;
   updateLead: (l: LeadItem) => void | Promise<boolean>;
   reloadLeads: () => void | Promise<void>;
   notify: NotifyFn;
@@ -178,7 +178,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
           source: importDest === 'archive' ? (archiveSource || 'استيراد قديم') : mainSource,
           status: 'new',
           hidden: false,
-        } as Partial<LeadItem> & { skipAutoAssign: boolean; rawBranch?: string },
+        } as NewLeadDraft & { skipAutoAssign: boolean; rawBranch?: string },
         // One reload at the end, not one per row — see addLead in useCrmCoreState.
         { skipReload: true });
         created++;

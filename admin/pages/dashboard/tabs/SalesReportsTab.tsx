@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { FileText, TrendingUp, Users, DollarSign, Tag, BarChart3, PieChart as PieIcon } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
+import { numericTooltip } from '../../../lib/chartFormat';
 
 type Range = 'week' | 'month' | '3months' | 'all';
 
@@ -170,7 +171,7 @@ export default function SalesReportsTab() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtMoney(v)} />
-            <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ج`, 'الإيراد']} />
+            <Tooltip formatter={numericTooltip(v => [`${v.toLocaleString()} ج`, 'الإيراد'])} />
             <Bar dataKey="revenue" fill="#10b981" radius={[4,4,0,0]} name="الإيراد" />
           </BarChart>
         </ResponsiveContainer>

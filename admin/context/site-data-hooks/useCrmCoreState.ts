@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { MutableRefObject } from 'react';
-import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStatus, OrderItem, SubscriberItem } from '../../types';
+import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStatus, NewLeadDraft, OrderItem, SubscriberItem } from '../../types';
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
@@ -233,7 +233,7 @@ export function useCrmCoreState(
    * for the best part of an hour and the grid showed stale, half-imported state
    * the whole time. The caller reloads once when the batch is done.
    */
-  const addLead = async (item: LeadItem, opts?: { skipReload?: boolean }): Promise<void> => {
+  const addLead = async (item: NewLeadDraft, opts?: { skipReload?: boolean }): Promise<void> => {
     lastCRMWriteRef.current = Date.now();
     await mysqlAdmin.saveLead(item as unknown as Record<string, unknown>);
     if (!opts?.skipReload) await reloadLeads();

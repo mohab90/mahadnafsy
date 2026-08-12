@@ -155,7 +155,15 @@ const Dashboard: React.FC = () => {
   // (useCallback([]) in shared/ui/Toast.tsx); notify only needed to stop
   // being rebuilt on top of it.
   const { show: toastShow } = useToast();
-  const notify = useCallback((type: 'success' | 'error' | 'info', text: string) => toastShow(text, type), [toastShow]);
+  // 'warning' is included because the toast renders it (its own icon and colour
+  // in shared/ui/Toast.tsx) and several tab components declare their notify prop
+  // with it. Leaving it out here made this callback unassignable to those props:
+  // a handler that accepts fewer kinds than the caller may pass is not a
+  // substitute for one that accepts them all.
+  const notify = useCallback(
+    (type: 'success' | 'error' | 'info' | 'warning', text: string) => toastShow(text, type),
+    [toastShow]
+  );
   useRealtimeEvents<{ action?: string; entity?: string; actor?: string }>(
     'admin:mutation',
     (event) => {
@@ -872,7 +880,7 @@ const Dashboard: React.FC = () => {
                 <CoursesTab
                   notify={notify}
                   activeTab={activeTab}
-                  setActiveTab={(tab) => setActiveTab(tab as TabKey)}
+                  setActiveTab={setActiveTab}
                   lectureCourseId={lectureCourseId}
                   setLectureCourseId={setLectureCourseId}
                   subscriberCourseFilter={subscriberCourseFilter}
