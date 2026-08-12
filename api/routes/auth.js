@@ -825,9 +825,22 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       await logLoginAttempt({ userId: user.id, email: user.email, req, status: '2fa_pending' });
       return res.json({ ok: false, totpRequired: true, pendingToken });
     }
+    // Configured administrators count as staff for the concurrent-device rule.
+    // is_staff is derived purely from the `staff` table, but an owner listed in
+    // ADMIN_EMAILS/ADMIN_UIDS may have no row there at all — and that account is
+    // the one most likely to have the admin panel and the public site open at
+    // once, which are the same login. Without this it fell under the one-device
+    // rule and evicted itself on every sign-in: the "logged out every few
+    // minutes" report, with session_version climbing into the dozens.
+    //
+    // The rule exists to stop a paid account being shared for course video, so
+    // customers keep it. This grants no permission — only concurrency.
+    const isOperator = Boolean(user.is_staff)
+      || ADMIN_EMAILS.some(e => String(e).toLowerCase() === String(user.email || '').toLowerCase())
+      || ADMIN_UIDS.includes(user.id);
     const session = await rotateSingleSession(pool, {
       userId: user.id, tenantId: req.tenantId || 'tenant-default', req,
-      allowConcurrent: Boolean(user.is_staff),
+      allowConcurrent: isOperator,
     });
     invalidateIdentity(req.tenantId, user.id, user.email);
     const token = signAccessToken({
@@ -836,7 +849,7 @@ router.post('/api/auth/login', loginLimiter, requireDb,
       // Signed into the token so middleware/auth.js never queries `staff` itself
       // (every staff lookup there must go through the tenant-scoped helper).
       // Decides concurrent-device allowance only — it grants no permission.
-      isStaff: Boolean(user.is_staff),
+      isStaff: isOperator,
     });
     // Link subscriber record to this user account (best-effort)
     pool.query(
@@ -1557,6 +1570,10 @@ router.post('/api/auth/refresh', requireAuth, async (req, res) => {
       uid: req.user.uid, email: req.user.email, tenantId: req.tenantId,
       sessionVersion: req.user.session_version, sessionId: req.user.session_id,
       mfaVerified: req.user.mfa_verified,
+      // Preserved from the presented token. Dropping it here re-applied the
+      // one-device rule to an operator on the first refresh, which is exactly
+      // how "it logs me out again after a few minutes" survived a fix at login.
+      isStaff: req.user.is_staff === true,
     });
     setAuthCookie(res, token);
     res.json({ ok: true });
@@ -1645,11 +1662,13 @@ router.post('/api/auth/2fa/enable', requireAuth, loginLimiter, async (req, res) 
     ).catch(() => {});
     const session = await rotateSingleSession(pool, {
       userId: user.id, tenantId: req.tenantId, req,
+      allowConcurrent: req.user.is_staff === true,
     });
     invalidateIdentity(req.tenantId, user.id, email);
     const fullToken = signAccessToken({
       uid: user.id, email, tenantId: req.tenantId,
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: true,
+      isStaff: req.user.is_staff === true,
     });
     setAuthCookie(res, fullToken);
     res.json({ ok: true, message: 'تم تفعيل المصادقة الثنائية بنجاح' });
@@ -1702,11 +1721,13 @@ router.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
     ).catch(() => {});
     const session = await rotateSingleSession(pool, {
       userId: user.id, tenantId: req.tenantId, req,
+      allowConcurrent: req.user.is_staff === true,
     });
     invalidateIdentity(req.tenantId, user.id, email);
     const token = signAccessToken({
       uid: user.id, email, tenantId: req.tenantId,
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+      isStaff: req.user.is_staff === true,
     });
     setAuthCookie(res, token);
     res.json({ ok: true, message: 'تم تعطيل المصادقة الثنائية' });
@@ -1755,14 +1776,25 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
     });
     if (!valid) return res.status(401).json({ error: 'رمز المصادقة غير صحيح' });
 
-    // Issue full JWT
+    // Issue full JWT. This is the door an operator with 2FA comes through, so
+    // the concurrency claim has to be decided here too — the login route's copy
+    // never runs for them.
+    const [[staffRow]] = await pool.query(
+      `SELECT 1 AS ok FROM staff WHERE tenant_id=? AND is_active=1
+        AND email<>'' AND LOWER(TRIM(email))=LOWER(TRIM(?)) LIMIT 1`,
+      [tenantId, payload.email || '']
+    );
+    const isOperator = Boolean(staffRow)
+      || ADMIN_EMAILS.some(e => String(e).toLowerCase() === String(payload.email || '').toLowerCase())
+      || ADMIN_UIDS.includes(payload.uid);
     const session = await rotateSingleSession(pool, {
-      userId: payload.uid, tenantId, req,
+      userId: payload.uid, tenantId, req, allowConcurrent: isOperator,
     });
     invalidateIdentity(tenantId, payload.uid, payload.email);
     const fullToken = signAccessToken({
       uid: payload.uid, email: payload.email, tenantId,
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: true,
+      isStaff: isOperator,
     });
     setAuthCookie(res, fullToken);
     await logLoginAttempt({ userId: payload.uid, email: payload.email, req, tenantId: payload.tid || req.tenantId, status: '2fa_success' });

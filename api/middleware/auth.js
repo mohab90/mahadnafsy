@@ -212,6 +212,11 @@ async function requireAuth(req, res, next) {
       session_id: identity.sessionId,
       mfa_enrolled: identity.mfaEnrolled,
       mfa_verified: payload.mfa === true,
+      // Carried through so a route that re-issues a token (refresh, 2FA) can
+      // preserve the claim instead of silently dropping it back to false — that
+      // put an operator back under the one-device rule on the next refresh.
+      // Concurrency only; it grants no permission.
+      is_staff: payload.stf === true,
       name: identity.name,
       tenant_id: tenantId,
     };

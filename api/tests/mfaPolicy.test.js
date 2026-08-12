@@ -17,7 +17,21 @@ test('MFA factors are owned by auth users and successful TOTP produces an MFA-au
   // querying `staff` itself (authTenantIsolation pins that separately).
   assert.match(authRoute, /SELECT u\.id, u\.email, u\.name, u\.password_hash, u\.session_version, u\.totp_enabled/);
   assert.match(authRoute, /AS is_staff/);
-  assert.match(authRoute, /isStaff: Boolean\(user\.is_staff\)/);
+  // The claim is no longer the staff row alone: an owner configured through
+  // ADMIN_EMAILS/ADMIN_UIDS may have no staff row, and reading it from that
+  // table only put them under the one-device rule — evicting themselves each
+  // time the admin panel and the public site were open together.
+  assert.match(authRoute, /const isOperator = Boolean\(user\.is_staff\)/);
+  assert.match(authRoute, /ADMIN_EMAILS\.some[\s\S]{0,120}ADMIN_UIDS\.includes\(user\.id\)/);
+  assert.match(authRoute, /isStaff: isOperator/);
+  // Every route that re-issues a token must carry the claim forward, or the
+  // rule reappears on the first refresh.
+  assert.match(authRoute, /isStaff: req\.user\.is_staff === true/);
+  assert.doesNotMatch(
+    authRoute,
+    /sessionId: session\.sessionId, mfaVerified: (true|false),\n\s*\}\);/,
+    'a token is being signed without an isStaff claim'
+  );
   assert.match(authRoute, /UPDATE users SET totp_enabled=1 WHERE id=\? AND tenant_id=\?/);
   assert.match(authRoute, /rotateSingleSession\(pool/);
   assert.match(authRoute, /mfaVerified: true/);
