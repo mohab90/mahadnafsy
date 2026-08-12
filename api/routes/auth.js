@@ -895,7 +895,7 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
   let conn;
   try {
     conn = await pool.getConnection();
-    const [rows] = await conn.execute('SELECT id, email, name FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
+    const [rows] = await conn.execute('SELECT id, email, name, phone FROM users WHERE id = ? AND tenant_id=?', [req.user.uid, req.tenantId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = rows[0];
     let isAdmin = ADMIN_EMAILS.includes(u.email) || ADMIN_UIDS.includes(u.id);
@@ -907,20 +907,32 @@ router.get('/api/auth/me', requireAuth, requireDb, async (req, res) => {
       ) : [[null]];
       if (staff && FULL_ACCESS_ROLES_AUTH.includes(String(staff.role || '').toLowerCase())) isAdmin = true;
     }
-    // Surface the user's phone (users table has none) — prefer subscriber, then most recent lead.
+    // Surface the user's phone. Subscriber and lead rows come first because they
+    // carry the number the desk has actually been calling; users.phone is the
+    // fallback.
+    //
+    // That fallback was missing, and the comment here still claimed the users
+    // table had no phone at all — it does, registration has stored the WhatsApp
+    // identity there since 196_v25_phone_identity_leads_unique. A customer who
+    // had just signed up with their number, and was not yet a subscriber or a
+    // lead, got an empty string back: checkout then asked them to type in the
+    // number they had given one screen earlier.
     let phone = '';
     try {
       const em = (u.email || '').toLowerCase().trim();
-      const [[subRow]] = await conn.execute(
-        "SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [req.tenantId, em]
-      );
-      phone = subRow?.phone || '';
-      if (!phone) {
-        const [[leadRow]] = await conn.execute(
-          "SELECT phone FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT 1", [req.tenantId, em]
+      if (em) {
+        const [[subRow]] = await conn.execute(
+          "SELECT phone FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' LIMIT 1", [req.tenantId, em]
         );
-        phone = leadRow?.phone || '';
+        phone = subRow?.phone || '';
+        if (!phone) {
+          const [[leadRow]] = await conn.execute(
+            "SELECT phone FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? AND phone IS NOT NULL AND phone<>'' ORDER BY created_at DESC LIMIT 1", [req.tenantId, em]
+          );
+          phone = leadRow?.phone || '';
+        }
       }
+      if (!phone) phone = u.phone || '';
     } catch { /* phone is best-effort */ }
     res.json({ uid: u.id, email: u.email, displayName: u.name || '', phone, isAdmin });
   } catch (err) {
