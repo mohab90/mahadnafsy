@@ -209,19 +209,20 @@ const SessionTimeoutWarner: React.FC = () => {
 
   useEffect(() => {
     const check = () => {
-      const token = localStorage.getItem('mahad-token');
-      if (!token) { setShowWarning(false); return; }
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const expiresIn = payload.exp * 1000 - Date.now();
-        if (expiresIn <= 0) { setShowWarning(false); return; }
-        if (expiresIn <= 5 * 60 * 1000) { // 5 minutes
-          setShowWarning(true);
-          setCountdown(Math.floor(expiresIn / 1000));
-        } else {
-          setShowWarning(false);
-        }
-      } catch { setShowWarning(false); }
+      // Read the expiry from the companion cookie the API sets alongside the
+      // httpOnly session cookie. This used to decode a JWT out of localStorage;
+      // once logins stopped writing one, the value was always null and this
+      // banner never fired again — sessions just ended without warning.
+      const match = document.cookie.match(/(?:^|;\s*)authExpiresAt=(\d+)/);
+      if (!match) { setShowWarning(false); return; }
+      const expiresIn = Number(match[1]) - Date.now();
+      if (expiresIn <= 0) { setShowWarning(false); return; }
+      if (expiresIn <= 5 * 60 * 1000) { // 5 minutes
+        setShowWarning(true);
+        setCountdown(Math.floor(expiresIn / 1000));
+      } else {
+        setShowWarning(false);
+      }
     };
     check();
     const id = setInterval(check, 30000); // check every 30s

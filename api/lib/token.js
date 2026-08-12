@@ -50,12 +50,25 @@ function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaV
   );
 }
 
+// Carries no secret — just when the session runs out, so the UI can warn before
+// it does. The token itself stays httpOnly and unreadable; once it stopped being
+// echoed into the body there was nothing left for the client to time against,
+// and the "session about to expire" banner silently stopped appearing at all.
+const EXPIRY_COOKIE = `Path=/; Max-Age=${JWT_MAX_AGE_SECONDS}; SameSite=None; Secure`;
+
 function setAuthCookie(res, token) {
-  res.setHeader('Set-Cookie', `authToken=${token}; ${AUTH_COOKIE}`);
+  const expiresAt = Date.now() + JWT_MAX_AGE_SECONDS * 1000;
+  res.setHeader('Set-Cookie', [
+    `authToken=${token}; ${AUTH_COOKIE}`,
+    `authExpiresAt=${expiresAt}; ${EXPIRY_COOKIE}`,
+  ]);
 }
 
 function clearAuthCookie(res) {
-  res.setHeader('Set-Cookie', 'authToken=; HttpOnly; Path=/; Max-Age=0; SameSite=None; Secure');
+  res.setHeader('Set-Cookie', [
+    'authToken=; HttpOnly; Path=/; Max-Age=0; SameSite=None; Secure',
+    'authExpiresAt=; Path=/; Max-Age=0; SameSite=None; Secure',
+  ]);
 }
 
 function tokenExpiryMs(payload, fallbackMs = JWT_MAX_AGE_SECONDS * 1000) {
