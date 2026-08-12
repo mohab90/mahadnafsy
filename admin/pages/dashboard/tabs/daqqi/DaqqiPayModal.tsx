@@ -1,5 +1,6 @@
 import { CreditCard, X } from 'lucide-react';
 import type { PaymentItemType, SubscriberItem, Bundle, Course } from '../../../../types';
+import { parsePaymentMethods } from '../../../../lib/paymentMethods';
 
 export type DaqqiPayDraft = {
   bookingType: 'new_booking' | 'installment';
@@ -76,9 +77,7 @@ export function DaqqiPayModal({ modal, draft, setDraft, onClose, onSubmit, subsc
   const _remaining = _effPx > 0 && _amtPaid > 0 ? Math.max(0, _effPx - _amtPaid) : 0;
   const _extraTotal = (draft.extraItems || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const _grandTotal = _amtPaid + _extraTotal;
-  const paymentMethodsList: string[] = content['finance.payment_methods']
-    ? content['finance.payment_methods'].split('||').map((s: string) => s.trim()).filter(Boolean)
-    : ['خزنة الدقي', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'أخرى'];
+  const paymentMethodsList: string[] = parsePaymentMethods(content['finance.payment_methods']);
   const isValid = _amtPaid > 0 && !!draft.paymentMethod;
 
   return (

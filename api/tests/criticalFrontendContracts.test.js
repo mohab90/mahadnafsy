@@ -304,7 +304,12 @@ test('Dokki subscriber archival uses the canonical action and explicit permissio
   const clients = read('admin/pages/dashboard/tabs/daqqi/DaqqiClientsPanel.tsx');
   const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
   const catalog = read('api/routes/core/catalog.js');
-  assert.match(schedule, /<DaqqiClientsPanel/);
+  // The panel is no longer rendered on the schedule page — that page is the
+  // schedule, and عملاء الدقي has its own tab. What matters here is that
+  // archival still goes through the canonical action with an explicit
+  // permission, not where the list happens to be mounted.
+  assert.doesNotMatch(schedule, /<DaqqiClientsPanel/);
+  assert.match(schedule, /onAddClient=\{/);
   assert.match(clients, /await deleteSubscriber\(subscriber\.id\)/);
   assert.doesNotMatch(clients, /mysqlAdmin\.deleteSubscriber/);
   assert.match(growth, /canDeleteSubscriber=\{canDeleteSubscriber\}/);

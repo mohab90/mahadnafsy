@@ -8,7 +8,6 @@ import type {
   PaymentItemType, StaffMember, SubscriberItem,
 } from '../../types';
 import { mapServerInstallmentPlan } from './installmentPlanMapper';
-import type { UnifiedClientLeadPaymentDraft } from './UnifiedClientLeadPaymentModal';
 
 interface Params {
   lead?: LeadItem;
@@ -55,14 +54,12 @@ export function useUnifiedClientPayments(params: Params) {
   const settlementCurrency = currencyForBranch(subscriber?.branch || lead?.branch);
   const settlementLabel = currencyLabel(settlementCurrency);
   const [showLeadPayForm, setShowLeadPayForm] = useState(false);
-  const [leadPayDraft, setLeadPayDraft] = useState<UnifiedClientLeadPaymentDraft>({
-    amount: 0,
-    currency: currencyForBranch(lead?.branch),
+  const [leadPayDraft, setLeadPayDraft] = useState<PaymentDraft>(() => createClientPaymentDraft({
     courseId: lead?.enrolledCourseId || '',
-    date: today(),
-    note: '',
-    paymentType: 'course',
-  });
+    currency: currencyForBranch(lead?.branch),
+    branch: lead?.branch || '',
+    email: lead?.email || '',
+  }));
   const [showSubPayForm, setShowSubPayForm] = useState(false);
   const [payModalDraft, setPayModalDraft] = useState<PaymentDraft>(() => createClientPaymentDraft({
     branch: subscriber?.branch,
@@ -156,8 +153,8 @@ export function useUnifiedClientPayments(params: Params) {
       entry => !entry.paidAt && entry.dueDate >= todayStr && entry.dueDate <= soon3Str,
     )).length;
 
-  const handleAddLeadPayment = async () => {
-    const amount = Number(leadPayDraft.amount);
+  const handleAddLeadPayment = async (draft: PaymentDraft = leadPayDraft) => {
+    const amount = Number(draft.amount);
     if (!lead || !Number.isFinite(amount) || amount <= 0 || isSaving) return;
     setIsSaving(true);
     try {
@@ -190,11 +187,11 @@ export function useUnifiedClientPayments(params: Params) {
       await recordSubscriberPayment(subscriberId, {
         id: `pay-${Date.now()}`,
         amount,
-        currency: leadPayDraft.currency,
-        paymentType: leadPayDraft.courseId ? 'course' : 'other',
-        courseId: leadPayDraft.courseId || undefined,
-        note: leadPayDraft.note || undefined,
-        at: leadPayDraft.date,
+        currency: draft.currency,
+        paymentType: draft.paymentType || (draft.courseId ? 'course' : 'other'),
+        courseId: draft.courseId?.startsWith('bundle:') ? undefined : (draft.courseId || undefined),
+        note: draft.note || undefined,
+        at: draft.date,
         status: 'paid',
         source: 'staff',
         staffId: recorder?.id,
@@ -202,14 +199,12 @@ export function useUnifiedClientPayments(params: Params) {
       });
       await Promise.all([reloadLeads(), reloadSubscribers()]);
       setShowLeadPayForm(false);
-      setLeadPayDraft({
-        amount: 0,
-        currency: currencyForBranch(lead.branch),
+      setLeadPayDraft(createClientPaymentDraft({
         courseId: lead.enrolledCourseId || '',
-        date: today(),
-        note: '',
-        paymentType: 'course',
-      });
+        currency: currencyForBranch(lead.branch),
+        branch: lead.branch || '',
+        email: lead.email || '',
+      }));
     } catch (error) {
       persistenceError('payment', error);
     } finally {
@@ -305,14 +300,12 @@ export function useUnifiedClientPayments(params: Params) {
   };
 
   const openLeadPaymentForm = () => {
-    setLeadPayDraft({
-      amount: 0,
-      currency: currencyForBranch(lead?.branch),
+    setLeadPayDraft(createClientPaymentDraft({
       courseId: lead?.enrolledCourseId || '',
-      date: today(),
-      note: '',
-      paymentType: 'course',
-    });
+      currency: currencyForBranch(lead?.branch),
+      branch: lead?.branch || '',
+      email: lead?.email || '',
+    }));
     setShowLeadPayForm(true);
   };
 

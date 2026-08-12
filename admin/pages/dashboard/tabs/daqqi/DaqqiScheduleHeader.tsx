@@ -1,4 +1,4 @@
-import { CalendarDays, List, Plus } from 'lucide-react';
+import { CalendarDays, List, Plus, UserPlus } from 'lucide-react';
 
 export type DaqqiScheduleView = 'table' | 'calendar';
 
@@ -7,6 +7,8 @@ interface DaqqiScheduleHeaderProps {
   setView: (view: DaqqiScheduleView) => void;
   hideCreateRound?: boolean;
   onCreateRound: () => void;
+  /** Adding a client moved up here when the clients table below was removed. */
+  onAddClient?: () => void;
 }
 
 export function DaqqiScheduleHeader({
@@ -14,6 +16,7 @@ export function DaqqiScheduleHeader({
   setView,
   hideCreateRound,
   onCreateRound,
+  onAddClient,
 }: DaqqiScheduleHeaderProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -36,6 +39,14 @@ export function DaqqiScheduleHeader({
             <CalendarDays size={13} />تقويم
           </button>
         </div>
+        {onAddClient && (
+          <button
+            onClick={onAddClient}
+            className="flex items-center gap-1.5 bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-green-700 transition"
+          >
+            <UserPlus size={15} />إضافة عميل
+          </button>
+        )}
         {!hideCreateRound && (
           <button
             onClick={onCreateRound}

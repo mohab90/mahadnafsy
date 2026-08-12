@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { parsePaymentMethods } from '../../../lib/paymentMethods';
 import {
   
   Plus, X,
@@ -524,9 +525,7 @@ export default function OnlineClientsTab({
 
                   {/* ===== مشترك جديد popup ===== */}
                   {omNewSubOpen && (() => {
-                    const pmList: string[] = content['finance.payment_methods']
-                      ? content['finance.payment_methods'].split('||').map((s:string)=>s.trim()).filter(Boolean)
-                      : ['كاش','فودافون كاش','انستاباي','تحويل بنكي','بطاقة ائتمان','خزنة الدقي'];
+                    const pmList: string[] = parsePaymentMethods(content['finance.payment_methods']);
                     return (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" dir="rtl"
                       onClick={e=>{if(e.target===e.currentTarget){setOmNewSubOpen(false);omNewSubReset();daqqiBranchNewSubReset();}}}>

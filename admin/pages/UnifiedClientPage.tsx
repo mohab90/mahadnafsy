@@ -7,6 +7,7 @@
  *   RIGHT main    → overview tab first, then contextual tabs
  */
 import React, { useState } from 'react';
+import { useBranches } from '../hooks/useBranches';
 import { useNavigate } from 'react-router-dom';
 import {
   
@@ -63,6 +64,8 @@ interface UnifiedClientPageProps {
 
 const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber }) => {
   const navigate = useNavigate();
+  // Same list every other screen shows — see hooks/useBranches.
+  const branchOptions = useBranches();
   const {
     courses, bundles, staffMembers, subscribers, leads, isAdmin, authUser,
     updateLead, deleteLead, addSubscriber, updateSubscriber, deleteSubscriber,
@@ -237,7 +240,10 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
           setCodeCopied(true);
           setTimeout(() => setCodeCopied(false), 2000);
         }}
-        onConvertLead={() => setShowConvertModal(true)}
+        // حجز opens the booking dialog — the same one تسجيل دفعة opens and the
+        // same one the leads page uses. It used to open the convert-lead dialog
+        // instead, a different form with different fields.
+        onConvertLead={() => setShowLeadPayForm(true)}
         onOpenLinkedSubscriber={() => linkedSub && navigate(`/client/${linkedSub.clientCode || linkedSub.id}`)}
         onAddCommunication={() => setShowAddComm(true)}
         onOpenInstallmentPlan={() => setActiveTab('installments')}
@@ -624,10 +630,20 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               open: true, clientName, draft: newComm, setDraft: setNewComm, saving: isSaving,
               onSubmit: handleSaveComm, onClose: () => setShowAddComm(false),
             } : undefined}
-            leadPayment={showLeadPayForm && !isSub ? {
-              open: true, clientName, bundles, courses, draft: leadPayDraft,
-              setDraft: setLeadPayDraft, saving: isSaving,
-              onSubmit: handleAddLeadPayment, onClose: () => setShowLeadPayForm(false),
+            leadPayment={showLeadPayForm && !isSub && lead ? {
+              mode: 'lead' as const,
+              subject: {
+                id: lead.id, name: lead.name, phone: lead.phone,
+                enrolledCourseIds: lead.interestedCourseIds || [],
+                paymentHistory: [],
+                extraCertificateRequests: [],
+              },
+              draft: leadPayDraft,
+              setDraft: setLeadPayDraft,
+              branchOptions,
+              branchLabel: lead.branch,
+              onSubmit: handleAddLeadPayment,
+              onClose: () => setShowLeadPayForm(false),
             } : undefined}
             extraCertificate={showExtraCertForm && isSub ? {
               open: true, subscriber, clientName, courses, draft: extraCertDraft,

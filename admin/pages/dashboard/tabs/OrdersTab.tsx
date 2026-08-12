@@ -1,4 +1,5 @@
 import React from 'react';
+import { parsePaymentMethods } from '../../../lib/paymentMethods';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight, CheckCircle, Clock, CreditCard, Download,
@@ -1108,10 +1109,7 @@ export default function OrdersTab({
 
                         {/* Payment Method — from finance settings */}
                         {(() => {
-                          const DEFAULT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
-                          const financeMethods: string[] = content['finance.payment_methods']
-                            ? content['finance.payment_methods'].split('||').map((s: string) => s.trim()).filter(Boolean)
-                            : DEFAULT_METHODS;
+                          const financeMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
                           if (!transferForm.method && financeMethods.length > 0) {
                             setTransferForm(f => ({...f, method: financeMethods[0]}));
                           }

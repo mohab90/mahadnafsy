@@ -13,6 +13,7 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
 import { branchMatches, createBlankIncomeDraft, type FinancialSubTab } from './financial/financialTabUtils';
+import { parsePaymentMethods } from '../../../lib/paymentMethods';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 const AgingReportPanel = React.lazy(() => import('./financial/AgingReportPanel').then(module => ({ default: module.AgingReportPanel })));
@@ -256,11 +257,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
 
   // Helper: get payment method from entry (new field first, then scan note for compat)
   const DEFAULT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
-  const PAYMENT_METHODS: string[] = content['finance.payment_methods']
-    ? content['finance.payment_methods'].split('||').map(s => s.trim()).filter(Boolean)
-    : DEFAULT_METHODS;
-  const savePaymentMethods = (methods: string[]) =>
-    setContentValue('finance.payment_methods', methods.join('||'));
+  const PAYMENT_METHODS: string[] = parsePaymentMethods(content['finance.payment_methods']);
   const getMethod = (p: { paymentMethod?: string; note?: string }) =>
     p.paymentMethod || PAYMENT_METHODS.find(m => (p.note || '').includes(m)) || '';
   const {

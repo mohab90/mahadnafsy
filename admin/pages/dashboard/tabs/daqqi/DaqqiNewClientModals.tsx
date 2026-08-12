@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserPlus, X } from 'lucide-react';
 import type { Bundle, Course, PaymentItemType } from '../../../../types';
+import { parsePaymentMethods } from '../../../../lib/paymentMethods';
 
 export interface DaqqiNewClientDraft {
   name: string;
@@ -52,9 +53,7 @@ export function DaqqiNewClientModal({
 }: NewClientModalProps) {
   if (!open) return null;
 
-  const paymentMethods = content['finance.payment_methods']
-    ? content['finance.payment_methods'].split('||').map((item) => item.trim()).filter(Boolean)
-    : ['خزنة الدقي', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'أونلاين', 'أخرى'];
+  const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
   const hasPayment = !!draft.amount && Number(draft.amount) > 0;
 
   return (

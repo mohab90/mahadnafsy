@@ -9,6 +9,7 @@ import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
 } from '../types';
+import { parsePaymentMethods } from '../lib/paymentMethods';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -338,9 +339,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     return Number(tiers.egyptianEGP) || Number(tiers.residentEGP) || 0;
   };
 
-  const paymentMethods: string[] = content['finance.payment_methods']
-    ? content['finance.payment_methods'].split('||').map((s: string) => s.trim()).filter(Boolean)
-    : ['كاش', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'أخرى'];
+  const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
 
   const isValid = _amtPaid > 0 && !!d.paymentMethod && (mode === 'lead' ? !!d.branch : true);
 

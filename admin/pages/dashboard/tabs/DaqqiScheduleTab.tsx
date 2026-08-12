@@ -13,7 +13,6 @@ import type {
   Bundle, Course,
 } from '../../../types';
 import { DaqqiScheduleHeader } from './daqqi/DaqqiScheduleHeader';
-import { DaqqiClientsPanel } from './daqqi/DaqqiClientsPanel';
 import { DaqqiCommunicationModal } from './daqqi/DaqqiCommunicationModal';
 import { DaqqiRoundEditorModal } from './daqqi/DaqqiRoundEditorModal';
 import {
@@ -615,15 +614,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
           setDaqqiDraft(blankDaqqiDraft());
           setDaqqiPendingRound(null);
         }}
-      />
-
-
-
-      <DaqqiClientsPanel
-        subscribers={daqqiSubs}
-        rounds={daqqiRounds}
-        canDeleteSubscriber={Boolean(canDeleteSubscriber)}
-        notify={notify}
         onAddClient={() => {
           setDaqqiAddClientModal(true);
           setDaqqiNewClientDraft({
@@ -633,20 +623,12 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
             note: '', bookingType: 'new_booking',
           });
         }}
-        onCommunicate={subscriber => {
-          setDaqqiCommModal({ subscriberId: subscriber.id, subscriberName: subscriber.name, phone: subscriber.phone });
-          setDaqqiCommType('call');
-          setDaqqiCommNote('');
-        }}
-        onPay={subscriber => {
-          setDaqqiPayModal({ subscriberId: subscriber.id, subscriberName: subscriber.name });
-          resetDaqqiPayDraft({ courseId: subscriber.enrolledCourseIds[0] || '' });
-        }}
-        onAssign={subscriberId => {
-          setDaqqiToskeenSubId(subscriberId);
-          setDaqqiToskeenTargetRoundId('');
-        }}
       />
+
+
+
+      {/* The clients table that sat here was removed by request — this page is
+          the schedule. Adding a client moved to the header. */}
       {/* Empty or main view */}
       {daqqiRounds.length === 0 ? (
         <div className="border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400">
