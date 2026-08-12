@@ -49,12 +49,7 @@ interface Props {
   revenueByMethodFiltered: Record<string, number>;
   setFinancialSubTab: React.Dispatch<React.SetStateAction<FinancialSubTab>>;
   setOrderMethodFilter: React.Dispatch<React.SetStateAction<string>>;
-  isMethodsEditing: boolean;
-  setIsMethodsEditing: React.Dispatch<React.SetStateAction<boolean>>;
   paymentMethods: string[];
-  savePaymentMethods: (methods: string[]) => void;
-  newMethodDraft: string;
-  setNewMethodDraft: React.Dispatch<React.SetStateAction<string>>;
   revenueByCourse: RevenueByCourse[];
   exportCSV: (filename: string, rows: string[][], headers: string[]) => void;
 }
@@ -85,12 +80,7 @@ export function FinancialOverviewPanel({
   revenueByMethodFiltered,
   setFinancialSubTab,
   setOrderMethodFilter,
-  isMethodsEditing,
-  setIsMethodsEditing,
   paymentMethods,
-  savePaymentMethods,
-  newMethodDraft,
-  setNewMethodDraft,
   revenueByCourse,
   exportCSV,
 }: Props) {
@@ -228,50 +218,20 @@ export function FinancialOverviewPanel({
             {/* ── Manage Payment Methods ── */}
             <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <h4 className="font-bold text-gray-800 flex items-center gap-2"><CreditCard size={16} className="text-primary-600" />إدارة وسائل الدفع والخزن</h4>
-                <button onClick={() => setIsMethodsEditing(v => !v)}
-                  className={`text-sm font-bold px-3 py-1.5 rounded-xl transition ${isMethodsEditing ? 'bg-gray-200 text-gray-700' : 'bg-primary-600 text-white hover:bg-primary-700'}`}>
-                  {isMethodsEditing ? 'إغلاق' : '+ تعديل / إضافة'}
-                </button>
+                {/* Read-only here. Editing lives in الإعدادات ← وسائل الدفع,
+                    which owns this same content key; a second editor meant two
+                    screens writing one setting with no way to tell which had
+                    last won. */}
+                <h4 className="font-bold text-gray-800 flex items-center gap-2"><CreditCard size={16} className="text-primary-600" />وسائل الدفع والخزن</h4>
+                <span className="text-xs text-gray-400">تُدار من الإعدادات ← وسائل الدفع</span>
               </div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {paymentMethods.map(m => (
-                  <div key={m} className="flex items-center gap-1 bg-gray-100 rounded-xl px-3 py-1.5 text-sm font-bold text-gray-700">
-                    {m}
-                    {isMethodsEditing && (
-                      <button onClick={() => savePaymentMethods(paymentMethods.filter(x => x !== m))}
-                        className="mr-1 text-red-400 hover:text-red-600 font-bold leading-none" title="حذف">×</button>
-                    )}
-                  </div>
+              <div className="flex flex-wrap gap-2">
+                {paymentMethods.length === 0 ? (
+                  <span className="text-sm text-gray-400">لم تُضبط وسائل دفع بعد — أضفها من الإعدادات.</span>
+                ) : paymentMethods.map(m => (
+                  <div key={m} className="bg-gray-100 rounded-xl px-3 py-1.5 text-sm font-bold text-gray-700">{m}</div>
                 ))}
               </div>
-              {isMethodsEditing && (
-                <div className="flex gap-2" dir="rtl">
-                  <input
-                    value={newMethodDraft}
-                    onChange={e => setNewMethodDraft(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && newMethodDraft.trim() && !paymentMethods.includes(newMethodDraft.trim())) {
-                        savePaymentMethods([...paymentMethods, newMethodDraft.trim()]);
-                        setNewMethodDraft('');
-                      }
-                    }}
-                    placeholder="اسم الخزنة أو وسيلة الدفع الجديدة..."
-                    className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm"
-                  />
-                  <button
-                    onClick={() => {
-                      const t = newMethodDraft.trim();
-                      if (!t || paymentMethods.includes(t)) return;
-                      savePaymentMethods([...paymentMethods, t]);
-                      setNewMethodDraft('');
-                    }}
-                    disabled={!newMethodDraft.trim() || paymentMethods.includes(newMethodDraft.trim())}
-                    className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-40 transition">
-                    إضافة
-                  </button>
-                </div>
-              )}
             </article>
   
             {/* ── Revenue per Course ── */}

@@ -155,8 +155,6 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const pendingReviewCount = allPaymentHistoryEarly.filter(p => p.status === 'pending').length;
   const [orderMethodFilter, setOrderMethodFilter] = useState('');
   const [isIncomeFormOpen, setIsIncomeFormOpen] = useState(false);
-  const [isMethodsEditing, setIsMethodsEditing] = useState(false);
-  const [newMethodDraft, setNewMethodDraft] = useState('');
   const [commissionMonth, setCommissionMonth] = useState(new Date().toISOString().slice(0, 7));
   const [commissionFrom, setCommissionFrom] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 2); return d.toISOString().slice(0, 7); });
   const [commissionTo, setCommissionTo] = useState(new Date().toISOString().slice(0, 7));
@@ -475,12 +473,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
           revenueByMethodFiltered={revenueByMethodFiltered}
           setFinancialSubTab={setFinancialSubTab}
           setOrderMethodFilter={setOrderMethodFilter}
-          isMethodsEditing={isMethodsEditing}
-          setIsMethodsEditing={setIsMethodsEditing}
           paymentMethods={PAYMENT_METHODS}
-          savePaymentMethods={savePaymentMethods}
-          newMethodDraft={newMethodDraft}
-          setNewMethodDraft={setNewMethodDraft}
           revenueByCourse={revenueByCourse}
           exportCSV={exportCSV}
         />
