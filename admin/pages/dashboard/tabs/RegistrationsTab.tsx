@@ -3,7 +3,7 @@ import { UserPlus, RefreshCw, UserCheck, UserX, Trash2, ExternalLink, Lock } fro
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { RegistrationItem } from '../../../lib/mysqlapi';
-import { BRANCH_ENUM_LABELS } from './leadUtils';
+import { useBranches } from '../../../hooks/useBranches';
 import PaymentModal, { type PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../../lib/branchCurrency';
@@ -18,6 +18,7 @@ interface Props { notify: NotifyFn; }
 // Table styling matches LeadTable.tsx (bordered cells, sticky actions col)
 // so this reads as the same family of screen, not a bolted-on one-off.
 const RegistrationsTab: React.FC<Props> = ({ notify }) => {
+  const branchOptions = useBranches();
   const { courses, bundles } = useSiteData();
   const [rows, setRows] = useState<RegistrationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +220,9 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
           setDraft={setDraft}
           onSubmit={(paid) => submitBooking(paid)}
           onClose={() => { if (!submitting) setBookingRow(null); }}
-          branchOptions={Object.entries(BRANCH_ENUM_LABELS).map(([id, label]) => ({ id, label }))}
+          // Was a hardcoded label map, so this screen offered a different set of
+          // branches from every other screen opening the same dialog.
+          branchOptions={branchOptions}
         />
       )}
     </div>

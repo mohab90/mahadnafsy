@@ -42,11 +42,10 @@ export function UnifiedClientSidebarProfileCard({
           </div>
         </div>
 
+        {/* Single full-width action: the call button was removed by request,
+            so the two-column grid that paired them goes with it. */}
         {clientPhone && (
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <a href={`tel:${clientPhone}`} className="flex items-center justify-center gap-1.5 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition border border-blue-100">
-              <Phone size={13} /> اتصال
-            </a>
+          <div className="mb-3">
             <a href={`https://wa.me/${toDialable(clientPhone)}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 py-2 bg-green-50 text-green-700 rounded-xl text-xs font-bold hover:bg-green-100 transition border border-green-100">
               <MessageSquare size={13} /> واتساب
             </a>

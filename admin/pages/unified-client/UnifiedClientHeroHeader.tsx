@@ -150,17 +150,14 @@ export function UnifiedClientHeroHeader({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* WhatsApp only. The tel: button was removed by request — the desk
+              contacts clients on WhatsApp, and a dead dial link on a desktop
+              browser was doing nothing useful beside it. */}
           {clientPhone && (
-            <>
-              <a href={`https://wa.me/${toDialable(clientPhone)}`} target="_blank" rel="noopener noreferrer"
-                className="px-4 py-2 bg-green-500 hover:bg-green-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                <MessageSquare size={14} /> واتس أب
-              </a>
-              <a href={`tel:${clientPhone}`}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
-                <Phone size={14} /> اتصال
-              </a>
-            </>
+            <a href={`https://wa.me/${toDialable(clientPhone)}`} target="_blank" rel="noopener noreferrer"
+              className="px-4 py-2 bg-green-500 hover:bg-green-400 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-colors shadow-sm">
+              <MessageSquare size={14} /> واتس أب
+            </a>
           )}
           {lead && lead.status !== 'converted' ? (
             <button onClick={onConvertLead}

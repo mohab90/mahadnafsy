@@ -55,6 +55,10 @@ type AR = Record<string, unknown>;
 // ── Public catalog ────────────────────────────────────────────────────────────
 export const mysqlCatalog = {
   listCourses: (limit = 500, offset = 0) => apiFetch<AR[]>(`/courses?limit=${limit}&offset=${offset}`),
+  // The branches table is what the server validates a branch against. The admin
+  // app had no way to read it and fell back to content strings and hardcoded
+  // enums, which is how the same dropdown ended up different on every screen.
+  listBranches: () => apiFetch<AR[]>('/branches'),
   listBundles: (limit = 200) => apiFetch<AR[]>(`/bundles?limit=${limit}`),
   listLectures: (limit = 5000, offset = 0) => apiFetch<AR[]>(`/lectures?limit=${limit}&offset=${offset}`),
   listChapters: (limit = 1000) => apiFetch<AR[]>(`/chapters?limit=${limit}`),
@@ -663,6 +667,9 @@ export const mysqlAdmin = {
   // ── Settings / Content / Discounts / Notifications ──
   saveSettings:      (data: AR) => put('/admin/settings', data),
   saveContent:       (data: AR) => put('/admin/content', data),
+  // Partial update. PUT is refused when the payload would drop existing keys,
+  // so anything short of the complete document has to come through here.
+  patchContent:      (data: AR) => apiFetch<{ ok: boolean }>('/admin/content', { method: 'PATCH', body: JSON.stringify(data) }, true),
   saveDiscounts:     (data: unknown[]) => put('/admin/discounts', data),
   saveNotifications: (data: unknown[]) => put('/admin/notification-settings', data),
   getNotificationSettings: () => apiFetch<AR[]>('/admin/notification-settings', {}, A),

@@ -7,6 +7,7 @@ import { escapeHtml } from '../../lib/safeHtml';
 import { ptLabels } from './constants';
 import { UnifiedClientPaymentSummaryPanel } from './UnifiedClientPaymentSummaryPanel';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
+import { useBranches } from '../../hooks/useBranches';
 
 const PaymentModal = React.lazy(() => import('../../components/PaymentModal'));
 
@@ -75,6 +76,9 @@ export function UnifiedClientSubscriberPaymentsPanel({
   loadProofImage,
   handleReviewProof,
 }: UnifiedClientSubscriberPaymentsPanelProps) {
+  // This dialog opened with an empty branch dropdown: it was the one caller that
+  // never passed branchOptions at all.
+  const branchOptions = useBranches();
   return (
     <>
       <button onClick={onShowPaymentForm}
@@ -88,6 +92,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
             subject={{ id: subscriber.id, name: subscriber.name, phone: subscriber.phone, enrolledCourseIds: subscriber.enrolledCourseIds, paymentHistory: subscriber.paymentHistory || [], extraCertificateRequests: subscriber.extraCertificateRequests || [] }}
             draft={payModalDraft}
             setDraft={setPayModalDraft}
+            branchOptions={branchOptions}
             onSubmit={onPaymentSubmit}
             onClose={onClosePaymentForm}
           />

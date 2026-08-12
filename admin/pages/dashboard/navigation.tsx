@@ -187,17 +187,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'cohort_analysis', label: 'تحليل Cohort', icon: Users },
       { key: 'revenue_sources', label: 'مصادر الإيراد', icon: BarChart3 },
       { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
-    ],
-  },
-  {
-    // Its own heading rather than an item under الإدارة: ask_ai is granted to
-    // sales reps and support, and hanging it off the management group made an
-    // "الإدارة" section appear for people who have no management pages at all.
-    key: 'assistant',
-    label: 'مساعد AI',
-    icon: Zap,
-    color: 'text-fuchsia-600',
-    items: [
+      // Sits under الإدارة by request. It previously had its own heading
+      // because ask_ai is also granted to sales and support, so for those roles
+      // an "الإدارة" heading now appears carrying this single item — the menu
+      // renders a group whenever any of its items is permitted.
       { key: 'ask_ai', label: 'مساعد AI', icon: Zap },
     ],
   },
