@@ -20,11 +20,51 @@ test('client and admin TOTP forms verify the pending session before refreshing a
   for (const relativePath of ['client/pages/Auth.tsx', 'admin/pages/Auth.tsx']) {
     const source = read(relativePath);
     assert.match(source, /await mysqlAuth\.verify2fa\(twoFaTempToken,\s*twoFaCode\)/);
-    assert.match(source, /localStorage\.setItem\('mahad-token',\s*result\.token\)/);
+    // The session is the httpOnly cookie the API sets. Stashing a token in
+    // localStorage is the exact thing the cookie migration removed, so assert
+    // it stays gone — this guard used to require the opposite.
+    assert.doesNotMatch(source, /localStorage\.setItem\('mahad-token'/);
+    assert.match(source, /refreshAuth\(\)/);
   }
   for (const relativePath of ['client/lib/mysqlapi.ts', 'admin/lib/mysqlapi.ts']) {
     assert.match(read(relativePath), /\/auth\/2fa\/verify/);
   }
+});
+
+test('checkout does not gate on a token the cookie migration stopped writing', () => {
+  const checkout = read('client/pages/Checkout.tsx');
+  // Logins write no localStorage token any more, so this threw "سجّل الدخول
+  // أولاً" for every signed-in customer and no order could be created at all.
+  // The real gate is `authUser` (and requireAuth on the route).
+  assert.doesNotMatch(checkout, /if \(!token\) throw new Error/);
+  assert.match(checkout, /if \(requiresLogin && authUser === null\)/);
+  // The API can only see the cookie if the request actually sends it.
+  assert.match(checkout, /'\/api\/public\/checkout-intent',\s*\{[\s\S]{0,80}credentials: 'include'/);
+});
+
+test('checkout survives a customer who has no email address', () => {
+  const checkout = read('client/pages/Checkout.tsx');
+  // subscribers.email is nullable and WhatsApp-only clients have none. An
+  // unguarded .toLowerCase() on it crashed the whole page to the error
+  // boundary — for exactly the customers the API goes out of its way to serve.
+  assert.doesNotMatch(checkout, /s\.email\.toLowerCase\(\)/);
+  assert.match(checkout, /subscribers\.find\(s => s\.id === mySubscriberId\)/);
+});
+
+test('the WhatsApp sign-in step reports its own outcome', () => {
+  const auth = read('client/pages/Auth.tsx');
+  const verifyForm = auth.slice(
+    auth.indexOf('onSubmit={handleWaVerify}'),
+    auth.indexOf('تغيير الرقم')
+  );
+  assert.notEqual(verifyForm, '', 'could not locate the WhatsApp verify form');
+  // Without a notice block the step failed in total silence: the API accepted
+  // the code, the handler threw, the catch swallowed it, and nothing on screen
+  // changed while the customer was in fact already signed in.
+  assert.match(verifyForm, /\{notice && \(/);
+  // `result` must be bound before it is read — this shipped as a ReferenceError
+  // because the build strips types and never type-checks.
+  assert.match(auth, /const result = await mysqlAuth\.verifyWaOtp\(/);
 });
 
 test('contact success is shown only after the public API persists the message', () => {

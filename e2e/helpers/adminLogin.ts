@@ -31,8 +31,12 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
     const emailVisible = await page.locator('input[type="email"], input[name="email"]').first()
       .isVisible().catch(() => false);
     const bodyText = ((await page.locator('body').innerText().catch(() => '')) || '').trim();
-    const accessToken = await page.evaluate(() => localStorage.getItem('mahad-token')).catch(() => null);
-    if (accessToken && !emailVisible && !await otp.isVisible().catch(() => false) && bodyText.length > 80) return;
+    // The session is an httpOnly cookie, so the page cannot see it and neither
+    // can we — reading localStorage here made this helper permanently unable to
+    // report success. Ask the context for the cookie instead.
+    const cookies = await page.context().cookies().catch(() => []);
+    const signedIn = cookies.some(c => c.name === 'authToken' && Boolean(c.value));
+    if (signedIn && !emailVisible && !await otp.isVisible().catch(() => false) && bodyText.length > 80) return;
     if (/تعذر|خطأ|فشل|invalid|failed|unauthorized/i.test(bodyText)) {
       throw new Error(`login failed for ${email}: ${bodyText.slice(0, 240)}`);
     }

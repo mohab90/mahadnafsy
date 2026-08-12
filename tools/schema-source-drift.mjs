@@ -33,6 +33,11 @@ const norm = (s) => String(s || '').replace(/[`"']/g, '').trim().toLowerCase();
 /** Strip SQL comments so they can't be mistaken for statements. */
 function stripComments(sql) {
   return sql
+    .replace(/\r\n/g, '\n')     // `.` never matches \r, so `.*$` cannot reach the
+                                // end of a CRLF line and every -- comment survived
+                                // on a Windows checkout. Prose commas inside those
+                                // comments then split clauses and the fragments got
+                                // counted as columns ("the", "which").
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .split('\n')
     .map((line) => line.replace(/(^|\s)--\s.*$/, '').replace(/^\s*--.*$/, ''))

@@ -1,0 +1,27 @@
+# Normalise line endings in the repository to LF.
+#
+# Several tests locate a region of a source file with indexOf on a literal that
+# embeds "\n" (see api/tests/tenantIsolationHardening.test.js). Without this
+# file, a Windows checkout with core.autocrlf=true rewrites those sources to
+# CRLF, the marker never matches, the extracted region comes back empty and the
+# test fails against code that is perfectly correct.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.mp4   binary
+*.zip   binary
+
+# Windows-only entry points need CRLF to run.
+*.bat text eol=crlf
+*.cmd text eol=crlf

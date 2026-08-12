@@ -5,7 +5,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = relativePath => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+// Normalise CRLF away. Assertions below locate regions of a file with indexOf
+// on literals containing "\n"; on a Windows checkout those markers never match,
+// the extracted region is empty, and the test fails against correct code.
+const normalise = source => source.replace(/\r\n/g, '\n');
+const read = relativePath =>
+  normalise(fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8'));
 
 test('profile identity and interest lead writes are tenant scoped and retry safe', () => {
   const profile = read('routes/profile.js');
@@ -104,7 +109,7 @@ test('NPS and CSAT delivery identities cannot cross tenants or be guessed by tic
   const campaigns = read('routes/campaigns.js');
   const support = read('routes/support.js');
   const migration = read('migrations/112_v25_support_csat_token.sql');
-  const client = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'pages', 'TicketRating.tsx'), 'utf8');
+  const client = normalise(fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'pages', 'TicketRating.tsx'), 'utf8'));
 
   assert.match(reminders, /n\.tenant_id=s\.tenant_id/);
   assert.match(reminders, /INSERT INTO nps_responses[\s\S]{0,120}tenant_id/);
