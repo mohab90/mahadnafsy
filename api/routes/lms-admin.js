@@ -63,7 +63,6 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
     const lectureType   = (l.lectureType  || l.lecture_type   || 'RECORDED').toUpperCase();
     const description   = String(l.description || '').slice(0, 10000);
     if (!['RECORDED', 'LIVE'].includes(lectureType)) return res.status(400).json({ error: 'Invalid lectureType' });
-    if (lectureType === 'RECORDED' && !mediaUrlIsValid(videoUrl)) return res.status(400).json({ error: 'A valid HTTPS/HTTP or tenant upload videoUrl is required' });
     const normalizedSortOrder = Number(sortOrder);
     const normalizedDripDays = Number(l.dripUnlockDays ?? l.drip_unlock_days ?? 0);
     if (!Number.isInteger(normalizedSortOrder) || normalizedSortOrder < 0 || normalizedSortOrder > 100000
@@ -71,7 +70,24 @@ router.post('/api/admin/lectures', requireAuth, requireAdmin, async (req, res) =
       return res.status(400).json({ error: 'Invalid sort order or drip days' });
     }
     const isPreview     = l.isPreview     != null ? (l.isPreview     ? 1 : 0) : (l.is_preview     != null ? (l.is_preview     ? 1 : 0) : 0);
-    const isPublished   = l.isPublished   != null ? (l.isPublished   ? 1 : 0) : (l.is_published   != null ? (l.is_published   ? 1 : 0) : 1);
+    let isPublished     = l.isPublished   != null ? (l.isPublished   ? 1 : 0) : (l.is_published   != null ? (l.is_published   ? 1 : 0) : 1);
+
+    // A recorded lecture needs a playable URL before customers can see it — but
+    // requiring one to *create* the row rejected the ordinary way of working:
+    // add the lecture, then upload the video. Those saves came back 400 and the
+    // lecture simply never appeared on the course, which read as "new lectures
+    // are not being added".
+    //
+    // So the row is allowed without a video and is held back as a draft
+    // instead. Publishing still requires one, so nothing unplayable goes live.
+    if (lectureType === 'RECORDED' && !mediaUrlIsValid(videoUrl)) {
+      if (l.isPublished === true || l.is_published === true || l.is_published === 1) {
+        return res.status(400).json({
+          error: 'لا يمكن نشر محاضرة مسجلة بدون رابط فيديو صالح. احفظها كمسودة ثم ارفع الفيديو.',
+        });
+      }
+      isPublished = 0;
+    }
     const duration = String(l.duration || '').slice(0, 50);
     const normalizedDurationSeconds = durationSeconds(duration, l.durationSeconds ?? l.duration_seconds);
     await pool.query(

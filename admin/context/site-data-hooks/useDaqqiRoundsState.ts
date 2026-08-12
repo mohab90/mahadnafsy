@@ -19,9 +19,9 @@ export function useDaqqiRoundsState(
       setDaqqiRounds((prev) => [committed, ...prev]);
       track('create', 'daqqiRound', item.courseId);
       return true;
-    } catch {
+    } catch (err) {
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'daqqiRound', name: item.courseId },
+        detail: { field: 'daqqiRound', name: item.courseId, reason: err instanceof Error ? err.message : String(err) },
       }));
       return false;
     }
@@ -34,9 +34,9 @@ export function useDaqqiRoundsState(
       setDaqqiRounds((prev) => prev.map((round) => round.id === item.id ? item : round));
       track('update', 'daqqiRound', item.courseId);
       return true;
-    } catch {
+    } catch (err) {
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'daqqiRound', name: item.courseId },
+        detail: { field: 'daqqiRound', name: item.courseId, reason: err instanceof Error ? err.message : String(err) },
       }));
       return false;
     }
@@ -49,9 +49,9 @@ export function useDaqqiRoundsState(
       setDaqqiRounds((prev) => prev.filter((round) => round.id !== id));
       track('delete', 'daqqiRound', id);
       return true;
-    } catch {
+    } catch (err) {
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'daqqiRound', name: id },
+        detail: { field: 'daqqiRound', name: id, reason: err instanceof Error ? err.message : String(err) },
       }));
       return false;
     }
@@ -76,9 +76,12 @@ export function useDaqqiRoundsState(
       });
       track('update', 'daqqiRound', `transfer:${subscriberId}`);
       return true;
-    } catch {
+    } catch (err) {
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'daqqiRound', name: `transfer:${subscriberId}` },
+        detail: {
+          field: 'daqqiRound', name: `transfer:${subscriberId}`,
+          reason: err instanceof Error ? err.message : String(err),
+        },
       }));
       return false;
     }

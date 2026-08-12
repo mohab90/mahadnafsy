@@ -27,15 +27,19 @@ export function useLecturesChaptersState(
     } catch { /* silent */ }
   }, []);
 
-  const persistError = (field: string, name?: string) => {
-    window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field, name } }));
+  // The server's own explanation is carried through. A save rejected because a
+  // recorded lecture has no video yet, or because the course id is unknown,
+  // should say so rather than surface as a generic "check your connection".
+  const persistError = (field: string, name?: string, err?: unknown) => {
+    const reason = err instanceof Error ? err.message : err ? String(err) : undefined;
+    window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field, name, reason } }));
     return false;
   };
 
   const addLecture = async (item: CourseLectureItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
     try { await mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>); }
-    catch { return persistError('lecture', item.title); }
+    catch (err) { return persistError('lecture', item.title, err); }
     setLectures((prev) => [item, ...prev.filter(row => row.id !== item.id)]);
     track('create', 'lecture', item.title);
     return true;
@@ -44,7 +48,7 @@ export function useLecturesChaptersState(
   const updateLecture = async (item: CourseLectureItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
     try { await mysqlAdmin.saveLecture(item as unknown as Record<string,unknown>); }
-    catch { return persistError('lecture', item.title); }
+    catch (err) { return persistError('lecture', item.title, err); }
     setLectures((prev) => prev.map((row) => (row.id === item.id ? item : row)));
     track('update', 'lecture', item.title);
     return true;
@@ -54,7 +58,7 @@ export function useLecturesChaptersState(
     lastLocalConfigWriteRef.current = Date.now();
     const removed = lectures.find((row) => row.id === id);
     try { await mysqlAdmin.deleteLecture(id); }
-    catch { return persistError('lecture', removed?.title); }
+    catch (err) { return persistError('lecture', removed?.title, err); }
     setLectures((prev) => prev.filter((row) => row.id !== id));
     track('delete', 'lecture', id);
     return true;
@@ -63,7 +67,7 @@ export function useLecturesChaptersState(
   const addChapter = async (item: CourseChapterItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
     try { await mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>); }
-    catch { return persistError('chapter', item.title); }
+    catch (err) { return persistError('chapter', item.title, err); }
     setChapters((prev) => [...prev, item]);
     track('create', 'chapter', item.title);
     return true;
@@ -72,7 +76,7 @@ export function useLecturesChaptersState(
   const updateChapter = async (item: CourseChapterItem): Promise<boolean> => {
     lastLocalConfigWriteRef.current = Date.now();
     try { await mysqlAdmin.saveChapter(item as unknown as Record<string,unknown>); }
-    catch { return persistError('chapter', item.title); }
+    catch (err) { return persistError('chapter', item.title, err); }
     setChapters((prev) => prev.map((row) => (row.id === item.id ? item : row)));
     track('update', 'chapter', item.title);
     return true;
@@ -82,7 +86,7 @@ export function useLecturesChaptersState(
     lastLocalConfigWriteRef.current = Date.now();
     const removed = chapters.find(row => row.id === id);
     try { await mysqlAdmin.deleteChapter(id); }
-    catch { return persistError('chapter', removed?.title); }
+    catch (err) { return persistError('chapter', removed?.title, err); }
     setChapters((prev) => prev.filter((row) => row.id !== id));
     setLectures((prev) => prev.map((row) => (row.chapterId === id ? { ...row, chapterId: undefined } : row)));
     track('delete', 'chapter', id);

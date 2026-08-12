@@ -183,10 +183,20 @@ const Dashboard: React.FC = () => {
     Boolean(import.meta.env.VITE_WS_URL),
   );
 
-  // Show a persistent error toast whenever a MySQL save fails in SiteDataContext
+  // Show a persistent error toast whenever a MySQL save fails in SiteDataContext.
+  //
+  // The reason is shown when the emitter supplies one. This used to always blame
+  // the internet connection, including for answers the server had explained
+  // precisely ("Instructor not found", a validation failure, a duplicate) —
+  // which made every one of these indistinguishable from every other and sent
+  // people checking their wifi over a data problem.
   useEffect(() => {
-    const handler = () => {
-      notify('error', 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ field?: string; name?: string; reason?: string }>).detail;
+      const reason = String(detail?.reason || '').trim();
+      notify('error', reason
+        ? `فشل الحفظ: ${reason}`
+        : 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
     };
     window.addEventListener('site-persist-error', handler);
     return () => window.removeEventListener('site-persist-error', handler);

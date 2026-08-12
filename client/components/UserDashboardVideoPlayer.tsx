@@ -359,7 +359,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
                   key={selected.id}
                   src={getEmbedUrl(resolvedUrl, getSavedTime(selected.id))}
                   className="w-full h-full"
-                  allow="autoplay; encrypted-media; picture-in-picture"
+                  // fullscreen is in both the permission policy and the legacy
+                  // attribute: without them the player's own expand button is
+                  // inert, which is why a lesson could not be watched full
+                  // screen while the promo and community players could.
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  allowFullScreen
                   // "no-referrer" broke playback outright: YouTube's embed
                   // player uses the Referer header to validate the embedding
                   // domain, and with it stripped it serves "Error 153: Video

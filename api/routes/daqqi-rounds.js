@@ -120,18 +120,49 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     if (!course) {
       const error = new Error('Course not found'); error.statusCode = 404; throw error;
     }
-    for (const [staffId, allowedRoles, label] of [
-      [d.instructorId || d.instructor_id, ['instructor', 'trainer'], 'Instructor'],
-      [d.receptionId || d.reception_id, ['reception_daqqi', 'daqqi_manager'], 'Reception staff'],
-    ]) {
-      if (!staffId) continue;
+    // The instructor comes from `therapists` — that is the list the schedule
+    // form offers (DaqqiScheduleTab: instructorOptions = therapists), and
+    // instructor_id carries no foreign key, unlike reception_id which does
+    // point at staff.
+    //
+    // This used to look the instructor up in `staff` requiring role
+    // instructor/trainer. No account carries either role, so the lookup could
+    // not succeed for any selection the form was able to make: every round
+    // creation failed with a 404 the UI reported as "Server rejected round".
+    //
+    // A staff id is still accepted, so a deployment that does keep instructors
+    // as staff keeps working.
+    const instructorId = d.instructorId || d.instructor_id;
+    if (instructorId) {
+      const [[therapist]] = await conn.query(
+        'SELECT id FROM therapists WHERE id=? AND tenant_id=? LIMIT 1',
+        [instructorId, req.tenantId]
+      );
+      let found = Boolean(therapist);
+      if (!found) {
+        const [[staff]] = await conn.query(
+          `SELECT id FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL
+            AND LOWER(role) IN ('instructor','trainer') LIMIT 1 FOR UPDATE`,
+          [instructorId, req.tenantId]
+        );
+        found = Boolean(staff);
+      }
+      if (!found) {
+        const error = new Error('Instructor not found');
+        error.statusCode = 404;
+        throw error;
+      }
+    }
+
+    const receptionId = d.receptionId || d.reception_id;
+    if (receptionId) {
       const [[staff]] = await conn.query(
         `SELECT id FROM staff WHERE id=? AND tenant_id=? AND is_active=1 AND deleted_at IS NULL
-          AND LOWER(role) IN (${allowedRoles.map(() => '?').join(',')}) LIMIT 1 FOR UPDATE`,
-        [staffId, req.tenantId, ...allowedRoles]
+          AND LOWER(role) IN ('reception_daqqi','daqqi_manager') LIMIT 1 FOR UPDATE`,
+        [receptionId, req.tenantId]
       );
       if (!staff) {
-        const error = new Error(`${label} not found or has an invalid role`);
+        const error = new Error('Reception staff not found or has an invalid role');
         error.statusCode = 404;
         throw error;
       }

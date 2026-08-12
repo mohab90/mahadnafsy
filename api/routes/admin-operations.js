@@ -13,6 +13,7 @@ const { postExpenseJournal } = require('../lib/finance');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
+const { convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 
 function routeError(res, error, message = 'admin operations route failed') {
@@ -296,7 +297,7 @@ router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, require
     }
     await conn.beginTransaction();
     const [[application]] = await conn.query(
-      'SELECT id,status FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      'SELECT id,status,converted_applicant_id FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
       [req.params.id, scopedTenantId(req)]
     );
     if (!application) {
@@ -309,11 +310,40 @@ router.patch('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, require
         WHERE id=? AND tenant_id=?`,
       [nextStatus, notes === undefined ? null : notes || null, req.params.id, scopedTenantId(req)]
     );
+
+    // Accepting is what puts someone into the hiring pipeline. Until now it only
+    // changed a status column: the person never appeared under interviews, and
+    // whoever accepted them had to re-enter the same details by hand through the
+    // separate to-applicant action to be able to hire them at all.
+    //
+    // convertJoinUs is the same helper that action uses — idempotent, and it
+    // returns the existing id if this application was already converted.
+    let convertedApplicantId = null;
+    if (nextStatus === 'ACCEPTED' && !application.converted_applicant_id) {
+      const [[full]] = await conn.query(
+        'SELECT * FROM join_us_applications WHERE id=? AND tenant_id=? LIMIT 1',
+        [req.params.id, scopedTenantId(req)]
+      );
+      convertedApplicantId = await convertJoinUs(full, { actorId: req.staffRecord?.id, db: conn });
+      // convertJoinUs marks the source REVIEWED; the reviewer said ACCEPTED.
+      await conn.query(
+        'UPDATE join_us_applications SET status=? WHERE id=? AND tenant_id=?',
+        [nextStatus, req.params.id, scopedTenantId(req)]
+      );
+      // The applicant lands at the interview stage, which is the screen the
+      // reviewer expects to find them on next. Hiring still requires the offer
+      // stage, so the approval trail stays intact.
+      await conn.query(
+        "UPDATE job_applicants SET stage='interview' WHERE id=? AND tenant_id=? AND stage='applied'",
+        [convertedApplicantId, scopedTenantId(req)]
+      );
+    }
+
     await writeAuditEvent({
       action: 'hr.join_application.updated',
       entityType: 'join_us_application',
       entityId: req.params.id,
-      metadata: { from: application.status, to: nextStatus },
+      metadata: { from: application.status, to: nextStatus, applicant_id: convertedApplicantId },
       req,
       db: conn,
     });
