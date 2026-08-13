@@ -90,13 +90,19 @@ function appendTenantScope(sql, alias, tenantId, params) {
   return `${sql} AND ${prefix}tenant_id = ?`;
 }
 
+// Boolean, not the last truthy link in the chain — an && chain returns the
+// value it stopped on, which here was the stored iframe id. Callers that only
+// branch on it never noticed, but /api/public/payment-availability serialises
+// this straight to an anonymous visitor, so it has to be a yes or a no.
 function paymobReady(config) {
   const paymob = config?.paymob || {};
-  return isPaymobActive(config)
+  return Boolean(
+    isPaymobActive(config)
     && paymob.api_key
     && paymob.hmac_secret
     && paymob.integration_id_card
-    && paymob.iframe_id;
+    && paymob.iframe_id
+  );
 }
 
 async function postPaymobJson(url, body) {
