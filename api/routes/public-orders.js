@@ -166,6 +166,52 @@ router.get('/api/public/payment-availability', publicLimiter, async (req, res) =
   }
 });
 
+// Where Paymob should send the customer and the payment notification. The
+// legacy flow reads both from whatever is configured on the integration in
+// Paymob's own dashboard; the intention flow below sends them with each
+// payment, which is why it does not depend on that dashboard being correct.
+function paymobCallbackUrls(paymob) {
+  const webhook = String(paymob.webhook_url || '').trim();
+  let origin = '';
+  try { origin = new URL(webhook).origin; } catch { /* fall through */ }
+  const callback = String(paymob.callback_url || '/success').trim();
+  const redirection = /^https?:\/\//i.test(callback)
+    ? callback
+    : origin ? origin + (callback.startsWith('/') ? callback : '/' + callback) : '';
+  return { notification: webhook, redirection };
+}
+
+// Paymob's Intention API mints a payment key the same iframes accept, but
+// takes notification_url and redirection_url in the request body. It only
+// works with a Unified (UIG) integration and the newer `egy_sk_` secret key,
+// so it is used when both are present and the classic three-call flow remains
+// for accounts that have neither.
+async function paymobIntention({ paymob, amountCents, currency, orderId, itemTitle, billing }) {
+  const { notification, redirection } = paymobCallbackUrls(paymob);
+  if (!notification || !redirection) throw new Error('Paymob webhook/callback URLs are not configured');
+  const res = await fetch('https://accept.paymob.com/v1/intention/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Token ${paymob.secret_key}` },
+    body: JSON.stringify({
+      amount: amountCents,
+      currency,
+      payment_methods: [Number(paymob.integration_id_unified)],
+      items: itemTitle ? [{ name: String(itemTitle).slice(0, 80), amount: amountCents, quantity: 1 }] : [],
+      billing_data: billing,
+      special_reference: String(orderId),
+      notification_url: notification,
+      redirection_url: redirection,
+    }),
+  });
+  const text = await res.text();
+  let body = null; try { body = JSON.parse(text); } catch { /* non-JSON error page */ }
+  const key = body?.payment_keys?.[0]?.key;
+  if (!key) throw new Error(`Paymob intention failed (${res.status}): ${JSON.stringify(body?.detail || text).slice(0, 200)}`);
+  return { key, clientSecret: body.client_secret, intentionId: body.id };
+}
+
+const paymobIntentionReady = paymob => Boolean(paymob?.secret_key && paymob?.integration_id_unified);
+
 router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);
@@ -175,6 +221,32 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     if (!orderId || !amount || Number(amount) <= 0) return res.status(400).json({ error: 'orderId and positive amount are required' });
 
     const paymob = config.paymob || {};
+
+    // Paymob's dashboard shows the iframe as a label ("Iframe 1051699"), and
+    // that whole label gets pasted into the settings field. Interpolated as-is
+    // the URL became .../iframes/Iframe%201051699 and the payment page would
+    // not load, so take the digits.
+    const iframeIdEarly = String(paymob.iframe_id || '').replace(/\D+/g, '');
+    if (!iframeIdEarly) throw new Error('Paymob iframe id is not a number');
+
+    if (paymobIntentionReady(paymob)) {
+      const amountCents = Math.round(Number(amount) * 100);
+      const intention = await paymobIntention({
+        paymob, amountCents, currency, orderId,
+        itemTitle, billing: buildBillingData(req.body || {}),
+      });
+      return res.json({
+        ok: true,
+        provider: 'paymob',
+        flow: 'intention',
+        mode: config.mode || 'sandbox',
+        iframeId: iframeIdEarly,
+        paymentKey: intention.key,
+        paymobOrderId: intention.intentionId || null,
+        iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${iframeIdEarly}?payment_token=${encodeURIComponent(intention.key)}`,
+      });
+    }
+
     const auth = await postPaymobJson('https://accept.paymob.com/api/auth/tokens', { api_key: paymob.api_key });
     if (!auth.token) throw new Error('Paymob auth token missing');
 
@@ -201,16 +273,11 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     });
     if (!paymentKey.token) throw new Error('Paymob payment key missing');
 
-    // Paymob's dashboard shows the iframe as a label ("Iframe 1051699"), and
-    // that whole label gets pasted into the settings field. Interpolated as-is
-    // the URL became .../iframes/Iframe%201051699 and the payment page would
-    // not load, so take the digits.
-    const iframeId = String(paymob.iframe_id || '').replace(/\D+/g, '');
-    if (!iframeId) throw new Error('Paymob iframe id is not a number');
-
+    const iframeId = iframeIdEarly;
     res.json({
       ok: true,
       provider: 'paymob',
+      flow: 'legacy',
       mode: config.mode || 'sandbox',
       iframeId,
       paymentKey: paymentKey.token,

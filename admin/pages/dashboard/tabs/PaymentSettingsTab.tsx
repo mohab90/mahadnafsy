@@ -14,7 +14,7 @@ const DEFAULT_CONFIG: PaymentGatewayConfig = {
   active_provider: 'manual',
   mode: 'sandbox',
   manual: { enabled: true, require_proof_review: true, supported_methods: ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'] },
-  paymob: { enabled: false, merchant_id: '', api_key: '', secret_key: '', hmac_secret: '', integration_id_card: '', integration_id_wallet: '', iframe_id: '', webhook_url: '/api/webhooks/paymob', callback_url: '/success' },
+  paymob: { enabled: false, merchant_id: '', api_key: '', secret_key: '', hmac_secret: '', integration_id_card: '', integration_id_wallet: '', integration_id_unified: '', iframe_id: '', webhook_url: '/api/webhooks/paymob', callback_url: '/success' },
 };
 
 export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
@@ -121,6 +121,11 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
           <Field label="سر HMAC"><Input type="password" value={String(config.paymob.hmac_secret || '')} onChange={value => update('paymob.hmac_secret', value)} /></Field>
           <Field label="معرّف تكامل البطاقات"><Input value={String(config.paymob.integration_id_card || '')} onChange={value => update('paymob.integration_id_card', value)} /></Field>
           <Field label="معرّف تكامل المحفظة"><Input value={String(config.paymob.integration_id_wallet || '')} onChange={value => update('paymob.integration_id_wallet', value)} /></Field>
+          {/* The Unified (UIG) integration is what lets the server send the
+              webhook and return URLs with each payment instead of relying on
+              whatever is saved against the integration inside Paymob's own
+              dashboard. With this set, the callbacks there stop mattering. */}
+          <Field label="معرّف التكامل الموحّد UIG (يضبط روابط الرجوع تلقائياً)"><Input value={String(config.paymob.integration_id_unified || '')} onChange={value => update('paymob.integration_id_unified', value)} /></Field>
           <Field label="معرّف الإطار (Iframe ID)"><Input value={String(config.paymob.iframe_id || '')} onChange={value => update('paymob.iframe_id', value)} /></Field>
           <Field label="رابط Webhook"><Input value={String(config.paymob.webhook_url || '')} onChange={value => update('paymob.webhook_url', value)} /></Field>
         </div>
