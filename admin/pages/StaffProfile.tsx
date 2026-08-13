@@ -245,10 +245,15 @@ const StaffProfile: React.FC = () => {
     [staffMembers, authUser?.email],
   );
 
-  // Initialise draft when staff loads
+  // Initialise draft when staff loads, and re-seed it after a save so the form
+  // shows what the server kept rather than what was typed at it.
+  const [resyncKey, setResyncKey] = useState(0);
   React.useEffect(() => {
-    if (staff && !draft) setDraft({ ...staff });
-  }, [staff]);
+    if (staff && (!draft || resyncKey > 0)) setDraft({ ...staff });
+    // draft is deliberately not a dependency: including it would re-seed on
+    // every keystroke and make the form unusable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff, resyncKey]);
 
   // ── Attendance (month picker + fetch from HR attendance log) ─────────────────
   const now = new Date();
@@ -410,6 +415,12 @@ const StaffProfile: React.FC = () => {
           salaryPending = true;
         }
         await reloadStaffMembers();
+        // Re-seed the draft from what the server actually stored. Keeping the
+        // optimistic draft meant a field the server declined still looked saved
+        // until the page was reopened, which is how "the permissions do not
+        // save" stayed invisible: the screen agreed with the admin right up
+        // until they came back to it.
+        setResyncKey(k => k + 1);
         if (salaryPending) {
           setDraft(d => d ? { ...d, salary: staff.salary } : d);
           setSaveMsg('ℹ️ تم حفظ البيانات وإرسال تعديل الراتب للاعتماد');
@@ -1129,6 +1140,18 @@ const StaffProfile: React.FC = () => {
                   <p className="text-xs text-indigo-400 mt-0.5">
                     {(draft.permissions || []).length} صلاحية مفعّلة من أصل {Object.keys(PERMISSION_LABELS).length}
                   </p>
+                  {/* Say up front when this grid cannot be saved, instead of
+                      letting it be filled in and silently discarded. */}
+                  {!isAdmin && (
+                    <p className="text-xs text-amber-600 font-bold mt-1">
+                      للعرض فقط — تعديل الصلاحيات متاح لمدير النظام
+                    </p>
+                  )}
+                  {isAdmin && currentStaff?.id === draft.id && (
+                    <p className="text-xs text-amber-600 font-bold mt-1">
+                      لا يمكنك تعديل صلاحيات حسابك بنفسك
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button type="button"

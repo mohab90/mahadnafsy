@@ -245,6 +245,21 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     // kept running on its role defaults — which is exactly why staff accounts
     // showed sections nobody had granted them. Super-admin only: granting
     // permissions is an authority change, not an HR data edit.
+    // Sending these without the authority to set them used to be ignored in
+    // silence: the save returned 200, the page reloaded, and the grid the admin
+    // had just ticked came back exactly as it was — indistinguishable from a
+    // save that never happened. Refuse loudly instead, so the reason is on
+    // screen rather than inferred.
+    const sentAccessFields = ['permissions', 'permissions_json', 'data_scope', 'dataScope']
+      .some(key => req.body[key] !== undefined);
+    if (sentAccessFields && !req.isSuperAdmin) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(403).json({
+        error: 'تعديل الصلاحيات ونطاق البيانات متاح لمدير النظام فقط',
+        code: 'PERMISSIONS_REQUIRE_SUPERADMIN',
+      });
+    }
+
     if (req.isSuperAdmin) {
       const rawPerms = req.body.permissions !== undefined ? req.body.permissions : req.body.permissions_json;
       if (rawPerms !== undefined) {
