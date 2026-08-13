@@ -14,7 +14,7 @@ const DEFAULT_CONFIG: PaymentGatewayConfig = {
   active_provider: 'manual',
   mode: 'sandbox',
   manual: { enabled: true, require_proof_review: true, supported_methods: ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'] },
-  paymob: { enabled: false, merchant_id: '', api_key: '', secret_key: '', hmac_secret: '', integration_id_card: '', integration_id_wallet: '', integration_id_unified: '', iframe_id: '', webhook_url: '/api/webhooks/paymob', callback_url: '/success' },
+  paymob: { enabled: false, merchant_id: '', api_key: '', secret_key: '', public_key: '', hmac_secret: '', integration_id_card: '', integration_id_wallet: '', integration_id_unified: '', iframe_id: '', webhook_url: '/api/webhooks/paymob', callback_url: '/success' },
 };
 
 export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
@@ -118,6 +118,10 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
           <Field label="معرّف التاجر (Merchant ID)"><Input value={String(config.paymob.merchant_id || '')} onChange={value => update('paymob.merchant_id', value)} /></Field>
           <Field label="مفتاح API"><Input type="password" value={String(config.paymob.api_key || '')} onChange={value => update('paymob.api_key', value)} /></Field>
           <Field label="المفتاح السري"><Input type="password" value={String(config.paymob.secret_key || '')} onChange={value => update('paymob.secret_key', value)} /></Field>
+          {/* Public by design (it identifies the merchant to Paymob's hosted
+              checkout in the customer's own browser), so it is not masked —
+              masking it would only make it harder to confirm it is right. */}
+          <Field label="المفتاح العام egy_pk (لصفحة الدفع الموحّدة)"><Input value={String(config.paymob.public_key || '')} onChange={value => update('paymob.public_key', value)} /></Field>
           <Field label="سر HMAC"><Input type="password" value={String(config.paymob.hmac_secret || '')} onChange={value => update('paymob.hmac_secret', value)} /></Field>
           <Field label="معرّف تكامل البطاقات"><Input value={String(config.paymob.integration_id_card || '')} onChange={value => update('paymob.integration_id_card', value)} /></Field>
           <Field label="معرّف تكامل المحفظة"><Input value={String(config.paymob.integration_id_wallet || '')} onChange={value => update('paymob.integration_id_wallet', value)} /></Field>

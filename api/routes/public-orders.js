@@ -235,15 +235,26 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
         paymob, amountCents, currency, orderId,
         itemTitle, billing: buildBillingData(req.body || {}),
       });
+
+      // Unified Checkout is Paymob's own hosted page: it offers every method the
+      // intention was created with, rather than the single one an iframe is
+      // fixed to, and it is the flow the live keys are issued for. The iframe
+      // stays as the destination when no public key is configured, since a
+      // public key is the one thing Unified Checkout cannot do without.
+      const publicKey = String(paymob.public_key || '').trim();
+      const checkoutUrl = publicKey && intention.clientSecret
+        ? `https://accept.paymob.com/unifiedcheckout/?publicKey=${encodeURIComponent(publicKey)}&clientSecret=${encodeURIComponent(intention.clientSecret)}`
+        : `https://accept.paymob.com/api/acceptance/iframes/${iframeIdEarly}?payment_token=${encodeURIComponent(intention.key)}`;
+
       return res.json({
         ok: true,
         provider: 'paymob',
-        flow: 'intention',
+        flow: publicKey && intention.clientSecret ? 'unified_checkout' : 'intention_iframe',
         mode: config.mode || 'sandbox',
         iframeId: iframeIdEarly,
         paymentKey: intention.key,
         paymobOrderId: intention.intentionId || null,
-        iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${iframeIdEarly}?payment_token=${encodeURIComponent(intention.key)}`,
+        iframeUrl: checkoutUrl,
       });
     }
 
