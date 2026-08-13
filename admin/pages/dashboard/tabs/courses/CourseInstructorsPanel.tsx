@@ -129,9 +129,16 @@ export function CourseInstructorsPanel({
                   setTherapistDraft({ ...therapistDraft, staffId: event.target.value || undefined, name: therapistDraft.name || staff?.name || '' });
                 }}
               >
-                <option value="">ربط بحساب موظف (إلزامي للكورسات)</option>
-                {staffMembers.filter(item => ['instructor', 'trainer'].includes(item.role) && item.status === 'active')
-                  .map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                {/* Every active employee, not only role instructor/trainer. This
+                    institute has no staff carrying those two roles at all, so
+                    the list was permanently empty and no lecturer could ever be
+                    linked — which is why course creation kept warning that the
+                    lecturer has no staff account. The server-side check accepts
+                    any active employee of the tenant for exactly this reason;
+                    the filter here just never matched it. */}
+                <option value="">بدون ربط — يُحفظ باسم المحاضر فقط</option>
+                {staffMembers.filter(item => item.status === 'active')
+                  .map(item => <option key={item.id} value={item.id}>{item.name}{item.role ? ` — ${item.role}` : ''}</option>)}
               </select>
               <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="التخصص الرئيسي" value={therapistDraft.specialty} onChange={(e) => setTherapistDraft({ ...therapistDraft, specialty: e.target.value })} />
               <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="المسمى الوظيفي" value={therapistDraft.title || ''} onChange={(e) => setTherapistDraft({ ...therapistDraft, title: e.target.value })} />

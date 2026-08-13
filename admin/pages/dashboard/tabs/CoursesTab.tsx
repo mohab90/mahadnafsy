@@ -39,7 +39,12 @@ const slugify = (text: string): string => {
   return text.split('').map(c => arabicToLatin[c] ?? c).join('').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 };
 
-const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '' });
+// isPublished is set here on purpose. This form never sent the field at all, and
+// the server falls back to `false`, so every course created through this screen
+// was saved unpublished and simply never appeared on the site \u2014 "I added the
+// course and it doesn't work". A course someone has just filled in and priced is
+// meant to be sold; the toggle in the form below can still hold one back.
+const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '', isPublished: true });
 
 const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
 
@@ -653,6 +658,20 @@ const saveChapter = async () => {
                 }}
               />
               <p className="text-[10px] text-blue-500 mt-1">عند وصول ليد من فيسبوك بأي من هذه الأسماء، يتم ربطه تلقائياً بهذا الكورس</p>
+            </div>
+            {/* There was no publish control on this form at all, so nothing ever
+                sent is_published and the server's default of false applied to
+                every course created here — saved, but invisible on the site. */}
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">حالة النشر</label>
+              <label className="flex items-center gap-2 border border-gray-300 rounded-xl px-4 py-2.5 cursor-pointer select-none">
+                <input type="checkbox" className="rounded"
+                  checked={courseDraft.isPublished !== false}
+                  onChange={(e) => setCourseDraft({ ...courseDraft, isPublished: e.target.checked })} />
+                <span className={`text-sm font-bold ${courseDraft.isPublished !== false ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {courseDraft.isPublished !== false ? 'منشور — ظاهر للعملاء على الموقع' : 'مسودة — غير ظاهر على الموقع'}
+                </span>
+              </label>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">المحاضر (من قائمة المحاضرين)</label>
