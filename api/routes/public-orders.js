@@ -137,6 +137,29 @@ function buildBillingData(input = {}) {
   };
 }
 
+// GET /api/public/payment-availability — can a visitor pay online right now?
+// The customer-facing pages carried a hardcoded "الدفع الإلكتروني متوقف مؤقتاً"
+// notice, so they told every customer online payment was off even once the
+// gateway was fully configured, and there was no way for them to know better:
+// nothing public reported gateway state. Answers only a boolean and the
+// provider name — no keys, no ids, nothing that isn't already implied by the
+// payment page a customer is about to be sent to.
+router.get('/api/public/payment-availability', publicLimiter, async (req, res) => {
+  try {
+    const config = await getPaymentGatewaySettings(req.tenantId);
+    res.json({
+      online: paymobReady(config),
+      provider: paymobReady(config) ? 'paymob' : null,
+      mode: config?.mode || 'sandbox',
+    });
+  } catch (e) {
+    // A settings lookup that fails must not read as "we take cards" — fall
+    // closed so the customer is offered the manual route that always works.
+    logger.warn('[payment-availability]', e.message);
+    res.json({ online: false, provider: null, mode: 'sandbox' });
+  }
+});
+
 router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
   try {
     const config = await getPaymentGatewaySettings(req.tenantId);

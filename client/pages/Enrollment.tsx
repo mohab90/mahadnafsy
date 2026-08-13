@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { BookOpen, CheckCircle, Banknote, Plus, Loader2, Shield, ChevronDown, Trash2, Zap, Award, MessageCircle, AlertCircle, CreditCard } from 'lucide-react';
 import { mysqlAuth, mysqlForms } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
+import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { cdnImg } from '../lib/img';
 import { toDialable } from '../lib/whatsappLink';
 
@@ -24,6 +25,7 @@ const authAr: Record<string, string> = {
 const Enrollment: React.FC = () => {
   useEffect(() => { document.title = 'التسجيل في الكورس | معهد الدراسات النفسية'; }, []);
   const { courses, bundles, currency, content } = useSiteData();
+  const onlinePayEnabled = usePaymentAvailability();
 
   // Available courses with a price
   const availableCourses = useMemo(
@@ -443,10 +445,14 @@ const Enrollment: React.FC = () => {
                   <MessageCircle size={18} />
                   تواصل معنا عبر واتساب لإتمام الدفع
                 </a>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 text-right">
-                  <AlertCircle size={13} className="inline ml-1" />
-                  الدفع الإلكتروني متوقف مؤقتاً — سيتواصل معك فريقنا لتفعيل حسابك فور تأكيد الدفع.
-                </div>
+                {/* Only claim card payment is suspended when it actually is —
+                    this used to be stated unconditionally. */}
+                {onlinePayEnabled === false && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 text-right">
+                    <AlertCircle size={13} className="inline ml-1" />
+                    الدفع الإلكتروني متوقف مؤقتاً — سيتواصل معك فريقنا لتفعيل حسابك فور تأكيد الدفع.
+                  </div>
+                )}
               </div>
             ) : (
               <form onSubmit={handlePay} className="space-y-3">

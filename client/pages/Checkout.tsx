@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2 } from 'lucide-react';
+import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2, CreditCard } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
+import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { toDialable } from '../lib/whatsappLink';
@@ -43,6 +44,10 @@ const Checkout: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderSent, setOrderSent] = useState(false);
+  // Whether cards can actually be taken right now, asked of the server rather
+  // than assumed. Null while unknown, so neither claim is made until it lands.
+  const onlinePayEnabled = usePaymentAvailability();
+  const [cardRedirecting, setCardRedirecting] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState('');
   const [orderId, setOrderId] = useState('');
@@ -131,6 +136,40 @@ const Checkout: React.FC = () => {
   const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
 
   const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemPrice > 0;
+
+  // Hand the order the server just priced to the gateway. Deliberately runs
+  // after the intent exists rather than instead of it: if the gateway refuses,
+  // the order is already recorded and the customer still has the transfer route
+  // below, so a gateway problem costs the sale nothing.
+  const payByCard = async () => {
+    if (!orderId) return;
+    setCardRedirecting(true);
+    setPayError('');
+    const payload = {
+      orderId,
+      amount: finalAmount,
+      currency: settlementCurrency,
+      itemTitle,
+      paymentMethod: 'paymob',
+      customerName: customerName.trim(),
+      customerEmail: customerEmail.trim(),
+      customerPhone: customerPhone.trim(),
+    };
+    try {
+      const res = await fetch('/api/payments/paymob-init', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok || !data.iframeUrl) throw new Error(data.error || 'تعذر بدء الدفع الإلكتروني.');
+      window.location.assign(data.iframeUrl);
+    } catch (err) {
+      setCardRedirecting(false);
+      setPayError(err instanceof Error ? err.message : 'تعذر بدء الدفع الإلكتروني — يمكنك إتمام الدفع بالتحويل بالأسفل.');
+    }
+  };
 
   const handlePay = async () => {
     if (!canPay) return;
@@ -286,13 +325,17 @@ const Checkout: React.FC = () => {
         <div className="container mx-auto px-4 max-w-4xl">
             <h1 className="text-2xl font-bold mb-8 text-gray-900">إتمام الشراء</h1>
 
-            {/* Payment-gateway suspended notice */}
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-6 flex items-start gap-3">
-              <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-amber-800 text-sm">
-                <strong>الدفع الإلكتروني متوقف مؤقتاً.</strong> يُرجى إتمام الدفع عبر التحويل البنكي أو واتساب وسيتواصل معك فريقنا لتأكيد التسجيل.
-              </p>
-            </div>
+            {/* This notice used to be hardcoded, so it told every customer that
+                card payment was off even when the gateway was fully live and
+                ready to take the money. It now reflects what the server says. */}
+            {onlinePayEnabled === false && (
+              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-6 flex items-start gap-3">
+                <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-amber-800 text-sm">
+                  <strong>الدفع الإلكتروني متوقف مؤقتاً.</strong> يُرجى إتمام الدفع عبر التحويل البنكي أو واتساب وسيتواصل معك فريقنا لتأكيد التسجيل.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Contact / payment form */}
@@ -313,6 +356,23 @@ const Checkout: React.FC = () => {
                         <Check size={28} className="text-green-600" />
                       </div>
                       <h3 className="text-base font-extrabold text-gray-900 mb-1 text-center">تم استلام طلبك! 🎉</h3>
+
+                      {/* When cards are live this is the fast path: the order is
+                          already priced by the server, so it only has to be
+                          handed to the gateway. The transfer route stays below
+                          for anyone who prefers it, or if the gateway refuses. */}
+                      {onlinePayEnabled && (
+                        <div className="mb-4">
+                          <button onClick={payByCard} disabled={cardRedirecting}
+                            className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition text-sm">
+                            {cardRedirecting
+                              ? <><Loader2 size={16} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
+                              : <><CreditCard size={16} /> ادفع الآن بالبطاقة ({finalAmount} {currencySymbol})</>}
+                          </button>
+                          <p className="mt-2 text-center text-[11px] text-gray-400">دفع آمن عبر بوابة Paymob — أو أكمل بالتحويل البنكي بالأسفل</p>
+                        </div>
+                      )}
+
                       <p className="text-gray-500 text-xs mb-4 text-center">حوّل المبلغ ({finalAmount} {currencySymbol}) ثم ارفع صورة الإيصال هنا لتفعيل وصولك فوراً بعد المراجعة.</p>
 
                       {/* Payment instructions (configurable from admin content) */}

@@ -10,6 +10,7 @@ import {
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import type { PaymentProof } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
+import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJourneyTimeline';
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
@@ -56,6 +57,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 const UserDashboard: React.FC = () => {
   useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
   const { courses, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
+  const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();
 
   // ── Direct staff check (for non-admin staff whose staffMembers won't be loaded) ──
@@ -943,9 +945,13 @@ const UserDashboard: React.FC = () => {
                           {installError}
                         </div>
                       )}
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 text-center">
-                        الدفع الإلكتروني متوقف مؤقتاً — سيتم التواصل عبر واتساب
-                      </div>
+                      {/* Stated unconditionally before, so it stayed on screen
+                          telling customers not to try once cards were live. */}
+                      {onlinePayEnabled === false && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 text-center">
+                          الدفع الإلكتروني متوقف مؤقتاً — سيتم التواصل عبر واتساب
+                        </div>
+                      )}
                       <button
                         onClick={handleInstallPay}
                         disabled={!installAmount || Number(installAmount) <= 0}
