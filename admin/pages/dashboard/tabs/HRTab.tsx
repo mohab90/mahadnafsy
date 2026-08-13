@@ -11,6 +11,8 @@ import StaffOnboardModal, { type OnboardResult } from './hr-sections/StaffOnboar
 import HrCompensationApprovals from './hr-sections/HrCompensationApprovals';
 import HrAppraisalsPanel from './hr-sections/HrAppraisalsPanel';
 import HrAdvancesPanel from './hr-sections/HrAdvancesPanel';
+import HrDisciplinaryPanel from './hr-sections/HrDisciplinaryPanel';
+import HrResignationsPanel from './hr-sections/HrResignationsPanel';
 
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
@@ -575,6 +577,11 @@ const HrTab: React.FC<Props> = ({ notify }) => {
       {subTab === 'performance' && (
         <div className="space-y-4">
           <HrAppraisalsPanel staff={staffMembers} notify={notify} />
+          {/* Both of these drive endpoints that existed with no caller: an
+              employee could acknowledge a disciplinary notice HR had no way to
+              issue, and could file a resignation no one could act on. */}
+          <HrDisciplinaryPanel staff={staffMembers} notify={notify} />
+          <HrResignationsPanel notify={notify} />
           <div className="flex items-center gap-3">
             <label className="text-sm font-bold text-gray-700">شهر التقرير:</label>
             <input type="month" value={perfMonth} onChange={e => setPerfMonth(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm"/>

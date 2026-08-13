@@ -6,7 +6,9 @@ import { useSiteData } from '../context/SiteDataContext';
 
 const Auth: React.FC = () => {
   useEffect(() => { document.title = 'تسجيل الدخول | معهد الدراسات النفسية'; }, []);
-  const [isLogin, setIsLogin] = useState(true);
+  // Someone arriving on a referral link is by definition a new visitor, so open
+  // on the create-account form rather than making them find the toggle first.
+  const [isLogin, setIsLogin] = useState(() => !new URLSearchParams(window.location.search).get('ref'));
   // WhatsApp sign-in: step 0 = enter number, step 1 = enter the code.
   // Default OFF: most existing customers only ever had an email account, so
   // the identifier + password form (which now also accepts a phone number in
@@ -42,10 +44,23 @@ const Auth: React.FC = () => {
     const { authUser, isAdmin, refreshAuth } = useSiteData();
     const staffCheckDoneRef = useRef(false);
 
+    // Where to land after signing in. Checkout sends customers here with
+    // ?redirect=... when they try to buy while signed out; before this, that
+    // parameter was written but never read, so anyone who signed in to complete
+    // a purchase was dropped on the home page and the order was abandoned.
+    // Only same-site paths are honoured — an absolute URL, or a protocol-relative
+    // "//evil.com" (and "/\evil.com", which some browsers normalise to the same
+    // thing), would otherwise turn this into an open redirect.
+    const queryParams = new URLSearchParams(window.location.search);
+    const redirectParam = queryParams.get('redirect') || '';
+    const safeRedirect = /^\/[^/\\]/.test(redirectParam) ? redirectParam : '';
+    const referralCode = (queryParams.get('ref') || '').trim().toUpperCase().slice(0, 32);
+
     // Redirect if already authenticated
     useEffect(() => {
         if (authUser === undefined) return; // still loading
         if (!authUser) return;
+        if (safeRedirect) { navigate(safeRedirect, { replace: true }); return; }
         if (isAdmin) { navigate('/dashboard'); return; }
         // Non-admin: check if this user is a staff member (sales, admin role, etc.)
         if (staffCheckDoneRef.current) return;
@@ -53,7 +68,7 @@ const Auth: React.FC = () => {
         mysqlClient.checkIsStaff()
             .then(r => navigate(r.isStaff ? '/dashboard' : '/'))
             .catch(() => navigate('/'));
-    }, [authUser, isAdmin, navigate]);
+    }, [authUser, isAdmin, navigate, safeRedirect]);
 
     const handleWaRequest = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -210,6 +225,11 @@ const Auth: React.FC = () => {
                     phone: phone.trim(),
                     country,
                     interest,
+                    // The referral link a student shares is /auth?ref=CODE, and
+                    // the API has always credited it — but this page never read
+                    // the parameter, so every referred signup was recorded as
+                    // having come from nowhere.
+                    ...(referralCode ? { ref: referralCode } : {}),
                 });
                 setNotice({ type: 'success', text: 'تم إنشاء الحساب وتسجيل الدخول.' });
             }

@@ -6,8 +6,10 @@ import {
   ChevronRight, ChevronLeft, Award, Flame, Clock, CheckCircle, TrendingUp,
   Pencil, Trash2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
+import type { CommunityEventItem } from '../types';
 
 const TAG_COLORS: Record<string, string> = {
   'نقاش حالة': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -31,6 +33,39 @@ const Community: React.FC = () => {
     toggleCommunityPostLike, addCommunityPostComment,
     content, isAdmin, authUser,
   } = useSiteData();
+  const navigate = useNavigate();
+  // The bell beside each event was inert. A calendar file is the whole feature
+  // and needs no server: the event goes into whatever calendar the visitor
+  // already uses, which is what a reminder was ever meant to mean here.
+  const addEventToCalendar = (event: CommunityEventItem) => {
+    if (!event.eventDate) return;
+    const day = event.eventDate.replace(/-/g, '');
+    const next = new Date(event.eventDate);
+    next.setDate(next.getDate() + 1);
+    const dayEnd = next.toISOString().slice(0, 10).replace(/-/g, '');
+    const esc = (s: string) => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\r?\n/g, '\\n');
+    const ics = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//mahadnafsy//community//AR',
+      'BEGIN:VEVENT',
+      `UID:community-${event.id}@mahadnafsy.com`,
+      `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+      `DTSTART;VALUE=DATE:${day}`,
+      `DTEND;VALUE=DATE:${dayEnd}`,
+      `SUMMARY:${esc(event.title)}`,
+      `DESCRIPTION:${esc([event.description, event.speaker && `المتحدث: ${event.speaker}`].filter(Boolean).join('\n'))}`,
+      `LOCATION:${esc(event.platform)}`,
+      'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', `DESCRIPTION:${esc(event.title)}`, 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR',
+    ].join('\r\n');
+    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${event.title.slice(0, 40).replace(/[\\/:*?"<>|]/g, '') || 'event'}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
   const [activeTab, setActiveTab] = useState<'discussions' | 'library' | 'events' | 'videos'>('discussions');
   const [tagFilter, setTagFilter] = useState('الكل');
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
@@ -505,7 +540,9 @@ const Community: React.FC = () => {
                           </div>
                           {event.description && <p className="text-xs text-gray-400 mt-1 line-clamp-1">{event.description}</p>}
                         </div>
-                        <button className="text-gray-400 hover:text-primary-600 p-2 rounded-lg transition flex-shrink-0"><Bell size={16} /></button>
+                        <button type="button" onClick={() => addEventToCalendar(event)} disabled={!event.eventDate}
+                          title={event.eventDate ? 'أضف الفعالية إلى تقويمك' : 'لم يُحدد تاريخ لهذه الفعالية بعد'}
+                          className="text-gray-400 hover:text-primary-600 disabled:opacity-30 disabled:hover:text-gray-400 p-2 rounded-lg transition flex-shrink-0"><Bell size={16} /></button>
                       </div>
                     ))}
                     {communityEvents.filter(e => !e.eventDate || e.eventDate.startsWith(`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`)).length === 0 && (
@@ -568,7 +605,13 @@ const Community: React.FC = () => {
               <Award size={28} className="mb-3 text-yellow-300" />
               <h3 className="font-bold text-lg mb-2">المجتمع المتميز</h3>
               <p className="text-primary-200 text-xs mb-4 leading-relaxed">انضم لأكثر من {totalMembers.toLocaleString('ar-EG-u-nu-latn')} متخصص واحصل على وصول كامل لجميع المحتوى والورش</p>
-              <button className="w-full bg-white text-primary-700 font-bold py-2.5 rounded-xl text-sm hover:bg-primary-50 transition">انضم الآن</button>
+              {/* This was the most prominent call to action on the page and it did
+                  nothing at all. Someone already signed in has nothing to join,
+                  so send them where the content actually is instead. */}
+              <button type="button" onClick={() => navigate(authUser ? '/courses' : '/auth')}
+                className="w-full bg-white text-primary-700 font-bold py-2.5 rounded-xl text-sm hover:bg-primary-50 transition">
+                {authUser ? 'تصفح الدورات' : 'انضم الآن'}
+              </button>
             </div>
           </div>
         </div>

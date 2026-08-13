@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink } from 'lucide-react';
+import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -270,6 +270,17 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     }
   };
 
+  const setPriorityApi = async (id: string, priority: TicketPriority) => {
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${id}/priority`, { priority });
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, priority, updatedAt: new Date().toISOString() } : t));
+      setSelectedTicket(prev => prev && prev.id === id ? { ...prev, priority } : prev);
+      notify('success', `تم تغيير الأولوية إلى ${PRIORITY_CFG[priority].label}`);
+    } catch (error) {
+      notify('error', 'تعذر تغيير الأولوية');
+    }
+  };
+
   // ── Bulk actions on the current selection ────────────────────────────────
   const toggleSelect = (id: string) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -308,6 +319,39 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const bulkSetCategory = (category: TicketCategory) => runBulk('التصنيف', id =>
     mysqlAdmin.adminPut(`/admin/tickets/${id}/route`, { category })
       .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, category, updatedAt: new Date().toISOString() } : t))));
+  const bulkSetPriority = (priority: TicketPriority) => runBulk('تغيير الأولوية', id =>
+    mysqlAdmin.adminPut(`/admin/tickets/${id}/priority`, { priority })
+      .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, priority, updatedAt: new Date().toISOString() } : t))));
+  const bulkEscalate = () => {
+    if (!window.confirm(`تصعيد ${selectedIds.size} تذكرة إلى الإدارة؟ سيتم تحويلها وإعادة تعيينها.`)) return;
+    return runBulk('التصعيد', async id => { await escalateTicketApi(id, true); });
+  };
+
+  // Whatever the agent is looking at right now, as a file they can hand to
+  // someone who does not have a dashboard login. BOM first so Excel opens the
+  // Arabic columns as UTF-8 instead of mojibake.
+  const exportSelected = () => {
+    const rows = filtered.filter(t => selectedIds.size === 0 || selectedIds.has(t.id));
+    if (rows.length === 0) { notify('info', 'لا توجد تذاكر للتصدير'); return; }
+    const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['الرقم', 'الموضوع', 'العميل', 'البريد', 'الهاتف', 'الحالة', 'الأولوية', 'التصنيف', 'المسؤول', 'أُنشئت', 'آخر تحديث'];
+    const csv = '﻿' + [
+      header.map(cell).join(','),
+      ...rows.map(t => [
+        t.id, t.title, t.clientName, t.clientEmail, t.clientPhone,
+        STATUS_CFG[t.status]?.label, PRIORITY_CFG[t.priority]?.label,
+        CAT_LABELS[t.category], supportTeam.find(m => m.id === t.assigneeId)?.name || '',
+        t.createdAt?.slice(0, 16).replace('T', ' '), t.updatedAt?.slice(0, 16).replace('T', ' '),
+      ].map(cell).join(',')),
+    ].join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tickets-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    notify('success', `تم تصدير ${rows.length} تذكرة`);
+  };
 
   const addReplyApi = async () => {
     if (!replyText.trim() || !selectedTicket) return;
@@ -327,7 +371,9 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     }
   };
 
-  const escalateTicketApi = async (id: string) => {
+  // `silent` is for the bulk runner, which reports one summary at the end and
+  // needs the failure to propagate so it can be counted rather than swallowed.
+  const escalateTicketApi = async (id: string, silent = false) => {
     try {
       const res = await mysqlAdmin.adminPost<{ ok: boolean; assignee?: { id: string; name: string } }>(`/admin/tickets/${id}/escalate`, {});
       const managerName = res.assignee?.name || 'الإدارة';
@@ -335,8 +381,9 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
         ? { ...t, escalatedTo: res.assignee?.id, escalatedAt: new Date().toISOString(), priority: 'urgent' as TicketPriority, assigneeId: res.assignee?.id || t.assigneeId, updatedAt: new Date().toISOString() }
         : t
       ));
-      notify('info', `تم تصعيد التذكرة إلى ${managerName}`);
+      if (!silent) notify('info', `تم تصعيد التذكرة إلى ${managerName}`);
     } catch (error) {
+      if (silent) throw error;
       notify('error', 'تعذر تصعيد التذكرة');
     }
   };
@@ -507,6 +554,19 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
             <option value="" disabled>تصنيف كـ...</option>
             {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          <select disabled={bulkBusy} onChange={e => { if (e.target.value) bulkSetPriority(e.target.value as TicketPriority); e.target.value = ''; }}
+            defaultValue="" className="border border-blue-200 rounded-lg px-2 py-1.5 text-xs bg-white disabled:opacity-50">
+            <option value="" disabled>تغيير الأولوية إلى...</option>
+            {Object.entries(PRIORITY_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <button disabled={bulkBusy} onClick={bulkEscalate}
+            className="text-xs px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 font-bold disabled:opacity-50 flex items-center gap-1">
+            <TrendingUp size={12} /> تصعيد للإدارة
+          </button>
+          <button disabled={bulkBusy} onClick={exportSelected}
+            className="text-xs px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 font-bold disabled:opacity-50 flex items-center gap-1">
+            <Download size={12} /> تصدير CSV
+          </button>
           <button disabled={bulkBusy} onClick={() => bulkSetStatus('closed')}
             className="text-xs px-3 py-1.5 rounded-lg bg-gray-700 text-white font-bold disabled:opacity-50">
             {bulkBusy ? 'جارٍ التنفيذ...' : '📦 أرشفة (إغلاق جماعي)'}
@@ -617,6 +677,13 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
               <select value={selectedTicket.category} onChange={e => setCategoryApi(selectedTicket.id, e.target.value as TicketCategory)}
                 className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-600 bg-white">
                 {Object.entries(CAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              {/* Priority was fixed at creation until now: the only way to raise a
+                  mis-triaged ticket was to escalate it, which also hands it to
+                  management. This changes the urgency without moving the owner. */}
+              <select value={selectedTicket.priority} onChange={e => setPriorityApi(selectedTicket.id, e.target.value as TicketPriority)}
+                className={`text-xs px-2 py-1 rounded-lg border bg-white font-bold ${PRIORITY_CFG[selectedTicket.priority]?.color || 'text-gray-600'} border-gray-200`}>
+                {Object.entries(PRIORITY_CFG).map(([k, v]) => <option key={k} value={k}>أولوية: {v.label}</option>)}
               </select>
               <button onClick={() => {
                   const em = (selectedTicket.clientEmail || '').toLowerCase().trim();

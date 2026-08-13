@@ -4,7 +4,7 @@ const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { mailer, sendEmail } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff } = require('../../middleware/auth');
+const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, invalidateIdentity } = require('../../middleware/auth');
 const express = require('express');
 const router = express.Router();
 const ROUTE_LOCAL_CRONS_ENABLED = false;
@@ -164,6 +164,37 @@ router.get('/api/admin/security/accounts', requireAuth, requireAdmin, async (req
       [req.tenantId]
     );
     res.json({ rows, stats });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/security/accounts/:id/toggle-active — the write half of the
+// listing above. Until now the admin UI reached for GET /api/admin/users and
+// DELETE /api/admin/users/:id, neither of which has ever existed, so "تعطيل
+// حساب العميل" on a lead could only ever fail. Deactivating also bumps
+// session_version so an already signed-in customer is dropped on their next
+// request rather than staying in until their token expires.
+router.post('/api/admin/security/accounts/:id/toggle-active', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[user]] = await pool.query(
+      'SELECT id, email, name, is_active FROM users WHERE id=? AND tenant_id=? LIMIT 1',
+      [req.params.id, req.tenantId]
+    );
+    if (!user) return res.status(404).json({ error: 'الحساب غير موجود' });
+
+    // An explicit `active` wins so a caller that knows the state it wants is
+    // not at the mercy of a stale row; otherwise flip what is there.
+    const next = typeof req.body?.active === 'boolean' ? (req.body.active ? 1 : 0) : (user.is_active ? 0 : 1);
+    await pool.query(
+      'UPDATE users SET is_active=?, session_version=session_version+1 WHERE id=? AND tenant_id=?',
+      [next, user.id, req.tenantId]
+    );
+    invalidateIdentity(req.tenantId, user.id, user.email);
+    logger.info(`[security] account ${user.id} set is_active=${next} by ${req.user?.id || 'unknown'}`);
+    res.json({
+      ok: true,
+      is_active: !!next,
+      message: next ? `تم تفعيل حساب ${user.name || user.email}` : `تم تعطيل حساب ${user.name || user.email} — لن يتمكن من الدخول`,
+    });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

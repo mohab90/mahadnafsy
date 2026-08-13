@@ -15,6 +15,7 @@ import {
   Star,
   Ticket,
   Trash2,
+  UserCheck,
   X,
   XCircle,
 } from 'lucide-react';
@@ -371,6 +372,31 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     } finally { setActionBusy(false); }
   }, [loadRemote, notify]);
 
+  // The inbox could set status, reply and escalate, but never say *who owns
+  // this*. Ownership was only settable from the separate tickets screen, so
+  // triaging here meant leaving the inbox to hand the ticket over.
+  const assignTicket = useCallback(async (item: InboxItem, staffId: string | null, label: string) => {
+    setActionBusy(true);
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/assign`, { staff_id: staffId });
+      notify('success', staffId ? `تم تحويل التذكرة إلى ${label}` : 'تم إلغاء الإسناد');
+      loadRemote();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر التحويل');
+    } finally { setActionBusy(false); }
+  }, [loadRemote, notify]);
+
+  const setTicketPriority = useCallback(async (item: InboxItem, priority: string) => {
+    setActionBusy(true);
+    try {
+      await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/priority`, { priority });
+      notify('success', 'تم تغيير الأولوية');
+      loadRemote();
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'تعذر تغيير الأولوية');
+    } finally { setActionBusy(false); }
+  }, [loadRemote, notify]);
+
   const routeTicketToRefund = useCallback(async (item: InboxItem) => {
     setActionBusy(true);
     try {
@@ -668,6 +694,29 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                       {!['closed'].includes(item.status) && <button disabled={actionBusy} onClick={() => updateItemStatus(item, 'closed')} className="inline-flex items-center gap-1 rounded-xl bg-slate-600 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"><X size={15} /> إغلاق</button>}
                       <button disabled={actionBusy} onClick={() => escalateTicket(item)} className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50">⚠️ تصعيد للإدارة</button>
                       <button disabled={actionBusy} onClick={() => routeTicketToRefund(item)} className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50"><RotateCcw size={15} /> تحويل لقسم الاسترداد</button>
+                      {currentStaff && String(item.raw?.assigned_to || '') !== String(currentStaff.id) && (
+                        <button disabled={actionBusy} onClick={() => assignTicket(item, currentStaff.id, 'حسابك')}
+                          className="inline-flex items-center gap-1 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
+                          <UserCheck size={15} /> استلام التذكرة
+                        </button>
+                      )}
+                      <select disabled={actionBusy} value={String(item.raw?.assigned_to || '')}
+                        onChange={(e) => {
+                          const picked = staffMembers.find(m => m.id === e.target.value);
+                          assignTicket(item, e.target.value || null, picked?.name || '');
+                        }}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50">
+                        <option value="">— تحويل لزميل —</option>
+                        {staffMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                      <select disabled={actionBusy} value={String(item.raw?.priority || 'medium')}
+                        onChange={(e) => setTicketPriority(item, e.target.value)}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50">
+                        <option value="low">أولوية: منخفضة</option>
+                        <option value="medium">أولوية: متوسطة</option>
+                        <option value="high">أولوية: عالية</option>
+                        <option value="urgent">أولوية: عاجلة</option>
+                      </select>
                       {isAdmin && <button disabled={actionBusy} onClick={() => deleteTicketApi(item)} className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 size={15} /> أرشفة</button>}
                     </>
                   ) : item.source === 'contact' ? (

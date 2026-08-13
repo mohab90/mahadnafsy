@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { getTherapistSessionPrice } from '../lib/consultations';
@@ -10,6 +10,7 @@ const Checkout: React.FC = () => {
   useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { courses, bundles, therapists, content, currency, authUser, subscribers, mySubscriberId } = useSiteData();
   const paymentLinkToken = searchParams.get('paymentToken') || searchParams.get('token');
   const [paymentLink, setPaymentLink] = useState<{
@@ -243,7 +244,11 @@ const Checkout: React.FC = () => {
           <p className="text-gray-500 mb-8">لإتمام الشراء وضمان وصولك للكورس، يجب تسجيل الدخول أو إنشاء حساب جديد أولاً.</p>
           <div className="flex flex-col gap-3">
             <Link
-              to={`/auth?redirect=${encodeURIComponent(window.location.hash.slice(1))}`}
+              // This read window.location.hash, left over from a HashRouter the
+              // app no longer uses: under BrowserRouter the hash is always ''
+              // so the redirect was always empty and a customer who signed in
+              // to buy never came back to their order.
+              to={`/auth?redirect=${encodeURIComponent(location.pathname + location.search)}`}
               className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl transition"
             >
               تسجيل الدخول / إنشاء حساب

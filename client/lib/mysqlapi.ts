@@ -267,8 +267,9 @@ export const mysqlAdmin = {
   adminPost: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }, A),
   adminPatch: <T = AR>(path: string, body: AR) => apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, A),
   // ── Users management ──
-  listAllUsers:  () => apiFetch<AR[]>('/admin/users', {}, A),
-  deactivateUser: (id: string) => apiFetch<{ ok: boolean }>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
+  // Removed: listAllUsers/deactivateUser called /admin/users, a path no route
+  // serves. Nothing on the customer site used them; account activation lives in
+  // the admin app (see findAccountByEmail / setAccountActive there).
   // ── List (read) ──
   listAllCourses:          (limit = 500)  => apiFetch<AR[]>(`/admin/courses?limit=${limit}`, {}, A),
   getOnlineUsers:          ()             => apiFetch<AR[]>('/admin/online-users', {}, A),

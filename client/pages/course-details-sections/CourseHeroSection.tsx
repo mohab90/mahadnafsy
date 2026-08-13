@@ -28,6 +28,27 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
   isSubscribed,
   onBuyNow,
 }) => {
+  // The share button rendered but did nothing on every course page. The native
+  // sheet is the right thing on the phones most of this traffic comes from;
+  // desktop browsers without it fall back to the clipboard, and a browser that
+  // blocks that too still gets a visible URL to copy by hand.
+  const [shareState, setShareState] = React.useState<'idle' | 'copied'>('idle');
+  const shareCourse = async () => {
+    const url = window.location.href;
+    const shareData = { title: course.title, text: course.shortDescription || course.title, url };
+    if (navigator.share) {
+      // A user who dismisses the sheet raises AbortError — not a failure.
+      try { await navigator.share(shareData); return; } catch { return; }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareState('copied');
+      window.setTimeout(() => setShareState('idle'), 2000);
+    } catch {
+      window.prompt('انسخ رابط الدورة', url);
+    }
+  };
+
   return (
     <div className="bg-gray-900 text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-r from-primary-900 via-primary-800 to-gray-900 opacity-95 z-10"></div>
@@ -138,8 +159,9 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                 </div>
 
                 <div className="flex justify-center gap-4">
-                    <button className="text-gray-500 hover:text-primary-600 text-sm flex items-center gap-1 transition">
-                                                  <Share2 size={16} /> {content['courseDetails.actions.share'] || 'مشاركة'}
+                    <button type="button" onClick={shareCourse}
+                      className={`text-sm flex items-center gap-1 transition ${shareState === 'copied' ? 'text-green-600' : 'text-gray-500 hover:text-primary-600'}`}>
+                      <Share2 size={16} /> {shareState === 'copied' ? 'تم نسخ الرابط' : (content['courseDetails.actions.share'] || 'مشاركة')}
                     </button>
                     <a href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}`} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-green-600 text-sm flex items-center gap-1 transition">
                                                   <MessageCircle size={16} /> {content['courseDetails.actions.whatsapp'] || 'استفسار واتساب'}

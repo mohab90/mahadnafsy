@@ -726,14 +726,15 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
     if (!window.confirm(`هل أنت متأكد أنك تريد تعطيل حساب "${lead.name}"؟\nلن يتمكن من تسجيل الدخول بعد ذلك.`)) return;
     setDeactivating(true);
     try {
-      // Find user by email first
-      const users = await mysqlAdmin.listAllUsers() as Array<{ id: string; email: string; name: string; is_active: number }>;
-      const user = users.find(u => u.email?.toLowerCase() === lead.email?.toLowerCase());
+      // Resolve the sign-in account from the lead's email — the server matches a
+      // complete address exactly, so this is one indexed row, not a full dump.
+      const found = await mysqlAdmin.findAccountByEmail(lead.email);
+      const user = (found?.rows || [])[0];
       if (!user) { notify('error', 'لم يتم العثور على حساب لهذا العميل'); return; }
-      await mysqlAdmin.deactivateUser(user.id);
-      notify('success', `تم تعطيل حساب ${lead.name} بنجاح — لن يتمكن من الدخول`);
+      const result = await mysqlAdmin.setAccountActive(user.id, false);
+      notify('success', result?.message || `تم تعطيل حساب ${lead.name} بنجاح — لن يتمكن من الدخول`);
     } catch (e) {
-      notify('error', 'فشل تعطيل الحساب، حاول مرة أخرى');
+      notify('error', e instanceof Error ? e.message : 'فشل تعطيل الحساب، حاول مرة أخرى');
     } finally {
       setDeactivating(false);
     }

@@ -680,6 +680,44 @@ router.delete('/api/admin/faq/:id', requireAuth, requireAdminOrStaff, requirePer
 });
 
 // ── ESCALATE to management ───────────────────────────────────────────────────
+// PUT /api/admin/tickets/:id/priority — priority could only ever be set when a
+// ticket was created, or forced to 'high' by escalating. An agent who found a
+// mis-triaged ticket had no way to correct it short of escalating to
+// management, which also reassigns the ticket. The SLA clock is recomputed
+// from the same helper that sets it at creation, so a re-prioritised ticket is
+// measured against the window its new priority actually promises.
+router.put('/api/admin/tickets/:id/priority', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
+  let conn;
+  try {
+    const priority = String(req.body.priority || '').toLowerCase();
+    if (!VALID_PRIORITIES.has(priority)) return res.status(400).json({ error: 'invalid priority' });
+    conn = await pool.getConnection(); await conn.beginTransaction();
+    const [[ticket]] = await conn.query(
+      'SELECT id,priority,department,assigned_to,first_response_at FROM support_tickets WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+      [req.params.id, req.tenantId]);
+    if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
+    if (!canAccessTicket(req, ticket)) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'Not found' }); }
+    // A ticket already answered has met its first-response target; moving the
+    // due date afterwards would rewrite history rather than describe it.
+    const slaDue = ticket.first_response_at ? null : computeSlaDue(priority);
+    await conn.query(
+      `UPDATE support_tickets SET priority=?, sla_due_at=COALESCE(?, sla_due_at), updated_at=NOW()
+        WHERE id=? AND tenant_id=?`,
+      [priority, slaDue, req.params.id, req.tenantId]);
+    const actor = await actorOf(req);
+    await logTicketEvent(conn, {
+      tenantId: req.tenantId, ticketId: req.params.id, type: 'priority_changed',
+      actorId: actor.id, actorName: actor.name, from: ticket.priority, to: priority,
+      detail: cleanText(req.body.reason, TEXT_LIMITS.reason) || null,
+    });
+    await conn.commit(); conn.release(); conn = null;
+    res.json({ ok: true, priority, sla_due_at: slaDue });
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    logger.error('[cs/priority]', e.message); res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/api/admin/tickets/:id/escalate', requireAuth, requireAdminOrStaff, requirePermission('manage_inbox'), async (req, res) => {
   let conn;
   try {

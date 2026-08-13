@@ -269,8 +269,18 @@ export const mysqlAdmin = {
       method: 'POST', body: JSON.stringify({ reason }),
     }, A),
   // ── Users management ──
-  listAllUsers:  () => apiFetch<AR[]>('/admin/users', {}, A),
-  deactivateUser: (id: string) => apiFetch<{ ok: boolean }>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }, A),
+  // These replaced a listAllUsers/deactivateUser pair pointed at /admin/users,
+  // a path no route has ever served — so every "تعطيل الحساب" click 404'd. The
+  // security-accounts listing already exact-matches a complete email against an
+  // index, which is also why this no longer pulls every user into the browser
+  // just to find one by address.
+  findAccountByEmail: (email: string) =>
+    apiFetch<{ rows: Array<{ id: string; email: string; name: string; is_active: number }> }>(
+      `/admin/security/accounts?q=${encodeURIComponent(email)}&limit=1`, {}, A),
+  setAccountActive: (id: string, active: boolean) =>
+    apiFetch<{ ok: boolean; is_active: boolean; message: string }>(
+      `/admin/security/accounts/${encodeURIComponent(id)}/toggle-active`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) }, A),
   checkAccount: (email: string) => apiFetch<AR>(`/admin/check-account?email=${encodeURIComponent(email)}`, {}, A),
   createAccount: (params: { email: string; name?: string; password?: string; phone?: string; courses?: {courseId:string;accessType:string;videoCount?:string}[]; referredBy?: string; firstPayment?: { amount: number; currency: string; paymentMethod?: string; date?: string; transactionId?: string; note?: string; courseId?: string; courseExpected?: number } }) => apiFetch<AR>('/admin/create-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) }, A),
   getMissingAccountsCount: () => apiFetch<{ total: number }>('/admin/missing-accounts', {}, A),

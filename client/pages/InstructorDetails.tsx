@@ -1,13 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, Shield, Users, BookOpen, Facebook, Twitter, Linkedin, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
+import { Star, Shield, Users, BookOpen, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
+import { toDialable } from '../lib/whatsappLink';
 import CourseCard from '../components/CourseCard';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 
 const InstructorDetails: React.FC = () => {
-  const { therapists, courses, currency } = useSiteData();
+  const { therapists, courses, currency, content } = useSiteData();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const instructor = therapists.find((t) => t.id === id);
@@ -116,10 +117,16 @@ const InstructorDetails: React.FC = () => {
                   <h1 className="text-3xl font-bold text-gray-900 mb-1">{instructor.name}</h1>
                   <p className="text-primary-600 font-medium text-lg">{instructor.title}</p>
                 </div>
+                {/* Three Facebook/Twitter/LinkedIn buttons used to sit here with no
+                    handler and no data behind them — Therapist carries no social
+                    fields, so they could never have linked anywhere. Replaced with
+                    the one contact route that does exist and does work. */}
                 <div className="flex gap-3">
-                  <button className="bg-gray-100 hover:bg-gray-200 p-2 rounded-full text-blue-600 transition"><Facebook size={20} /></button>
-                  <button className="bg-gray-100 hover:bg-gray-200 p-2 rounded-full text-blue-400 transition"><Twitter size={20} /></button>
-                  <button className="bg-gray-100 hover:bg-gray-200 p-2 rounded-full text-blue-800 transition"><Linkedin size={20} /></button>
+                  <a href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}?text=${encodeURIComponent(`مرحباً، أود الاستفسار عن ${instructor.name}`)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 px-4 py-2 rounded-full transition text-sm font-bold flex items-center gap-2">
+                    <MessageCircle size={18} /> استفسار عن المحاضر
+                  </a>
                 </div>
               </div>
 

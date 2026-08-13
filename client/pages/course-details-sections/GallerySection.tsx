@@ -117,9 +117,13 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                     </a>
                   )
                 ) : (
-                  <button className="flex items-center gap-1.5 bg-red-100 text-red-700 border border-red-200 text-xs font-bold px-4 py-2.5 rounded-xl">
-                    <FileText size={14} />{content['courseDetails.gallery.previewCta'] || 'معاينة'}
-                  </button>
+                  // No template uploaded yet — this used to render as a live-looking
+                  // "معاينة" button that silently did nothing when clicked. Say so
+                  // instead of offering a click that cannot lead anywhere.
+                  <span className="flex items-center gap-1.5 bg-gray-100 text-gray-500 border border-gray-200 text-xs font-bold px-4 py-2.5 rounded-xl cursor-default"
+                    title="لم يتم رفع نموذج الشهادة بعد">
+                    <FileText size={14} />نموذج الشهادة قريباً
+                  </span>
                 )}
               </div>
            </div>
