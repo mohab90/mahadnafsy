@@ -172,14 +172,21 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     });
     if (!paymentKey.token) throw new Error('Paymob payment key missing');
 
+    // Paymob's dashboard shows the iframe as a label ("Iframe 1051699"), and
+    // that whole label gets pasted into the settings field. Interpolated as-is
+    // the URL became .../iframes/Iframe%201051699 and the payment page would
+    // not load, so take the digits.
+    const iframeId = String(paymob.iframe_id || '').replace(/\D+/g, '');
+    if (!iframeId) throw new Error('Paymob iframe id is not a number');
+
     res.json({
       ok: true,
       provider: 'paymob',
       mode: config.mode || 'sandbox',
-      iframeId: String(paymob.iframe_id),
+      iframeId,
       paymentKey: paymentKey.token,
       paymobOrderId: order.id,
-      iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${encodeURIComponent(paymob.iframe_id)}?payment_token=${encodeURIComponent(paymentKey.token)}`,
+      iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${iframeId}?payment_token=${encodeURIComponent(paymentKey.token)}`,
     });
   } catch (e) {
     logger.warn('[paymob-init]', e.message);

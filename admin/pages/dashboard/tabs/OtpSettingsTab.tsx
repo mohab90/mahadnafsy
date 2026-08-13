@@ -36,8 +36,22 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
   useEffect(() => {
     fetch('/api/admin/sys-config?section=otp_provider', { credentials: 'include', headers: adminAuthHeaders() })
       .then(res => res.ok ? res.json() : DEFAULT_CONFIG)
-      .then(data => setConfig({ ...DEFAULT_CONFIG, ...data, email: { ...DEFAULT_CONFIG.email, ...(data.email || {}) }, whatsapp: { ...DEFAULT_CONFIG.whatsapp, ...(data.whatsapp || {}) }, sms: { ...DEFAULT_CONFIG.sms, ...(data.sms || {}) } }))
+      // A section with nothing saved answers `null`, and reading .email off it
+      // threw — surfacing as "فشل تحميل إعدادات OTP" every time this page was
+      // opened before anything had ever been saved.
+      .then((data: OtpConfig | null) => {
+        const loaded = data && typeof data === 'object' ? data : {};
+        setConfig({
+          ...DEFAULT_CONFIG,
+          ...loaded,
+          email: { ...DEFAULT_CONFIG.email, ...(loaded.email || {}) },
+          whatsapp: { ...DEFAULT_CONFIG.whatsapp, ...(loaded.whatsapp || {}) },
+          sms: { ...DEFAULT_CONFIG.sms, ...(loaded.sms || {}) },
+        });
+      })
       .catch(() => notify('error', 'فشل تحميل إعدادات OTP'));
+    // notify is a stable useCallback in Dashboard; listing it kept this to one
+    // request, but an unstable one here would re-fire the fetch every render.
   }, [notify]);
 
   const update = (path: string, value: unknown) => {

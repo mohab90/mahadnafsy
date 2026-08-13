@@ -8,7 +8,7 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
 
   // Local state for channel config editing
   const [channelTab, setChannelTab] = React.useState<'whatsapp' | 'messenger' | 'instagram' | 'webchat' | 'ai_agent'>('whatsapp');
-  const [chDraft, setChDraft] = React.useState<import('../../../types').MessagingChannelsConfig>(() => messagingChannels || {
+  const [chDraft, setChDraftState] = React.useState<import('../../../types').MessagingChannelsConfig>(() => messagingChannels || {
     whatsapp: { enabled: false, phoneNumberId: '', whatsappBusinessAccountId: '', accessToken: '', webhookVerifyToken: '', businessName: '', welcomeMessage: '', awayMessage: '', aiEnabled: false, aiReplyMode: 'disabled' },
     messenger: { enabled: false, pageId: '', pageAccessToken: '', appSecret: '', webhookVerifyToken: '', welcomeMessage: '', aiEnabled: false, aiReplyMode: 'disabled' },
     instagram: { enabled: false, instagramAccountId: '', accessToken: '', appSecret: '', webhookVerifyToken: '', welcomeMessage: '', aiEnabled: false, aiReplyMode: 'disabled' },
@@ -16,6 +16,38 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
     updatedAt: '',
   });
   const [chSaved, setChSaved] = React.useState(false);
+
+  // Hoisted out of the AI-agent panel below. It was declared inside an IIFE in
+  // the JSX guarded by `channelTab === 'ai_agent'`, so opening that tab raised
+  // the hook count from three to four and React tore the tree down with
+  // "Rendered more hooks than during the previous render" (#310).
+  const [agentDraft, setAgentDraftState] = React.useState<Partial<import('../../../types').AiAgentConfig>>(() => aiAgentConfig || {
+    name: 'وكيل المعهد', enabled: false, provider: 'gemini', model: 'gemini-2.0-flash-lite',
+    systemPrompt: '', temperature: 0.7, maxTokens: 800, knowledgeBase: [], enabledPages: [],
+  });
+
+  // Both drafts seed from context on first render, but the context is filled by
+  // an async load that usually lands after this tab has mounted — so a saved
+  // configuration appeared as empty fields until the page was reloaded. Adopt
+  // the server value when it arrives, and stop once the user starts typing so
+  // a late response cannot overwrite their edits.
+  const touchedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (touchedRef.current) return;
+    if (messagingChannels) setChDraftState(messagingChannels);
+    if (aiAgentConfig) setAgentDraftState(aiAgentConfig);
+  }, [messagingChannels, aiAgentConfig]);
+
+  type ChDraft = import('../../../types').MessagingChannelsConfig;
+  type AgentDraft = Partial<import('../../../types').AiAgentConfig>;
+  const setChDraft: React.Dispatch<React.SetStateAction<ChDraft>> = value => {
+    touchedRef.current = true;
+    setChDraftState(value);
+  };
+  const setAgentDraft: React.Dispatch<React.SetStateAction<AgentDraft>> = value => {
+    touchedRef.current = true;
+    setAgentDraftState(value);
+  };
 
   const handleSaveChannels = async () => {
     if (!await setMessagingChannels({ ...chDraft, updatedAt: new Date().toISOString() })) {
@@ -277,10 +309,6 @@ export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
 
       {/* AI Agent config */}
       {channelTab === 'ai_agent' && (() => {
-        const [agentDraft, setAgentDraft] = React.useState<Partial<import('../../../types').AiAgentConfig>>(aiAgentConfig || {
-          name: 'وكيل المعهد', enabled: false, provider: 'gemini', model: 'gemini-2.0-flash-lite',
-          systemPrompt: '', temperature: 0.7, maxTokens: 800, knowledgeBase: [], enabledPages: [],
-        });
         return (
           <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between">

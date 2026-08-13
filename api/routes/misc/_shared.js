@@ -437,6 +437,31 @@ const SYS_DEFAULTS = {
       callback_url: '/success',
     },
   },
+  // The OTP settings screen reads and writes this section. It was missing from
+  // this table, so GET ?section=otp_provider answered `null` — which the page
+  // then dereferenced (`data.email`) and reported as "فشل تحميل إعدادات OTP" —
+  // and PUT was rejected outright as an unknown section, so nothing could be
+  // saved either.
+  //
+  // Delivery order is WhatsApp first: the live send path in routes/auth.js goes
+  // through the connected messaging channel before falling back to SMTP.
+  otp_provider: {
+    preferred_channel: 'whatsapp',
+    fallback_order: ['whatsapp', 'email', 'sms'],
+    length: 6,
+    expiry_minutes: 10,
+    resend_cooldown_seconds: 60,
+    max_attempts: 5,
+    email: {
+      enabled: true, provider: 'smtp', from_email: '',
+      smtp_host: '', smtp_port: 587, smtp_user: '', smtp_password: '', secure: false,
+    },
+    whatsapp: {
+      enabled: true, provider: 'wapilot', instance_id: '', api_token: '',
+      template: 'رمز التحقق الخاص بك هو {{code}}',
+    },
+    sms: { enabled: false, provider: 'vonage', api_key: '', api_secret: '', sender_id: 'MAHAD' },
+  },
 };
 
 // GET /api/admin/sys-config — get all sections or specific section
