@@ -340,9 +340,9 @@ export function useCrmCoreState(
     track('update', 'clientCode', `bulk:${updatedSubs.length + updatedLeads.length}`);
   };
 
-  const bulkRedistributeLeads = async (mode: 'unassigned' | 'all'): Promise<number> => {
+  const bulkRedistributeLeads = async (mode: 'unassigned' | 'all', dailyCap = 0): Promise<number> => {
     // Delegate distribution entirely to the server — avoids N parallel saveLead calls
-    const result = await mysqlAdmin.distributeLeads(mode);
+    const result = await mysqlAdmin.distributeLeads(mode, dailyCap);
     const assigned = result.assigned ?? 0;
     if (assigned === 0) return 0;
     // Reload leads from server so the UI reflects the new assignments

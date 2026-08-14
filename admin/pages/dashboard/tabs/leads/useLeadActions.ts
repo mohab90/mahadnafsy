@@ -23,7 +23,7 @@ interface LeadActionsParams {
   addLead: (lead: NewLeadDraft) => Promise<unknown>;
   reloadLeads: AsyncReload;
   reloadSubscribers: AsyncReload;
-  bulkRedistributeLeads: (scope: 'unassigned') => Promise<number>;
+  bulkRedistributeLeads: (scope: 'unassigned', dailyCap?: number) => Promise<number>;
   recordSubscriberPayment: (
     subscriberId: string,
     payment: Record<string, unknown>,
@@ -109,12 +109,25 @@ export function useLeadActions(params: LeadActionsParams) {
 
   const handleDistribute = async () => {
     if (!salesReps.length) return notify('error', 'لا يوجد مندوبو مبيعات');
+    // A ceiling per rep per day, so a big import does not land two hundred
+    // names on one person who then works none of them. Blank keeps the old
+    // behaviour of distributing everything in one go.
+    const capAnswer = window.prompt(
+      `أقصى عدد عملاء لكل مندوب في اليوم؟\nاترك الخانة فارغة للتوزيع بدون حد أقصى.\n(عدد المندوبين: ${salesReps.length})`,
+      '',
+    );
+    if (capAnswer === null) return;
+    const dailyCap = capAnswer.trim() === '' ? 0 : Number(capAnswer);
+    if (!Number.isFinite(dailyCap) || dailyCap < 0) return notify('error', 'أدخل رقماً صحيحاً أو اتركه فارغاً');
+
     setDistributing(true);
     try {
-      const assigned = await bulkRedistributeLeads('unassigned');
+      const assigned = await bulkRedistributeLeads('unassigned', dailyCap);
       notify(
         assigned ? 'success' : 'info',
-        assigned ? `تم توزيع ${assigned} عميل محتمل طبقًا لسياسة السيرفر` : 'كل العملاء النشطين لديهم مندوب صالح',
+        assigned
+          ? `تم توزيع ${assigned} عميل محتمل${dailyCap ? ` بحد أقصى ${dailyCap} لكل مندوب اليوم` : ''}`
+          : 'كل العملاء النشطين لديهم مندوب صالح',
       );
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'تعذر توزيع العملاء');

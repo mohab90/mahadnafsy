@@ -741,9 +741,11 @@ export const mysqlAdmin = {
     ),
 
   // ── Leads: round-robin distribute to sales reps ──
-  distributeLeads: (mode: 'unassigned' | 'all' = 'unassigned') =>
-    apiFetch<{ ok: boolean; assigned: number; reps?: number }>(
-      '/admin/leads/distribute', { method: 'POST', body: JSON.stringify({ mode }) }, A
+  // dailyCap 0 (or omitted) means no ceiling, which is how this behaved before
+  // the cap existed.
+  distributeLeads: (mode: 'unassigned' | 'all' = 'unassigned', dailyCap = 0) =>
+    apiFetch<{ ok: boolean; assigned: number; reps?: number; skippedAtCap?: number; dailyCap?: number }>(
+      '/admin/leads/distribute', { method: 'POST', body: JSON.stringify({ mode, dailyCap }) }, A
     ),
   migrateLeadBranches: () =>
     apiFetch<{ ok: boolean; updated: number; unresolved: number; total: number }>(

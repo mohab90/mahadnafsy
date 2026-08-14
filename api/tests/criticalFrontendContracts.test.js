@@ -113,7 +113,11 @@ test('CRM assignment and success feedback are server-authoritative', () => {
 
   assert.match(state, /const updateLead = async[\s\S]{0,500}await mysqlAdmin\.saveLead/);
   assert.match(state, /catch[\s\S]{0,300}return false[\s\S]{0,300}return true/);
-  assert.match(leads, /await bulkRedistributeLeads\('unassigned'\)/);
+  // Scope stays 'unassigned' and distribution stays a single server call — the
+  // point of this guard. A second argument (the per-rep daily cap) is passed
+  // through to that same call, so it is allowed; a client-side assignment loop
+  // still is not, which the doesNotMatch below covers.
+  assert.match(leads, /await bulkRedistributeLeads\('unassigned'(?:\s*,[^)]*)?\)/);
   assert.match(leads, /const saved = await updateLead\(\{ \.\.\.lead, status \}\)/);
   assert.doesNotMatch(leads, /crm\.rrIndex/);
   assert.doesNotMatch(leads, /for \(const u of updates\) await updateLead/);

@@ -94,7 +94,7 @@ interface SiteDataShape {
   markLeadsConverted: (ids: string[]) => void;
   deleteLead: (id: string) => Promise<boolean>;
   bulkAssignClientCodes: (updatedSubs: SubscriberItem[], updatedLeads: LeadItem[]) => void;
-  bulkRedistributeLeads: (mode: 'unassigned' | 'all') => Promise<number>;
+  bulkRedistributeLeads: (mode: 'unassigned' | 'all', dailyCap?: number) => Promise<number>;
   addStaffMember: (item: StaffMember) => Promise<boolean>;
   updateStaffMember: (item: StaffMember) => Promise<boolean>;
   deleteStaffMember: (id: string) => Promise<boolean>;

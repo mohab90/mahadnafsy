@@ -202,7 +202,22 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
 
   const archiveLeads = leads.filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource));
   const totalArchivePages = Math.ceil(archiveLeads.length / ARCHIVE_PAGE_SIZE);
-  const filteredBulkLeads = archiveLeads;
+  // Narrow the pool to leads interested in one course before assigning. A rep
+  // handed a mixed bag calls about whatever is on the row; a rep handed forty
+  // people who all asked about the same diploma has one conversation to
+  // prepare. Empty means every course, which is the previous behaviour.
+  const [bulkCourseFilter, setBulkCourseFilter] = useState('');
+  const filteredBulkLeads = bulkCourseFilter
+    ? archiveLeads.filter(lead => {
+      const title = String(courses.find(c => c.id === bulkCourseFilter)?.title || '').toLowerCase();
+      // A lead records the course as an enrolment, as one of several declared
+      // interests, or as free text in the notes when it arrived from an ad
+      // form. Matching only the tidy case would miss most of the imported data.
+      return lead.enrolledCourseId === bulkCourseFilter
+        || (lead.interestedCourseIds || []).includes(bulkCourseFilter)
+        || (!!title && String(lead.notes || '').toLowerCase().includes(title));
+    })
+    : archiveLeads;
   const bulkPaginated = filteredBulkLeads.slice((archivePage - 1) * ARCHIVE_PAGE_SIZE, archivePage * ARCHIVE_PAGE_SIZE);
   const staffForAssign = staffMembers.filter(s => {
     const role = (s.role || '').toLowerCase();
@@ -404,6 +419,16 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
             <select value={bulkAssignSrc} onChange={e => setBulkAssignSrc(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[180px]">
               <option value="">اختر الموظف...</option>
               {staffForAssign.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-600 mb-1 block">الكورس</label>
+            <select value={bulkCourseFilter} onChange={e => { setBulkCourseFilter(e.target.value); setBulkSelectedLeadIds(new Set()); }}
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[200px]">
+              <option value="">كل الكورسات</option>
+              {courses.map(course => (
+                <option key={course.id} value={course.id}>{course.title}</option>
+              ))}
             </select>
           </div>
           <div>

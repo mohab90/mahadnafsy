@@ -220,26 +220,52 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
       return res.json({ ok: true, assigned: 0 });
     }
     let rrIdx = Number(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0, db: conn })) || 0;
+    // Optional ceiling on how many leads one rep may be handed in a day. Without
+    // it, a large import lands on the team all at once and a rep with 200 new
+    // names works none of them properly. Counts what each rep already received
+    // today, from any source, so the cap is a real daily total and not just a
+    // limit on this run. Absent or zero means no ceiling, exactly as before.
+    const dailyCap = Math.max(0, Number(req.body?.dailyCap) || 0);
+    const assignedToday = new Map();
+    if (dailyCap > 0) {
+      const [todayRows] = await conn.execute(
+        `SELECT assigned_sales_id AS id, COUNT(*) AS n
+           FROM leads
+          WHERE tenant_id=? AND assigned_sales_id IS NOT NULL AND DATE(assigned_at)=CURDATE()
+          GROUP BY assigned_sales_id`,
+        [tenantId]
+      );
+      todayRows.forEach(row => assignedToday.set(String(row.id), Number(row.n) || 0));
+    }
+    const atCap = rep => dailyCap > 0 && (assignedToday.get(String(rep.id)) || 0) >= dailyCap;
+
     // One extra virtual "no rep" slot in the cycle alongside the real reps, so roughly
     // 1 in (reps+1) leads is deliberately left unassigned instead of force-distributing
     // every lead — those land in the "محلي جديد" tab for manual placement. (owner request)
     const totalSlots = reps.length + 1;
     let count = 0;
+    let skippedAtCap = 0;
     for (let i = 0; i < targets.length; i++) {
+      // Everyone full: stop rather than spin through the remaining leads.
+      if (dailyCap > 0 && reps.every(atCap)) { skippedAtCap += targets.length - i; break; }
       const slot = rrIdx % totalSlots;
       rrIdx++;
       if (slot === reps.length) continue;
       const rep = reps[slot];
+      // Skip a rep who has hit today's ceiling and let the cycle carry on, so
+      // the lead goes to the next person rather than being dropped.
+      if (atCap(rep)) { i--; continue; }
       await conn.execute(
-        `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=? WHERE id=? AND tenant_id=?`,
+        `UPDATE leads SET assigned_sales_id=?, assigned_sales_name=?, assigned_at=NOW() WHERE id=? AND tenant_id=?`,
         [rep.id, rep.name, targets[i].id, tenantId]
       );
+      if (dailyCap > 0) assignedToday.set(String(rep.id), (assignedToday.get(String(rep.id)) || 0) + 1);
       count++;
     }
     await setTenantSetting('crm_rr_index', rrIdx, { tenantId, actorId: req.user?.uid, db: conn });
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, assigned: count, reps: reps.length });
+    res.json({ ok: true, assigned: count, reps: reps.length, skippedAtCap, dailyCap });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     routeError(res, e);
