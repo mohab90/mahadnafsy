@@ -67,6 +67,68 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
   }
   finally { conn.release(); }
 });
+// GET /api/admin/subscribers/archived — the other half of the archive.
+//
+// Deleting a customer sets deleted_at and answers "تمت أرشفة العميل", but every
+// list in the system filters deleted_at out, so the archive was a place things
+// went and could never be looked at or brought back. Recovering a customer
+// archived by mistake meant editing the database by hand.
+router.get('/api/admin/subscribers/archived', requireAuth, requireAdminOrStaff, requirePermission('delete_subscribers'), async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const params = [req.tenantId];
+    let where = 's.tenant_id=? AND s.deleted_at IS NOT NULL';
+    if (q) {
+      where += ' AND (s.name LIKE ? OR s.email LIKE ? OR s.phone LIKE ? OR s.client_code LIKE ?)';
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    const [rows] = await pool.query(
+      `SELECT s.id, s.client_code, s.name, s.email, s.phone, s.branch,
+              s.deleted_at, s.created_at,
+              (SELECT COALESCE(SUM(p.amount),0) FROM payments p
+                WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id) AS total_paid
+         FROM subscribers s
+        WHERE ${where}
+        ORDER BY s.deleted_at DESC
+        LIMIT 500`,
+      params
+    );
+    res.json(rows);
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/subscribers/:id/restore — undo an archive.
+router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrStaff, requirePermission('delete_subscribers'), async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[sub]] = await conn.query(
+      'SELECT id, name, email FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NOT NULL FOR UPDATE',
+      [req.params.id, req.tenantId]
+    );
+    if (!sub) { await conn.rollback(); return res.status(404).json({ error: 'العميل غير موجود في الأرشيف' }); }
+
+    await conn.query(
+      'UPDATE subscribers SET is_active=1, deleted_at=NULL, updated_at=NOW() WHERE id=? AND tenant_id=?',
+      [req.params.id, req.tenantId]
+    );
+    // Archiving also disabled their sign-in, so restoring has to give it back
+    // or the customer is listed as active and still cannot log in.
+    if (sub.email) {
+      await conn.query(
+        "UPDATE users SET is_active=1 WHERE tenant_id=? AND LOWER(TRIM(email))=? AND role='user'",
+        [req.tenantId, String(sub.email).toLowerCase().trim()]
+      );
+    }
+    await conn.commit();
+    logger.info(`[restore-subscriber] restored id=${sub.id} tenant=${req.tenantId}`);
+    res.json({ ok: true, restored: true, message: `تمت استعادة ${sub.name || 'العميل'}` });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
+});
+
 router.delete('/api/admin/lectures/:id', requireAuth, requireAdmin, async (req, res) => {
   try { await pool.query('DELETE cl FROM course_lectures cl JOIN courses c ON c.id=cl.course_id WHERE cl.id=? AND c.tenant_id=?', [req.params.id, req.tenantId]); cacheInvalidate('courses', 'lectures', 'chapters'); res.json({ ok: true }); }
   catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

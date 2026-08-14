@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
+  Archive,
   AlarmClock,
   BarChart3,
   Bell,
@@ -79,6 +80,7 @@ export type TabKey =
   | 'notifications'
   | 'daqqi_schedule'
   | 'client'
+  | 'archived_clients'
   | 'registrations'
   | 'customer_inbox'
   | 'service_hub'
@@ -221,6 +223,9 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
       { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
+      // Deleting a customer archives them rather than erasing them, but until
+      // now nothing could show what was in there or bring one back.
+      { key: 'archived_clients', label: 'أرشيف العملاء', icon: Archive },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
       { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
       { key: 'subscriptions', label: 'الاشتراكات المتكررة', icon: RotateCcw },

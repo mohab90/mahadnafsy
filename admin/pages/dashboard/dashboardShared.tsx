@@ -558,6 +558,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   // and gating this on it put the whole الأونلاين group in their sidebar.
   online_clients:     'manage_subscribers',
   client:             'view_client_db',
+
+  archived_clients: 'delete_subscribers',
   registrations:      'view_leads',
   leads:              'view_leads',
   followup_reminders: 'view_leads',

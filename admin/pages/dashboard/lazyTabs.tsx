@@ -3,6 +3,7 @@ import { lazy } from 'react';
 export const ActivityTab = lazy(() => import('./tabs/ActivityTab'));
 export const AdminAiSettingsTab = lazy(() => import('./tabs/AdminAiSettingsTab'));
 export const AnalyticsTab = lazy(() => import('./tabs/AnalyticsTab'));
+export const ArchivedClientsTab = lazy(() => import('./tabs/ArchivedClientsTab'));
 export const AskAITab = lazy(() => import('./tabs/AskAITab'));
 export const AutomationTab = lazy(() => import('./tabs/AutomationTab'));
 export const BalanceSheetTab = lazy(() => import('./tabs/BalanceSheetTab'));
