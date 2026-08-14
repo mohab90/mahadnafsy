@@ -158,7 +158,7 @@ const branchKeyFrom = (value) => String(value || '')
   .replace(/[^A-Z0-9_؀-ۿ]/g, '')
   .slice(0, 120);
 
-router.get('/api/admin/branches', requireAuth, requireAdminOrStaff, async (req, res) => {
+router.get('/api/admin/branches', requireAuth, requireAdminOrStaff, requirePermission('view_settings'), async (req, res) => {
   try {
     // Includes inactive ones: this is the management view, not the picker.
     const [rows] = await pool.query(

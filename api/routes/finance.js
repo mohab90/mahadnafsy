@@ -10,6 +10,7 @@ const { tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
 const { applyRefundReversal } = require('../lib/refunds');
+const { createNotification } = require('../lib/notification');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
@@ -1349,14 +1350,42 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
       scopeSql = ' AND s.assigned_sales_id=?';
       scopeParams.push(scope.staffId);
     }
+    // Everything the refunds screen shows, resolved here rather than by the
+    // browser making a request per row: which course the refund is against and
+    // what it cost, how much of it the customer has actually paid across all
+    // their payments, who owns them in sales and in customer service, and how
+    // much of the course they attended — a refund request from someone who
+    // never attended is a different conversation from one at the halfway mark.
     const [rows] = await pool.query(`
       SELECT rr.*, rr.admin_note AS admin_notes, rr.resolved_by AS handled_by,
-             rr.resolved_at AS handled_at, s.name AS subscriber_name, s.email AS subscriber_email,
-             st.name AS handler_name
+             rr.resolved_at AS handled_at,
+             s.name AS subscriber_name, s.email AS subscriber_email, s.phone AS subscriber_phone,
+             s.client_code, s.branch AS subscriber_branch,
+             s.assigned_sales_name, s.assigned_cs_name,
+             st.name AS handler_name,
+             esc.name AS escalated_by_name,
+             blame.name AS blamed_staff_name,
+             p.course_id, p.created_at AS booking_date,
+             c.title AS course_title,
+             COALESCE(p.course_expected, c.price_egp) AS course_total,
+             (SELECT COALESCE(SUM(px.amount),0) FROM payments px
+               WHERE px.subscriber_id = rr.subscriber_id AND px.tenant_id = rr.tenant_id
+                 AND (p.course_id IS NULL OR px.course_id = p.course_id)) AS paid_total,
+             -- Online course progress. Daqqi attendance is a different thing
+             -- entirely (daqqi_attendees.attended_lectures, per round) and is
+             -- not merged in here: adding the two together would produce a
+             -- number that means neither.
+             (SELECT COUNT(*) FROM lecture_progress lp
+               WHERE lp.subscriber_id = rr.subscriber_id
+                 AND (p.course_id IS NULL OR lp.course_id = p.course_id)) AS attended_count
       FROM refund_requests rr
       LEFT JOIN subscribers s ON s.id = rr.subscriber_id AND s.tenant_id=rr.tenant_id
       LEFT JOIN staff st ON st.id = rr.resolved_by AND st.tenant_id=rr.tenant_id
-      WHERE rr.tenant_id=?${scopeSql}
+      LEFT JOIN staff esc ON esc.id = rr.escalated_by AND esc.tenant_id=rr.tenant_id
+      LEFT JOIN staff blame ON blame.id = rr.blamed_staff_id AND blame.tenant_id=rr.tenant_id
+      LEFT JOIN payments p ON p.id = rr.payment_id AND p.tenant_id=rr.tenant_id
+      LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id=rr.tenant_id
+      WHERE rr.tenant_id=? AND rr.deleted_at IS NULL${scopeSql}
       ORDER BY rr.created_at DESC LIMIT 200
     `, [req.tenantId, ...scopeParams]);
     res.json(rows);
@@ -1375,8 +1404,16 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
     });
     const { status, notes } = req.body;
     const normalizedStatus = String(status || '').toUpperCase();
-    if (!['APPROVED', 'REJECTED'].includes(normalizedStatus))
+    // HANDLING is for a request that is neither granted nor refused — moved to
+    // a different course, credited, settled some other way. Before, those were
+    // forced into approve or reject and the truth lived in the note.
+    if (!['APPROVED', 'REJECTED', 'HANDLING'].includes(normalizedStatus))
       return res.status(400).json({ error: 'invalid status' });
+    const decisionNote = String(req.body?.decision_note || '').trim().slice(0, 5000);
+    if (normalizedStatus === 'REJECTED' && !decisionNote)
+      return res.status(400).json({ error: 'سبب الرفض مطلوب' });
+    if (normalizedStatus === 'HANDLING' && !decisionNote)
+      return res.status(400).json({ error: 'اكتب ما تم عمله في الطلب' });
     const actor = req.staffRecord?.name || req.user?.email || 'admin';
     const tenantId = req.tenantId;
     await conn.beginTransaction();
@@ -1406,16 +1443,36 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
       return res.status(409).json({ error: 'A refund cannot be approved without a linked payment' });
     }
 
+    // What is actually returned is a decision in its own right, and is often
+    // less than the customer asked for. Defaults to the requested amount so an
+    // approval with no figure behaves exactly as it always did, and cannot
+    // exceed it — refunding more than was requested is not an approval.
+    let refundedAmount = null;
+    if (normalizedStatus === 'APPROVED') {
+      const requested = Number(rr.amount) || 0;
+      refundedAmount = req.body?.refunded_amount === undefined || req.body.refunded_amount === null || req.body.refunded_amount === ''
+        ? requested
+        : Number(req.body.refunded_amount);
+      if (!Number.isFinite(refundedAmount) || refundedAmount <= 0 || refundedAmount > requested) {
+        await conn.rollback();
+        return res.status(400).json({ error: `المبلغ المسترد يجب أن يكون بين 1 و ${requested}` });
+      }
+    }
+
     await conn.query(
-      `UPDATE refund_requests SET status=?, admin_note=?, resolved_by=?, resolved_at=NOW() WHERE id=? AND tenant_id=?`,
-      [normalizedStatus, notes || null, req.staffRecord?.id || req.user?.email || null, req.params.id, tenantId]
+      `UPDATE refund_requests
+          SET status=?, admin_note=?, decision_note=?, refunded_amount=?,
+              resolved_by=?, resolved_at=NOW()
+        WHERE id=? AND tenant_id=?`,
+      [normalizedStatus, notes || null, decisionNote || null, refundedAmount,
+        req.staffRecord?.id || req.user?.email || null, req.params.id, tenantId]
     );
 
     if (normalizedStatus === 'APPROVED' && rr.payment_id) {
       await applyRefundReversal({
         paymentId: rr.payment_id,
         subscriberId: rr.subscriber_id,
-        refundAmount: rr.amount,
+        refundAmount: refundedAmount,
         refundCurrency: rr.currency,
         tenantId,
         actor,
@@ -1443,6 +1500,86 @@ router.put('/api/admin/finance/refunds/:id', requireAuth, requireAdminOrStaff, r
   } finally {
     conn.release();
   }
+});
+
+// The rest of what a refund desk does, none of which fitted in a status field.
+// Each is deliberately its own endpoint rather than more flags on the PUT: they
+// are different authorities. Deciding a refund is one permission; raising it to
+// management, attributing it to a colleague's mistake, confirming the money has
+// left, and archiving the record are separate acts with separate consequences.
+
+// Raise to senior management. Does not change the status: a request stays in
+// whatever state it was in while somebody senior looks at it.
+router.post('/api/admin/finance/refunds/:id/escalate', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+  try {
+    const note = String(req.body?.note || '').trim().slice(0, 2000);
+    const [result] = await pool.query(
+      `UPDATE refund_requests
+          SET escalated_at=NOW(), escalated_by=?,
+              admin_note=CONCAT(COALESCE(admin_note,''), IF(admin_note IS NULL OR admin_note='','','\n'), ?)
+        WHERE id=? AND tenant_id=? AND deleted_at IS NULL`,
+      [req.staffRecord?.id || null, `رفع للإدارة العليا: ${note || 'بدون ملاحظة'}`, req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'الطلب غير موجود' });
+    createNotification('refund', '⚠️ طلب استرداد مرفوع للإدارة',
+      note || 'طلب استرداد يحتاج قرار الإدارة العليا',
+      { refundId: req.params.id }, req.tenantId, null).catch(() => {});
+    res.json({ ok: true, message: 'تم رفع الطلب للإدارة العليا' });
+  } catch (e) { logger.error('[finance/refunds escalate]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Attribute the refund to a staff mistake. Admin only, and never inferred —
+// this is a judgement about a colleague, so it is only ever set deliberately.
+router.post('/api/admin/finance/refunds/:id/blame', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const staffId = String(req.body?.staff_id || '').trim();
+    const note = String(req.body?.note || '').trim().slice(0, 2000);
+    if (!staffId) {
+      const [cleared] = await pool.query(
+        'UPDATE refund_requests SET blamed_staff_id=NULL, blame_note=NULL WHERE id=? AND tenant_id=?',
+        [req.params.id, req.tenantId]);
+      if (!cleared.affectedRows) return res.status(404).json({ error: 'الطلب غير موجود' });
+      return res.json({ ok: true, message: 'تم إلغاء تحديد المسؤول' });
+    }
+    const [[staff]] = await pool.query(
+      'SELECT id, name FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      [staffId, req.tenantId]);
+    if (!staff) return res.status(404).json({ error: 'الموظف غير موجود' });
+    const [result] = await pool.query(
+      'UPDATE refund_requests SET blamed_staff_id=?, blame_note=? WHERE id=? AND tenant_id=? AND deleted_at IS NULL',
+      [staff.id, note || null, req.params.id, req.tenantId]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'الطلب غير موجود' });
+    res.json({ ok: true, message: `تم تسجيل المسؤولية على ${staff.name}` });
+  } catch (e) { logger.error('[finance/refunds blame]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// The money has actually left the account. Separate from approval because the
+// gap between the two is exactly what the refund desk is chasing.
+router.post('/api/admin/finance/refunds/:id/mark-refunded', requireAuth, requireAdminOrStaff, requirePermission('approve_refunds'), async (req, res) => {
+  try {
+    const [[rr]] = await pool.query(
+      'SELECT status FROM refund_requests WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      [req.params.id, req.tenantId]);
+    if (!rr) return res.status(404).json({ error: 'الطلب غير موجود' });
+    if (String(rr.status).toUpperCase() !== 'APPROVED') {
+      return res.status(409).json({ error: 'لا يمكن تأكيد رد المبلغ قبل اعتماد الطلب' });
+    }
+    await pool.query(
+      "UPDATE refund_requests SET status='REFUNDED', refunded_at=NOW() WHERE id=? AND tenant_id=?",
+      [req.params.id, req.tenantId]);
+    res.json({ ok: true, message: 'تم تأكيد رد المبلغ للعميل' });
+  } catch (e) { logger.error('[finance/refunds mark-refunded]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// Archive, not erase: a money decision keeps its trail.
+router.delete('/api/admin/finance/refunds/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'UPDATE refund_requests SET deleted_at=NOW() WHERE id=? AND tenant_id=? AND deleted_at IS NULL',
+      [req.params.id, req.tenantId]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'الطلب غير موجود' });
+    res.json({ ok: true, message: 'تم حذف طلب الاسترداد' });
+  } catch (e) { logger.error('[finance/refunds delete]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;
