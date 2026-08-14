@@ -5,10 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   resolveDepartment, defaultPriority, slaHoursFor, computeSlaDue, pickAssignee, CATEGORY_META,
+  DEPARTMENT_ROLES,
 } = require('../lib/ticketRouting');
 
-test('every category routes to a known department', () => {
-  const depts = new Set(['support','collection','accounting','sales','instruction','management','daqqi']);
+test('every category routes to a department that has staff roles behind it', () => {
+  // Derived from DEPARTMENT_ROLES rather than a second hand-written list: the
+  // point of the check is that a category cannot route somewhere no employee
+  // staffs, and a duplicated list only ever drifts from the real one.
+  const depts = new Set(Object.keys(DEPARTMENT_ROLES));
   for (const cat of Object.keys(CATEGORY_META)) {
     assert.ok(depts.has(resolveDepartment(cat)), `${cat} -> ${resolveDepartment(cat)}`);
   }

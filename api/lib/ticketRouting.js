@@ -28,6 +28,7 @@ const CATEGORY_META = Object.freeze({
   technical:      { label: 'مشكلة تقنية',      department: 'support',     priority: 'high'   },
   course_access:  { label: 'وصول للدورة',      department: 'support',     priority: 'high'   },
   sales_inquiry:  { label: 'استفسار مبيعات',   department: 'sales',       priority: 'medium' },
+  hr_inquiry:     { label: 'استفسار موارد بشرية', department: 'hr',       priority: 'medium' },
   consultation:   { label: 'استشارة',          department: 'support',     priority: 'medium' },
   certificate:    { label: 'شهادات',           department: 'support',     priority: 'medium' },
   general:        { label: 'عام',              department: 'support',     priority: 'medium' },
@@ -42,11 +43,15 @@ const DEPARTMENT_ROLES = Object.freeze({
   instruction: ['instructor', 'trainer'],
   management:  ['manager', 'admin'],
   daqqi:       ['daqqi_manager', 'reception_daqqi'],
+  // Falls back to a manager so an HR enquiry is never left with no owner in an
+  // institute that has only one HR employee (or none on a given day).
+  hr:          ['hr', 'manager'],
 });
 
 const DEPARTMENT_LABEL = Object.freeze({
   support: 'الدعم الفني', collection: 'التحصيل', accounting: 'الحسابات',
   sales: 'المبيعات', instruction: 'التدريب', management: 'الإدارة', daqqi: 'الدقي',
+  hr: 'الموارد البشرية',
 });
 
 // First-response SLA (wall-clock hours) by priority.

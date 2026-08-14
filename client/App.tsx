@@ -44,7 +44,6 @@ import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
-import { mysqlForms } from './lib/mysqlapi';
 import { toDialable } from './lib/whatsappLink';
 
 /** Lead Capture Widget — floating "استفسر الآن" form for public visitors */
@@ -53,7 +52,12 @@ const LeadCaptureWidget: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [msg, setMsg] = useState('');
+  // Which queue the question belongs in. Everything still shows in the unified
+  // customer-service inbox; this only decides who owns it first.
+  const [department, setDepartment] = useState<'support' | 'sales' | 'hr'>('support');
+  const [routedTo, setRoutedTo] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -61,13 +65,28 @@ const LeadCaptureWidget: React.FC = () => {
   // Only show for non-admin, non-logged-in visitors
   if (isAdmin || authUser) return null;
 
+  // This used to submit a *lead*, so a visitor's question landed in العملاء
+  // المحتملين and never reached customer service — no ticket, no owner, no SLA,
+  // and nobody in support ever saw it. It now opens a routed support ticket in
+  // the department the visitor picked; staff replies already notify them by
+  // email and WhatsApp through the existing ticket reply path.
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) return;
+    if (!name.trim() || !phone.trim() || !msg.trim()) return;
     setBusy(true);
     setSubmitError('');
     try {
-      await mysqlForms.submitLead({ name: name.trim(), phone: phone.trim(), notes: msg.trim(), source: 'chatbot' });
+      const res = await fetch('/api/public/enquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(), phone: phone.trim(), email: email.trim(),
+          message: msg.trim(), department,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'تعذر إرسال استفسارك حالياً.');
+      setRoutedTo(String(data.department || ''));
       setSent(true);
     } catch (cause) {
       setSubmitError(cause instanceof Error ? cause.message : 'تعذر إرسال طلبك حاليًا. حاول مرة أخرى أو تواصل معنا عبر واتساب.');
@@ -95,9 +114,11 @@ const LeadCaptureWidget: React.FC = () => {
             {sent ? (
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">✅</p>
-                <p className="font-bold text-gray-800 mb-1">شكراً! تم استلام طلبك</p>
-                <p className="text-xs text-gray-500">سيتواصل معك فريقنا في أقرب وقت</p>
-                <button onClick={() => { setOpen(false); setSent(false); setName(''); setPhone(''); setMsg(''); }}
+                <p className="font-bold text-gray-800 mb-1">تم استلام استفسارك</p>
+                <p className="text-xs text-gray-500">
+                  {routedTo ? `تم تحويله إلى قسم ${routedTo}. ` : ''}هيوصلك الرد على واتساب والبريد.
+                </p>
+                <button onClick={() => { setOpen(false); setSent(false); setName(''); setPhone(''); setEmail(''); setMsg(''); setRoutedTo(''); }}
                   className="mt-4 text-xs text-primary-600 hover:underline">إغلاق</button>
               </div>
             ) : (
@@ -116,9 +137,24 @@ const LeadCaptureWidget: React.FC = () => {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-primary-400 outline-none" />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-600 mb-1 block">رسالتك (اختياري)</label>
-                  <textarea value={msg} onChange={e => setMsg(e.target.value)}
-                    rows={2} placeholder="ماذا تريد أن تعرف؟"
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">البريد الإلكتروني (اختياري)</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="name@example.com" dir="ltr"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-primary-400 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">استفسارك بخصوص</label>
+                  <select value={department} onChange={e => setDepartment(e.target.value as 'support' | 'sales' | 'hr')}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-primary-400 outline-none bg-white">
+                    <option value="support">خدمة العملاء والدعم</option>
+                    <option value="sales">المبيعات والاشتراك في الدورات</option>
+                    <option value="hr">الموارد البشرية والتوظيف</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">رسالتك *</label>
+                  <textarea required value={msg} onChange={e => setMsg(e.target.value)}
+                    rows={3} placeholder="اكتب استفسارك بالتفصيل..."
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:border-primary-400 outline-none" />
                 </div>
                 <button type="submit" disabled={busy}

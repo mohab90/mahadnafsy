@@ -559,6 +559,80 @@ router.put('/api/admin/tickets/:id/status', requireAuth, requireAdminOrStaff, re
 // unique, not composite with tenant_id), so `WHERE id=?` already identifies
 // at most one row with no risk of a cross-tenant match, and the id is not
 // realistically guessable/enumerable.
+// POST /api/public/enquiry — the "استفسر الآن" widget on the public site.
+//
+// That widget used to submit a *lead*, which is why an enquiry surfaced in
+// العملاء المحتملين and never reached the support inbox or the ticket list:
+// nobody in customer service ever saw a question a visitor had asked. It now
+// opens a real routed ticket, so it lands in the queue of whichever department
+// the visitor picked, with an owner and an SLA like any other ticket, and the
+// existing reply path already emails and WhatsApps them when staff answer.
+const ENQUIRY_DEPARTMENTS = Object.freeze({
+  support: 'general',        // خدمة العملاء
+  sales:   'sales_inquiry',  // المبيعات
+  hr:      'hr_inquiry',     // الموارد البشرية
+});
+
+router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
+  let conn;
+  try {
+    const name = cleanText(req.body?.name, 200);
+    const phone = cleanText(req.body?.phone, 40);
+    const email = normalizedEmail(req.body?.email).slice(0, 200);
+    const message = cleanText(req.body?.message, TEXT_LIMITS.body);
+    if (!name || !phone) return res.status(400).json({ error: 'الاسم ورقم الهاتف مطلوبان' });
+    if (!message) return res.status(400).json({ error: 'اكتب استفسارك' });
+
+    const category = ENQUIRY_DEPARTMENTS[String(req.body?.department || 'support')] || 'general';
+
+    conn = await pool.getConnection();
+
+    // Tie the enquiry to an existing customer when the email or phone matches
+    // one, so it lands on their file instead of looking like a stranger. Most
+    // visitors give a phone and no email, so this matches on either — the
+    // shared identity helper only knows uid/email.
+    let subscriberId = null;
+    try {
+      const digits = phone.replace(/\D/g, '').slice(-9);
+      const [[match]] = await conn.query(
+        `SELECT id FROM subscribers
+          WHERE tenant_id=? AND deleted_at IS NULL
+            AND ((?<>'' AND LOWER(TRIM(email))=?)
+              OR (?<>'' AND REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+','') LIKE CONCAT('%', ?)))
+          LIMIT 1`,
+        [req.tenantId, email, email, digits, digits]
+      );
+      subscriberId = match?.id || null;
+    } catch { /* an unmatched visitor is normal, not an error */ }
+
+    await conn.beginTransaction();
+    const created = await createRoutedTicket(conn, {
+      tenantId: req.tenantId,
+      subscriberId,
+      email,
+      name,
+      subject: `استفسار من الموقع — ${name}`,
+      body: `${message}\n\n— رقم الهاتف: ${phone}`,
+      category,
+      channel: 'web',
+      sourceType: 'public_enquiry',
+      sourceId: null,
+      actor: { id: null, name },
+    });
+    await conn.commit(); conn.release(); conn = null;
+
+    res.json({
+      ok: true,
+      ticketId: created.id,
+      department: DEPARTMENT_LABEL[created.department] || created.department,
+    });
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    logger.error('[public/enquiry]', e.message);
+    res.status(500).json({ error: 'تعذر إرسال استفسارك حالياً. جرّب مرة أخرى أو راسلنا على واتساب.' });
+  }
+});
+
 router.get('/api/ticket-csat/:id', publicLimiter, async (req, res) => {
   try {
     const token = String(req.query.token || '');
