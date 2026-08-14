@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
 import {
   
@@ -12,6 +13,12 @@ import type {
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { normBranchId } from '../dashboardShared';
 import { type PaymentDraft } from '../../../components/PaymentModal';
+
+// Kept beside the component so the URL parser and the tab strip agree on what
+// a valid view is; an unknown ?view= falls back to 'active' rather than
+// rendering an empty table.
+type OnlineViewTab = 'active' | 'real-local' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'old_intl';
+const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl'];
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { OnlineClientCourseDetailsModal } from './OnlineClientCourseDetailsModal';
 import { OnlineClientConvertModal, type OnlineClientConvertType } from './OnlineClientConvertModal';
@@ -103,7 +110,20 @@ export default function OnlineClientsTab({
   const [collOnlineCollectionFilter, setCollOnlineCollectionFilter] = useState('');
   const [collOnlineCertFilter, setCollOnlineCertFilter] = useState<'all'|'has_cert'|'no_cert'>('all');
   // Collection/online_manager — client sub-view tabs
-  const [collOnlineViewTab, setCollOnlineViewTab] = useState<'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'>('active');
+  // The open tab lives in the URL rather than in component state, so the link
+  // in the address bar names the view you are actually looking at: it can be
+  // sent to a colleague, bookmarked, and the browser's back button steps
+  // through tabs instead of leaving the page.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlView = searchParams.get('view') as OnlineViewTab | null;
+  const collOnlineViewTab: OnlineViewTab = urlView && ONLINE_VIEW_TABS.includes(urlView) ? urlView : 'active';
+  const setCollOnlineViewTab = (value: OnlineViewTab) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('view', value);
+    // replace: switching tabs is not a navigation worth a history entry per
+    // click, but the URL still reflects where you are.
+    setSearchParams(next, { replace: true });
+  };
   // Daqqi clients tab — housing + old data state
   const [daqqiHousingFilter, setDaqqiHousingFilter] = useState<'all'|'housed'|'unhoused'>('all');
   const [daqqiRoundFilter, setDaqqiRoundFilter] = useState('');

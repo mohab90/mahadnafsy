@@ -97,8 +97,22 @@ export function OldDataImportSection({
               const enrolledCourseIds = matchedCourse ? [matchedCourse.id] : [];
               const paid = Number(row._paid) || 0;
               const expected = Number(row._expected) || 0;
+              // A refund in the old sheet is recorded as a note rather than
+              // netted off the collected amount: quietly reducing what the
+              // import says was paid would make the historic figures disagree
+              // with the sheet they came from, and a refund needs a decision
+              // trail, not an adjusted number. Same for a remaining balance
+              // that disagrees with expected − paid — worth seeing, not worth
+              // silently overwriting.
+              const refund = Number(row._refund) || 0;
+              const statedRemaining = row._remaining === '' ? null : Number(row._remaining);
+              const computedRemaining = expected - paid;
               const extraNotes = [
                 row._notes,
+                refund > 0 ? `استرداد سابق: ${refund}` : '',
+                statedRemaining !== null && Number.isFinite(statedRemaining) && statedRemaining !== computedRemaining
+                  ? `المتبقي في الملف ${statedRemaining} بينما الحساب ${computedRemaining}`
+                  : '',
                 row._cert ? `شهادة: ${row._cert}` : '',
                 row._attendance ? `حضور: ${row._attendance}` : '',
               ].filter(Boolean).join(' | ');

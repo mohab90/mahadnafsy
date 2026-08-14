@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Search, Users, UserCheck, UserPlus, MessageSquare,
-  CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square,
+  CreditCard, Download, ExternalLink, BookOpen, CheckSquare, Square, Trash2,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin, type RegistrationItem } from '../../../lib/mysqlapi';
@@ -88,7 +88,7 @@ const SUB_TYPE_COLOR: Record<string, string> = {
 };
 
 export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBook?: (id: string, type: 'subscriber' | 'lead') => void }) {
-  const { subscribers, leads, courses, staffScopedSubscribers, staffScopedLeads } = useSiteData();
+  const { subscribers, leads, courses, staffScopedSubscribers, staffScopedLeads, reloadSubscribers, deleteSubscriber, deleteLead, isAdmin } = useSiteData();
   // Staff-scoped data is populated from the original DB rows by Dashboard's fetchSalesData.
   // Prefer it whenever available so full-access staff roles (online manager) do not fall back to a separate admin-only context path.
   const effectiveSubs = staffScopedSubscribers.length > 0 ? staffScopedSubscribers : subscribers;
@@ -120,6 +120,35 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
         : `تم تحويل ${name || 'العميل'} لعميل محتمل`);
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر التحويل');
+    } finally { setRegBusy(null); }
+  };
+
+  // Taking money from someone who signed up on the site is one action, not two.
+  // Converting is also what issues their client code, so this is the moment the
+  // code appears — a registration has none because it is not a client yet.
+  const convertThenBook = async (row: ClientRow) => {
+    if (!window.confirm(`${row.name || 'هذا المسجَّل'} لسه تسجيل موقع.\nهيتحوّل لعميل أونلاين ويتصدر له كود عميل، وبعدها تسجّل الدفعة. تمام؟`)) return;
+    setRegBusy(row.id);
+    try {
+      const { subscriberId } = await mysqlAdmin.convertRegistrationToOnline(row.id, 'ONLINE_EGYPT');
+      setRegistrations(prev => prev.filter(r => r.id !== row.id));
+      await reloadSubscribers();
+      notify('success', `تم تحويل ${row.name || 'العميل'} لعميل أونلاين — افتح الدفع الآن`);
+      if (onBook && subscriberId) onBook(String(subscriberId), 'subscriber');
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر تحويل التسجيل لعميل');
+    } finally { setRegBusy(null); }
+  };
+
+  const removeClient = async (row: ClientRow) => {
+    const label = row.type === 'lead' ? 'العميل المحتمل' : 'العميل';
+    if (!window.confirm(`حذف ${label} "${row.name || ''}"؟\nالحذف أرشفة — البيانات والمدفوعات تفضل محفوظة ويمكن استعادتها من «أرشيف العملاء».`)) return;
+    setRegBusy(row.id);
+    try {
+      const ok = row.type === 'lead' ? await deleteLead(row.id) : await deleteSubscriber(row.id);
+      notify(ok ? 'success' : 'error', ok ? `تمت أرشفة ${row.name || label}` : 'تعذر الحذف');
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذر الحذف');
     } finally { setRegBusy(null); }
   };
 
@@ -632,24 +661,22 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                     {/* Actions */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1.5 justify-center">
-                        {/* Open profile — a registration has no client record
-                            yet, so there is no profile page to open. Offer the
-                            two conversions instead. */}
+                        {/* A registration has no client record yet, so there is
+                            no profile page to open. The "أونلاين" button that
+                            used to sit here is gone: converting to an online
+                            client is what the حجز/دفعة button now does on its
+                            way to taking the money, so keeping a second button
+                            for the same conversion only split one action in
+                            two. "محتمل" stays, as a plain icon like the rest. */}
                         {isRegistration ? (
-                          <>
-                            <button
-                              onClick={() => void convertRegistration(c.id, 'online', c.name)}
-                              disabled={regBusy === c.id}
-                              className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[11px] font-bold transition disabled:opacity-50"
-                              title="تحويل لعميل أونلاين"
-                            >أونلاين</button>
-                            <button
-                              onClick={() => void convertRegistration(c.id, 'lead', c.name)}
-                              disabled={regBusy === c.id}
-                              className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 text-[11px] font-bold transition disabled:opacity-50"
-                              title="تحويل لعميل محتمل"
-                            >محتمل</button>
-                          </>
+                          <button
+                            onClick={() => void convertRegistration(c.id, 'lead', c.name)}
+                            disabled={regBusy === c.id}
+                            className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition disabled:opacity-50"
+                            title="تحويل لعميل محتمل"
+                          >
+                            <UserPlus size={13} />
+                          </button>
                         ) : (
                           <button
                             onClick={() => navigate(profilePath)}
@@ -674,7 +701,14 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                         {/* Booking/payment — all client types */}
                         <button
                           onClick={() => {
-                            if (c.type === 'registration') { notify('info', 'حوّل التسجيل من صفحة «التسجيلات» الأول — لسه مش عميل'); return; }
+                            // A site registration used to be turned away here
+                            // with "convert it from the registrations page
+                            // first", which meant leaving this screen, finding
+                            // the same person again, and coming back — for a
+                            // step the button can simply take. Converting is
+                            // also what issues the client code, which is why a
+                            // self-registered visitor appeared to have none.
+                            if (c.type === 'registration') { void convertThenBook(c); return; }
                             if (onBook) onBook(c.id, c.type);
                             else navigate(profilePath, { state: { openTab: 'payments' } });
                           }}
@@ -683,6 +717,20 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
                         >
                           <CreditCard size={13} />
                         </button>
+                        {/* Deleting a client archives them — the record and its
+                            payments survive and can be restored from أرشيف
+                            العملاء. Admin only, because it removes someone from
+                            everyone else's lists. */}
+                        {isAdmin && !isRegistration && (
+                          <button
+                            onClick={() => void removeClient(c)}
+                            disabled={regBusy === c.id}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-700 transition disabled:opacity-50"
+                            title="حذف (أرشفة)"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

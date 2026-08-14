@@ -9,6 +9,8 @@ export type OldDataRow = {
   _course: string;
   _paid: string;
   _expected: string;
+  _refund: string;
+  _remaining: string;
   _cert: string;
   _attendance: string;
 };
@@ -22,9 +24,9 @@ type OldDataImportPanelProps = {
 };
 
 const supportedColumns = [
-  ['name / الاسم', 'phone / هاتف', 'email'],
-  ['course / كورس', 'paid / مدفوع', 'expected / متوقع'],
-  ['cert / شهادة', 'attendance / حضور', 'notes / ملاحظات'],
+  ['الاسم / name', 'هاتف / phone', 'email'],
+  ['كورس / course', 'المحصل / مدفوع / paid', 'قيمة الكورس / متوقع / expected'],
+  ['الاسترداد / refund', 'المتبقي / remaining', 'شهادة / حضور / ملاحظات'],
 ];
 
 const normalizeCell = (value: string | undefined) => (value || '').replace(/^"|"$/g, '').trim();
@@ -41,8 +43,16 @@ function parseOldData(text: string): OldDataRow[] {
   const emailCol = findColumn(headers, 'email', 'إيميل', 'ايميل');
   const notesCol = findColumn(headers, 'note', 'ملاحظ');
   const courseCol = findColumn(headers, 'course', 'كورس');
-  const paidCol = findColumn(headers, 'paid', 'مدفوع');
-  const expectedCol = findColumn(headers, 'expected', 'متوقع');
+  // The institute's own sheets head these columns "المحصل", "قيمة الكورس",
+  // "الاسترداد" and "المتبقي" rather than paid/expected, so a real export
+  // matched nothing and every amount imported as zero. Accept both wordings.
+  const paidCol = findColumn(headers, 'paid', 'مدفوع', 'محصل', 'المحصل');
+  const expectedCol = findColumn(headers, 'expected', 'متوقع', 'قيمة', 'اجمالي', 'إجمالي');
+  const refundCol = findColumn(headers, 'refund', 'استرداد', 'مسترد');
+  // Remaining is expected minus paid, which the system already computes; the
+  // column is read only so a sheet that carries it is not rejected, and so a
+  // disagreement between the sheet and the arithmetic can be seen.
+  const remainingCol = findColumn(headers, 'remaining', 'متبق', 'باقي');
   const certCol = findColumn(headers, 'cert', 'شهاد');
   const attendanceCol = findColumn(headers, 'attend', 'حضور');
 
@@ -58,6 +68,8 @@ function parseOldData(text: string): OldDataRow[] {
         _course: cols[courseCol] || '',
         _paid: cols[paidCol] || '',
         _expected: cols[expectedCol] || '',
+        _refund: cols[refundCol] || '',
+        _remaining: cols[remainingCol] || '',
         _cert: cols[certCol] || '',
         _attendance: cols[attendanceCol] || '',
       };
