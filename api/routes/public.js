@@ -8,7 +8,7 @@ const router = Router();
 
 const { uuidv4 } = require('../lib/id');
 
-const { pool, cached } = require('../lib/db');
+const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
@@ -138,6 +138,77 @@ router.get('/api/branches', publicLimiter, async (req, res) => {
     const { listBranches } = require('../lib/branchesRepo');
     res.set('Cache-Control', 'public, max-age=300');
     res.json(await listBranches(req.tenantId));
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── Branch management ────────────────────────────────────────────────────────
+//
+// /api/branches has always been read-only, and the `branches` table is empty,
+// so every branch list in the system has been falling back to the six hardcoded
+// constants — which is why the branches offered when a customer registers
+// interest are not the institute's real ones, and why there was no way to add
+// one. A name is the only thing genuinely required; a key is derived from it
+// and everything else has a sensible default, because demanding a timezone and
+// a currency to write down "فرع المعادي" is what made this feel impossible.
+const BRANCH_TYPES = new Set(['online', 'physical', 'hybrid', 'other']);
+
+const branchKeyFrom = (value) => String(value || '')
+  .trim().toUpperCase()
+  .replace(/[\s-]+/g, '_')
+  .replace(/[^A-Z0-9_؀-ۿ]/g, '')
+  .slice(0, 120);
+
+router.get('/api/admin/branches', requireAuth, requireAdminOrStaff, async (req, res) => {
+  try {
+    // Includes inactive ones: this is the management view, not the picker.
+    const [rows] = await pool.query(
+      `SELECT id, branch_key, slug, label, branch_type, timezone, currency, is_active, internal_only
+         FROM branches WHERE tenant_id=? ORDER BY is_active DESC, label`,
+      [req.tenantId]
+    );
+    res.json(rows);
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.post('/api/admin/branches', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const label = String(req.body?.label || '').trim().slice(0, 255);
+    if (!label) return res.status(400).json({ error: 'اسم الفرع مطلوب' });
+
+    const key = branchKeyFrom(req.body?.branch_key || label) || `BRANCH_${Date.now()}`;
+    const type = BRANCH_TYPES.has(req.body?.branch_type) ? req.body.branch_type : 'physical';
+    const [[existing]] = await pool.query(
+      'SELECT id FROM branches WHERE tenant_id=? AND branch_key=? LIMIT 1', [req.tenantId, key]);
+    if (existing) return res.status(409).json({ error: 'يوجد فرع بنفس الاسم/المفتاح بالفعل' });
+
+    await pool.query(
+      `INSERT INTO branches (id, tenant_id, branch_key, slug, label, branch_type, timezone, currency, is_active, internal_only)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [uuidv4(), req.tenantId, key, key.toLowerCase(), label, type,
+        String(req.body?.timezone || 'Africa/Cairo').slice(0, 80),
+        String(req.body?.currency || 'EGP').slice(0, 10),
+        req.body?.is_active === false ? 0 : 1,
+        req.body?.internal_only === true ? 1 : 0]
+    );
+    cacheInvalidate(`branches:${req.tenantId}`);
+    res.json({ ok: true, branch_key: key, label, message: `تمت إضافة ${label}` });
+  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.put('/api/admin/branches/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sets = []; const vals = [];
+    if (req.body?.label !== undefined) { sets.push('label=?'); vals.push(String(req.body.label).trim().slice(0, 255)); }
+    if (req.body?.branch_type !== undefined && BRANCH_TYPES.has(req.body.branch_type)) { sets.push('branch_type=?'); vals.push(req.body.branch_type); }
+    if (req.body?.timezone !== undefined) { sets.push('timezone=?'); vals.push(String(req.body.timezone).slice(0, 80)); }
+    if (req.body?.currency !== undefined) { sets.push('currency=?'); vals.push(String(req.body.currency).slice(0, 10)); }
+    if (req.body?.is_active !== undefined) { sets.push('is_active=?'); vals.push(req.body.is_active ? 1 : 0); }
+    if (!sets.length) return res.status(400).json({ error: 'لا يوجد ما يتم تعديله' });
+    vals.push(req.params.id, req.tenantId);
+    const [result] = await pool.query(`UPDATE branches SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, vals);
+    if (!result.affectedRows) return res.status(404).json({ error: 'الفرع غير موجود' });
+    cacheInvalidate(`branches:${req.tenantId}`);
+    res.json({ ok: true });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

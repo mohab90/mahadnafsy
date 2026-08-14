@@ -10,12 +10,18 @@ const { BRANCHES, BRANCH_LABELS_AR } = require('../constants/branches');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 // Returns [{ branch_key, label, branch_type, timezone, currency }], cached 5 min.
+//
+// internal_only branches are excluded. The column existed and was set — the
+// institute's administrative office in Tanta is flagged with it — but nothing
+// read it, so an internal back-office location was offered to customers
+// choosing where to attend. This is the customer-facing list; the admin
+// management view (GET /api/admin/branches) deliberately shows everything.
 async function listBranches(tenantId = DEFAULT_TENANT) {
   try {
     return await cached(`branches:${tenantId}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT branch_key, label, branch_type, timezone, currency
-         FROM branches WHERE tenant_id=? AND is_active=1 ORDER BY label`,
+         FROM branches WHERE tenant_id=? AND is_active=1 AND internal_only=0 ORDER BY label`,
         [tenantId]
       );
       if (!rows.length) throw new Error('empty');
