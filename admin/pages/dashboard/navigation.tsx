@@ -251,7 +251,12 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // contacts/consultations/nps_dashboard each a separate page) — all
       // moved into ServiceHubTab as subtabs, unchanged, so nothing lost.
       { key: 'service_hub', label: 'الدعم والجودة', icon: Star },
-      { key: 'consultation_calendar', label: 'تقويم الاستشارات', icon: CalendarDays },
+      // Refunds and consultations were subtabs buried inside الدعم والجودة as
+      // well as being their own workflows; they are money and calendar
+      // decisions people go to directly, so they sit at this level and appear
+      // in exactly one place. Consultations now carries its own calendar.
+      { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
+      { key: 'consultations', label: 'الاستشارات', icon: CalendarDays },
       // Certificates are a customer request workflow, not site content — they were
       // under المحتوى, which meant seeing them required manage_content and the
       // whole page-editor section with it.
