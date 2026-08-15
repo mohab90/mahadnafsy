@@ -1054,7 +1054,7 @@ router.get('/api/admin/referrals/:code/subscribers', requireAuth, requireAdmin, 
     const [rows] = await pool.query(
       `SELECT s.id, s.name, s.email, s.client_code, s.created_at
        FROM subscribers s
-       WHERE s.referral_code = ? AND s.tenant_id = ?
+       WHERE s.referred_by = ? AND s.tenant_id = ?
        ORDER BY s.created_at DESC`,
       [req.params.code, req.tenantId]
     );

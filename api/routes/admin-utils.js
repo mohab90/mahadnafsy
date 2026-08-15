@@ -172,7 +172,7 @@ function toCSV(rows, columns) {
 router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, bulkOperationLimiter, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT s.id, s.name, s.email, s.phone, s.status, s.source, s.created_at,
+      `SELECT s.id, s.name, s.email, s.phone, s.is_active, s.source, s.created_at,
               COUNT(DISTINCT e.course_id) AS courses_count,
               COALESCE(SUM(p.amount_egp),0) AS total_paid
        FROM subscribers s

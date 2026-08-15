@@ -277,8 +277,13 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
 
     // Active clients with at least 1 payment, but none recently
     const [inactive] = await pool.query(`
-      SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.status,
-             s.total_paid, s.remaining_amount,
+      -- status, total_paid and remaining_amount are not columns on subscribers:
+      -- is_active carries the state and the money is summed from payments. The
+      -- churn-risk report answered 500 on every open because of it. NULLS LAST
+      -- is Postgres syntax and is not valid in MySQL either — a NULL max date
+      -- sorts last here by putting the IS NULL test first.
+      SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.is_active,
+             COALESCE(SUM(p.amount), 0) AS total_paid,
              MAX(p.created_at) AS last_payment_date,
              DATEDIFF(NOW(), MAX(p.created_at)) AS days_since_payment
       FROM subscribers s
@@ -286,7 +291,7 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
       GROUP BY s.id
       HAVING (last_payment_date IS NULL OR last_payment_date < ?)
-      ORDER BY days_since_payment DESC NULLS LAST
+      ORDER BY days_since_payment IS NULL, days_since_payment DESC
       LIMIT 500`, [req.tenantId, cutoffStr]);
 
     // Retention rate: active clients with recent payment / all active
@@ -319,8 +324,11 @@ router.get('/api/admin/analytics/retention', requireAuth, requireAdmin, async (r
 router.get('/api/admin/analytics/churn-risk', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [clients] = await pool.query(`
-      SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch,
-             s.total_paid, s.remaining_amount, s.created_at,
+      -- total_paid and remaining_amount are not columns on subscribers; the
+      -- money is summed from payments. This 500'd the churn-risk report.
+      SELECT s.id, s.client_code, s.name, s.phone, s.email, s.branch, s.created_at,
+             (SELECT COALESCE(SUM(px.amount),0) FROM payments px
+               WHERE px.tenant_id=s.tenant_id AND px.subscriber_id=s.id AND px.status='paid') AS total_paid,
              DATEDIFF(NOW(), s.created_at) AS days_old,
              (SELECT MAX(p.created_at) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='paid') AS last_payment,
              (SELECT COUNT(*) FROM payments p WHERE p.tenant_id=s.tenant_id AND p.subscriber_id = s.id AND p.status='pending') AS pending_count

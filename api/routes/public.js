@@ -430,7 +430,7 @@ router.get('/api/completions/:code/certificate', publicLimiter, async (req, res)
     const [[row]] = await pool.query(
       `SELECT cc.certificate_code,cc.completed_at,cc.tenant_id,
               s.name AS subscriber_name, s.client_code,
-              c.title AS course_title, c.hours_count,
+              c.title AS course_title, c.hours AS hours_count,
               u.name AS instructor_name
        FROM course_completions cc
        JOIN subscribers s ON s.id = cc.subscriber_id AND s.tenant_id=cc.tenant_id

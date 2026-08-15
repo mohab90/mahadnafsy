@@ -108,7 +108,9 @@ router.get('/api/admin/finance/salary-advances', requireAuth, requireAdminOrStaf
       `SELECT a.id,a.staff_id,a.amount,a.currency,a.reason,a.status,
               a.deduct_month,a.deduct_year,a.approved_at,a.disbursed_at,
               a.journal_entry_id,a.created_at,s.name AS staff_name,
-              s.branch,s.branch_id,ap.name AS approved_by_name
+              -- staff carries branch_id, not a branch name column; selecting
+              -- one made the salary-advances list answer 500.
+              s.branch_id,ap.name AS approved_by_name
          FROM salary_advances a
          JOIN staff s ON s.id=a.staff_id AND s.tenant_id=a.tenant_id
          LEFT JOIN staff ap ON ap.id=a.approved_by AND ap.tenant_id=a.tenant_id
@@ -207,7 +209,7 @@ router.put('/api/admin/hr/advances/:advId/disburse', requireAuth, requireAdminOr
     transactionStarted = true;
     const [[advance]] = await conn.query(
       `SELECT a.id,a.staff_id,a.amount,a.currency,a.status,a.approved_by,s.name AS staff_name,
-              s.branch,s.branch_id
+              s.branch_id
          FROM salary_advances a
          JOIN staff s ON s.id=a.staff_id AND s.tenant_id=a.tenant_id
         WHERE a.id=? AND a.tenant_id=? LIMIT 1 FOR UPDATE`,
@@ -337,10 +339,14 @@ router.get('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requi
     const { staff_id } = req.query;
     let sql = `SELECT d.*, s.name AS staff_name, s.role, s.image,
         i.name AS issued_by_name
+      -- disciplinary_records has no deleted_at column, so the WHERE below used
+      -- to reference one and the whole list answered 500. Withdrawing a record
+      -- deletes the row outright (see the DELETE route), so there is nothing to
+      -- filter out here.
       FROM disciplinary_records d
       JOIN staff s ON s.id=d.staff_id AND s.tenant_id=d.tenant_id
       LEFT JOIN staff i ON i.id=d.issued_by AND i.tenant_id=d.tenant_id
-      WHERE d.tenant_id=? AND d.deleted_at IS NULL`;
+      WHERE d.tenant_id=?`;
     const params = [req.tenantId];
     if (staff_id) { sql += ' AND d.staff_id=?'; params.push(staff_id); }
     sql += ' ORDER BY d.created_at DESC';

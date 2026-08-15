@@ -26,7 +26,9 @@
     "start:tunnel": "cd api && node tunnel.js",
     "start:admin": "cd admin && npx vite --port 4000",
     "start:client": "cd client && npx vite --port 3000",
-    "install:all": "cd api && npm install && cd ../admin && npm install && cd ../client && npm install"
+    "install:all": "cd api && npm install && cd ../admin && npm install && cd ../client && npm install",
+    "audit:columns": "node tools/schema-column-audit.cjs",
+    "audit:env": "node tools/env-var-audit.cjs"
   },
   "keywords": [
     "mahad",

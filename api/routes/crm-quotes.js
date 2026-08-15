@@ -111,7 +111,15 @@ router.post('/api/admin/crm/quotes', ...manage, async (req, res) => {
     const scope = leadScope(req, 'l');
     await conn.beginTransaction();
     const [[lead]] = await conn.query(
-      `SELECT l.id,l.subscriber_id FROM leads l
+      // leads has no subscriber_id column — the link to a customer record is
+      // client_code — so this selected a column that does not exist and every
+      // attempt to raise a quote against a lead answered 500. Resolved through
+      // the code instead, which keeps the same fallback the caller expects.
+      `SELECT l.id,
+              (SELECT s.id FROM subscribers s
+                WHERE s.tenant_id=l.tenant_id AND s.client_code=l.client_code
+                  AND s.deleted_at IS NULL LIMIT 1) AS subscriber_id
+         FROM leads l
         WHERE l.id=? AND l.tenant_id=? AND l.hidden=0${scope.sql} LIMIT 1 FOR UPDATE`,
       [req.body?.lead_id, req.tenantId, ...scope.params]
     );
