@@ -152,7 +152,14 @@ export function ClientsTable({
                 const cur = branchCurrency;
                 const nb = bPay.find(p => !p.isInstallment);
                 const bPrice = (b.price as unknown as Record<string,number>)[cur] || b.price.EGP || 0;
-                const expected = customPrices[bundleCid] || nb?.courseExpected || bPrice || 0;
+                // The bundle's own price outranks courseExpected here. That field
+                // carries the price of a single course, so a bundle bought for
+                // 5,500 was displayed against an expected 900 — the "paid more
+                // than the product is worth" rows in the QA report were all
+                // bundles being measured against one of their courses. An
+                // explicit per-client override still wins; courseExpected is
+                // only the last resort, for a bundle with no catalogue price.
+                const expected = customPrices[bundleCid] || bPrice || nb?.courseExpected || 0;
                 const paid = bPay.reduce((s,p) => s+(Number(p.amount)||0), 0);
                 return { cid: bundleCid, label: b.title, expected, paid, remaining: expected > 0 ? Math.max(0, expected-paid) : 0, cur };
               }),
@@ -443,8 +450,19 @@ export function ClientsTable({
                   )}
                   {vc.createdAt && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{crFirstPayDate||'—'}</td>}
                   {vc.courses && <td className="px-2 py-2 border border-gray-200 text-[11px] text-gray-700 max-w-[160px] truncate" title={cr.label}>{cr.label}</td>}
+                  {/* Paid above the recorded value is not an accounting error,
+                      it means the recorded value is not trustworthy — usually a
+                      deposit figure left in course_expected instead of the full
+                      price. Marked rather than hidden, so it can be corrected
+                      instead of being read as money that does not add up. */}
                   {vc.value && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-gray-700">
-                    {cr.expected > 0 ? `${cr.expected.toLocaleString()} ${currFmt(cr.cur)}` : '—'}
+                    {cr.expected > 0 ? (
+                      cr.paid > cr.expected ? (
+                        <span className="text-amber-700" title={`المسجَّل ${cr.expected.toLocaleString()} أقل من المحصَّل ${cr.paid.toLocaleString()} — راجع قيمة الاشتراك`}>
+                          {cr.expected.toLocaleString()} {currFmt(cr.cur)} <span className="text-[10px]">⚠</span>
+                        </span>
+                      ) : `${cr.expected.toLocaleString()} ${currFmt(cr.cur)}`
+                    ) : '—'}
                   </td>}
                   {vc.paid && <td className="px-2 py-2 border border-gray-200 text-center text-[11px] font-bold text-emerald-700">
                     {cr.paid > 0 ? `${cr.paid.toLocaleString()} ${currFmt(cr.cur)}` : '—'}

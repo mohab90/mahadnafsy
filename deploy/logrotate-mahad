@@ -14,3 +14,27 @@
     delaycompress
     copytruncate
 }
+
+# The API's own log, which this file did not cover and which had reached 160 MB
+# — by far the largest thing being written and the only one with no ceiling.
+#
+# copytruncate rather than create: systemd owns the file through
+# StandardOutput=append and keeps the descriptor open, so renaming it would
+# leave the API writing into an unlinked inode and the new file permanently
+# empty. Copy-then-truncate keeps that descriptor valid.
+#
+# Rotated daily and capped at 14 files with size 50M as the trigger, so a busy
+# day rotates on size instead of waiting for midnight — the point is to bound
+# the total, which this holds to roughly 700 MB uncompressed and far less once
+# compressed.
+/var/log/mahad-api.log
+{
+    daily
+    size 50M
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

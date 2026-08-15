@@ -201,6 +201,61 @@ function scheduleFollowUpReminders() {
 }
 scheduleFollowUpReminders();
 
+// Every open ticket in the system had passed its first-response window, which
+// is what happens when nothing ever raises its hand: a ticket that breaches its
+// SLA looks exactly like one that arrived a minute ago until somebody scrolls
+// far enough. This notifies the assignee — and management for the worst ones —
+// once per ticket, so a backlog announces itself instead of accumulating.
+async function runSlaBreachSweep(tenantId = DEFAULT_TENANT) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.id, t.subject, t.assigned_to, t.priority, t.created_at,
+              TIMESTAMPDIFF(HOUR, t.created_at, NOW()) AS age_hours
+         FROM support_tickets t
+        WHERE t.tenant_id=? AND t.deleted_at IS NULL
+          AND t.status IN ('open','in_progress')
+          AND t.first_response_at IS NULL
+          AND t.sla_due_at IS NOT NULL AND t.sla_due_at < NOW()
+          AND t.sla_breach_notified_at IS NULL
+        ORDER BY t.sla_due_at ASC
+        LIMIT 100`, [tenantId]);
+    if (!rows.length) return;
+
+    for (const t of rows) {
+      await createNotification(
+        'ticket', '⏰ تذكرة تجاوزت وقت الرد',
+        `«${t.subject || 'تذكرة'}» مستنية ${t.age_hours} ساعة بدون رد`,
+        { ticketId: t.id }, tenantId, t.assigned_to || null
+      ).catch(() => {});
+      // Unowned, or a full day late: management needs to see it too.
+      if (!t.assigned_to || t.age_hours >= 24) {
+        await createNotification(
+          'ticket', '⚠️ تذكرة متأخرة تحتاج تدخل',
+          `«${t.subject || 'تذكرة'}» — ${t.age_hours} ساعة${t.assigned_to ? '' : ' وبدون مسؤول'}`,
+          { ticketId: t.id }, tenantId, null
+        ).catch(() => {});
+      }
+      // Marked so the same ticket is not re-announced every hour; the flag is
+      // what makes this a nudge rather than a source of noise.
+      await pool.query(
+        'UPDATE support_tickets SET sla_breach_notified_at=NOW() WHERE id=? AND tenant_id=?',
+        [t.id, tenantId]).catch(() => {});
+    }
+    logger.info(`[sla-sweep] ${rows.length} breached ticket(s) flagged for ${tenantId}`);
+  } catch (e) { logger.warn('[sla-sweep] error:', e.message); }
+}
+
+function scheduleSlaBreachSweep() {
+  // Hourly: a first-response window is measured in hours, so a daily check
+  // would report a breach up to a day after it mattered.
+  setTimeout(() => {
+    forEachActiveTenant(runSlaBreachSweep);
+    setInterval(() => forEachActiveTenant(runSlaBreachSweep), 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
+  logger.info('[sla-sweep] scheduled — hourly, first run in 5m');
+}
+scheduleSlaBreachSweep();
+
 // GET /api/admin/leads/due-today — list leads due for follow-up today
 
 async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
