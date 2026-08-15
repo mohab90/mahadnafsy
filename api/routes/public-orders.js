@@ -186,6 +186,17 @@ function paymobCallbackUrls(paymob) {
 // works with a Unified (UIG) integration and the newer `egy_sk_` secret key,
 // so it is used when both are present and the classic three-call flow remains
 // for accounts that have neither.
+// Every integration the merchant has configured. Unified Checkout offers the
+// customer exactly the methods the intention was created with, so sending only
+// the unified id meant the live page showed a mobile wallet field and nothing
+// else — no card form at all, on a site whose customers pay by card.
+function paymobPaymentMethods(paymob) {
+  const ids = [paymob.integration_id_unified, paymob.integration_id_card, paymob.integration_id_wallet]
+    .map(value => Number(String(value ?? '').replace(/\D+/g, '')))
+    .filter(value => Number.isFinite(value) && value > 0);
+  return [...new Set(ids)];
+}
+
 async function paymobIntention({ paymob, amountCents, currency, orderId, itemTitle, billing }) {
   const { notification, redirection } = paymobCallbackUrls(paymob);
   if (!notification || !redirection) throw new Error('Paymob webhook/callback URLs are not configured');
@@ -195,7 +206,7 @@ async function paymobIntention({ paymob, amountCents, currency, orderId, itemTit
     body: JSON.stringify({
       amount: amountCents,
       currency,
-      payment_methods: [Number(paymob.integration_id_unified)],
+      payment_methods: paymobPaymentMethods(paymob),
       items: itemTitle ? [{ name: String(itemTitle).slice(0, 80), amount: amountCents, quantity: 1 }] : [],
       billing_data: billing,
       special_reference: String(orderId),
