@@ -638,9 +638,11 @@ router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) 
       [ticketId, req.tenantId]);
     if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'الاستفسار غير موجود' }); }
 
+    // author_type is an enum of ('STAFF','CLIENT') — anything else is truncated
+    // by MySQL and the insert fails.
     await conn.query(
       'INSERT INTO ticket_replies (id, tenant_id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?,?)',
-      [uuidv4(), req.tenantId, ticketId, 'CUSTOMER', 'العميل', body]);
+      [uuidv4(), req.tenantId, ticketId, 'CLIENT', 'العميل', body]);
     // A customer writing again reopens a resolved ticket — otherwise their
     // follow-up sits under a closed heading nobody is working.
     await conn.query(
