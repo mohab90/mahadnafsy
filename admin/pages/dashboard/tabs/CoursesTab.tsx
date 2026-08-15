@@ -278,8 +278,12 @@ const saveCourse = async () => {
   // via instructor_rates, and the lecturer opening their own course from their
   // own login); the course itself is perfectly valid with just the name, and
   // courses.instructor_id is nullable precisely for that. Warn and continue.
+  // No instructor in this institute is linked to a staff account, so this fired
+  // on every single save and read as a failure — it is neither. Say plainly
+  // that the save is going ahead, and where to do the linking if the revenue
+  // share is actually wanted, instead of stating a fact with no next step.
   if (!selectedInstructor.staffId) {
-    notify('info', 'تنبيه: المحاضر غير مرتبط بحساب موظف — سيُحفظ الكورس باسمه فقط، بدون نسبة إيراد أو دخول خاص له.');
+    notify('info', `سيُحفظ الكورس باسم ${selectedInstructor.name}. لربطه بحساب موظف (لنسبة الإيراد ودخوله لكورسه): المحاضرون ← عدّل المحاضر ← ربط بحساب موظف — اختياري.`);
   }
   let parsedDetails: Record<string, string> = {};
   try {

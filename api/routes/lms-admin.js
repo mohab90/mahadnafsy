@@ -9,6 +9,14 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const mediaUrlIsValid = value => {
   const url = String(value || '').trim();
   if (url.startsWith('/uploads/videos/')) return true;
+  // The admin panel stores lecture URLs obfuscated as "enc:<base64>" and holds
+  // the key in the frontend, so the server cannot decode one to inspect it.
+  // Treated as valid because the question this answers is "is there a video",
+  // and an encoded value means one was entered. Rejecting it meant every
+  // lecture saved through the panel was silently downgraded to a draft and
+  // vanished from the course on the next refresh — 39 lectures were stuck that
+  // way, all of them with a video attached.
+  if (/^enc:[A-Za-z0-9+/=]+$/.test(url)) return true;
   try { return ['http:', 'https:'].includes(new URL(url).protocol); } catch { return false; }
 };
 const durationSeconds = (value, explicit) => {
