@@ -219,7 +219,11 @@ async function runSlaBreachSweep(tenantId = DEFAULT_TENANT) {
           AND t.sla_breach_notified_at IS NULL
         ORDER BY t.sla_due_at ASC
         LIMIT 100`, [tenantId]);
-    if (!rows.length) return;
+    // Say so even when there is nothing to flag. Without this line a sweep
+    // that ran and found nothing and a sweep that never ran look identical in
+    // the log, and a scheduled job you cannot confirm ran is one you cannot
+    // trust — which is exactly the state this was in.
+    if (!rows.length) { logger.info(`[sla-sweep] no breached tickets for ${tenantId}`); return; }
 
     for (const t of rows) {
       await createNotification(
