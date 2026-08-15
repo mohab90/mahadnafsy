@@ -560,6 +560,8 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   client:             'view_client_db',
 
   archived_clients: 'delete_subscribers',
+
+  branches_settings: 'manage_settings',
   registrations:      'view_leads',
   leads:              'view_leads',
   followup_reminders: 'view_leads',

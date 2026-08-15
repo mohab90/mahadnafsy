@@ -6,6 +6,7 @@ import type { NotifyFn } from '../../types';
 import {
   AnalyticsTab,
   ArchivedClientsTab,
+  BranchesSettingsTab,
   BalanceSheetTab,
   BranchWorkspacesTab,
   BudgetTrackerTab,
@@ -127,6 +128,7 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'subscriptions', Component: SubscriptionsTab, spinner: 'indigo' },
   { key: 'lead_scoring', Component: LeadScoringTab, spinner: 'indigo' },
   { key: 'consultation_calendar', Component: ConsultationCalendarTab, spinner: 'indigo' },
+  { key: 'branches_settings', Component: BranchesSettingsTab, spinner: 'indigo' },
   { key: 'archived_clients', Component: ArchivedClientsTab, spinner: 'indigo' },
   { key: 'expense_analytics', Component: ExpenseAnalyticsTab, spinner: 'indigo' },
   { key: 'revenue_sources', Component: RevenueSourcesTab, spinner: 'indigo' },

@@ -3,6 +3,7 @@ import {
   Activity,
   Archive,
   AlarmClock,
+  Building2,
   BarChart3,
   Bell,
   Mail,
@@ -147,6 +148,7 @@ export type TabKey =
   | 'lead_sources_settings'
   | 'otp_settings'
   | 'branch_workspaces'
+  | 'branches_settings'
   | 'webhooks'
   | 'ip_whitelist'
   | 'security_dashboard'
@@ -346,6 +348,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'lead_sources_settings', label: 'مصادر الليد والداتا', icon: UserPlus },
       { key: 'otp_settings', label: 'OTP والقنوات', icon: Shield },
       { key: 'sms_settings', label: 'إعدادات SMS', icon: MessageSquareText },
+      // The branch list itself — what appears in booking, payment and course
+      // interest. Distinct from مساحات عمل الفروع, which arranges the dashboard
+      // per branch rather than defining which branches exist.
+      { key: 'branches_settings', label: 'الفروع', icon: Building2 },
       { key: 'branch_workspaces', label: 'مساحات عمل الفروع', icon: FolderKanban },
       { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
       { key: 'ip_whitelist', label: 'قائمة IP المسموحة', icon: Shield },
