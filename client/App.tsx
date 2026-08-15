@@ -46,6 +46,14 @@ import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { toDialable } from './lib/whatsappLink';
 
+const ENQUIRY_TOKEN_KEY = 'mahad-enquiry-token';
+
+type EnquiryThread = {
+  subject: string;
+  status: string;
+  messages: { from: 'staff' | 'you'; author: string; body: string; at: string }[];
+};
+
 /** Lead Capture Widget — floating "استفسر الآن" form for public visitors */
 const LeadCaptureWidget: React.FC = () => {
   const { isAdmin, authUser } = useSiteData();
@@ -59,6 +67,12 @@ const LeadCaptureWidget: React.FC = () => {
   const [department, setDepartment] = useState<'support' | 'sales' | 'hr'>('support');
   const [routedTo, setRoutedTo] = useState('');
   const [sent, setSent] = useState(false);
+  // An open conversation from a previous visit, if this browser has one.
+  const [threadToken, setThreadToken] = useState<string>(() => {
+    try { return localStorage.getItem(ENQUIRY_TOKEN_KEY) || ''; } catch { return ''; }
+  });
+  const [thread, setThread] = useState<EnquiryThread | null>(null);
+  const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -70,6 +84,44 @@ const LeadCaptureWidget: React.FC = () => {
   // and nobody in support ever saw it. It now opens a routed support ticket in
   // the department the visitor picked; staff replies already notify them by
   // email and WhatsApp through the existing ticket reply path.
+  // Load the existing conversation whenever the panel is opened with one.
+  useEffect(() => {
+    if (!open || !threadToken) return;
+    let cancelled = false;
+    fetch(`/api/public/enquiry/${encodeURIComponent(threadToken)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled) return;
+        if (data?.ok) setThread(data as EnquiryThread);
+        // A token the server no longer recognises (deleted ticket, rotated
+        // secret) should not strand the visitor on a dead conversation.
+        else { setThread(null); setThreadToken(''); try { localStorage.removeItem(ENQUIRY_TOKEN_KEY); } catch { /* ignore */ } }
+      })
+      .catch(() => { /* leave the form available */ });
+    return () => { cancelled = true; };
+  }, [open, threadToken, sent]);
+
+  const sendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reply.trim() || !threadToken) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/public/enquiry/${encodeURIComponent(threadToken)}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: reply.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'تعذر إرسال رسالتك');
+      setReply('');
+      setThread(prev => (prev
+        ? { ...prev, messages: [...prev.messages, { from: 'you', author: 'أنت', body: reply.trim(), at: new Date().toISOString() }] }
+        : prev));
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : 'تعذر إرسال رسالتك');
+    } finally { setBusy(false); }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim() || !msg.trim()) return;
@@ -87,6 +139,13 @@ const LeadCaptureWidget: React.FC = () => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || 'تعذر إرسال استفسارك حالياً.');
       setRoutedTo(String(data.department || ''));
+      // Remember the conversation so a returning visitor sees the reply here
+      // rather than only in an email. The token proves nothing except that this
+      // browser opened this one enquiry.
+      if (data.token) {
+        try { localStorage.setItem(ENQUIRY_TOKEN_KEY, String(data.token)); } catch { /* private mode */ }
+        setThreadToken(String(data.token));
+      }
       setSent(true);
     } catch (cause) {
       setSubmitError(cause instanceof Error ? cause.message : 'تعذر إرسال طلبك حاليًا. حاول مرة أخرى أو تواصل معنا عبر واتساب.');
@@ -111,7 +170,41 @@ const LeadCaptureWidget: React.FC = () => {
             <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white text-lg leading-none">×</button>
           </div>
           <div className="p-4">
-            {sent ? (
+            {thread ? (
+              /* An open conversation: the reply from the institute is read
+                 here, not only in the email that also goes out. */
+              <div className="space-y-3">
+                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                  <p className="text-[11px] text-gray-400 text-center">{thread.subject}</p>
+                  {thread.messages.length === 0 && (
+                    <p className="text-xs text-gray-500 text-center py-4">
+                      وصلنا استفسارك وهيتم الرد قريباً — هيظهر الرد هنا وعلى واتساب.
+                    </p>
+                  )}
+                  {thread.messages.map((m, i) => (
+                    <div key={i} className={`flex ${m.from === 'staff' ? 'justify-start' : 'justify-end'}`}>
+                      <div className={`max-w-[85%] rounded-xl px-3 py-2 ${m.from === 'staff' ? 'bg-primary-50 text-primary-900' : 'bg-gray-100 text-gray-800'}`}>
+                        <p className="text-[10px] font-bold opacity-60 mb-0.5">{m.author}</p>
+                        <p className="text-sm whitespace-pre-line">{m.body}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {submitError && <p role="alert" className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">{submitError}</p>}
+                <form onSubmit={sendReply} className="flex gap-2">
+                  <input value={reply} onChange={e => setReply(e.target.value)}
+                    placeholder="اكتب رسالتك..."
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-primary-400 outline-none" />
+                  <button type="submit" disabled={busy || !reply.trim()}
+                    className="bg-primary-600 text-white px-3 rounded-xl font-bold text-sm hover:bg-primary-700 disabled:opacity-50">
+                    إرسال
+                  </button>
+                </form>
+                <button type="button"
+                  onClick={() => { setThread(null); setThreadToken(''); setSent(false); try { localStorage.removeItem(ENQUIRY_TOKEN_KEY); } catch { /* ignore */ } }}
+                  className="w-full text-xs text-gray-400 hover:text-primary-600">ابدأ استفسار جديد</button>
+              </div>
+            ) : sent ? (
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">✅</p>
                 <p className="font-bold text-gray-800 mb-1">تم استلام استفسارك</p>

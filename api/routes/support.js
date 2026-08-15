@@ -573,6 +573,95 @@ const ENQUIRY_DEPARTMENTS = Object.freeze({
   hr:      'hr_inquiry',     // الموارد البشرية
 });
 
+// A visitor who is not signed in still needs to read the answer. Signed in the
+// ticket id rather than stored, so this needs no column and no migration: the
+// token *is* the proof, it cannot be guessed without the server secret, and it
+// grants nothing beyond reading and replying to that one ticket.
+const enquirySecret = () => process.env.JWT_SECRET || process.env.AUTH_SECRET || 'mahad-enquiry';
+const signEnquiry = (ticketId) => {
+  const sig = createHash('sha256').update(`${ticketId}.${enquirySecret()}`).digest('hex').slice(0, 32);
+  return `${Buffer.from(String(ticketId)).toString('base64url')}.${sig}`;
+};
+const readEnquiryToken = (token) => {
+  const [encoded, sig] = String(token || '').split('.');
+  if (!encoded || !sig) return null;
+  let ticketId;
+  try { ticketId = Buffer.from(encoded, 'base64url').toString('utf8'); } catch { return null; }
+  // Length-safe compare is unnecessary here (the id is public once issued and
+  // the secret never varies per request), but the check must be exact.
+  return signEnquiry(ticketId).split('.')[1] === sig ? ticketId : null;
+};
+
+// GET /api/public/enquiry/:token — the conversation, for the visitor who opened it.
+router.get('/api/public/enquiry/:token', publicLimiter, async (req, res) => {
+  try {
+    const ticketId = readEnquiryToken(req.params.token);
+    if (!ticketId) return res.status(404).json({ error: 'الرابط غير صالح' });
+    const [[ticket]] = await pool.query(
+      `SELECT id, subject, status, created_at FROM support_tickets
+        WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1`,
+      [ticketId, req.tenantId]);
+    if (!ticket) return res.status(404).json({ error: 'الاستفسار غير موجود' });
+    const [replies] = await pool.query(
+      `SELECT author_type, author_name, body, created_at FROM ticket_replies
+        WHERE ticket_id=? AND tenant_id=? ORDER BY created_at ASC LIMIT 100`,
+      [ticketId, req.tenantId]);
+    res.json({
+      ok: true,
+      subject: ticket.subject,
+      status: ticket.status,
+      // Staff identities are not exposed to an anonymous visitor beyond the
+      // institute's name — who replied internally is not their business.
+      messages: replies.map(r => ({
+        from: String(r.author_type).toUpperCase() === 'STAFF' ? 'staff' : 'you',
+        author: String(r.author_type).toUpperCase() === 'STAFF' ? 'المعهد' : 'أنت',
+        body: r.body,
+        at: r.created_at,
+      })),
+    });
+  } catch (e) { logger.error('[public/enquiry get]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/public/enquiry/:token/reply — the visitor adds to their own thread.
+router.post('/api/public/enquiry/:token/reply', publicLimiter, async (req, res) => {
+  let conn;
+  try {
+    const ticketId = readEnquiryToken(req.params.token);
+    if (!ticketId) return res.status(404).json({ error: 'الرابط غير صالح' });
+    const body = cleanText(req.body?.body, TEXT_LIMITS.body);
+    if (!body) return res.status(400).json({ error: 'اكتب رسالتك' });
+
+    conn = await pool.getConnection(); await conn.beginTransaction();
+    const [[ticket]] = await conn.query(
+      `SELECT id, status, subject, assigned_to FROM support_tickets
+        WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [ticketId, req.tenantId]);
+    if (!ticket) { await conn.rollback(); conn.release(); conn = null; return res.status(404).json({ error: 'الاستفسار غير موجود' }); }
+
+    await conn.query(
+      'INSERT INTO ticket_replies (id, tenant_id, ticket_id, author_type, author_name, body) VALUES (?,?,?,?,?,?)',
+      [uuidv4(), req.tenantId, ticketId, 'CUSTOMER', 'العميل', body]);
+    // A customer writing again reopens a resolved ticket — otherwise their
+    // follow-up sits under a closed heading nobody is working.
+    await conn.query(
+      `UPDATE support_tickets SET status=IF(status IN ('resolved','closed'),'open',status), updated_at=NOW()
+        WHERE id=? AND tenant_id=?`, [ticketId, req.tenantId]);
+    await logTicketEvent(conn, {
+      tenantId: req.tenantId, ticketId, type: 'replied',
+      actorName: 'العميل', detail: body.slice(0, 200),
+    });
+    await conn.commit(); conn.release(); conn = null;
+
+    createNotification('ticket', '💬 رد جديد من عميل', `${ticket.subject || 'استفسار'}: ${body.slice(0, 80)}`,
+      { ticketId }, req.tenantId, ticket.assigned_to || null).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) {
+    if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
+    logger.error('[public/enquiry reply]', e.message);
+    res.status(500).json({ error: 'تعذر إرسال رسالتك' });
+  }
+});
+
 router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
   let conn;
   try {
@@ -625,6 +714,9 @@ router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
       ok: true,
       ticketId: created.id,
       department: DEPARTMENT_LABEL[created.department] || created.department,
+      // Lets the widget keep showing this conversation to the visitor who
+      // opened it, without them needing an account.
+      token: signEnquiry(created.id),
     });
   } catch (e) {
     if (conn) { await conn.rollback().catch(() => {}); conn.release(); }
