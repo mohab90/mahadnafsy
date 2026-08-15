@@ -33,7 +33,21 @@ interface SupportTicket {
   escalatedAt?: string;
   messages: TicketMessage[];
   tags?: string[];
+  sourceType?: string;
+  channel?: string;
 }
+
+// Where a ticket came from, in words. Every value the API writes to
+// support_tickets.source_type is covered; anything unrecognised falls back to
+// "opened by a colleague", which is what a ticket with no source is.
+const SOURCE_LABELS: Record<string, string> = {
+  public_enquiry:  'استفسار من الموقع',
+  contact_message: 'رسالة تواصل محوّلة',
+  payment:         'مشكلة في دفعة',
+  payment_refund:  'طلب استرداد',
+};
+const sourceLabel = (ticket: { sourceType?: string; channel?: string }) =>
+  SOURCE_LABELS[String(ticket.sourceType || '')] || 'فتحها موظف من اللوحة';
 
 // Default SLA hours per priority
 const SLA_BY_PRIORITY: Record<TicketPriority, number> = { urgent: 2, high: 4, medium: 24, low: 72 };
@@ -128,6 +142,12 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
       slaBreached: row.sla === 'overdue' || !!(row.sla_breached || row.slaBreached),
       escalatedTo: row.escalated_to || row.escalatedTo || undefined,
       escalatedAt: row.escalated_at || row.escalatedAt || undefined,
+      // Where this ticket came from. Nothing displayed it, so a ticket arrived
+      // with no indication whether a customer had raised it from the website,
+      // it had been converted from a contact message or a payment problem, or
+      // a colleague had opened it by hand.
+      sourceType: row.source_type || row.sourceType || '',
+      channel: row.channel || '',
       messages: replies.map((reply: any) => ({
         id: String(reply.id),
         text: reply.body || '',
@@ -641,7 +661,10 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-gray-800">{selectedTicket.title}</h3>
-                <p className="text-xs text-gray-400">{selectedTicket.clientName} · {selectedTicket.createdAt.slice(0, 10)}</p>
+                <p className="text-xs text-gray-400">
+                  {selectedTicket.clientName} · {selectedTicket.createdAt.slice(0, 10)}
+                  {' · '}<span className="font-bold text-gray-500">{sourceLabel(selectedTicket)}</span>
+                </p>
               </div>
               <button onClick={() => setSelectedTicket(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
@@ -735,8 +758,15 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 </div>
               </div>
             )}
+            {/* Where the reply actually goes. Staff had no way to know from
+                this screen that sending here reaches the customer directly —
+                so replies were being duplicated by hand on WhatsApp, or not
+                sent at all in the belief that this was an internal note. */}
+            <div className="px-4 pt-2 text-[11px] text-gray-400 border-t border-gray-100">
+              الرد بيوصل للعميل على واتساب والبريد المسجّل ({selectedTicket.clientEmail || selectedTicket.clientPhone || 'لا توجد وسيلة تواصل مسجّلة'})، وبيظهر له في حسابه.
+            </div>
             {/* Reply */}
-            <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
+            <div className="px-4 py-3 flex gap-2">
               <button onClick={() => setShowCanned(p => !p)} title="ردود جاهزة"
                 className={`px-2 py-2 rounded-xl border text-xs transition-colors ${showCanned ? 'bg-blue-50 border-blue-300 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
                 <Star size={14} />

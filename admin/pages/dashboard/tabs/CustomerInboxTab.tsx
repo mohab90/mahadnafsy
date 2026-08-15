@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Briefcase,
+  AlertCircle,
   CheckCircle2,
+  Clock,
   ExternalLink,
   GraduationCap,
   Inbox,
@@ -412,6 +414,17 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
     } finally { setActionBusy(false); }
   }, [linkedEntity, loadRemote, notify]);
 
+  // How long something has been sitting unanswered, which is the only question
+  // this screen exists to answer. A flat list sorted by arrival hides exactly
+  // the item that has been waiting longest behind everything that arrived after
+  // it, which is why the page read as "another list" rather than a work queue.
+  const ageHours = (item: InboxItem) =>
+    item.createdAt ? Math.max(0, (Date.now() - new Date(item.createdAt).getTime()) / 3600000) : 0;
+  const isWaiting = (item: InboxItem) => item.status === 'open' || item.status === 'pending';
+  // 24h is the institute's standard first-response window (SLA_HOURS.medium in
+  // api/lib/ticketRouting.js); past that, a customer has been left a full day.
+  const isOverdue = (item: InboxItem) => isWaiting(item) && ageHours(item) > 24;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return resolvedItems.filter((item) => {
@@ -420,8 +433,22 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       if (!q) return true;
       return [item.title, item.person, item.contact, item.detail, item.originalStatus]
         .some((value) => String(value || '').toLowerCase().includes(q));
-    });
+    })
+      // Waiting first, oldest of those at the top; everything already dealt
+      // with sinks below. Reading top-to-bottom is then the right order to work
+      // in, with no filtering or judgement needed first.
+      .sort((a, b) => {
+        const waitDiff = Number(isWaiting(b)) - Number(isWaiting(a));
+        if (waitDiff !== 0) return waitDiff;
+        return ageHours(b) - ageHours(a);
+      });
   }, [query, resolvedItems, sourceFilter, statusFilter]);
+
+  const attention = useMemo(() => ({
+    waiting: resolvedItems.filter(isWaiting).length,
+    overdue: resolvedItems.filter(isOverdue).length,
+    oldestHours: Math.round(Math.max(0, ...resolvedItems.filter(isWaiting).map(ageHours))),
+  }), [resolvedItems]);
 
   const sourceCounts = useMemo(() => {
     return resolvedItems.reduce<Record<string, number>>((acc, item) => {
@@ -440,7 +467,10 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
             <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-900">
               <Inbox size={20} className="text-indigo-600" /> Inbox خدمة العملاء الموحد
             </h2>
-            <p className="mt-1 text-sm text-slate-500">اضغط أي عنصر لفتح تفاصيله وكل إجراءاته (رد · حالة · تصعيد · موافقة/رفض) في نفس الشاشة — بدون الانتقال لصفحة أخرى.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              كل حاجة مستنية رد من العملاء في مكان واحد: تذاكر الدعم، رسائل التواصل، طلبات الاسترداد، وطلبات الانضمام —
+              بدل ما تفتح ٤ صفحات وتدوّر في كل واحدة. مرتّبة بالأقدم انتظاراً، وكل إجراء (رد · حالة · تصعيد · تحويل · موافقة/رفض) من نفس الشاشة.
+            </p>
           </div>
           <button
             onClick={loadRemote}
@@ -450,6 +480,25 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> تحديث
           </button>
         </div>
+
+        {/* What needs a person today, stated before anything else. A count of
+            "total messages" says nothing about whether the day is under
+            control; "3 waited more than a day" does. */}
+        {attention.overdue > 0 ? (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-800">
+            <AlertCircle size={16} />
+            {attention.overdue} عنصر عدّى ٢٤ ساعة بدون رد — أقدم واحد مستني {attention.oldestHours} ساعة. مرتّبين فوق.
+          </div>
+        ) : attention.waiting > 0 ? (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800">
+            <Clock size={16} />
+            {attention.waiting} عنصر مستني رد — أقدم واحد من {attention.oldestHours} ساعة. كله داخل الـ٢٤ ساعة.
+          </div>
+        ) : (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800">
+            <CheckCircle2 size={16} /> مفيش حاجة مستنية رد — كل الطلبات متردّ عليها.
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
           <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
@@ -522,6 +571,18 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
                     <div>
                       <p className="text-xs font-bold text-slate-500">{meta.label}</p>
                       <p className="text-[11px] text-slate-400">{fmtDate(item.createdAt)}</p>
+                      {/* How long this one has been waiting, in words. The date
+                          alone makes you do the arithmetic on every row. */}
+                      {isWaiting(item) && (
+                        <p className={`text-[11px] font-bold ${isOverdue(item) ? 'text-rose-600' : 'text-amber-600'}`}>
+                          {(() => {
+                            const hours = Math.round(ageHours(item));
+                            return hours < 1 ? 'وصل الآن'
+                              : hours < 24 ? `مستني ${hours} ساعة`
+                                : `مستني ${Math.round(hours / 24)} يوم`;
+                          })()}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="min-w-0">
