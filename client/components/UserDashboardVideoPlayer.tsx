@@ -4,7 +4,15 @@ import type HlsType from 'hls.js';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 
-const _vk = (import.meta.env.VITE_VIDEO_KEY as string) || '';
+// The key the admin panel encodes lecture URLs with. It read VITE_VIDEO_KEY
+// alone, and that variable is defined nowhere — no client .env sets it — so the
+// key was the empty string, the guard below returned the still-encoded "enc:…"
+// text as the video source, and every one of the 2,174 lectures failed to play
+// in the student dashboard. The public course page decodes the same URLs with
+// this literal and always worked, which is why it looked like the videos were
+// there but "not uploading". The env var still wins if it is ever set, so a
+// deployment that rotates the key keeps working.
+const _vk = (import.meta.env.VITE_VIDEO_KEY as string) || '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
 const deobfV2 = (raw: string): string => {
   if (!raw || !raw.startsWith('enc:') || !_vk) return raw;
   try {
