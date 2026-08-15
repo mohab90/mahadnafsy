@@ -97,7 +97,19 @@
   <body class="bg-gray-50 text-gray-900">
     <!-- Meta Pixel noscript fallback -->
     <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1879086466096343&ev=PageView&noscript=1"></noscript>
-    <div id="root"></div>
+    <!-- Shown until React paints, then replaced by the app. The root used to be
+         empty, so the browser had nothing to draw for the ~850ms up to first
+         contentful paint and every page opened as a white sheet — which is
+         what a tester screenshotting on arrival reports as "the page is blank".
+         Inline and above the module script on purpose: it must cost no extra
+         request and must be painted before any JavaScript is fetched. -->
+    <div id="root">
+      <div id="app-boot" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#fff;font-family:system-ui,'Segoe UI',Tahoma,sans-serif" dir="rtl">
+        <div style="width:38px;height:38px;border:3px solid #e5e7eb;border-top-color:#0f766e;border-radius:50%;animation:mahad-spin .7s linear infinite"></div>
+        <p style="margin:0;color:#6b7280;font-size:14px;font-weight:700">جارٍ تحميل معهد الدراسات النفسية...</p>
+      </div>
+    </div>
+    <style>@keyframes mahad-spin{to{transform:rotate(360deg)}}</style>
   <script type="module" src="/index.tsx"></script>
 </body>
 </html>

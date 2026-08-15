@@ -150,7 +150,7 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                 <div className="space-y-2 mb-4">
                   <div className="flex items-start gap-2 bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-xs text-green-800">
                     <ShieldCheck size={15} className="shrink-0 mt-0.5 text-green-600" />
-                    <span>{content['courseDetails.guaranteeText'] || 'ضمان استرداد خلال 7 أيام إن لم يناسبك البرنامج — اشترك بثقة.'}</span>
+                    <span>{content['courseDetails.guaranteeText'] || 'ضمان استرداد خلال 14 يوم — بشرط عدم مشاهدة أكثر من 20% من المحتوى.'}</span>
                   </div>
                   <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-xs text-amber-800">
                     <Clock size={15} className="shrink-0 mt-0.5 text-amber-600" />

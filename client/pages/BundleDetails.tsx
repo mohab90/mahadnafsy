@@ -465,7 +465,7 @@ const BundleDetails: React.FC = () => {
               </ul>
 
               <div className="mt-5 pt-4 border-t border-gray-100">
-                <p className="text-xs text-gray-400 text-center">{content['bundleDetails.sidebar.guarantee'] || 'ضمان استرداد خلال 7 أيام إذا لم تكن راضياً'}</p>
+                <p className="text-xs text-gray-400 text-center">{content['bundleDetails.sidebar.guarantee'] || 'ضمان استرداد خلال 14 يوم — بشرط عدم مشاهدة أكثر من 20% من المحتوى'}</p>
               </div>
             </div>
           </div>

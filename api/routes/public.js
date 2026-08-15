@@ -63,8 +63,13 @@ router.get('/api/search', publicLimiter, async (req, res) => {
           ORDER BY sort_order ASC, created_at DESC LIMIT 8`,
         [req.tenantId, like, like, like]
       ).then(([rows]) => rows),
+      // No `thumbnail` column on bundles — selecting it made MySQL reject the
+      // whole statement, and because both queries run in one Promise.all the
+      // route answered 500 for *every* search term, courses included. The
+      // search UI treats the image as optional, so there is nothing to replace
+      // it with; it simply must not be asked for.
       pool.query(
-        `SELECT id, slug, title, short_description, thumbnail
+        `SELECT id, slug, title, short_description
            FROM bundles
           WHERE tenant_id=? AND is_published=1
             AND (title LIKE ? ESCAPE '=' OR short_description LIKE ? ESCAPE '=')
@@ -81,7 +86,7 @@ router.get('/api/search', publicLimiter, async (req, res) => {
       })),
       bundles: bundles.map(row => ({
         id: row.id, slug: row.slug, title: row.title,
-        shortDescription: row.short_description, thumbnail: row.thumbnail,
+        shortDescription: row.short_description,
       })),
       articles: [],
     });
@@ -119,8 +124,15 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
     const data = await cached(`courses:${req.tenantId}:${limit}:${offset}`, 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
         `SELECT ${COURSE_LIST_COLS},
+                -- Archived customers were still counted as students here, while
+                -- the admin screens exclude them — which is the whole of the
+                -- "151 on the site, 150 in the panel" discrepancy. A removed
+                -- customer is not a student, so the public number was the wrong
+                -- one of the two.
                 (SELECT COUNT(DISTINCT e.subscriber_id) FROM enrollments e
-                  WHERE e.course_id = courses.id AND e.tenant_id = courses.tenant_id) AS enrolled_count
+                   JOIN subscribers s ON s.id = e.subscriber_id AND s.tenant_id = e.tenant_id
+                  WHERE e.course_id = courses.id AND e.tenant_id = courses.tenant_id
+                    AND s.deleted_at IS NULL) AS enrolled_count
            FROM courses WHERE tenant_id=? AND is_published = 1
          ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
@@ -239,8 +251,13 @@ router.get('/api/courses/:id', publicLimiter, async (req, res) => {
     const lookup = req.params.id;
     const [[row]] = await pool.query(
       `SELECT ${COURSE_COLS},
+              -- Same exclusion as the list above: an archived customer is not a
+              -- student, and counting them here made the course page disagree
+              -- with the admin panel.
               (SELECT COUNT(DISTINCT e.subscriber_id) FROM enrollments e
-                WHERE e.course_id = courses.id AND e.tenant_id = courses.tenant_id) AS enrolled_count
+                 JOIN subscribers s ON s.id = e.subscriber_id AND s.tenant_id = e.tenant_id
+                WHERE e.course_id = courses.id AND e.tenant_id = courses.tenant_id
+                  AND s.deleted_at IS NULL) AS enrolled_count
          FROM courses WHERE tenant_id=? AND (id=? OR slug=?) AND is_published=1 LIMIT 1`,
       [req.tenantId, lookup, lookup]);
     if (!row) return res.status(404).json({ error: 'Not found' });
