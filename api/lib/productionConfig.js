@@ -26,6 +26,40 @@ function resolvedSecret(name, env, errors) {
   }
 }
 
+// How the secrets reach the process. The first three are managed stores, which
+// answer "who can read this" with their own access control. `env-file` is the
+// fourth honest answer for a single-tenant server that owns its own machine:
+// the file on disk is the store, and the operating system is the access
+// control. It was missing, so the only way to pass this policy on a VPS was to
+// name a vault that does not exist — a false statement in the one config file
+// whose entire job is to be true.
+const MANAGED_SOURCES = ['secret-manager', 'vault', 'platform-secret'];
+const ALL_SOURCES = [...MANAGED_SOURCES, 'env-file'];
+
+/**
+ * `env-file` is a claim about a file, so it is checked against the file.
+ * Readable by anyone but its owner is not a secret store, and saying so has to
+ * fail exactly as loudly as naming no store at all — otherwise this is a way to
+ * opt out of the policy rather than a way to satisfy it honestly.
+ */
+function envFileProtectionErrors(env, prefix) {
+  const errors = [];
+  const file = String(env[`${prefix}_SECRET_FILE`] || env.SECRET_ENV_FILE || path.join(__dirname, '..', '.env')).trim();
+  let stats;
+  try {
+    stats = fs.statSync(file);
+  } catch {
+    errors.push(`${prefix}_SECRET_SOURCE is env-file but ${file} cannot be read`);
+    return errors;
+  }
+  // Windows does not carry POSIX mode bits, so there is nothing to verify and
+  // nothing to claim; the check applies where the deployment actually runs.
+  if (process.platform !== 'win32' && (stats.mode & 0o077) !== 0) {
+    errors.push(`${prefix}_SECRET_SOURCE is env-file but ${file} is readable beyond its owner (chmod 600 it)`);
+  }
+  return errors;
+}
+
 function auditSecretPolicy(env = process.env) {
   const errors = [];
   const secret = resolvedSecret('AUDIT_HMAC_SECRET', env, errors);
@@ -43,15 +77,21 @@ function auditSecretPolicy(env = process.env) {
 function auditSecretDeploymentPolicy(env = process.env, now = Date.now()) {
   const errors = [];
   const source = String(env.AUDIT_SECRET_SOURCE || '').toLowerCase();
-  if (!['secret-manager', 'vault', 'platform-secret'].includes(source)) {
-    errors.push('AUDIT_SECRET_SOURCE must identify managed injection');
+  if (!ALL_SOURCES.includes(source)) {
+    errors.push(`AUDIT_SECRET_SOURCE must be one of ${ALL_SOURCES.join(', ')}`);
   }
-  if (!hasReal(env.AUDIT_SECRET_PROVIDER) || /local|dotenv|example/i.test(String(env.AUDIT_SECRET_PROVIDER || ''))) {
-    errors.push('AUDIT_SECRET_PROVIDER must identify the production secret service');
+  if (source === 'env-file') {
+    // The file is the store; provider and reference name a service there is none of.
+    errors.push(...envFileProtectionErrors(env, 'AUDIT'));
+  } else {
+    if (!hasReal(env.AUDIT_SECRET_PROVIDER) || /local|dotenv|example/i.test(String(env.AUDIT_SECRET_PROVIDER || ''))) {
+      errors.push('AUDIT_SECRET_PROVIDER must identify the production secret service');
+    }
+    if (!hasReal(env.AUDIT_SECRET_REFERENCE)) {
+      errors.push('AUDIT_SECRET_REFERENCE must identify the managed secret/version');
+    }
   }
-  if (!hasReal(env.AUDIT_SECRET_REFERENCE)) {
-    errors.push('AUDIT_SECRET_REFERENCE must identify the managed secret/version');
-  }
+  // Rotation discipline is about the secret, not about where it is kept.
   const rotatedAt = Date.parse(env.AUDIT_SECRET_ROTATED_AT || '');
   if (!Number.isFinite(rotatedAt)) errors.push('AUDIT_SECRET_ROTATED_AT is invalid');
   else if ((now - rotatedAt) / 86400000 > 370) errors.push('AUDIT secret rotation is older than 370 days');
@@ -61,21 +101,27 @@ function auditSecretDeploymentPolicy(env = process.env, now = Date.now()) {
 function authSecretDeploymentPolicy(env = process.env, now = Date.now()) {
   const errors = [];
   const source = String(env.AUTH_SECRET_SOURCE || '').toLowerCase();
-  if (!['secret-manager', 'vault', 'platform-secret'].includes(source)) {
-    errors.push('AUTH_SECRET_SOURCE must identify managed injection');
+  if (!ALL_SOURCES.includes(source)) {
+    errors.push(`AUTH_SECRET_SOURCE must be one of ${ALL_SOURCES.join(', ')}`);
   }
-  if (!hasReal(env.AUTH_SECRET_PROVIDER) || /local|dotenv|example/i.test(String(env.AUTH_SECRET_PROVIDER || ''))) {
-    errors.push('AUTH_SECRET_PROVIDER must identify the production secret service');
-  }
-  const references = [
-    env.JWT_SECRET_REFERENCE,
-    env.SESSION_BINDING_SECRET_REFERENCE,
-    env.OTP_HMAC_SECRET_REFERENCE,
-  ].map(value => String(value || '').trim());
-  if (references.some(reference => !hasReal(reference))) {
-    errors.push('JWT, session-binding and OTP managed secret references are required');
-  } else if (new Set(references).size !== references.length) {
-    errors.push('JWT, session-binding and OTP must use independent managed secret references');
+  if (source === 'env-file') {
+    errors.push(...envFileProtectionErrors(env, 'AUTH'));
+    // The independence requirement below is about the secrets themselves, and
+    // criticalProductionPolicy already compares their values directly.
+  } else {
+    if (!hasReal(env.AUTH_SECRET_PROVIDER) || /local|dotenv|example/i.test(String(env.AUTH_SECRET_PROVIDER || ''))) {
+      errors.push('AUTH_SECRET_PROVIDER must identify the production secret service');
+    }
+    const references = [
+      env.JWT_SECRET_REFERENCE,
+      env.SESSION_BINDING_SECRET_REFERENCE,
+      env.OTP_HMAC_SECRET_REFERENCE,
+    ].map(value => String(value || '').trim());
+    if (references.some(reference => !hasReal(reference))) {
+      errors.push('JWT, session-binding and OTP managed secret references are required');
+    } else if (new Set(references).size !== references.length) {
+      errors.push('JWT, session-binding and OTP must use independent managed secret references');
+    }
   }
   const rotatedAt = Date.parse(env.AUTH_SECRET_ROTATED_AT || '');
   if (!Number.isFinite(rotatedAt)) errors.push('AUTH_SECRET_ROTATED_AT is invalid');
@@ -107,8 +153,8 @@ function criticalProductionPolicy(env = process.env) {
   } else if ([jwtSecret, sessionSecret, auditSecret].includes(otpSecret)) {
     errors.push('OTP_HMAC_SECRET must be independent from other signing secrets');
   }
-  if (!['secret-manager', 'vault', 'platform-secret'].includes(String(env.AUDIT_SECRET_SOURCE || '').toLowerCase())) {
-    errors.push('AUDIT_SECRET_SOURCE must be secret-manager, vault or platform-secret');
+  if (!ALL_SOURCES.includes(String(env.AUDIT_SECRET_SOURCE || '').toLowerCase())) {
+    errors.push(`AUDIT_SECRET_SOURCE must be one of ${ALL_SOURCES.join(', ')}`);
   }
   return { ok: errors.length === 0, errors };
 }
