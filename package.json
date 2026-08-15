@@ -28,7 +28,9 @@
     "start:client": "cd client && npx vite --port 3000",
     "install:all": "cd api && npm install && cd ../admin && npm install && cd ../client && npm install",
     "audit:columns": "node tools/schema-column-audit.cjs",
-    "audit:env": "node tools/env-var-audit.cjs"
+    "audit:env": "node tools/env-var-audit.cjs",
+    "audit:enums": "node tools/enum-value-audit.cjs",
+    "audit:routes": "node tools/route-integrity-scan.mjs"
   },
   "keywords": [
     "mahad",
