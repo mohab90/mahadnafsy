@@ -6,35 +6,33 @@ import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
 
-// Countdown timer — synced to Firestore timestamp (offer.timerStartedAt) set by admin
-// Falls back to localStorage if no server timestamp is set
+// Countdown for the 24-hour offer, from the moment the admin started it
+// (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
+// panel).
+//
+// It used to fall back to localStorage when no timestamp was set: the first
+// visit wrote "now" into the browser, and any visit more than 24 hours later
+// wrote "now" again. That is not a deadline, it is a stopwatch restarting for
+// every visitor forever — the badge promised 24 hours only and the clock never
+// once reached zero for anyone. The key has never been set in production, so
+// that fallback was the live behaviour. A countdown nobody set is not shown.
 function use24hCountdown(serverStart?: string) {
-  const STORAGE_KEY = 'offer-timer-start';
-
   const calc = (srv?: string) => {
-    let start: number;
-    if (srv) {
-      start = new Date(srv).getTime();
-    } else {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      let n = stored ? Number(stored) : null;
-      if (!n || Date.now() - n > 24 * 60 * 60 * 1000) {
-        n = Date.now();
-        localStorage.setItem(STORAGE_KEY, String(n));
-      }
-      start = n;
-    }
-    const elapsed = Date.now() - start;
-    const remaining = Math.max(0, 24 * 60 * 60 * 1000 - elapsed);
-    const h = Math.floor(remaining / 3600000);
-    const m = Math.floor((remaining % 3600000) / 60000);
-    const s = Math.floor((remaining % 60000) / 1000);
-    return { h, m, s };
+    if (!srv) return null;
+    const start = new Date(srv).getTime();
+    if (!Number.isFinite(start)) return null;
+    const remaining = Math.max(0, 24 * 60 * 60 * 1000 - (Date.now() - start));
+    return {
+      h: Math.floor(remaining / 3600000),
+      m: Math.floor((remaining % 3600000) / 60000),
+      s: Math.floor((remaining % 60000) / 1000),
+    };
   };
 
   const [time, setTime] = useState(() => calc(serverStart));
   useEffect(() => {
     setTime(calc(serverStart));
+    if (!serverStart) return undefined;
     const id = setInterval(() => setTime(calc(serverStart)), 1000);
     return () => clearInterval(id);
   }, [serverStart]);
@@ -395,19 +393,21 @@ const Home: React.FC = () => {
                         );
                       })()}
 
-                      {/* Timer - real countdown */}
-                      <div className="flex justify-center lg:justify-start gap-4">
-                          {[
-                            { val: String(timer.h).padStart(2,'0'), label: 'ساعات' },
-                            { val: String(timer.m).padStart(2,'0'), label: 'دقائق' },
-                            { val: String(timer.s).padStart(2,'0'), label: 'ثواني' },
-                          ].map((item, i) => (
-                              <div key={i} className="bg-gray-800 rounded-lg p-3 w-20 text-center border border-gray-700">
-                                  <span className="block text-2xl font-bold text-white font-mono">{item.val}</span>
-                                  <span className="text-xs text-gray-400">{item.label}</span>
-                              </div>
-                          ))}
-                      </div>
+                      {/* Timer — only once the admin has actually started one */}
+                      {timer && (
+                        <div className="flex justify-center lg:justify-start gap-4">
+                            {[
+                              { val: String(timer.h).padStart(2,'0'), label: 'ساعات' },
+                              { val: String(timer.m).padStart(2,'0'), label: 'دقائق' },
+                              { val: String(timer.s).padStart(2,'0'), label: 'ثواني' },
+                            ].map((item, i) => (
+                                <div key={i} className="bg-gray-800 rounded-lg p-3 w-20 text-center border border-gray-700">
+                                    <span className="block text-2xl font-bold text-white font-mono">{item.val}</span>
+                                    <span className="text-xs text-gray-400">{item.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                      )}
                   </div>
 
                   {/* Registration Form in Offer */}

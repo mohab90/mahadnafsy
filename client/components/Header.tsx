@@ -42,8 +42,13 @@ const Header: React.FC = () => {
           {/* Actions */}
           <div className="hidden lg:flex items-center gap-4">
             <GlobalSearch />
+            {/* Not a picker. Pricing currency is decided by the server from the
+                visitor's location and cannot be chosen in the browser, so this
+                is a label — but bordered, pill-shaped and carrying a globe it
+                read as a dropdown, and the tester filed it as one that does not
+                open. The tooltip explaining it never appears on touch. */}
             <div
-              className="flex items-center gap-1 text-sm text-gray-600 border px-3 py-1 rounded-full"
+              className="flex items-center gap-1 text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-md cursor-default select-none"
               title="العملة محددة تلقائيًا حسب موقع الاتصال"
             >
                 <Globe size={16} />

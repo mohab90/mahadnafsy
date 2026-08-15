@@ -45,6 +45,7 @@ import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
 import { toDialable } from './lib/whatsappLink';
+import { useArabicValidation } from './lib/useArabicValidation';
 
 const ENQUIRY_TOKEN_KEY = 'mahad-enquiry-token';
 
@@ -417,6 +418,7 @@ const AppShell: React.FC = () => {
   const miniFooter = useMiniFooter();
   const location = useLocation();
   useTenantFavicon();
+  useArabicValidation();
 
   return (
     <>
