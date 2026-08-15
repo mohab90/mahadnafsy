@@ -21,13 +21,21 @@ const InstructorDetails: React.FC = () => {
 
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
+  // Computed before the "not found" return below, because a hook that runs only
+  // when the instructor exists changes the hook count between renders — the
+  // page crashed with React #300 the moment `therapists` loaded and an unknown
+  // id stopped matching, or vice versa. Handles a missing instructor itself.
+  const availableSlots = useMemo(
+    () => (instructor ? getTherapistActiveSlots(instructor, selectedDate) : []),
+    [instructor, selectedDate],
+  );
+
   if (!instructor) {
     return <div className="text-center py-20">المدرب غير موجود</div>;
   }
 
   const instructorCourses = courses.filter((c) => c.instructor === instructor.name);
   const canBookConsultation = isConsultationEnabled(instructor);
-  const availableSlots = useMemo(() => getTherapistActiveSlots(instructor, selectedDate), [instructor, selectedDate]);
 
   const handleBookRegular = () => {
     if (selectedSlot && selectedDate) {

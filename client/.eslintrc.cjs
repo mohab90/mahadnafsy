@@ -37,6 +37,14 @@ module.exports = {
   // it, and not this change.
   plugins: ['react-hooks', '@typescript-eslint', 'jsx-a11y'],
   rules: {
+    // A hook after a conditional return changes the hook count between renders
+    // and React throws #300 — a blank error screen, not a subtle bug. It shipped
+    // twice: the enquiry widget crashed every customer the instant they signed
+    // in, and the instructor page crashed on an id that did not match. Unlike
+    // exhaustive-deps this has no backlog behind it — the whole app was clean
+    // once those two were fixed — and tsc cannot see it at all.
+    'react-hooks/rules-of-hooks': 'error',
+
     // Silently wrong data
     'no-dupe-keys': 'error',
     'no-dupe-args': 'error',

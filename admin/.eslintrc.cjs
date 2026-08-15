@@ -37,6 +37,13 @@ module.exports = {
   // it, and not this change.
   plugins: ['react-hooks', '@typescript-eslint', 'jsx-a11y'],
   rules: {
+    // A hook placed after a conditional return changes the hook count between
+    // renders and React throws #300 — a blank error screen. Two of these
+    // shipped on the customer site; this panel is clean today, and the rule is
+    // on so it stays that way. Unlike exhaustive-deps there is no backlog
+    // behind it, and tsc cannot see this class at all.
+    'react-hooks/rules-of-hooks': 'error',
+
     // Silently wrong data
     'no-dupe-keys': 'error',
     'no-dupe-args': 'error',

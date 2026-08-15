@@ -76,14 +76,11 @@ const LeadCaptureWidget: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  // Only show for non-admin, non-logged-in visitors
-  if (isAdmin || authUser) return null;
-
-  // This used to submit a *lead*, so a visitor's question landed in العملاء
-  // المحتملين and never reached customer service — no ticket, no owner, no SLA,
-  // and nobody in support ever saw it. It now opens a routed support ticket in
-  // the department the visitor picked; staff replies already notify them by
-  // email and WhatsApp through the existing ticket reply path.
+  // Every hook must run before the visibility check below. This effect was
+  // added after it, so the moment a visitor signed in and `authUser` became
+  // truthy the component returned early and React saw fewer hooks than on the
+  // previous render — error #300, thrown on the first render after login.
+  //
   // Load the existing conversation whenever the panel is opened with one.
   useEffect(() => {
     if (!open || !threadToken) return;
@@ -151,6 +148,11 @@ const LeadCaptureWidget: React.FC = () => {
       setSubmitError(cause instanceof Error ? cause.message : 'تعذر إرسال طلبك حاليًا. حاول مرة أخرى أو تواصل معنا عبر واتساب.');
     } finally { setBusy(false); }
   };
+
+  // Visibility decided here, after every hook has run: this widget is for
+  // visitors who are not signed in, and signing in flips the condition. Placing
+  // it above the hooks is what broke login.
+  if (isAdmin || authUser) return null;
 
   return (
     <>
