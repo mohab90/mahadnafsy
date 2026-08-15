@@ -1,5 +1,5 @@
 import React, { FormEvent, useState, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { BookOpen, CheckCircle, Banknote, Plus, Loader2, Shield, ChevronDown, Trash2, Zap, Award, MessageCircle, AlertCircle, CreditCard } from 'lucide-react';
 import { mysqlAuth, mysqlForms } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
@@ -434,16 +434,44 @@ const Enrollment: React.FC = () => {
                 </div>
                 <h3 className="text-lg font-extrabold text-gray-900">تم إنشاء حسابك!</h3>
                 <p className="text-gray-500 text-sm">
-                  حسابك جاهز. أرسل لنا واتساب لإتمام الدفع وتفعيل الكورسات.
+                  {onlinePayEnabled
+                    ? 'حسابك جاهز. ادفع الآن بالبطاقة ويتفعّل وصولك فوراً، أو راسلنا واتساب.'
+                    : 'حسابك جاهز. أرسل لنا واتساب لإتمام الدفع وتفعيل الكورسات.'}
                 </p>
+
+                {/* The page used to end at a WhatsApp link: the customer had an
+                    account, a chosen course and a price, and still had to open
+                    another app and type a message to hand over money. Checkout
+                    prices the order on the server and hands it to the gateway,
+                    so each chosen item gets a direct route there. */}
+                {onlinePayEnabled && chosenCourses.map(item => (
+                  <Link
+                    key={item.key}
+                    to={`/checkout?type=${item.kind}&id=${encodeURIComponent(item.key.replace(/^(course|bundle):/, ''))}`}
+                    className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 rounded-xl transition text-sm"
+                  >
+                    <CreditCard size={18} />
+                    {chosenCourses.length > 1
+                      ? <>ادفع بالبطاقة — {item.title}</>
+                      : <>ادفع الآن بالبطاقة — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>}
+                  </Link>
+                ))}
+                {onlinePayEnabled && chosenCourses.length > 1 && (
+                  <p className="text-[11px] text-gray-400">كل برنامج له طلب دفع مستقل — ادفعهم واحداً تلو الآخر.</p>
+                )}
+
                 <a
                   href={`https://wa.me/${toDialable(whatsappNumber)}?text=${registeredWhatsapp}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"
+                  className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition text-sm ${
+                    onlinePayEnabled
+                      ? 'border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
                 >
                   <MessageCircle size={18} />
-                  تواصل معنا عبر واتساب لإتمام الدفع
+                  {onlinePayEnabled ? 'أو تواصل معنا عبر واتساب' : 'تواصل معنا عبر واتساب لإتمام الدفع'}
                 </a>
                 {/* Only claim card payment is suspended when it actually is —
                     this used to be stated unconditionally. */}
@@ -521,9 +549,15 @@ const Enrollment: React.FC = () => {
                   disabled={loading || !canPay}
                   className="w-full py-3.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-40 text-white font-extrabold rounded-xl transition flex items-center justify-center gap-2 text-sm"
                 >
+                  {/* The account has to exist before there is anything to pay
+                      for, so this step stays — but when cards are live the next
+                      screen is a payment page, and promising a phone call
+                      instead sent people looking for WhatsApp. */}
                   {loading
                     ? <><Loader2 size={18} className="animate-spin" /> جاري التجهيز...</>
-                    : <><MessageCircle size={18} /> سجّل وتواصل معنا — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>
+                    : onlinePayEnabled
+                      ? <><CreditCard size={18} /> سجّل وادفع الآن — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>
+                      : <><MessageCircle size={18} /> سجّل وتواصل معنا — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>
                   }
                 </button>
               </form>

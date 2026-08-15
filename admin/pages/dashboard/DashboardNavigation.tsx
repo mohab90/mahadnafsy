@@ -9,8 +9,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import { mysqlAdmin, mysqlAuth } from '../../lib/mysqlapi';
+import { mysqlAuth } from '../../lib/mysqlapi';
 import MessagesBell from './MessagesBell';
+import { NotificationsBell } from './NotificationsBell';
 import type { LeadItem, StaffMember, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
 
@@ -39,10 +40,7 @@ type Props = {
   dropdownRect: DOMRect | null;
   setDropdownRect: React.Dispatch<React.SetStateAction<DOMRect | null>>;
   leads: LeadItem[];
-  subscribers: SubscriberItem[];
-  monitorPanel: boolean;
-  setMonitorPanel: React.Dispatch<React.SetStateAction<boolean>>;
-  notifRef: React.RefObject<HTMLDivElement | null>;
+  subscribers: SubscriberItem[];  notifRef: React.RefObject<HTMLDivElement | null>;
   notifOpen: boolean;
   setNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
   notifRows: NotifRow[];
@@ -144,7 +142,7 @@ export function DashboardNavigation(props: Props) {
     isSalesOnly, isCollectionRole, isReceptionDaqqi, isOnlineManager, isDaqqiManager,
     isSalesCollectionManager, isAdmin, visibleMenuGroups, activeTab, setActiveTab,
     activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, leads,
-    subscribers, monitorPanel, setMonitorPanel, notifRef,
+    subscribers, notifRef,
     notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread,
     pendingProofsCount, inboxUnreadCount, currentStaff, salesDataLoading, staffNotifBadge,
     setSalesNotifOpen, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen, setOnlineMgrFollowupOpen,
@@ -205,26 +203,6 @@ export function DashboardNavigation(props: Props) {
 
               <div className="w-px h-5 bg-gray-200 flex-shrink-0 mx-0.5" />
 
-              {/* Monitor button — unified (sales + collection + daqqi) */}
-              {(() => {
-                const td = new Date().toISOString().slice(0,10);
-                const salesBadge = leads.filter(l => !l.hidden && l.nextFollowUpDate && l.nextFollowUpDate <= td && !['converted','lost'].includes(l.status||'')).length;
-                const collBadge = subscribers.filter(s => (s.installmentPlans||[]).some(p=>(p.entries||[]).some(e=>!e.paidAt&&e.dueDate<td))).length;
-                const totalBadge = salesBadge + collBadge;
-                return (
-                  <button
-                    onClick={() => setMonitorPanel(p => !p)}
-                    title="لوحة المتابعة — سيلز · تحصيل · دقي"
-                    className={`relative w-8 h-8 rounded-xl grid place-items-center transition flex-shrink-0 ${monitorPanel ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-violet-500 hover:bg-violet-50'}`}
-                  >
-                    <Activity size={14} />
-                    {totalBadge > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center leading-none">{totalBadge > 9 ? '9+' : totalBadge}</span>
-                    )}
-                  </button>
-                );
-              })()}
-
               {/* Controls */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {currentStaff && ['instructor', 'trainer'].includes(currentStaff.role) && (
@@ -236,77 +214,36 @@ export function DashboardNavigation(props: Props) {
                     <UserCheck size={15} />
                   </button>
                 )}
-                {/* Personal pages. This used to be one icon that only ever
-                    opened staff_home; ملفي الشخصي was reachable solely through a
-                    card inside that page, so employees on the full nav could not
-                    find their own account. All three are named and reachable. */}
-                <div className="flex items-center rounded-xl bg-gray-100 p-0.5 gap-0.5">
-                  {([
-                    ['staff_home',     'الرئيسية',       Home],
-                    ['staff_settings', 'ملفي الشخصي',    UserCog],
-                    ['my_hr',          'ملفي الوظيفي',   FileText],
-                  ] as const).map(([tab, label, Icon]) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`w-7 h-7 rounded-lg grid place-items-center transition ${
-                        activeTab === tab
-                          ? 'bg-indigo-600 text-white'
-                          : 'hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
-                      }`}
-                      title={label}
-                    >
-                      <Icon size={14} />
-                    </button>
-                  ))}
-                </div>
+                {/* One icon for the employee's own space. الرئيسية, ملفي الشخصي
+                    and ملفي الوظيفي are all about the person signed in, and
+                    three separate icons for one subject read as three unrelated
+                    places. They are sections inside the page now, so every tab
+                    key still resolves and old links still land. */}
+                <button
+                  onClick={() => setActiveTab('staff_home')}
+                  className={`w-8 h-8 rounded-xl grid place-items-center transition ${
+                    ['staff_home', 'staff_settings', 'my_hr'].includes(activeTab)
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
+                  }`}
+                  title="مساحتي — الرئيسية وملفي الشخصي وملفي الوظيفي"
+                >
+                  <UserCog size={15} />
+                </button>
                 {/* Staff messages used to be visible one employee at a time,
                     inside each profile page — so an incoming message went unseen
                     until someone opened that person's file. */}
                 <MessagesBell mode="management" notify={notify} />
-                <div className="relative flex-shrink-0" ref={notifRef}>
-                  <button
-                    onClick={async () => {
-                      const opening = !notifOpen;
-                      setNotifOpen(opening);
-                      if (opening && notifUnread > 0) {
-                        try {
-                          await mysqlAdmin.markAllNotificationsRead();
-                          setNotifUnread(0);
-                          setNotifRows(rows => rows.map(r => ({ ...r, read_at: r.read_at ?? new Date().toISOString() })));
-                        } catch {
-                          // Keep the unread state intact; polling will retry.
-                        }
-                      }
-                    }}
-                    className="relative w-8 h-8 rounded-xl bg-gray-100 hover:bg-primary-50 hover:text-primary-600 text-gray-500 grid place-items-center transition"
-                    title="الإشعارات"
-                  >
-                    <Bell size={15} />
-                    {notifUnread > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center leading-none">{notifUnread > 9 ? '9+' : notifUnread}</span>
-                    )}
-                  </button>
-                  {notifOpen && (
-                    <div className="absolute top-10 left-0 z-[200] w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden" dir="rtl">
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                        <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
-                        <button onClick={() => setNotifOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-                      </div>
-                      <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
-                        {notifRows.length === 0 ? (
-                          <div className="text-center py-8 text-gray-400 text-sm">لا توجد إشعارات</div>
-                        ) : notifRows.slice(0, 20).map(n => (
-                          <div key={n.id} className={`px-4 py-3 hover:bg-gray-50 transition ${!n.read_at ? 'bg-blue-50' : ''}`}>
-                            <div className="font-semibold text-gray-800 text-sm">{n.title}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">{n.message}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('ar-EG')}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <NotificationsBell
+                  rows={notifRows}
+                  setRows={setNotifRows}
+                  unread={notifUnread}
+                  setUnread={setNotifUnread}
+                  open={notifOpen}
+                  setOpen={setNotifOpen}
+                  panelRef={notifRef}
+                  onNavigate={setActiveTab}
+                />
                 <button onClick={() => { mysqlAuth.logout(); navigate('/auth'); }}
                   className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 grid place-items-center transition"
                   title="تسجيل الخروج">
@@ -372,12 +309,11 @@ export function DashboardNavigation(props: Props) {
                   // staff_home is where the rep lands at login, but nothing in
                   // this bar pointed back at it — leave the page and it was gone
                   // for the rest of the session.
-                  { key: 'staff_home', label: 'الرئيسية', icon: Home },
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
                   { key: 'online_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -392,13 +328,12 @@ export function DashboardNavigation(props: Props) {
             {isCollectionRole && (
               <CompactRoleNav
                 tabs={[
-                  { key: 'staff_home', label: 'الرئيسية', icon: Home },
                   { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -418,7 +353,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -439,7 +374,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                   { key: 'daqqi_accounting', label: 'حسابات الدقي', icon: Wallet },
                   { key: 'daqqi_stats', label: 'إحصائيات فريق الدقي', icon: BarChart3 },
-                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-purple-600 text-white shadow-md shadow-purple-200"
@@ -463,7 +398,7 @@ export function DashboardNavigation(props: Props) {
                   { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
                   { key: 'activity', label: 'سجل النشاط', icon: Activity },
                   { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
-                  { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-indigo-600 text-white shadow-md shadow-indigo-200"
@@ -488,7 +423,7 @@ export function DashboardNavigation(props: Props) {
                     { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                     { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                     { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
-                    { key: 'staff_settings', label: 'ملفي الشخصي', icon: UserCog },
+                    { key: 'staff_home', label: 'مساحتي', icon: UserCog },
                   ]}
                   activeTab={activeTab} setActiveTab={setActiveTab}
                   activeButtonClass="bg-emerald-600 text-white shadow-md shadow-emerald-200"

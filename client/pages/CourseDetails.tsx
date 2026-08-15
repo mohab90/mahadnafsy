@@ -14,6 +14,7 @@ import { CourseRatingSection } from './course-details-sections/CourseRatingSecti
 import { RelatedCoursesSidebar } from './course-details-sections/RelatedCoursesSidebar';
 import { CourseUpsellModal } from './course-details-sections/CourseUpsellModal';
 import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
+import CourseCertificate from '../components/CourseCertificate';
 
 const CourseDetails: React.FC = () => {
                 const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
@@ -277,6 +278,7 @@ const CourseDetails: React.FC = () => {
 
   // ── Upsell popup: show when enrolled user opens a lecture ─────────────────
   const [showUpsell, setShowUpsell] = useState(false);
+  const [certModalOpen, setCertModalOpen] = useState(false);
   const [completionCert, setCompletionCert] = useState<string | null>(null);
 
   // Bundles containing this course (for upsell)
@@ -359,6 +361,7 @@ const CourseDetails: React.FC = () => {
         applicableDiscount={applicableDiscount}
         isSubscribed={isSubscribed}
         onBuyNow={handleBuyNow}
+        onPreviewCertificate={() => setCertModalOpen(true)}
       />
 
       {/* Main Content */}
@@ -466,6 +469,30 @@ const CourseDetails: React.FC = () => {
         onBuyNow={handleBuyNow}
         onRegisterClick={() => { setShowLeadForm(true); setTimeout(() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
       />
+
+      {certModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setCertModalOpen(false)}>
+          <div onClick={e => e.stopPropagation()} className="relative w-full max-w-4xl">
+            <button
+              onClick={() => setCertModalOpen(false)}
+              aria-label="إغلاق"
+              className="absolute -top-3 -left-3 z-10 w-9 h-9 bg-white rounded-full shadow-xl flex items-center justify-center text-gray-600 hover:text-red-500 transition text-xl leading-none"
+            >
+              ×
+            </button>
+            <CourseCertificate
+              studentName={globalContent['courseDetails.cert.sampleName'] || 'اسم الطالب'}
+              studentNameEn={globalContent['courseDetails.cert.sampleNameEn'] || 'Student Name'}
+              courseName={course.title}
+              courseNameEn={course.titleEn}
+              instructorName={course.instructor || globalContent['courseDetails.cert.instructorName'] || 'معهد الدراسات النفسية'}
+              certNumber="SAMPLE-2025"
+              issuedAt={new Date().toLocaleDateString('ar-EG-u-nu-latn')}
+              onClose={() => setCertModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

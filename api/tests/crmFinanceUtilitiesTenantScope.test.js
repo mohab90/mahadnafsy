@@ -132,7 +132,13 @@ test('notifications are tenant/recipient scoped with per-viewer read state', () 
   assert.match(lib, /INSERT INTO notifications[\s\S]*\(id, tenant_id, recipient_staff_id/);
   assert.match(route, /FROM notifications n[\s\S]*WHERE n\.tenant_id=\?/);
   assert.match(route, /INSERT INTO notification_reads[\s\S]*viewer_key/);
-  assert.match(route, /recipient_staff_id IS NULL OR n\.recipient_staff_id=\?/);
+  // The invariant is that a non-super-admin only ever sees rows addressed to
+  // them or addressed to nobody — not one particular spelling of it. The clause
+  // grew a per-type permission filter for the bell, so assert both halves are
+  // still present and still bound to the signed-in staff id.
+  assert.match(route, /n\.recipient_staff_id=\?/);
+  assert.match(route, /n\.recipient_staff_id IS NULL/);
+  assert.match(route, /params: \[staffId,/);
   assert.match(route, /DELETE FROM notifications WHERE id=\? AND tenant_id=\?/);
   // routes/notifications.js used to have a bulk PUT (up to 400 sequential queries
   // per call, PERF-04) whose own comment claimed a frontend caller that, on closer

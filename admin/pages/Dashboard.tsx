@@ -52,16 +52,13 @@ import {
   DashboardCustomerServiceTabs,
   DashboardDirectContentRoutes,
   DashboardFinanceTabs,
-  DashboardGrowthOpsTabs,
-  DashboardMonitorPanel,
-  DashboardOnlineManagerPanels,
+  DashboardGrowthOpsTabs,  DashboardOnlineManagerPanels,
   DashboardQuickBooking,
   DashboardSaasOpsTabs,
   DashboardSalesFollowupPanel,
-  DashboardStaffSettingsPanel,
-  DashboardStaffTabs,
   OverviewTab,
 } from './dashboard/lazyDashboardComponents';
+import { DashboardMyWorkspace, isWorkspaceTab } from './dashboard/DashboardMyWorkspace';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
@@ -335,9 +332,7 @@ const Dashboard: React.FC = () => {
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
   const [activeTabState, setActiveTabState] = useState<TabKey>((urlTab as TabKey) || 'overview');
   const [pendingProofsCount, setPendingProofsCount] = useState(0);
-  const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);
-  const [monitorPanel, setMonitorPanel] = useState<boolean>(false);
-  // -- Horizontal dropdown nav state --
+  const [onlineMgrAcademyOpen, setOnlineMgrAcademyOpen] = useState(false);  // -- Horizontal dropdown nav state --
   const [activeDropdownGroup, setActiveDropdownGroup] = useState<string|null>(null);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
 
@@ -767,10 +762,7 @@ const Dashboard: React.FC = () => {
           dropdownRect={dropdownRect}
           setDropdownRect={setDropdownRect}
           leads={leads}
-          subscribers={subscribers}
-          monitorPanel={monitorPanel}
-          setMonitorPanel={setMonitorPanel}
-          notifRef={notifRef}
+          subscribers={subscribers}          notifRef={notifRef}
           notifOpen={notifOpen}
           setNotifOpen={setNotifOpen}
           notifRows={notifRows}
@@ -1185,57 +1177,56 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {/* ---- LIVE STREAMS TAB ---- */}
-            {activeTab === 'staff_settings' && currentStaff && (
+            {/* ---- MY WORKSPACE: الرئيسية + ملفي الشخصي + ملفي الوظيفي ---- */}
+            {isWorkspaceTab(activeTab) && currentStaff && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
-                <DashboardStaffSettingsPanel
-                  currentStaff={currentStaff}
-                  salesOwnSubscribers={salesOwnSubscribers}
-                  staffSettingsDraft={staffSettingsDraft}
-                  setStaffSettingsDraft={setStaffSettingsDraft}
-                  staffSettingsSaving={staffSettingsSaving}
-                  setStaffSettingsSaving={setStaffSettingsSaving}
-                  notify={notify}
-                  loadingMyHr={loadingMyHr}
-                  myHrData={myHrData}
-                  setMyHrData={setMyHrData}
-                  showMyLeaveFormProfile={showMyLeaveFormProfile}
-                  setShowMyLeaveFormProfile={setShowMyLeaveFormProfile}
-                  myLeaveFormProfile={myLeaveFormProfile}
-                  setMyLeaveFormProfile={setMyLeaveFormProfile}
-                  submittingMyLeaveProfile={submittingMyLeaveProfile}
-                  setSubmittingMyLeaveProfile={setSubmittingMyLeaveProfile}
-                  showAdvanceForm={showAdvanceForm}
-                  setShowAdvanceForm={setShowAdvanceForm}
-                  advanceDraft={advanceDraft}
-                  setAdvanceDraft={setAdvanceDraft}
-                  submittingAdvance={submittingAdvance}
-                  setSubmittingAdvance={setSubmittingAdvance}
-                  myAdvances={myAdvances}
-                  setMyAdvances={setMyAdvances}
-                  myDisciplinary={myDisciplinary}
-                  setMyDisciplinary={setMyDisciplinary}
-                  staffWaTemplateEdit={staffWaTemplateEdit}
-                  setStaffWaTemplateEdit={setStaffWaTemplateEdit}
-                  staffWaTemplates={staffWaTemplates}
-                  setStaffWaTemplates={setStaffWaTemplates}
-                  staffContactTags={staffContactTags}
-                  setStaffContactTags={setStaffContactTags}
-                  staffNewTagInput={staffNewTagInput}
-                  setStaffNewTagInput={setStaffNewTagInput}
-                />
-              </Suspense>
-            )}
-
-            {activeTab === 'staff_home' && (
-              <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
-                <DashboardStaffTabs
+                <DashboardMyWorkspace
                   activeTab={activeTab}
-                  currentStaff={currentStaff ?? null}
-                  leads={usesStaffScopedData ? salesOwnLeads : leads}
-                  subscribers={usesStaffScopedData ? salesOwnSubscribers : subscribers}
-                  notify={notify}
-                  onNavigate={setActiveTabState}
+                  setActiveTab={setActiveTabState}
+                  staffHomeProps={{
+                    staff: currentStaff,
+                    currentStaff,
+                    leads: usesStaffScopedData ? salesOwnLeads : leads,
+                    subscribers: usesStaffScopedData ? salesOwnSubscribers : subscribers,
+                    notify,
+                    onNavigate: setActiveTabState,
+                  }}
+                  staffSettingsProps={{
+                    currentStaff,
+                    salesOwnSubscribers,
+                    staffSettingsDraft,
+                    setStaffSettingsDraft,
+                    staffSettingsSaving,
+                    setStaffSettingsSaving,
+                    notify,
+                    loadingMyHr,
+                    myHrData,
+                    setMyHrData,
+                    showMyLeaveFormProfile,
+                    setShowMyLeaveFormProfile,
+                    myLeaveFormProfile,
+                    setMyLeaveFormProfile,
+                    submittingMyLeaveProfile,
+                    setSubmittingMyLeaveProfile,
+                    showAdvanceForm,
+                    setShowAdvanceForm,
+                    advanceDraft,
+                    setAdvanceDraft,
+                    submittingAdvance,
+                    setSubmittingAdvance,
+                    myAdvances,
+                    setMyAdvances,
+                    myDisciplinary,
+                    setMyDisciplinary,
+                    staffWaTemplateEdit,
+                    setStaffWaTemplateEdit,
+                    staffWaTemplates,
+                    setStaffWaTemplates,
+                    staffContactTags,
+                    setStaffContactTags,
+                    staffNewTagInput,
+                    setStaffNewTagInput,
+                  }}
                 />
               </Suspense>
             )}
@@ -1262,14 +1253,6 @@ const Dashboard: React.FC = () => {
       </Suspense>
 
     </div>
-    <Suspense fallback={null}>
-      <DashboardMonitorPanel
-        open={monitorPanel}
-        leads={leads}
-        subscribers={subscribers}
-        setOpen={setMonitorPanel}
-      />
-    </Suspense>
     <DashboardPaymentOverlays
       lead={leadPayRow}
       leadDraft={leadPayDraft}

@@ -141,12 +141,15 @@ const Checkout: React.FC = () => {
   // after the intent exists rather than instead of it: if the gateway refuses,
   // the order is already recorded and the customer still has the transfer route
   // below, so a gateway problem costs the sale nothing.
-  const payByCard = async () => {
-    if (!orderId) return;
+  // Takes the id explicitly so it can be called in the same tick the order is
+  // created, before setOrderId has re-rendered anything.
+  const payByCard = async (useOrderId?: string) => {
+    const activeOrderId = useOrderId || orderId;
+    if (!activeOrderId) return;
     setCardRedirecting(true);
     setPayError('');
     const payload = {
-      orderId,
+      orderId: activeOrderId,
       amount: finalAmount,
       currency: settlementCurrency,
       itemTitle,
@@ -171,8 +174,9 @@ const Checkout: React.FC = () => {
     }
   };
 
-  const handlePay = async () => {
-    if (!canPay) return;
+  // Returns the new order id so the caller can hand it straight to the gateway.
+  const handlePay = async (): Promise<string> => {
+    if (!canPay) return '';
     setPayLoading(true);
     setPayError('');
     try {
@@ -215,11 +219,24 @@ const Checkout: React.FC = () => {
       setServerCurrency(data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP');
       setOrderSent(true);
       sessionStorage.removeItem(idempotencyStorageKey);
+      return String(data.orderId);
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'حدث خطأ، حاول مرة أخرى.');
+      return '';
     } finally {
       setPayLoading(false);
     }
+  };
+
+  // One button, two calls. The order still has to exist before the gateway can
+  // be handed anything, but making the customer click twice — once to "send a
+  // request", again to pay — read as two separate errands and left people who
+  // meant to pay by card sitting on a confirmation screen. If the gateway
+  // refuses, the order is already recorded and the transfer route below is
+  // untouched, so nothing is lost.
+  const payNowByCard = async () => {
+    const newOrderId = await handlePay();
+    if (newOrderId) await payByCard(newOrderId);
   };
 
   // Convert the chosen receipt file → base64 for upload.
@@ -363,7 +380,7 @@ const Checkout: React.FC = () => {
                           for anyone who prefers it, or if the gateway refuses. */}
                       {onlinePayEnabled && (
                         <div className="mb-4">
-                          <button onClick={payByCard} disabled={cardRedirecting}
+                          <button onClick={() => payByCard()} disabled={cardRedirecting}
                             className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition text-sm">
                             {cardRedirecting
                               ? <><Loader2 size={16} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
@@ -452,6 +469,7 @@ const Checkout: React.FC = () => {
                       {/* Payment methods info */}
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm text-blue-800 space-y-1">
                         <p className="font-bold flex items-center gap-1"><Banknote size={15}/> طرق الدفع المتاحة:</p>
+                        {onlinePayEnabled && <p>• بطاقة بنكية أو محفظة إلكترونية — الوصول يُفعَّل فوراً</p>}
                         <p>• تحويل بنكي / إنستاباي / فودافون كاش</p>
                         <p>• بعد إرسال الطلب سنرسل لك تفاصيل الحساب</p>
                       </div>
@@ -463,16 +481,41 @@ const Checkout: React.FC = () => {
                         </div>
                       )}
 
-                      <button
-                        onClick={handlePay}
-                        disabled={payLoading || !canPay}
-                        className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition shadow-lg mb-3 text-sm"
-                      >
-                        {payLoading
-                          ? <><Loader2 size={17} className="animate-spin" /> جارٍ الإرسال...</>
-                          : <>أرسل طلب الاشتراك — {finalAmount} {currencySymbol}</>
-                        }
-                      </button>
+                      {onlinePayEnabled ? (
+                        <>
+                          <button
+                            onClick={payNowByCard}
+                            disabled={payLoading || cardRedirecting || !canPay}
+                            className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition shadow-lg mb-2 text-sm"
+                          >
+                            {payLoading || cardRedirecting
+                              ? <><Loader2 size={17} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
+                              : <><CreditCard size={17} /> ادفع الآن بالبطاقة — {finalAmount} {currencySymbol}</>
+                            }
+                          </button>
+                          {/* The transfer route is still a first-class option, not
+                              a fallback nobody can find: this creates the same
+                              order and stops on the receipt-upload panel. */}
+                          <button
+                            onClick={handlePay}
+                            disabled={payLoading || cardRedirecting || !canPay}
+                            className="w-full flex items-center justify-center gap-2 border-2 border-primary-200 text-primary-700 hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-xl transition mb-3 text-xs"
+                          >
+                            <Banknote size={15} /> أو ادفع بالتحويل البنكي
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={handlePay}
+                          disabled={payLoading || !canPay}
+                          className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition shadow-lg mb-3 text-sm"
+                        >
+                          {payLoading
+                            ? <><Loader2 size={17} className="animate-spin" /> جارٍ الإرسال...</>
+                            : <>أرسل طلب الاشتراك — {finalAmount} {currencySymbol}</>
+                          }
+                        </button>
+                      )}
 
                       {whatsapp && (
                         <>

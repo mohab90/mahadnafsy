@@ -15,6 +15,7 @@ interface CourseHeroSectionProps {
   applicableDiscount: { discountPercent: number; label?: string } | undefined;
   isSubscribed: boolean;
   onBuyNow: () => void;
+  onPreviewCertificate: () => void;
 }
 
 export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
@@ -27,6 +28,7 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
   applicableDiscount,
   isSubscribed,
   onBuyNow,
+  onPreviewCertificate,
 }) => {
   // The share button rendered but did nothing on every course page. The native
   // sheet is the right thing on the phones most of this traffic comes from;
@@ -132,12 +134,33 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                     تواصل معنا لتجهيز سعر دولتك
                   </div>
                 )}
+                {/* The paths carry this and the courses did not, so a customer
+                    who wanted to pay in instalments could only find that option
+                    by landing on a bundle first. */}
+                {!isSubscribed && currentPrice > 0 && (
+                  <a
+                    href={`/enroll?course=${encodeURIComponent(course.id)}`}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-primary-500 text-primary-700 hover:bg-primary-50 font-bold py-2.5 rounded-xl mb-3 transition text-sm"
+                  >
+                    💳 ادفع أونلاين مباشرة (كاش أو قسط)
+                  </a>
+                )}
                 <button
                   onClick={() => setTimeout(() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' }), 100)}
-                  className="w-full bg-white border-2 border-primary-600 text-primary-700 font-bold py-3 rounded-xl mb-4 transition hover:bg-primary-50 flex justify-center items-center gap-2"
+                  className="w-full bg-white border-2 border-primary-600 text-primary-700 font-bold py-3 rounded-xl mb-3 transition hover:bg-primary-50 flex justify-center items-center gap-2"
                 >
                   <Send size={18} />
                   سجل بياناتك للتواصل
+                </button>
+                {/* "شهادة إتمام موثقة" is listed as a feature right below. Being
+                    able to look at it is what makes that a claim rather than a
+                    line of copy — the paths have had it all along. */}
+                <button
+                  onClick={onPreviewCertificate}
+                  className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl mb-4 transition text-sm"
+                >
+                  <Award size={17} />
+                  {content['courseDetails.cert.previewBtn'] || 'معاينة الشهادة'}
                 </button>
 
                 <div className="space-y-3 text-sm text-gray-600 mb-6 bg-gray-50 p-4 rounded-lg">
