@@ -1614,7 +1614,7 @@ router.post('/api/auth/2fa/setup', requireAuth, async (req, res) => {
     }
 
     const secret = generateSecret();
-    const issuer = 'مهاد نفسي';
+    const issuer = 'معهد الدراسات النفسية';
     const otpAuthUrl = generateURI({ label: email, issuer, secret });
     const qrDataUrl = await QRCode.toDataURL(otpAuthUrl);
 

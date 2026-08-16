@@ -213,3 +213,36 @@ test('the instance list exposes the subscription end date', async () => {
     assert.equal(result.instances[0].subscriptionEndsAt, '2026-08-04T13:05:50.000000Z');
   } finally { restore(); }
 });
+
+// ── A throttled send is not a broken channel ────────────────────────────────
+// Regression: Wapilot answered "Too Many Attempts." to one send, the channel
+// was marked `error`, getSendableChannel only accepts `connected`, and WhatsApp
+// OTP stayed dead for every user afterwards while the provider session was
+// WORKING the whole time. Only failures that will still be failures next
+// minute may take a channel out of service.
+test('a throttled or unreachable provider does not take the channel out of service', () => {
+  const { isTransientSendFailure } = require('../lib/whatsapp');
+
+  for (const transient of [
+    'Too Many Attempts.',
+    'rate limit exceeded',
+    'HTTP 429',
+    'request timeout',
+    'socket hang up',
+    'ECONNRESET',
+    'HTTP 503 Service Unavailable',
+    { message: 'Gateway Timeout' },
+  ]) {
+    assert.equal(isTransientSendFailure(transient), true, `expected transient: ${JSON.stringify(transient)}`);
+  }
+
+  for (const permanent of [
+    'Instance not found.',
+    'Unauthenticated.',
+    'invalid api key',
+    'chat_id is required',
+    { error: { message: 'The given data was invalid.' } },
+  ]) {
+    assert.equal(isTransientSendFailure(permanent), false, `expected permanent: ${JSON.stringify(permanent)}`);
+  }
+});

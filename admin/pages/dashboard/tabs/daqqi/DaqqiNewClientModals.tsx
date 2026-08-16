@@ -275,7 +275,7 @@ export function DaqqiNewClientReceiptModal({ receipt, onClose }: ReceiptModalPro
             </div>
           </div>
           <div id="daqqiPrintReceipt" className="p-5 font-mono text-xs text-center space-y-2">
-            <div className="font-extrabold text-base">مهاد نفسي — الدقي</div>
+            <div className="font-extrabold text-base">معهد الدراسات النفسية — الدقي</div>
             <div className="text-gray-500 text-[11px]">{receipt.date}</div>
             <div className="border-t border-dashed border-gray-300 my-2" />
             <div className="text-right space-y-1">

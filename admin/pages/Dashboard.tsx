@@ -1265,7 +1265,7 @@ const Dashboard: React.FC = () => {
       submitSubscriberPayment={handleSubPayment}
       closeSubscriberPayment={() => setSubPayRow(null)}
       branchOptions={instituteBranches.map(b => ({ id: b.id, label: b.label }))}
-      instituteName={content['institute.name'] || 'مهاد نفسي'}
+      instituteName={content['institute.name'] || 'معهد الدراسات النفسية'}
       requireSubscriberApproval={isReceptionDaqqi}
     />
     </>

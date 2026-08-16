@@ -111,7 +111,7 @@ export function LeadModalsHost({
             onSubmit={(draft) => { void handleLeadPayment(draft); }}
             onClose={() => setLeadPayRow(null)}
             branchOptions={instituteBranches.map((branch) => ({ id: branch.id, label: branch.label }))}
-            instituteName="مهاد نفسي"
+            instituteName="معهد الدراسات النفسية"
           />
         </Suspense>
       )}

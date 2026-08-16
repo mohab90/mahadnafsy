@@ -299,10 +299,10 @@ const CourseDetails: React.FC = () => {
   // ── SEO meta tags ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!course) return;
-    const seoTitle = (course as any).seo_title || course.title || 'مهاد نفسي';
+    const seoTitle = (course as any).seo_title || course.title || 'معهد الدراسات النفسية';
     const seoDesc  = (course as any).seo_description || course.shortDescription?.replace(/<[^>]*>/g,'').slice(0,160) || '';
     const seoKw    = (course as any).seo_keywords || '';
-    document.title = seoTitle + ' — مهاد نفسي';
+    document.title = seoTitle + ' — معهد الدراسات النفسية';
     const setMeta = (name: string, content: string) => {
       let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
       if (!el) { el = document.createElement('meta'); el.name = name; document.head.appendChild(el); }
@@ -318,7 +318,7 @@ const CourseDetails: React.FC = () => {
     setOg('og:title', seoTitle);
     if (course.thumbnail) setOg('og:image', course.thumbnail);
     setOg('og:type', 'article');
-    return () => { document.title = 'مهاد نفسي'; };
+    return () => { document.title = 'معهد الدراسات النفسية'; };
   }, [course]);
 
 

@@ -161,8 +161,18 @@ async function sendWhatsApp(phone, message, options = {}) {
       // A send is the only honest proof the credentials work, so the channel's
       // status follows the result rather than whatever it was set at save time.
       if (result.ok) await channels.markChannelConnected(tenantId, resolved.row.id).catch(() => {});
-      else if (result.reason !== 'not_configured') {
+      else if (result.reason !== 'not_configured' && !isTransientSendFailure(result.reason)) {
         await channels.markChannelError(tenantId, resolved.row.id, describeReason(result.reason)).catch(() => {});
+      } else if (isTransientSendFailure(result.reason)) {
+        // Leave the channel connected. Marking it errored takes WhatsApp OTP
+        // down until a human notices and re-tests, which is how one throttled
+        // send turned into a dead sign-up flow: Wapilot answered "Too Many
+        // Attempts", the channel was parked in `error`, getSendableChannel only
+        // accepts `connected`, and every OTP afterwards failed while the
+        // session at the provider stayed WORKING the whole time.
+        logger.warn('[WhatsApp] transient send failure — channel left connected', {
+          channelId: resolved.row.id, reason: describeReason(result.reason),
+        });
       }
       return { ...result, channelId: resolved.row.id };
     }
@@ -193,6 +203,30 @@ function describeReason(reason) {
   return reason?.error?.message || reason?.message || JSON.stringify(reason).slice(0, 400);
 }
 
+/**
+ * Will this failure still be a failure in a minute?
+ *
+ * Throttling, a timeout and a network blip say nothing about whether the
+ * credentials are good — the next send may well succeed. A rejected key or a
+ * missing instance will fail identically until someone changes the settings,
+ * and only those deserve to take the channel out of service.
+ */
+const TRANSIENT_PATTERNS = [
+  /too many attempts/i,
+  /rate.?limit/i,
+  /\b429\b/,
+  /timeout|timed out|abort/i,
+  /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|socket hang up/i,
+  /\b(502|503|504)\b/,
+  /bad gateway|service unavailable|gateway timeout/i,
+  /temporarily unavailable|try again/i,
+];
+function isTransientSendFailure(reason) {
+  const text = describeReason(reason);
+  return TRANSIENT_PATTERNS.some(pattern => pattern.test(text));
+}
+
 module.exports = {
-  describeReason, getWaCfg, invalidateWaCfg, providerCredentialState, resolveProvider, sendWhatsApp,
+  describeReason, getWaCfg, invalidateWaCfg, isTransientSendFailure,
+  providerCredentialState, resolveProvider, sendWhatsApp,
 };

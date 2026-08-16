@@ -235,7 +235,7 @@ function createScheduledJobHandlers({ pool, logger }) {
       );
       for (const row of rows) {
         if (!row.phone) continue;
-        const message = `أهلاً ${row.name} 🎉\nيسعدنا إبلاغك بأن مقعداً أصبح متاحاً في كورس:\n📚 ${row.course_title}\n\nيرجى التواصل معنا خلال 48 ساعة لتأكيد حجزك قبل انتقاله للتالي في القائمة ⏳\n— مهاد نفسي 💚`;
+        const message = `أهلاً ${row.name} 🎉\nيسعدنا إبلاغك بأن مقعداً أصبح متاحاً في كورس:\n📚 ${row.course_title}\n\nيرجى التواصل معنا خلال 48 ساعة لتأكيد حجزك قبل انتقاله للتالي في القائمة ⏳\n— معهد الدراسات النفسية 💚`;
         const result = await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id })
           .catch(() => ({ ok: false }));
         if (!result.ok) continue;
