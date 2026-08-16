@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Radio, Plus, Star, Power, Trash2, Send, Loader2, CheckCircle2, AlertTriangle, Building2, User,
+  Radio, Plus, Star, Power, Trash2, Send, Loader2, CheckCircle2, AlertTriangle, Building2, User, Pencil,
 } from 'lucide-react';
 import { mysqlAdmin, type MessagingChannel, type WapilotInstance } from '../../../../lib/mysqlapi';
 import { toDialable } from '../../../../lib/whatsappLink';
@@ -21,6 +21,8 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
   const [busyId, setBusyId] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [wapilotInstances, setWapilotInstances] = useState<WapilotInstance[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [edit, setEdit] = useState({ label: '', displayNumber: '', instance: '', apiKey: '' });
 
   const [draft, setDraft] = useState({
     kind: 'whatsapp' as 'whatsapp' | 'messenger',
@@ -113,6 +115,29 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     finally { setBusyId(''); }
   };
 
+  /** Only the fields actually filled in are sent: a blank box means "leave it
+   *  alone", not "clear it". Credentials are all-or-nothing — sealing a key
+   *  without its instance would store a pair the provider rejects. */
+  const saveEdit = async (channel: MessagingChannel) => {
+    const patch: Record<string, unknown> = {};
+    if (edit.label.trim() && edit.label.trim() !== channel.label) patch.label = edit.label.trim();
+    if (edit.displayNumber.trim()) {
+      if (!toDialable(edit.displayNumber)) { notify('error', 'الرقم ده مش صالح للإرسال'); return; }
+      patch.displayNumber = edit.displayNumber.trim();
+    }
+    if (channel.provider === 'wapilot' && (edit.apiKey.trim() || edit.instance.trim())) {
+      if (!edit.apiKey.trim() || !edit.instance.trim()) {
+        notify('error', 'اكتب المفتاح واسم النسخة مع بعض');
+        return;
+      }
+      patch.credentials = { apiKey: edit.apiKey.trim(), instance: edit.instance.trim() };
+    }
+    if (!Object.keys(patch).length) { notify('info', 'مفيش تغيير'); return; }
+    await act(channel.id, () => mysqlAdmin.updateMessagingChannel(channel.id, patch), 'تم حفظ التعديلات');
+    setEditId(null);
+    setEdit({ label: '', displayNumber: '', instance: '', apiKey: '' });
+  };
+
   const ChannelRow = ({ channel }: { channel: MessagingChannel }) => {
     const limit = channel.daily_send_limit || 0;
     const usedPct = limit ? Math.min(100, Math.round((channel.sent_today / limit) * 100)) : 0;
@@ -197,6 +222,17 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
           >
             <Power size={12} />{channel.is_active === 1 ? 'إيقاف' : 'تفعيل'}
           </button>
+          {/* Changing the line the institute sends from used to mean deleting
+              the channel and adding it again — losing the daily counter and the
+              default flag with it. The API has always accepted a partial
+              update; only the panel had no way to send one. */}
+          <button
+            onClick={() => setEditId(editId === channel.id ? null : channel.id)}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 rounded-lg text-xs font-bold hover:bg-sky-100 transition disabled:opacity-40"
+          >
+            <Pencil size={12} />{editId === channel.id ? 'إلغاء' : 'تعديل'}
+          </button>
           <button
             onClick={() => act(channel.id, () => mysqlAdmin.deleteMessagingChannel(channel.id), 'تم حذف القناة')}
             disabled={busy}
@@ -205,6 +241,64 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
             <Trash2 size={12} />حذف
           </button>
         </div>
+
+        {editId === channel.id && (
+          <div className="border-t border-gray-100 pt-3 grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">اسم القناة</label>
+              <input
+                value={edit.label} onChange={e => setEdit(v => ({ ...v, label: e.target.value }))}
+                placeholder={channel.label}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">رقم الواتساب</label>
+              <input
+                value={edit.displayNumber} onChange={e => setEdit(v => ({ ...v, displayNumber: e.target.value }))}
+                placeholder={channel.display_number || '01xxxxxxxxx'}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono"
+              />
+              {edit.displayNumber && !toDialable(edit.displayNumber) && (
+                <p className="text-[11px] text-red-600 mt-1">الرقم ده مش صالح للإرسال</p>
+              )}
+            </div>
+            {channel.provider === 'wapilot' && (
+              <>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">اسم النسخة (instance)</label>
+                  <input
+                    value={edit.instance} onChange={e => setEdit(v => ({ ...v, instance: e.target.value }))}
+                    placeholder="instance5000"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">مفتاح Wapilot</label>
+                  <input
+                    type="password" value={edit.apiKey} onChange={e => setEdit(v => ({ ...v, apiKey: e.target.value }))}
+                    placeholder="سيبه فاضي لو مش هتغيّره"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </>
+            )}
+            <div className="sm:col-span-2 flex items-center gap-2">
+              <button
+                onClick={() => saveEdit(channel)}
+                disabled={busy}
+                className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-xs font-bold hover:bg-sky-700 transition disabled:opacity-40"
+              >
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}حفظ التعديلات
+              </button>
+              {/* The key and instance are one credential: sending only half
+                  would seal a set the provider rejects. */}
+              {channel.provider === 'wapilot' && Boolean(edit.apiKey) !== Boolean(edit.instance) && (
+                <span className="text-[11px] text-amber-700">لتغيير بيانات الاتصال اكتب المفتاح واسم النسخة مع بعض</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
