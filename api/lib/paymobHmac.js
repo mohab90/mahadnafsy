@@ -41,14 +41,21 @@ function verifyPaymobHmac(params, hmacSecret) {
   }
 }
 
+// The reference we send Paymob is unique per attempt — orderId~timestamp —
+// because Paymob refuses one it has seen before and our order id is stable.
+// Everything before the "~" is the order; no UUID contains that character.
+function stripPaymobAttempt(value) {
+  return String(value || '').split('~')[0];
+}
+
 function paymobMerchantOrderId(params) {
-  return normalizePaymobValue(
+  return stripPaymobAttempt(normalizePaymobValue(
     params.merchant_order_id
     || getDeepParam(params, 'order.merchant_order_id')
     || getDeepParam(params, 'obj.order.merchant_order_id')
     || getDeepParam(params, 'order')
     || getDeepParam(params, 'obj.order')
-  );
+  ));
 }
 
 function paymobTransactionId(params) {

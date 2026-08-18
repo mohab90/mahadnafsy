@@ -246,3 +246,20 @@ test('a throttled or unreachable provider does not take the channel out of servi
     assert.equal(isTransientSendFailure(permanent), false, `expected permanent: ${JSON.stringify(permanent)}`);
   }
 });
+
+// ── One order, many payment attempts ────────────────────────────────────────
+// Paymob refuses a special_reference it has seen before, and checkout-intent is
+// idempotent on purpose, so the reference had to become unique per attempt.
+// The webhook still has to find the order it belongs to.
+test('the webhook resolves an order from a per-attempt payment reference', () => {
+  const { paymobMerchantOrderId } = require('../lib/paymobHmac');
+  const orderId = 'a89ab671-a00a-4508-96a5-8ce93949dc5a';
+
+  // first attempt and a retry both point at the same order
+  assert.strictEqual(paymobMerchantOrderId({ merchant_order_id: `${orderId}~m1k2j3` }), orderId);
+  assert.strictEqual(paymobMerchantOrderId({ merchant_order_id: `${orderId}~zzzzzz` }), orderId);
+  // a reference with no suffix (legacy orders, and the classic flow) still works
+  assert.strictEqual(paymobMerchantOrderId({ merchant_order_id: orderId }), orderId);
+  // the separator never appears inside a UUID, so nothing is truncated wrongly
+  assert.ok(!orderId.includes('~'));
+});

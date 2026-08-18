@@ -209,7 +209,11 @@ async function paymobIntention({ paymob, amountCents, currency, orderId, itemTit
       payment_methods: paymobPaymentMethods(paymob),
       items: itemTitle ? [{ name: String(itemTitle).slice(0, 80), amount: amountCents, quantity: 1 }] : [],
       billing_data: billing,
-      special_reference: String(orderId),
+      // Unique per attempt, not per order: Paymob refuses a reference it has
+      // seen before, and our order id is stable by design because
+      // checkout-intent is idempotent. The webhook maps it back by taking
+      // everything before the "~" — a character no UUID contains.
+      special_reference: `${orderId}~${Date.now().toString(36)}`,
       notification_url: notification,
       redirection_url: redirection,
     }),

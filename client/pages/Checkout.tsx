@@ -156,9 +156,9 @@ const Checkout: React.FC = () => {
   // below, so a gateway problem costs the sale nothing.
   // Takes the id explicitly so it can be called in the same tick the order is
   // created, before setOrderId has re-rendered anything.
-  const payByCard = async (useOrderId?: string) => {
+  const payByCard = async (useOrderId?: string): Promise<boolean> => {
     const activeOrderId = useOrderId || orderId;
-    if (!activeOrderId) return;
+    if (!activeOrderId) return false;
     setCardRedirecting(true);
     setPayError('');
     const payload = {
@@ -181,14 +181,16 @@ const Checkout: React.FC = () => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok || !data.iframeUrl) throw new Error(data.error || 'تعذر بدء الدفع الإلكتروني.');
       window.location.assign(data.iframeUrl);
+      return true;
     } catch (err) {
       setCardRedirecting(false);
       setPayError(err instanceof Error ? err.message : 'تعذر بدء الدفع الإلكتروني — يمكنك إتمام الدفع بالتحويل بالأسفل.');
+      return false;
     }
   };
 
   // Returns the new order id so the caller can hand it straight to the gateway.
-  const handlePay = async (): Promise<string> => {
+  const handlePay = async (skipConfirmation = false): Promise<string> => {
     if (!canPay) return '';
     setPayLoading(true);
     setPayError('');
@@ -233,7 +235,7 @@ const Checkout: React.FC = () => {
       setServerCurrency(data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP');
       setServerPayMode(data.payMode === 'installment' ? 'installment' : 'cash');
       setServerPlanTotal(Number(data.planTotal) || null);
-      setOrderSent(true);
+      if (!skipConfirmation) setOrderSent(true);
       sessionStorage.removeItem(idempotencyStorageKey);
       return String(data.orderId);
     } catch (err) {
@@ -251,8 +253,12 @@ const Checkout: React.FC = () => {
   // refuses, the order is already recorded and the transfer route below is
   // untouched, so nothing is lost.
   const payNowByCard = async () => {
-    const newOrderId = await handlePay();
-    if (newOrderId) await payByCard(newOrderId);
+    const newOrderId = await handlePay(true);
+    if (!newOrderId) return;
+    const handedOver = await payByCard(newOrderId);
+    // The gateway refused. Show the confirmation screen so the transfer
+    // route is still there instead of leaving the customer on a dead button.
+    if (!handedOver) setOrderSent(true);
   };
 
   // Convert the chosen receipt file → base64 for upload.
@@ -513,16 +519,16 @@ const Checkout: React.FC = () => {
                               a fallback nobody can find: this creates the same
                               order and stops on the receipt-upload panel. */}
                           <button
-                            onClick={handlePay}
+                            onClick={() => handlePay()}
                             disabled={payLoading || cardRedirecting || !canPay}
                             className="w-full flex items-center justify-center gap-2 border-2 border-primary-200 text-primary-700 hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 rounded-xl transition mb-3 text-xs"
                           >
-                            <Banknote size={15} /> أو ادفع بالتحويل البنكي
+                            <Banknote size={15} /> أو ادفع انستا باي وابعتلنا صورة التحويل من هنا
                           </button>
                         </>
                       ) : (
                         <button
-                          onClick={handlePay}
+                          onClick={() => handlePay()}
                           disabled={payLoading || !canPay}
                           className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition shadow-lg mb-3 text-sm"
                         >
