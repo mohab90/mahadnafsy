@@ -13,7 +13,7 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { hasPermission, normalizeDataScope, PERMISSIONS } = require('../constants/permissions');
+const { hasPermission, normalizeDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
 
@@ -107,17 +107,39 @@ router.patch('/api/staff/therapist-portal/consultations/:id', requireAuth, requi
   }
 });
 
-router.post('/api/admin/staff', requireAuth, requireSuperAdmin, requireTenantQuota('staff'), async (req, res) => {
+// HR holds manage_staff and could not use it: this route demanded a super
+// admin, so "أضف موظف" failed for the one role whose job it is. The
+// permission now opens the door, and the two ways it could be abused are
+// closed below — nobody may mint a role above their own, or grant a
+// permission they do not themselves hold.
+router.post('/api/admin/staff', requireAuth, requirePermission('manage_staff'), requireTenantQuota('staff'), async (req, res) => {
   try {
     const s = req.body;
     const id = s.id || uuidv4();
     const role = ((s.role || 'other').toUpperCase());
+
+    // Privilege escalation guard. Without it, manage_staff would be the
+    // right to create an ADMIN and take over the tenant.
+    const PRIVILEGED_ROLES = ['ADMIN', 'MANAGER'];
+    if (!req.isSuperAdmin && PRIVILEGED_ROLES.includes(role)) {
+      return res.status(403).json({ error: 'إنشاء حساب بصلاحية مدير أو أدمن يحتاج صلاحية المالك' });
+    }
     const firebaseUid = s.firebaseUid || s.firebase_uid || null;
     // Normalise to a MySQL DATETIME literal — a raw ISO string ('...T...Z') is
     // rejected by DATETIME columns, which 500'd staff creation when no date was supplied.
     const joinedAt = String(s.joinedAt || s.joined_at || new Date().toISOString()).slice(0, 19).replace('T', ' ');
     const commissionRate = s.commissionRate || s.commission_rate || null;
     const isActive = s.is_active !== undefined ? s.is_active : (s.status === 'inactive' ? 0 : 1);
+    // …and may not hand out a permission they were never given.
+    if (!req.isSuperAdmin && Array.isArray(s.permissions)) {
+      const mine = new Set(resolvePermissions(req.staffRecord) || []);
+      const overreach = s.permissions.filter(perm => !mine.has(perm));
+      if (overreach.length) {
+        return res.status(403).json({
+          error: `مش مسموح تمنح صلاحيات مش عندك: ${overreach.join(', ')}`,
+        });
+      }
+    }
     const permissionsJson = s.permissions_json
       || (Array.isArray(s.permissions) ? JSON.stringify(s.permissions) : null);
     // Per-staff override for the role-keyed DATA_SCOPE. Anything the validator

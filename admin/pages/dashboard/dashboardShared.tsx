@@ -556,7 +556,10 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   // Running the online-clients desk, not merely reading a subscriber record:
   // sales reps hold view_subscribers so they can see who a lead converted into,
   // and gating this on it put the whole الأونلاين group in their sidebar.
-  online_clients:     'manage_subscribers',
+  // Was manage_subscribers, which the sales role does not hold — so the tab
+  // sat in their nav bar and refused to open. Reading your own client list
+  // is a view; editing is guarded per action on the routes themselves.
+  online_clients:     'view_subscribers',
   client:             'view_client_db',
 
   archived_clients: 'delete_subscribers',
