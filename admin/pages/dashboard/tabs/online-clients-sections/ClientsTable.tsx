@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
+  CalendarClock, ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
   Bundle, CommunicationRecord, Course, 
@@ -10,6 +10,7 @@ import type {
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { SUB_STATUS_CFG, normBranchId, type SubStatus } from '../../dashboardShared';
 import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
+import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
 
@@ -72,6 +73,9 @@ export function ClientsTable({
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength, notify,
 }: Props) {
+  // Which customer we are adjusting course access for. The default length is
+  // set per course in the catalogue; this is where one person is changed.
+  const [accessRow, setAccessRow] = React.useState<SubscriberItem | null>(null);
   const navigate = useNavigate();
   const todayOnlineStr = new Date().toISOString().slice(0, 10);
   const in3daysOnlineStr = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
@@ -335,6 +339,8 @@ export function ClientsTable({
                       setCollDetailsRow(row);
                     }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
                   )}
+                  <button title="مدة صلاحية الكورسات والفيديوهات" onClick={()=>setAccessRow(row)}
+                    className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><CalendarClock size={12}/></button>
                   <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
                   {/* Was gated on "is the Daqqi tab open" instead of "can this role actually delete" —
                       reception_daqqi could see and click this, but the backend (requireAdmin, i.e.
@@ -508,6 +514,17 @@ export function ClientsTable({
         </tbody>
       </table>
       {filteredLength === 0 && <p className="text-sm text-gray-500 mt-3">لا يوجد عملاء مطابقين للبحث.</p>}
+      {accessRow && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={()=>setAccessRow(null)}>
+          <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" dir="rtl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-extrabold text-gray-800">صلاحية الكورسات — {accessRow.name}</h3>
+              <button onClick={()=>setAccessRow(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            </div>
+            <ClientCourseAccessPanel subscriberId={accessRow.id} notify={notify} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -456,7 +456,7 @@ const Enrollment: React.FC = () => {
                 <h3 className="text-lg font-extrabold text-gray-900">تم إنشاء حسابك!</h3>
                 <p className="text-gray-500 text-sm">
                   {onlinePayEnabled
-                    ? 'حسابك جاهز. ادفع الآن بالبطاقة ويتفعّل وصولك فوراً، أو راسلنا واتساب.'
+                    ? 'حسابك جاهز. ادفع الآن — محفظة أو بطاقة أو فوري ويتفعّل وصولك فوراً، أو راسلنا واتساب.'
                     : 'حسابك جاهز. أرسل لنا واتساب لإتمام الدفع وتفعيل الكورسات.'}
                 </p>
 
@@ -474,7 +474,7 @@ const Enrollment: React.FC = () => {
                     <CreditCard size={18} />
                     {chosenCourses.length > 1
                       ? <>ادفع بالبطاقة — {item.title}</>
-                      : <>ادفع الآن بالبطاقة — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>}
+                      : <>ادفع الآن — محفظة أو بطاقة أو فوري — {totalFinal.toLocaleString('ar-EG-u-nu-latn')} {currencySymbol}</>}
                   </Link>
                 ))}
                 {onlinePayEnabled && chosenCourses.length > 1 && (

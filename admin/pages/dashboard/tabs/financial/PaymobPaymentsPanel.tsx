@@ -7,15 +7,16 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 type PaymobRow = {
   id: string;
-  amount_egp: string | number;
+  amount: string | number;
   status: string;
-  date: string;
-  transaction_id: string | null;
-  item_title: string | null;
-  subscriber_name?: string | null;
-  subscriber_client_code?: string | null;
-  course_title_ar?: string | null;
-  course_title?: string | null;
+  /** The route answers `at` (date only) and camelCase everywhere else. */
+  at: string;
+  transactionId: string | null;
+  itemTitle: string | null;
+  subscriberName?: string | null;
+  subscriberClientCode?: string | null;
+  courseTitleAr?: string | null;
+  courseTitle?: string | null;
 };
 
 const money = (value: string | number) =>
@@ -51,7 +52,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
   }, []);
 
   const total = useMemo(
-    () => rows.filter(row => row.status === 'paid').reduce((sum, row) => sum + Number(row.amount_egp || 0), 0),
+    () => rows.filter(row => row.status === 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0),
     [rows]);
 
   return (
@@ -107,15 +108,15 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
               {rows.map(row => (
                 <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="p-3 whitespace-nowrap text-gray-600 text-xs">
-                    {new Date(row.date).toLocaleString('ar-EG')}
+                    {new Date(row.at).toLocaleString('ar-EG')}
                   </td>
-                  <td className="p-3 font-semibold text-gray-800">{row.subscriber_name || '—'}</td>
-                  <td className="p-3 font-mono text-xs text-gray-500">{row.subscriber_client_code || '—'}</td>
+                  <td className="p-3 font-semibold text-gray-800">{row.subscriberName || '—'}</td>
+                  <td className="p-3 font-mono text-xs text-gray-500">{row.subscriberClientCode || '—'}</td>
                   <td className="p-3 text-gray-600 text-xs">
-                    {row.course_title_ar || row.course_title || row.item_title || '—'}
+                    {row.courseTitleAr || row.courseTitle || row.itemTitle || '—'}
                   </td>
                   <td className="p-3 font-mono font-bold text-emerald-700 whitespace-nowrap">
-                    {money(row.amount_egp)} <span className="text-[10px] font-normal text-gray-400">ج.م</span>
+                    {money(row.amount)} <span className="text-[10px] font-normal text-gray-400">ج.م</span>
                   </td>
                   <td className="p-3">
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
@@ -127,7 +128,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
                     </span>
                   </td>
                   <td className="p-3 font-mono text-[11px] text-gray-500 whitespace-nowrap">
-                    {row.transaction_id || '—'}
+                    {row.transactionId || '—'}
                   </td>
                 </tr>
               ))}

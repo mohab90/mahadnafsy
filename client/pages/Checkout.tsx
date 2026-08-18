@@ -6,6 +6,7 @@ import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { toDialable } from '../lib/whatsappLink';
+import { amountDueNow, installmentTotal, type PayMode } from '../../shared/enrollmentPricing';
 
 const Checkout: React.FC = () => {
   useEffect(() => { document.title = 'إتمام الاشتراك | معهد الدراسات النفسية'; }, []);
@@ -136,7 +137,15 @@ const Checkout: React.FC = () => {
   const settlementCurrency = serverCurrency || paymentLink?.currency || (type === 'certificate' && ['EGP', 'SAR', 'USD'].includes(searchParams.get('currency') || '')
     ? searchParams.get('currency') as 'EGP' | 'SAR' | 'USD' : currency);
   const currencySymbol = settlementCurrency === 'SAR' ? 'ر.س' : settlementCurrency === 'USD' ? '$' : 'ج.م';
-  const finalAmount = serverAmount ?? itemPrice;
+  const payMode: PayMode = searchParams.get('payMode') === 'installment' ? 'installment' : 'cash';
+  // Show the number the server is going to charge, not the catalogue price.
+  // finalAmount fell back to the full price for the whole time the customer
+  // is reading the page and deciding — so picking قسط looked like it had been
+  // thrown away. It had not; the page simply never applied the discount.
+  const discountable = itemPrice > 0 && !paymentLink && type !== 'certificate';
+  const displayAmount = discountable ? amountDueNow(itemPrice, payMode) : itemPrice;
+  const finalAmount = serverAmount ?? displayAmount;
+  const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice) : null);
   const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
 
   const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemPrice > 0;
@@ -391,7 +400,7 @@ const Checkout: React.FC = () => {
                             className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition text-sm">
                             {cardRedirecting
                               ? <><Loader2 size={16} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
-                              : <><CreditCard size={16} /> ادفع الآن بالبطاقة ({finalAmount} {currencySymbol})</>}
+                              : <><CreditCard size={16} /> ادفع الآن — محفظة أو بطاقة أو فوري ({finalAmount} {currencySymbol})</>}
                           </button>
                           <p className="mt-2 text-center text-[11px] text-gray-400">دفع آمن عبر بوابة Paymob — أو أكمل بالتحويل البنكي بالأسفل</p>
                         </div>
@@ -497,7 +506,7 @@ const Checkout: React.FC = () => {
                           >
                             {payLoading || cardRedirecting
                               ? <><Loader2 size={17} className="animate-spin" /> جارٍ تحويلك لصفحة الدفع...</>
-                              : <><CreditCard size={17} /> ادفع الآن بالبطاقة — {finalAmount} {currencySymbol}</>
+                              : <><CreditCard size={17} /> ادفع الآن — محفظة أو بطاقة أو فوري — {finalAmount} {currencySymbol}</>
                             }
                           </button>
                           {/* The transfer route is still a first-class option, not
