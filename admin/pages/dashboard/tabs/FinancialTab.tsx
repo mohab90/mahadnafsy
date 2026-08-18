@@ -3,6 +3,7 @@ import {
   Plus, TrendingUp,
 } from 'lucide-react';
 import { FinancialSubTabs } from './financial/FinancialSubTabs';
+import { PaymobPaymentsPanel } from './financial/PaymobPaymentsPanel';
 import { FinancialOrdersControls } from './financial/FinancialOrdersControls';
 import { FinancialOrdersTable } from './financial/FinancialOrdersTable';
 import { useFinancialCommissionsData } from './financial/useFinancialCommissionsData';
@@ -430,6 +431,8 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       {financialSubTab === 'budget' && (
         <FinancialBudgetPanel notify={notifyLegacy} branch={branchFilter || undefined} />
       )}
+
+      {financialSubTab === 'paymob' && <PaymobPaymentsPanel notify={notify} />}
 
       {financialSubTab === 'refunds' && (
         <FinancialRefundsPanel notify={notifyLegacy} branch={branchFilter || undefined} />

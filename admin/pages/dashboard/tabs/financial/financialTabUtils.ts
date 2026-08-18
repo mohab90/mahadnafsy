@@ -4,6 +4,7 @@ export type FinancialSubTab =
   | 'cockpit'
   | 'overview'
   | 'orders'
+  | 'paymob'
   | 'expenses'
   | 'pl'
   | 'installments'

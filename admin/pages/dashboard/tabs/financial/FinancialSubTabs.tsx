@@ -25,6 +25,7 @@ const subTabs: [FinancialSubTab, string, React.ElementType][] = [
   ['advances', 'سلف الموظفين', HandCoins],
   ['overview', 'نظرة مالية', BarChart3],
   ['orders', 'الإيرادات', CreditCard],
+  ['paymob', "مدفوعات باي موب", CreditCard],
   ['expenses', 'المصروفات', Wallet],
   ['pl', 'الأرباح والخسائر', PieChart],
   ['installments', 'الأقساط والمديونيات', CalendarDays],
