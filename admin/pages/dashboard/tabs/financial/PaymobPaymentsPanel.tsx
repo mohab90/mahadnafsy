@@ -51,9 +51,15 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Collected and not-collected are different things and must never be added
+  // together. The route merges in orders with no matching payment — abandoned
+  // checkouts and refused attempts — so the split happens here.
+  const collected = useMemo(() => rows.filter(row => row.status === 'paid'), [rows]);
+  const uncollected = useMemo(() => rows.filter(row => row.status !== 'paid'), [rows]);
   const total = useMemo(
-    () => rows.filter(row => row.status === 'paid').reduce((sum, row) => sum + Number(row.amount || 0), 0),
-    [rows]);
+    () => collected.reduce((sum, row) => sum + Number(row.amount || 0), 0), [collected]);
+  const uncollectedTotal = useMemo(
+    () => uncollected.reduce((sum, row) => sum + Number(row.amount || 0), 0), [uncollected]);
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -68,7 +74,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
         </div>
         <div className="text-left">
           <div className="text-2xl font-extrabold font-mono">{money(total)}</div>
-          <div className="text-white/70 text-xs">إجمالي المحصّل · {rows.length} عملية</div>
+          <div className="text-white/70 text-xs">إجمالي المحصّل فعلاً · {collected.length} عملية</div>
         </div>
       </div>
 
@@ -86,7 +92,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
         <div className="flex items-center justify-center py-16 text-gray-400">
           <Loader2 size={26} className="animate-spin ml-2" /> جاري التحميل...
         </div>
-      ) : rows.length === 0 ? (
+      ) : collected.length === 0 && uncollected.length === 0 ? (
         <div className="text-center py-16 text-gray-400 text-sm border border-dashed border-gray-200 rounded-2xl">
           مفيش مدفوعات إلكترونية لسه
         </div>
@@ -105,7 +111,7 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
               </tr>
             </thead>
             <tbody>
-              {rows.map(row => (
+              {collected.map(row => (
                 <tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="p-3 whitespace-nowrap text-gray-600 text-xs">
                     {new Date(row.at).toLocaleString('ar-EG')}
@@ -129,6 +135,41 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
                   </td>
                   <td className="p-3 font-mono text-[11px] text-gray-500 whitespace-nowrap">
                     {row.transactionId || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {uncollected.length > 0 && (
+        <div className="border border-amber-200 rounded-2xl overflow-hidden">
+          <div className="bg-amber-50 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="font-bold text-amber-900 text-sm">محاولات دفع لم تكتمل</div>
+              <div className="text-[11px] text-amber-700 mt-0.5">
+                العميل فتح صفحة الدفع وما كمّلش — دي مش فلوس محصّلة ومش داخلة في أي إجمالي.
+              </div>
+            </div>
+            <div className="text-left">
+              <div className="text-lg font-extrabold font-mono text-amber-800">{money(uncollectedTotal)}</div>
+              <div className="text-[11px] text-amber-600">{uncollected.length} محاولة</div>
+            </div>
+          </div>
+          <table className="w-full bg-white text-sm">
+            <tbody>
+              {uncollected.map(row => (
+                <tr key={row.id} className="border-t border-amber-100">
+                  <td className="p-3 text-xs text-gray-500 whitespace-nowrap">
+                    {new Date(row.at).toLocaleString('ar-EG')}
+                  </td>
+                  <td className="p-3 text-xs text-gray-700">{row.subscriberName || row.itemTitle || '—'}</td>
+                  <td className="p-3 font-mono text-xs text-amber-700">{money(row.amount)} ج.م</td>
+                  <td className="p-3">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                      لم تكتمل
+                    </span>
                   </td>
                 </tr>
               ))}

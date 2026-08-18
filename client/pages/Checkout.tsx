@@ -583,16 +583,47 @@ const Checkout: React.FC = () => {
                     </div>
                     
                     <div className="space-y-2 text-sm text-gray-600 mb-4">
+                    {/* Show the arithmetic. "3,300 → 767" with nothing in between
+                        reads as an error: the customer cannot tell a discount from a
+                        deposit, and only one of those leaves a balance owing. */}
                         <div className="flex justify-between">
                             <span>السعر الأساسي</span>
                             <span>{itemPrice} {currencySymbol}</span>
                         </div>
+                        {discountable && payMode === 'cash' && itemPrice > finalAmount && (
+                          <div className="flex justify-between text-green-700">
+                            <span>خصم الدفع الكامل (15%)</span>
+                            <span>− {itemPrice - finalAmount} {currencySymbol}</span>
+                          </div>
+                        )}
+                        {discountable && payMode === 'installment' && planTotal && (
+                          <>
+                            <div className="flex justify-between text-green-700">
+                              <span>خصم التقسيط (7%)</span>
+                              <span>− {itemPrice - planTotal} {currencySymbol}</span>
+                            </div>
+                            <div className="flex justify-between font-semibold text-gray-800">
+                              <span>إجمالي الكورس بعد الخصم</span>
+                              <span>{planTotal} {currencySymbol}</span>
+                            </div>
+                            <div className="flex justify-between text-amber-700">
+                              <span>الباقي على أقساط</span>
+                              <span>{planTotal - finalAmount} {currencySymbol}</span>
+                            </div>
+                          </>
+                        )}
                     </div>
 
                     <div className="flex justify-between font-bold text-lg pt-4 border-t">
-                        <span>صافي الدفع</span>
+                        <span>{payMode === 'installment' ? 'المقدم المطلوب الآن' : 'صافي الدفع'}</span>
                         <span className="text-primary-600">{finalAmount} {currencySymbol}</span>
                     </div>
+                    {payMode === 'installment' && planTotal && (
+                      <p className="text-[11px] text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        دي أول دفعة (25% من إجمالي الكورس بعد الخصم). الباقي {planTotal - finalAmount} {currencySymbol}
+                        بيتقسّط، وفريقنا هيتواصل معاك بمواعيده.
+                      </p>
+                    )}
 
                     <div className="bg-gray-50 p-3 rounded-lg mt-4 text-xs text-gray-500 flex items-start gap-2">
                         <Check className="text-green-500 mt-0.5" size={14} />

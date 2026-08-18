@@ -193,6 +193,16 @@ const Enrollment: React.FC = () => {
       const waMsg = `مرحباً، أريد الاشتراك في:\n${itemTitles}\n\nالإجمالي: ${totalFinal.toLocaleString('ar-EG-u-nu-latn')} ${currencySymbol} (${payType === 'cash' ? 'كاش - خصم 15%' : 'أول قسط 25%'})\nالاسم: ${fullName.trim()}\nالهاتف: ${phone.trim()}\nالبريد: ${email.trim()}`;
       setRegisteredWhatsapp(encodeURIComponent(waMsg));
       void uid; void firstItem;
+      // Straight to payment for what they chose. The confirmation screen is
+      // still there for anyone the gateway cannot serve — it is just no
+      // longer a stop on the way for everyone else.
+      if (onlinePayEnabled && chosenCourses.length === 1) {
+        const item = chosenCourses[0];
+        const itemId = item.key.replace(/^(course|bundle):/, '');
+        window.location.assign(
+          `/checkout?type=${item.kind}&id=${encodeURIComponent(itemId)}&payMode=${payType}`);
+        return;
+      }
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ، حاول مرة أخرى.');
