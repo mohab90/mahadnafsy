@@ -273,6 +273,48 @@ function scheduleAutoCertificateSweep() {
 }
 scheduleAutoCertificateSweep();
 
+// A payment waiting on the accountant is money the institute has not decided
+// about yet. One waiting more than a day is a payment nobody is looking at.
+// Announced once per payment — the flag is what keeps this a nudge rather
+// than an hourly complaint about the same row.
+async function runPaymentReviewSweep(tenantId = DEFAULT_TENANT) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.id, p.amount_egp, p.payment_method, p.created_at, p.staff_name,
+              s.name AS subscriber_name,
+              TIMESTAMPDIFF(HOUR, p.created_at, NOW()) AS age_hours
+         FROM payments p
+         LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id = p.tenant_id
+        WHERE p.tenant_id=? AND p.status='pending' AND p.deleted_at IS NULL
+          AND p.created_at < NOW() - INTERVAL 24 HOUR
+          AND p.review_overdue_notified_at IS NULL
+        ORDER BY p.created_at ASC LIMIT 100`, [tenantId]);
+    if (!rows.length) { logger.info(`[payment-review] nothing overdue for ${tenantId}`); return; }
+
+    for (const row of rows) {
+      const who = row.subscriber_name || row.staff_name || "عميل";
+      await createNotification(
+        'payment', '⏰ دفعة مستنية مراجعة أكتر من 24 ساعة',
+        `${row.amount_egp} ج.م من «${who}»${row.payment_method ? ` — ${row.payment_method}` : ''} · مستنية ${row.age_hours} ساعة`,
+        { paymentId: row.id }, tenantId, null
+      ).catch(() => {});
+      await pool.query(
+        'UPDATE payments SET review_overdue_notified_at=NOW() WHERE id=? AND tenant_id=?',
+        [row.id, tenantId]).catch(() => {});
+    }
+    logger.info(`[payment-review] ${rows.length} overdue payment(s) flagged for ${tenantId}`);
+  } catch (e) { logger.warn('[payment-review] error:', e.message); }
+}
+
+function schedulePaymentReviewSweep() {
+  setTimeout(() => {
+    forEachActiveTenant(runPaymentReviewSweep);
+    setInterval(() => forEachActiveTenant(runPaymentReviewSweep), 60 * 60 * 1000);
+  }, 9 * 60 * 1000);
+  logger.info('[payment-review] scheduled — hourly, first run in 9m');
+}
+schedulePaymentReviewSweep();
+
 // GET /api/admin/leads/due-today — list leads due for follow-up today
 
 async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
