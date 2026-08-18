@@ -434,7 +434,9 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       || 'ONLINE_EGYPT';
 
     // 1. Mark order paid
-    await conn.query("UPDATE orders SET status='paid', transaction_id=? WHERE id=? AND tenant_id=?", [transactionId, merchantOrderId, tenantId]);
+    await conn.query(
+      "UPDATE orders SET status='paid', transaction_id=?, subscriber_id=COALESCE(subscriber_id,?), paid_at=COALESCE(paid_at,NOW()) WHERE id=? AND tenant_id=?",
+      [transactionId, sub?.id || null, merchantOrderId, tenantId]);
 
     // 2. Auto-enroll subscriber for course or bundle payments
     if ((orderType === 'course' || orderType === 'bundle') && sub) {
@@ -483,8 +485,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     await conn.query(
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
-          transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, date, status, created_at)
-       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,0,?,?,?,?,?,NOW(),'paid',NOW())`,
+          transaction_id, is_installment, course_expected, branch, branch_id, tenant_id, note, source, date, status, created_at)
+       VALUES (?,?,?,?,?,?,'COURSE','online_paymob',?,0,?,?,?,?,?,'paymob',NOW(),'paid',NOW())`,
       [
         payId,
         sub?.id || null,

@@ -47,7 +47,7 @@ async function ensureSubscriberForOrder(conn, {
        (id, firebase_uid, client_code, lead_id, name, email, phone, branch, branch_id,
         assigned_sales_id, assigned_sales_name, assigned_cs_id, assigned_cs_name,
         is_active, tenant_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,NOW())`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,NOW())`,
     [subscriberId, uid || null, clientCode, lead?.id || null, name || normalizedEmail.split('@')[0],
      normalizedEmail, phone || '', branch, branchId,
      lead?.assigned_sales_id || null, lead?.assigned_sales_name || null,
