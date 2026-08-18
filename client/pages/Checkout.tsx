@@ -53,6 +53,10 @@ const Checkout: React.FC = () => {
   const [orderId, setOrderId] = useState('');
   const [serverAmount, setServerAmount] = useState<number | null>(null);
   const [serverCurrency, setServerCurrency] = useState<'EGP' | 'SAR' | 'USD' | null>(null);
+  // What the server decided and on what basis, so the page can show the
+  // instalment plan rather than silently charging a number nobody explained.
+  const [serverPayMode, setServerPayMode] = useState<'cash' | 'installment'>('cash');
+  const [serverPlanTotal, setServerPlanTotal] = useState<number | null>(null);
   // Self-service receipt upload (after order is placed)
   const [proofImage, setProofImage] = useState('');
   const [proofMethod, setProofMethod] = useState('انستا باي');
@@ -204,6 +208,7 @@ const Checkout: React.FC = () => {
           customerEmail: customerEmail.trim(),
           customerPhone: customerPhone.trim(),
           amount: itemPrice, currency,
+          payMode: searchParams.get('payMode') === 'installment' ? 'installment' : 'cash',
           ...(type === 'consultation' ? {
             therapistId: searchParams.get('therapistId') || '',
             sessionDate: searchParams.get('date') || '',
@@ -217,6 +222,8 @@ const Checkout: React.FC = () => {
       setOrderId(String(data.orderId));
       setServerAmount(Number(data.amount));
       setServerCurrency(data.currency === 'SAR' || data.currency === 'USD' ? data.currency : 'EGP');
+      setServerPayMode(data.payMode === 'installment' ? 'installment' : 'cash');
+      setServerPlanTotal(Number(data.planTotal) || null);
       setOrderSent(true);
       sessionStorage.removeItem(idempotencyStorageKey);
       return String(data.orderId);

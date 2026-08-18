@@ -6,13 +6,14 @@ import { useSiteData } from '../context/SiteDataContext';
 import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { cdnImg } from '../lib/img';
 import { toDialable } from '../lib/whatsappLink';
+// The cash / instalment rates live in shared/enrollmentPricing so the server
+// applies exactly the same ones. They used to be defined here only, which is
+// how a customer could be shown a discount the server had never heard of.
+import { CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT } from '../../shared/enrollmentPricing';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
 
-const CASH_DISCOUNT = 0.15;      // 15% off → full access
-const INSTALL_FIRST_PCT = 0.25;  // first installment = 25% of discounted price
-const INSTALL_DISCOUNT = 0.07;   // 7% off base price on installment payments
 
 // ── Arabic error messages ────────────────────────────────────────────
 const authAr: Record<string, string> = {
@@ -24,7 +25,7 @@ const authAr: Record<string, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 const Enrollment: React.FC = () => {
   useEffect(() => { document.title = 'التسجيل في الكورس | معهد الدراسات النفسية'; }, []);
-  const { courses, bundles, currency, content } = useSiteData();
+  const { courses, bundles, currency, content, authUser } = useSiteData();
   const onlinePayEnabled = usePaymentAvailability();
 
   // Available courses with a price
@@ -70,6 +71,17 @@ const Enrollment: React.FC = () => {
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [registeredWhatsapp, setRegisteredWhatsapp] = useState('');
+
+  // A signed-in customer was still asked to invent an email and a password
+  // on a page they had already authenticated for — and picking an address
+  // that differed from their account created a second, disconnected record.
+  const isSignedIn = Boolean(authUser);
+  useEffect(() => {
+    if (!authUser) return;
+    setFullName(prev => prev || authUser.displayName || authUser.email?.split('@')[0] || '');
+    setEmail(prev => prev || authUser.email || '');
+    setPhone(prev => prev || (authUser as { phone?: string }).phone || '');
+  }, [authUser]);
 
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
   const whatsappNumber = (content['footer.whatsapp'] || '201096203090').replace(/\D/g, '');
@@ -129,7 +141,10 @@ const Enrollment: React.FC = () => {
     try {
       // Create or sign in to MySQL account
       let uid = '';
-      try {
+      // Already authenticated: there is no account to create, and trying to
+      // register again would fail on the existing email.
+      if (isSignedIn) uid = authUser?.uid || 'signed-in';
+      if (!isSignedIn) try {
         const result = await mysqlAuth.register({
           email: email.trim(),
           password,
@@ -447,7 +462,7 @@ const Enrollment: React.FC = () => {
                 {onlinePayEnabled && chosenCourses.map(item => (
                   <Link
                     key={item.key}
-                    to={`/checkout?type=${item.kind}&id=${encodeURIComponent(item.key.replace(/^(course|bundle):/, ''))}`}
+                    to={`/checkout?type=${item.kind}&id=${encodeURIComponent(item.key.replace(/^(course|bundle):/, ''))}&payMode=${payType}`}
                     className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 rounded-xl transition text-sm"
                   >
                     <CreditCard size={18} />
@@ -484,7 +499,13 @@ const Enrollment: React.FC = () => {
               </div>
             ) : (
               <form onSubmit={handlePay} className="space-y-3">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">بيانات الحساب الجديد</p>
+                {!isSignedIn && <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">بيانات الحساب الجديد</p>}
+                {isSignedIn && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center gap-2">
+                    <CheckCircle size={14} className="shrink-0" />
+                    <span>أنت مسجّل الدخول باسم <b>{authUser?.displayName || authUser?.email}</b> — هنكمل على حسابك.</span>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">الاسم الكامل *</label>
                   <input
@@ -501,22 +522,22 @@ const Enrollment: React.FC = () => {
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary-400"
                   />
                 </div>
-                <div>
+                {!isSignedIn && <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">البريد الإلكتروني *</label>
                   <input
                     required value={email} onChange={e => setEmail(e.target.value)}
                     placeholder="example@email.com" type="email" dir="ltr"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary-400"
                   />
-                </div>
-                <div>
+                </div>}
+                {!isSignedIn && <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">كلمة المرور *</label>
                   <input
                     required value={password} onChange={e => setPassword(e.target.value)}
                     placeholder="6 أحرف على الأقل" type="password"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary-400"
                   />
-                </div>
+                </div>}
                 <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">تحضر فين؟ <span className="text-gray-400 font-normal">(اختياري)</span></label>
                   <select

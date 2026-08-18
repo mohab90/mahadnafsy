@@ -255,7 +255,7 @@ const UserDashboard: React.FC = () => {
           <User size={40} className="text-gray-400" />
         </div>
         <h2 className="text-2xl font-bold text-gray-800">يرجى تسجيل الدخول أولاً</h2>
-        <Link to="/auth" className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl font-bold transition">
+        <Link to="/auth?redirect=%2Fmy-account" className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl font-bold transition">
           تسجيل الدخول
         </Link>
       </div>

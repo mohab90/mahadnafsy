@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Globe, LogIn, LogOut, User } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import GlobalSearch from './GlobalSearch';
@@ -9,6 +9,10 @@ const FALLBACK_LOGO = 'https://h.top4top.io/p_3734xfq501.png';
 const Header: React.FC = () => {
   const { currency, authUser, logout, content } = useSiteData();
   const logoUrl = content['institute.logo'] || FALLBACK_LOGO;
+  // Signing in should return you to the page you were reading, not the
+  // home page. Checkout already passed this; nothing else did.
+  const location = useLocation();
+  const loginHref = `/auth?redirect=${encodeURIComponent(location.pathname + location.search)}`;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -67,7 +71,7 @@ const Header: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <Link to="/auth" className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg transition text-sm">
+              <Link to={loginHref} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg transition text-sm">
                 <LogIn size={18} />
                 <span>دخول</span>
               </Link>
@@ -101,7 +105,7 @@ const Header: React.FC = () => {
                 </button>
               </>
             ) : (
-              <Link to="/auth" className="flex items-center gap-2 py-2 px-2 text-primary-600 font-bold" onClick={() => setIsMenuOpen(false)}>
+              <Link to={loginHref} className="flex items-center gap-2 py-2 px-2 text-primary-600 font-bold" onClick={() => setIsMenuOpen(false)}>
                 <LogIn size={16} /> تسجيل دخول
               </Link>
             )}

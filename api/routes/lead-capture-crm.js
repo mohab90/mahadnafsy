@@ -1,4 +1,5 @@
 'use strict';
+const { amountDueNow, installmentTotal } = require('../lib/enrollmentPricing');
 
 const express = require('express');
 const router = express.Router();
@@ -282,8 +283,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
   try {
     const {
       itemId, itemType, itemTitle, customerName, customerEmail, customerPhone,
-      paymentLinkToken,
+      paymentLinkToken, payMode,
     } = req.body || {};
+    // 'cash' or 'installment'. The rate is applied here and never taken from
+    // the client: /enroll showed a discounted price and sent none of it, so a
+    // customer who picked قسط was billed the full list price at checkout.
+    const normalizedPayMode = payMode === 'installment' ? 'installment' : 'cash';
     const { uid, email } = req.user;
     if (!uid) return res.status(401).json({ error: 'Authenticated customer required' });
     // The account is the identity, not the body. A WhatsApp-only client has no
@@ -336,6 +341,7 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     // Product prices are authoritative on the server. Never trust a price sent
     // by the browser, even on the manually reviewed transfer path.
     let expectedAmount = 0;
+    let basePrice = 0;
     let expectedCurrency = clientContext.currency;
     let canonicalTitle = String(itemTitle || '').trim().slice(0, 500);
     if (normalizedType === 'course') {
@@ -344,7 +350,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         [itemId, tenantId]
       );
       if (!course) return res.status(404).json({ error: 'Course not found' });
-      expectedAmount = Number(course[`price_${expectedCurrency.toLowerCase()}`]) || 0;
+      basePrice = Number(course[`price_${expectedCurrency.toLowerCase()}`]) || 0;
+      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode) : 0;
       canonicalTitle = course.title_ar || course.title || canonicalTitle;
     } else if (normalizedType === 'bundle') {
       const [[bundle]] = await conn.query(
@@ -352,7 +359,8 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
         [itemId, tenantId]
       );
       if (!bundle) return res.status(404).json({ error: 'Bundle not found' });
-      expectedAmount = Number(bundle[`price_${expectedCurrency.toLowerCase()}`]) || 0;
+      basePrice = Number(bundle[`price_${expectedCurrency.toLowerCase()}`]) || 0;
+      expectedAmount = basePrice > 0 ? amountDueNow(basePrice, normalizedPayMode) : 0;
       canonicalTitle = bundle.title || canonicalTitle;
     } else if (normalizedType === 'certificate') {
       const [[certificate]] = await conn.query(
@@ -534,7 +542,12 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
     }
     await conn.commit();
     transactionStarted = false;
-    res.json({ ok: true, orderId, amount: expectedAmount, currency: expectedCurrency });
+    res.json({
+      ok: true, orderId, amount: expectedAmount, currency: expectedCurrency,
+      payMode: normalizedPayMode,
+      basePrice: basePrice || undefined,
+      planTotal: normalizedPayMode === 'installment' && basePrice ? installmentTotal(basePrice) : undefined,
+    });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[checkout-intent]', e.message);
