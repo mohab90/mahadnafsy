@@ -39,6 +39,15 @@ async function grantCourseEntitlement({
     }, conn);
     const subject = await ownedSubject(conn, tenantId, subscriberId, courseId);
     const policy = accessPolicy(accessType, lectureLimit);
+    // How long this course is sold for. NULL means unlimited, which is what
+    // every course is until someone sets a duration, so nothing changes for
+    // existing catalogue entries.
+    // Read defensively: granting access must not fail because a duration
+    // lookup came back in an unexpected shape. No duration means unlimited,
+    // which is the safe direction to be wrong in.
+    const durationResult = await conn.query(
+      'SELECT access_months FROM courses WHERE id=? AND tenant_id=? LIMIT 1', [courseId, tenantId]);
+    const accessMonths = Number(durationResult?.[0]?.[0]?.access_months) || 0;
     const [[existing]] = await conn.query(
       `SELECT id,status,access_type,lecture_limit FROM enrollments
         WHERE tenant_id=? AND subscriber_id=? AND course_id=? LIMIT 1 FOR UPDATE`,
@@ -49,14 +58,18 @@ async function grantCourseEntitlement({
     const enrollmentId = existing?.id || uuidv4();
     await conn.query(
       `INSERT INTO enrollments
-       (id,tenant_id,subscriber_id,course_id,bundle_id,enrolled_at,access_type,lecture_limit,status,
+       (id,tenant_id,subscriber_id,course_id,bundle_id,enrolled_at,expiry_date,access_type,lecture_limit,status,
         entitlement_source,granted_by,branch_id)
-       VALUES (?,?,?,?,?,COALESCE(?,NOW()),?,?,'active',?,?,?)
-       ON DUPLICATE KEY UPDATE access_type=VALUES(access_type),lecture_limit=VALUES(lecture_limit),
+       VALUES (?,?,?,?,?,COALESCE(?,NOW()),
+              CASE WHEN ? > 0 THEN DATE_ADD(COALESCE(?,NOW()), INTERVAL ? MONTH) ELSE NULL END,
+              ?,?,'active',?,?,?)
+       ON DUPLICATE KEY UPDATE expiry_date=GREATEST(COALESCE(expiry_date,VALUES(expiry_date)),COALESCE(VALUES(expiry_date),expiry_date)),access_type=VALUES(access_type),lecture_limit=VALUES(lecture_limit),
          status='active',entitlement_source=VALUES(entitlement_source),granted_by=VALUES(granted_by),
          bundle_id=COALESCE(VALUES(bundle_id),bundle_id),revoked_at=NULL,revoked_by=NULL,
          branch_id=VALUES(branch_id),updated_at=NOW()`,
-      [enrollmentId, tenantId, subscriberId, courseId, bundleId, enrolledAt, policy.mode, policy.lectureLimit,
+      [enrollmentId, tenantId, subscriberId, courseId, bundleId, enrolledAt,
+        accessMonths, enrolledAt, accessMonths,
+        policy.mode, policy.lectureLimit,
         source, actor, branchId || subject.branch_id || 'branch-other']
     );
     if (changed) {

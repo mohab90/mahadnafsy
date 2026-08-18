@@ -128,7 +128,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota(
           category, type,
           price_egp, price_sar, price_usd,
           orig_price_egp, orig_price_sar, orig_price_usd,
-          rating, students, duration, level, hours,
+          rating, students, duration, level, hours, access_months,
           promo_video_url, live_session_url,
           certificate_template_url, certificate_template_name,
           is_published, sort_order,
@@ -144,7 +144,7 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota(
          price_egp=VALUES(price_egp), price_sar=VALUES(price_sar), price_usd=VALUES(price_usd),
          orig_price_egp=VALUES(orig_price_egp), orig_price_sar=VALUES(orig_price_sar), orig_price_usd=VALUES(orig_price_usd),
          rating=VALUES(rating), students=VALUES(students), duration=VALUES(duration),
-         level=VALUES(level), hours=VALUES(hours),
+         level=VALUES(level), hours=VALUES(hours), access_months=VALUES(access_months),
          is_published=VALUES(is_published), sort_order=VALUES(sort_order),
          promo_video_url=VALUES(promo_video_url), live_session_url=VALUES(live_session_url),
          certificate_template_url=VALUES(certificate_template_url),
@@ -159,7 +159,9 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota(
         category, courseType,
         priceEGP, priceSAR, priceUSD,
         origEGP, origSAR, origUSD,
-        c.rating||0, c.students||0, c.duration||'', c.level||'', c.hours||null,
+        // How many months a new enrolment keeps the course. 0 / blank means
+        // unlimited, which is every course until someone sets a number.
+        c.rating||0, c.students||0, c.duration||'', c.level||'', c.hours||null, Number(c.accessMonths ?? c.access_months) > 0 ? Number(c.accessMonths ?? c.access_months) : null,
         promoUrl, liveUrl, certUrl, certName,
         isPublished?1:0, sortOrder,
         modulesJson, galleryJson, detailsJson, courseModJson,

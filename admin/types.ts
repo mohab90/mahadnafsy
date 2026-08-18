@@ -75,6 +75,8 @@ export interface Course {
   modules: string[];
   duration: string;
   level: string;
+  /** How many months a new enrolment keeps this course. Absent = unlimited. */
+  accessMonths?: number | null;
   detailsContent?: Record<string, string>;
   promoVideoUrl?: string;
   liveSessionUrl?: string;

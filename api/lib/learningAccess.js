@@ -6,7 +6,7 @@ async function resolveLectureAccess({ tenantId, subscriberId, lectureId }, db = 
   const [[lecture]] = await db.query(
     `SELECT cl.id,cl.course_id,cl.sort_order,cl.drip_unlock_days,cl.video_url,cl.duration_seconds,
             COALESCE(cc.sort_order,999999) AS chapter_sort,
-            e.enrolled_at,e.access_type,e.lecture_limit
+            e.enrolled_at,e.access_type,e.lecture_limit,e.expiry_date
        FROM course_lectures cl
        JOIN courses c ON c.id=cl.course_id AND c.tenant_id=? AND c.deleted_at IS NULL
        LEFT JOIN course_chapters cc ON cc.id=cl.chapter_id
@@ -17,6 +17,16 @@ async function resolveLectureAccess({ tenantId, subscriberId, lectureId }, db = 
   );
   if (!lecture) return { accessible: false, reason: 'not_found' };
   if (!lecture.enrolled_at) return { accessible: false, reason: 'not_enrolled', lecture };
+
+  // Access runs out when the course says it does. NULL is unlimited, which
+  // is what every enrolment made before durations existed carries — so no
+  // existing customer loses anything.
+  if (lecture.expiry_date) {
+    const expiresAt = new Date(lecture.expiry_date);
+    if (Number.isFinite(expiresAt.getTime()) && Date.now() > expiresAt.getTime()) {
+      return { accessible: false, reason: 'access_expired', expiresAt: expiresAt.toISOString(), lecture };
+    }
+  }
 
   if (lecture.access_type === 'limited') {
     const limit = Math.max(1, Math.floor(Number(lecture.lecture_limit) || 1));
