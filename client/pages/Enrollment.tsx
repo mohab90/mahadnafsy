@@ -201,8 +201,14 @@ const Enrollment: React.FC = () => {
     }
   };
 
-  const canPay = chosenCourses.length > 0 && pricesAvailable
-    && fullName.trim() && phone.trim() && email.trim() && password.length >= 8;
+  // A signed-in customer has already given all of this; asking again and
+  // then disabling the button until they retype a password they do not have
+  // is what made "سجّل وادفع الآن" impossible to press.
+  const canPay = chosenCourses.length > 0 && pricesAvailable && (
+    isSignedIn
+      ? true
+      : Boolean(fullName.trim() && phone.trim() && email.trim() && password.length >= 8)
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-primary-950 to-slate-900" dir="rtl">
@@ -506,22 +512,22 @@ const Enrollment: React.FC = () => {
                     <span>أنت مسجّل الدخول باسم <b>{authUser?.displayName || authUser?.email}</b> — هنكمل على حسابك.</span>
                   </div>
                 )}
-                <div>
+                {!isSignedIn && <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">الاسم الكامل *</label>
                   <input
                     required value={fullName} onChange={e => setFullName(e.target.value)}
                     placeholder="الاسم الرباعي"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary-400"
                   />
-                </div>
-                <div>
+                </div>}
+                {!isSignedIn && <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">رقم الهاتف (واتساب) *</label>
                   <input
                     required value={phone} onChange={e => setPhone(e.target.value)}
                     placeholder="01xxxxxxxxx" type="tel"
                     className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary-400"
                   />
-                </div>
+                </div>}
                 {!isSignedIn && <div>
                   <label className="text-xs font-bold text-gray-600 mb-1 block">البريد الإلكتروني *</label>
                   <input
@@ -560,10 +566,12 @@ const Enrollment: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex items-start gap-2 bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
-                  <Shield size={14} className="text-primary-600 shrink-0 mt-0.5" />
-                  سيتم إنشاء حسابك تلقائياً بعد الدفع وستجد الكورس في لوحة التحكم الخاصة بك.
-                </div>
+                {!isSignedIn && (
+                  <div className="flex items-start gap-2 bg-gray-50 rounded-xl p-3 text-xs text-gray-500">
+                    <Shield size={14} className="text-primary-600 shrink-0 mt-0.5" />
+                    هتكمّل التسجيل والدفع في الخطوة الجاية، وحسابك هيتفتح أول ما الدفع يتم.
+                  </div>
+                )}
 
                 <button
                   type="submit"
