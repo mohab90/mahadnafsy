@@ -30,9 +30,19 @@ const all = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
 // output — and several old ones legitimately drop an index that nothing replaced.
 // An explicit number overrides, for checking a range by hand.
 function newInThisBranch() {
+  const git = args => execSync(`git ${args}`, {
+    encoding: 'utf8', cwd: process.cwd(), stdio: ['pipe', 'pipe', 'ignore'],
+  });
   try {
+    // Compared against the base branch, not HEAD. Against HEAD the answer
+    // becomes "nothing" the moment the migration is committed, which is exactly
+    // when someone is most likely to run this before pushing.
+    const base = ['origin/main', 'main', 'origin/master', 'master']
+      .find(ref => { try { git(`rev-parse --verify --quiet ${ref}`); return true; } catch { return false; } });
+    if (!base) return null;
+    const mergeBase = git(`merge-base HEAD ${base}`).trim();
     const tracked = new Set(
-      execSync('git ls-tree -r --name-only HEAD -- migrations', { encoding: 'utf8', cwd: process.cwd(), stdio: ['pipe', 'pipe', 'ignore'] })
+      git(`ls-tree -r --name-only ${mergeBase} -- migrations`)
         .split('\n').map(l => path.basename(l.trim())).filter(Boolean)
     );
     if (tracked.size === 0) return null;
