@@ -30,7 +30,8 @@
     "audit:columns": "node tools/schema-column-audit.cjs",
     "audit:env": "node tools/env-var-audit.cjs",
     "audit:enums": "node tools/enum-value-audit.cjs",
-    "audit:routes": "node tools/route-integrity-scan.mjs"
+    "audit:routes": "node tools/route-integrity-scan.mjs",
+    "audit:paymob": "node tools/paymob-reconcile.cjs"
   },
   "keywords": [
     "mahad",
