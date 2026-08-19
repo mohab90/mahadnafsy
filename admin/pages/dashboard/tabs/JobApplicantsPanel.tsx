@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { EXPERIENCE_YEARS as YEARS, BRANCH_LABELS as BRANCHES, STAGE_LABELS as STAGES } from "./hr-sections/applicantLabels";
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -26,22 +27,6 @@ type Applicant = {
   interview_at: string | null;
 };
 
-const YEARS: Record<string, string> = {
-  none: 'بدون خبرة', under_1: 'أقل من سنة', '1-3': '1 – 3 سنوات',
-  '3-5': '3 – 5 سنوات', '5-10': '5 – 10 سنوات', '10plus': 'أكثر من 10 سنوات',
-};
-const BRANCHES: Record<string, string> = {
-  daqqi: 'الدقي', tagamoa: 'التجمع الخامس', tanta_admin: 'طنطا الإداري',
-  online_egypt: 'أونلاين', online_saudi: 'أونلاين سعودي', online_abroad: 'أونلاين دولي',
-};
-const STAGES: Record<string, { label: string; tone: string }> = {
-  applied: { label: 'جديد', tone: 'bg-sky-100 text-sky-700' },
-  screening: { label: 'فرز', tone: 'bg-amber-100 text-amber-700' },
-  interview: { label: 'مقابلة', tone: 'bg-indigo-100 text-indigo-700' },
-  offer: { label: 'مقبول', tone: 'bg-emerald-100 text-emerald-700' },
-  hired: { label: 'تم التعيين', tone: 'bg-emerald-600 text-white' },
-  rejected: { label: 'مرفوض', tone: 'bg-rose-100 text-rose-700' },
-};
 
 const fmt = (value: string | null) => (value ? new Date(value).toLocaleDateString('ar-EG') : null);
 

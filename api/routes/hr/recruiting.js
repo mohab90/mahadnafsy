@@ -266,7 +266,9 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
     const [rows] = await pool.query(
       `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
               a.source,a.source_id,a.specialty,a.applicant_type,a.linkedin,a.hired_staff_id,
-              a.created_at,a.updated_at,j.title job_title,j.branch job_branch
+              a.created_at,a.updated_at,j.title job_title,j.branch job_branch,
+              a.branch applicant_branch,a.education,a.experience_years,a.experience_places,
+              a.phone_interview_at,a.phone_interview_result,a.interview_at,a.decided_at
          FROM job_applicants a
          JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
         WHERE a.tenant_id=?${filter}
