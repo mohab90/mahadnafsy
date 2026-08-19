@@ -32,5 +32,9 @@ export function useStaffRoleRedirects({
       return;
     }
     setActiveTabState('staff_home');
+    // Keyed on currentStaff?.id, not the whole object. This picks the landing
+    // tab for whoever is signed in; depending on the object would re-run it on
+    // every SiteData refresh and yank staff back to their default tab mid-work.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, currentStaff?.id, role, urlTab, setActiveTabState]);
 }

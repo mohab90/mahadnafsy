@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Radio, Plus, Star, Power, Trash2, Send, Loader2, CheckCircle2, AlertTriangle, Building2, User,
 } from 'lucide-react';
@@ -35,13 +35,13 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     makeDefault: false,
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try { setChannels(await mysqlAdmin.listMessagingChannels()); }
     catch { notify('error', 'تعذر تحميل القنوات'); }
     finally { setLoading(false); }
-  };
-  useEffect(() => { void load(); }, []);
+  }, [notify]);
+  useEffect(() => { void load(); }, [load]);
 
   const { company, staff } = useMemo(() => ({
     company: channels.filter(c => !c.owner_staff_id),

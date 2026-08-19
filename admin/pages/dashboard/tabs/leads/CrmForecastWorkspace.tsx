@@ -266,7 +266,7 @@ export default function CrmForecastWorkspace({ notify }: { notify?: NotifyFn }) 
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="period" />
             <YAxis tickFormatter={money} />
-            <Tooltip formatter={(value: number) => `${money(value)} ج.م`} />
+            <Tooltip formatter={(value: unknown) => `${money(Number(value))} ج.م`} />
             <Area dataKey="actual" name="فعلي" stroke="#059669" fill="#d1fae5" />
             <Area dataKey="weighted" name="مرجّح" stroke="#4f46e5" fill="#e0e7ff" />
             <Area dataKey="commit" name="Commit" stroke="#ea580c" fill="#ffedd5" />

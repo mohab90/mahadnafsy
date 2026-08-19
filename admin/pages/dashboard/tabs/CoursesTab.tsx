@@ -155,7 +155,11 @@ export default function CoursesTab({
       const firstCourse = courses[0];
       if (firstCourse && !analyticsCourseId) { setAnalyticsCourseId(firstCourse.id); loadLessonAnalytics(firstCourse.id); }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Fires when the analytics tab is opened, nothing else. courses and
+    // analyticsCourseId are read only to pick a default on first open —
+    // depending on them would re-run this on every catalogue refresh, and on the
+    // very id this effect just set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   // ── Effects ─────────────────────────────────────────────────────────────
@@ -164,7 +168,11 @@ export default function CoursesTab({
       if (shortDescriptionRef.current) shortDescriptionRef.current.innerHTML = sanitizeRichHtml(courseDraft.shortDescription);
       if (descriptionRef.current) descriptionRef.current.innerHTML = sanitizeRichHtml(courseDraft.description);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Seeds the two contentEditable panes when the form opens, and only then.
+    // courseDraft.description/shortDescription are deliberately not listed:
+    // these are uncontrolled elements, so re-running this on each edit would
+    // rewrite innerHTML under the cursor and lose the caret mid-sentence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCourseFormOpen, editingCourseId]);
 
   // ── Computed ─────────────────────────────────────────────────────────────

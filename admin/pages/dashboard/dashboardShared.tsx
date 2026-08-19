@@ -238,30 +238,33 @@ const LEAD_STATUS_CFG: Record<LeadStatus, { label: string; color: string; colCol
 // ── Cert Pricing sub-component (extracted to avoid hooks-in-IIFE rule violation) ──
 type CertPricingMap = Record<string, { egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number }>;
 
+// Dynamic cert types derived from the saved map + static defaults
+const DEFAULT_CERT_TYPES = [
+  { key: 'social_solidarity', label: 'شهادة التضامن الاجتماعي' },
+  { key: 'ain_shams', label: 'شهادة جامعة عين شمس' },
+  { key: 'experience_external', label: 'شهادة الخبرة' },
+  { key: 'practice_external', label: 'شهادة التطبيقين' },
+  { key: 'national_council', label: 'شهادة المجلس الوطني' },
+  { key: 'american_board', label: 'شهادة البورد الأمريكي' },
+  { key: 'institute', label: 'شهادة المعهد' },
+  { key: 'other', label: 'شهادة أخرى' },
+];
+
+// Build initial type list: defaults + any extra keys from saved map. Both this
+// and the defaults above are module scope now — a pure function of `map` and a
+// constant, they only sat in the component body, where being rebuilt every
+// render made buildTypes impossible to list as an effect dependency.
+const buildTypes = (map: CertPricingMap) => {
+  const base = DEFAULT_CERT_TYPES.map(t => t.key);
+  const extra = Object.keys(map).filter(k => !base.includes(k)).map(k => ({ key: k, label: k }));
+  return [...DEFAULT_CERT_TYPES, ...extra];
+};
+
 function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
   certPricingMap: CertPricingMap;
   saveCertPricingMap: (map: CertPricingMap) => void;
   notify: (type: 'success' | 'error' | 'info', text: string) => void;
 }) {
-  // Dynamic cert types derived from the saved map + static defaults
-  const DEFAULT_CERT_TYPES = [
-    { key: 'social_solidarity', label: 'شهادة التضامن الاجتماعي' },
-    { key: 'ain_shams', label: 'شهادة جامعة عين شمس' },
-    { key: 'experience_external', label: 'شهادة الخبرة' },
-    { key: 'practice_external', label: 'شهادة التطبيقين' },
-    { key: 'national_council', label: 'شهادة المجلس الوطني' },
-    { key: 'american_board', label: 'شهادة البورد الأمريكي' },
-    { key: 'institute', label: 'شهادة المعهد' },
-    { key: 'other', label: 'شهادة أخرى' },
-  ];
-
-  // Build initial type list: defaults + any extra keys from saved map
-  const buildTypes = (map: CertPricingMap) => {
-    const base = DEFAULT_CERT_TYPES.map(t => t.key);
-    const extra = Object.keys(map).filter(k => !base.includes(k)).map(k => ({ key: k, label: k }));
-    return [...DEFAULT_CERT_TYPES, ...extra];
-  };
-
   const [certTypes, setCertTypes] = React.useState(() => buildTypes(certPricingMap));
   const [localMap, setLocalMap] = React.useState<CertPricingMap>(() => {
     const m: CertPricingMap = {};

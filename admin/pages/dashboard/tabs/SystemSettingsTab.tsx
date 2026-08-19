@@ -64,7 +64,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         setGlobalLoading(false);
       }
     })();
-  }, []);
+  }, [notify]);
 
   const save = useCallback(async (key: SectionKey) => {
     const payload = data[key];

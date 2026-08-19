@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Phone, Mail, Users, RefreshCw, XCircle, Loader2, Filter, UserPlus } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -50,7 +50,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -60,9 +60,9 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
       setEntries(Array.isArray(data) ? data : []);
     } catch { notify('error', 'فشل تحميل قائمة الانتظار'); }
     finally { setLoading(false); }
-  };
+  }, [statusFilter, branchFilter, notify]);
 
-  useEffect(() => { load(); }, [statusFilter, branchFilter]);
+  useEffect(() => { load(); }, [load]);
 
   const updateStatus = async (id: string, status: WaitlistEntry['status']) => {
     setUpdatingId(id);

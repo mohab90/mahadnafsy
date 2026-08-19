@@ -262,9 +262,16 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
     const [rows] = await pool.query(
       `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
               a.source,a.source_id,a.specialty,a.applicant_type,a.linkedin,a.hired_staff_id,
+              a.interview_grade,a.second_interview_grade,
+              a.interviewed_at,a.second_interviewed_at,
+              -- Resolved to names: the screen shows who graded each round, and
+              -- a staff uuid answers that for nobody.
+              g1.name interviewed_by_name, g2.name second_interviewed_by_name,
               a.created_at,a.updated_at,j.title job_title,j.branch job_branch
          FROM job_applicants a
          JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
+         LEFT JOIN staff g1 ON g1.id=a.interviewed_by AND g1.tenant_id=a.tenant_id
+         LEFT JOIN staff g2 ON g2.id=a.second_interviewed_by AND g2.tenant_id=a.tenant_id
         WHERE a.tenant_id=?${filter}
         ORDER BY a.updated_at DESC,a.created_at DESC LIMIT 500`,
       params

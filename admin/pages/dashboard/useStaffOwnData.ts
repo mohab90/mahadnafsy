@@ -137,7 +137,11 @@ export function useStaffOwnData({
     } finally {
       setSalesDataLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on who the staff member is and what role they hold — the two things
+    // that change which scoped data to fetch. staffSelf/currentStaff objects and
+    // the catalogue arrays are replaced on every context refresh, so depending on
+    // them would re-run this whole bootstrap fetch each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isOnlineManager, staffSelf?.id, staffSelf?.role, currentStaff?.id, currentStaff?.role]);
 
   return {

@@ -15,4 +15,6 @@ router.use(require('./hr/offboarding'));
 router.use(require('./hr/enps'));
 router.use(require('./hr/staffprofile'));
 router.use(require('./hr/talent').router); // website join-us → recruiting bridge
+router.use(require('./hr/recruitment-workflow')); // contact → decision → interview grades
+router.use(require('./hr/staff-file')); // document checklist + pay basis
 module.exports = router;

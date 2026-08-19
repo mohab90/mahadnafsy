@@ -170,7 +170,7 @@ export default function SalesReportsTab() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtMoney(v)} />
-            <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ج`, 'الإيراد']} />
+            <Tooltip formatter={(v: unknown) => [`${Number(v).toLocaleString()} ج`, 'الإيراد']} />
             <Bar dataKey="revenue" fill="#10b981" radius={[4,4,0,0]} name="الإيراد" />
           </BarChart>
         </ResponsiveContainer>

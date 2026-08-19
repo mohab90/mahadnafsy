@@ -48,7 +48,7 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
       if (res.ok) setCampaigns(await res.json());
     } catch { notify('error', 'تعذّر تحميل الحملات'); }
     setLoading(false);
-  }, []);
+  }, [notify]);
 
   useEffect(() => { load(); }, [load]);
 

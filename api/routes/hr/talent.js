@@ -240,9 +240,18 @@ router.post(
       await conn.rollback();
       return res.status(409).json({ error: 'Already hired', staffId: a.hired_staff_id });
     }
-    if (a.stage !== 'offer') {
+    // 'interview' is allowed as well as 'offer'. The interviews screen hires
+    // directly off the back of a good interview — that is what the desk actually
+    // does, and requiring a separate click through the offer stage first meant
+    // the hire button on that screen could only ever answer 409. Everything
+    // earlier than an interview still has to progress normally: hiring someone
+    // nobody has met is not a workflow, it is a mistake.
+    if (a.stage !== 'offer' && a.stage !== 'interview') {
       await conn.rollback();
-      return res.status(409).json({ error: 'Applicant must reach the offer stage before hiring', code: 'OFFER_STAGE_REQUIRED' });
+      return res.status(409).json({
+        error: 'المرشح لازم يوصل لمرحلة المقابلة أو العرض قبل التعيين',
+        code: 'OFFER_STAGE_REQUIRED',
+      });
     }
     // The login email can be chosen at hire time — an applicant who applied
     // without one (or with a personal address the desk does not want as the

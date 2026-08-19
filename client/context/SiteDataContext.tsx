@@ -504,7 +504,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // (AI/messaging settings persist removed — admin-app-only)
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const value = useMemo<SiteDataShape>(() => ({
     courses,
     bundles,
@@ -548,7 +547,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     reloadLectures,
     logout,
     refreshAuth,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the data, not on the action functions this value also carries.
+    // Those are rebuilt on each provider render, so listing them — which is what
+    // the rule asks for — would mint a new context value every render and
+    // re-render every consumer on the public site.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [courses, bundles, therapists, testimonials, subscribers, isStaff, consultations,
     communityPosts, communityLibraryItems, communityVideos,
     communityEvents, content, discounts, notifications, notificationReadIds, courseQuizzes, quizAttempts,

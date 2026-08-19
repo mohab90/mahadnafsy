@@ -101,6 +101,12 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
       })));
       setLoading(false);
     }).catch(() => setLoading(false));
+    // Mount-only on purpose. salesReps is read here just to seed the default
+    // assignment list when the server has none saved; depending on it would
+    // re-fetch all three CRM settings endpoints — and overwrite whatever the
+    // user had already edited in this modal — every time the staff list
+    // refreshed underneath them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const save = async () => {

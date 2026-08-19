@@ -2,6 +2,7 @@
 // Tenant-bound deal-value sync. Accepts syncLeadDealValue(subscriberId, tenantId)
 // or syncLeadDealValue(pool, subscriberId, tenantId, strict).
 const { pool: defaultPool } = require('./db');
+const { findLeadByContact } = require('./leadMatching');
 const logger = require('./logger').child({ lib: 'leadDealValue' });
 
 async function syncLeadDealValue(arg1, arg2, arg3, arg4 = false) {
@@ -25,12 +26,12 @@ async function syncLeadDealValue(arg1, arg2, arg3, arg4 = false) {
 
     let leadId = sub.lead_id;
     if (!leadId && (sub.phone || sub.email)) {
-      const normPhone = sub.phone ? sub.phone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
-      const q = normPhone
-        ? "SELECT id FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0 ORDER BY created_at DESC LIMIT 1"
-        : 'SELECT id FROM leads WHERE tenant_id=? AND email = ? AND hidden=0 ORDER BY created_at DESC LIMIT 1';
-      const params = normPhone ? [tenantId, `%${normPhone.slice(-9)}`, sub.email || ''] : [tenantId, sub.email];
-      const [[found]] = await pool.query(q, params);
+      // The total below is written onto whatever lead this returns, so matching
+      // by anything looser than the number itself puts one customer's money on
+      // another customer's record — see lib/leadMatching.js.
+      const found = await findLeadByContact(pool, {
+        tenantId, phone: sub.phone, email: sub.email,
+      });
       leadId = found?.id || null;
     }
     if (!leadId) return false;

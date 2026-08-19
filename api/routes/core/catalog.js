@@ -23,6 +23,7 @@ const { isString, validateBody } = require('../../middleware/validate');
 const { getNextSalesRep } = require('../../lib/leadAssignment');
 const { branchIdForBranch } = require('../../lib/branches');
 const { normalizeQuizDefinition } = require('../../lib/quizValidation');
+const { phoneIdentityClause } = require('../../lib/leadMatching');
 
 // ── Initialize extra tables on startup ───────────────────────────────────────
 // ── Initialize extra tables on startup ───────────────────────────────────────
@@ -353,18 +354,25 @@ router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, r
     );
     let leadId = null;
     if (!existing && (clientEmail || clientPhone)) {
-      const normalizedPhone = clientPhone.replace(/\D/g, '');
+      // These two decide whether a consultation booking belongs to someone the
+      // institute already knows. Comparing the last 10 digits treats different
+      // numbers as equal once a country code is involved, so a booking could be
+      // silently attributed to an existing customer who is not this person —
+      // see lib/leadMatching.js.
+      const phoneMatch = phoneIdentityClause(clientPhone);
+      const phoneSql = phoneMatch ? phoneMatch.sql : '1=0';
+      const phoneParams = phoneMatch ? phoneMatch.params : [];
       const [[knownSubscriber]] = await conn.query(
         `SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL
-          AND ((? <> '' AND RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''),10)=RIGHT(?,10))
+          AND (${phoneSql}
             OR (? <> '' AND LOWER(TRIM(email))=?)) LIMIT 1 FOR UPDATE`,
-        [req.tenantId, normalizedPhone, normalizedPhone, clientEmail, clientEmail]
+        [req.tenantId, ...phoneParams, clientEmail, clientEmail]
       );
       const [[knownLead]] = await conn.query(
         `SELECT id FROM leads WHERE tenant_id=? AND hidden=0
-          AND ((? <> '' AND RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''),10)=RIGHT(?,10))
+          AND (${phoneSql}
             OR (? <> '' AND LOWER(TRIM(email))=?)) LIMIT 1 FOR UPDATE`,
-        [req.tenantId, normalizedPhone, normalizedPhone, clientEmail, clientEmail]
+        [req.tenantId, ...phoneParams, clientEmail, clientEmail]
       );
       if (!knownSubscriber && !knownLead) {
         leadId = uuidv4();

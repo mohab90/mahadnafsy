@@ -41,8 +41,19 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
     return res.json() as Promise<T>;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
-    // Retry on network failure (TypeError: Failed to fetch) — 1 extra attempt only.
-    if (err instanceof TypeError && _retry < MAX_RETRIES) {
+    // Retry on network failure — 1 extra attempt only.
+    //
+    // AbortError is included deliberately. `fetch` reports an unreachable host
+    // as a TypeError but a request that ran past REQUEST_TIMEOUT_MS as an
+    // AbortError from the controller above, so testing only for TypeError
+    // retried the case that is least likely to succeed (nothing listening) and
+    // gave up on the one most likely to (a server that was merely slow).
+    //
+    // A user-cancelled request would also land here, but nothing in this client
+    // passes its own signal — every abort comes from the timeout above.
+    const isRetryableNetworkError = err instanceof TypeError
+      || (err instanceof DOMException && err.name === 'AbortError');
+    if (isRetryableNetworkError && _retry < MAX_RETRIES) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -549,6 +560,41 @@ export const mysqlAdmin = {
   updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
   hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),
   moveJoinUsToInterview: (id: string) => post(`/admin/hr/join-us/${encodeURIComponent(id)}/to-interview`, {}),
+  // Recruitment workflow: the call, the decision it leads to, and the grades.
+  // apiFetch directly rather than the `post` helper — these return more than
+  // { ok }, and the helper's fixed return type would erase it.
+  contactJoinUs: (id: string, body?: string) =>
+    apiFetch<{ ok: boolean; contactedBy: string }>(
+      `/admin/join-us/${encodeURIComponent(id)}/contact`,
+      { method: 'POST', body: JSON.stringify({ body }) }, A),
+  evaluateJoinUs: (id: string, o: { decision: 'ACCEPTED' | 'REJECTED'; interviewAt?: string; body?: string }) =>
+    apiFetch<{ ok: boolean; status: string; interviewAt: string | null }>(
+      `/admin/join-us/${encodeURIComponent(id)}/evaluate`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
+  gradeApplicant: (id: string, o: { grade: string; round?: 1 | 2; body?: string }) =>
+    apiFetch<{ ok: boolean; grade: string; round: number; by: string }>(
+      `/admin/hr/applicants/${encodeURIComponent(id)}/grade`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
+  listRecruitmentNotes: (refType: 'join_us' | 'applicant', refId: string) =>
+    apiFetch<Array<{ id: string; kind: string; body: string; author_name: string | null; created_at: string }>>(
+      `/admin/hr/notes/${refType}/${encodeURIComponent(refId)}`, {}, A),
+
+  // Employee file — what HR holds, and what the person is paid.
+  listStaffDocuments: (staffId: string) =>
+    apiFetch<Array<{ docType: string; label: string; received: boolean; note: string | null;
+      updatedAt: string | null; updatedByName: string | null; recorded: boolean }>>(
+      `/admin/hr/staff/${encodeURIComponent(staffId)}/documents`, {}, A),
+  setStaffDocument: (staffId: string, docType: string, o: { received: boolean; note?: string }) =>
+    apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/documents/${docType}`,
+      { method: 'PUT', body: JSON.stringify(o) }, A),
+  getStaffPay: (staffId: string) =>
+    apiFetch<{ baseSalary: number | null; commissionType: string; commissionRate: number | null; monthlyTarget: number | null }>(
+      `/admin/hr/staff/${encodeURIComponent(staffId)}/pay`, {}, A),
+  setStaffPay: (staffId: string, o: { baseSalary?: number | null; commissionType: string; commissionRate?: number | null; monthlyTarget?: number | null }) =>
+    apiFetch<{ ok: boolean }>(`/admin/hr/staff/${encodeURIComponent(staffId)}/pay`,
+      { method: 'PUT', body: JSON.stringify(o) }, A),
+  addRecruitmentNote: (refType: 'join_us' | 'applicant', refId: string, body: string) =>
+    post(`/admin/hr/notes/${refType}/${encodeURIComponent(refId)}`, { body }),
   listHrJobs:       ()             => apiFetch<AR[]>('/admin/hr/jobs', {}, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),
 
@@ -897,8 +943,11 @@ export const mysqlAuth = {
     apiFetch<{ ok: boolean }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   verifyOtp: (email: string, code: string) =>
     apiFetch<{ ok: boolean; resetToken: string }>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) }),
+  // No `token` in the body — /auth/2fa/verify answers `{ ok: true }` and the
+  // session is the httpOnly cookie it sets. Declaring one invited `result.token`,
+  // which type-checks and is undefined at runtime.
   verify2fa: (pendingToken: string, token: string) =>
-    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
+    apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   get2faStatus: () =>
     apiFetch<{ enabled: boolean }>('/auth/2fa/status'),
   setup2fa: () =>

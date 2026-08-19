@@ -18,6 +18,7 @@ const { logLeadEvent } = require('../lib/crm');
 const { getNextSalesRep } = require('../lib/leadAssignment');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
+const { phoneIdentityClause } = require('../lib/leadMatching');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -53,13 +54,18 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     // found by the tenant-bound identity lookup below.
     let id = uuidv4();
     let existing = null;
-    if (normPhone) {
+    const identityMatch = phoneIdentityClause(normPhone);
+    if (identityMatch) {
+      // Whoever this returns has their id, client_code and sales assignment
+      // reused for the incoming submission, so a false match merges two people
+      // into one lead. It compared the last 10 digits, which is not a number —
+      // see lib/leadMatching.js.
       [[existing]] = await conn.query(
         `SELECT id, client_code, crm_json, assigned_sales_id, assigned_sales_name
            FROM leads
-          WHERE tenant_id=? AND RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10)=RIGHT(?,10)
+          WHERE tenant_id=? AND ${identityMatch.sql}
             AND hidden=0 LIMIT 1 FOR UPDATE`,
-        [tenantId, normPhone]
+        [tenantId, ...identityMatch.params]
       );
       if (existing) id = existing.id;
     }
@@ -122,7 +128,7 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
     const tenantId = scopedTenantId(req);
     // Same customer submitting again (chatbot re-visit, double-click) must not create a
-    // second lead row — match by the last 10 phone digits and append the note instead.
+    // second lead row — match the number and append the note instead.
     // (owner requirement: no duplicate data)
     const normPhone = normalizePhone(phone);
     leadLock = `lead-public:${crypto.createHash('sha256').update(`${tenantId}:${normPhone || phone}`).digest('hex').slice(0, 40)}`;
@@ -130,10 +136,11 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead submission is already being processed' });
     await conn.beginTransaction();
     transactionStarted = true;
-    if (normPhone) {
+    const identityMatch = phoneIdentityClause(normPhone);
+    if (identityMatch) {
       const [[existing]] = await conn.query(
-        `SELECT id FROM leads WHERE tenant_id=? AND RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = RIGHT(?, 10) AND hidden = 0 LIMIT 1 FOR UPDATE`,
-        [tenantId, normPhone]
+        `SELECT id FROM leads WHERE tenant_id=? AND ${identityMatch.sql} AND hidden = 0 LIMIT 1 FOR UPDATE`,
+        [tenantId, ...identityMatch.params]
       );
       if (existing) {
         await conn.query(

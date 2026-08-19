@@ -36,8 +36,12 @@ interface DashboardDirectContentRoutesProps {
   setPolicyDrafts: Dispatch<SetStateAction<ContentMap>>;
   setContentValue: (key: string, value: string) => Promise<boolean>;
   setContentValues: (entries: Record<string, string>) => Promise<boolean>;
-  setActiveTab: (tab: TabKey) => void;
-  setContentHubSubTab: (tab: TabKey) => void;
+  // string, not TabKey: this is passed straight down to panels that build the
+  // tab name from data. Dashboard supplies a navigator that checks the name
+  // against the real menu before it moves, so an unknown one is refused rather
+  // than blanking the screen.
+  setActiveTab: (tab: string) => void;
+  setContentHubSubTab: (tab: string) => void;
   notify: NotifyFn;
   contentEdits: ContentMap;
   setContentEdits: Dispatch<SetStateAction<ContentMap>>;

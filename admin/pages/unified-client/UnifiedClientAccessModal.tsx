@@ -20,7 +20,11 @@ interface UnifiedClientAccessModalProps {
   manualLimitDraft: Record<string, string>;
   setManualLimitDraft: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   getPreset: (courseId: string) => AccessPreset;
-  applyAccessLevel: (courseId: string, mode: CourseAccessSetting['mode'], lectureLimit?: number) => void | Promise<void>;
+  // 'full' | 'limited', not the whole AccessMode union. 'preview' is what a
+  // client has when nothing was granted, so it is not a level this modal can
+  // apply — and the handler behind this prop never accepted it either, which is
+  // what the wider type was hiding.
+  applyAccessLevel: (courseId: string, mode: 'full' | 'limited', lectureLimit?: number) => void | Promise<void>;
   onClose: () => void;
 }
 

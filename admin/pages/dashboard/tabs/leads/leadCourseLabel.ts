@@ -37,7 +37,7 @@ const FILLER_WORDS = ['دبلومه', 'دبلوم', 'كورس', 'دوره', 'ب�
 
 export function normalizeCourseName(value: string): string {
   let s = String(value || '')
-    .replace(/^﻿/, '')
+    .replace(/^\uFEFF/, '')
     .replace(/[ً-ْـ]/g, '')      // diacritics + tatweel
     .replace(/[أإآٱ]/g, 'ا')
     .replace(/[ىئ]/g, 'ي')

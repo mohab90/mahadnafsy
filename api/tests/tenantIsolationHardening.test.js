@@ -5,7 +5,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const read = relativePath => fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+// Line endings normalised because assertions below slice on literal markers
+// containing '\n'. Git checks these files out with CRLF on Windows, so
+// `indexOf("router.post(\n  '/api/...")` found nothing, both offsets came back
+// -1, and the slice handed every assertion an empty string — a failure that
+// looked like the route had lost its transaction and only ever appeared off CI.
+const read = relativePath =>
+  fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8').replace(/\r\n/g, '\n');
 
 test('profile identity and interest lead writes are tenant scoped and retry safe', () => {
   const profile = read('routes/profile.js');

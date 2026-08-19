@@ -32,17 +32,21 @@ export default function StaffBroadcastPanel({
   const [sending, setSending] = useState(false);
   const [lastSent, setLastSent] = useState<{ label: string; recipients: number } | null>(null);
 
+  // The default-seeding reads role/branchId through functional updates rather
+  // than closing over them. Depending on them made `load` a new function every
+  // time it seeded a default, which is why the effect below could not list it:
+  // doing so would have re-fetched the audiences a second time on mount.
   const load = useCallback(() => {
     mysqlAdmin.getBroadcastAudiences()
       .then(data => {
         const next = data as unknown as Audiences;
         setAudiences(next);
-        if (!role && next.roles.length) setRole(next.roles[0].role);
-        if (!branchId && next.branches.length) setBranchId(next.branches[0].id);
+        if (next.roles.length) setRole(current => current || next.roles[0].role);
+        if (next.branches.length) setBranchId(current => current || next.branches[0].id);
       })
       .catch(error => notify('error', error instanceof Error ? error.message : 'تعذر تحميل قوائم الإرسال'));
-  }, [notify, role, branchId]);
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notify]);
+  useEffect(() => { load(); }, [load]);
 
   const activeStaff = useMemo(
     () => staffMembers.filter(member => member.status !== 'inactive'),

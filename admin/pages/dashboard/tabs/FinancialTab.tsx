@@ -345,7 +345,11 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
       if (m in data) data[m].manual += toEGP(p.amount, p.currency);
     });
     return Object.entries(data).sort(([a], [b]) => b.localeCompare(a));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // paidOrders, allManualPayments and toEGP are all derived in the component
+    // body from exactly the four values listed here, and are rebuilt on every
+    // render. Listing them instead would recompute this on every render; listing
+    // the roots keeps the memo honest about what can actually change it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, subscribers, sarRate, usdRate]);
 
   const { commissionsData, rangeMonths, rangeCommissionsData } = useFinancialCommissionsData(

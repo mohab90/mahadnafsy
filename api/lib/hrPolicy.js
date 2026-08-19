@@ -12,7 +12,14 @@ const DEFAULT_POLICY = Object.freeze({
   audit_retention_days: 2555,
   weekend_days_json: [5, 6],
 });
-const LEAVE_TYPES = new Set(['ANNUAL', 'SICK', 'UNPAID', 'MATERNITY', 'EMERGENCY', 'PERMISSION', 'OTHER']);
+// LATE_PERMIT / EARLY_LEAVE are إذن تأخير and إذن انصراف مبكر. They ride the
+// same request-and-approve flow as leave because that is what they are — a
+// request a manager says yes or no to — but they are not days off, which is
+// what calculateLeaveDays below has to get right.
+const LEAVE_TYPES = new Set([
+  'ANNUAL', 'SICK', 'UNPAID', 'MATERNITY', 'EMERGENCY', 'PERMISSION', 'OTHER',
+  'LATE_PERMIT', 'EARLY_LEAVE',
+]);
 
 const parseWeekendDays = value => {
   try {
@@ -42,6 +49,11 @@ function calculateLeaveDays(startDate, endDate, type, policy = DEFAULT_POLICY) {
     throw Object.assign(new Error('Invalid leave dates'), { statusCode: 400 });
   }
   if (type === 'PERMISSION') return 0.5;
+  // Arriving an hour late is not half a day off. Counting these as leave would
+  // quietly drain the annual balance of anyone who ever asked to come in late,
+  // so they cost nothing against it — they exist to be approved and to show up
+  // in attendance, not to be deducted.
+  if (type === 'LATE_PERMIT' || type === 'EARLY_LEAVE') return 0;
   const weekend = new Set(parseWeekendDays(policy.weekend_days_json));
   let days = 0;
   for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {

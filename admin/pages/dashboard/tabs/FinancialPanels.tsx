@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle, CheckCircle2, Eye, FileText, Plus, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -104,7 +104,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await mysqlAdmin.adminGet<AccountingPeriod[]>('/admin/accounting-periods');
@@ -116,9 +116,9 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
         : []);
     } catch { notify('error', 'فشل تحميل الفترات المحاسبية'); }
     finally { setLoading(false); }
-  };
+  }, [notify]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const createPeriod = async () => {
     const label = new Date().toISOString().slice(0, 7);

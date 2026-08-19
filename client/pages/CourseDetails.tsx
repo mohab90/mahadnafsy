@@ -47,6 +47,11 @@ const CourseDetails: React.FC = () => {
       setApiFallbackLectures(((data.lectures || []) as unknown as ReturnType<typeof getCourseLectures>));
       setApiFallbackChapters(((data.chapters || []) as unknown as ReturnType<typeof getCourseChapters>));
     }).catch(() => {}).finally(() => setFallbackTried(true));
+    // getCourseLectures is deliberately not a dependency: SiteDataContext builds
+    // it fresh on every provider render, so listing it here would re-run this
+    // course fetch on each of them. It is only read to test whether the cached
+    // catalog already has the curriculum, which id/slug/courseFromCtx cover.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, slug, courseFromCtx]);
   const course = courseFromCtx ?? apiFallbackCourse;
   const [showLeadForm, setShowLeadForm] = useState(true);
@@ -84,8 +89,19 @@ const CourseDetails: React.FC = () => {
         // on-demand fetch (anonymous visitors, whose bulk list is login-gated).
         const ctxChapters = course && courseFromCtx ? getCourseChapters(course.id) : [];
         const chapters = ctxChapters.length > 0 ? ctxChapters : (course ? apiFallbackChapters : []);
-        const ctxLectures = course && courseFromCtx ? getCourseLectures(course.id) : [];
-        const lectures = ctxLectures.length > 0 ? ctxLectures : (course ? apiFallbackLectures : []);
+        // Memoized because both branches minted a fresh array on every render —
+        // getCourseLectures returns a new filtered list, and the `: []` fallback
+        // is a new literal. That defeated the lecturesWithLock memo below, which
+        // lists lectures as a dependency and so re-mapped the whole curriculum
+        // every render.
+        const ctxLectures = useMemo(
+            () => (course && courseFromCtx ? getCourseLectures(course.id) : []),
+            [course, courseFromCtx, getCourseLectures],
+        );
+        const lectures = useMemo(
+            () => (ctxLectures.length > 0 ? ctxLectures : (course ? apiFallbackLectures : [])),
+            [ctxLectures, course, apiFallbackLectures],
+        );
         // Keyed on the id the server resolved. Matching authUser.email found
         // nothing for a WhatsApp-only client, so their own enrolled course
         // rendered as "preview".
@@ -147,7 +163,10 @@ const CourseDetails: React.FC = () => {
             .then(r => { if (!cancelled && r.accessible && r.video_url) setResolvedLectureUrl(r.video_url); })
             .catch(() => {});
         return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // Keyed on the fields that decide the answer rather than the
+        // selectedLecture object, which is re-derived on every render — listing
+        // it would re-request a signed video URL continuously.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedLectureId, selectedLecture?.locked, selectedLecture?.videoUrl]);
 
     useEffect(() => {
@@ -162,7 +181,11 @@ const CourseDetails: React.FC = () => {
     // Refresh subscriber data when this page mounts (ensures fresh enrollment status, especially on mobile)
     useEffect(() => {
         if (authUser) refreshMySubscriber();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // Keyed on uid: one refresh per signed-in visit to this page.
+        // refreshMySubscriber is rebuilt by the context each render, and authUser
+        // is replaced on every token refresh — listing either would re-fetch the
+        // subscriber repeatedly while the page is open.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [authUser?.uid]);
 
     // NOTE: the `if (!course)` loader/not-found guard was moved to just before the main
@@ -331,7 +354,13 @@ const CourseDetails: React.FC = () => {
         if (mine) { setCompletionCert(mine.certificate_code); setShowUpsell(true); }
       }).catch(() => {});
     }
-  }, [subscriber?.lectureProgress, isEnrolled, lectures, course?.id]);
+    // subscriber and course are keyed on the fields this actually reads
+    // (lectureProgress, id) rather than the objects, which are rebuilt whenever
+    // the subscriber list refreshes — depending on them would re-request the
+    // completions list on every refresh. completionCert IS listed: it guards the
+    // fetch, and re-running once after it is set is what stops the second call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscriber?.lectureProgress, isEnrolled, lectures, course?.id, completionCert]);
 
   // Loader / not-found guard — placed AFTER all hooks (see note above) to satisfy Rules of Hooks.
   if (!course) {

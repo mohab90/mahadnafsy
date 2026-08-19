@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FileText, Loader2, Plus, Save, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -24,7 +24,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
     ] as LineDraft[],
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [accountRows, journal] = await Promise.all([
@@ -39,9 +39,9 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [notify]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const updateLine = (index: number, field: keyof LineDraft, value: string) => {
     const next = [...draft.lines];

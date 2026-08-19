@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Building2, CheckCircle2, Download, FileText, Landmark, Plus, RefreshCw, TrendingUp, WalletCards, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
@@ -60,7 +60,7 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
     start_date: today(), end_date: '', confidence_pct: 100,
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const query = branch ? `?branch=${encodeURIComponent(branchValue(branch))}` : '';
@@ -79,9 +79,9 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
     } catch (error) {
       notify(error instanceof Error ? error.message : 'تعذر تحميل عمليات الحسابات', 'error');
     } finally { setLoading(false); }
-  };
+  }, [branch, notify]);
 
-  useEffect(() => { void load(); }, [branch]);
+  useEffect(() => { void load(); }, [load]);
 
   const run = async (key: string, action: () => Promise<unknown>, success: string) => {
     setBusy(key);

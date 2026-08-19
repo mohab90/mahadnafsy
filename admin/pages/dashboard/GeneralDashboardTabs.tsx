@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import type { NotifyFn as SharedNotifyFn } from '../../types';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
@@ -58,8 +59,14 @@ import {
   WebhooksTab,
 } from './lazyTabs';
 
-type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type NotifyTab = React.ElementType<{ notify: NotifyFn }>;
+// The shared one from types.ts, not a local copy. A second, narrower definition
+// of the same name meant a tab typed against the exported NotifyFn could not be
+// listed here — two types that look identical in the error message and are not.
+type NotifyFn = SharedNotifyFn;
+// Optional extras allowed: some tabs take an `initial` alongside notify, and a
+// strictly-{ notify } element type rejects them even though they accept notify
+// perfectly well.
+type NotifyTab = React.ElementType<{ notify: NotifyFn; initial?: string }>;
 
 type NotifyTabEntry = {
   key: TabKey;

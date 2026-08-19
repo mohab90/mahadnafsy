@@ -233,11 +233,18 @@ export function useCrmCoreState(
    * for the best part of an hour and the grid showed stale, half-imported state
    * the whole time. The caller reloads once when the batch is done.
    */
-  const addLead = async (item: LeadItem, opts?: { skipReload?: boolean }): Promise<void> => {
+  // Partial, because that is what this actually accepts: the object goes
+  // straight to saveLead and the server mints the id and timestamps. Declaring
+  // a full LeadItem did not make callers supply one — the archive importer,
+  // which has a name and a phone and nothing else, just cast its way past the
+  // type instead.
+  const addLead = async (item: Partial<LeadItem>, opts?: { skipReload?: boolean }): Promise<void> => {
     lastCRMWriteRef.current = Date.now();
     await mysqlAdmin.saveLead(item as unknown as Record<string, unknown>);
     if (!opts?.skipReload) await reloadLeads();
-    track('create', 'lead', item.name);
+    // A lead can legitimately arrive without a name (a phone-only capture), and
+    // the tracker takes a string.
+    track('create', 'lead', item.name || '(بدون اسم)');
   };
 
   // addPublicLead: for public registration forms — uses MySQL /api/registrations (no auth needed).
@@ -411,6 +418,9 @@ export function useCrmCoreState(
         createdAt: String(row.createdAt ?? row.created_at ?? ''),
         adminNote: (row.adminNote ?? row.admin_note) as string | undefined,
         convertedApplicantId: (row.convertedApplicantId ?? row.converted_applicant_id) as string | undefined,
+        contactedAt: (row.contactedAt ?? row.contacted_at) as string | undefined,
+        contactedBy: (row.contactedByName ?? row.contacted_by_name ?? row.contacted_by) as string | undefined,
+        interviewAt: (row.interviewAt ?? row.interview_at) as string | undefined,
         applicantStage: (row.applicantStage ?? row.applicant_stage) as JoinUsApplication['applicantStage'],
         hiredStaffId: (row.hiredStaffId ?? row.hired_staff_id) as string | undefined,
       })) as unknown as JoinUsApplication[];

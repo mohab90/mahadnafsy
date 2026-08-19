@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { resolveSecret } = require('./secretResolver');
 const { pool } = require('./db');
+const { destinationHash, normalizeDestination } = require('./marketingConsent');
 
 const DEFAULT_POLICY = Object.freeze({
   residency_region: 'not_configured',
@@ -260,6 +261,26 @@ async function anonymizeSubscriber({ tenantId, subscriberId, actorId, db }) {
     `UPDATE contact_messages SET name=?,email=?,phone=NULL,message='[removed by privacy request]',admin_note=NULL
      WHERE tenant_id=? AND ((?<>'' AND LOWER(TRIM(email))=?) OR (?<>'' AND phone=?))`,
     [deletedLabel, anonEmail, tenantId, email, email, phone, phone]);
+  // Suppress before the contact details are wiped, because the suppression is
+  // keyed on a hash of the destination and there is nothing left to hash
+  // afterwards. The erasure evidence already tells the subject that a "hashed
+  // marketing suppression" is retained; without this it was not, so re-entering
+  // the same address later — a staff import, a fresh enquiry — would have made
+  // them marketable again, which is the one thing erasure has to prevent.
+  //
+  // Written directly rather than through setMarketingConsent(): that helper
+  // resolves the destination from a live subject row, and this row is about to
+  // stop having one.
+  for (const [channel, destination] of [['email', email], ['whatsapp', phone], ['sms', phone]]) {
+    const normalized = normalizeDestination(channel, destination);
+    if (!normalized) continue;
+    await run(`suppress:${channel}`,
+      `INSERT INTO marketing_suppressions (tenant_id,channel,destination_hash,subject_type,subject_id)
+       VALUES (?,?,?,'subscriber',?)
+       ON DUPLICATE KEY UPDATE suppressed_at=NOW()`,
+      [tenantId, channel, destinationHash(channel, destination), subscriberId]);
+  }
+
   await run('subscriber',
     `UPDATE subscribers SET firebase_uid=NULL,name=?,name_en=NULL,name_ar=NULL,email=?,phone=NULL,
        national_id=NULL,whatsapp=NULL,nationality=NULL,assigned_sales_name=NULL,assigned_cs_name=NULL,

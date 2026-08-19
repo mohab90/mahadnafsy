@@ -210,7 +210,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={90} />
             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <Tooltip formatter={(v: number) => [v, 'عدد الليدات']} />
+            <Tooltip formatter={(v: unknown) => [Number(v), 'عدد الليدات']} />
             <Bar dataKey="count" radius={[0, 4, 4, 0]} name="عدد الليدات">
               {distribution.map((d, i) => <Cell key={i} fill={d.fill} />)}
             </Bar>

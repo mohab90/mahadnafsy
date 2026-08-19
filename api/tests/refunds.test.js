@@ -154,3 +154,38 @@ test('applyRefundReversal: rejects partial and Paymob refunds while those workfl
     /Paymob refunds are suspended/,
   );
 });
+
+// ── Paymob double-webhook guard ─────────────────────────────────────────────
+// The payments INSERT in finalisePaymobOrder is the only thing standing between
+// a retried webhook and a second journal posting for the same money. The two
+// idempotency checks before it are reads outside the transaction, so a
+// concurrent pair can pass both. If that INSERT ever starts swallowing
+// duplicates, the same revenue gets booked twice with no error anywhere.
+test('the paymob payments insert must not swallow duplicate keys', () => {
+  const source = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'routes', 'public-orders.js'), 'utf8');
+  const start = source.indexOf('INSERT INTO payments');
+  assert.ok(start > 0, 'the payments insert must exist');
+  const statement = source.slice(start, source.indexOf(';', start));
+  assert.ok(!/ON DUPLICATE KEY/i.test(statement),
+    'ON DUPLICATE KEY UPDATE here would let postPaymentJournal book the same payment twice');
+  assert.ok(!/INSERT\s+IGNORE/i.test(statement),
+    'INSERT IGNORE here would have the same effect as ON DUPLICATE KEY UPDATE');
+});
+
+test('the paymob in-flight guard must work across processes, not just one', () => {
+  // A Set lives in one Node process. The API runs behind a process manager, so
+  // a second worker has its own empty Set and walks straight past it — two
+  // workers could then finalise the same order at once. Only a lock the workers
+  // share (the database) actually guards this.
+  const source = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'routes', 'public-orders.js'), 'utf8');
+  const start = source.indexOf('async function finalisePaymobOrder');
+  const guard = source.slice(start, source.indexOf('async function _finalisePaymobOrderInner'));
+  assert.match(guard, /GET_LOCK/, 'the guard must take a database-level lock');
+  assert.match(guard, /RELEASE_LOCK/, 'and release it');
+  assert.ok(/finally\s*\{[\s\S]*RELEASE_LOCK/.test(guard),
+    'the release must be in a finally, or a thrown error strands the lock until the session ends');
+  assert.ok(/finally\s*\{[\s\S]*lockConn\.release\(\)/.test(guard),
+    'the lock connection must be returned to the pool in a finally');
+});

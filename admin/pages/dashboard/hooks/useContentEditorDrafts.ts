@@ -12,10 +12,14 @@ export function useContentEditorDrafts(content: Record<string, string>) {
   const [newContentValue, setNewContentValue] = useState('');
   const [contentEdits, setContentEdits] = useState<Record<string, string>>({}); // local drafts for the All-Content tab
   const [policyDrafts, setPolicyDrafts] = useState<Record<string, string>>({});
-  const [offerSelectedCourseId, setOfferSelectedCourseId] = useState(() => content['offer.courseId'] || '');
+  // Read out of `content` once: as a subscript in the dependency array it could
+  // not be checked statically, and depending on `content` itself would reset the
+  // selector whenever any unrelated content key changed.
+  const offerCourseId = content['offer.courseId'];
+  const [offerSelectedCourseId, setOfferSelectedCourseId] = useState(() => offerCourseId || '');
   useEffect(() => {
-    if (content['offer.courseId']) setOfferSelectedCourseId(content['offer.courseId']);
-  }, [content['offer.courseId']]);
+    if (offerCourseId) setOfferSelectedCourseId(offerCourseId);
+  }, [offerCourseId]);
   const [instituteGalleryUrlInput, setInstituteGalleryUrlInput] = useState('');
   const instituteGalleryUploadRef = useRef<HTMLInputElement | null>(null);
 

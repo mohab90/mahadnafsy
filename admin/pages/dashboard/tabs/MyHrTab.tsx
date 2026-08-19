@@ -112,10 +112,15 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ type: 'ANNUAL', start_date: '', end_date: '', reason: '' });
 
+  // Drives both the request form's dropdown and the labels on the list below,
+  // so a type is added in one place. LATE_PERMIT/EARLY_LEAVE go through the same
+  // approval flow as leave but cost nothing against the balance — see
+  // calculateLeaveDays in api/lib/hrPolicy.js.
   const LEAVE_TYPE_LABELS: Record<string, string> = {
     ANNUAL: 'إجازة سنوية', SICK: 'إجازة مرضية', UNPAID: 'إجازة بدون راتب',
     MATERNITY: 'إجازة أمومة', EMERGENCY: 'إجازة طارئة',
-    PERMISSION: 'إذن', OTHER: 'أخرى',
+    PERMISSION: 'إذن', LATE_PERMIT: 'إذن تأخير', EARLY_LEAVE: 'إذن انصراف مبكر',
+    OTHER: 'أخرى',
   };
   const LEAVE_STATUS_LABELS: Record<string, string> = {
     PENDING: 'معلق', APPROVED: 'موافق عليه', REJECTED: 'مرفوض', CANCELLED: 'ملغي',

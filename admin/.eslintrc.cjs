@@ -24,19 +24,27 @@ module.exports = {
     ecmaFeatures: { jsx: true },
   },
   env: { browser: true, es2022: true },
-  // Registered but not enabled. The app already carries
-  // `eslint-disable-next-line react-hooks/exhaustive-deps` comments in a dozen
-  // places; without the plugin loaded ESLint treats each of those as an error
-  // for referencing a rule it does not know. Turning the rule itself on is a
-  // separate decision with a real backlog behind it, and not this change.
-  // Both are registered but their rules stay off. The app already carries
-  // `eslint-disable-next-line` comments naming react-hooks/exhaustive-deps and
-  // @typescript-eslint/no-unused-vars; without the plugins loaded ESLint treats
-  // every one of those as an error for referencing a rule it does not know.
-  // Turning those rules on is a separate decision with a real backlog behind
-  // it, and not this change.
+  // react-hooks/exhaustive-deps is enabled in the rules below — see the note
+  // there. @typescript-eslint is still registered with none of its rules on:
+  // the app carries `eslint-disable-next-line` comments naming
+  // @typescript-eslint/no-unused-vars, and without the plugin loaded ESLint
+  // treats every one of those as an error for referencing a rule it does not
+  // know. Turning that one on is a separate decision with its own backlog.
   plugins: ['react-hooks', '@typescript-eslint', 'jsx-a11y'],
   rules: {
+    // A hook that reads something it does not declare silently stops updating.
+    // JoinUsAdminTab's applicant list gained branch and experience filters that
+    // were never added to the memo's dependency array, so choosing a filter
+    // changed the dropdown and nothing else — worse than a missing filter,
+    // because the screen looks broken. It shipped, and the owner reported it.
+    //
+    // The backlog this rule was held off for is gone: 44 findings in admin and 8
+    // in client were each decided individually rather than silenced. Where the
+    // narrower list is the correct one — an effect keyed on an id instead of the
+    // object rebuilt around it, a mount-only fetch — the exception is an
+    // `eslint-disable-next-line` with the reason written directly above it.
+    'react-hooks/exhaustive-deps': 'error',
+
     // Silently wrong data
     'no-dupe-keys': 'error',
     'no-dupe-args': 'error',

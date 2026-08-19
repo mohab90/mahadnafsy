@@ -17,7 +17,7 @@ const crypto = require('crypto');
 const { pool } = require('./db');
 const { uuidv4 } = require('./id');
 const { describeReason, sendWhatsApp } = require('./whatsapp');
-const { toIdentity, isPlausible } = require('./phoneNumber');
+const { toIdentity, isPlausible, identitySpellings } = require('./phoneNumber');
 const { resolveSecret } = require('./secretResolver');
 const logger = require('./logger');
 
@@ -25,6 +25,14 @@ const CODE_TTL_MINUTES = Math.max(1, Number(process.env.WA_OTP_TTL_MINUTES || 10
 const MAX_ATTEMPTS = Math.max(1, Number(process.env.WA_OTP_MAX_ATTEMPTS || 5));
 // Codes an unregistered number may be sent per hour, from any source.
 const SIGNUP_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_SIGNUP_CODES_PER_HOUR || 3));
+// The same cap for a number that already has an account, set higher because a
+// real customer retrying a sign-in is the common case. Both exist because the
+// route's limiters cannot do this job: the OTP request body carries only a
+// phone, so rateLimits' `actor()` resolves to 'anonymous' and its keyGenerator
+// then falls back to the IP for both limiters. Nothing was counting per number,
+// and rotating IPs could therefore send unlimited WhatsApp messages to any
+// registered customer — their phone, and the institute's send budget.
+const LOGIN_CODES_PER_HOUR = Math.max(1, Number(process.env.WA_LOGIN_CODES_PER_HOUR || 6));
 
 /**
  * Reduce anything a user might type to comparable digits.
@@ -76,12 +84,39 @@ async function requestLoginCode({ tenantId, phone }) {
   // keyed on their number. The password hash is deliberately random and
   // unguessable — this account can only ever be entered by OTP.
   if (!user) {
-    const [[sub]] = await pool.query(
+    // Matched against the exact set of spellings this number can be stored as,
+    // never a trailing wildcard. `LIKE '%<identity>'` here meant "ends with
+    // these digits": an identity can be 9 digits and a stored number 15, so a
+    // client stored as 966501234567 was adopted by anyone requesting a code for
+    // 66501234567 — a different country, a different person, and a number this
+    // system will happily deliver the code to. The adoption below is committed
+    // before the send is even attempted, so a failed delivery did not undo it.
+    const spellings = identitySpellings(normalized);
+    const placeholders = spellings.map(() => '?').join(',');
+
+    // Two steps because REGEXP_REPLACE on the column cannot use idx_subs_phone —
+    // wrapping an indexed column in a function forces a full scan of subscribers,
+    // and this runs on every sign-in attempt for a number with no users row.
+    //
+    // A number stored the way it is written today matches the first query on the
+    // index. The scan is kept only as a fallback for rows imported with spaces,
+    // dashes or a '+', which the index cannot help with either way — so the
+    // common path gets faster and the rare path behaves exactly as before.
+    let [[sub]] = await pool.query(
       `SELECT id, name, email FROM subscribers
-        WHERE tenant_id=? AND REGEXP_REPLACE(phone,'[^0-9]','') LIKE ?
-          AND is_active=1 LIMIT 1`,
-      [tenantId, `%${normalized}`]
+        WHERE tenant_id=? AND is_active=1 AND phone IN (${placeholders})
+        LIMIT 1`,
+      [tenantId, ...spellings]
     );
+    if (!sub) {
+      [[sub]] = await pool.query(
+        `SELECT id, name, email FROM subscribers
+          WHERE tenant_id=? AND is_active=1
+            AND REGEXP_REPLACE(phone,'[^0-9]','') IN (${placeholders})
+          LIMIT 1`,
+        [tenantId, ...spellings]
+      );
+    }
     if (sub) {
       const newId = uuidv4();
       const lockedHash = crypto.randomBytes(32).toString('hex');
@@ -118,19 +153,25 @@ async function requestLoginCode({ tenantId, phone }) {
   // response told anyone watching whether a number was registered. Now both
   // paths do the same work and answer the same way.
   const isNewAccount = !user;
-  if (isNewAccount) {
+  {
     // The IP limiter cannot carry this alone: once codes reach numbers with no
     // account, rotating IPs would turn the institute's own WhatsApp into a way
     // to message strangers. This caps a single number regardless of source.
+    //
+    // Applied to registered numbers too, not just new ones. Capping only signups
+    // left the opposite hole wide open: a customer who already has an account
+    // could be sent unlimited codes by anyone who knew their number, because
+    // nothing else in the stack counts per number.
+    const cap = isNewAccount ? SIGNUP_CODES_PER_HOUR : LOGIN_CODES_PER_HOUR;
     const [[recent]] = await pool.query(
       `SELECT COUNT(*) AS n FROM otp_codes
         WHERE tenant_id=? AND phone=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
       [tenantId, normalized]
     );
-    if (Number(recent?.n || 0) >= SIGNUP_CODES_PER_HOUR) {
-      logger.warn('[wa-otp] per-number signup throttle hit');
+    if (Number(recent?.n || 0) >= cap) {
+      logger.warn('[wa-otp] per-number throttle hit', { isNewAccount });
       // Reported as success so the throttle itself cannot be used to probe.
-      return { ok: true, delivered: false, isNewAccount: true };
+      return { ok: true, delivered: false, isNewAccount };
     }
   }
 

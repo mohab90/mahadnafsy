@@ -23,7 +23,11 @@ type Props = {
   salesOwnSubscribers: SubscriberItem[];
   salesDataLoading: boolean;
   fetchSalesData: () => void;
-  setActiveTab: (tab: TabKey) => void;
+  // string, not TabKey: this is passed straight down to panels that build the
+  // tab name from data. Dashboard supplies a navigator that checks the name
+  // against the real menu before it moves, so an unknown one is refused rather
+  // than blanking the screen.
+  setActiveTab: (tab: string) => void;
   branchFilter: string;
   isNonAdminStaff: boolean;
   salesOwnDaqqiRounds: DaqqiRound[] | null;

@@ -62,6 +62,11 @@ export function useUnifiedClientEditState(params: Params) {
       .then(result => setCurrentPassword(result.plain_password))
       .catch(() => setCurrentPassword(null))
       .finally(() => setCurrentPasswordLoading(false));
+    // Keyed on subscriber?.id, not the whole subscriber. The object is rebuilt
+    // by every SiteData refresh, so depending on it would re-request the stored
+    // password — a privileged endpoint — each time any unrelated field changed.
+    // Which subscriber we are looking at is what actually matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, subscriber?.id, isAdmin, isOnlineManager]);
 
   const handleSaveLeadEdit = async () => {

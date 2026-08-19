@@ -172,11 +172,27 @@ const Auth: React.FC = () => {
             };
             const isRateLimit = msg.includes('محاولات كثيرة') || msg.includes('HTTP 429');
             const isDbDown = msg.includes('DB unavailable') || msg.includes('tunnel') || msg.includes('HTTP 503');
+            // A request that never reached the server is not a rejected sign-in,
+            // and saying the same thing for both leaves the user retyping a
+            // password that was already correct. apiFetch surfaces an aborted
+            // request as an AbortError, an unreachable host as a TypeError, and
+            // a proxy/server fault as HTTP 5xx — none of which appear in
+            // arabicMessages, so all three used to land on the generic text.
+            const isTimeout = (error instanceof DOMException && error.name === 'AbortError')
+                || msg.includes('aborted');
+            const isUnreachable = error instanceof TypeError || msg.includes('Failed to fetch');
+            const isServerFault = /HTTP 5\d\d/.test(msg);
             const arabicText = isRateLimit
                 ? 'محاولات كثيرة جداً — انتظر 15 دقيقة وحاول مرة أخرى'
                 : isDbDown
                     ? 'الخادم غير متاح حالياً — يرجى المحاولة بعد قليل أو تواصل مع الدعم الفني.'
-                    : (arabicMessages[msg] || 'تعذر إتمام العملية، حاول مرة أخرى.');
+                    : isTimeout
+                        ? 'الخادم لم يستجب في الوقت المحدد. بياناتك سليمة — تحقق من الاتصال وحاول مرة أخرى.'
+                        : isUnreachable
+                            ? 'تعذر الوصول إلى الخادم. تحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.'
+                            : isServerFault
+                                ? 'حدث خطأ في الخادم أثناء محاولة الدخول. حاول بعد قليل أو تواصل مع الدعم.'
+                                : (arabicMessages[msg] || 'تعذر إتمام العملية، حاول مرة أخرى.');
             setNotice({ type: 'error', text: arabicText });
         } finally {
             setLoading(false);

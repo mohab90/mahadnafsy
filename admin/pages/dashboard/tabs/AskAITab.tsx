@@ -4,6 +4,15 @@ import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
+// Module scope: a constant map and a pure function of its arguments. In the
+// component body they were rebuilt every render, so the memos below could not
+// list them as dependencies without recomputing every time.
+const _aiBranchLabels: Record<string, string> = {
+  daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
+  'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
+};
+const _aiToEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
+
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
     leads, subscribers, orders, courses, bundles, therapists, consultations,
@@ -18,11 +27,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const aiChatEndRef = useRef<HTMLDivElement>(null);
 
   // ── Pre-computed AI analysis data ──────────────────────────────────────────
-  const _aiBranchLabels: Record<string, string> = {
-    daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
-    'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
-  };
-  const _aiToEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
 
   const _aiAllManual = useMemo(() =>
     subscribers.flatMap(s =>
@@ -32,7 +36,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
         branchLabel: _aiBranchLabels[s.branch || 'other'] || s.branch || '—',
       }))
     ),
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   [subscribers]);
 
   const _aiAllManualForBranch = _aiAllManual;
@@ -53,7 +56,6 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
         allRev: Math.round(bPayments.reduce((s, p) => s + toEGP(p.amount, p.currency), 0)),
       };
     }).sort((a, b) => b.subs - a.subs);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribers, _aiAllManualForBranch]);
 
   // Use saved AI config (adminAiConfig from MySQL, alias as adminAiDraft for body code compatibility)

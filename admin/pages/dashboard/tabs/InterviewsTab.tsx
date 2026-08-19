@@ -1,9 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, Plus, RefreshCw, Star, UserCheck, UserPlus, X, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { ROLE_LABELS } from '../../../constants/permissions';
+import PromptModal from '../../../components/shared/PromptModal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
+
+interface HireDraft {
+  email: string;
+  password: string;
+  role: string;
+  position: string;
+  activate: boolean;
+}
+
+// Mirrors ROLE_FOR_TYPE in api/routes/hr/talent.js so the form opens on the same
+// role the API would have defaulted to.
+const DEFAULT_ROLE_FOR_TYPE: Record<string, string> = {
+  INSTRUCTOR: 'instructor', CONSULTANT: 'consultant', EMPLOYEE: 'support',
+};
 
 type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
 interface JobApplicant {
@@ -16,6 +32,12 @@ interface JobApplicant {
   stage: Stage;
   stage_notes: string | null;
   interview_rating: number | null;
+  interview_grade: Grade | null;
+  second_interview_grade: Grade | null;
+  interviewed_by_name: string | null;
+  second_interviewed_by_name: string | null;
+  interviewed_at: string | null;
+  second_interviewed_at: string | null;
   source: string;
   specialty: string | null;
   applicant_type: string | null;
@@ -27,6 +49,22 @@ interface JobApplicant {
 }
 
 const STARS = [1, 2, 3, 4, 5] as const;
+
+// The desk's own scale. R = مرفوض, W = في الانتظار — they are outcomes, not
+// points, which is why this is an ordered list of labels rather than a number.
+const GRADES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'R', 'W'] as const;
+type Grade = typeof GRADES[number];
+
+const GRADE_STYLE: Record<Grade, string> = {
+  'A+': 'bg-emerald-600 text-white',
+  A: 'bg-emerald-500 text-white',
+  'B+': 'bg-sky-600 text-white',
+  B: 'bg-sky-500 text-white',
+  'C+': 'bg-amber-500 text-white',
+  C: 'bg-amber-400 text-white',
+  R: 'bg-red-600 text-white',
+  W: 'bg-gray-500 text-white',
+};
 
 interface JobOption { id: string; title: string; status: string; }
 
@@ -142,6 +180,12 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [showAddModal, setShowAddModal] = useState(false);
+  const [gradeFilter, setGradeFilter] = useState<Grade | 'all' | 'none'>('all');
+  const [gradeFor, setGradeFor] = useState<{ row: JobApplicant; grade: Grade; round: 1 | 2 } | null>(null);
+  const [hireFor, setHireFor] = useState<JobApplicant | null>(null);
+  const [hireDraft, setHireDraft] = useState<HireDraft>({
+    email: '', password: '', role: 'support', position: '', activate: true,
+  });
 
   const load = useCallback(() => {
     setLoading(true);
@@ -157,6 +201,46 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     interview: rows.filter(r => r.stage === 'interview').length,
     offer: rows.filter(r => r.stage === 'offer').length,
   }), [rows]);
+
+  // Matches either round: someone filtering for A+ wants the A+ candidates,
+  // not only those who scored it in the round that happens to be first.
+  const visibleRows = useMemo(() => (
+    gradeFilter === 'all'
+      ? rows
+      : gradeFilter === 'none'
+        ? rows.filter(r => !r.interview_grade && !r.second_interview_grade)
+        : rows.filter(r => r.interview_grade === gradeFilter || r.second_interview_grade === gradeFilter)
+  ), [rows, gradeFilter]);
+
+  const gradeCounts = useMemo(() => {
+    const tally = {} as Record<string, number>;
+    for (const row of rows) {
+      for (const g of [row.interview_grade, row.second_interview_grade]) {
+        if (g) tally[g] = (tally[g] || 0) + 1;
+      }
+    }
+    return tally;
+  }, [rows]);
+
+  // Asks for the reason alongside the grade. A letter on its own does not say
+  // why, and the note is what the second interviewer actually reads.
+  const openGrade = (row: JobApplicant, grade: Grade, round: 1 | 2) => setGradeFor({
+    row, grade, round,
+  });
+
+  const setGrade = async (row: JobApplicant, grade: Grade, round: 1 | 2, reason: string) => {
+    setBusyId(row.id);
+    try {
+      const result = await mysqlAdmin.gradeApplicant(row.id, { grade, round, body: reason.trim() || undefined });
+      notify('success', `تم تسجيل تقييم ${result.grade} للمقابلة ${round === 2 ? 'الثانية' : 'الأولى'} — ${result.by}`);
+      setGradeFor(null);
+      await load();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر حفظ التقييم');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const setRating = async (row: JobApplicant, rating: number) => {
     setBusyId(row.id);
@@ -199,12 +283,48 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     }
   };
 
-  const hire = async (row: JobApplicant) => {
-    if (!window.confirm(`إنشاء سجل موظف غير نشط لـ${row.name}؟ التفعيل خطوة منفصلة من دليل الموظفين.`)) return;
-    setBusyId(row.id);
+  // Opens the form rather than hiring immediately. The button used to post only
+  // a branch_id, so the API — which needs a login email, and a role to grant
+  // anything — answered "حدد بريدًا إلكترونيًا صحيحًا" for every applicant who
+  // applied without one, and there was nowhere to supply it.
+  const openHire = (row: JobApplicant) => {
+    setHireFor(row);
+    setHireDraft({
+      email: row.email || '',
+      password: '',
+      role: DEFAULT_ROLE_FOR_TYPE[String(row.applicant_type || '').toUpperCase()] || 'support',
+      position: row.specialty || '',
+      activate: true,
+    });
+  };
+
+  const submitHire = async () => {
+    if (!hireFor) return;
+    const email = hireDraft.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      notify('error', 'اكتب بريدًا إلكترونيًا صحيحًا — هو اسم الدخول للموظف');
+      return;
+    }
+    if (hireDraft.activate && hireDraft.password.length < 8) {
+      notify('error', 'كلمة المرور 8 أحرف على الأقل، أو ألغِ التفعيل الفوري');
+      return;
+    }
+    setBusyId(hireFor.id);
     try {
-      await mysqlAdmin.hireHrApplicant(row.id, { branch_id: row.job_branch || undefined });
-      notify('success', `تم إنشاء سجل ${row.name} كموظف — فعّله من دليل الموظفين`);
+      await mysqlAdmin.hireHrApplicant(hireFor.id, {
+        email,
+        // Sent only when set: the API treats a password as "ready to work" and
+        // activates the account, so an empty one must not reach it as ''.
+        ...(hireDraft.password ? { password: hireDraft.password } : {}),
+        role: hireDraft.role.toUpperCase(),
+        position: hireDraft.position.trim() || undefined,
+        branch_id: hireFor.job_branch || undefined,
+        activate: hireDraft.activate,
+      });
+      notify('success', hireDraft.activate
+        ? `تم تعيين ${hireFor.name} ويقدر يسجّل دخول بالبريد ده`
+        : `تم إنشاء سجل ${hireFor.name} — التفعيل من دليل الموظفين`);
+      setHireFor(null);
       await load();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'فشل التعيين');
@@ -248,19 +368,123 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
 
       {showAddModal && <AddInterviewModal notify={notify} onClose={() => setShowAddModal(false)} onAdded={load} />}
 
+      {gradeFor && (
+        <PromptModal
+          title={`تقييم ${gradeFor.grade} — ${gradeFor.row.name}`}
+          label="سبب التقييم (اختياري)"
+          hint={`المقابلة ${gradeFor.round === 2 ? 'الثانية' : 'الأولى'}. هيتسجّل اسمك وتاريخ التقييم مع السبب.`}
+          placeholder="مثال: إجابات قوية وخبرة عملية واضحة"
+          confirmLabel="حفظ التقييم"
+          multiline
+          busy={busyId === gradeFor.row.id}
+          onSubmit={reason => setGrade(gradeFor.row, gradeFor.grade, gradeFor.round, reason)}
+          onCancel={() => setGradeFor(null)}
+        />
+      )}
+
+      {hireFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => busyId ? undefined : setHireFor(null)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">تعيين {hireFor.name}</h3>
+              <button onClick={() => setHireFor(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <p className="mb-4 rounded-xl bg-amber-50 p-2.5 text-xs text-amber-800">
+              البريد ده هيبقى اسم الدخول بتاع الموظف. لو حطيت كلمة مرور هيقدر يدخل على طول.
+            </p>
+
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold text-gray-700">البريد الإلكتروني (اسم الدخول) *</span>
+                <input type="email" dir="ltr" value={hireDraft.email}
+                  onChange={e => setHireDraft(d => ({ ...d, email: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                  placeholder="name@mahadnafsy.com" />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold text-gray-700">كلمة المرور</span>
+                <input type="text" dir="ltr" value={hireDraft.password}
+                  onChange={e => setHireDraft(d => ({ ...d, password: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                  placeholder="8 أحرف على الأقل" />
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-bold text-gray-700">الوظيفة (الدور) *</span>
+                  <select value={hireDraft.role}
+                    onChange={e => setHireDraft(d => ({ ...d, role: e.target.value }))}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                    {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-bold text-gray-700">المسمى الوظيفي</span>
+                  <input value={hireDraft.position}
+                    onChange={e => setHireDraft(d => ({ ...d, position: e.target.value }))}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                    placeholder="مثال: أخصائي نفسي" />
+                </label>
+              </div>
+
+              <label className="flex items-center gap-2 rounded-xl bg-gray-50 p-2.5">
+                <input type="checkbox" checked={hireDraft.activate}
+                  onChange={e => setHireDraft(d => ({ ...d, activate: e.target.checked }))} />
+                <span className="text-xs font-bold text-gray-700">
+                  تفعيل الحساب فورًا (يحتاج كلمة مرور)
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button onClick={submitHire} disabled={busyId === hireFor.id}
+                className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-40">
+                {busyId === hireFor.id ? 'جارٍ التعيين…' : 'تعيين الموظف'}
+              </button>
+              <button onClick={() => setHireFor(null)} disabled={busyId === hireFor.id}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-gray-100 bg-white p-2.5">
+        <span className="ml-1 text-xs font-bold text-gray-500">فلتر التقييم:</span>
+        <button onClick={() => setGradeFilter('all')}
+          className={`rounded-lg px-2.5 py-1 text-xs font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          الكل ({rows.length})
+        </button>
+        {GRADES.map(g => (
+          <button key={g} onClick={() => setGradeFilter(g)}
+            className={`rounded-lg px-2.5 py-1 text-xs font-black ${gradeFilter === g ? GRADE_STYLE[g] : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {g}{gradeCounts[g] ? ` (${gradeCounts[g]})` : ''}
+          </button>
+        ))}
+        <button onClick={() => setGradeFilter('none')}
+          className={`rounded-lg px-2.5 py-1 text-xs font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          بدون تقييم
+        </button>
+      </div>
+
       {loading ? (
         <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">
           جاري التحميل...
         </div>
-      ) : rows.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm text-gray-400">
           لا يوجد مرشحون في مرحلة المقابلة أو العرض الوظيفي حاليًا.
         </div>
       ) : (
         <div className="space-y-3">
-          {rows.map(row => (
-            <article key={row.id} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          {visibleRows.map(row => (
+            <article key={row.id} className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${row.stage === 'offer' ? 'bg-amber-100 text-amber-700' : 'bg-violet-100 text-violet-700'}`}>
@@ -276,20 +500,36 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                     {row.phone && <span dir="ltr">{row.phone}</span>}
                   </div>
 
-                  {/* Rating */}
-                  <div className="mt-3 flex items-center gap-1">
-                    <span className="text-xs font-bold text-gray-500 ml-1">التقييم:</span>
-                    {STARS.map(n => (
-                      <button
-                        key={n}
-                        disabled={busyId === row.id}
-                        onClick={() => setRating(row, n)}
-                        title={`${n} من 5`}
-                        className="disabled:opacity-40"
-                      >
-                        <Star size={18} className={(row.interview_rating || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} />
-                      </button>
-                    ))}
+                  {/* Grades — one row per interview, each stamped with its own
+                      grader, so "who interviewed this person" is answerable per
+                      round instead of only for whoever edited the row last. */}
+                  <div className="mt-3 space-y-1.5">
+                    {([1, 2] as const).map(round => {
+                      const current = round === 1 ? row.interview_grade : row.second_interview_grade;
+                      const by = round === 1 ? row.interviewed_by_name : row.second_interviewed_by_name;
+                      const at = round === 1 ? row.interviewed_at : row.second_interviewed_at;
+                      return (
+                        <div key={round} className="flex flex-wrap items-center gap-1">
+                          <span className="ml-1 w-20 shrink-0 text-[11px] font-bold text-gray-500">
+                            {round === 1 ? 'المقابلة ١:' : 'المقابلة ٢:'}
+                          </span>
+                          {GRADES.map(g => (
+                            <button key={g} disabled={busyId === row.id}
+                              onClick={() => openGrade(row, g, round)}
+                              title={`تقييم ${g}`}
+                              className={`h-6 min-w-[26px] rounded-md px-1 text-[11px] font-black transition disabled:opacity-40 ${
+                                current === g ? GRADE_STYLE[g] : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+                              {g}
+                            </button>
+                          ))}
+                          {by && (
+                            <span className="mr-1 text-[10px] text-gray-400">
+                              — {by}{at ? ` · ${String(at).slice(0, 16).replace('T', ' ')}` : ''}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Notes */}
@@ -317,8 +557,8 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                       عرض وظيفي
                     </button>
                   )}
-                  {row.stage === 'offer' && (
-                    <button disabled={busyId === row.id} onClick={() => hire(row)}
+                  {(row.stage === 'offer' || row.stage === 'interview') && (
+                    <button disabled={busyId === row.id} onClick={() => openHire(row)}
                       className="flex items-center justify-center gap-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40">
                       <UserCheck size={13} /> تعيين
                     </button>

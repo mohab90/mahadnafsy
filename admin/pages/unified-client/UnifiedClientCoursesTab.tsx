@@ -22,7 +22,9 @@ type UnifiedClientCoursesTabProps = {
   setAccessPresets: React.Dispatch<React.SetStateAction<Record<string, AccessPreset>>>;
   manualLimitDraft: Record<string, string>;
   setManualLimitDraft: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  applyAccessLevel: (courseId: string, mode: CourseAccessSetting['mode'], lectureLimit?: number) => void | Promise<void>;
+  // 'full' | 'limited' only — see UnifiedClientAccessModal: 'preview' is the
+  // absence of a grant, not a level that can be applied.
+  applyAccessLevel: (courseId: string, mode: 'full' | 'limited', lectureLimit?: number) => void | Promise<void>;
   isAdmin: boolean;
 };
 

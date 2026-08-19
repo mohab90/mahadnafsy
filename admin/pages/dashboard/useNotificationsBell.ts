@@ -26,7 +26,6 @@ export function useNotificationsBell(enabled: boolean) {
     loadNotifs();
     const iv = setInterval(loadNotifs, 60000);
     return () => clearInterval(iv);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
   useEffect(() => {

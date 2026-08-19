@@ -184,11 +184,12 @@ const ScrollToTop = () => {
 
 /** Server keepalive — silently pings /api/health every 5 minutes to prevent Hostinger shared
  *  hosting from suspending the Node.js process between requests */
+const KEEPALIVE_API = import.meta.env.VITE_API_URL || '/api';
+
 const ServerKeepalive: React.FC = () => {
-  const API = import.meta.env.VITE_API_URL || '/api';
   useEffect(() => {
     const ping = () => {
-      fetch(`${API}/health`, { method: 'GET', cache: 'no-store' })
+      fetch(`${KEEPALIVE_API}/health`, { method: 'GET', cache: 'no-store' })
         .catch(() => { /* silent — watchdog will restart if truly down */ });
     };
     ping(); // immediate ping on mount

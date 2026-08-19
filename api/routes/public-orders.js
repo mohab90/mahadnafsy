@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'public-orders-route' });
+const crypto = require('crypto');
 const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
@@ -16,6 +17,8 @@ const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
 const { postPaymentJournal } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { transitionLead } = require('../lib/leadState');
+const { findLeadByContact } = require('../lib/leadMatching');
+const { enqueueFinanceEvent } = require('../lib/financeOutbox');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
 const { createNotification } = require('../lib/notification');
 const {
@@ -232,20 +235,48 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
 });
 
 // ── Paymob: shared helper — finalises an order after verified payment ─────────
-// In-flight order processing guard — prevents concurrent webhook calls for the same order
-// from both entering the DB transaction simultaneously (race condition protection)
+// In-flight guard, so two concurrent webhooks for one order cannot both enter
+// the transaction below.
+//
+// The Set alone could not do this job. It lives in one Node process, and the API
+// is deployed behind a process manager — a second worker (or a second instance)
+// has its own empty Set and walks straight past it. The database is the only
+// thing all workers share, so the real guard is a named lock there, exactly as
+// the public lead routes already do it. The Set stays in front of it as a free
+// same-process short-circuit that avoids taking a connection at all.
+//
+// Costs one extra pooled connection for the duration, because GET_LOCK is held
+// by the session that took it and the work below opens its own. Paymob webhook
+// volume is low; correctness here is worth one connection.
 const _paymobProcessingOrders = new Set();
 
 async function finalisePaymobOrder(merchantOrderId, transactionId) {
-  // Race condition guard: if already being processed by another concurrent webhook, skip
   if (_paymobProcessingOrders.has(merchantOrderId)) {
     logger.warn(`[paymob] Order ${merchantOrderId} already in-flight — skipping duplicate webhook`);
     return { found: true, alreadyProcessed: true };
   }
   _paymobProcessingOrders.add(merchantOrderId);
+  // Hashed because a merchant order id is caller-shaped and GET_LOCK names are
+  // capped at 64 characters.
+  const lockName = `paymob:${crypto.createHash('sha256').update(String(merchantOrderId)).digest('hex').slice(0, 40)}`;
+  let lockConn;
   try {
-    return await _finalisePaymobOrderInner(merchantOrderId, transactionId);
+    lockConn = await pool.getConnection();
+    const [[lock]] = await lockConn.query('SELECT GET_LOCK(?,10) AS acquired', [lockName]);
+    if (Number(lock?.acquired) !== 1) {
+      // Another worker holds it, which means another worker is finalising this
+      // same order. Reporting it as already processed is what the caller does
+      // with a genuine duplicate, and Paymob retries regardless.
+      logger.warn(`[paymob] Order ${merchantOrderId} locked by another worker — skipping duplicate webhook`);
+      return { found: true, alreadyProcessed: true };
+    }
+    try {
+      return await _finalisePaymobOrderInner(merchantOrderId, transactionId);
+    } finally {
+      await lockConn.query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
+    }
   } finally {
+    if (lockConn) lockConn.release();
     _paymobProcessingOrders.delete(merchantOrderId);
   }
 }
@@ -354,7 +385,20 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       );
     }
 
-    // 4. Record in payments table (ON DUPLICATE KEY guards against double-webhook)
+    // 4. Record in payments table.
+    //
+    // This INSERT is deliberately plain — do NOT add ON DUPLICATE KEY UPDATE.
+    // It is the last line of defence against a double webhook, and it works by
+    // failing: `payId` is derived from the order id, so a second run raises a
+    // duplicate on the primary key (and on uq idx_payments_txn), the catch below
+    // rolls the whole transaction back, and nothing is booked twice.
+    //
+    // The two checks above this transaction — order already 'paid', transaction
+    // id already recorded — are reads outside it, so two webhooks arriving
+    // together can both pass them. Only this constraint stops the pair, and it
+    // has to stop the *journal* posting further down, not just this row:
+    // swallowing the duplicate here would let postPaymentJournal run a second
+    // time and book the same revenue twice.
     await conn.query(
       `INSERT INTO payments
          (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type, payment_method,
@@ -406,6 +450,26 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       });
     }
 
+    // Enqueued inside the transaction, so the job is as durable as the payment
+    // that owes it: roll back and it disappears with the payment, commit and it
+    // is guaranteed to run. This used to be a setImmediate after the commit
+    // whose catch only logged — a deadlock or a restart there lost the sales
+    // rep's commission with nothing to retry it and no record that it was owed.
+    if (sub?.id && Number(order.amount) > 0) {
+      await enqueueFinanceEvent({
+        tenantId,
+        eventType: 'record_commission',
+        refType: 'payment',
+        refId: payId,
+        payload: {
+          paymentId: payId,
+          subscriberId: sub.id,
+          amount: Number(order.amount),
+          branchId: order.branch_id || null,
+        },
+      }, conn);
+    }
+
     await conn.commit();
     awardPointsForPayment({
       id: payId,
@@ -422,49 +486,10 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
     conn.release();
   }
 
-  // ── Post-commit side effects (non-critical, don't block response) ──────────
-  // Calculate commission for assigned sales staff on Paymob payment
-  if (sub?.id && order.amount > 0) {
-    setImmediate(async () => {
-      try {
-        const [[subRow]] = await pool.query(
-          'SELECT assigned_sales_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
-          [sub.id, tenantId]
-        );
-        const finalStaffId = subRow?.assigned_sales_id || null;
-        if (!finalStaffId) return;
-        const [[rule]] = await pool.query(`
-          SELECT id, percentage_value FROM commission_rules
-          WHERE tenant_id=? AND is_active=1 AND calc_type='PERCENTAGE'
-            AND (staff_id=? OR (staff_id IS NULL AND JSON_CONTAINS(COALESCE(apply_to_roles,'[]'), JSON_QUOTE((SELECT role FROM staff WHERE id=? AND tenant_id=? LIMIT 1)))))
-            AND effective_from <= CURDATE() AND (effective_to IS NULL OR effective_to >= CURDATE())
-            AND (min_payment IS NULL OR min_payment <= ?)
-          ORDER BY staff_id DESC, priority ASC LIMIT 1
-        `, [tenantId, finalStaffId, finalStaffId, tenantId, Number(order.amount)]).catch(() => [[null]]);
-        let commRate = rule?.percentage_value || 0;
-        if (!commRate) {
-          const [[stf]] = await pool.query(
-            'SELECT commission_rate FROM staff WHERE id=? AND tenant_id=? LIMIT 1',
-            [finalStaffId, tenantId]
-          ).catch(() => [[null]]);
-          commRate = stf?.commission_rate || 0;
-        }
-        if (commRate > 0) {
-          const commAmount = parseFloat((Number(order.amount) * commRate / 100).toFixed(2));
-          const now = new Date();
-          await pool.query(
-            `INSERT INTO crm_commissions (id, tenant_id, branch_id, staff_id, payment_id, rule_id, client_id, client_type, payment_amount, commission_amount, calc_details, month, year, status, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'PENDING',NOW()) ON DUPLICATE KEY UPDATE commission_amount=VALUES(commission_amount)`,
-            [uuidv4(), tenantId, order.branch_id || 'branch-other', finalStaffId, payId, rule?.id||null, sub.id, 'subscriber',
-             Number(order.amount), commAmount,
-             JSON.stringify({ rate: commRate, calc_type: 'PERCENTAGE', rule_id: rule?.id||null, trigger: 'paymob_payment' }),
-             now.getMonth()+1, now.getFullYear()]
-          );
-          logger.info(`[paymob] Commission ${commAmount} (${commRate}%) → staff ${finalStaffId}`);
-        }
-      } catch (commErr) { logger.warn('[paymob] commission calc error:', commErr.message); }
-    });
-  }
+  // Post-commit side effects (non-critical, do not block the response).
+  // Commission is NOT here any more: it is queued inside the transaction above
+  // and run by the finance outbox worker, so a failure retries instead of being
+  // lost to a warning line. See lib/commissionCalc.js.
   // In-app notification so the dashboard bell surfaces online revenue to the
   // accountant/admin. The WhatsApp ping below only reaches one env-configured
   // number and is silently skipped when ADMIN_WHATSAPP_PHONE is unset, so it was
@@ -503,14 +528,12 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         const subTenantId = subRow.tenant_id || tenantId || DEFAULT_TENANT_ID;
         let leadId = subRow.lead_id;
         if (!leadId && (subRow.phone || subRow.email)) {
-          const normPhone = subRow.phone ? subRow.phone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
-          const [[found]] = await pool.query(
-            `SELECT id FROM leads
-             WHERE tenant_id=? AND hidden=0
-               AND ((? IS NOT NULL AND REGEXP_REPLACE(phone,'[^0-9]','') LIKE ?) OR email = ?)
-             ORDER BY created_at DESC LIMIT 1`,
-            [subTenantId, normPhone, normPhone ? `%${normPhone.slice(-9)}` : '', subRow.email || '']
-          );
+          // The lead this finds is marked converted below, so a loose match
+          // closes a stranger's lead on someone else's payment. See
+          // lib/leadMatching.js for what the previous tail match could return.
+          const found = await findLeadByContact(pool, {
+            tenantId: subTenantId, phone: subRow.phone, email: subRow.email,
+          });
           leadId = found?.id || null;
         }
         if (leadId) {
@@ -573,14 +596,12 @@ async function syncLeadDealValue(subscriberId, db = pool, expectedTenantId = nul
     // Find linked lead — first try direct lead_id link, then phone/email match
     let leadId = sub.lead_id;
     if (!leadId && (sub.phone || sub.email)) {
-      // Normalize phone to last-9-digits pattern to handle +2010xxx vs 010xxx vs 10xxx format differences
-      const normPhone = sub.phone ? sub.phone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
-      const params = normPhone ? [`%${normPhone.slice(-9)}`, sub.email || ''] : [sub.email];
-      const base = normPhone
-        ? `WHERE (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0`
-        : 'WHERE email = ? AND hidden=0';
-      const where = appendTenantScope(base, '', tenantId, params);
-      const [[found]] = await db.query(`SELECT id FROM leads ${where} ORDER BY created_at DESC LIMIT 1`, params);
+      // `total` is written onto this lead's deal_value below. Matching on the
+      // last 9 digits meant that figure could land on a different customer's
+      // lead — lib/leadMatching.js matches the number itself.
+      const found = await findLeadByContact(db, {
+        tenantId, phone: sub.phone, email: sub.email,
+      });
       leadId = found?.id || null;
     }
     if (!leadId) return;

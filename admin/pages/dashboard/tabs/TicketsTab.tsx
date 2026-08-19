@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -69,6 +69,54 @@ const CAT_LABELS: Record<TicketCategory, string> = {
   consultation: '🩺 استشارة', certificate: '🎓 شهادات', general: '📌 عام',
 };
 
+// Pure functions of their arguments, hoisted out of the component body: as
+// closures they were rebuilt every render, so loadTickets could not list
+// mapTicket as a dependency without being rebuilt every render too.
+const statusFromApi = (status?: string): TicketStatus => {
+  if (status === 'in_progress') return 'inprogress';
+  if (status === 'resolved' || status === 'closed' || status === 'open') return status;
+  return 'open';
+};
+
+const statusToApi = (status: TicketStatus) => status === 'inprogress' ? 'in_progress' : status;
+
+const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general'];
+const categoryFromApi = (category?: string): TicketCategory =>
+  (CATEGORY_KEYS as string[]).includes(category || '') ? (category as TicketCategory) : 'general';
+
+const mapTicket = (row: any): SupportTicket => {
+  const priority = (['low', 'medium', 'high', 'urgent'].includes(row.priority) ? row.priority : 'medium') as TicketPriority;
+  const createdAt = row.created_at || row.createdAt || new Date().toISOString();
+  const replies = Array.isArray(row.replies) ? row.replies : [];
+  return {
+    id: String(row.id),
+    title: row.subject || row.title || 'تذكرة دعم',
+    description: row.body || row.description || '',
+    status: statusFromApi(row.status),
+    priority,
+    category: categoryFromApi(row.category),
+    clientName: row.subscriber_name || row.clientName || row.subscriber_email || 'عميل',
+    clientEmail: row.subscriber_email || row.clientEmail || '',
+    assigneeId: row.assigned_to || row.assigneeId || '',
+    createdAt,
+    updatedAt: row.updated_at || row.updatedAt || createdAt,
+    resolvedAt: row.resolved_at || row.resolvedAt || undefined,
+    respondedAt: row.first_response_at || row.responded_at || row.respondedAt || undefined,
+    slaDueAt: row.sla_due_at || row.slaDueAt || undefined,
+    slaHours: row.sla_hours || row.slaHours || SLA_BY_PRIORITY[priority],
+    slaBreached: row.sla === 'overdue' || !!(row.sla_breached || row.slaBreached),
+    escalatedTo: row.escalated_to || row.escalatedTo || undefined,
+    escalatedAt: row.escalated_at || row.escalatedAt || undefined,
+    messages: replies.map((reply: any) => ({
+      id: String(reply.id),
+      text: reply.body || '',
+      author: reply.author_name || (['client', 'subscriber'].includes(String(reply.author_type || '').toLowerCase()) ? 'العميل' : 'الإدارة'),
+      isStaff: !['client', 'subscriber'].includes(String(reply.author_type || '').toLowerCase()),
+      at: reply.created_at || new Date().toISOString(),
+    })),
+  };
+};
+
 const TicketsTab: React.FC<Props> = ({ notify }) => {
   const { staffMembers, subscribers } = useSiteData();
   const navigate = useNavigate();
@@ -93,52 +141,8 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const statusFromApi = (status?: string): TicketStatus => {
-    if (status === 'in_progress') return 'inprogress';
-    if (status === 'resolved' || status === 'closed' || status === 'open') return status;
-    return 'open';
-  };
 
-  const statusToApi = (status: TicketStatus) => status === 'inprogress' ? 'in_progress' : status;
-
-  const CATEGORY_KEYS: TicketCategory[] = ['billing', 'refund', 'complaint', 'technical', 'course_access', 'sales_inquiry', 'consultation', 'certificate', 'general'];
-  const categoryFromApi = (category?: string): TicketCategory =>
-    (CATEGORY_KEYS as string[]).includes(category || '') ? (category as TicketCategory) : 'general';
-
-  const mapTicket = (row: any): SupportTicket => {
-    const priority = (['low', 'medium', 'high', 'urgent'].includes(row.priority) ? row.priority : 'medium') as TicketPriority;
-    const createdAt = row.created_at || row.createdAt || new Date().toISOString();
-    const replies = Array.isArray(row.replies) ? row.replies : [];
-    return {
-      id: String(row.id),
-      title: row.subject || row.title || 'تذكرة دعم',
-      description: row.body || row.description || '',
-      status: statusFromApi(row.status),
-      priority,
-      category: categoryFromApi(row.category),
-      clientName: row.subscriber_name || row.clientName || row.subscriber_email || 'عميل',
-      clientEmail: row.subscriber_email || row.clientEmail || '',
-      assigneeId: row.assigned_to || row.assigneeId || '',
-      createdAt,
-      updatedAt: row.updated_at || row.updatedAt || createdAt,
-      resolvedAt: row.resolved_at || row.resolvedAt || undefined,
-      respondedAt: row.first_response_at || row.responded_at || row.respondedAt || undefined,
-      slaDueAt: row.sla_due_at || row.slaDueAt || undefined,
-      slaHours: row.sla_hours || row.slaHours || SLA_BY_PRIORITY[priority],
-      slaBreached: row.sla === 'overdue' || !!(row.sla_breached || row.slaBreached),
-      escalatedTo: row.escalated_to || row.escalatedTo || undefined,
-      escalatedAt: row.escalated_at || row.escalatedAt || undefined,
-      messages: replies.map((reply: any) => ({
-        id: String(reply.id),
-        text: reply.body || '',
-        author: reply.author_name || (['client', 'subscriber'].includes(String(reply.author_type || '').toLowerCase()) ? 'العميل' : 'الإدارة'),
-        isStaff: !['client', 'subscriber'].includes(String(reply.author_type || '').toLowerCase()),
-        at: reply.created_at || new Date().toISOString(),
-      })),
-    };
-  };
-
-  const loadTickets = async () => {
+  const loadTickets = useCallback(async () => {
     setLoading(true);
     try {
       const rows = await mysqlAdmin.adminGet<any[]>('/admin/tickets');
@@ -149,15 +153,15 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
       setLoading(false);
       initialLoadDone.current = true;
     }
-  };
+  }, [notify]);
 
-  useEffect(() => { loadTickets(); }, []);
+  useEffect(() => { loadTickets(); }, [loadTickets]);
 
+  // Functional update so the open ticket can be re-synced from a fresh list
+  // without listing selectedTicket as a dependency — depending on it here would
+  // re-run this effect on every selection change just to look itself up again.
   useEffect(() => {
-    if (selectedTicket) {
-      const updated = tickets.find(t => t.id === selectedTicket.id);
-      if (updated) setSelectedTicket(updated);
-    }
+    setSelectedTicket(current => (current && tickets.find(t => t.id === current.id)) || current);
   }, [tickets]);
 
   const supportTeam = staffMembers.filter(member =>
@@ -378,6 +382,10 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     const next = new URLSearchParams(searchParams);
     next.delete('focus');
     setSearchParams(next, { replace: true });
+    // Opens the ticket named by ?focus= once, guarded by focusHandledRef.
+    // selectTicketApi is rebuilt every render and setSearchParams is called here
+    // to strip the parameter — depending on either would re-enter this effect
+    // with the URL it just rewrote.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tickets, searchParams]);
 

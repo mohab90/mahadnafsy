@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, UserMinus, UserPlus } from 'lucide-react';
 import type { Course, SubscriberItem } from '../../../../types';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -28,20 +28,20 @@ export function CourseCohortsPanel({ courseId, courses, subscribers, notify }: P
   const [draft, setDraft] = useState(emptyDraft);
   const [busy, setBusy] = useState(false);
 
-  const loadCohorts = async () => {
+  const loadCohorts = useCallback(async () => {
     const rows = await mysqlAdmin.adminGet<Cohort[]>(`/admin/lms/cohorts?course_id=${encodeURIComponent(courseId)}`);
     setCohorts(rows);
     setSelectedId(current => rows.some(row => row.id === current) ? current : (rows[0]?.id || ''));
-  };
+  }, [courseId]);
 
-  const loadMembers = async (cohortId: string) => {
+  const loadMembers = useCallback(async (cohortId: string) => {
     setMembers(cohortId
       ? await mysqlAdmin.adminGet<Member[]>(`/admin/lms/cohorts/${encodeURIComponent(cohortId)}/members`)
       : []);
-  };
+  }, []);
 
-  useEffect(() => { void loadCohorts().catch(() => setCohorts([])); }, [courseId]);
-  useEffect(() => { void loadMembers(selectedId).catch(() => setMembers([])); }, [selectedId]);
+  useEffect(() => { void loadCohorts().catch(() => setCohorts([])); }, [loadCohorts]);
+  useEffect(() => { void loadMembers(selectedId).catch(() => setMembers([])); }, [loadMembers, selectedId]);
 
   const create = async () => {
     if (!draft.title.trim()) return notify('error', 'اكتب اسم المجموعة.');

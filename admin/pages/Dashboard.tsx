@@ -9,7 +9,7 @@ import { DashboardTabContainer } from './dashboard/DashboardTabContainer';
 import { DashboardNavigation } from './dashboard/DashboardNavigation';
 import { DashboardPaymentOverlays } from './dashboard/DashboardPaymentOverlays';
 import { DashboardStandaloneTabs } from './dashboard/DashboardStandaloneTabs';
-import { DASHBOARD_MENU_GROUPS, type TabKey } from './dashboard/navigation';
+import { DASHBOARD_MENU_GROUPS, isTabKey, type TabKey } from './dashboard/navigation';
 import { branchMatchesFilter, branchSlugToFilter } from './dashboard/branchWorkspaceFilters';
 import { aboutPageFields, homeOfferFields, policySections } from './dashboard/contentFields';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -155,7 +155,14 @@ const Dashboard: React.FC = () => {
   // (useCallback([]) in shared/ui/Toast.tsx); notify only needed to stop
   // being rebuilt on top of it.
   const { show: toastShow } = useToast();
-  const notify = useCallback((type: 'success' | 'error' | 'info', text: string) => toastShow(text, type), [toastShow]);
+  // 'warning' included because both sides already have it: shared/ui/Toast.tsx
+  // renders a warning icon and bar, and a dozen tabs type their notify prop with
+  // it. This wrapper was the only narrow link in the chain, so every one of those
+  // tabs failed to type-check against the very callback it is handed.
+  const notify = useCallback(
+    (type: 'success' | 'error' | 'info' | 'warning', text: string) => toastShow(text, type),
+    [toastShow],
+  );
   useRealtimeEvents<{ action?: string; entity?: string; actor?: string }>(
     'admin:mutation',
     (event) => {
@@ -182,8 +189,7 @@ const Dashboard: React.FC = () => {
     };
     window.addEventListener('site-persist-error', handler);
     return () => window.removeEventListener('site-persist-error', handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [notify]);
 
 
 
@@ -339,8 +345,12 @@ const Dashboard: React.FC = () => {
     // Redirect legacy "subscribers" URL ? "online_clients"
     const resolved = urlTab === 'subscribers' ? 'online_clients' : urlTab;
     if (resolved !== urlTab) { navigate(`/dashboard/online_clients`, { replace: true }); return; }
-    if (resolved !== activeTabState) setActiveTabState(resolved as TabKey);
-  }, [urlTab]);
+    // Functional update rather than depending on activeTabState: this effect
+    // exists to follow the URL, and with activeTabState as a dependency it would
+    // also re-run on every in-app tab change and immediately push the tab back
+    // to whatever the URL still said.
+    setActiveTabState(current => (resolved !== current ? resolved as TabKey : current));
+  }, [urlTab, navigate]);
 
   // Fetch pending payment proofs count once on mount (for sidebar badge)
   useEffect(() => {
@@ -348,12 +358,21 @@ const Dashboard: React.FC = () => {
     mysqlAdmin.listPaymentProofs('PENDING').then(rows => {
       setPendingProofsCount(Array.isArray(rows) ? rows.length : 0);
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
     navigate(`/dashboard/${tab}`);
   }, [navigate]);
+
+  // For the panels that type their navigation callback as `(tab: string)`
+  // because they build the name from data. setActiveTab cannot be handed to them
+  // directly — it takes only TabKey — and forcing it through with a cast would
+  // let an unknown name blank the dashboard. Unknown names are refused loudly
+  // here instead, so a wrong one is a console message rather than an empty page.
+  const navigateToTab = useCallback((tab: string) => {
+    if (isTabKey(tab)) { setActiveTab(tab); return; }
+    console.warn(`[dashboard] refused navigation to unknown tab: ${tab}`);
+  }, [setActiveTab]);
   const activeTab = activeTabState;
 
   const {
@@ -447,7 +466,11 @@ const Dashboard: React.FC = () => {
       const username = (currentStaff.email || '').split('@')[0] || String(currentStaff.id);
       if (urlParam !== username) navigate(`/dashboard/staff_settings/${username}`, { replace: true });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // urlParam is read but not listed on purpose: this effect writes the URL, so
+    // depending on it would re-enter on the navigation it just performed.
+    // currentStaff is keyed by id for the usual reason — the object is replaced
+    // on every context refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentStaff?.id]);
 
   // -- Fetch HR self-service data when profile tab is active -----------------
@@ -463,7 +486,11 @@ const Dashboard: React.FC = () => {
       if (Array.isArray(advances)) setMyAdvances(advances);
       if (Array.isArray(disciplinary)) setMyDisciplinary(disciplinary);
     }).finally(() => setLoadingMyHr(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Fetches the staff member's own HR record when they open the profile tab.
+    // Keyed on which staff member, not the object: the rest are setters this
+    // effect calls, and re-running on every context refresh would re-issue three
+    // HR requests for data that has not changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, currentStaff?.id]);
 
   // Any non-admin staff member needs their own scoped data (not in SiteDataContext)
@@ -533,7 +560,11 @@ const Dashboard: React.FC = () => {
         }));
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The four omitted values are the payment-modal setters this callback
+    // exists to call. They come from a custom state hook rather than a useState
+    // the rule can see, so it cannot tell they are stable; listing them would
+    // rebuild this callback on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usesStaffScopedData, salesOwnSubscribers, subscribers, salesOwnLeads, leads]);
 
   useEffect(() => {
@@ -622,7 +653,6 @@ const Dashboard: React.FC = () => {
         return !!required && hasPerm(required);
       }),
     })).filter(group => group.items.length > 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuGroups, isAdmin, currentStaff]);
 
   // ----------------------------------------------------------------------
@@ -657,7 +687,13 @@ const Dashboard: React.FC = () => {
   };
 
   // -- Content Hub sub-tab ---------------------------------------------------
-  const [contentHubSubTab, setContentHubSubTab] = useState<TabKey>('home_offer');
+  const [contentHubSubTab, setContentHubSubTabState] = useState<TabKey>('home_offer');
+  // Same shape as navigateToTab: the content-hub panels choose their sub-tab
+  // from data, so the name arrives as a string and is checked before it lands.
+  const setContentHubSubTab = useCallback((tab: string) => {
+    if (isTabKey(tab)) { setContentHubSubTabState(tab); return; }
+    console.warn(`[dashboard] refused content-hub sub-tab: ${tab}`);
+  }, []);
 
   // -- Staff Profile Modal ----------------------------------------------------
 
@@ -808,7 +844,7 @@ const Dashboard: React.FC = () => {
                   kpiModal={kpiModal}
                   setKpiModal={setKpiModal}
                   notify={notify}
-                  setActiveTab={setActiveTab}
+                  setActiveTab={navigateToTab}
                   navigate={navigate}
                 />
               </Suspense>
@@ -829,7 +865,7 @@ const Dashboard: React.FC = () => {
                   setPolicyDrafts={setPolicyDrafts}
                   setContentValue={setContentValue}
                   setContentValues={setContentValues}
-                  setActiveTab={setActiveTab}
+                  setActiveTab={navigateToTab}
                   setContentHubSubTab={setContentHubSubTab}
                   notify={notify}
                   contentEdits={contentEdits}
@@ -1123,7 +1159,7 @@ const Dashboard: React.FC = () => {
                   salesOwnSubscribers={salesOwnSubscribers}
                   salesDataLoading={salesDataLoading}
                   fetchSalesData={fetchSalesData}
-                  setActiveTab={setActiveTab}
+                  setActiveTab={navigateToTab}
                   branchFilter={branchQueryFilter}
                   isNonAdminStaff={isNonAdminStaff}
                   salesOwnDaqqiRounds={salesOwnDaqqiRounds}
@@ -1141,7 +1177,7 @@ const Dashboard: React.FC = () => {
                   activeTab={activeTab}
                   contentHubSubTab={contentHubSubTab}
                   setContentHubSubTab={setContentHubSubTab}
-                  setActiveTab={setActiveTab}
+                  setActiveTab={navigateToTab}
                   content={content}
                   policyDrafts={policyDrafts}
                   setPolicyDrafts={setPolicyDrafts}

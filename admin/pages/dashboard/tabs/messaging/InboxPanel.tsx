@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Inbox, Loader2, Send, RefreshCw, MessageCircle, Facebook, Clock, CornerUpLeft,
 } from 'lucide-react';
@@ -53,7 +53,7 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
       .catch(() => {});
   }, []);
 
-  const loadConversations = async (keepSelection = true) => {
+  const loadConversations = useCallback(async (keepSelection = true) => {
     setLoading(true);
     try {
       const list = await mysqlAdmin.listInboxConversations(unansweredOnly);
@@ -61,8 +61,8 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
       if (!keepSelection && list.length) setSelected(list[0]);
     } catch { notify('error', 'تعذر تحميل المحادثات'); }
     finally { setLoading(false); }
-  };
-  useEffect(() => { void loadConversations(false); }, [unansweredOnly]);
+  }, [unansweredOnly, notify]);
+  useEffect(() => { void loadConversations(false); }, [loadConversations]);
 
   const loadThread = async (conversation: InboxConversation) => {
     setThreadLoading(true);

@@ -16,6 +16,7 @@ const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
 const { transitionLead } = require('../../lib/leadState');
+const { findLeadByContact } = require('../../lib/leadMatching');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
 const { getTenantSetting } = require('../../lib/tenantSettings');
 const {
@@ -758,12 +759,12 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       const [[subCheck]] = await conn.query('SELECT lead_id FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1', [id, tenantId]);
       const needsLink = !subCheck?.lead_id;
       if (needsLink && (safePhone || safeEmail)) {
-        const normPhone = safePhone ? safePhone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
-        const matchQ = normPhone
-          ? `SELECT id, status FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0 ORDER BY created_at DESC LIMIT 1`
-          : 'SELECT id, status FROM leads WHERE tenant_id=? AND email = ? AND hidden=0 ORDER BY created_at DESC LIMIT 1';
-        const matchParams = normPhone ? [tenantId, `%${normPhone.slice(-9)}`, safeEmail || ''] : [tenantId, safeEmail];
-        const [[matchedLead]] = await conn.query(matchQ, matchParams);
+        // Matched through the shared helper so this cannot bind a subscriber to
+        // a stranger's lead and then mark that lead converted — the phone term
+        // used to be a trailing wildcard on the last 9 digits.
+        const matchedLead = await findLeadByContact(conn, {
+          tenantId, phone: safePhone, email: safeEmail,
+        });
         if (matchedLead) {
           await conn.query(
             "UPDATE subscribers SET lead_id=? WHERE id=? AND tenant_id=? AND lead_id IS NULL",

@@ -109,7 +109,11 @@ export function useSubscribersDerived(
       })();
       return ms && courseMatch && salesMatch && csMatch && instMatch && remainingMatch && certMatch && payMatch;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Every filter this memo reads is listed. The four it omits are the role
+    // booleans and setSubscriberPage, which are derived from currentStaff (already
+    // a dependency) and a page-reset setter — adding the setter would reset the
+    // user to page 1 on renders that changed nothing about the filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchFilteredEffectiveSubs, effectiveLeads, subscriberSearch, subscriberCourseFilter, subscriberSubTab, subscriberSalesFilter, isSalesOnly, currentStaff, bundles, subscriberCsFilter, subscriberInstFilter, subscriberRemainingFilter, subscriberCertFilter, subscriberPayFilter]);
 
   const enabledConsultationTherapists = useMemo(

@@ -68,6 +68,38 @@ function isPlausible(digits) {
   return /^\d{9,15}$/.test(String(digits || ''));
 }
 
+/**
+ * Every digits-only spelling that means this same number, for matching against
+ * columns that were never normalised.
+ *
+ * Callers used to find those rows with `REGEXP_REPLACE(phone,...) LIKE '%<id>'`.
+ * A trailing wildcard does not mean "the same number" — it means "ends with
+ * these digits", and an identity may be as short as 9 digits while a stored
+ * number may be 15. A subscriber stored as 966501234567 is matched by the
+ * identity 66501234567, which is a different country and a different person.
+ * That let one customer's record be adopted by whoever asked for a code on a
+ * number that merely shared its tail.
+ *
+ * An exact set costs the same to evaluate and cannot match a different number.
+ */
+function identitySpellings(input) {
+  const identity = toIdentity(input);
+  // Length-checked, not merely non-empty: callers build a WHERE term out of
+  // this, and '123' would otherwise become a term that matches whatever row
+  // happens to hold those digits.
+  if (!isPlausible(identity)) return [];
+  const out = new Set([identity, `0${identity}`]);
+  // Only a number we can recognise as Egyptian gets the country code put back:
+  // prefixing it onto a foreign identity would invent a spelling that means
+  // someone else.
+  if (EG_MOBILE_NATIONAL.test(identity)) {
+    out.add(`${DEFAULT_COUNTRY_CODE}${identity}`);
+    out.add(`${DEFAULT_COUNTRY_CODE}0${identity}`);
+    out.add(`00${DEFAULT_COUNTRY_CODE}${identity}`);
+  }
+  return [...out];
+}
+
 /** True when this number can actually receive a WhatsApp message. */
 function isDialable(input) {
   return toDialable(input) !== '';
@@ -86,4 +118,5 @@ module.exports = {
   toDisplay,
   isDialable,
   isPlausible,
+  identitySpellings,
 };

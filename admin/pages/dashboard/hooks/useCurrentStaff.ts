@@ -23,7 +23,11 @@ export function useCurrentStaff({ isAdmin, authUser, staffMembers }: CurrentStaf
       }
     }).catch(() => {/* not a staff member or not logged in */})
       .finally(() => setStaffSelfLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on authUser?.uid. The email is only read to decide whether there is
+    // an account to look up at all; which staff record to fetch follows the
+    // signed-in identity, and the auth object is replaced on every token
+    // refresh, so depending on it would re-hit /staff/me for the same person.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, authUser?.uid]);
 
   const currentStaff = useMemo(() => {

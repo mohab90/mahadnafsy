@@ -20,7 +20,17 @@ test('client and admin TOTP forms verify the pending session before refreshing a
   for (const relativePath of ['client/pages/Auth.tsx', 'admin/pages/Auth.tsx']) {
     const source = read(relativePath);
     assert.match(source, /await mysqlAuth\.verify2fa\(twoFaTempToken,\s*twoFaCode\)/);
-    assert.match(source, /localStorage\.setItem\('mahad-token',\s*result\.token\)/);
+    // The session is the httpOnly cookie the API sets on that call, so the form
+    // has nothing to stash and only needs to re-read who it is now signed in as.
+    //
+    // This used to assert `localStorage.setItem('mahad-token', result.token)`.
+    // That line was deliberately removed when tokens moved to httpOnly cookies —
+    // keeping a copy in localStorage is exactly what an httpOnly cookie exists to
+    // prevent, since any injected script can read it. The assertion outlived the
+    // behaviour it described and pinned the insecure version as the requirement.
+    assert.match(source, /verify2fa\([\s\S]{0,400}?refreshAuth\(\)/);
+    assert.doesNotMatch(source, /localStorage\.setItem\(\s*'mahad-token'/,
+      'the session token must never be copied out of the httpOnly cookie');
   }
   for (const relativePath of ['client/lib/mysqlapi.ts', 'admin/lib/mysqlapi.ts']) {
     assert.match(read(relativePath), /\/auth\/2fa\/verify/);
@@ -640,4 +650,46 @@ test('unified client finance computes balances and certificates in the branch se
   assert.match(handlers, /سعر \$\{(?:subPayDraft|leadPayDraft)\.currency\} غير مُعرّف/);
   assert.doesNotMatch(handlers, /price\?\.\[(?:subPayDraft|leadPayDraft)\.currency[^\n]*price\?\.EGP/);
   assert.doesNotMatch(helpers, /price\?\.\[currency\] \?\? price\?\.EGP/);
+});
+
+test('a sign-in that never reached the server does not read as a wrong password', () => {
+  // The catch mapped a handful of server messages and sent everything else to
+  // "تعذر إتمام العملية، حاول مرة أخرى" — the same text a rejected password
+  // gets. A dropped connection therefore told the user their credentials were
+  // the problem, and they retyped a password that was already correct.
+  for (const relativePath of ['admin/pages/Auth.tsx', 'client/pages/Auth.tsx']) {
+    const source = read(relativePath);
+    assert.match(source, /error instanceof DOMException && error\.name === 'AbortError'/,
+      `${relativePath}: a timed-out request must be identified`);
+    assert.match(source, /error instanceof TypeError \|\| msg\.includes\('Failed to fetch'\)/,
+      `${relativePath}: an unreachable host must be identified`);
+    assert.match(source, /HTTP 5\d\d/,
+      `${relativePath}: a server fault must be identified`);
+    // Each of the three must reach the user as its own message, not the catch-all.
+    assert.match(source, /تحقق من الاتصال/, `${relativePath}: timeout wording`);
+    assert.match(source, /تحقق من اتصالك بالإنترنت/, `${relativePath}: unreachable wording`);
+  }
+});
+
+test('the API client retries the network failure that can actually recover', () => {
+  // fetch reports an unreachable host as TypeError and a request past the
+  // timeout as AbortError. Retrying only TypeError meant the client retried
+  // "nothing is listening" and gave up on "the server was just slow".
+  for (const relativePath of ['admin/lib/mysqlapi.ts', 'client/lib/mysqlapi.ts']) {
+    const source = read(relativePath);
+    assert.match(source, /err instanceof DOMException && err\.name === 'AbortError'/,
+      `${relativePath}: a timed-out request must be retryable`);
+    assert.ok(!/if \(err instanceof TypeError && _retry < MAX_RETRIES\)/.test(source),
+      `${relativePath}: the TypeError-only retry condition must be gone`);
+  }
+});
+
+test('a missing image renders no src rather than an empty one', () => {
+  // src="" makes the browser re-request the current page URL as an image — a
+  // whole extra page download for every card without a picture, on the public
+  // pages that get the most traffic. React warns about it for that reason.
+  const img = read('client/lib/img.ts');
+  assert.match(img, /string \| undefined/, 'cdnImg must be able to return undefined');
+  assert.match(img, /if \(!url\) return undefined;/);
+  assert.ok(!/if \(!url\) return '';/.test(img), 'the empty-string return must be gone');
 });

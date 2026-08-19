@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, RefreshCw, Save, ShieldAlert, XCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 
@@ -36,7 +36,7 @@ const PrivacyOperationsPanel: React.FC<Props> = ({ notify }) => {
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [busy, setBusy] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setBusy('load');
     const [requestResult, policyResult] = await Promise.allSettled([
       fetch('/api/admin/privacy/requests', { credentials: 'include', headers: adminAuthHeaders() }).then(json),
@@ -46,8 +46,8 @@ const PrivacyOperationsPanel: React.FC<Props> = ({ notify }) => {
     else notify('error', requestResult.reason instanceof Error ? requestResult.reason.message : 'تعذر تحميل طلبات الخصوصية');
     if (policyResult.status === 'fulfilled') setPolicy(policyResult.value);
     setBusy('');
-  };
-  useEffect(() => { void load(); }, []);
+  }, [notify]);
+  useEffect(() => { void load(); }, [load]);
 
   const decide = async (request: PrivacyRequest, decision: 'approve' | 'reject' | 'block') => {
     const note = decision === 'approve'

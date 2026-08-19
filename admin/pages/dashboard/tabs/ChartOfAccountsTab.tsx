@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BookOpen, CheckCircle, Loader2, Plus, Save, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
@@ -29,7 +29,7 @@ export default function ChartOfAccountsTab({ notify }: { notify: NotifyFn }) {
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ code: '', name: '', type: 'asset' as Account['type'] });
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
       setAccounts(await mysqlAdmin.adminGet<Account[]>('/admin/accounting/chart-of-accounts'));
@@ -38,9 +38,9 @@ export default function ChartOfAccountsTab({ notify }: { notify: NotifyFn }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [notify]);
 
-  useEffect(() => { loadAccounts(); }, []);
+  useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
   const save = async () => {
     if (!draft.code.trim() || !draft.name.trim()) return notify('error', 'يرجى إدخال كود واسم الحساب');

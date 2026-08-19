@@ -38,6 +38,17 @@ function getMonthsForRange(range: Range, earliestMonth: string) {
   return ms;
 }
 
+// Takes `range` instead of closing over it, matching getMonthsForRange above.
+// As a closure it was rebuilt every render, so the memo below could not list it
+// as a dependency without recomputing every time.
+function getRangeStart(range: Range): string {
+  const d = new Date(); d.setDate(1);
+  if (range === 'month') { return d.toISOString().slice(0, 7) + '-01'; }
+  if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
+  if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
+  return '2000-01-01';
+}
+
 export default function SubscriptionsTab() {
   const { subscribers, courses } = useSiteData();
   const [range, setRange] = useState<Range>('6months');
@@ -48,16 +59,8 @@ export default function SubscriptionsTab() {
   }, ''), [subscribers]);
   const months = useMemo(() => getMonthsForRange(range, earliestMonth), [range, earliestMonth]);
 
-  const getRangeStart = () => {
-    const d = new Date(); d.setDate(1);
-    if (range === 'month') { return d.toISOString().slice(0, 7) + '-01'; }
-    if (range === '3months') { d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
-    if (range === '6months') { d.setMonth(d.getMonth() - 6); return d.toISOString().slice(0, 10); }
-    return '2000-01-01';
-  };
-
   const filtered = useMemo(() => {
-    const start = getRangeStart();
+    const start = getRangeStart(range);
     return subscribers.filter(s =>
       (statusFilter === 'all' || s.clientStatus === statusFilter) &&
       (s.createdAt || '') >= start

@@ -46,7 +46,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false
   } catch (err: unknown) {
     clearTimeout(timeoutId);
     // Retry on network failure (TypeError: Failed to fetch) — 1 extra attempt only.
-    if (err instanceof TypeError && _retry < MAX_RETRIES) {
+    // AbortError included deliberately — see the admin client for the full note.
+    // `fetch` reports an unreachable host as a TypeError but a request that ran
+    // past the timeout as an AbortError, so testing only for TypeError retried
+    // the case least likely to succeed and gave up on the one most likely to.
+    const isRetryableNetworkError = err instanceof TypeError
+      || (err instanceof DOMException && err.name === 'AbortError');
+    if (isRetryableNetworkError && _retry < MAX_RETRIES) {
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
       return apiFetch<T>(path, options, auth, _retry + 1);
     }
@@ -610,13 +616,17 @@ export const mysqlAuth = {
    * returning customer can never be renamed by a stale form value.
    * `created` says which of the two just happened.
    */
+  // No `token` on either of these. The session is the httpOnly cookie the API
+  // sets; it stopped echoing the token in the body so an injected script cannot
+  // read it. Declaring one here outlived that change and invited `result.token`,
+  // which type-checks and is undefined at runtime.
   verifyWaOtp: (phone: string, code: string, name?: string) =>
     apiFetch<{
-      ok: boolean; token: string; created: boolean;
+      ok: boolean; created: boolean;
       user: { uid: string; email: string; displayName: string; phone: string };
     }>('/auth/whatsapp/verify-otp', { method: 'POST', body: JSON.stringify({ phone, code, name }) }),
   verify2fa: (pendingToken: string, token: string) =>
-    apiFetch<{ ok: boolean; token: string }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
+    apiFetch<{ ok: boolean }>('/auth/2fa/verify', { method: 'POST', body: JSON.stringify({ pendingToken, token }) }),
   logout: () => { localStorage.removeItem('mahad-token'); apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => {}); },
   refreshToken: () => apiFetch<{ ok: boolean; token: string }>('/auth/refresh', { method: 'POST', body: '{}' }, true),
 };

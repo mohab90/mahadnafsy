@@ -153,7 +153,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       callsThisMonth, revenueThisMonth, last7, maxCalls, recentActivity,
       urgentLeads, commission, commissionRate,
     };
-  }, [leads, subscribers, today, thisMonth, staff, hrSnapshot]);
+  }, [leads, today, thisMonth, staff, hrSnapshot]);
 
   // ── Load leaves + tasks ─────────────────────────────────────────────────
   const loadHrData = useCallback(async () => {

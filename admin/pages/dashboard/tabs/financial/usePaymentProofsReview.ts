@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentProof } from '../../../../types';
 
@@ -24,7 +24,7 @@ export function usePaymentProofsReview({
   const [proofsReviewLoading, setProofsReviewLoading] = useState(false);
   const [proofImages, setProofImages] = useState<Record<string, string>>({});
 
-  const loadAllProofs = async () => {
+  const loadAllProofs = useCallback(async () => {
     setProofsLoading(true);
     try {
       const rows = await mysqlAdmin.listPaymentProofs(undefined, branchFilter) as unknown as PaymentProof[];
@@ -34,11 +34,11 @@ export function usePaymentProofsReview({
     } finally {
       setProofsLoading(false);
     }
-  };
+  }, [branchFilter, notify]);
 
   useEffect(() => {
     loadAllProofs();
-  }, [branchFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadAllProofs]);
 
   const loadProofImg = (id: string) => {
     if (proofImages[id]) return;

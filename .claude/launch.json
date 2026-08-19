@@ -4,58 +4,126 @@
     {
       "name": "admin",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "4000"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "4000"
+      ],
       "cwd": "admin",
       "port": 4000
     },
     {
       "name": "client",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "3000"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "3000"
+      ],
       "cwd": "client",
       "port": 3000
     },
     {
       "name": "client-preview",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "3020", "--strictPort"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "3020",
+        "--strictPort"
+      ],
       "cwd": "client",
       "port": 3020
     },
     {
       "name": "client-prod-preview",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "preview", "--port", "3021", "--strictPort"],
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--port",
+        "3021",
+        "--strictPort"
+      ],
       "cwd": "client",
       "port": 3021
     },
     {
       "name": "admin-prod-preview",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "preview", "--port", "4001", "--strictPort"],
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--port",
+        "4001",
+        "--strictPort"
+      ],
       "cwd": "admin",
       "port": 4001
     },
     {
       "name": "admin-preview",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "4020", "--strictPort"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "4020",
+        "--strictPort"
+      ],
       "cwd": "admin",
       "port": 4020
     },
     {
       "name": "live-admin",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "4030", "--strictPort", "--mode", "live"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "4030",
+        "--strictPort",
+        "--mode",
+        "live"
+      ],
       "cwd": "admin",
       "port": 4030
     },
     {
       "name": "live-client",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "3030", "--strictPort", "--mode", "live"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "3030",
+        "--strictPort",
+        "--mode",
+        "live"
+      ],
       "cwd": "client",
       "port": 3030
+    },
+    {
+      "name": "admin-fixture",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "4055",
+        "--strictPort"
+      ],
+      "cwd": "admin",
+      "port": 4055
+    },
+    {
+      "name": "client-fixture",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "3055",
+        "--strictPort"
+      ],
+      "cwd": "client",
+      "port": 3055
     }
   ]
 }

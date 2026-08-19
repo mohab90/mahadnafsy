@@ -179,7 +179,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="day" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmt(v)} />
-              <Tooltip formatter={(v: number) => [`${v.toLocaleString()} ج`, 'إيراد']} />
+              <Tooltip formatter={(v: unknown) => [`${Number(v).toLocaleString()} ج`, 'إيراد']} />
               <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="url(#revGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
@@ -195,7 +195,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="day" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-              <Tooltip formatter={(v: number) => [v, 'ليد']} />
+              <Tooltip formatter={(v: unknown) => [Number(v), 'ليد']} />
               <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} name="ليدات" />
             </BarChart>
           </ResponsiveContainer>

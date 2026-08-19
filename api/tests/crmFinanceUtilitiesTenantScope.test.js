@@ -210,7 +210,15 @@ test('public lead capture is tenant-deduped, serialized, assigned and audited at
   const leadAssignment = read('lib/leadAssignment.js');
   assert.match(route, /registration:\$\{crypto\.createHash/);
   assert.match(route, /lead-public:\$\{crypto\.createHash/);
-  assert.match(route, /FROM leads WHERE tenant_id=\? AND RIGHT\(REGEXP_REPLACE/);
+  // Dedup stays tenant-scoped. This used to pin the exact comparison as
+  // `RIGHT(REGEXP_REPLACE(phone,...),10)=RIGHT(?,10)`, which is a tail match,
+  // not a number: Egyptian 201012345678 and UK 441012345678 both reduce to
+  // 1012345678, so two unrelated people deduped onto one lead and the second
+  // inherited the first's id, client_code and sales assignment. The requirement
+  // is that the dedup is scoped and exact — lib/leadMatching.js owns how.
+  assert.match(route, /FROM leads WHERE tenant_id=\? AND \$\{identityMatch\.sql\}/);
+  assert.doesNotMatch(route, /RIGHT\(REGEXP_REPLACE\(phone/,
+    'dedup must not go back to matching on the last N digits');
   assert.match(route, /UPDATE leads SET notes[\s\S]*WHERE id = \? AND tenant_id=\?/);
   // Single-lead auto-assignment (CRM-01) is unified in leadAssignment.js's
   // getNextSalesRep(), shared by this route, auth.js register, and the

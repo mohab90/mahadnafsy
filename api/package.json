@@ -35,7 +35,8 @@
     "readiness:production": "node tools/production-readiness.cjs",
     "readiness:production:live": "node tools/production-readiness.cjs --live-external",
     "readiness:remote-inventory": "node tools/remote-readiness-inventory.cjs",
-    "watch:health": "node watchdog.cjs"
+    "watch:health": "node watchdog.cjs",
+    "migrate:check": "node tools/check-migration-safety.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1085.0",

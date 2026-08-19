@@ -100,6 +100,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
   const messenger = require('./messenger');
   const financeOutbox = require('./financeOutbox');
   const leadDealValue = require('./leadDealValue');
+  const commissionCalc = require('./commissionCalc');
   const crmSla = require('./crmSla');
   const connectorEvents = require('./connectorEvents');
   const { processFacebookLeadEvent } = require('./facebookLeadEvents');
@@ -133,6 +134,17 @@ function startBackgroundScheduler({ pool, logger, port }) {
       await financeOutbox.drainFinanceOutbox({
         sync_lead_deal_value: ({ tenant_id: tenantId, payload }) =>
           leadDealValue.syncLeadDealValue(payload.subscriberId, tenantId, true),
+        // Commission used to be computed in a setImmediate off the Paymob
+        // callback whose catch only logged, so any fault silently dropped what a
+        // rep was owed. Here a fault is retried by the outbox instead.
+        record_commission: ({ tenant_id: tenantId, payload }) =>
+          commissionCalc.recordCommissionForPayment({
+            tenantId,
+            paymentId: payload.paymentId,
+            subscriberId: payload.subscriberId,
+            amount: payload.amount,
+            branchId: payload.branchId,
+          }),
       });
       await connectorEvents.drainConnectorEvents({
         facebook_leads: processFacebookLeadEvent,

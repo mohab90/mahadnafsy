@@ -11,6 +11,7 @@ import StaffRankCard from './staff-profile/StaffRankCard';
 import StaffAchievements from './staff-profile/StaffAchievements';
 import StaffMessagesPanel from './staff-profile/StaffMessagesPanel';
 import StaffTasksPanel from './staff-profile/StaffTasksPanel';
+import StaffEmployeeFilePanel from './staff-profile/StaffEmployeeFilePanel';
 import StaffPeriodReport from './staff-profile/StaffPeriodReport';
 import StaffBroadcastPanel from './staff-profile/StaffBroadcastPanel';
 import { fmtMoney as fmtMoneyEgp, fmtNum, monthLabel, type StaffProfileData } from './staff-profile/types';
@@ -245,9 +246,12 @@ const StaffProfile: React.FC = () => {
     [staffMembers, authUser?.email],
   );
 
-  // Initialise draft when staff loads
+  // Initialise draft when staff loads. Functional update so "only if not already
+  // set" can be decided from the current value instead of closing over `draft` —
+  // as a dependency it would re-run this on every keystroke in the edit form.
   React.useEffect(() => {
-    if (staff && !draft) setDraft({ ...staff });
+    if (!staff) return;
+    setDraft(current => current ?? { ...staff });
   }, [staff]);
 
   // ── Attendance (month picker + fetch from HR attendance log) ─────────────────
@@ -459,7 +463,11 @@ const StaffProfile: React.FC = () => {
     { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard size={15} /> },
     { key: 'reports', label: 'التقارير', icon: <BarChart3 size={15} /> },
     { key: 'messages', label: 'المراسلات', icon: <MessageSquare size={15} /> },
-    { key: 'tasks', label: 'المهام', icon: <ListChecks size={15} />, badge: profile ? profile.tasks.todo + profile.tasks.inProgress : undefined },
+    // profile?.tasks, not profile.tasks: guarding only the outer object left the
+    // whole page to crash on a payload that arrived without this one section —
+    // the error boundary then replaced the profile with "حدث خطأ غير متوقع",
+    // which tells the user nothing and hides the parts that did load.
+    { key: 'tasks', label: 'المهام', icon: <ListChecks size={15} />, badge: profile?.tasks ? profile.tasks.todo + profile.tasks.inProgress : undefined },
     { key: 'attendance', label: 'الحضور والانصراف', icon: <Clock size={15} /> },
     { key: 'activity', label: 'سجل النشاط', icon: <Activity size={15} /> },
     { key: 'bookings', label: 'الحجوزات', icon: <CreditCard size={15} /> },
@@ -629,6 +637,8 @@ const StaffProfile: React.FC = () => {
                   <StaffRankCard data={profile} />
                   <StaffAchievements data={profile} />
                 </div>
+
+                <StaffEmployeeFilePanel staffId={staff.id} staffName={staff.name} notify={notify} />
               </>
             ) : null}
           </div>

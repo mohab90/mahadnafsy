@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Award, Gift, Loader2, Minus, Plus, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
@@ -25,7 +25,7 @@ export function UnifiedClientLoyaltyPanel({ subscriberId }: Props) {
   const [saving, setSaving] = useState<'award' | 'redeem' | null>(null);
   const [message, setMessage] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await mysqlAdmin.getSubscriberLoyalty(subscriberId);
@@ -34,9 +34,9 @@ export function UnifiedClientLoyaltyPanel({ subscriberId }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [subscriberId]);
 
-  useEffect(() => { load().catch(() => setLoading(false)); }, [subscriberId]);
+  useEffect(() => { load().catch(() => setLoading(false)); }, [load]);
 
   const submit = async (mode: 'award' | 'redeem') => {
     const n = Math.max(1, Math.floor(Number(points) || 0));

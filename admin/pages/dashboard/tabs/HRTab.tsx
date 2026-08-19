@@ -108,12 +108,17 @@ const ABSENCE_COLORS: Record<string, string> = {
 const LEAVE_TYPE_LABELS: Record<string, string> = {
   ANNUAL: 'إجازة سنوية', SICK: 'إجازة مرضية', UNPAID: 'إجازة بدون راتب',
   MATERNITY: 'إجازة أمومة', EMERGENCY: 'إجازة طارئة',
-  PERMISSION: 'إذن', OTHER: 'أخرى',
+  // The two permit types must be labelled on the approval screen too, not just
+  // in the request form — an unlabelled type falls through to its raw enum name
+  // and the approver cannot tell a late permit from a full day off.
+  PERMISSION: 'إذن', LATE_PERMIT: 'إذن تأخير', EARLY_LEAVE: 'إذن انصراف مبكر',
+  OTHER: 'أخرى',
 };
 const LEAVE_TYPE_COLORS: Record<string, string> = {
   ANNUAL: 'bg-blue-100 text-blue-700', SICK: 'bg-amber-100 text-amber-700',
   UNPAID: 'bg-gray-100 text-gray-600', MATERNITY: 'bg-pink-100 text-pink-700',
   EMERGENCY: 'bg-red-100 text-red-700', PERMISSION: 'bg-cyan-100 text-cyan-700',
+  LATE_PERMIT: 'bg-cyan-50 text-cyan-700', EARLY_LEAVE: 'bg-teal-50 text-teal-700',
   OTHER: 'bg-gray-100 text-gray-600',
 };
 const LEAVE_STATUS_LABELS: Record<string, string> = {
@@ -352,7 +357,10 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     } catch { notify('error', 'خطأ في الاتصال'); }
   }, [notify, fetchPayrollRuns, selectedRun]);
 
-  const safeStaff: StaffMember[] = staffMembers || [];
+  // Memoized because `|| []` mints a fresh array on every render whenever
+  // staffMembers is nullish, which defeated the three memos below entirely —
+  // they listed safeStaff as a dependency and so recomputed every render.
+  const safeStaff = useMemo<StaffMember[]>(() => staffMembers || [], [staffMembers]);
 
   const filtered = useMemo(() => safeStaff.filter(s => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;

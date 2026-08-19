@@ -56,7 +56,11 @@ const Enrollment: React.FC = () => {
     const bundleId = searchParams.get('bundle');
     if (courseId) setSelectedIds([`course:${courseId}`]);
     else if (bundleId) setSelectedIds([`bundle:${bundleId}`]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Seeds the selection from ?course=/?bundle= once the catalogue is loaded,
+    // which is why allOptions is the trigger. searchParams is a new object on
+    // every render of this route; depending on it would overwrite whatever the
+    // visitor had since picked in the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allOptions]);
 
   // Form fields
@@ -89,6 +93,9 @@ const Enrollment: React.FC = () => {
     () => [...new Map(
       selectedIds.filter(Boolean).map(key => [key, getItem(key)]).filter(([, c]) => c !== null) as [string, SelItem][]
     ).values()],
+    // getItem is a lookup closure over allOptions, rebuilt every render, so the
+    // memo depends on allOptions itself — the only thing that can change what
+    // getItem returns.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedIds, allOptions]
   );

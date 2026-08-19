@@ -21,6 +21,7 @@ const { getNextClientCode } = require('../lib/mappers');
 const { getNextSalesRep } = require('../lib/leadAssignment');
 const { branchIdForBranch } = require('../lib/branches');
 const { toIdentity } = require('../lib/phoneNumber');
+const { phoneIdentityClause } = require('../lib/leadMatching');
 
 const normEmail = (v) => (v || '').toString().trim().toLowerCase() || null;
 const normPhone = (v) => (v || '').toString().replace(/[^0-9]/g, '') || null;
@@ -163,12 +164,18 @@ router.post('/api/admin/registrations/:userId/convert-lead', requireAuth, requir
       [userId, tenantId]
     );
     if (!user) { await conn.rollback(); return res.status(404).json({ error: 'Registration not found' }); }
+    // The phone half compared an *identity* (users.phone, country code and trunk
+    // zero already stripped) against a lead's raw digits, so a lead stored as
+    // 01012345678 never equalled the same person's 1012345678 and this duplicate
+    // check quietly passed — which is how the same customer ends up as two
+    // leads. phoneIdentityClause compares every spelling of the one number.
+    const phoneMatch = phoneIdentityClause(user.phone);
     const [[existing]] = await conn.query(
       `SELECT id FROM leads WHERE tenant_id=? AND hidden=0 AND (
          (? IS NOT NULL AND LOWER(TRIM(email))=LOWER(TRIM(?)))
-         OR (? IS NOT NULL AND REGEXP_REPLACE(phone,'[^0-9]','')=?)
+         OR ${phoneMatch ? phoneMatch.sql : '1=0'}
        ) LIMIT 1`,
-      [tenantId, user.email, user.email, user.phone, user.phone]
+      [tenantId, user.email, user.email, ...(phoneMatch ? phoneMatch.params : [])]
     );
     if (existing) { await conn.rollback(); return res.status(409).json({ error: 'Already a lead' }); }
     const leadId = uuidv4();

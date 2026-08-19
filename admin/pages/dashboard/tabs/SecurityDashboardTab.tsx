@@ -65,7 +65,7 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
   const securityLogs = useMemo(() =>
     activityLogs.filter(l => SECURITY_ACTIONS.includes(l.action) || SENSITIVE_ACTIONS.includes(l.action))
       .sort((a, b) => b.at.localeCompare(a.at)),
-    [activityLogs, refreshKey]
+    [activityLogs]
   );
 
   const allAuditLogs = useMemo(() =>
@@ -78,7 +78,7 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
         }
         return true;
       }).slice(0, 100),
-    [activityLogs, eventFilter, searchTerm, refreshKey]
+    [activityLogs, eventFilter, searchTerm]
   );
 
   const stats = useMemo(() => {
@@ -92,6 +92,11 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
     const suspiciousActors = staffMembers.filter(s => isSuspicious(activityLogs, s.id)).length;
 
     return { logins: loginLogs.length, failedLogins: failedLogins.length, todayActivity, sensitiveCount, uniqueActors, suspiciousActors };
+    // refreshKey is deliberate and the rule cannot see why: this memo reads the
+    // clock, not just its inputs — `today` and isSuspicious()'s one-hour window
+    // both move on their own. Without it, تحديث could not refresh "نشاط اليوم"
+    // or the suspicious count while the logs themselves were unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityLogs, staffMembers, refreshKey]);
 
   const staffAccessReview = useMemo(() =>
@@ -102,6 +107,9 @@ const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
       const suspicious = isSuspicious(activityLogs, s.id);
       return { member: s, actionCount: myLogs.length, lastActivity, sensitive, suspicious };
     }).sort((a, b) => b.actionCount - a.actionCount),
+    // Same reason as `stats` above: isSuspicious() compares against a rolling
+    // one-hour window, so this result can go stale with no change to its inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [staffMembers, activityLogs, refreshKey]
   );
 

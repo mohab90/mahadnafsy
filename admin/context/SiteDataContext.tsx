@@ -88,7 +88,7 @@ interface SiteDataShape {
   addSubscriber: (item: SubscriberItem) => Promise<boolean>;
   updateSubscriber: (item: SubscriberItem) => Promise<boolean>;
   deleteSubscriber: (id: string) => Promise<boolean>;
-  addLead: (item: LeadItem, opts?: { skipReload?: boolean }) => Promise<void>;
+  addLead: (item: Partial<LeadItem>, opts?: { skipReload?: boolean }) => Promise<void>;
   addPublicLead: (item: Omit<LeadItem, 'clientCode'> & { clientCode?: string }) => Promise<void>;
   updateLead: (item: LeadItem) => Promise<boolean>;
   markLeadsConverted: (ids: string[]) => void;
@@ -347,7 +347,12 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     }
     setMySubscriberLoaded(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Empty on purpose: every value read here is a state setter. They are stable
+    // for the life of the provider, but they arrive from a custom state hook
+    // rather than a useState call the rule can see, so it cannot prove that.
+    // Listing them would make this callback — and everything memoized on it —
+    // rebuild on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Silent refresh (no loading spinner) — used for polling & visibility change
@@ -356,7 +361,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     mysqlClient.getMySubscriber().then((mySub) => {
       if (mySub) _applySubscriberData(mySub);
     }).catch(() => {/* silent */});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_applySubscriberData]);
 
   useEffect(() => {
@@ -399,7 +403,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       clearInterval(pollId);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the signed-in identity. This installs a poll and a visibility
+    // listener; authUser is replaced on every token refresh, so depending on it
+    // would tear both down and re-install them — with an extra fetch each time —
+    // for a user who has not changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
   // ── Per-user consultations loader ─────────────────────────────────────────────────────────────
@@ -411,7 +419,10 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setConsultations((list as unknown as ConsultationItem[]).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
     }).catch(() => {});
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on uid rather than authUser?.email: the consultations endpoint
+    // resolves the client from the account, and re-fetching on every token
+    // refresh would repeat the call for the same person.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
   useAdminDataRuntime({
@@ -493,7 +504,11 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setInboxConversations((list as unknown as InboxConversation[]).sort((a, b) => (b.lastMessageAt || '').localeCompare(a.lastMessageAt || '')));
       }).catch(() => {});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The catalogue bootstrap: runs once per signed-in identity. Everything else
+    // it reads is a state setter (stable, but supplied by a custom state hook
+    // the rule cannot see through). Depending on those, or on the authUser
+    // object, would re-issue this whole fan-out of loads on every refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
 
@@ -562,7 +577,6 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); };
   }, [courses, bundles, therapists, testimonials, subscribers, leads, staffMembers, consultations, lectures, chapters, orders, communityPosts, communityLibraryItems, communityVideos, communityEvents, content, activityLogs, discounts, notifications, expenses, daqqiRounds, joinUsApplications, contactMessages, automationWorkflows, adminAiConfig, aiAgentConfig, messagingChannels, inboxConversations, fbLeadAdsConfig, courseQuizzes, quizAttempts, liveStreams]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const value = useMemo<SiteDataShape>(() => ({
     courses,
     bundles,
@@ -707,7 +721,13 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     staffScopedLeads,
     setStaffScopedSubscribers,
     setStaffScopedLeads,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the data, not on the ~100 action functions this value also
+    // carries. Those functions are rebuilt on each provider render, so listing
+    // them — which is what the rule asks for — would produce a new context value
+    // every render and re-render every consumer of SiteData in the app, which is
+    // the entire admin. The data arrays below are the only things a consumer can
+    // actually observe changing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [courses, bundles, therapists, testimonials, subscribers, leads, staffMembers, consultations,
     lectures, chapters, orders, communityPosts, communityLibraryItems, communityVideos,
     communityEvents, content, activityLogs, discounts, notifications, expenses, daqqiRounds,

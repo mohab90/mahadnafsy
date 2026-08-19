@@ -151,7 +151,11 @@ const RemoteFallback: React.FC<{
         setRemoteError(msg.includes('403') ? 'ليس لديك صلاحية الوصول لهذا العميل' : 'العميل غير موجود');
       })
       .finally(() => { setRemoteLoading(false); setRemoteChecked(true); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the client code in the URL, which is the only thing that should
+    // trigger another lookup. The rest are state setters this effect calls, and
+    // remoteChecked is the flag it sets on completion — listing that would make
+    // the effect re-run itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
   if (remoteLoading || !remoteChecked) {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, CreditCard, Eye, MessageCircle, Phone, Search, UserPlus, Users, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
@@ -43,17 +43,17 @@ export function DaqqiClientsPanel({
   const [paymentFilter, setPaymentFilter] = useState('');
   const receptionOptions = staffMembers.filter(member => member.role === 'reception_daqqi' && member.status === 'active');
 
-  const coursePrice = (courseId: string) => {
+  const coursePrice = useCallback((courseId: string) => {
     if (courseId.startsWith('bundle:')) return bundles.find(bundle => bundle.id === courseId.slice(7))?.price.EGP || 0;
     return courses.find(course => course.id === courseId)?.price?.EGP || 0;
-  };
+  }, [bundles, courses]);
   const courseLabel = (courseId: string) => {
     if (courseId.startsWith('bundle:')) return bundles.find(bundle => bundle.id === courseId.slice(7))?.title || courseId;
     const course = courses.find(item => item.id === courseId);
     return course?.titleAr || course?.title || courseId;
   };
-  const subscriberRounds = (subscriberId: string) => rounds.filter(round =>
-    round.attendees.some(attendee => attendee.subscriberId === subscriberId));
+  const subscriberRounds = useCallback((subscriberId: string) => rounds.filter(round =>
+    round.attendees.some(attendee => attendee.subscriberId === subscriberId)), [rounds]);
   const assignedIds = useMemo(() => new Set(rounds.flatMap(round =>
     round.attendees.map(attendee => attendee.subscriberId))), [rounds]);
 
@@ -72,7 +72,7 @@ export function DaqqiClientsPanel({
     if (paymentFilter === 'outstanding' && !(expected > 0 && paid < expected)) return false;
     if (paymentFilter === 'paid' && !(expected === 0 || paid >= expected)) return false;
     return true;
-  }), [assignedIds, bundles, courseFilter, courses, paymentFilter, receptionFilter, rounds, search, subscribers, tab]);
+  }), [assignedIds, coursePrice, courseFilter, paymentFilter, receptionFilter, subscriberRounds, search, subscribers, tab]);
 
   const clearFilters = () => {
     setSearch('');

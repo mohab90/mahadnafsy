@@ -521,9 +521,15 @@ export interface JoinUsApplication {
   type: 'instructor' | 'consultant' | 'staff' | 'INSTRUCTOR' | 'CONSULTANT' | 'STAFF' | string;
   linkedin?: string;
   message?: string;
-  status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected';
+  status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected' | 'contacted';
   createdAt: string;
   adminNote?: string;
+  // Set once someone rings the applicant. The accept/reject decision follows
+  // that call, so the UI keys the decision controls off this rather than
+  // offering them for an applicant nobody has spoken to yet.
+  contactedAt?: string;
+  contactedBy?: string;
+  interviewAt?: string;
   convertedApplicantId?: string;
   applicantStage?: 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
   hiredStaffId?: string;

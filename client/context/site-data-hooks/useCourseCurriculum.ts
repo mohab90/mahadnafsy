@@ -24,10 +24,15 @@ export function useCourseCurriculum(
     } catch { /* silent */ }
   }, []);
 
-  const getCourseChapters = (courseId: string) =>
-    chapters.filter((row) => row.courseId === courseId).sort((a, b) => a.order - b.order);
+  // Both getters are memoized on the data they read. They are handed to every
+  // consumer through SiteDataContext, and as plain closures they were rebuilt on
+  // each provider render — which made any consumer memo or effect that depended
+  // on them recompute (or re-fetch) every render.
+  const getCourseChapters = useCallback((courseId: string) =>
+    chapters.filter((row) => row.courseId === courseId).sort((a, b) => a.order - b.order),
+  [chapters]);
 
-  const getCourseLectures = (courseId: string) => {
+  const getCourseLectures = useCallback((courseId: string) => {
     const courseChapters = chapters.filter((c) => c.courseId === courseId);
     return lectures
       .filter((row) => row.courseId === courseId)
@@ -40,7 +45,7 @@ export function useCourseCurriculum(
         if (chA !== chB) return chA - chB;
         return a.order - b.order;
       });
-  };
+  }, [chapters, lectures]);
 
   return {
     lectures, setLectures, chapters, setChapters,

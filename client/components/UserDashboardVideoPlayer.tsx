@@ -63,7 +63,10 @@ const HlsVideoPlayer: React.FC<HlsVideoPlayerProps> = ({ src, startTime = 0, onT
     }
 
     return () => { cancelled = true; hls?.destroy(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on src alone. startTime is the resume position read once when the
+    // stream is attached; listing it would tear down and rebuild the HLS player
+    // every time playback progress updates it — i.e. constantly, mid-video.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
   return (
@@ -115,6 +118,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         .catch(() => {});
     }
     return () => { cancelled = true; };
+    // Keyed on subscriber?.id: `subscriber` is re-derived from the subscribers
+    // array on every refresh, so depending on the object would re-fetch the
+    // lecture note — and blank the textarea mid-typing — for the same person.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, subscriber?.id]);
   const handleNoteChange = (v: string) => {
     setNoteText(v);
@@ -158,7 +165,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     if (rawLectures.length > 0 || lecturesLoading) return;
     setLecturesLoading(true);
     reloadLectures().finally(() => setLecturesLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // A one-shot recovery for the case where the bulk lecture load failed. The
+    // values it omits are the ones it changes: rawLectures.length and
+    // lecturesLoading are its own guard, and reloadLectures is rebuilt by the
+    // context each render. Depending on any of them would make the retry loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
   useEffect(() => {
@@ -183,6 +194,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     if (firstUnwatched) { setSelectedId(firstUnwatched.id); return; }
     // 4. All done: start from beginning
     setSelectedId(unlocked[0].id);
+    // Picks the opening lecture once the curriculum arrives, keyed on how many
+    // lectures there are. lectures/subscriber/courseId are read to decide which
+    // one to resume; listing them would re-run this whenever progress or the
+    // subscriber record refreshed and jump the student off the lecture they are
+    // watching, back to the "resume" pick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawLectures.length]);
 
@@ -190,6 +206,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
   useEffect(() => {
     if (!selectedId || !subscriber) return;
     try { localStorage.setItem(`last-lecture:${subscriber.id}:${courseId}`, selectedId); } catch { /* quota */ }
+    // Keyed on subscriber?.id for the same reason as the note effect above: the
+    // id is what the storage key is built from, so a new object for the same
+    // person means nothing here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, subscriber?.id, courseId]);
 
   const selected = lectures.find(l => l.id === selectedId) || null;
@@ -213,7 +233,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
       })
       .catch(() => { if (!cancelled) setAccessError('تعذر التحقق من صلاحية المحاضرة؛ حاول مرة أخرى'); });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the three fields of `selected` that decide the answer, not the
+    // object: it is re-derived from the lecture list on every render, so
+    // depending on it would re-ask the server for a signed video URL constantly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selected?.locked, selected?.videoUrl]);
 
   // Persist completion through the canonical LMS progress endpoint.
@@ -274,7 +297,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
     };
     window.addEventListener('message', handleMsg);
     return () => window.removeEventListener('message', handleMsg);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // One postMessage listener per lecture. saveTime and markLectureComplete are
+    // rebuilt every render, so listing them would detach and re-attach the
+    // listener continuously while the video plays and reports progress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
   const getEmbedUrl = (url: string, startSec = 0) => {

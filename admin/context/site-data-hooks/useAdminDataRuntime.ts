@@ -109,6 +109,9 @@ function normalizeApplicants(rows: unknown): JoinUsApplication[] {
     createdAt: String(row.createdAt ?? row.created_at ?? ''),
     adminNote: (row.adminNote ?? row.admin_note) as string | undefined,
     convertedApplicantId: (row.convertedApplicantId ?? row.converted_applicant_id) as string | undefined,
+    contactedAt: (row.contactedAt ?? row.contacted_at) as string | undefined,
+    contactedBy: (row.contactedByName ?? row.contacted_by_name ?? row.contacted_by) as string | undefined,
+    interviewAt: (row.interviewAt ?? row.interview_at) as string | undefined,
     applicantStage: (row.applicantStage ?? row.applicant_stage) as JoinUsApplication['applicantStage'],
     hiredStaffId: (row.hiredStaffId ?? row.hired_staff_id) as string | undefined,
   })) as JoinUsApplication[];
@@ -345,6 +348,9 @@ export function useAdminDataRuntime(state: RuntimeState): void {
       clearInterval(pollId);
       document.removeEventListener('visibilitychange', onVisible);
     };
+  // Same boundary as the bootstrap above: setters, refs and the reload helpers
+  // are stable, and this installs a poll plus a visibility listener. Keying on
+  // anything finer would tear them down and re-install them on every refresh.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
 }

@@ -4,6 +4,13 @@ import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
+// Module scope: these are constants and a pure function of their argument, but
+// as component-body values they were rebuilt every render, so the `eligible`
+// memo below could not depend on scoreOf without recomputing every time.
+const STATUS_W: Record<string, number> = { converted: 100, interested_booking: 85, interested: 70, follow_up: 55, contacted: 40, new: 25, no_answer: 10, not_interested: 0 };
+const SOURCE_W: Record<string, number> = { facebook: 20, google: 22, referral: 25, whatsapp: 18, instagram: 17, organic: 12, tiktok: 15 };
+const scoreOf = (l: any) => Math.min(100, (STATUS_W[l.status] ?? 20) + (SOURCE_W[(l.source || '').toLowerCase()] ?? 10) + (l.followUpDate ? 10 : 0) + (l.notes ? 5 : 0));
+
 export function AbTestSection({ leads, notify }: { leads: any[]; notify: NotifyFn }) {
   const [variantA, setVariantA] = useState('');
   const [variantB, setVariantB] = useState('');
@@ -11,10 +18,6 @@ export function AbTestSection({ leads, notify }: { leads: any[]; notify: NotifyF
   const [minScore, setMinScore] = useState(50);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sentA: number; sentB: number; total: number } | null>(null);
-
-  const STATUS_W: Record<string, number> = { converted: 100, interested_booking: 85, interested: 70, follow_up: 55, contacted: 40, new: 25, no_answer: 10, not_interested: 0 };
-  const SOURCE_W: Record<string, number> = { facebook: 20, google: 22, referral: 25, whatsapp: 18, instagram: 17, organic: 12, tiktok: 15 };
-  const scoreOf = (l: any) => Math.min(100, (STATUS_W[l.status] ?? 20) + (SOURCE_W[(l.source || '').toLowerCase()] ?? 10) + (l.followUpDate ? 10 : 0) + (l.notes ? 5 : 0));
 
   const eligible = useMemo(() =>
     leads.filter(l => l.phone && scoreOf(l) >= minScore),
