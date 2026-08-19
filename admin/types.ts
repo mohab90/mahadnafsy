@@ -537,6 +537,11 @@ export interface JoinUsApplication {
   convertedApplicantId?: string;
   applicantStage?: 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
   hiredStaffId?: string;
+  /** From the application form, stored on the converted applicant record. */
+  applicantBranch?: string;
+  education?: string;
+  experienceYears?: string;
+  experiencePlaces?: string;
 }
 
 export interface ContactMessage {

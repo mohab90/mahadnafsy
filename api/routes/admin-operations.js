@@ -273,7 +273,8 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermis
       `SELECT j.id, j.name, j.email, j.phone, j.specialty, j.experience, j.type,
               j.linkedin, j.message, j.status, j.admin_note, j.created_at,
               j.converted_applicant_id, j.reviewed_at, j.assigned_to,
-              a.stage applicant_stage, a.hired_staff_id
+              a.stage applicant_stage, a.hired_staff_id,
+              a.branch applicant_branch, a.education, a.experience_years, a.experience_places
          FROM join_us_applications j
          LEFT JOIN job_applicants a
            ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id

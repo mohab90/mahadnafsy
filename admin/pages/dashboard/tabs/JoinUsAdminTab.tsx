@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BriefcaseBusiness, CalendarCheck, GraduationCap, Mail, Phone, RefreshCw, Trash2 } from 'lucide-react';
+import { Briefcase, BriefcaseBusiness, Building2, CalendarCheck, GraduationCap, Mail, Phone, RefreshCw, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { JoinUsApplication } from '../../../types';
+import {
+  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, experienceRank, yearsLabel,
+} from './hr-sections/applicantLabels';
 
 type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
 type Kind = 'instructor' | 'consultant' | 'staff';
@@ -45,6 +48,8 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   );
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status | 'all'>('all');
+  const [minExperience, setMinExperience] = useState('');
+  const [branch, setBranch] = useState('');
   const [kind, setKind] = useState<Kind | 'all'>(initialType);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,9 +72,20 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
       .filter(app => groupOf(app) === group)
       .filter(app => kind === 'all' || kindOf(app.type) === kind)
       .filter(app => status === 'all' || statusOf(app.status) === status)
+      .filter(app => {
+        if (!minExperience) return true;
+        if (minExperience === 'only_none') return app.experienceYears === 'none';
+        const rank = experienceRank(app.experienceYears);
+        return rank >= 0 && rank >= experienceRank(minExperience);
+      })
+      .filter(app => !branch || app.applicantBranch === branch)
       .filter(app => !query || [app.name, app.email, app.phone, app.specialty].some(value => String(value || '').toLowerCase().includes(query)))
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   }, [group, joinUsApplications, kind, search, status]);
+
+  const branchOptions = useMemo(
+    () => [...new Set(joinUsApplications.map(app => app.applicantBranch).filter(Boolean))] as string[],
+    [joinUsApplications]);
 
   const changeStatus = async (app: JoinUsApplication, next: Status) =>
     updateJoinUsApplication({ ...app, status: next });
@@ -156,6 +172,17 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
           <option value="all">كل الحالات</option>
           {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
         </select>
+        <select value={minExperience} onChange={event => setMinExperience(event.target.value)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
+          <option value="">أي خبرة</option>
+          <option value="only_none">بدون خبرة فقط</option>
+          {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
+            <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
+          ))}
+        </select>
+        <select value={branch} onChange={event => setBranch(event.target.value)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
+          <option value="">كل الفروع</option>
+          {branchOptions.map(key => <option key={key} value={key}>{branchLabel(key)}</option>)}
+        </select>
       </div>
 
       {rows.length === 0 ? <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-gray-400">لا توجد طلبات مطابقة.</div> : (
@@ -180,7 +207,36 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                       <span className="flex items-center gap-1"><Phone size={13} /> {app.phone}</span>
                       <span>{app.createdAt?.slice(0, 10)}</span>
                     </div>
-                    {app.message && <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">{app.message}</p>}
+                    {/* What the form actually collected. Without it, judging an
+                        application meant phoning to ask the three things it
+                        already answered. */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {app.experienceYears && (
+                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
+                          <Briefcase size={11} /> {yearsLabel(app.experienceYears)}
+                        </span>
+                      )}
+                      {app.applicantBranch && (
+                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
+                          <Building2 size={11} /> {branchLabel(app.applicantBranch)}
+                        </span>
+                      )}
+                      {app.education && (
+                        <span className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
+                          <GraduationCap size={11} /> {app.education}
+                        </span>
+                      )}
+                      {app.linkedin && (
+                        <a href={app.linkedin} target="_blank" rel="noopener noreferrer"
+                          className="rounded-lg bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 hover:bg-sky-200">
+                          LinkedIn / الموقع
+                        </a>
+                      )}
+                    </div>
+                    {app.experiencePlaces && (
+                      <p className="mt-1.5 text-[11px] text-gray-500">اشتغل قبل كده: {app.experiencePlaces}</p>
+                    )}
+                    {app.message && <p className="mt-3 whitespace-pre-line rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">{app.message}</p>}
                     {app.adminNote && <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">ملاحظة HR: {app.adminNote}</p>}
                   </div>
                   <div className="flex shrink-0 flex-col gap-2">

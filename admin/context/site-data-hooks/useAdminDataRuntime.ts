@@ -111,6 +111,10 @@ function normalizeApplicants(rows: unknown): JoinUsApplication[] {
     convertedApplicantId: (row.convertedApplicantId ?? row.converted_applicant_id) as string | undefined,
     applicantStage: (row.applicantStage ?? row.applicant_stage) as JoinUsApplication['applicantStage'],
     hiredStaffId: (row.hiredStaffId ?? row.hired_staff_id) as string | undefined,
+    applicantBranch: (row.applicantBranch ?? row.applicant_branch) as string | undefined,
+    education: row.education as string | undefined,
+    experienceYears: (row.experienceYears ?? row.experience_years) as string | undefined,
+    experiencePlaces: (row.experiencePlaces ?? row.experience_places) as string | undefined,
   })) as JoinUsApplication[];
 }
 

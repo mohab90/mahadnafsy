@@ -15,6 +15,7 @@ const JoinTeaching: React.FC = () => {
   const [form, setForm] = useState({
     name: '', email: '', phone: '', specialty: '', experience: '',
     type: 'instructor' as 'instructor' | 'consultant', linkedin: '', message: '',
+    branch: '', education: '', experiencePlaces: '', teachingTopics: '',
   });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -33,9 +34,16 @@ const JoinTeaching: React.FC = () => {
         phone: form.phone,
         specialty: form.specialty,
         experience: form.experience,
+        experienceYears: form.experience || undefined,
         type: form.type,
         linkedin: form.linkedin || undefined,
-        message: form.message || undefined,
+        branch: form.branch || undefined,
+        education: form.education || undefined,
+        experiencePlaces: form.experiencePlaces || undefined,
+        message: [
+          form.teachingTopics.trim() ? `يقدر يدرّس: ${form.teachingTopics.trim()}` : '',
+          form.message.trim(),
+        ].filter(Boolean).join('\n') || undefined,
         status: 'new',
         createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       });
@@ -208,9 +216,36 @@ const JoinTeaching: React.FC = () => {
                       <option value="">اختر</option>
                       <option value="3-5">3 – 5 سنوات</option>
                       <option value="5-10">5 – 10 سنوات</option>
-                      <option value="10+">أكثر من 10 سنوات</option>
+                      <option value="10plus">أكثر من 10 سنوات</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">المؤهل العلمي *</label>
+                    <input required type="text" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })} placeholder="مثال: ماجستير علم نفس إكلينيكي — جامعة القاهرة" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">الفرع اللي تفضّل تحاضر فيه *</label>
+                    <select required value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white">
+                      <option value="">اختر الفرع</option>
+                      <option value="daqqi">فرع الدقي</option>
+                      <option value="tagamoa">فرع التجمع الخامس</option>
+                      <option value="tanta_admin">الفرع الإداري — طنطا</option>
+                      <option value="online_egypt">أونلاين — تصوير عن بُعد</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">المواضيع أو الدبلومات اللي تقدر تدرّسها</label>
+                  <textarea rows={2} value={form.teachingTopics} onChange={(e) => setForm({ ...form, teachingTopics: e.target.value })} placeholder="مثال: العلاج المعرفي السلوكي، اضطرابات القلق، تعديل السلوك للأطفال" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">اشتغلت أو درّست فين قبل كده؟</label>
+                  <textarea rows={2} value={form.experiencePlaces} onChange={(e) => setForm({ ...form, experiencePlaces: e.target.value })} placeholder="أسماء الجهات والمدة في كل واحدة — عيادات، جامعات، مراكز تدريب" className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition resize-none" />
                 </div>
 
                 <div>
