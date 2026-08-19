@@ -14,6 +14,11 @@ type CourseAccess = {
   courseDefaultMonths: number | null;
   accessType: string;
   status: string;
+  lectureCount: number;
+  watchedCount: number;
+  totalMinutes: number;
+  /** How many lectures they may reach when access is limited; null = all. */
+  lectureLimit: number | null;
 };
 
 const fmt = (value: string | null) =>
@@ -116,6 +121,32 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
                 <div className="text-[11px] text-gray-500 mt-0.5">
                   اشترك في {fmt(row.enrolledAt)}
                   {row.courseDefaultMonths ? ` · الافتراضي ${row.courseDefaultMonths} شهر` : ' · الافتراضي مفتوح'}
+                </div>
+                {/* What the access actually consists of. A date on its own says
+                    "until when" and leaves "to what" unanswered. */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <span className="text-[11px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">
+                    {row.lectureLimit
+                      ? `${row.lectureLimit} من ${row.lectureCount} محاضرة`
+                      : `${row.lectureCount} محاضرة`}
+                  </span>
+                  {row.totalMinutes > 0 && (
+                    <span className="text-[11px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">
+                      {row.totalMinutes >= 60
+                        ? `${Math.floor(row.totalMinutes / 60)} س ${row.totalMinutes % 60} د`
+                        : `${row.totalMinutes} دقيقة`}
+                    </span>
+                  )}
+                  <span className={`text-[11px] px-2 py-0.5 rounded font-bold ${
+                    row.lectureLimit ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}
+                  >
+                    {row.lectureLimit ? 'صلاحية محدودة' : 'صلاحية كاملة'}
+                  </span>
+                  {row.lectureCount > 0 && (
+                    <span className="text-[11px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded font-bold">
+                      شاهد {row.watchedCount} من {row.lectureCount}
+                    </span>
+                  )}
                 </div>
               </div>
               {row.expiresAt ? (

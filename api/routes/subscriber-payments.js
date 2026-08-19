@@ -203,6 +203,20 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       if (!su) return res.status(400).json({ error: 'Staff does not belong to tenant' });
       resolvedStaffName = su.name || null;
     }
+
+    // Whoever actually typed this, named. When management records a payment
+    // without attributing it to a staff member there was no staff id, so
+    // staff_name stayed null and the المنفذ column was blank — the one entry
+    // where knowing who did it matters most.
+    //
+    // Deliberately only the name: staff_id drives commission attribution, and
+    // an admin recording someone else's sale must not be paid for it.
+    if (!resolvedStaffName) {
+      resolvedStaffName = req.staffRecord?.name
+        || req.user?.name
+        || req.user?.email
+        || null;
+    }
     const VALID_SOURCES_SP = new Set(['web','staff','reception','daqqi','system']);
     const staffOwnedSource = req.staffRecord
       ? (String(req.staffRecord.role || '').toLowerCase().includes('reception') ? 'reception' : 'staff')

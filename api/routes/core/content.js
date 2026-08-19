@@ -24,6 +24,14 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
     const [rows] = await pool.query(
       `SELECT e.id, e.course_id, e.enrolled_at, e.expiry_date, e.access_type, e.status,
+              e.lecture_limit,
+              (SELECT COUNT(*) FROM course_lectures cl
+                WHERE cl.course_id = e.course_id AND cl.is_published = 1) AS lecture_count,
+              (SELECT COALESCE(SUM(cl.duration_seconds), 0) FROM course_lectures cl
+                WHERE cl.course_id = e.course_id AND cl.is_published = 1) AS total_seconds,
+              (SELECT COUNT(*) FROM lecture_completions lp
+                WHERE lp.subscriber_id = e.subscriber_id AND lp.course_id = e.course_id
+                  AND (lp.progress_pct >= 90 OR lp.completed_at IS NOT NULL)) AS watched_count,
               c.title, c.title_ar, c.access_months
          FROM enrollments e
          JOIN courses c ON c.id = e.course_id AND c.tenant_id = e.tenant_id
@@ -38,6 +46,10 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
       expiresAt: r.expiry_date,
       courseDefaultMonths: r.access_months,
       accessType: r.access_type,
+      lectureCount: Number(r.lecture_count) || 0,
+      watchedCount: Number(r.watched_count) || 0,
+      totalMinutes: Math.round((Number(r.total_seconds) || 0) / 60),
+      lectureLimit: r.access_type === 'limited' ? (Number(r.lecture_limit) || 0) : null,
       status: r.status,
     })));
   } catch (e) { logger.error("[course-access]", e.message); res.status(500).json({ error: "Internal server error" }); }
