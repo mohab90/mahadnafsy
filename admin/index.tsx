@@ -43,9 +43,20 @@ window.addEventListener('error', (event) => {
   recoverFromStaleChunk(event.message ?? '');
 });
 
-// The app mounted, so whatever chunk was missing is no longer a problem — the
-// next deploy is allowed its own recovery attempt.
-sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+// Release the guard only once the app has been up long enough to prove the
+// reload worked.
+//
+// Clearing it here at module scope cleared it on every load, including the load
+// the recovery itself triggered — and location.replace keeps the same route, so
+// the same lazy import runs again immediately. A chunk that is genuinely absent
+// from the server (a half-finished deploy, not a stale tab) therefore failed,
+// reloaded, failed and reloaded in a tight loop, which is the exact runaway the
+// guard exists to prevent.
+//
+// A stale chunk resolves on the first reload, so ten seconds is far more than
+// that path needs; a missing one now costs one reload per attempt instead of a
+// loop.
+setTimeout(() => sessionStorage.removeItem(CHUNK_RELOAD_KEY), 10_000);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

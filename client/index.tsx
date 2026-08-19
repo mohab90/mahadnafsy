@@ -44,8 +44,11 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     .catch(() => {/* SW cleanup optional in dev */});
 }
 
-// Mounted, so the missing chunk is behind us — the next deploy may try again.
-sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+// Release the guard only once the app has been up long enough to prove the
+// reload worked. Clearing it at module scope cleared it on the very load the
+// recovery triggered, so a chunk genuinely missing from the server reloaded in
+// a tight loop — the runaway this guard exists to prevent. See admin/index.tsx.
+setTimeout(() => sessionStorage.removeItem(CHUNK_RELOAD_KEY), 10_000);
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
