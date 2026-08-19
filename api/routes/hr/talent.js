@@ -69,10 +69,12 @@ async function convertJoinUs(j, { jobId, actorId, db } = {}) {
     await conn.query(
       `INSERT INTO job_applicants
          (id, tenant_id, job_id, name, email, phone, notes, source, source_id,
-          specialty, applicant_type, linkedin, updated_by)
-       VALUES (?,?,?,?,?,?,?, 'website', ?,?,?,?,?)`,
+          specialty, applicant_type, linkedin, updated_by,
+          branch, education, experience_places, experience_years)
+       VALUES (?,?,?,?,?,?,?, 'website', ?,?,?,?,?,?,?,?,?)`,
       [appId, tenantId, targetJob, j.name, j.email || null, j.phone || null, notes,
-        j.id, j.specialty || null, j.type || null, j.linkedin || null, actorId || null]
+        j.id, j.specialty || null, j.type || null, j.linkedin || null, actorId || null,
+        j.branch || null, j.education || null, j.experiencePlaces || null, j.experienceYears || null]
     );
     await conn.query(
       `UPDATE join_us_applications

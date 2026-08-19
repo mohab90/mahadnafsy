@@ -440,6 +440,14 @@ export interface JoinUsApplication {
   status: 'new' | 'reviewed' | 'accepted' | 'rejected';
   createdAt: string;
   adminNote?: string;
+  /** Which branch they want to work at (branch_key). */
+  branch?: string;
+  /** Highest qualification, as the applicant states it. */
+  education?: string;
+  /** Where they have worked before, free text. */
+  experiencePlaces?: string;
+  /** none | under_1 | 1-3 | 3-5 | 5-10 | 10plus — the form's own values. */
+  experienceYears?: string;
   /** The specific job posting applied to (employee applications only) — lets
    * the submission attach directly to that job instead of the generic talent
    * pool. Optional: instructor/consultant applications and free-form employee

@@ -349,7 +349,9 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
     const { appId } = req.params;
     const validationError = validateApplicant(req.body, true);
     if (validationError) return res.status(400).json({ error: validationError });
-    const fields = ['name','email','phone','cv_url','notes','stage','stage_notes','interview_rating'];
+    const fields = ['name','email','phone','cv_url','notes','stage','stage_notes','interview_rating',
+      'branch','education','experience_places','experience_years',
+      'phone_interview_at','phone_interview_result','interview_at','decided_at','decided_by'];
     await conn.beginTransaction(); transactionStarted = true;
     const [[current]] = await conn.query(
       'SELECT stage FROM job_applicants WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
@@ -364,6 +366,16 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
       return res.status(409).json({ error: 'Hired applicant history is immutable', code: 'HIRED_APPLICANT_IMMUTABLE' });
     }
     const stageGuard = current.stage;
+    // Accepting or rejecting is a decision; record when and by whom rather
+    // than inferring it from updated_at, which any later note-edit destroys.
+    if (req.body.stage === 'offer' || req.body.stage === 'rejected') {
+      req.body.decided_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      req.body.decided_by = req.staffRecord?.id || null;
+    }
+    // Scheduling an interview is what moves someone onto the interviews
+    // screen, so the date and the stage move together — a scheduled date
+    // with the stage left behind is how people went missing from both.
+    if (req.body.interview_at && !req.body.stage) req.body.stage = 'interview';
     if (req.body.stage !== undefined) {
       if (req.body.stage !== current.stage && !APPLICANT_TRANSITIONS[current.stage]?.has(req.body.stage)) {
         await conn.rollback(); transactionStarted = false;

@@ -34,7 +34,10 @@ const JoinStaff: React.FC = () => {
       .finally(() => setJobsLoading(false));
   }, []);
 
-  const [form, setForm] = useState({ name: '', email: '', phone: '', specialty: '', experience: '', linkedin: '', message: '', jobId: '' });
+  const [form, setForm] = useState({
+    name: '', email: '', phone: '', specialty: '', experience: '', linkedin: '', message: '', jobId: '',
+    branch: '', education: '', experiencePlaces: '',
+  });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -62,6 +65,11 @@ const JoinStaff: React.FC = () => {
         message: form.message || undefined,
         status: 'new',
         ...(form.jobId ? { jobId: form.jobId } : {}),
+        // Collected on the form and, until now, thrown away at the door.
+        branch: form.branch || undefined,
+        education: form.education || undefined,
+        experiencePlaces: form.experiencePlaces || undefined,
+        experienceYears: form.experience || undefined,
         createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
       });
       setSubmitted(true);
@@ -233,17 +241,59 @@ const JoinStaff: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">الوظيفة المتقدَّم لها *</label>
-                    <input required type="text" value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value, jobId: '' })} placeholder="مثال: أخصائي مبيعات" className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                    <select required value={form.jobId}
+                      onChange={(e) => {
+                        const job = jobs.find(j => j.id === e.target.value);
+                        setForm({ ...form, jobId: e.target.value, specialty: job?.title || '' });
+                      }}
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white">
+                      <option value="">اختر الوظيفة</option>
+                      {jobs.map(job => (<option key={job.id} value={job.id}>{job.title}</option>))}
+                      <option value="">— مش لاقي وظيفتي، سجّلني في قاعدة المتقدمين —</option>
+                    </select>
+                    {!jobs.length && !jobsLoading && (
+                      <p className="text-[11px] text-slate-500 mt-1">مفيش وظائف معلنة دلوقتي — سجّل وهنرجعلك أول ما ينزل شاغر.</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">سنوات الخبرة *</label>
                     <select required value={form.experience} onChange={(e) => setForm({ ...form, experience: e.target.value })} className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white">
                       <option value="">اختر</option>
+                      <option value="none">بدون خبرة</option>
+                      <option value="under_1">أقل من سنة</option>
+                      <option value="1-3">من سنة إلى 3 سنوات</option>
                       <option value="3-5">3 – 5 سنوات</option>
                       <option value="5-10">5 – 10 سنوات</option>
                       <option value="10+">أكثر من 10 سنوات</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">الفرع المتقدَّم له *</label>
+                    <select required value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition bg-white">
+                      <option value="">اختر الفرع</option>
+                      <option value="daqqi">فرع الدقي</option>
+                      <option value="tagamoa">فرع التجمع الخامس</option>
+                      <option value="tanta_admin">الفرع الإداري — طنطا</option>
+                      <option value="online_egypt">أونلاين</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">المؤهل الدراسي *</label>
+                    <input required type="text" value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })}
+                      placeholder="مثال: بكالوريوس آداب — قسم علم نفس"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">اشتغلت فين قبل كده؟</label>
+                  <textarea rows={2} value={form.experiencePlaces} onChange={(e) => setForm({ ...form, experiencePlaces: e.target.value })}
+                    placeholder="أسماء الجهات والمدة في كل واحدة — سيبها فاضية لو دي أول وظيفة"
+                    className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
                 </div>
 
                 <div>

@@ -871,7 +871,8 @@ router.post('/api/contact', contactLimiter, async (req, res) => {
 // POST /api/join-us  (طلب انضمام)
 router.post('/api/join-us', contactLimiter, async (req, res) => {
   try {
-    const { name, email, phone, specialty, experience, type, linkedin, message, jobId } = req.body;
+    const { name, email, phone, specialty, experience, type, linkedin, message, jobId,
+      branch, education, experiencePlaces, experienceYears } = req.body;
     const verr = validate(req.body, { name: 'required|120', email: 'email|160', phone: 'required|40', specialty: 'required|160', type: 'required|40', experience: 'optional|2000', linkedin: 'optional|300', message: 'optional|2000' });
     if (verr) return res.status(400).json({ error: verr });
     const id = uuidv4();
@@ -894,6 +895,7 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     const { applicantId } = await require('./hr/talent').createJoinApplication({
       id, tenant_id: req.tenantId, branch_id: req.tenantBranchId || null,
       name, email, phone, specialty, experience, type: safeType, linkedin, message,
+      branch, education, experiencePlaces, experienceYears,
       job_id: targetJobId,
     });
     const roleLabel = { INSTRUCTOR: 'محاضر', CONSULTANT: 'مستشار', EMPLOYEE: 'وظيفة إدارية' }[safeType] || '';
