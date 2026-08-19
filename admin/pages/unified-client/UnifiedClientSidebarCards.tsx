@@ -397,7 +397,7 @@ export function UnifiedClientSidebarActivityCard({
           <div className="flex items-center justify-between"><span className="text-gray-400">زيارات الموقع</span><span className="font-bold text-indigo-700">{sessionData.visitCount} مرة</span></div>
         )}
         {sessionData?.lastActiveAt && (
-          <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG')}</span></div>
+          <div className="flex items-center justify-between"><span className="text-gray-400">آخر نشاط</span><span className="font-semibold text-gray-700">{new Date(sessionData.lastActiveAt).toLocaleDateString('ar-EG-u-nu-latn')}</span></div>
         )}
         {completionPct !== null && (
           <div>

@@ -227,7 +227,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         if (cancelled) return;
         if (r.accessible && r.video_url) setResolvedUrl(r.video_url);
         else if (r.reason === 'drip_locked') {
-          const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG') : '';
+          const when = r.unlocks_at ? new Date(r.unlocks_at).toLocaleDateString('ar-EG-u-nu-latn') : '';
           setAccessError(`المحاضرة هتفتح في موعدها${when ? ` يوم ${when}` : ''}`);
         } else setAccessError('المحاضرة غير متاحة ضمن صلاحية اشتراكك الحالية');
       })

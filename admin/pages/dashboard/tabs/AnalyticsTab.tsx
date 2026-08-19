@@ -76,7 +76,7 @@ const AnalyticsTab: React.FC<Props> = () => {
       const d  = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const ms = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const mo = allPaid.filter(o => (o.paidAt || o.createdAt || '').startsWith(ms));
-      rows.push({ label: d.toLocaleString('ar-EG', { month: 'short', year: '2-digit' }), rev: mo.reduce((s, o) => s + toEGP(o.amount, o.currency), 0), orders: mo.length });
+      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short', year: '2-digit' }), rev: mo.reduce((s, o) => s + toEGP(o.amount, o.currency), 0), orders: mo.length });
     }
     return rows;
   }, [now, allPaid, toEGP]);
@@ -100,7 +100,7 @@ const AnalyticsTab: React.FC<Props> = () => {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const ms = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      rows.push({ label: d.toLocaleString('ar-EG', { month: 'short' }), count: subscribers.filter(s => (s.createdAt || '').startsWith(ms)).length });
+      rows.push({ label: d.toLocaleString('ar-EG-u-nu-latn', { month: 'short' }), count: subscribers.filter(s => (s.createdAt || '').startsWith(ms)).length });
     }
     return rows;
   }, [subscribers, now]);
@@ -214,8 +214,8 @@ const AnalyticsTab: React.FC<Props> = () => {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: `الإيراد — ${timeLabel}`,  value: Math.round(totalRevEGP).toLocaleString('ar-EG') + ' ج.م', icon: Wallet },
-            { label: 'متوسط قيمة الطلب',        value: Math.round(avgOrderAmt).toLocaleString('ar-EG') + ' ج.م', icon: Receipt },
+            { label: `الإيراد — ${timeLabel}`,  value: Math.round(totalRevEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: Wallet },
+            { label: 'متوسط قيمة الطلب',        value: Math.round(avgOrderAmt).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: Receipt },
             { label: 'معدل تحويل العملاء',       value: convRate + '%',                                             icon: TrendingUp },
             { label: 'طلبات معلقة (كل الوقت)', value: pendingOrders.length,                                        icon: Clock },
           ].map(k => (
@@ -252,7 +252,7 @@ const AnalyticsTab: React.FC<Props> = () => {
               { label: 'إجمالي',   amount: totalRevEGP,  color: 'text-emerald-600' },
             ].map(r => (
               <div key={r.label} className="bg-gray-50 rounded-xl p-3 text-center">
-                <div className={`text-lg font-extrabold ${r.color}`}>{Math.round(r.amount).toLocaleString('ar-EG')}</div>
+                <div className={`text-lg font-extrabold ${r.color}`}>{Math.round(r.amount).toLocaleString('ar-EG-u-nu-latn')}</div>
                 <div className="text-xs text-gray-500">{r.label} ({timeLabel})</div>
               </div>
             ))}
@@ -351,7 +351,7 @@ const AnalyticsTab: React.FC<Props> = () => {
                       <td className="py-2.5 text-center"><span className={`text-xs px-2 py-0.5 rounded-full font-bold ${c.type === 'Recorded' ? 'bg-blue-50 text-blue-700' : c.type === 'Live' ? 'bg-red-50 text-red-700' : 'bg-violet-50 text-violet-700'}`}>{c.type === 'Recorded' ? 'مسجل' : c.type === 'Live' ? 'بث مباشر' : 'مختلط'}</span></td>
                       <td className="py-2.5 text-center font-bold text-gray-900">{c.subs}</td>
                       <td className="py-2.5 w-36"><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-cyan-500 rounded-full" style={{ width: `${(c.subs / maxSubs) * 100}%` }} /></div></td>
-                      <td className="py-2.5 text-center text-emerald-600 font-bold">{c.rev > 0 ? Math.round(c.rev).toLocaleString('ar-EG') : '—'}</td>
+                      <td className="py-2.5 text-center text-emerald-600 font-bold">{c.rev > 0 ? Math.round(c.rev).toLocaleString('ar-EG-u-nu-latn') : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -380,7 +380,7 @@ const AnalyticsTab: React.FC<Props> = () => {
                       <td className="py-2.5 font-medium text-gray-800">{b.title}</td>
                       <td className="py-2.5 text-center text-gray-500">{b.courseCount}</td>
                       <td className="py-2.5 text-center font-bold text-gray-900">{b.enrolled}</td>
-                      <td className="py-2.5 text-center text-emerald-600 font-bold">{b.rev > 0 ? Math.round(b.rev).toLocaleString('ar-EG') : '—'}</td>
+                      <td className="py-2.5 text-center text-emerald-600 font-bold">{b.rev > 0 ? Math.round(b.rev).toLocaleString('ar-EG-u-nu-latn') : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -410,7 +410,7 @@ const AnalyticsTab: React.FC<Props> = () => {
                       <td className="py-2.5 font-medium text-gray-800">{t.name}</td>
                       <td className="py-2.5 text-center font-bold">{t.count}</td>
                       <td className="py-2.5 text-center">{t.rating > 0 ? <span className="flex items-center justify-center gap-1 text-amber-500 font-bold text-xs"><Star size={12} fill="currentColor" />{t.rating.toFixed(1)}</span> : '—'}</td>
-                      <td className="py-2.5 text-center text-emerald-600 font-bold">{t.rev > 0 ? Math.round(t.rev).toLocaleString('ar-EG') : '—'}</td>
+                      <td className="py-2.5 text-center text-emerald-600 font-bold">{t.rev > 0 ? Math.round(t.rev).toLocaleString('ar-EG-u-nu-latn') : '—'}</td>
                     </tr>
                   ))}
                 </tbody>

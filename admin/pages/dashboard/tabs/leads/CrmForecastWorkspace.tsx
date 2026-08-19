@@ -71,7 +71,7 @@ type PipelineMovements = {
   }>;
 };
 
-const money = (value: number) => Math.round(value || 0).toLocaleString('ar-EG');
+const money = (value: number) => Math.round(value || 0).toLocaleString('ar-EG-u-nu-latn');
 const categoryLabel = {
   pipeline: 'Pipeline',
   best_case: 'Best case',
@@ -322,7 +322,7 @@ export default function CrmForecastWorkspace({ notify }: { notify?: NotifyFn }) 
                 {['الوقت', 'العميل', 'المسؤول', 'نوع الحركة', 'من', 'إلى'].map(label => <th key={label} className="px-3 py-2 text-right">{label}</th>)}
               </tr></thead>
               <tbody>{pipelineMovements.movements.slice(0, 100).map(item => <tr key={item.id} className="border-t">
-                <td className="px-3 py-2 text-xs">{new Date(item.at).toLocaleString('ar-EG')}</td>
+                <td className="px-3 py-2 text-xs">{new Date(item.at).toLocaleString('ar-EG-u-nu-latn')}</td>
                 <td className="px-3 py-2 font-bold">{item.leadName}</td>
                 <td className="px-3 py-2">{item.ownerName || 'غير مسند'}</td>
                 <td className="px-3 py-2">{item.eventType}</td>

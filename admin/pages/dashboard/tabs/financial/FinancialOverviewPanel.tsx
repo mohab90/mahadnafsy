@@ -140,9 +140,9 @@ export function FinancialOverviewPanel({
   
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { lbl: 'إجمالي الإيرادات', val: (isGlobalFiltered ? gRevenue : totalRevenueEGP).toLocaleString('ar-EG') + ' ج.م', icon: ArrowUpRight, bg: 'bg-emerald-50', txt: 'text-emerald-700', br: 'border-emerald-200' },
-                { lbl: 'إجمالي المصروفات', val: (isGlobalFiltered ? gExpenses : totalExpensesEGP).toLocaleString('ar-EG') + ' ج.م', icon: ArrowDownRight, bg: 'bg-red-50', txt: 'text-red-700', br: 'border-red-200' },
-                { lbl: 'صافي الربح', val: (isGlobalFiltered ? gProfit : netProfitEGP).toLocaleString('ar-EG') + ' ج.م', icon: TrendingUp, bg: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'bg-blue-50' : 'bg-orange-50', txt: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'text-blue-700' : 'text-orange-700', br: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'border-blue-200' : 'border-orange-200' },
+                { lbl: 'إجمالي الإيرادات', val: (isGlobalFiltered ? gRevenue : totalRevenueEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: ArrowUpRight, bg: 'bg-emerald-50', txt: 'text-emerald-700', br: 'border-emerald-200' },
+                { lbl: 'إجمالي المصروفات', val: (isGlobalFiltered ? gExpenses : totalExpensesEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: ArrowDownRight, bg: 'bg-red-50', txt: 'text-red-700', br: 'border-red-200' },
+                { lbl: 'صافي الربح', val: (isGlobalFiltered ? gProfit : netProfitEGP).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', icon: TrendingUp, bg: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'bg-blue-50' : 'bg-orange-50', txt: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'text-blue-700' : 'text-orange-700', br: (isGlobalFiltered ? gProfit : netProfitEGP) >= 0 ? 'border-blue-200' : 'border-orange-200' },
                 { lbl: 'هامش الربح', val: (isGlobalFiltered ? gMargin : profitMargin) + '%', icon: Percent, bg: 'bg-violet-50', txt: 'text-violet-700', br: 'border-violet-200' },
               ].map(c => { const Ic = c.icon; return (
                 <article key={c.lbl} className={`${c.bg} border ${c.br} rounded-2xl p-4 flex items-center gap-3 shadow-sm`}>
@@ -159,7 +159,7 @@ export function FinancialOverviewPanel({
                   const pct = totalRevenueEGP > 0 ? Math.round((val / totalRevenueEGP) * 100) : 0;
                   return (
                     <div key={lbl}>
-                      <div className="flex justify-between text-sm mb-1"><span className="font-medium text-gray-700">{lbl}</span><span className="text-gray-500">{val.toLocaleString('ar-EG')} ج.م ({pct}%)</span></div>
+                      <div className="flex justify-between text-sm mb-1"><span className="font-medium text-gray-700">{lbl}</span><span className="text-gray-500">{val.toLocaleString('ar-EG-u-nu-latn')} ج.م ({pct}%)</span></div>
                       <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full ${color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} /></div>
                     </div>
                   );
@@ -205,7 +205,7 @@ export function FinancialOverviewPanel({
                     onClick={() => { setFinancialSubTab('orders'); setOrderMethodFilter('__online_paymob__'); }}
                     className="bg-blue-50 border border-blue-200 hover:border-blue-400 hover:bg-blue-100 rounded-2xl p-4 text-right transition group">
                     <p className="text-xs text-blue-600 font-bold mb-1">🌐 أونلاين (Paymob)</p>
-                    <p className="text-xl font-extrabold text-blue-800">{Math.round(onlineRevenueFiltered).toLocaleString('ar-EG')} ج.م</p>
+                    <p className="text-xl font-extrabold text-blue-800">{Math.round(onlineRevenueFiltered).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                     <p className="text-[10px] text-blue-500 mt-1 group-hover:text-blue-700">بطاقة / محفظة ← اضغط للتفاصيل</p>
                   </button>
                 )}
@@ -215,7 +215,7 @@ export function FinancialOverviewPanel({
                     onClick={() => { setFinancialSubTab('orders'); setOrderMethodFilter(method); }}
                     className="bg-emerald-50 border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100 rounded-2xl p-4 text-right transition group">
                     <p className="text-xs text-emerald-600 font-bold mb-1">{method}</p>
-                    <p className="text-xl font-extrabold text-emerald-800">{Math.round(total).toLocaleString('ar-EG')} ج.م</p>
+                    <p className="text-xl font-extrabold text-emerald-800">{Math.round(total).toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                     <p className="text-[10px] text-emerald-500 mt-1 group-hover:text-emerald-700">اضغط لعرض التفاصيل ←</p>
                   </button>
                 ))}
@@ -296,13 +296,13 @@ export function FinancialOverviewPanel({
                       <div key={c.id}>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="font-medium text-gray-700 truncate max-w-[55%]">{c.title}</span>
-                          <span className="text-gray-500 whitespace-nowrap">{c.total.toLocaleString('ar-EG')} ج.م</span>
+                          <span className="text-gray-500 whitespace-nowrap">{c.total.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                         </div>
                         <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-primary-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} /></div>
                         {(c.online > 0 || c.manual > 0) && (
                           <div className="flex gap-4 mt-1">
-                            {c.online > 0 && <span className="text-[10px] text-blue-500">أونلاين: {c.online.toLocaleString('ar-EG')} ج.م</span>}
-                            {c.manual > 0 && <span className="text-[10px] text-emerald-500">يدوي: {c.manual.toLocaleString('ar-EG')} ج.م</span>}
+                            {c.online > 0 && <span className="text-[10px] text-blue-500">أونلاين: {c.online.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>}
+                            {c.manual > 0 && <span className="text-[10px] text-emerald-500">يدوي: {c.manual.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>}
                           </div>
                         )}
                       </div>

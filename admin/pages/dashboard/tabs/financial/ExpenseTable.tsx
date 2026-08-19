@@ -14,7 +14,7 @@ export function ExpenseTable({ filteredExpenses, totalEGP, exportCSV, onEdit, on
   return (
     <>
       <div className="mr-auto flex items-center gap-3 flex-wrap">
-        <span className="text-sm text-gray-500">المجموع: <span className="font-bold text-red-600">{totalEGP.toLocaleString('ar-EG')} ج.م</span></span>
+        <span className="text-sm text-gray-500">المجموع: <span className="font-bold text-red-600">{totalEGP.toLocaleString('ar-EG-u-nu-latn')} ج.م</span></span>
         <button
           onClick={() => exportCSV(
             'expenses.csv',

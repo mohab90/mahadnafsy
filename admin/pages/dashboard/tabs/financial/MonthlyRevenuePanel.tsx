@@ -30,7 +30,7 @@ export function MonthlyRevenuePanel({ monthlyRevenue }: MonthlyRevenuePanelProps
                   {total === 0 && <div className="h-6 w-1 bg-gray-100 rounded" />}
                 </div>
                 <span className="text-xs font-bold text-gray-700 w-28 text-left flex-shrink-0">
-                  {total > 0 ? `${total.toLocaleString('ar-EG')} ج.م` : '—'}
+                  {total > 0 ? `${total.toLocaleString('ar-EG-u-nu-latn')} ج.م` : '—'}
                 </span>
               </div>
             );
@@ -49,7 +49,7 @@ export function MonthlyRevenuePanel({ monthlyRevenue }: MonthlyRevenuePanelProps
         ].map((card) => (
           <div key={card.label} className={`${card.color} rounded-xl p-4 border`}>
             <p className="text-xs opacity-70 mb-1">{card.label}</p>
-            <p className="text-lg font-extrabold">{card.val.toLocaleString('ar-EG')} ج.م</p>
+            <p className="text-lg font-extrabold">{card.val.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
           </div>
         ))}
       </div>

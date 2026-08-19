@@ -504,7 +504,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
                       {mine ? 'أنا' : fromPeer ? `زميل · ${message.author_name}` : `الإدارة · ${message.author_name}`}
                       {message.broadcast_label ? ` · 📣 ${message.broadcast_label}` : ''}
                       {' · '}
-                      {new Date(message.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                      {new Date(message.created_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}
                     </p>
                     <p className="whitespace-pre-wrap leading-relaxed">{message.body}</p>
                   </div>

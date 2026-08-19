@@ -31,9 +31,9 @@ const toAmount = (amount: RefundRow['amount']) => {
   const n = Number(amount);
   return Number.isFinite(n) ? n : 0;
 };
-const fmtDate = (value?: string) => value ? new Date(value).toLocaleDateString('ar-EG') : '-';
+const fmtDate = (value?: string) => value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn') : '-';
 const fmtMoney = (amount: RefundRow['amount'], currency = 'EGP') =>
-  `${Math.round(toAmount(amount)).toLocaleString('ar-EG')} ${currency || 'EGP'}`;
+  `${Math.round(toAmount(amount)).toLocaleString('ar-EG-u-nu-latn')} ${currency || 'EGP'}`;
 
 export default function FinancialRefundsPanel({ notify, branch }: { notify: (msg: string, tone?: 'success' | 'error') => void; branch?: string }) {
   const [rows, setRows] = useState<RefundRow[]>([]);

@@ -52,7 +52,7 @@ export default function KpiDashboardTab({ notify }: { notify: NotifyFn }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
-      setLastRefresh(new Date().toLocaleTimeString('ar-EG'));
+      setLastRefresh(new Date().toLocaleTimeString('ar-EG-u-nu-latn'));
     } catch (e: any) {
       notifyRef.current('error', `خطأ في تحميل لوحة KPI: ${e.message}`);
     } finally { setLoading(false); }

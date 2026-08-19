@@ -75,12 +75,12 @@ async function sendDailyReport(tenantId = DEFAULT_TENANT) {
             <th style="padding:10px;text-align:right;">المؤشر</th>
             <th style="padding:10px;text-align:right;">اليوم</th>
           </tr>
-          <tr style="background:#fff;"><td style="padding:10px;border-bottom:1px solid #f1f5f9;">💰 الإيرادات</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:bold;color:#16a34a;">${Number(revenue).toLocaleString('ar-EG')} ج.م</td></tr>
+          <tr style="background:#fff;"><td style="padding:10px;border-bottom:1px solid #f1f5f9;">💰 الإيرادات</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:bold;color:#16a34a;">${Number(revenue).toLocaleString('ar-EG-u-nu-latn')} ج.م</td></tr>
           <tr style="background:#f8fafc;"><td style="padding:10px;border-bottom:1px solid #f1f5f9;">👥 عملاء محتملون جدد</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:bold;">${new_leads}</td></tr>
           <tr style="background:#fff;"><td style="padding:10px;border-bottom:1px solid #f1f5f9;">✅ عملاء مسجلون جدد</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:bold;">${new_clients}</td></tr>
           <tr style="background:#f8fafc;"><td style="padding:10px;border-bottom:1px solid #f1f5f9;">⏳ مدفوعات معلقة</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:bold;color:#d97706;">${pending_payments}</td></tr>
           <tr style="background:#fff;"><td style="padding:10px;border-bottom:1px solid #f1f5f9;">🔴 محاولات دخول فاشلة</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:bold;color:${failed_logins >= 10 ? '#dc2626' : '#374151'};">${failed_logins}</td></tr>
-          <tr style="background:#f8fafc;"><td style="padding:10px;">📈 إيرادات الشهر الحالي</td><td style="padding:10px;font-weight:bold;color:#6C63FF;">${Number(month_revenue).toLocaleString('ar-EG')} ج.م</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:10px;">📈 إيرادات الشهر الحالي</td><td style="padding:10px;font-weight:bold;color:#6C63FF;">${Number(month_revenue).toLocaleString('ar-EG-u-nu-latn')} ج.م</td></tr>
         </table>
         <p style="color:#94a3b8;font-size:11px;margin-top:20px;text-align:center;">تم الإرسال تلقائياً من النظام — المعهد النفسي</p>
       </div>`;
@@ -233,7 +233,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
       if (_pdDone.has(logKey)) continue;
 
       const daysLeft = Math.round((new Date(p.due_date) - new Date(today)) / 86400000);
-      const amountFmt = `${Number(p.amount).toLocaleString('ar-EG')} ${p.currency || 'ج.م'}`;
+      const amountFmt = `${Number(p.amount).toLocaleString('ar-EG-u-nu-latn')} ${p.currency || 'ج.م'}`;
 
       // WhatsApp to client
       if (p.phone) {

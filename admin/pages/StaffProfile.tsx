@@ -814,7 +814,7 @@ const StaffProfile: React.FC = () => {
               <select value={attMonth} onChange={e => setAttMonth(Number(e.target.value))}
                 className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                  <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleDateString('ar-EG', { month: 'long' })}</option>
+                  <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long' })}</option>
                 ))}
               </select>
               <select value={attYear} onChange={e => setAttYear(Number(e.target.value))}

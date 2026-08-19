@@ -122,13 +122,13 @@ export default function MysqlStatusTab() {
         <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
           <h3 className="font-semibold text-gray-800 text-sm">إحصاءات السجلات المحملة من MySQL</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            إجمالي {totalRecords.toLocaleString('ar-EG')} سجل محمّل في الذاكرة
+            إجمالي {totalRecords.toLocaleString('ar-EG-u-nu-latn')} سجل محمّل في الذاكرة
           </p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-0 divide-x divide-y divide-gray-100 rtl:divide-x-reverse">
           {counts.map(({ label, n }) => (
             <div key={label} className="px-4 py-3 text-center">
-              <div className="text-lg font-bold text-indigo-700">{n.toLocaleString('ar-EG')}</div>
+              <div className="text-lg font-bold text-indigo-700">{n.toLocaleString('ar-EG-u-nu-latn')}</div>
               <div className="text-xs text-gray-500 mt-0.5">{label}</div>
             </div>
           ))}

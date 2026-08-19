@@ -96,7 +96,7 @@ export default function StaffMessagesPanel({
                         : message.author_name || staffName}
                     {message.broadcast_label ? ` · 📣 ${message.broadcast_label}` : ''}
                     {' · '}
-                    {new Date(message.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                    {new Date(message.created_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })}
                     {fromManagement && (message.read_at ? ' · تم الاطلاع' : ' · لم يُقرأ')}
                   </p>
                   <p className="whitespace-pre-wrap leading-relaxed">{message.body}</p>

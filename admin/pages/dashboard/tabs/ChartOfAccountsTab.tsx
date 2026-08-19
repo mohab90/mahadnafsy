@@ -68,7 +68,7 @@ export default function ChartOfAccountsTab({ notify }: { notify: NotifyFn }) {
     }
   };
 
-  const money = (value: number) => Math.abs(Number(value || 0)).toLocaleString('ar-EG');
+  const money = (value: number) => Math.abs(Number(value || 0)).toLocaleString('ar-EG-u-nu-latn');
 
   return (
     <div className="space-y-5" dir="rtl">

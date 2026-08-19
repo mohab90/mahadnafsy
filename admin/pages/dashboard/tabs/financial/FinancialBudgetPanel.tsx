@@ -14,7 +14,7 @@ interface BudgetRow {
 
 const DEFAULT_CATS = ['رواتب', 'تسويق', 'إيجار', 'برمجيات', 'معدات', 'مرافق', 'سفر', 'أخرى'];
 
-const fmtN = (n: number) => Math.round(n).toLocaleString('ar-EG');
+const fmtN = (n: number) => Math.round(n).toLocaleString('ar-EG-u-nu-latn');
 
 function pctColor(pct: number) {
   if (pct >= 100) return { bar: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50 border-red-200' };

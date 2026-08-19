@@ -50,7 +50,7 @@ export default function HrAnalyticsTab({ notify }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const fmt = (n: number | null | undefined) => Math.round(Number(n) || 0).toLocaleString('ar-EG');
+  const fmt = (n: number | null | undefined) => Math.round(Number(n) || 0).toLocaleString('ar-EG-u-nu-latn');
   const maxTrend = Math.max(1, ...trend.map(r => Number(r.total_net) || 0));
 
   if (loading) {

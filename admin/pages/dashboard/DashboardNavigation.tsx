@@ -300,7 +300,7 @@ export function DashboardNavigation(props: Props) {
                           <div key={n.id} className={`px-4 py-3 hover:bg-gray-50 transition ${!n.read_at ? 'bg-blue-50' : ''}`}>
                             <div className="font-semibold text-gray-800 text-sm">{n.title}</div>
                             <div className="text-xs text-gray-500 mt-0.5">{n.message}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('ar-EG')}</div>
+                            <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('ar-EG-u-nu-latn')}</div>
                           </div>
                         ))}
                       </div>

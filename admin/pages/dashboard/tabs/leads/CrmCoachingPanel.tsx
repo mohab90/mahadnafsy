@@ -96,7 +96,7 @@ export function CrmCoachingPanel({ notify }: { notify: Notify }) {
             className="w-full rounded-lg border px-2 py-2 text-xs">
             <option value="">اختر من آخر 30 يومًا</option>
             {data.recentCommunications.map(row => <option key={row.id} value={row.id}>
-              {row.staff_name || 'غير منسوب'} — {row.lead_name || 'عميل'} — {row.type} — {new Date(row.date).toLocaleDateString('ar-EG')}
+              {row.staff_name || 'غير منسوب'} — {row.lead_name || 'عميل'} — {row.type} — {new Date(row.date).toLocaleDateString('ar-EG-u-nu-latn')}
             </option>)}
           </select>
           {selected && <p className="rounded-lg bg-gray-50 p-2 text-xs text-gray-600">{selected.notes}</p>}

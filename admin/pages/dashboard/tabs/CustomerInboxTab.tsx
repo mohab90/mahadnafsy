@@ -85,7 +85,7 @@ function fmtDate(value?: string) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
-  return date.toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' });
+  return date.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: string; slaLabel: string; slaClass: string } {
@@ -221,7 +221,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       status: mapStatus(row.status),
       originalStatus: row.status,
       createdAt: row.created_at,
-      amount: `${Math.round(Number(row.amount || 0)).toLocaleString('ar-EG')} ${row.currency || 'EGP'}`,
+      amount: `${Math.round(Number(row.amount || 0)).toLocaleString('ar-EG-u-nu-latn')} ${row.currency || 'EGP'}`,
       raw: row as unknown as Record<string, unknown>,
     }));
 

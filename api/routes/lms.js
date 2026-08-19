@@ -400,7 +400,7 @@ router.post('/api/admin/live-sessions', requireAuth, requireAdmin, async (req, r
           JOIN subscribers s ON s.id=e.subscriber_id AND s.tenant_id=e.tenant_id
          WHERE e.course_id=? AND e.tenant_id=? AND e.status='active'`, [course_id, req.tenantId]
       );
-      const sessionDate = new Date(starts_at).toLocaleString('ar-EG', { dateStyle: 'full', timeStyle: 'short' });
+      const sessionDate = new Date(starts_at).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'full', timeStyle: 'short' });
       for (const student of enrolled) {
         if (student.email) await outbox.enqueue({
           channel: 'email', recipient: student.email, subject: `جلسة مباشرة جديدة — ${title || ''}`,

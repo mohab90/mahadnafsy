@@ -66,7 +66,7 @@ export function AgingReportPanel({ branchFilter, toEGP, exportCSV }: AgingReport
           return (
             <div key={bucket.label} className={`${bucket.bg} border ${bucket.border} rounded-xl p-3 text-center`}>
               <p className={`text-xs font-bold ${bucket.txt} mb-1`}>{bucket.label}</p>
-              <p className={`text-lg font-extrabold ${bucket.txt}`}>{total.toLocaleString('ar-EG')} ج.م</p>
+              <p className={`text-lg font-extrabold ${bucket.txt}`}>{total.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
               <p className="text-xs text-gray-500">{bucketRows.length} خطة</p>
             </div>
           );
@@ -129,7 +129,7 @@ export function AgingReportPanel({ branchFilter, toEGP, exportCSV }: AgingReport
                   </td>
                   <td className="py-2.5 text-gray-700">{row.title || '—'}</td>
                   <td className="py-2.5 font-bold text-red-600">
-                    {Math.round(toEGP(row.outstanding, row.currency)).toLocaleString('ar-EG')} ج.م
+                    {Math.round(toEGP(row.outstanding, row.currency)).toLocaleString('ar-EG-u-nu-latn')} ج.م
                   </td>
                   <td className="py-2.5 text-gray-500 text-xs">{row.dueDate}</td>
                   <td className="py-2.5">

@@ -163,7 +163,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {([
           ['معلق الموافقة', pendingItems.length, 'text-amber-700', 'bg-amber-50', 'border-amber-200', Clock],
-          ['مبلغ معلق (ج.م)', Math.round(pendingAmt).toLocaleString('ar-EG'), 'text-amber-700', 'bg-amber-50', 'border-amber-200', Wallet],
+          ['مبلغ معلق (ج.م)', Math.round(pendingAmt).toLocaleString('ar-EG-u-nu-latn'), 'text-amber-700', 'bg-amber-50', 'border-amber-200', Wallet],
           ['دفعات اليوم', todayCount, 'text-primary-700', 'bg-primary-50', 'border-primary-200', CalendarDays],
           ['إجمالي الدفعات', reviewTotal || allReview.length, 'text-gray-700', 'bg-gray-50', 'border-gray-200', Receipt],
         ] as [string, string | number, string, string, string, React.ElementType][]).map(([lbl, val, txt, bg, br, Ic]) => (
@@ -257,7 +257,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                     {p.transactionId && <div className="text-[11px] text-gray-400 font-mono">#{p.transactionId}</div>}
                   </td>
                   <td className="px-4 py-3 font-mono font-bold text-gray-800 whitespace-nowrap">
-                    {p.amount.toLocaleString('ar-EG')} <span className="text-xs font-normal text-gray-500">{p.currency}</span>
+                    {p.amount.toLocaleString('ar-EG-u-nu-latn')} <span className="text-xs font-normal text-gray-500">{p.currency}</span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-xs text-gray-700">{p.paymentMethod || '—'}</div>

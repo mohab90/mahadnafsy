@@ -161,7 +161,7 @@ function createScheduledJobHandlers({ pool, logger }) {
         );
         let sent = 0;
         for (const round of due) {
-          const sessionDate = round.nextSession.toLocaleDateString('ar-EG', {
+          const sessionDate = round.nextSession.toLocaleDateString('ar-EG-u-nu-latn', {
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
           });
           const timeLabel = round.time_slot === 'MORNING' ? 'الصباح'

@@ -13,7 +13,7 @@ interface CashFlow {
 }
 
 const money = (value: number) =>
-  Number(value || 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 });
+  Number(value || 0).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 
 const periodDates = (months: number) => {
   const now = new Date();

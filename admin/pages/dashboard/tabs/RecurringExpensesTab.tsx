@@ -62,7 +62,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const format = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const format = (n: number) => n.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 
   const stats = useMemo(() => {
     const active = items.filter(i => i.is_active);

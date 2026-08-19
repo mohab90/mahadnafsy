@@ -80,7 +80,7 @@ export function FinancialOrdersControls({
         ].map(c => (
           <div key={c.label} className={`${c.bg} rounded-2xl p-4 text-white shadow-sm`}>
             <p className="text-xs opacity-80 mb-1">{c.label}</p>
-            <p className="text-xl font-extrabold">{c.val.toLocaleString('ar-EG')} <span className="text-sm font-normal">ج.م</span></p>
+            <p className="text-xl font-extrabold">{c.val.toLocaleString('ar-EG-u-nu-latn')} <span className="text-sm font-normal">ج.م</span></p>
             <p className="text-[11px] opacity-70 mt-1">{c.sub}</p>
           </div>
         ))}
@@ -97,7 +97,7 @@ export function FinancialOrdersControls({
                 <button key={type} onClick={() => { setOrderTypeFilter(orderTypeFilter === type ? '' : type); setOrdersPage(1); }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition ${orderTypeFilter === type ? `${c.bg} ${c.border} ${c.text} font-extrabold ring-2 ring-offset-1 ring-current` : `bg-white ${c.border} hover:${c.bg}`}`}>
                   <span className={`text-xs font-bold ${c.text}`}>{typeLabels[type] || type}</span>
-                  <span className={`text-xs ${c.badge} rounded-lg px-1.5 py-0.5 font-bold`}>{val.toLocaleString('ar-EG')} ج.م</span>
+                  <span className={`text-xs ${c.badge} rounded-lg px-1.5 py-0.5 font-bold`}>{val.toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
                   <span className="text-[10px] text-gray-400">{pct}%</span>
                 </button>
               );

@@ -8,7 +8,7 @@ const { filterSuppressed } = require('./marketingConsent');
 
 function buildMessage(order) {
   const title = order.item_title || 'طلبك';
-  const amount = Number(order.amount || 0).toLocaleString('ar-EG');
+  const amount = Number(order.amount || 0).toLocaleString('ar-EG-u-nu-latn');
   const currency = order.currency || 'EGP';
   return `مرحبًا ${order.customer_name || ''}
 لاحظنا أن طلبك لم يكتمل بعد:

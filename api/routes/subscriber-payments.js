@@ -557,7 +557,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           ).catch(() => [[null]]);
           courseLabel = bi?.title || '';
         }
-        const paymentDate = new Date(payment.date || payment.at || Date.now()).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+        const paymentDate = new Date(payment.date || payment.at || Date.now()).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
         sendEmail(subRow.email, 'إيصال الدفع — معهد الدراسات النفسية',
           `<p>مرحباً،</p>
            <p>تم استلام دفعتك بنجاح. إليك تفاصيل الإيصال:</p>

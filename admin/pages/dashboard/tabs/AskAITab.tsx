@@ -91,7 +91,7 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const buildSystemContext = () => {
     const totalRevEGP = _totalRevEGP;
     const convRate = leads.length > 0 ? ((leads.filter(l => l.status === 'converted').length / leads.length) * 100).toFixed(1) : '0';
-    const todayStr = _now.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+    const todayStr = _now.toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     const leadSources = Object.entries(leads.reduce((result: Record<string, number>, lead) => {
       const source = lead.source || 'غير محدد';
       result[source] = (result[source] || 0) + 1;

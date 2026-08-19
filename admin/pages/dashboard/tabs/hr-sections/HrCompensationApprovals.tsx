@@ -66,7 +66,7 @@ export default function HrCompensationApprovals({ notify }: { notify: Notify }) 
             {pending[kind].map(item => (
               <div key={item.id} className="flex flex-wrap items-center gap-2 border-t border-gray-50 py-2 text-xs">
                 <span className="font-bold text-gray-800">{item.staff_name}</span>
-                <span className="text-gray-600">{Number(item.amount).toLocaleString('ar-EG')} {item.currency}</span>
+                <span className="text-gray-600">{Number(item.amount).toLocaleString('ar-EG-u-nu-latn')} {item.currency}</span>
                 <span className="text-gray-400">{item.created_by_name ? `أنشأه ${item.created_by_name}` : ''}</span>
                 <span className="flex-1" />
                 <button disabled={busy === item.id} onClick={() => review(kind, item, false)}

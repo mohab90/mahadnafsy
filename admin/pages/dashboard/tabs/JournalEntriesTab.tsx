@@ -74,7 +74,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
     }
   };
 
-  const money = (value: number) => Math.abs(Number(value || 0)).toLocaleString('ar-EG');
+  const money = (value: number) => Math.abs(Number(value || 0)).toLocaleString('ar-EG-u-nu-latn');
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -132,7 +132,7 @@ export default function JournalEntriesTab({ notify }: { notify: NotifyFn }) {
               <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 px-4 py-3">
                 <div>
                   <div className="font-black text-gray-900">{entry.description || entry.ref_type}</div>
-                  <div className="text-xs text-gray-500">{new Date(entry.entry_date).toLocaleDateString('ar-EG')} - {entry.ref_type}</div>
+                  <div className="text-xs text-gray-500">{new Date(entry.entry_date).toLocaleDateString('ar-EG-u-nu-latn')} - {entry.ref_type}</div>
                 </div>
                 <div className="text-sm font-black text-gray-700" dir="ltr">{money(entry.total_debit)} / {money(entry.total_credit)} ج.م</div>
               </div>

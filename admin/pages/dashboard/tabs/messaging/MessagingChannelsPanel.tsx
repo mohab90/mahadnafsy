@@ -338,7 +338,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
                   </div>
                   {wapilotInstances.map(i => i.subscriptionEndsAt && (
                     <p key={i.uniqueName} className="text-[11px] text-amber-700 mt-1">
-                      اشتراك «{i.name}» ينتهي {new Date(i.subscriptionEndsAt).toLocaleDateString('ar-EG')}
+                      اشتراك «{i.name}» ينتهي {new Date(i.subscriptionEndsAt).toLocaleDateString('ar-EG-u-nu-latn')}
                     </p>
                   ))}
                 </div>

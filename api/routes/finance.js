@@ -53,7 +53,7 @@ async function _loadPaymentForPrint(paymentId, tenantId) {
   p._primaryColor = brand.primaryColor;
   p._websiteUrl = escapeHtml(brand.websiteUrl);
   p._invoiceNum = p.document_number || `PAY-${p.id.slice(-8).toUpperCase()}`;
-  p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' });
+  p._dateStr = new Date(p.date || p.created_at).toLocaleDateString('ar-EG-u-nu-latn', { year:'numeric', month:'long', day:'numeric' });
   p._amount = parseFloat(p.amount) || 0;
   const cur = p.currency || 'EGP';
   p._currencyLabel = cur === 'SAR' ? 'ريال' : cur === 'USD' ? 'USD' : 'ج.م';
@@ -205,10 +205,10 @@ router.get('/api/admin/payments/:id/receipt', requireAuth, requireAdminOrStaff, 
   <div class="total-box">
     <div class="lbl">إجمالي المبلغ المسدد</div>
     ${p._vatPct > 0 ? `
-    <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">قبل الضريبة</span><span class="v">${p._netAmount.toLocaleString('ar-EG')} ${p._currencyLabel}</span></div>
-    <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">ضريبة (${p._vatPct}%)</span><span class="v">${p._vatAmount.toLocaleString('ar-EG')} ${p._currencyLabel}</span></div>
+    <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">قبل الضريبة</span><span class="v">${p._netAmount.toLocaleString('ar-EG-u-nu-latn')} ${p._currencyLabel}</span></div>
+    <div class="row" style="font-size:10px;margin-bottom:2px"><span class="k">ضريبة (${p._vatPct}%)</span><span class="v">${p._vatAmount.toLocaleString('ar-EG-u-nu-latn')} ${p._currencyLabel}</span></div>
     ` : ''}
-    <div class="amt">${p._totalWithVat.toLocaleString('ar-EG')} ${p._currencyLabel}</div>
+    <div class="amt">${p._totalWithVat.toLocaleString('ar-EG-u-nu-latn')} ${p._currencyLabel}</div>
     <div class="center" style="margin-top:4px">
       <span class="${p.status === 'paid' ? 'status-ok' : 'status-fail'}">${statusLabel}</span>
     </div>
@@ -346,21 +346,21 @@ router.get('/api/admin/invoice/:paymentId', requireAuth, requireAdminOrStaff, re
         <td>${itemName}</td>
         <td>${p.payment_type || '—'}</td>
         <td>${p.payment_method || '—'}</td>
-        <td style="text-align:left;font-weight:700">${amount.toLocaleString('ar-EG')} ${currencyLabel}</td>
+        <td style="text-align:left;font-weight:700">${amount.toLocaleString('ar-EG-u-nu-latn')} ${currencyLabel}</td>
       </tr>
     </tbody>
     <tfoot>
       <tr>
         <td colspan="3" style="text-align:right;color:#718096;font-size:13px">المبلغ قبل الضريبة</td>
-        <td style="text-align:left">${amount.toLocaleString('ar-EG')} ${currencyLabel}</td>
+        <td style="text-align:left">${amount.toLocaleString('ar-EG-u-nu-latn')} ${currencyLabel}</td>
       </tr>
       ${p._vatPct > 0 ? `<tr>
         <td colspan="3" style="text-align:right;color:#718096;font-size:13px">ضريبة القيمة المضافة (${p._vatPct}%)</td>
-        <td style="text-align:left">${p._vatAmount.toLocaleString('ar-EG')} ${currencyLabel}</td>
+        <td style="text-align:left">${p._vatAmount.toLocaleString('ar-EG-u-nu-latn')} ${currencyLabel}</td>
       </tr>` : ''}
       <tr class="total-row">
         <td colspan="3" style="text-align:right">الإجمالي</td>
-        <td style="text-align:left">${p._totalWithVat.toLocaleString('ar-EG')} ${currencyLabel}</td>
+        <td style="text-align:left">${p._totalWithVat.toLocaleString('ar-EG-u-nu-latn')} ${currencyLabel}</td>
       </tr>
     </tfoot>
   </table>
@@ -752,7 +752,7 @@ router.get('/api/admin/reports/pl/html', requireAuth, requireAdminOrStaff, requi
     const totalRevenue  = revRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
     const totalExpenses = expRows.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
     const netIncome     = totalRevenue - totalExpenses;
-    const fmt = n => parseFloat(n || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 });
+    const fmt = n => parseFloat(n || 0).toLocaleString('ar-EG-u-nu-latn', { minimumFractionDigits: 2 });
 
     const revRows_html = revRows.map(r => `
       <tr><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name)}</td>
@@ -764,7 +764,7 @@ router.get('/api/admin/reports/pl/html', requireAuth, requireAdminOrStaff, requi
           <td class="num">${fmt(r.net_amount)}</td></tr>`).join('') ||
       '<tr><td colspan="3" style="text-align:center;color:#999">لا يوجد بيانات</td></tr>';
 
-    const dateRange = `${new Date(from).toLocaleDateString('ar-EG')} — ${new Date(to).toLocaleDateString('ar-EG')}`;
+    const dateRange = `${new Date(from).toLocaleDateString('ar-EG-u-nu-latn')} — ${new Date(to).toLocaleDateString('ar-EG-u-nu-latn')}`;
 
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -820,7 +820,7 @@ router.get('/api/admin/reports/pl/html', requireAuth, requireAdminOrStaff, requi
 </div>
 
 <div class="footer">
-  <p>تقرير مُنشأ بتاريخ ${new Date().toLocaleDateString('ar-EG')} — ${instituteName}</p>
+  <p>تقرير مُنشأ بتاريخ ${new Date().toLocaleDateString('ar-EG-u-nu-latn')} — ${instituteName}</p>
 </div>
 
 <div class="no-print">

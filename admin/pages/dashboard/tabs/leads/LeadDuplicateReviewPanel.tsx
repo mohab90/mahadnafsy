@@ -215,7 +215,7 @@ export function LeadDuplicateReviewPanel({
                 <span className="font-bold">{row.sourceName || row.sourceId}</span>
                 <span className="mx-2 text-gray-400">←</span>
                 <span>{row.targetName || row.targetId}</span>
-                <p className="mt-1 text-xs text-gray-500">{row.actor || 'النظام'} · {row.createdAt ? new Date(row.createdAt).toLocaleString('ar-EG') : '—'}</p>
+                <p className="mt-1 text-xs text-gray-500">{row.actor || 'النظام'} · {row.createdAt ? new Date(row.createdAt).toLocaleString('ar-EG-u-nu-latn') : '—'}</p>
               </div>
               {row.revertedAt ? (
                 <span className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-500">تم فك الدمج</span>

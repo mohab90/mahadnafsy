@@ -62,7 +62,7 @@ export function UnifiedClientLoyaltyPanel({ subscriberId }: Props) {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold text-amber-700">نظام الولاء</p>
-            <h3 className="mt-1 text-2xl font-extrabold text-gray-900">{balance.toLocaleString('ar-EG')} نقطة</h3>
+            <h3 className="mt-1 text-2xl font-extrabold text-gray-900">{balance.toLocaleString('ar-EG-u-nu-latn')} نقطة</h3>
           </div>
           <div className="h-12 w-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
             <Award size={24} />
@@ -122,15 +122,15 @@ export function UnifiedClientLoyaltyPanel({ subscriberId }: Props) {
             {ledger.map(row => (
               <div key={row.id} className="grid grid-cols-[90px_1fr_110px] gap-3 p-4 text-sm">
                 <span className={`font-extrabold ${Number(row.points) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {Number(row.points) > 0 ? '+' : ''}{Number(row.points || 0).toLocaleString('ar-EG')}
+                  {Number(row.points) > 0 ? '+' : ''}{Number(row.points || 0).toLocaleString('ar-EG-u-nu-latn')}
                 </span>
                 <div>
                   <p className="font-bold text-gray-700">{row.reason || 'عملية نقاط'}</p>
                   <p className="text-xs text-gray-400">{row.reference_type || ''} {row.reference_id || ''}</p>
                 </div>
                 <div className="text-left">
-                  <p className="font-bold text-gray-600">{Number(row.balance_after || 0).toLocaleString('ar-EG')}</p>
-                  <p className="text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG') : ''}</p>
+                  <p className="font-bold text-gray-600">{Number(row.balance_after || 0).toLocaleString('ar-EG-u-nu-latn')}</p>
+                  <p className="text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG-u-nu-latn') : ''}</p>
                 </div>
               </div>
             ))}

@@ -673,7 +673,7 @@ const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
                       {b.status === 'success' ? '✅ نجح' : b.status === 'failed' ? '❌ فشل' : b.status || '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{b.created_at ? new Date(b.created_at).toLocaleString('ar-EG') : '—'}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{b.created_at ? new Date(b.created_at).toLocaleString('ar-EG-u-nu-latn') : '—'}</td>
                   <td className="px-4 py-3 text-center">
                     {b.fileExists && b.filename ? (
                       <button onClick={() => download(b.filename)}
