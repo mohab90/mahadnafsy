@@ -328,19 +328,9 @@ export function ClientsTable({
                       🏠
                     </button>
                   ) : (
-                    <button title="تفاصيل الكورسات" onClick={()=>{
-                      const draft = courseRows.map(cr => ({
-                        courseId: cr.cid,
-                        expected: cr.expected > 0 ? String(cr.expected) : '',
-                        paid: cr.paid > 0 ? String(cr.paid) : '',
-                        createdAt: (row.createdAt||'').slice(0,10),
-                      }));
-                      setCollDetailsDraft(draft);
-                      setCollDetailsRow(row);
-                    }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
+                    <button title="تفاصيل الكورسات والصلاحية والمدفوعات" onClick={()=>setAccessRow(row)}
+                      className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
                   )}
-                  <button title="مدة صلاحية الكورسات والفيديوهات" onClick={()=>setAccessRow(row)}
-                    className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><CalendarClock size={12}/></button>
                   <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
                   {/* Was gated on "is the Daqqi tab open" instead of "can this role actually delete" —
                       reception_daqqi could see and click this, but the backend (requireAdmin, i.e.

@@ -19,6 +19,8 @@ type CourseAccess = {
   totalMinutes: number;
   /** How many lectures they may reach when access is limited; null = all. */
   lectureLimit: number | null;
+  paidEgp: number;
+  expectedEgp: number;
 };
 
 const fmt = (value: string | null) =>
@@ -103,10 +105,10 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
     <div className="space-y-3" dir="rtl">
       <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
         <CalendarClock size={16} className="text-indigo-600" />
-        مدة صلاحية الكورسات والفيديوهات
+        كورسات العميل — الصلاحية والمدفوعات
       </div>
       <p className="text-[11px] text-gray-500">
-        المدة الافتراضية بتتحدد من صفحة الكورس. هنا بتغيّرها للعميل ده لوحده.
+        كل كورس: المدفوع منه، المحاضرات وصلاحيتها، ومدة الوصول. المدة الافتراضية بتتحدد من صفحة الكورس وهنا بتغيّرها للعميل ده لوحده.
       </p>
 
       {rows.map(row => {
@@ -122,6 +124,31 @@ export const ClientCourseAccessPanel: React.FC<{ subscriberId: string; notify: N
                   اشترك في {fmt(row.enrolledAt)}
                   {row.courseDefaultMonths ? ` · الافتراضي ${row.courseDefaultMonths} شهر` : ' · الافتراضي مفتوح'}
                 </div>
+                {/* The money for this course, folded in from what used to be a
+                    separate "تفاصيل الكورسات" button. One screen answers what
+                    they bought, what they paid, and what they can still watch —
+                    three questions that were three different clicks. */}
+                {row.expectedEgp > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    <span className="text-[11px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">
+                      المطلوب {row.expectedEgp.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                    </span>
+                    <span className="text-[11px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
+                      المدفوع {row.paidEgp.toLocaleString('ar-EG-u-nu-latn')} ج.م
+                    </span>
+                    {row.expectedEgp > row.paidEgp && (
+                      <span className="text-[11px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">
+                        متبقي {(row.expectedEgp - row.paidEgp).toLocaleString('ar-EG-u-nu-latn')} ج.م
+                      </span>
+                    )}
+                    {row.paidEgp >= row.expectedEgp && (
+                      <span className="text-[11px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
+                        مسدّد بالكامل
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* What the access actually consists of. A date on its own says
                     "until when" and leaves "to what" unanswered. */}
                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">

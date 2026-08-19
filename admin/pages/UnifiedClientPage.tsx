@@ -41,6 +41,7 @@ import {
   LeadItem, SubscriberItem, CommunicationRecord,
   UserSessionData,
 } from '../types';
+import { useToast } from '../../shared/ui/Toast';
 
 const UnifiedClientCertificatesPanel = React.lazy(() => import('./unified-client/UnifiedClientCertificatesPanel').then(module => ({ default: module.UnifiedClientCertificatesPanel })));
 const UnifiedClientCommunicationsPanel = React.lazy(() => import('./unified-client/UnifiedClientCommunicationsPanel').then(module => ({ default: module.UnifiedClientCommunicationsPanel })));
@@ -94,6 +95,9 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   const { activeTab, setActiveTab } = useUnifiedClientActiveTab();
   // scroll to section from navigation state (e.g. 📅 button in Dashboard)
   // ── copy code ──────────────────────────────────────────────────────────────
+  const { show: toastShow } = useToast();
+  const notify = React.useCallback(
+    (type: 'success' | 'error' | 'info', text: string) => toastShow(text, type), [toastShow]);
   const [codeCopied, setCodeCopied] = useState(false);
 
   // ── session / activity stats — no longer tracked from Firestore ──────────
@@ -490,6 +494,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
               {/* ══ 🎓 الكورسات ══ */}
               {isSub && activeTab === 'courses' && subscriber && (
                 <UnifiedClientCoursesTab
+                  notify={notify}
                   subscriber={subscriber}
                   courses={courses}
                   showGrantFromCourses={showGrantFromCourses}

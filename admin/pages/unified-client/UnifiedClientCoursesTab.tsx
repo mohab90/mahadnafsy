@@ -3,11 +3,13 @@ import { BookOpen, Plus, X } from 'lucide-react';
 
 import type { Course, CourseAccessSetting, SubscriberItem } from '../../types';
 import { normalizeAccess } from './constants';
+import { ClientCourseAccessPanel } from '../dashboard/tabs/online-clients-sections/ClientCourseAccessPanel';
 
 type AccessPreset = { p1: number; p2: number };
 
 type UnifiedClientCoursesTabProps = {
   subscriber: SubscriberItem;
+  notify: (type: 'success' | 'error' | 'info', text: string) => void;
   courses: Course[];
   showGrantFromCourses: boolean;
   setShowGrantFromCourses: (value: boolean) => void;
@@ -30,6 +32,7 @@ type UnifiedClientCoursesTabProps = {
 
 export function UnifiedClientCoursesTab({
   subscriber,
+  notify,
   courses,
   showGrantFromCourses,
   setShowGrantFromCourses,
@@ -67,6 +70,14 @@ export function UnifiedClientCoursesTab({
                         </h3>
                         <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{subscriber.enrolledCourseIds.length}</span>
                       </div>
+                      {/* Same panel the clients table opens. Staff reach a
+                          customer from both places, so the answer to "what
+                          did they buy, pay and can still watch" lives in
+                          one component reachable from either. */}
+                      <div className="border border-gray-100 rounded-xl p-3 bg-gray-50/50 mb-3">
+                        <ClientCourseAccessPanel subscriberId={subscriber.id} notify={notify} />
+                      </div>
+
                       {/* Add course quick button */}
                       <button onClick={() => setShowGrantFromCourses(true)}
                         className="w-full py-2.5 border-2 border-dashed border-emerald-200 rounded-xl text-emerald-600 hover:bg-emerald-50 text-sm flex items-center justify-center gap-2">
