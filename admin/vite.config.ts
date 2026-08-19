@@ -56,6 +56,18 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks: (id) => {
+            // The modulePreload filter above only removes preload *hints*. It cannot
+            // remove a real static import, and there was one: Vite's module-preload
+            // helper is pulled in by every chunk that lazy-loads anything, so it is
+            // shared by nearly the whole graph. Left unassigned, Rollup folds it into
+            // whichever common chunk it likes — and it picked pdf-core-vendor. The
+            // built entry therefore contained a literal
+            //   import { _ } from "./pdf-core-vendor-*.js"
+            // which put 341 kB (109 kB gzip) of jsPDF on the critical path of every
+            // page load — measured landing at 168 ms, before DOMContentLoaded — just
+            // to reach a ~20-line helper. Pin the helper to react-vendor, which is
+            // eager and always needed anyway, so the PDF stack stays genuinely lazy.
+            if (id.includes('preload-helper')) return 'react-vendor';
             if (!id.includes('node_modules')) return;
             // React core — rarely changes, cached long-term
             if (id.includes('react-dom') || id.includes('react-router') || id.includes('react-is')) return 'react-vendor';
