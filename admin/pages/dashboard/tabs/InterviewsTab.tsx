@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import {
-  PHONE_RESULTS, branchLabel, experienceRank, yearsLabel,
+  PHONE_RESULTS, branchLabel, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
 import InterviewFilters, {
   InterviewFilterState, emptyInterviewFilters, interviewFiltersActive,
@@ -223,12 +223,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
         if (filters.view !== 'all' && r.stage !== filters.view) return false;
         if (filters.jobId && r.job_id !== filters.jobId) return false;
         if (filters.branch && (r.applicant_branch || r.job_branch) !== filters.branch) return false;
-        if (min === 'only_none') {
-          if (r.experience_years !== 'none') return false;
-        } else if (min) {
-          const rank = experienceRank(r.experience_years);
-          if (rank < 0 || rank < experienceRank(min)) return false;
-        }
+        if (!matchesMinExperience(r.experience_years, min)) return false;
         if (needle) {
           const hay = `${r.name} ${r.phone || ''} ${r.email || ''} ${r.specialty || ''}`.toLowerCase();
           if (!hay.includes(needle)) return false;

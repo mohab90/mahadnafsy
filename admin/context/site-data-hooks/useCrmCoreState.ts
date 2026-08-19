@@ -417,6 +417,8 @@ export function useCrmCoreState(
     education: row.education as string | undefined,
     experienceYears: (row.experienceYears ?? row.experience_years) as string | undefined,
     experiencePlaces: (row.experiencePlaces ?? row.experience_places) as string | undefined,
+    jobId: (row.jobId ?? row.job_id) as string | undefined,
+    jobTitle: (row.jobTitle ?? row.job_title) as string | undefined,
       })) as unknown as JoinUsApplication[];
       setJoinUsApplications(normalized);
     } catch {

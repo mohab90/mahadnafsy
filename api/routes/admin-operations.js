@@ -274,10 +274,12 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermis
               j.linkedin, j.message, j.status, j.admin_note, j.created_at,
               j.converted_applicant_id, j.reviewed_at, j.assigned_to,
               a.stage applicant_stage, a.hired_staff_id,
-              a.branch applicant_branch, a.education, a.experience_years, a.experience_places
+              a.branch applicant_branch, a.education, a.experience_years, a.experience_places,
+              a.job_id, jp.title job_title
          FROM join_us_applications j
          LEFT JOIN job_applicants a
            ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
+         LEFT JOIN job_postings jp ON jp.id=a.job_id AND jp.tenant_id=a.tenant_id
          ${where}
         ORDER BY j.created_at DESC LIMIT 500`,
       params);

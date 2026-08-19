@@ -56,5 +56,26 @@ export const experienceRank = (value: string | null | undefined): number => {
 export const yearsLabel = (value: string | null | undefined): string =>
   (value && EXPERIENCE_YEARS[value]) || 'خبرة غير محددة';
 
+/**
+ * Does this candidate's experience pass the picker's setting?
+ *
+ * `''` is no filter. `only_none` is the deliberate search for fresh graduates.
+ * Anything else is a MINIMUM — "3 سنوات فأكثر" — because that is the question
+ * hiring asks, never "exactly the 3–5 band".
+ *
+ * A candidate whose experience was never recorded fails a minimum rather than
+ * passing it: unknown is not senior. Both recruitment screens use this, so the
+ * same setting cannot mean two different things depending on where you set it.
+ */
+export const matchesMinExperience = (
+  value: string | null | undefined,
+  min: string,
+): boolean => {
+  if (!min) return true;
+  if (min === 'only_none') return value === 'none';
+  const rank = experienceRank(value);
+  return rank >= 0 && rank >= experienceRank(min);
+};
+
 export const branchLabel = (value: string | null | undefined): string =>
   (value && BRANCH_LABELS[value]) || value || '';

@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Briefcase, BriefcaseBusiness, Building2, CalendarCheck, GraduationCap, Mail, Phone, RefreshCw, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Briefcase, BriefcaseBusiness, Building2, CalendarCheck, Filter, GraduationCap, Mail, Phone, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+
+// The job postings live here, not only under نظام HR: this is the page staff
+// open to run recruitment, and "أضف وظيفة" was two menus away from the list of
+// people applying for one.
+const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 import type { JoinUsApplication } from '../../../types';
 import {
-  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, experienceRank, yearsLabel,
+  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
 
 type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
@@ -38,6 +43,20 @@ function kindOf(value?: string): Kind {
   return 'instructor';
 }
 
+/**
+ * What to call the posting an application is attached to.
+ *
+ * Applications that did not come from a specific listing are parked on a
+ * per-tenant placeholder job titled "Website applicants (Talent Pool)" — an
+ * internal record, in English, that the postings list deliberately hides. It
+ * must not surface here as though it were a real vacancy someone applied for.
+ */
+function jobLabel(app: JoinUsApplication): string {
+  if (!app.jobId) return '';
+  if (app.jobId.startsWith('talent-')) return 'طلب عام — مش على وظيفة محددة';
+  return app.jobTitle || 'وظيفة محذوفة';
+}
+
 export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: Kind | 'all' }) {
   const { joinUsApplications, updateJoinUsApplication, deleteJoinUsApplication, reloadJoinUsApplications } = useSiteData();
   // Staff-first by default: the owner asked for الموظفون to be the first and
@@ -51,6 +70,8 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   const [minExperience, setMinExperience] = useState('');
   const [branch, setBranch] = useState('');
   const [kind, setKind] = useState<Kind | 'all'>(initialType);
+  const [jobFilter, setJobFilter] = useState('');
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -72,20 +93,42 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
       .filter(app => groupOf(app) === group)
       .filter(app => kind === 'all' || kindOf(app.type) === kind)
       .filter(app => status === 'all' || statusOf(app.status) === status)
-      .filter(app => {
-        if (!minExperience) return true;
-        if (minExperience === 'only_none') return app.experienceYears === 'none';
-        const rank = experienceRank(app.experienceYears);
-        return rank >= 0 && rank >= experienceRank(minExperience);
-      })
+      .filter(app => matchesMinExperience(app.experienceYears, minExperience))
       .filter(app => !branch || app.applicantBranch === branch)
+      .filter(app => !jobFilter || app.jobId === jobFilter)
       .filter(app => !query || [app.name, app.email, app.phone, app.specialty].some(value => String(value || '').toLowerCase().includes(query)))
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  }, [group, joinUsApplications, kind, search, status]);
+    // Every value the filters above read has to be listed. Leaving the new ones
+    // out kept the memo from recomputing, so picking a branch or an experience
+    // band changed the dropdown and nothing else — a filter that looks broken
+    // rather than one that is missing.
+  }, [group, joinUsApplications, kind, search, status, minExperience, branch, jobFilter]);
+
+  // The postings panel reports through a notify callback. Routing that to a
+  // custom event would lose it: only 'site-persist-error' has a listener
+  // anywhere in the app, so publishing a job would say nothing at all.
+  const notify = useMemo(() => (type: 'success' | 'error' | 'info', text: string) => {
+    setToast({ type, text });
+    window.setTimeout(() => setToast(current => (current?.text === text ? null : current)), 4000);
+  }, []);
+
+  const jobOptions = useMemo(() => {
+    const map = new Map<string, { id: string; title: string; count: number }>();
+    joinUsApplications.forEach(app => {
+      if (!app.jobId) return;
+      const entry = map.get(app.jobId);
+      if (entry) entry.count += 1;
+      else map.set(app.jobId, { id: app.jobId, title: jobLabel(app), count: 1 });
+    });
+    return [...map.values()].sort((a, b) => b.count - a.count);
+  }, [joinUsApplications]);
 
   const branchOptions = useMemo(
     () => [...new Set(joinUsApplications.map(app => app.applicantBranch).filter(Boolean))] as string[],
     [joinUsApplications]);
+
+  const filtersActive = Boolean(search.trim() || jobFilter || branch || minExperience)
+    || status !== 'all' || kind !== 'all';
 
   const changeStatus = async (app: JoinUsApplication, next: Status) =>
     updateJoinUsApplication({ ...app, status: next });
@@ -123,6 +166,15 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
 
   return (
     <div className="space-y-5" dir="rtl">
+      {toast && (
+        <div className={`rounded-xl px-4 py-2.5 text-sm font-bold ${
+          toast.type === 'error' ? 'border border-red-200 bg-red-50 text-red-700'
+            : toast.type === 'success' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border border-sky-200 bg-sky-50 text-sky-700'}`}
+        >
+          {toast.text}
+        </div>
+      )}
       <section className="rounded-2xl bg-gradient-to-l from-indigo-700 to-violet-600 p-6 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -159,30 +211,80 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <input value={search} onChange={event => setSearch(event.target.value)}
-          placeholder="بحث بالاسم أو البريد أو الهاتف أو التخصص"
-          className="min-w-56 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm" />
-        {group === 'teaching' && (
-          <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
-            <option value="all">كل التخصصات</option><option value="instructor">محاضر</option><option value="consultant">استشاري</option>
-          </select>
+      {/* The postings themselves — publish one, see who applied, close it. */}
+      <React.Suspense fallback={<div className="rounded-2xl border border-gray-100 bg-white py-8 text-center text-sm text-gray-400">جاري تحميل الوظائف...</div>}>
+        <JobPostingsPanel notify={notify} />
+      </React.Suspense>
+
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
+          <Filter size={14} className="text-indigo-600" /> فلترة الطلبات
+          {filtersActive && (
+            <button
+              onClick={() => { setSearch(''); setStatus('all'); setMinExperience(''); setBranch(''); setJobFilter(''); setKind('all'); }}
+              className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-gray-500 hover:bg-gray-100"
+            >
+              <RotateCcw size={11} /> إلغاء الفلاتر
+            </button>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-500">بحث</span>
+            <input value={search} onChange={event => setSearch(event.target.value)}
+              placeholder="اسم، بريد، هاتف، تخصص"
+              className="w-full rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-500">الوظيفة</span>
+            <select value={jobFilter} onChange={event => setJobFilter(event.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+              <option value="">كل الوظائف</option>
+              {jobOptions.map(j => <option key={j.id} value={j.id}>{j.title} ({j.count})</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-500">الفرع</span>
+            <select value={branch} onChange={event => setBranch(event.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+              <option value="">كل الفروع</option>
+              {branchOptions.map(key => <option key={key} value={key}>{branchLabel(key)}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-500">الخبرة (حد أدنى)</span>
+            <select value={minExperience} onChange={event => setMinExperience(event.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+              <option value="">أي خبرة</option>
+              <option value="only_none">بدون خبرة فقط</option>
+              {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
+                <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-gray-500">الحالة</span>
+            <select value={status} onChange={event => setStatus(event.target.value as Status | 'all')}
+              className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+              <option value="all">كل الحالات</option>
+              {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
+            </select>
+          </label>
+          {group === 'teaching' && (
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-gray-500">النوع</span>
+              <select value={kind} onChange={event => setKind(event.target.value as Kind | 'all')}
+                className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs">
+                <option value="all">محاضرين واستشاريين</option>
+                <option value="instructor">محاضر</option>
+                <option value="consultant">استشاري</option>
+              </select>
+            </label>
+          )}
+        </div>
+        {filtersActive && (
+          <p className="text-[11px] font-bold text-gray-500">ظاهر {rows.length} طلب من {joinUsApplications.length}</p>
         )}
-        <select value={status} onChange={event => setStatus(event.target.value as Status | 'all')} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
-          <option value="all">كل الحالات</option>
-          {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
-        </select>
-        <select value={minExperience} onChange={event => setMinExperience(event.target.value)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
-          <option value="">أي خبرة</option>
-          <option value="only_none">بدون خبرة فقط</option>
-          {EXPERIENCE_ORDER.filter(key => key !== 'none').map(key => (
-            <option key={key} value={key}>{EXPERIENCE_YEARS[key]} فأكثر</option>
-          ))}
-        </select>
-        <select value={branch} onChange={event => setBranch(event.target.value)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm">
-          <option value="">كل الفروع</option>
-          {branchOptions.map(key => <option key={key} value={key}>{branchLabel(key)}</option>)}
-        </select>
       </div>
 
       {rows.length === 0 ? <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-gray-400">لا توجد طلبات مطابقة.</div> : (
@@ -196,6 +298,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${STATUS[appStatus].className}`}>{STATUS[appStatus].label}</span>
                       <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{KIND_LABEL[kindOf(app.type)]}</span>
+                      {jobLabel(app) && <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">{jobLabel(app)}</span>}
                       {app.convertedApplicantId && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">داخل HR: {STAGE_LABEL[app.applicantStage || 'applied'] || app.applicantStage}</span>}
                       {!app.convertedApplicantId && justMoved.has(app.id) && <span className="rounded-lg bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">✓ نُقل للمقابلات</span>}
                       {app.hiredStaffId && <span className="rounded-lg bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">موظف مرتبط</span>}

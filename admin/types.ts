@@ -542,6 +542,8 @@ export interface JoinUsApplication {
   education?: string;
   experienceYears?: string;
   experiencePlaces?: string;
+  jobId?: string;
+  jobTitle?: string;
 }
 
 export interface ContactMessage {
