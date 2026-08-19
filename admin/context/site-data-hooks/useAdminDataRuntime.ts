@@ -338,7 +338,23 @@ export function useAdminDataRuntime(state: RuntimeState): void {
         // Polling is best-effort; the last confirmed server state remains visible.
       }
     };
-    const pollId = setInterval(() => void silentRefresh(), 2 * 60 * 1000);
+    // Only poll a tab the user is actually looking at. The interval used to run
+    // regardless of visibility, and each tick re-downloads the whole leads and
+    // subscribers tables: measured against production (18,205 leads) that is
+    // ~1.3 MB of leads alone per tick, 4 requests deep because listAllLeads
+    // pages at 5,000 rows. A 26-minute session with the tab mostly in the
+    // background cost 209 API calls and 14.85 MB, of which /admin/leads was 51
+    // calls and 12.5 MB — 84% of all traffic — for data nobody was on screen to
+    // see. Every one of those also runs a per-row correlated subquery for
+    // communication_count, so the cost lands on the database too.
+    //
+    // Dropping the hidden ticks loses no freshness: the visibilitychange handler
+    // below already refreshes the moment the tab comes back, and it is the same
+    // silentRefresh with the same 90s spacing guard.
+    const pollId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void silentRefresh();
+    }, 2 * 60 * 1000);
     const onVisible = () => {
       if (!cancelled && document.visibilityState === 'visible') void silentRefresh();
     };
