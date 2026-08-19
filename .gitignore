@@ -55,3 +55,6 @@ tmp/
 # Claude local configuration
 Claude-ADMX.zip
 Claude.mobileconfig
+
+# Schema dump for audit:columns — pull a fresh one, never commit a stale shape
+schema.json
