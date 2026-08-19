@@ -3,20 +3,35 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 
-// Auto-reload when a lazy chunk 404s after a new deploy (stale index.html cached by browser).
-// Only reloads once per session to avoid infinite loops.
-window.addEventListener('unhandledrejection', (event) => {
-  const msg: string = (event.reason as Error)?.message ?? '';
+// Auto-reload when a lazy chunk 404s after a new deploy.
+//
+// The guard stops a genuinely missing chunk from looping the tab. But it was
+// set once and never cleared, so it only worked for the first stale chunk in a
+// session — after a second deploy the same tab showed the error and sat there.
+// Clearing it on a successful mount gives each deploy its own single attempt.
+const CHUNK_RELOAD_KEY = '_chunk_reload';
+
+const recoverFromStaleChunk = (message: string) => {
   if (
-    msg.includes('Failed to fetch dynamically imported module') ||
-    msg.includes('Importing a module script failed') ||
-    msg.includes('Unable to preload CSS')
-  ) {
-    if (!sessionStorage.getItem('_chunk_reload')) {
-      sessionStorage.setItem('_chunk_reload', '1');
-      window.location.reload();
-    }
-  }
+    !message.includes('Failed to fetch dynamically imported module') &&
+    !message.includes('Importing a module script failed') &&
+    !message.includes('error loading dynamically imported module') &&
+    !message.includes('Unable to preload CSS')
+  ) return;
+  if (sessionStorage.getItem(CHUNK_RELOAD_KEY)) return;
+  sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+  // Past any cached index.html: the stale document is what points at the chunk
+  // that no longer exists, so re-reading it would fail the same way.
+  const url = new URL(window.location.href);
+  url.searchParams.set('_r', Date.now().toString(36));
+  window.location.replace(url.toString());
+};
+
+window.addEventListener('unhandledrejection', (event) => {
+  recoverFromStaleChunk((event.reason as Error)?.message ?? '');
+});
+window.addEventListener('error', (event) => {
+  recoverFromStaleChunk(event.message ?? '');
 });
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
@@ -28,6 +43,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     .then((registrations) => registrations.forEach((registration) => registration.unregister()))
     .catch(() => {/* SW cleanup optional in dev */});
 }
+
+// Mounted, so the missing chunk is behind us — the next deploy may try again.
+sessionStorage.removeItem(CHUNK_RELOAD_KEY);
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
