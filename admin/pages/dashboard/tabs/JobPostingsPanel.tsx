@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { JobApplicantsPanel } from './JobApplicantsPanel';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Job { id: string; title: string; branch: string | null; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; applicant_count?: number; created_at?: string; }
@@ -25,6 +26,10 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
   // context they're meant for. Not content['institute.branches']: that's a
   // separate, customer-facing list this tenant has never populated.
   const [realBranches, setRealBranches] = useState<{ id: string; label: string; internal_only?: boolean }[]>([]);
+  // Which job we are reviewing applicants for. The count on the card used
+  // to be plain text with no way in, so every decision about a candidate
+  // happened outside the system.
+  const [reviewing, setReviewing] = useState<Job | null>(null);
   useEffect(() => {
     fetch('/api/admin/hr/branches', { credentials: 'include', headers: adminAuthHeaders() })
       .then(r => r.ok ? r.json() : [])
@@ -112,7 +117,13 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{EMP_TYPES.find(e => e[0] === j.employment_type)?.[1] || j.employment_type}</span>
                     {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{branchLabel[j.branch] || j.branch}</span>}
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{j.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
-                    <span className="text-[10px] text-gray-500">{Number(j.applicant_count || 0)} متقدم</span>
+                    <button onClick={() => setReviewing(j)}
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition ${
+                        Number(j.applicant_count || 0) > 0
+                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                      {Number(j.applicant_count || 0)} متقدم — راجعهم
+                    </button>
                     {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
                   </div>
                   {j.description && <p className="text-xs text-gray-500 truncate">{j.description}</p>}
@@ -123,6 +134,16 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
             ))}
           </div>
         )}
+
+      {reviewing && (
+        <JobApplicantsPanel
+          jobId={reviewing.id}
+          jobTitle={reviewing.title || ''}
+          onClose={() => setReviewing(null)}
+          onChanged={load}
+          notify={notify}
+        />
+      )}
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
