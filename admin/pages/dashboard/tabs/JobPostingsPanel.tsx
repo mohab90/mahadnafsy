@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Briefcase, Plus, Trash2, Pencil, X, Loader2 } from 'lucide-react';
+import { Briefcase, Plus, Trash2, Pencil, X, Loader2, ExternalLink, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { JobApplicantsPanel } from './JobApplicantsPanel';
 
@@ -43,6 +43,18 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
     [realBranches],
   );
   const branchLabel = useMemo(() => Object.fromEntries(branchOptions), [branchOptions]);
+
+  // Open postings are the live ones — they are what the public careers page
+  // shows — and among those the ones with people waiting come first. Closed
+  // postings stay reachable but stop competing for attention.
+  const openJobs = useMemo(
+    () => jobs.filter(j => j.status === 'open')
+      .sort((a, b) => Number(b.applicant_count || 0) - Number(a.applicant_count || 0)),
+    [jobs]);
+  const closedJobs = useMemo(() => jobs.filter(j => j.status !== 'open'), [jobs]);
+  const waiting = useMemo(
+    () => openJobs.reduce((sum, j) => sum + Number(j.applicant_count || 0), 0),
+    [openJobs]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -99,6 +111,47 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
   };
 
   const inp = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2';
+
+  const renderJob = (j: Job) => {
+    const count = Number(j.applicant_count || 0);
+    const isOpen = j.status === 'open';
+    return (
+      <div key={j.id} className={`rounded-xl border p-3 ${isOpen ? 'border-gray-200 bg-white' : 'border-gray-100 bg-white/60'}`}>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-gray-800 text-sm">{j.title}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                {isOpen ? 'منشورة على الموقع' : 'مقفولة'}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{EMP_TYPES.find(e => e[0] === j.employment_type)?.[1] || j.employment_type}</span>
+              {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{branchLabel[j.branch] || j.branch}</span>}
+              {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
+            </div>
+            {j.description && <p className="text-xs text-gray-500 truncate mt-0.5">{j.description}</p>}
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <button onClick={() => setReviewing(j)}
+                className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-bold transition ${
+                  count > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                <Users size={11} /> {count > 0 ? `${count} متقدم — راجعهم` : 'مفيش متقدمين لسه'}
+              </button>
+              {isOpen && (
+                <a href="/join-us" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
+                  <ExternalLink size={11} /> شوفها على الموقع
+                </a>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button onClick={() => setEditing(j)} title="تعديل" className="text-gray-400 hover:text-indigo-600 p-1"><Pencil size={14} /></button>
+            <button onClick={() => del(j.id)} title="حذف" className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -106,32 +159,33 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
         <button onClick={() => setEditing(blank())} className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 text-white font-bold flex items-center gap-1"><Plus size={13} /> وظيفة جديدة</button>
       </div>
       {loading ? <div className="text-center py-6 text-gray-400"><Loader2 size={18} className="animate-spin mx-auto" /></div>
-        : jobs.length === 0 ? <div className="text-center py-6 text-gray-400 text-sm">لا توجد وظائف منشورة</div>
-        : (
-          <div className="divide-y divide-gray-50">
-            {jobs.map(j => (
-              <div key={j.id} className="flex items-center gap-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-gray-800 text-sm">{j.title}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{EMP_TYPES.find(e => e[0] === j.employment_type)?.[1] || j.employment_type}</span>
-                    {j.branch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{branchLabel[j.branch] || j.branch}</span>}
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${j.status === 'open' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{j.status === 'open' ? 'مفتوحة' : 'مغلقة'}</span>
-                    <button onClick={() => setReviewing(j)}
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition ${
-                        Number(j.applicant_count || 0) > 0
-                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                      {Number(j.applicant_count || 0)} متقدم — راجعهم
-                    </button>
-                    {(j.salary_min || j.salary_max) && <span className="text-[10px] text-gray-400">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</span>}
-                  </div>
-                  {j.description && <p className="text-xs text-gray-500 truncate">{j.description}</p>}
-                </div>
-                <button onClick={() => setEditing(j)} className="text-gray-400 hover:text-indigo-600 p-1"><Pencil size={14} /></button>
-                <button onClick={() => del(j.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+        : jobs.length === 0 ? (
+          <div className="text-center py-8 text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl">
+            لا توجد وظائف منشورة — اضغط "وظيفة جديدة" وهتظهر على صفحة التوظيف بالموقع فورًا.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {waiting > 0 && (
+              <div className="flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700">
+                <Users size={13} /> {waiting} متقدم مستني مراجعة على {openJobs.length} وظيفة مفتوحة
               </div>
-            ))}
+            )}
+
+            <div className="space-y-2">
+              {openJobs.map(j => renderJob(j))}
+              {openJobs.length === 0 && (
+                <p className="text-xs text-amber-600">مفيش وظيفة مفتوحة دلوقتي — صفحة التوظيف بالموقع هتبان فاضية.</p>
+              )}
+            </div>
+
+            {closedJobs.length > 0 && (
+              <details className="rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2">
+                <summary className="cursor-pointer text-xs font-bold text-gray-500">
+                  وظائف مقفولة ({closedJobs.length}) — مش ظاهرة على الموقع
+                </summary>
+                <div className="mt-2 space-y-2">{closedJobs.map(j => renderJob(j))}</div>
+              </details>
+            )}
           </div>
         )}
 
