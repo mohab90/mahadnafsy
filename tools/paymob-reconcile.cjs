@@ -4,10 +4,31 @@
 // money, and our webhook never landed — so the sale exists at the provider and
 // nowhere in our books. Read-only on both sides.
 // Usage on the server:  cd /var/www/mahad-api && node tools/paymob-reconcile.cjs
-require('dotenv').config({ path: process.env.MAHAD_ENV || '/var/www/mahad-api/.env' });
-const mysql = require('mysql2/promise');
+const path = require('path');
+const { createRequire } = require('module');
+
+// This ships in tools/ but its dependencies live with the API — beside it on
+// the server, one directory over in the repo. `npm run audit:paymob` from the
+// repo root died on a bare "Cannot find module 'dotenv'" stack trace, which
+// reads like the detector is broken rather than pointed at the wrong tree.
+const load = (name) => {
+  try { return require(name); } catch { /* fall through to the API's tree */ }
+  return createRequire(path.join(__dirname, '..', 'api', 'package.json'))(name);
+};
+
+load('dotenv').config({ path: process.env.MAHAD_ENV || '/var/www/mahad-api/.env' });
+const mysql = load('mysql2/promise');
 
 (async () => {
+  // Reconciliation reads the live database and the live Paymob account. Off the
+  // server there is no .env to read, and the failure would otherwise surface as
+  // a connection timeout that says nothing about why.
+  if (!process.env.DB_HOST || !process.env.DB_NAME) {
+    console.error('لا توجد إعدادات قاعدة بيانات — الأداة دي بتتشغّل على السيرفر.');
+    console.error('  ssh <server> "cd /var/www/mahad-api && node tools/paymob-reconcile.cjs"');
+    console.error('أو حدّد ملف بيئة:  MAHAD_ENV=/path/to/.env node tools/paymob-reconcile.cjs');
+    process.exit(2);
+  }
   const c = await mysql.createConnection({
     host: process.env.DB_HOST, user: process.env.DB_USER,
     password: process.env.DB_PASSWORD, database: process.env.DB_NAME,
