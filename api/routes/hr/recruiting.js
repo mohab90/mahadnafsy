@@ -229,7 +229,11 @@ router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, req
     );
     if (Number(usage.count) > 0) {
       await conn.rollback();
-      return res.status(409).json({ error: 'Close the job instead; applicants are linked to it', code: 'JOB_HAS_APPLICANTS' });
+      return res.status(409).json({
+        error: `فيه ${usage.count} متقدم مربوط بالوظيفة دي — اقفلها بدل ما تمسحها عشان سجلّهم ما يضيعش.`,
+        code: 'JOB_HAS_APPLICANTS',
+        applicantCount: Number(usage.count),
+      });
     }
     await writeAuditEvent({
       action: 'hr.job.deleted', entityType: 'job_posting', entityId: req.params.jobId,

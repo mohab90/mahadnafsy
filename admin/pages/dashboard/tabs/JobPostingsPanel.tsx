@@ -67,7 +67,28 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
     if (!window.confirm('حذف هذه الوظيفة؟')) return;
     try {
       const r = await fetch(`/api/admin/hr/jobs/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
-      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || 'فشل الحذف');
+      if (!r.ok) {
+        const body = await r.json().catch(() => null);
+        // A job with applicants is refused on purpose. Offer the thing the
+        // refusal actually recommends instead of reporting a dead end.
+        if (body?.code === 'JOB_HAS_APPLICANTS') {
+          if (window.confirm(`${body.error}
+
+تقفلها دلوقتي؟`)) {
+            const closed = await fetch(`/api/admin/hr/jobs/${id}`, {
+              method: 'PUT', credentials: 'include',
+              headers: { ...adminAuthHeaders(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'closed' }),
+            });
+            if (!closed.ok) throw new Error('تعذر إقفال الوظيفة');
+            notify('success', 'تم إقفال الوظيفة — مش هتظهر على الموقع، وسجل المتقدمين محفوظ');
+            load();
+            return;
+          }
+          return;
+        }
+        throw new Error(body?.error || 'فشل الحذف');
+      }
       notify('success', 'تم الحذف'); load();
     } catch (error) { notify('error', error instanceof Error ? error.message : 'فشل الحذف'); }
   };
