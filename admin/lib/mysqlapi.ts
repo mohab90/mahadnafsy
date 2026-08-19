@@ -21,7 +21,36 @@ const REQUEST_TIMEOUT_MS = 15_000; // admin payloads are larger than client's, a
 const MAX_RETRIES = 1;
 const RETRY_BACKOFF_MS = 1_000;
 
+// Identical GETs that are in flight at the same moment share one request.
+//
+// Measured on a dashboard load: 64 API calls across 37 distinct paths — 42% of
+// them duplicates, with /admin/sales-targets fetched four times. That is not one
+// component misbehaving; five independent call sites ask for it, two of them
+// mount on the same screen, and React's development double-invoke doubles
+// whatever they do. Against the database each duplicate is a real query.
+//
+// Only in-flight requests are shared, never completed ones: the entry is dropped
+// the moment the promise settles, so this removes the pile-up without becoming a
+// cache that can serve stale data.
+//
+// GET only. Two POSTs that look alike are two intended writes.
+const inFlightGets = new Map<string, Promise<unknown>>();
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  if (method === 'GET' && _retry === 0) {
+    const key = `${auth ? 'a' : 'p'}:${path}`;
+    const existing = inFlightGets.get(key);
+    if (existing) return existing as Promise<T>;
+    const request = apiFetchInner<T>(path, options, auth, _retry)
+      .finally(() => { inFlightGets.delete(key); });
+    inFlightGets.set(key, request);
+    return request;
+  }
+  return apiFetchInner<T>(path, options, auth, _retry);
+}
+
+async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),

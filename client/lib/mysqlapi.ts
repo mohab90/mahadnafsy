@@ -25,7 +25,28 @@ class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
+// Identical GETs in flight at the same moment share one request — see the admin
+// client for the measurement that prompted this (42% of a page load's API calls
+// were duplicates). Only in-flight requests are shared, never completed ones, so
+// this removes the pile-up without becoming a cache that can serve stale data.
+// GET only: two POSTs that look alike are two intended writes.
+const inFlightGets = new Map<string, Promise<unknown>>();
+
 async function apiFetch<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  if (method === 'GET' && _retry === 0) {
+    const key = `${auth ? 'a' : 'p'}:${path}`;
+    const existing = inFlightGets.get(key);
+    if (existing) return existing as Promise<T>;
+    const request = apiFetchInner<T>(path, options, auth, _retry)
+      .finally(() => { inFlightGets.delete(key); });
+    inFlightGets.set(key, request);
+    return request;
+  }
+  return apiFetchInner<T>(path, options, auth, _retry);
+}
+
+async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = false, _retry = 0): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
