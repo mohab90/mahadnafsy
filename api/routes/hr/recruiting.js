@@ -264,13 +264,25 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
       params.push(String(req.query.stage));
     }
     const [rows] = await pool.query(
+      // interview_grade / second_interview_grade (migration 199_v25) were missing
+      // from this SELECT, so POST .../grade wrote the letter and returned 200
+      // while the list never sent it back — the grade reached the database and
+      // the screen kept showing "—" forever. From the desk that is
+      // indistinguishable from the grade not saving, which is how it was
+      // reported. The grader joins come too: a grade nobody can attribute is
+      // barely more useful than none.
       `SELECT a.id,a.job_id,a.name,a.email,a.phone,a.cv_url,a.notes,a.stage,a.stage_notes,a.interview_rating,
+              a.interview_grade,a.second_interview_grade,
+              a.interviewed_at,a.second_interviewed_at,
+              g1.name interviewed_by_name,g2.name second_interviewed_by_name,
               a.source,a.source_id,a.specialty,a.applicant_type,a.linkedin,a.hired_staff_id,
               a.created_at,a.updated_at,j.title job_title,j.branch job_branch,
               a.branch applicant_branch,a.education,a.experience_years,a.experience_places,
               a.phone_interview_at,a.phone_interview_result,a.interview_at,a.decided_at
          FROM job_applicants a
          JOIN job_postings j ON j.id=a.job_id AND j.tenant_id=a.tenant_id
+         LEFT JOIN staff g1 ON g1.id=a.interviewed_by AND g1.tenant_id=a.tenant_id
+         LEFT JOIN staff g2 ON g2.id=a.second_interviewed_by AND g2.tenant_id=a.tenant_id
         WHERE a.tenant_id=?${filter}
         ORDER BY a.updated_at DESC,a.created_at DESC LIMIT 500`,
       params
