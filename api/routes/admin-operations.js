@@ -372,9 +372,23 @@ router.delete('/api/admin/join-us/:id', requireAuth, requireAdminOrStaff, requir
       await conn.rollback();
       return res.status(404).json({ error: 'Application not found' });
     }
+    // A converted application used to be undeletable outright. In practice every
+    // application on this tenant is converted the moment it is looked at, so the
+    // delete button could never succeed for any row anyone could see — it always
+    // came back 409 telling the desk to reject instead, which is not the same
+    // thing as removing a duplicate or a test submission.
+    //
+    // Deleting is allowed now, but the recruitment record is NOT destroyed with
+    // it: job_applicants carries the interview history, grades and audit trail,
+    // and that must outlive the website submission it happened to arrive
+    // through. The link is cleared instead, so the applicant survives as a
+    // normally-sourced candidate and nothing is left pointing at a row that no
+    // longer exists.
     if (application.converted_applicant_id) {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Pipeline applications cannot be deleted; reject them instead', code: 'APPLICATION_IN_PIPELINE' });
+      await conn.query(
+        "UPDATE job_applicants SET source='manual', source_id=NULL, updated_by=? WHERE id=? AND tenant_id=?",
+        [req.staffRecord?.id || null, application.converted_applicant_id, scopedTenantId(req)]
+      );
     }
     await conn.query(
       'DELETE FROM join_us_applications WHERE id=? AND tenant_id=?',

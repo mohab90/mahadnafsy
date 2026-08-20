@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2, CalendarCheck, CalendarClock, GraduationCap, Briefcase,
-  Plus, RefreshCw, Trash2, UserCheck, UserPlus, X, XCircle,
+  Phone, Plus, RefreshCw, Trash2, UserCheck, UserPlus, X, XCircle,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../components/shared/PromptModal';
@@ -351,7 +351,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     setBusyId(row.id);
     try {
       await mysqlAdmin.updateHrApplicant(row.id, { stage });
-      notify('success', stage === 'offer' ? `${row.name} → عرض وظيفي` : `${row.name} → مرفوض`);
+      notify('success', stage === 'offer' ? `${row.name} → مقبول للتدريب` : `${row.name} → مرفوض`);
       await load();
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'تعذّر تحديث المرحلة');
@@ -376,6 +376,34 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
 
   const hire = (row: JobApplicant) => setHireFor(row);
 
+  const [contactFor, setContactFor] = useState<JobApplicant | null>(null);
+  const [rejectFor, setRejectFor] = useState<JobApplicant | null>(null);
+
+  const markNoAnswer = async (row: JobApplicant) => {
+    setBusyId(row.id);
+    try {
+      await mysqlAdmin.updateHrApplicant(row.id, { phone_interview_result: 'no_answer' });
+      notify('success', `${row.name} — مسجّل: لا يرد`);
+      setContactFor(null);
+      await load();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر التسجيل');
+    } finally { setBusyId(null); }
+  };
+
+  const rejectWithReason = async (row: JobApplicant, reason: string) => {
+    setBusyId(row.id);
+    try {
+      await mysqlAdmin.updateHrApplicant(row.id, { stage: 'rejected', stage_notes: reason.trim() || undefined });
+      notify('success', `تم رفض ${row.name}`);
+      setRejectFor(null);
+      setContactFor(null);
+      await load();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر حفظ الرفض');
+    } finally { setBusyId(null); }
+  };
+
   const removeApplicant = async (row: JobApplicant) => {
     if (!window.confirm(`حذف ${row.name} من الانترفيوهات نهائيًا؟`)) return;
     setBusyId(row.id);
@@ -393,6 +421,41 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     <div className="space-y-4">
       {/* A letter on its own does not say why, and the reason is what the second
           interviewer actually reads — so it is asked for with the grade. */}
+      {contactFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setContactFor(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-xs space-y-2 rounded-2xl bg-white p-4 shadow-2xl" dir="rtl">
+            <h3 className="text-sm font-bold text-gray-900">نتيجة التواصل — {contactFor.name}</h3>
+            <p className="text-[11px] text-gray-500">اختار اللي حصل في المكالمة.</p>
+            <button disabled={busyId === contactFor.id} onClick={() => markNoAnswer(contactFor)}
+              className="w-full rounded-xl bg-gray-100 px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">
+              لا يرد
+            </button>
+            <button disabled={busyId === contactFor.id} onClick={() => { const r = contactFor; setContactFor(null); void advance(r, 'offer'); }}
+              className="w-full rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40">
+              هينزل تدريب
+            </button>
+            <button disabled={busyId === contactFor.id} onClick={() => setRejectFor(contactFor)}
+              className="w-full rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
+              رفض
+            </button>
+            <button onClick={() => setContactFor(null)}
+              className="w-full rounded-xl px-3 py-2 text-xs font-bold text-gray-400 hover:bg-gray-50">إلغاء</button>
+          </div>
+        </div>
+      )}
+      {rejectFor && (
+        <PromptModal
+          title={`رفض ${rejectFor.name}`}
+          label="سبب الرفض"
+          hint="بيتسجّل على المرشح، وهو اللي هيتقرا لو اتقدّم تاني."
+          confirmLabel="تأكيد الرفض"
+          multiline
+          required
+          busy={busyId === rejectFor.id}
+          onSubmit={reason => { void rejectWithReason(rejectFor, reason); }}
+          onCancel={() => setRejectFor(null)}
+        />
+      )}
       {hireFor && (
         <HireModal
           applicant={hireFor}
@@ -420,7 +483,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
             الانترفيوهات
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            مرشحون وصلوا لمرحلة المقابلة — قيّمهم، سجّل ملاحظاتك، وانقلهم لعرض وظيفي أو تعيين. النقل من طلبات الانضمام بزرار "نقل للمقابلات" هناك.
+            مرشحون وصلوا لمرحلة المقابلة — قيّمهم، سجّل ملاحظاتك، وانقلهم لمقبول للتدريب أو تعيين. النقل من طلبات الانضمام بزرار "نقل للمقابلات" هناك.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -504,7 +567,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${row.stage === 'offer' ? 'bg-amber-100 text-amber-700' : 'bg-violet-100 text-violet-700'}`}>
-                        {row.stage === 'offer' ? 'عرض وظيفي' : 'مقابلة'}
+                        {row.stage === 'offer' ? 'مقبول للتدريب' : 'مقابلة'}
                       </span>
                       <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{row.job_title}</span>
                       {row.source === 'website' && <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs text-blue-700">من الموقع</span>}
@@ -602,15 +665,10 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                     {/* Interviews get moved. Without this the only way to change
                         a date was to go back to the job's applicant list, where
                         this candidate no longer appears. */}
-                    <label className="flex items-center gap-1 rounded-xl border border-gray-200 px-2 py-1.5 text-[11px] font-bold text-gray-600">
-                      <CalendarClock size={12} className="text-indigo-600" />
-                      <input
-                        type="date"
-                        disabled={busyId === row.id}
-                        onChange={e => reschedule(row, e.target.value)}
-                        className="w-[7.5rem] border-0 p-0 text-[11px] focus:outline-none disabled:opacity-40"
-                      />
-                    </label>
+                    <button disabled={busyId === row.id} onClick={() => setContactFor(row)}
+                      className="flex items-center justify-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 disabled:opacity-40">
+                      <Phone size={13} /> تواصل
+                    </button>
                     {/* stage actions */}
                     {/* Shown from the interview stage on. It used to appear only while stage was exactly 'interview', so it vanished the moment anyone used it — and every candidate already past it had no visible path to hiring. */}
                     {(row.stage === 'interview' || row.stage === 'offer') && (
