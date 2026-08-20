@@ -64,7 +64,14 @@ if (archive.status !== 0) throw new Error(archive.stderr.trim() || 'git archive 
 const artifacts = [{ component: 'api', path: artifact }];
 for (const build of requiredBuilds) {
   const target = path.join(artifactDir, `${release}-${build.name}.tgz`);
-  const packed = spawnSync('tar', ['-czf', target, '-C', build.directory, '.'], {
+  // --force-local: `target` is absolute, so on Windows it begins "D:\". GNU tar
+  // treats a leading "host:" as a remote archive spec and tries to resolve a
+  // machine named "D", failing with "Cannot connect to D: resolve failed" and a
+  // broken pipe. That made release:prepare impossible to run on Windows — the
+  // platform this repo is actually developed on — so no release artifact could
+  // be produced locally at all. The flag tells tar the colon is part of a local
+  // filename; it is a no-op for POSIX paths, so CI is unaffected.
+  const packed = spawnSync('tar', ['--force-local', '-czf', target, '-C', build.directory, '.'], {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
