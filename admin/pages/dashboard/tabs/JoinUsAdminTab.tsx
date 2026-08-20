@@ -450,12 +450,12 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                       )}
                     </div>
                     {app.experiencePlaces && (
-                      <p className="mt-1.5 text-[11px] text-gray-500">اشتغل قبل كده: {app.experiencePlaces}</p>
+                      <p title={app.experiencePlaces} className="mt-1 line-clamp-1 text-[11px] text-gray-500">اشتغل قبل كده: {app.experiencePlaces}</p>
                     )}
-                    {app.message && <p className="mt-3 whitespace-pre-line rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">{app.message}</p>}
-                    {app.adminNote && <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">ملاحظة HR: {app.adminNote}</p>}
+                    {app.message && <p title={app.message} className="mt-1.5 line-clamp-2 whitespace-pre-line rounded-lg bg-gray-50 px-2 py-1 text-[11px] text-gray-600">{app.message}</p>}
+                    {app.adminNote && <p title={app.adminNote} className="mt-1 line-clamp-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">ملاحظة HR: {app.adminNote}</p>}
                   </div>
-                  <div className="flex shrink-0 flex-col gap-1.5">
+                  <div className="flex shrink-0 flex-row flex-wrap gap-1.5 sm:flex-col sm:w-40">
                     <select value={appStatus} onChange={event => changeStatus(app, event.target.value as Status)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold">
                       {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
                     </select>
@@ -488,17 +488,20 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                       </div>
                     )}
                     <button onClick={() => editNote(app)} className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100">ملاحظة HR</button>
-                    {!app.convertedApplicantId && (
-                      <button
-                        disabled={movingId === app.id}
-                        onClick={() => moveToInterview(app)}
-                        title="ينقله لصفحة الانترفيوهات لتقييم المقابلة"
-                        className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold disabled:opacity-40 ${
-                          justMoved.has(app.id) ? 'bg-violet-100 text-violet-700' : 'bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
-                      >
-                        <CalendarCheck size={13} /> {movingId === app.id ? 'جارٍ النقل...' : justMoved.has(app.id) ? 'انترفيو ✓' : 'انترفيو'}
-                      </button>
-                    )}
+                    {(() => {
+                      const moved = Boolean(app.convertedApplicantId) || justMoved.has(app.id);
+                      return (
+                        <button
+                          disabled={movingId === app.id || moved}
+                          onClick={() => moveToInterview(app)}
+                          title={moved ? 'المرشح موجود بالفعل في صفحة الانترفيوهات' : 'ينقله لصفحة الانترفيوهات لتقييم المقابلة'}
+                          className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold ${
+                            moved ? 'bg-violet-100 text-violet-700 cursor-default' : 'bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
+                        >
+                          <CalendarCheck size={13} /> {movingId === app.id ? '...' : moved ? 'انترفيو ✓' : 'انترفيو'}
+                        </button>
+                      );
+                    })()}
                     <button disabled={busyId === app.id} onClick={() => remove(app)}
                       title={app.convertedApplicantId ? 'الطلب داخل مسار التوظيف — الحذف هيتم رفضه من السيرفر مع توضيح السبب' : 'حذف الطلب نهائيًا'}
                       className="flex items-center justify-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
