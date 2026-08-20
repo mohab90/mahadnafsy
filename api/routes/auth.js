@@ -1011,13 +1011,33 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
       });
     }
 
-    // Identical session issuance to the password path: rotating the session
-    // invalidates whatever device was signed in before.
-    const session = await rotateSingleSession(pool, { userId: user.id, tenantId, req });
+    // Identical session issuance to the password path — which this comment
+    // already claimed, but the code did not do. Two things were missing, and
+    // both hurt the same person: an operator signing in over WhatsApp OTP.
+    //
+    // Without allowConcurrent the single-device rule applied to them, so an OTP
+    // login evicted whatever session they already had — the admin panel open on
+    // a desktop dies the moment they use OTP on a phone. That rule exists to
+    // stop a paid customer account being shared for course video; staff are
+    // deliberately exempt on the password path.
+    //
+    // Without the isStaff claim, middleware/auth.js cannot tell they are an
+    // operator (it must not query `staff` itself — every staff lookup there goes
+    // through the tenant-scoped helper), so the exemption would not survive the
+    // next refresh even once granted.
+    //
+    // isOperator decides concurrency only. It grants no permission.
+    const isOperator = Boolean(user.is_staff)
+      || ADMIN_EMAILS.some(e => String(e).toLowerCase() === String(user.email || '').toLowerCase())
+      || ADMIN_UIDS.includes(user.id);
+    const session = await rotateSingleSession(pool, {
+      userId: user.id, tenantId, req, allowConcurrent: isOperator,
+    });
     invalidateIdentity(tenantId, user.id, user.email);
     const token = signAccessToken({
       uid: user.id, email: user.email, tenantId,
       sessionVersion: session.sessionVersion, sessionId: session.sessionId, mfaVerified: false,
+      isStaff: isOperator,
     });
     pool.query(
       'UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login = NOW() WHERE id=? AND tenant_id=?',
