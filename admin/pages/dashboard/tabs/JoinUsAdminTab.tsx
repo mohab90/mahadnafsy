@@ -8,6 +8,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 // people applying for one.
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 import type { JoinUsApplication } from '../../../types';
+import PromptModal from '../../../components/shared/PromptModal';
 import {
   EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
@@ -74,6 +75,13 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<{
+    title: string; label: string; hint?: string; placeholder?: string;
+    initialValue?: string; confirmLabel?: string; multiline?: boolean;
+    required?: boolean; validate?: (v: string) => string | null;
+    run: (value: string) => Promise<void> | void;
+  } | null>(null);
 
   // The tab's own data can be minutes stale — the shared bootstrap loads it
   // once at login and only otherwise refreshes on a 2-minute background timer
@@ -133,14 +141,101 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   const changeStatus = async (app: JoinUsApplication, next: Status) =>
     updateJoinUsApplication({ ...app, status: next });
 
-  const editNote = async (app: JoinUsApplication) => {
-    const note = window.prompt('ملاحظة فريق الموارد البشرية:', app.adminNote || '');
-    if (note !== null) await updateJoinUsApplication({ ...app, adminNote: note.trim() || undefined });
+  const editNote = (app: JoinUsApplication) => setPrompt({
+    title: `ملاحظة HR — ${app.name}`,
+    label: 'ملاحظة فريق الموارد البشرية',
+    initialValue: app.adminNote || '',
+    confirmLabel: 'حفظ الملاحظة',
+    multiline: true,
+    run: async note => {
+      setBusyId(app.id);
+      await updateJoinUsApplication({ ...app, adminNote: note.trim() || undefined });
+      setBusyId(null);
+      setPrompt(null);
+    },
+  });
+
+  const openContact = (app: JoinUsApplication) => setPrompt({
+    title: `تسجيل تواصل — ${app.name}`,
+    label: 'ملاحظة عن المكالمة (اختياري)',
+    hint: 'هيتسجّل تاريخ التواصل واسمك، وبعدها تقدر تسجّل قرار القبول أو الرفض.',
+    placeholder: 'مثال: اتصلت وطلب معاودة الاتصال بكرة',
+    confirmLabel: 'تسجيل التواصل',
+    multiline: true,
+    run: note => markContacted(app, note),
+  });
+
+  const openEvaluate = (app: JoinUsApplication, decision: 'ACCEPTED' | 'REJECTED', withDate: boolean) => {
+    if (withDate) {
+      setPrompt({
+        title: `قبول ${app.name} وتحديد موعد`,
+        label: 'موعد المقابلة',
+        hint: 'الصيغة: YYYY-MM-DD HH:MM — مثال 2026-09-01 11:30',
+        placeholder: '2026-09-01 11:30',
+        confirmLabel: 'قبول وتحديد الموعد',
+        required: true,
+        // Checked here so a bad date never leaves the dialog — the field stays
+        // open with the reason instead of the row silently not changing.
+        validate: value => (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(value)
+          ? null : 'الصيغة لازم تكون YYYY-MM-DD HH:MM'),
+        run: interviewAt => evaluate(app, 'ACCEPTED', interviewAt, ''),
+      });
+      return;
+    }
+    setPrompt({
+      title: decision === 'REJECTED' ? `رفض ${app.name}` : `قبول ${app.name} بدون موعد`,
+      label: 'سبب القرار (اختياري)',
+      confirmLabel: decision === 'REJECTED' ? 'تأكيد الرفض' : 'تأكيد القبول',
+      multiline: true,
+      run: note => evaluate(app, decision, undefined, note),
+    });
+  };
+
+  const markContacted = async (app: JoinUsApplication, note: string) => {
+    setBusyId(app.id);
+    try {
+      const result = await mysqlAdmin.contactJoinUs(app.id, note || undefined);
+      setToast({ type: 'success', text: `تم تسجيل التواصل مع ${app.name} — بواسطة ${result.contactedBy}` });
+      setPrompt(null);
+      await reloadJoinUsApplications();
+    } catch (error) {
+      setToast({ type: 'error', text: error instanceof Error ? error.message : 'تعذّر تسجيل التواصل' });
+    } finally { setBusyId(null); }
+  };
+
+  // One call for all three outcomes — رفض، قبول بموعد، قبول بدون موعد — because
+  // they are one decision made after the same phone call.
+  const evaluate = async (
+    app: JoinUsApplication,
+    decision: 'ACCEPTED' | 'REJECTED',
+    interviewAt: string | undefined,
+    note: string,
+  ) => {
+    setBusyId(app.id);
+    try {
+      await mysqlAdmin.evaluateJoinUs(app.id, { decision, interviewAt, body: note || undefined });
+      setToast({
+        type: 'success',
+        text: decision === 'REJECTED' ? `تم رفض ${app.name}`
+          : interviewAt ? `تم قبول ${app.name} — موعد المقابلة ${interviewAt}`
+            : `تم قبول ${app.name} — لم يتحدد موعد بعد`,
+      });
+      setPrompt(null);
+      await reloadJoinUsApplications();
+    } catch (error) {
+      setToast({ type: 'error', text: error instanceof Error ? error.message : 'تعذّر حفظ القرار' });
+    } finally { setBusyId(null); }
   };
 
   const remove = async (app: JoinUsApplication) => {
     if (app.convertedApplicantId) return;
-    if (window.confirm('حذف الطلب غير المرتبط بمسار التوظيف نهائيًا؟')) await deleteJoinUsApplication(app.id);
+    if (!window.confirm('حذف الطلب غير المرتبط بمسار التوظيف نهائيًا؟')) return;
+    setBusyId(app.id);
+    const ok = await deleteJoinUsApplication(app.id);
+    setBusyId(null);
+    setToast(ok
+      ? { type: 'success', text: `تم حذف طلب ${app.name}` }
+      : { type: 'error', text: `تعذّر حذف طلب ${app.name} — راجع صلاحياتك أو حالة الطلب` });
   };
 
   const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
@@ -166,6 +261,22 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
 
   return (
     <div className="space-y-5" dir="rtl">
+      {prompt && (
+        <PromptModal
+          title={prompt.title}
+          label={prompt.label}
+          hint={prompt.hint}
+          placeholder={prompt.placeholder}
+          initialValue={prompt.initialValue}
+          confirmLabel={prompt.confirmLabel}
+          multiline={prompt.multiline}
+          required={prompt.required}
+          validate={prompt.validate}
+          busy={busyId !== null}
+          onSubmit={value => { void prompt.run(value); }}
+          onCancel={() => setPrompt(null)}
+        />
+      )}
       {toast && (
         <div className={`rounded-xl px-4 py-2.5 text-sm font-bold ${
           toast.type === 'error' ? 'border border-red-200 bg-red-50 text-red-700'
@@ -346,6 +457,34 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     <select value={appStatus} onChange={event => changeStatus(app, event.target.value as Status)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold">
                       {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
                     </select>
+                    <button
+                      disabled={busyId === app.id}
+                      onClick={() => openContact(app)}
+                      title={app.contactedAt ? `آخر تواصل: ${app.contactedAt}` : 'تسجيل أنه تم الاتصال بالمتقدم'}
+                      className="flex items-center justify-center gap-1 rounded-xl bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 disabled:opacity-40"
+                    >
+                      <Phone size={13} /> {app.contactedAt ? 'تواصل مرة أخرى' : 'تواصل'}
+                    </button>
+                    {app.contactedAt && (
+                      <div className="rounded-xl border border-gray-200 p-1.5">
+                        <span className="px-1 text-[10px] font-bold text-gray-500">التقييم بعد التواصل</span>
+                        <button disabled={busyId === app.id}
+                          onClick={() => openEvaluate(app, 'ACCEPTED', true)}
+                          className="mt-1 w-full rounded-lg bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700 disabled:opacity-40">
+                          مقبول + تحديد موعد
+                        </button>
+                        <button disabled={busyId === app.id}
+                          onClick={() => openEvaluate(app, 'ACCEPTED', false)}
+                          className="mt-1 w-full rounded-lg bg-emerald-50/60 px-2 py-1.5 text-[11px] font-bold text-emerald-700 disabled:opacity-40">
+                          مقبول بدون موعد
+                        </button>
+                        <button disabled={busyId === app.id}
+                          onClick={() => openEvaluate(app, 'REJECTED', false)}
+                          className="mt-1 w-full rounded-lg bg-red-50 px-2 py-1.5 text-[11px] font-bold text-red-600 disabled:opacity-40">
+                          مرفوض
+                        </button>
+                      </div>
+                    )}
                     <button onClick={() => editNote(app)} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">ملاحظة HR</button>
                     {!app.convertedApplicantId && !justMoved.has(app.id) && (
                       <button

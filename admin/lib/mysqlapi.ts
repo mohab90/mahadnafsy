@@ -587,6 +587,14 @@ export const mysqlAdmin = {
   updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
   hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),
   moveJoinUsToInterview: (id: string) => post(`/admin/hr/join-us/${encodeURIComponent(id)}/to-interview`, {}),
+  contactJoinUs: (id: string, body?: string) =>
+    apiFetch<{ ok: boolean; contactedBy: string }>(
+      `/admin/join-us/${encodeURIComponent(id)}/contact`,
+      { method: 'POST', body: JSON.stringify({ body }) }, A),
+  evaluateJoinUs: (id: string, o: { decision: 'ACCEPTED' | 'REJECTED'; interviewAt?: string; body?: string }) =>
+    apiFetch<{ ok: boolean; status: string; interviewAt: string | null }>(
+      `/admin/join-us/${encodeURIComponent(id)}/evaluate`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
   listHrJobs:       ()             => apiFetch<AR[]>('/admin/hr/jobs', {}, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),
 

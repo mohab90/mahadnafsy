@@ -534,6 +534,11 @@ export interface JoinUsApplication {
   status: 'new' | 'pending' | 'reviewed' | 'accepted' | 'rejected';
   createdAt: string;
   adminNote?: string;
+  // Set by POST /admin/join-us/:id/contact. The decision controls are keyed
+  // off this so they are not offered for an applicant nobody has spoken to.
+  contactedAt?: string;
+  contactedBy?: string;
+  interviewAt?: string;
   convertedApplicantId?: string;
   applicantStage?: 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
   hiredStaffId?: string;
