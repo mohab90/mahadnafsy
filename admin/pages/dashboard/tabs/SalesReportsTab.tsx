@@ -87,7 +87,7 @@ export default function SalesReportsTab() {
             <p className="text-violet-200 text-sm mt-1">تحليل شامل للمبيعات والليدات والإيرادات</p>
           </div>
           <div className="flex gap-1 bg-white/10 rounded-xl p-1">
-            {([['week','أسبوع'], ['month','الشهر'], ['3months','٣ أشهر'], ['all','الكل']] as [Range, string][]).map(([k, l]) => (
+            {([['week','أسبوع'], ['month','الشهر'], ['3months','3 أشهر'], ['all','الكل']] as [Range, string][]).map(([k, l]) => (
               <button key={k} onClick={() => setRange(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${range === k ? 'bg-white text-violet-700' : 'text-white hover:bg-white/20'}`}>{l}</button>
             ))}
           </div>

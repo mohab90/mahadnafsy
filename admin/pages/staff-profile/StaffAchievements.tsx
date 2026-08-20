@@ -42,7 +42,7 @@ export default function StaffAchievements({ data }: { data: StaffProfileData }) 
     } else if (rank.position && rank.position <= 3) {
       out.push({
         icon: '🏅', tone: 'bg-amber-50 border-amber-200 text-amber-800',
-        title: `من أفضل ٣ بالفريق`,
+        title: `من أفضل 3 بالفريق`,
         detail: `المركز ${fmtNum(rank.position)} من ${fmtNum(rank.outOf)}`,
       });
     }

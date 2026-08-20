@@ -94,9 +94,9 @@ const Consultations: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
                         <div className="hidden md:block absolute top-10 left-1/4 right-1/4 h-0.5 bg-gradient-to-r from-primary-200 to-red-200"></div>
                         {[
-                            { step: '١', icon: Search, title: 'اختر المعالج', desc: 'ابحث في نخبة معالجينا المعتمدين واختر من يناسب احتياجك وميزانيتك', color: 'bg-blue-50 text-blue-600' },
-                            { step: '٢', icon: CalendarDays, title: 'حدد موعدك', desc: 'اختر التاريخ والوقت المناسب من جدول المعالج المتاح أو احجز جلسة سريعة فورية', color: 'bg-emerald-50 text-emerald-600' },
-                            { step: '٣', icon: Video, title: 'ابدأ جلستك', desc: 'تأكيد الحجز وإتمام الدفع، ثم احضر جلستك عبر المنصة المحددة في الوقت المناسب', color: 'bg-primary-50 text-primary-600' },
+                            { step: '1', icon: Search, title: 'اختر المعالج', desc: 'ابحث في نخبة معالجينا المعتمدين واختر من يناسب احتياجك وميزانيتك', color: 'bg-blue-50 text-blue-600' },
+                            { step: '2', icon: CalendarDays, title: 'حدد موعدك', desc: 'اختر التاريخ والوقت المناسب من جدول المعالج المتاح أو احجز جلسة سريعة فورية', color: 'bg-emerald-50 text-emerald-600' },
+                            { step: '3', icon: Video, title: 'ابدأ جلستك', desc: 'تأكيد الحجز وإتمام الدفع، ثم احضر جلستك عبر المنصة المحددة في الوقت المناسب', color: 'bg-primary-50 text-primary-600' },
                         ].map(({ step, icon: Icon, title, desc, color }) => (
                             <div key={step} className="flex flex-col items-center text-center p-6 rounded-2xl border border-gray-100 bg-gray-50 relative">
                                 <div className="absolute -top-4 right-1/2 translate-x-1/2 w-8 h-8 bg-white border-2 border-primary-200 rounded-full flex items-center justify-center font-extrabold text-primary-600 text-sm shadow">{step}</div>

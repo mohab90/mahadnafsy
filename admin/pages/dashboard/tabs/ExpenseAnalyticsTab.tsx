@@ -77,7 +77,7 @@ export default function ExpenseAnalyticsTab() {
             <p className="text-red-100 text-sm mt-1">تتبع المصروفات، الإيرادات، وصافي الربح</p>
           </div>
           <div className="flex gap-1 bg-white/10 rounded-xl p-1">
-            {([['month','الشهر'], ['3months','٣ أشهر'], ['6months','٦ أشهر'], ['all','الكل']] as [Range,string][]).map(([k,l]) => (
+            {([['month','الشهر'], ['3months','3 أشهر'], ['6months','6 أشهر'], ['all','الكل']] as [Range,string][]).map(([k,l]) => (
               <button key={k} onClick={() => setRange(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${range === k ? 'bg-white text-red-700' : 'text-white hover:bg-white/20'}`}>{l}</button>
             ))}
           </div>

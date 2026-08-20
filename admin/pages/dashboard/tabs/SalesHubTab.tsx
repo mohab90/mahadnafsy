@@ -195,9 +195,9 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
 
   const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
     { key: 'today', label: 'اليوم' },
-    { key: '7d', label: '٧ أيام' },
+    { key: '7d', label: '7 أيام' },
     { key: 'month', label: 'الشهر' },
-    { key: '30d', label: '٣٠ يوم' },
+    { key: '30d', label: '30 يوم' },
     { key: 'all', label: 'الكل' },
   ];
 

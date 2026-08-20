@@ -80,7 +80,7 @@ export default function StaffPerformanceTab() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex gap-1 bg-white/10 rounded-xl p-1">
-              {([['week','أسبوع'], ['month','الشهر'], ['3months','٣ أشهر'], ['all','الكل']] as [TimeRange,string][]).map(([k,l]) => (
+              {([['week','أسبوع'], ['month','الشهر'], ['3months','3 أشهر'], ['all','الكل']] as [TimeRange,string][]).map(([k,l]) => (
                 <button key={k} onClick={() => setRange(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${range === k ? 'bg-white text-indigo-700' : 'text-white hover:bg-white/20'}`}>{l}</button>
               ))}
             </div>

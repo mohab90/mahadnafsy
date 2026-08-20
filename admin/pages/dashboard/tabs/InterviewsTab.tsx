@@ -511,7 +511,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                       return (
                         <div key={round} className="flex flex-wrap items-center gap-1">
                           <span className="ml-1 w-20 shrink-0 text-[11px] font-bold text-gray-500">
-                            {round === 1 ? 'المقابلة ١:' : 'المقابلة ٢:'}
+                            {round === 1 ? 'المقابلة 1:' : 'المقابلة 2:'}
                           </span>
                           {GRADES.map(g => (
                             <button key={g} disabled={busyId === row.id}

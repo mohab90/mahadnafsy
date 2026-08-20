@@ -295,9 +295,9 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
 
   const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
     { key: 'today', label: 'اليوم' },
-    { key: '7d', label: '٧ أيام' },
+    { key: '7d', label: '7 أيام' },
     { key: 'month', label: 'الشهر' },
-    { key: '30d', label: '٣٠ يوم' },
+    { key: '30d', label: '30 يوم' },
     { key: 'all', label: 'الكل' },
   ];
 
@@ -395,7 +395,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-800 flex items-center gap-1.5">
-                  <BarChart3 size={16} className="text-teal-500" /> إيرادات آخر ٧ أيام
+                  <BarChart3 size={16} className="text-teal-500" /> إيرادات آخر 7 أيام
                 </h3>
                 <span className="text-xs text-gray-400">{fmtMoney(weeklyChartData.reduce((s, d) => s + d.value, 0))} ج</span>
               </div>
@@ -413,7 +413,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-800 flex items-center gap-1.5">
-                  <CreditCard size={16} className="text-cyan-500" /> تحصيل أقساط آخر ٧ أيام
+                  <CreditCard size={16} className="text-cyan-500" /> تحصيل أقساط آخر 7 أيام
                 </h3>
                 <span className="text-xs text-gray-400">{fmtMoney(collectionChartData.reduce((s, d) => s + d.value, 0))} ج</span>
               </div>
