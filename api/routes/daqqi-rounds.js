@@ -23,9 +23,32 @@ function sendRouteError(res, err) {
 // MariaDB DATETIME columns reject ISO-8601 strings ("2026-07-12T03:25:31.525Z")
 // under STRICT_TRANS_TABLES. Normalise any date-ish value to "YYYY-MM-DD HH:MM:SS"
 // (a bare "YYYY-MM-DD" is left as-is, which the column accepts as midnight).
+// Blind slicing was the bug behind "Valid course, start date, lecture count and
+// postponed weeks are required" on every attempt to add clients to a round.
+//
+// The old body was `String(v).slice(0, 19).replace('T', ' ')`, which only works
+// on an ISO string. The schedule tab round-trips a round through the client and
+// sends startDate back as a Date.toString() — "Wed Jun 17 2026 14:14:30
+// GMT+0000 (Coordinated Universal Time)". Slicing that to 19 characters gives
+// "Wed Jun 17 2026 14:", Date.parse rejects it, and the round-level validator
+// then fails the entire save. The desk was only adding attendees; it never
+// touched the course or the start date.
+//
+// Those same mangled values are what render as "Invalid Date" in the list, and
+// why other rows show a raw GMT string — whatever shape went in came back out.
+//
+// Parse properly and emit a real MySQL datetime whatever the input shape is.
 function toMysqlDt(v) {
   if (v == null || v === '') return null;
-  return String(v).slice(0, 19).replace('T', ' ');
+  const text = String(v).trim();
+  // Already 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' — return as-is, so a date-only
+  // value is not shifted a day by the timezone of whoever happens to be saving.
+  if (/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/.test(text)) {
+    return text.slice(0, 19).replace('T', ' ');
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 // Shared by every Dokki-schedule route below — was only actually applied to
@@ -337,9 +360,28 @@ router.post('/api/admin/daqqi-rounds/:roundId/attendance', requireAuth, requireA
       await conn.rollback();
       return res.status(404).json({ error: 'Round not found' });
     }
-    if (round.status !== 'ACTIVE' || Number(round.current_lecture) < 1) {
+    // A round is created NEW with current_lecture 0, and nothing in the schedule
+    // tab moves it on — so taking attendance was impossible for every round the
+    // desk had actually made: always 409, "active round with a current lecture".
+    //
+    // Marking attendance IS the act of starting the session, so treat it that
+    // way instead of demanding someone first find a separate control that does
+    // not exist. A NEW round becomes ACTIVE on its first attendance, and a round
+    // still on lecture 0 moves to lecture 1. A FINISHED round is still refused:
+    // that one is a real state, not a missing step.
+    if (round.status === 'FINISHED') {
       await conn.rollback();
-      return res.status(409).json({ error: 'Attendance can only be marked for an active round with a current lecture' });
+      return res.status(409).json({ error: 'Attendance cannot be marked for a finished round', code: 'ROUND_FINISHED' });
+    }
+    if (round.status !== 'ACTIVE' || Number(round.current_lecture) < 1) {
+      await conn.query(
+        `UPDATE daqqi_rounds
+            SET status='ACTIVE', current_lecture=GREATEST(COALESCE(current_lecture,0),1)
+          WHERE id=? AND tenant_id=?`,
+        [round.id, req.tenantId]
+      );
+      round.status = 'ACTIVE';
+      round.current_lecture = Math.max(Number(round.current_lecture) || 0, 1);
     }
     const sessionNumber = req.body?.sessionNumber === undefined
       ? Number(round.current_lecture)
