@@ -37,7 +37,6 @@ import { useSubscribersDerived } from './dashboard/hooks/useSubscribersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
 import { useCommunityDrafts } from './dashboard/hooks/useCommunityDrafts';
 import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts';
-import { useCsvFbImportState } from './dashboard/hooks/useCsvFbImportState';
 import { useLeadFilters } from './dashboard/useLeadFilters';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { useSubscriberModals } from './dashboard/hooks/useSubscriberModals';
@@ -298,21 +297,7 @@ const Dashboard: React.FC = () => {
   } = useLeadCrmTabState();
 
   const {
-    fbDraft, setFbDraft,
-    bulkUploadNotice, setBulkUploadNotice,
-    csvImportOpen, setCsvImportOpen,
-    csvHeaders, setCsvHeaders,
-    csvImporting, setCsvImporting,
-    fbSyncLoading, setFbSyncLoading,
-    fbSyncNotice, setFbSyncNotice,
-    fbFormsLoading, setFbFormsLoading,
-    fbAvailableForms, setFbAvailableForms,
-    csvRows, setCsvRows,
-    csvMapping, setCsvMapping,
-  } = useCsvFbImportState(fbLeadAdsConfig, defaultFacebookLeadAdsConfig);
-
-  const {
-    leadsSearch, 
+    leadsSearch,
     leadsStatusFilter, 
     leadsFollowupFilter, setLeadsFollowupFilter,
     leadsBranchFilter, 
@@ -754,7 +739,6 @@ const Dashboard: React.FC = () => {
   };
 
   // -- Quick installment plan creator from Dashboard table ------------------
-  // -- General CSV/Facebook lead handlers ------------------------------------
   // Show loading spinner while fetching staff permissions to avoid flash of AccessDenied
   if (!isAdmin && authUser && staffSelfLoading) {
     return <StaffPermissionsLoading />;

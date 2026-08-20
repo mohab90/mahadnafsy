@@ -229,7 +229,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
       { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
-      { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
+      // خطط التقسيط is a tab inside التقارير المالية المتقدمة; the route still works.
       { key: 'subscriptions', label: 'الاشتراكات المتكررة', icon: RotateCcw },
     ],
   },
@@ -274,12 +274,14 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'financial', label: 'النظام المحاسبي', icon: BarChart3 },
       { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
+      // The five reports that used to be listed here individually — balance sheet,
+      // cash flow, recurring expenses, budget-vs-actual and revenue forecast — are
+      // tabs *inside* التقارير المالية المتقدمة (see FinancialReportsHub, which
+      // lazy-loads the exact same components). Listing them here as well meant the
+      // same screen appeared twice in the sidebar under two different entries.
+      // Their routes still work, so bookmarks and deep links are unaffected; they
+      // are simply no longer duplicated in the menu.
       { key: 'financial_reports', label: 'التقارير المالية المتقدمة', icon: BarChart3 },
-      { key: 'balance_sheet', label: 'الميزانية العمومية', icon: BarChart3 },
-      { key: 'cash_flow', label: 'التدفق النقدي', icon: TrendingUp },
-      { key: 'recurring_expenses', label: 'المصاريف المتكررة', icon: RotateCcw },
-      { key: 'budget_tracker', label: 'الميزانية مقابل الفعلي', icon: Target },
-      { key: 'revenue_forecast', label: 'توقعات الإيرادات', icon: TrendingUp },
     ],
   },
   {
@@ -337,21 +339,15 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     icon: Settings2,
     color: 'text-gray-600',
     items: [
+      // مركز الإعدادات already lists every one of these as a card, and it says so
+      // itself: "نقطة الدخول الموحدة للإعدادات ... بدل التنقل بين صفحات متفرقة".
+      // Repeating all fourteen in the sidebar was the exact fragmentation the hub
+      // was built to remove, and it made الإعدادات the largest group in the menu.
+      // Every route still resolves, so links and bookmarks keep working.
       { key: 'settings_hub', label: 'مركز الإعدادات', icon: Settings2 },
-      { key: 'system_settings', label: 'إعدادات الإدارة', icon: Settings2 },
-      { key: 'payment_settings', label: 'بوابات الدفع', icon: CreditCard },
-      { key: 'lead_sources_settings', label: 'مصادر الليد والداتا', icon: UserPlus },
-      { key: 'otp_settings', label: 'OTP والقنوات', icon: Shield },
-      { key: 'sms_settings', label: 'إعدادات SMS', icon: MessageSquareText },
-      { key: 'branch_workspaces', label: 'مساحات عمل الفروع', icon: FolderKanban },
-      { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
-      { key: 'ip_whitelist', label: 'قائمة IP المسموحة', icon: Shield },
-      { key: 'messaging_agent', label: 'عميل المراسلة AI', icon: Bot },
-      { key: 'admin_ai_settings', label: 'إعدادات AI', icon: Settings2 },
+      // Kept out of the hub-only rule on purpose: this one is looked at while
+      // something is actively wrong, so it should not cost an extra click.
       { key: 'server_monitor', label: 'مراقبة السيرفر', icon: Activity },
-      { key: 'webhooks', label: 'Webhooks', icon: Zap },
-      { key: 'security_dashboard', label: 'لوحة الأمان', icon: Shield },
-      { key: 'pg_migrate', label: 'ترحيل قاعدة البيانات', icon: Database },
     ],
   },
 ];
