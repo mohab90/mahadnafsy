@@ -59,7 +59,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
   try {
     const [rounds] = await pool.query(
       `SELECT id, code, course_id, instructor_id, instructor_name, reception_id, reception_name,
-       day_of_week, start_date, time_slot, status, current_lecture, postponed_weeks_json, created_at
+       day_of_week, start_date, time_slot, status, current_lecture, postponed_weeks_json, created_at, room
        FROM daqqi_rounds WHERE tenant_id=? ORDER BY created_at DESC LIMIT 500`,
       [req.tenantId]
     );
@@ -82,6 +82,7 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
       receptionId: r.reception_id || '',
       receptionName: r.reception_name,
       dayOfWeek: r.day_of_week,
+      room: r.room || '',
       startDate: r.start_date ? String(r.start_date).slice(0, 10) : '',
       timeSlot: tsMap[r.time_slot] || 'مساءً',
       status: (r.status || 'NEW').toLowerCase(),
@@ -125,6 +126,11 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     const timeSlot = tsMap[d.timeSlot] || tsMap[d.time_slot] || 'EVENING';
     const status = stMap[(d.status || '').toLowerCase()] || 'NEW';
     const startDate = toMysqlDt(d.startDate || d.start_date || null);
+    // The schedule form has always sent roomName/roomId — there was simply no
+    // column to put them in, so every room the desk picked was dropped on save.
+    // Accept what the UI already sends rather than making it change.
+    const room = String(d.room || d.roomName || d.room_name || d.roomId || '').trim().slice(0, 60) || null;
+    const dayOfWeek = d.dayOfWeek || d.day_of_week || '';
     const postponedWeeks = d.postponedWeeks ?? (() => {
       try { return JSON.parse(d.postponed_weeks_json || '[]'); } catch { return null; }
     })();
@@ -136,6 +142,25 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       throw error;
     }
     const postponedJson = JSON.stringify(postponedWeeks);
+    // A hall can hold one round per weekday slot. Checked here, before any
+    // write, so a clash is refused rather than half-saved. Finished rounds are
+    // excluded — they have released the room — and so is this round itself, so
+    // editing a round does not report a conflict with its own booking. A round
+    // with no room set takes part in no clash: you cannot conflict over a hall
+    // nobody named.
+    if (room) {
+      const [[clash]] = await conn.query(
+        `SELECT id, code FROM daqqi_rounds
+           WHERE tenant_id=? AND room=? AND day_of_week=? AND time_slot=?
+             AND status<>'FINISHED' AND id<>? LIMIT 1`,
+        [req.tenantId, room, dayOfWeek, timeSlot, id]
+      );
+      if (clash) {
+        const error = new Error(`القاعة ${room} محجوزة في نفس اليوم والتوقيت للروند ${clash.code || clash.id}`);
+        error.statusCode = 409;
+        throw error;
+      }
+    }
     const [[course]] = await conn.query(
       'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
       [courseId, req.tenantId]
@@ -206,14 +231,14 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       savedCode = String(existing.code || savedCode);
       await conn.query(
         `UPDATE daqqi_rounds SET course_id=?,instructor_id=?,instructor_name=?,reception_id=?,reception_name=?,
-         day_of_week=?,start_date=?,time_slot=?,status=?,current_lecture=?,postponed_weeks_json=?
+         day_of_week=?,start_date=?,time_slot=?,status=?,current_lecture=?,postponed_weeks_json=?,room=?
          WHERE id=? AND tenant_id=?`,
         [
           courseId, d.instructorId || d.instructor_id || null,
           d.instructorName || d.instructor_name || '', d.receptionId || d.reception_id || null,
-          d.receptionName || d.reception_name || '', d.dayOfWeek || d.day_of_week || '',
+          d.receptionName || d.reception_name || '', dayOfWeek,
           startDate, timeSlot, status,
-          currentLecture, postponedJson, id, req.tenantId,
+          currentLecture, postponedJson, room, id, req.tenantId,
         ]
       );
     } else {
@@ -228,16 +253,16 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       await conn.query(
         `INSERT INTO daqqi_rounds
           (id,code,course_id,instructor_id,instructor_name,reception_id,reception_name,
-           day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,created_at,tenant_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           day_of_week,start_date,time_slot,status,current_lecture,postponed_weeks_json,created_at,room,tenant_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id, code, courseId,
           d.instructorId || d.instructor_id || null, d.instructorName || d.instructor_name || '',
           d.receptionId || d.reception_id || null, d.receptionName || d.reception_name || '',
-          d.dayOfWeek || d.day_of_week || '', startDate, timeSlot, status,
+          dayOfWeek, startDate, timeSlot, status,
           currentLecture, postponedJson,
           toMysqlDt(d.createdAt || new Date().toISOString()),
-          req.tenantId,
+          room, req.tenantId,
         ]
       );
     }
