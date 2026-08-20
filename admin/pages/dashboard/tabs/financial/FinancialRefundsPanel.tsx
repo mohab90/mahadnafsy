@@ -61,7 +61,7 @@ const STATUS_MAP: Record<string, { label: string; icon: React.ReactNode; bg: str
 
 const normalizeStatus = (status?: string) => String(status || '').toUpperCase();
 const num = (value: unknown) => Number(value ?? 0) || 0;
-const money = (value: unknown, currency = 'EGP') => `${num(value).toLocaleString('ar-EG')} ${currency}`;
+const money = (value: unknown, currency = 'EGP') => `${num(value).toLocaleString('ar-EG-u-nu-latn')} ${currency}`;
 const day = (value?: string) => (value ? String(value).slice(0, 10) : '—');
 
 // `branch` scopes both the list and the decision: the finance tab renders this
@@ -256,8 +256,8 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
                     <td className={`${td} text-gray-700`}>{row.course_title || '—'}</td>
                     <td className={`${td} text-gray-600`}>{row.subscriber_branch || '—'}</td>
                     <td className={td}>
-                      <span className="font-bold text-gray-800">{num(row.paid_total).toLocaleString('ar-EG')}</span>
-                      <span className="text-gray-400"> / {num(row.course_total).toLocaleString('ar-EG')}</span>
+                      <span className="font-bold text-gray-800">{num(row.paid_total).toLocaleString('ar-EG-u-nu-latn')}</span>
+                      <span className="text-gray-400"> / {num(row.course_total).toLocaleString('ar-EG-u-nu-latn')}</span>
                     </td>
                     <td className={`${td} font-bold text-amber-700`}>{money(row.amount, row.currency)}</td>
                     <td className={`${td} text-gray-500 whitespace-nowrap`}>

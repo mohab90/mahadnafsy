@@ -88,7 +88,7 @@ function fmtDate(value?: string) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
-  return date.toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' });
+  return date.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function resolveWorkflow(item: InboxItem): { priority: InboxPriority; owner: string; slaLabel: string; slaClass: string } {
@@ -224,7 +224,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
       status: mapStatus(row.status),
       originalStatus: row.status,
       createdAt: row.created_at,
-      amount: `${Math.round(Number(row.amount || 0)).toLocaleString('ar-EG')} ${row.currency || 'EGP'}`,
+      amount: `${Math.round(Number(row.amount || 0)).toLocaleString('ar-EG-u-nu-latn')} ${row.currency || 'EGP'}`,
       raw: row as unknown as Record<string, unknown>,
     }));
 
@@ -469,7 +469,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               كل حاجة مستنية رد من العملاء في مكان واحد: تذاكر الدعم، رسائل التواصل، طلبات الاسترداد، وطلبات الانضمام —
-              بدل ما تفتح ٤ صفحات وتدوّر في كل واحدة. مرتّبة بالأقدم انتظاراً، وكل إجراء (رد · حالة · تصعيد · تحويل · موافقة/رفض) من نفس الشاشة.
+              بدل ما تفتح 4 صفحات وتدوّر في كل واحدة. مرتّبة بالأقدم انتظاراً، وكل إجراء (رد · حالة · تصعيد · تحويل · موافقة/رفض) من نفس الشاشة.
             </p>
           </div>
           <button
@@ -487,12 +487,12 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         {attention.overdue > 0 ? (
           <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-800">
             <AlertCircle size={16} />
-            {attention.overdue} عنصر عدّى ٢٤ ساعة بدون رد — أقدم واحد مستني {attention.oldestHours} ساعة. مرتّبين فوق.
+            {attention.overdue} عنصر عدّى 24 ساعة بدون رد — أقدم واحد مستني {attention.oldestHours} ساعة. مرتّبين فوق.
           </div>
         ) : attention.waiting > 0 ? (
           <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800">
             <Clock size={16} />
-            {attention.waiting} عنصر مستني رد — أقدم واحد من {attention.oldestHours} ساعة. كله داخل الـ٢٤ ساعة.
+            {attention.waiting} عنصر مستني رد — أقدم واحد من {attention.oldestHours} ساعة. كله داخل الـ24 ساعة.
           </div>
         ) : (
           <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800">

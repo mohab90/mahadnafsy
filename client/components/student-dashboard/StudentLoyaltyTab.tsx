@@ -89,7 +89,7 @@ export function StudentLoyaltyTab() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-bold text-white/75">رصيد نقاط الولاء</p>
-            <p className="mt-2 text-4xl font-extrabold">{balance.toLocaleString('ar-EG')}</p>
+            <p className="mt-2 text-4xl font-extrabold">{balance.toLocaleString('ar-EG-u-nu-latn')}</p>
             <p className="mt-1 text-xs text-white/70">تُضاف النقاط تلقائيا مع المدفوعات المؤكدة.</p>
           </div>
           <Award size={44} className="text-white/80" />
@@ -137,10 +137,10 @@ export function StudentLoyaltyTab() {
             {ledger.map(row => (
               <div key={row.id} className="grid grid-cols-[80px_1fr_90px] gap-3 p-4 text-sm">
                 <span className={`font-extrabold ${Number(row.points) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {Number(row.points) > 0 ? '+' : ''}{Number(row.points || 0).toLocaleString('ar-EG')}
+                  {Number(row.points) > 0 ? '+' : ''}{Number(row.points || 0).toLocaleString('ar-EG-u-nu-latn')}
                 </span>
                 <p className="font-bold text-gray-700">{row.reason || 'عملية نقاط'}</p>
-                <p className="text-left text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG') : ''}</p>
+                <p className="text-left text-xs text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleDateString('ar-EG-u-nu-latn') : ''}</p>
               </div>
             ))}
           </div>

@@ -245,9 +245,9 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
 
   const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
     { key: 'today', label: 'اليوم' },
-    { key: '7d', label: '٧ أيام' },
+    { key: '7d', label: '7 أيام' },
     { key: 'month', label: 'الشهر' },
-    { key: '30d', label: '٣٠ يوم' },
+    { key: '30d', label: '30 يوم' },
     { key: 'all', label: 'الكل' },
   ];
 
@@ -335,7 +335,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-800 flex items-center gap-1.5 text-sm">
-                  <UserPlus size={15} className="text-rose-500" /> ليدات آخر ٧ أيام
+                  <UserPlus size={15} className="text-rose-500" /> ليدات آخر 7 أيام
                 </h3>
                 <span className="text-xs text-gray-400 font-bold">{leadsChartData.reduce((s,d)=>s+d.value,0)}</span>
               </div>
@@ -346,7 +346,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-800 flex items-center gap-1.5 text-sm">
-                  <CreditCard size={15} className="text-teal-500" /> إيراد آخر ٧ أيام
+                  <CreditCard size={15} className="text-teal-500" /> إيراد آخر 7 أيام
                 </h3>
                 <span className="text-xs text-gray-400 font-bold">{fmtK(revenueChartData.reduce((s,d)=>s+d.value,0))} ج</span>
               </div>
@@ -357,7 +357,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-800 flex items-center gap-1.5 text-sm">
-                  <CheckCircle size={15} className="text-green-500" /> تحويلات آخر ٧ أيام
+                  <CheckCircle size={15} className="text-green-500" /> تحويلات آخر 7 أيام
                 </h3>
                 <span className="text-xs text-gray-400 font-bold">{convChartData.reduce((s,d)=>s+d.value,0)}</span>
               </div>
@@ -491,7 +491,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
-                  <TrendingUp size={15} className="text-rose-500" /> منحنى الليدات (٧ أيام)
+                  <TrendingUp size={15} className="text-rose-500" /> منحنى الليدات (7 أيام)
                 </h3>
                 <span className="text-xs font-bold text-rose-500">{leadsChartData.reduce((s,d)=>s+d.value,0)} ليد</span>
               </div>
@@ -499,7 +499,7 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
             </div>
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
               <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1.5 mb-3">
-                <CheckCircle size={15} className="text-green-500" /> تحويلات آخر ٧ أيام
+                <CheckCircle size={15} className="text-green-500" /> تحويلات آخر 7 أيام
               </h3>
               <MiniBarChart data={convChartData} color="bg-green-400" height={60} showLabels />
             </div>

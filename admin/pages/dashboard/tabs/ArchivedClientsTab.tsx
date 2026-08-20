@@ -127,7 +127,7 @@ export default function ArchivedClientsTab({ notify }: { notify: Notify }) {
                   {/* Worth showing: a customer who has paid is one you very
                       probably did not mean to archive. */}
                   <td className={`px-4 py-3 font-bold ${Number(row.total_paid) > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
-                    {Number(row.total_paid || 0).toLocaleString('ar-EG')} ج.م
+                    {Number(row.total_paid || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.created_at)}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.deleted_at)}</td>

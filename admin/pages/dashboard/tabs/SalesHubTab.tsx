@@ -195,9 +195,9 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
 
   const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
     { key: 'today', label: 'اليوم' },
-    { key: '7d', label: '٧ أيام' },
+    { key: '7d', label: '7 أيام' },
     { key: 'month', label: 'الشهر' },
-    { key: '30d', label: '٣٠ يوم' },
+    { key: '30d', label: '30 يوم' },
     { key: 'all', label: 'الكل' },
   ];
 
@@ -643,7 +643,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold text-gray-800 text-sm">{post.authorName}</span>
-                      <span className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleDateString('ar-EG')}</span>
+                      <span className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleDateString('ar-EG-u-nu-latn')}</span>
                     </div>
                     <p className="text-gray-700 text-sm leading-relaxed">{post.text}</p>
                     <div className="flex items-center gap-3 mt-2">

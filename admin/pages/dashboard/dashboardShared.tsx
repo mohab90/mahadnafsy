@@ -108,7 +108,7 @@ const blankLead = (): LeadItem => ({
   phone: '',
   source: 'Manual',
   status: 'new',
-  createdAt: new Date().toLocaleString('ar-EG', {
+  createdAt: new Date().toLocaleString('ar-EG-u-nu-latn', {
     hour12: false,
     year: 'numeric',
     month: '2-digit',

@@ -289,7 +289,7 @@ export function DashboardStaffSettingsPanel({
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp size={18} className="text-emerald-600" />
           <h3 className="font-extrabold text-gray-900">تقدمك نحو الهدف الشهري</h3>
-          <span className="mr-auto text-xs text-gray-400">{new Date().toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' })}</span>
+          <span className="mr-auto text-xs text-gray-400">{new Date().toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' })}</span>
         </div>
         <div className="flex items-center gap-6">
           {/* SVG Circle */}
@@ -391,7 +391,7 @@ export function DashboardStaffSettingsPanel({
               </h3>
               <div className="space-y-0 text-sm divide-y divide-gray-50">
                 {([
-                  { label: 'تاريخ التعيين', value: myHrData.staff.hire_date ? new Date(myHrData.staff.hire_date).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+                  { label: 'تاريخ التعيين', value: myHrData.staff.hire_date ? new Date(myHrData.staff.hire_date).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
                   { label: 'القسم', value: myHrData.staff.department_name || '—' },
                   { label: 'نوع التوظيف', value: myHrData.staff.employment_type === 'full_time' ? 'دوام كامل' : myHrData.staff.employment_type === 'part_time' ? 'دوام جزئي' : myHrData.staff.employment_type === 'contractor' ? 'متعاقد' : myHrData.staff.employment_type || '—' },
                   { label: 'الحضور هذا الشهر', value: `${myHrData.attendance.present_days ?? 0} حاضر · ${myHrData.attendance.absent_days ?? 0} غياب · ${myHrData.attendance.late_days ?? 0} متأخر` },
@@ -413,10 +413,10 @@ export function DashboardStaffSettingsPanel({
               {myHrData.salary ? (
                 <div className="space-y-0 text-sm divide-y divide-emerald-100">
                   {([
-                    { label: 'الراتب الأساسي', value: Number(myHrData.salary.base_salary).toLocaleString('ar-EG') + ' ج.م', cls: 'font-bold text-gray-900' },
-                    { label: 'بدل السكن', value: Number(myHrData.salary.housing_allowance || 0).toLocaleString('ar-EG') + ' ج.م', cls: 'text-gray-700' },
-                    { label: 'بدل المواصلات', value: Number(myHrData.salary.transport_allowance || 0).toLocaleString('ar-EG') + ' ج.م', cls: 'text-gray-700' },
-                    { label: 'العمولة (هذا الشهر)', value: Number(myHrData.commission?.thisMonth?.total || 0).toLocaleString('ar-EG') + ' ج.م', cls: 'font-semibold text-emerald-700' },
+                    { label: 'الراتب الأساسي', value: Number(myHrData.salary.base_salary).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', cls: 'font-bold text-gray-900' },
+                    { label: 'بدل السكن', value: Number(myHrData.salary.housing_allowance || 0).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', cls: 'text-gray-700' },
+                    { label: 'بدل المواصلات', value: Number(myHrData.salary.transport_allowance || 0).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', cls: 'text-gray-700' },
+                    { label: 'العمولة (هذا الشهر)', value: Number(myHrData.commission?.thisMonth?.total || 0).toLocaleString('ar-EG-u-nu-latn') + ' ج.م', cls: 'font-semibold text-emerald-700' },
                   ] as { label: string; value: string; cls: string }[]).map(({ label, value, cls }) => (
                     <div key={label} className="flex justify-between items-center py-2">
                       <span className="text-gray-500">{label}</span>
@@ -426,7 +426,7 @@ export function DashboardStaffSettingsPanel({
                   <div className="pt-3 mt-1 flex justify-between items-center">
                     <span className="font-extrabold text-gray-900">الإجمالي المتوقع</span>
                     <span className="text-xl font-black text-emerald-700">
-                      {(Number(myHrData.salary.base_salary) + Number(myHrData.salary.housing_allowance || 0) + Number(myHrData.salary.transport_allowance || 0) + Number(myHrData.commission?.thisMonth?.total || 0)).toLocaleString('ar-EG')} ج.م
+                      {(Number(myHrData.salary.base_salary) + Number(myHrData.salary.housing_allowance || 0) + Number(myHrData.salary.transport_allowance || 0) + Number(myHrData.commission?.thisMonth?.total || 0)).toLocaleString('ar-EG-u-nu-latn')} ج.م
                     </span>
                   </div>
                 </div>
@@ -539,7 +539,7 @@ export function DashboardStaffSettingsPanel({
                       <span className="text-gray-700 font-medium flex-1 truncate">
                         {l.type === 'ANNUAL' ? 'سنوية' : l.type === 'SICK' ? 'مرضية' : l.type === 'EMERGENCY' ? 'طارئ' : l.type === 'UNPAID' ? 'بدون راتب' : l.type === 'PERMISSION' ? 'إذن' : l.type} · {l.total_days} يوم
                       </span>
-                      <span className="text-gray-400 flex-shrink-0">{new Date(l.start_date).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</span>
+                      <span className="text-gray-400 flex-shrink-0">{new Date(l.start_date).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric' })}</span>
                       <span className={`px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${l.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : l.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                         {l.status === 'APPROVED' ? '✓ موافق' : l.status === 'REJECTED' ? '✗ مرفوض' : '⏳ معلق'}
                       </span>
@@ -609,14 +609,14 @@ export function DashboardStaffSettingsPanel({
                   {myAdvances.map(adv => (
                     <div key={adv.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="font-bold text-gray-800">{Number(adv.amount).toLocaleString('ar-EG')} {adv.currency}</div>
+                        <div className="font-bold text-gray-800">{Number(adv.amount).toLocaleString('ar-EG-u-nu-latn')} {adv.currency}</div>
                         {adv.reason && <div className="text-gray-400 mt-0.5 truncate">{adv.reason}</div>}
                       </div>
                       <div className="text-left flex-shrink-0">
                         <span className={`block px-2 py-0.5 rounded-full font-bold text-center ${adv.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : adv.status === 'REJECTED' ? 'bg-red-100 text-red-700' : adv.status === 'DEDUCTED' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
                           {adv.status === 'APPROVED' ? '✓ موافق' : adv.status === 'REJECTED' ? '✗ مرفوض' : adv.status === 'DEDUCTED' ? '✔ تم الخصم' : '⏳ معلق'}
                         </span>
-                        <div className="text-gray-400 mt-0.5 text-center">{new Date(adv.created_at).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</div>
+                        <div className="text-gray-400 mt-0.5 text-center">{new Date(adv.created_at).toLocaleDateString('ar-EG-u-nu-latn', { month: 'short', day: 'numeric' })}</div>
                       </div>
                     </div>
                   ))}
@@ -637,7 +637,7 @@ export function DashboardStaffSettingsPanel({
                         <div>
                           <div className="font-bold text-gray-900">{record.title}</div>
                           <div className="mt-1 text-xs text-gray-500">
-                            {record.incident_date ? new Date(record.incident_date).toLocaleDateString('ar-EG') : ''}
+                            {record.incident_date ? new Date(record.incident_date).toLocaleDateString('ar-EG-u-nu-latn') : ''}
                             {' · '}{record.severity === 'high' ? 'عالية' : record.severity === 'low' ? 'منخفضة' : 'متوسطة'}
                           </div>
                         </div>

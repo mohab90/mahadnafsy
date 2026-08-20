@@ -95,14 +95,14 @@ export function FinancialCommissionsPanel({
                         </div>
                       </td>
                       <td className="py-3 px-4"><span className="bg-primary-100 text-primary-800 px-2 py-0.5 rounded-full text-xs font-bold">{rep.commissionRate}%</span></td>
-                      <td className="py-3 px-4 font-bold text-gray-700">{revenue.toLocaleString('ar-EG')} ج.م</td>
-                      <td className="py-3 px-4"><span className="text-emerald-700 font-extrabold text-base">{commission.toLocaleString('ar-EG')} ج.م</span></td>
+                      <td className="py-3 px-4 font-bold text-gray-700">{revenue.toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                      <td className="py-3 px-4"><span className="text-emerald-700 font-extrabold text-base">{commission.toLocaleString('ar-EG-u-nu-latn')} ج.م</span></td>
                     </tr>
                   ))}
                   <tr className="bg-emerald-50 border-t-2 border-emerald-200 font-bold">
                     <td className="py-3 px-4 text-gray-700" colSpan={2}>الإجمالي</td>
-                    <td className="py-3 px-4 text-gray-700">{commissionsData.reduce((sum, row) => sum + row.revenue, 0).toLocaleString('ar-EG')} ج.م</td>
-                    <td className="py-3 px-4 text-emerald-700 text-lg">{commissionsData.reduce((sum, row) => sum + row.commission, 0).toLocaleString('ar-EG')} ج.م</td>
+                    <td className="py-3 px-4 text-gray-700">{commissionsData.reduce((sum, row) => sum + row.revenue, 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
+                    <td className="py-3 px-4 text-emerald-700 text-lg">{commissionsData.reduce((sum, row) => sum + row.commission, 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</td>
                   </tr>
                 </tbody>
               </table>
@@ -133,11 +133,11 @@ export function FinancialCommissionsPanel({
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-blue-50 rounded-xl p-3 text-center">
                         <p className="text-xs text-blue-600 mb-1">الإيرادات</p>
-                        <p className="font-extrabold text-blue-800 text-sm">{totalRevenue.toLocaleString('ar-EG')} ج.م</p>
+                        <p className="font-extrabold text-blue-800 text-sm">{totalRevenue.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                       </div>
                       <div className="bg-emerald-50 rounded-xl p-3 text-center">
                         <p className="text-xs text-emerald-600 mb-1">العمولة</p>
-                        <p className="font-extrabold text-emerald-800 text-sm">{totalCommission.toLocaleString('ar-EG')} ج.م</p>
+                        <p className="font-extrabold text-emerald-800 text-sm">{totalCommission.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
                       </div>
                     </div>
                   </div>
@@ -165,22 +165,22 @@ export function FinancialCommissionsPanel({
                             <td key={monthRow.month} className="py-3 px-3 text-center">
                               {monthRow.commission > 0 ? (
                                 <div>
-                                  <p className="font-bold text-emerald-700">{monthRow.commission.toLocaleString('ar-EG')}</p>
-                                  <p className="text-[10px] text-gray-400">{monthRow.revenue.toLocaleString('ar-EG')}</p>
+                                  <p className="font-bold text-emerald-700">{monthRow.commission.toLocaleString('ar-EG-u-nu-latn')}</p>
+                                  <p className="text-[10px] text-gray-400">{monthRow.revenue.toLocaleString('ar-EG-u-nu-latn')}</p>
                                 </div>
                               ) : <span className="text-gray-300">—</span>}
                             </td>
                           ))}
-                          <td className="py-3 px-4 font-extrabold text-emerald-700">{totalCommission.toLocaleString('ar-EG')}</td>
+                          <td className="py-3 px-4 font-extrabold text-emerald-700">{totalCommission.toLocaleString('ar-EG-u-nu-latn')}</td>
                         </tr>
                       ))}
                       <tr className="bg-emerald-50 border-t-2 border-emerald-200 font-bold">
                         <td className="py-3 px-4 text-gray-700 sticky right-0 bg-emerald-50">الإجمالي</td>
                         {rangeMonths.map((month) => {
                           const total = rangeCommissionsData.reduce((sum, row) => sum + (row.byMonth.find((item) => item.month === month)?.commission || 0), 0);
-                          return <td key={month} className="py-3 px-3 text-center font-bold text-emerald-700">{total > 0 ? total.toLocaleString('ar-EG') : '—'}</td>;
+                          return <td key={month} className="py-3 px-3 text-center font-bold text-emerald-700">{total > 0 ? total.toLocaleString('ar-EG-u-nu-latn') : '—'}</td>;
                         })}
-                        <td className="py-3 px-4 text-emerald-800 text-base">{rangeCommissionsData.reduce((sum, row) => sum + row.totalCommission, 0).toLocaleString('ar-EG')}</td>
+                        <td className="py-3 px-4 text-emerald-800 text-base">{rangeCommissionsData.reduce((sum, row) => sum + row.totalCommission, 0).toLocaleString('ar-EG-u-nu-latn')}</td>
                       </tr>
                     </tbody>
                   </table>

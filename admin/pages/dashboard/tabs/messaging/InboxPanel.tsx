@@ -274,7 +274,7 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
                 {messengerBlocked && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
                     <Clock size={13} className="shrink-0" />
-                    عدّت ٢٤ ساعة على آخر رسالة من العميل — ماسنجر مش هيقبل رد نصي. ابعت واتساب.
+                    عدّت 24 ساعة على آخر رسالة من العميل — ماسنجر مش هيقبل رد نصي. ابعت واتساب.
                   </p>
                 )}
                 {templates.length > 0 && (

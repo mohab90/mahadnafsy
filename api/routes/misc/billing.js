@@ -223,7 +223,7 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
       <div class="invoice-meta">
         <h2>فاتورة ضريبية</h2>
         <p>رقم الفاتورة: #${invoiceId}</p>
-        <p>التاريخ: ${new Date(payment.created_at).toLocaleDateString('ar-EG')}</p>
+        <p>التاريخ: ${new Date(payment.created_at).toLocaleDateString('ar-EG-u-nu-latn')}</p>
       </div>
     </div>
 
@@ -261,15 +261,15 @@ router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
               ${payment.status === 'paid' ? 'مدفوع' : payment.status === 'pending' ? 'معلق' : status}
             </span>
           </td>
-          <td><strong>${parseFloat(payment.amount || 0).toLocaleString('ar-EG')} ج.م</strong></td>
+          <td><strong>${parseFloat(payment.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</strong></td>
         </tr>
       </tbody>
     </table>
 
     <div class="totals">
-      <div class="total-row"><span>المبلغ الإجمالي</span><span>${parseFloat(payment.amount || 0).toLocaleString('ar-EG')} ج.م</span></div>
+      <div class="total-row"><span>المبلغ الإجمالي</span><span>${parseFloat(payment.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</span></div>
       <div class="total-row"><span>الضريبة (0%)</span><span>0 ج.م</span></div>
-      <div class="total-row grand"><span>الإجمالي المستحق</span><span>${parseFloat(payment.amount || 0).toLocaleString('ar-EG')} ج.م</span></div>
+      <div class="total-row grand"><span>الإجمالي المستحق</span><span>${parseFloat(payment.amount || 0).toLocaleString('ar-EG-u-nu-latn')} ج.م</span></div>
     </div>
 
     <div class="footer">

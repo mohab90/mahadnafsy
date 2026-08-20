@@ -92,7 +92,7 @@ export function AuditLogPanel() {
             <tbody className="divide-y divide-gray-50">
               {auditRows.map(row => (
                 <tr key={row.id} className="hover:bg-gray-50 transition">
-                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{new Date(row.created_at).toLocaleString('ar-EG')}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{new Date(row.created_at).toLocaleString('ar-EG-u-nu-latn')}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-800">{row.subscriber_name || '—'}</div>
                     {row.client_code && <div className="text-xs text-gray-400">{row.client_code}</div>}

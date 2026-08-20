@@ -56,7 +56,7 @@ function downloadLectureNotesAsPdf(lectureTitle: string, courseTitle: string, ht
 <div class="header">
   <div class="course-label">${courseTitle}</div>
   <h1>${lectureTitle}</h1>
-  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+  <div style="font-size:11px;color:#9ca3af;margin-top:4px;">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
 </div>
 ${htmlContent}
 <div class="footer">تم إنشاء هذا المحتوى بالذكاء الاصطناعي — ${courseTitle}</div>

@@ -118,7 +118,7 @@ export default function HrAdvancesPanel({
                 <div className="font-bold text-gray-900">{advance.staff_name}</div>
                 <div className="text-xs text-gray-500">{advance.reason || 'بدون سبب مسجل'}</div>
               </div>
-              <div className="font-black text-gray-800">{Number(advance.amount).toLocaleString('ar-EG')} {advance.currency}</div>
+              <div className="font-black text-gray-800">{Number(advance.amount).toLocaleString('ar-EG-u-nu-latn')} {advance.currency}</div>
               <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-gray-600">{LABELS[advance.status]}</span>
               {!financeMode && advance.status === 'PENDING' && (
                 <div className="flex gap-2">

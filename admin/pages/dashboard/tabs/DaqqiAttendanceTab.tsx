@@ -262,7 +262,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                                   )}
                                 </td>
                                 <td className="px-4 py-2 text-center text-xs text-gray-600">
-                                  {att.amountPaid ? att.amountPaid.toLocaleString('ar-EG') + ' ج' : '—'}
+                                  {att.amountPaid ? att.amountPaid.toLocaleString('ar-EG-u-nu-latn') + ' ج' : '—'}
                                 </td>
                               </tr>
                             ))}

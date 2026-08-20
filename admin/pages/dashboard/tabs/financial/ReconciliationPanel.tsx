@@ -55,7 +55,7 @@ export default function ReconciliationPanel({ branchFilter }: { branchFilter?: s
       {data && <>
         <div className={`flex items-center gap-3 rounded-2xl border p-4 ${data.ok ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
           {data.ok ? <CheckCircle2 className="text-green-600" /> : <AlertTriangle className="text-red-600" />}
-          <div><div className="font-extrabold text-gray-900">{data.ok ? 'المطابقة سليمة' : `${data.criticalCount} مشكلة حرجة تحتاج مراجعة`}</div><div className="text-xs text-gray-500">آخر فحص: {new Date(data.checkedAt).toLocaleString('ar-EG')}</div></div>
+          <div><div className="font-extrabold text-gray-900">{data.ok ? 'المطابقة سليمة' : `${data.criticalCount} مشكلة حرجة تحتاج مراجعة`}</div><div className="text-xs text-gray-500">آخر فحص: {new Date(data.checkedAt).toLocaleString('ar-EG-u-nu-latn')}</div></div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {data.checks.map(check => <article key={check.key} className={`rounded-2xl border bg-white p-4 ${check.count ? (check.severity === 'critical' ? 'border-red-200' : 'border-amber-200') : 'border-gray-200'}`}>

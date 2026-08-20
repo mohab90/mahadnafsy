@@ -28,7 +28,7 @@ type Applicant = {
 };
 
 
-const fmt = (value: string | null) => (value ? new Date(value).toLocaleDateString('ar-EG') : null);
+const fmt = (value: string | null) => (value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn') : null);
 
 /**
  * The applicants for one job, and the decisions you can take on them.

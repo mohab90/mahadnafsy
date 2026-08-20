@@ -87,7 +87,7 @@ const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
     finally { setSaving(false); }
   };
 
-  const format = (n: number) => n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const format = (n: number) => n.toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 0 });
 
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);

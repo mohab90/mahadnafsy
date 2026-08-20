@@ -21,7 +21,7 @@ type HrFile = {
   completeness: number;
 };
 
-const egp = (n: number) => Number(n || 0).toLocaleString('ar-EG');
+const egp = (n: number) => Number(n || 0).toLocaleString('ar-EG-u-nu-latn');
 const monthShort = (period: string) => {
   const [y, m] = period.split('-');
   return `${m}/${String(y).slice(2)}`;

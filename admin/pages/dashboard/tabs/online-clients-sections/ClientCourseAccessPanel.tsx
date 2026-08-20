@@ -24,7 +24,7 @@ type CourseAccess = {
 };
 
 const fmt = (value: string | null) =>
-  value ? new Date(value).toLocaleDateString('ar-EG') : null;
+  value ? new Date(value).toLocaleDateString('ar-EG-u-nu-latn') : null;
 
 const daysLeft = (value: string | null) => {
   if (!value) return null;

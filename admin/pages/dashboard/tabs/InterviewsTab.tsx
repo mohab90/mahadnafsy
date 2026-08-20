@@ -52,7 +52,7 @@ const fmtDateTime = (value: string | null) => {
   if (!value) return null;
   const d = new Date(value.replace(' ', 'T'));
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' });
+  return d.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
 /** Sort key: soonest scheduled interview first, undated candidates after. */

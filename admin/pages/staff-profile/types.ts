@@ -65,7 +65,7 @@ export const monthLabel = (ym: string) => {
   const [year, month] = String(ym || '').split('-');
   const date = new Date(Number(year), Number(month) - 1, 1);
   if (Number.isNaN(date.getTime())) return ym;
-  return date.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
 };
 
 /** Compact axis label — "8/26" */

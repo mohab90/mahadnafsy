@@ -47,7 +47,7 @@ function timeAgo(iso: string): string {
   if (hours < 24) return `منذ ${hours} ساعة`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `منذ ${days} يوم`;
-  return new Date(iso).toLocaleDateString('ar-EG');
+  return new Date(iso).toLocaleDateString('ar-EG-u-nu-latn');
 }
 
 interface NotificationsBellProps {

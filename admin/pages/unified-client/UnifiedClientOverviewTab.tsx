@@ -172,7 +172,7 @@ export function UnifiedClientOverviewTab({
                                 </div>
                                 <div className="shrink-0 text-left">
                                   {event.amount != null && <p className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString()} {event.currency}</p>}
-                                  <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG')}</p>
+                                  <p className="text-[10px] text-slate-400">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn')}</p>
                                 </div>
                               </div>
                             ))}

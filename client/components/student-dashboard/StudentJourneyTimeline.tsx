@@ -65,7 +65,7 @@ export function StudentJourneyTimeline() {
                   </div>
                   {event.amount != null && <span className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString()} {event.currency}</span>}
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">{new Date(event.occurred_at).toLocaleString('ar-EG')}</p>
+                <p className="text-[11px] text-gray-400 mt-1">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn')}</p>
               </div>
             </div>
           );

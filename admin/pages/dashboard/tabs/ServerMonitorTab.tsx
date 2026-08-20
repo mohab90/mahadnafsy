@@ -140,7 +140,7 @@ export default function ServerMonitorTab({ notify }: { notify: NotifyFn }) {
             <h2 className="font-extrabold text-gray-900">مراقبة السيرفر</h2>
             {lastFetch && (
               <p className="text-xs text-gray-400">
-                آخر تحديث: {lastFetch.toLocaleTimeString('ar-EG')} — يتحدث كل 30 ث
+                آخر تحديث: {lastFetch.toLocaleTimeString('ar-EG-u-nu-latn')} — يتحدث كل 30 ث
               </p>
             )}
           </div>

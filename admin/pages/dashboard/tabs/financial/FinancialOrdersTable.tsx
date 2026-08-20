@@ -67,7 +67,7 @@ export function FinancialOrdersTable({
           سجل المدفوعات
           {hasFilters && <span className="mr-2 text-xs bg-primary-100 text-primary-700 rounded-full px-2 py-0.5 font-bold">{filteredRows.length} نتيجة</span>}
         </h4>
-        <span className="text-xs text-gray-400">{filteredRows.length} دفعة · {Math.round(totalFiltered).toLocaleString('ar-EG')} ج.م</span>
+        <span className="text-xs text-gray-400">{filteredRows.length} دفعة · {Math.round(totalFiltered).toLocaleString('ar-EG-u-nu-latn')} ج.م</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -103,7 +103,7 @@ export function FinancialOrdersTable({
                     </span>
                   </td>
                   <td className="px-4 py-3 text-left">
-                    <span className="font-extrabold text-emerald-700 text-sm">{row.amount.toLocaleString('ar-EG')}</span>
+                    <span className="font-extrabold text-emerald-700 text-sm">{row.amount.toLocaleString('ar-EG-u-nu-latn')}</span>
                     <span className="text-[10px] text-gray-400 mr-1">{row.currency}</span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 max-w-[160px] truncate">{row.note !== '—' ? row.note : ''}</td>
@@ -132,7 +132,7 @@ export function FinancialOrdersTable({
             <tfoot>
               <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
                 <td colSpan={5} className="px-4 py-3 text-sm text-gray-600">الإجمالي ({filteredRows.length} دفعة)</td>
-                <td className="px-4 py-3 text-left text-emerald-700 font-extrabold">{Math.round(totalFiltered).toLocaleString('ar-EG')} <span className="text-xs font-normal text-gray-400">ج.م</span></td>
+                <td className="px-4 py-3 text-left text-emerald-700 font-extrabold">{Math.round(totalFiltered).toLocaleString('ar-EG-u-nu-latn')} <span className="text-xs font-normal text-gray-400">ج.م</span></td>
                 <td colSpan={2} />
               </tr>
             </tfoot>

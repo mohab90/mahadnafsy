@@ -228,7 +228,7 @@ const WebhooksTab: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
                 ) : (
                   <span className="text-red-700 flex items-center gap-1"><XCircle size={14} />HTTP {item.last_status || 0}</span>
                 )}
-                {item.last_triggered_at && <div className="text-gray-400 mt-1">{new Date(item.last_triggered_at).toLocaleString('ar-EG')}</div>}
+                {item.last_triggered_at && <div className="text-gray-400 mt-1">{new Date(item.last_triggered_at).toLocaleString('ar-EG-u-nu-latn')}</div>}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => void test(item)} disabled={testingId === item.id} className="p-2 bg-green-50 text-green-700 rounded-lg disabled:opacity-50" aria-label="اختبار">

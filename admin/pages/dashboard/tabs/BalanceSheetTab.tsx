@@ -21,7 +21,7 @@ interface BalanceSheet {
 }
 
 const money = (value: number) =>
-  Number(value || 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 });
+  Number(value || 0).toLocaleString('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 
 const BalanceSheetTab: React.FC<Props> = ({ notify }) => {
   const [asOf, setAsOf] = useState(() => new Date().toISOString().slice(0, 10));

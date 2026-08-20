@@ -33,11 +33,11 @@ export function FinancialInstallmentsPanel({
     <div className="grid grid-cols-3 gap-4">
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
         <p className="text-xs text-amber-700 font-bold mb-1">إجمالي المديونيات</p>
-        <p className="text-xl font-extrabold text-amber-900">{totalOutstanding.toLocaleString('ar-EG')} ج.م</p>
+        <p className="text-xl font-extrabold text-amber-900">{totalOutstanding.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
       </div>
       <div className="bg-red-50 border border-red-200 rounded-xl p-4">
         <p className="text-xs text-red-700 font-bold mb-1">متأخر السداد</p>
-        <p className="text-xl font-extrabold text-red-900">{totalOverdue.toLocaleString('ar-EG')} ج.م</p>
+        <p className="text-xl font-extrabold text-red-900">{totalOverdue.toLocaleString('ar-EG-u-nu-latn')} ج.م</p>
         <p className="text-xs text-red-500 mt-0.5">{overdueEntries.length} دفعة متأخرة</p>
       </div>
       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">

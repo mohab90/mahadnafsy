@@ -57,7 +57,7 @@ const CertificateVerify: React.FC = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-400">تاريخ الإتمام</p>
-                <p className="font-bold text-gray-800">{new Date(cert.completed_at).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p className="font-bold text-gray-800">{new Date(cert.completed_at).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
               </div>
               <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
                 <Award size={16} className="text-amber-500 flex-shrink-0" />

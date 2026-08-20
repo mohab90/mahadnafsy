@@ -44,7 +44,7 @@ const emptyDraft = () => ({
 export const offerValueLabel = (offer: SalesOffer) =>
   offer.valueType === 'percent'
     ? `${offer.value}%`
-    : `${Number(offer.value).toLocaleString('ar-EG')} ج.م`;
+    : `${Number(offer.value).toLocaleString('ar-EG-u-nu-latn')} ج.م`;
 
 export function offerScopeLabel(offer: SalesOffer, catalog: Catalog): string {
   if (offer.scopeType === 'course') {
