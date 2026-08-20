@@ -595,6 +595,10 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; status: string; interviewAt: string | null }>(
       `/admin/join-us/${encodeURIComponent(id)}/evaluate`,
       { method: 'POST', body: JSON.stringify(o) }, A),
+  gradeApplicant: (id: string, o: { grade: string; round?: 1 | 2; body?: string }) =>
+    apiFetch<{ ok: boolean; grade: string; by: string }>(
+      `/admin/hr/applicants/${encodeURIComponent(id)}/grade`,
+      { method: 'POST', body: JSON.stringify(o) }, A),
   listHrJobs:       ()             => apiFetch<AR[]>('/admin/hr/jobs', {}, A),
   createHrApplicant: (jobId: string, o: AR) => post(`/admin/hr/jobs/${encodeURIComponent(jobId)}/applicants`, o),
 

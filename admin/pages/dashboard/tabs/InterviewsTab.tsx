@@ -4,6 +4,7 @@ import {
   Plus, RefreshCw, Star, UserCheck, UserPlus, X, XCircle,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import PromptModal from '../../../components/shared/PromptModal';
 import {
   PHONE_RESULTS, branchLabel, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
@@ -15,6 +16,20 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
 
 type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
+const GRADES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'R', 'W'] as const;
+type Grade = typeof GRADES[number];
+
+const GRADE_STYLE: Record<Grade, string> = {
+  'A+': 'bg-emerald-600 text-white',
+  A: 'bg-emerald-500 text-white',
+  'B+': 'bg-sky-600 text-white',
+  B: 'bg-sky-500 text-white',
+  'C+': 'bg-amber-500 text-white',
+  C: 'bg-amber-400 text-white',
+  R: 'bg-red-600 text-white',
+  W: 'bg-gray-500 text-white',
+};
+
 interface JobApplicant {
   id: string;
   job_id: string;
@@ -25,6 +40,12 @@ interface JobApplicant {
   stage: Stage;
   stage_notes: string | null;
   interview_rating: number | null;
+  interview_grade: Grade | null;
+  second_interview_grade: Grade | null;
+  interviewed_by_name: string | null;
+  second_interviewed_by_name: string | null;
+  interviewed_at: string | null;
+  second_interviewed_at: string | null;
   source: string;
   specialty: string | null;
   applicant_type: string | null;
@@ -173,6 +194,8 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [filters, setFilters] = useState<InterviewFilterState>(emptyInterviewFilters);
+  const [gradeFilter, setGradeFilter] = useState<Grade | 'all' | 'none'>('all');
+  const [gradeFor, setGradeFor] = useState<{ row: JobApplicant; grade: Grade; round: 1 | 2 } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -228,10 +251,37 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           const hay = `${r.name} ${r.phone || ''} ${r.email || ''} ${r.specialty || ''}`.toLowerCase();
           if (!hay.includes(needle)) return false;
         }
+        if (gradeFilter === 'none' && (r.interview_grade || r.second_interview_grade)) return false;
+        if (gradeFilter !== 'all' && gradeFilter !== 'none'
+          && r.interview_grade !== gradeFilter && r.second_interview_grade !== gradeFilter) return false;
         return true;
       })
       .sort((a, b) => scheduleKey(a) - scheduleKey(b));
-  }, [rows, filters]);
+  }, [rows, filters, gradeFilter]);
+
+  const openGrade = (row: JobApplicant, grade: Grade, round: 1 | 2) => setGradeFor({ row, grade, round });
+
+  const setGrade = async (row: JobApplicant, grade: Grade, round: 1 | 2, reason: string) => {
+    setBusyId(row.id);
+    try {
+      const result = await mysqlAdmin.gradeApplicant(row.id, { grade, round, body: reason.trim() || undefined });
+      notify('success', `تم تسجيل تقييم ${result.grade} للمقابلة ${round === 2 ? 'الثانية' : 'الأولى'} — ${result.by}`);
+      setGradeFor(null);
+      await load();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر حفظ التقييم');
+    } finally { setBusyId(null); }
+  };
+
+  const gradeCounts = useMemo(() => {
+    const tally = {} as Record<string, number>;
+    for (const row of rows) {
+      for (const g of [row.interview_grade, row.second_interview_grade]) {
+        if (g) tally[g] = (tally[g] || 0) + 1;
+      }
+    }
+    return tally;
+  }, [rows]);
 
   const setRating = async (row: JobApplicant, rating: number) => {
     setBusyId(row.id);
@@ -304,6 +354,20 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
 
   return (
     <div className="space-y-4">
+      {/* A letter on its own does not say why, and the reason is what the second
+          interviewer actually reads — so it is asked for with the grade. */}
+      {gradeFor && (
+        <PromptModal
+          title={`تقييم ${gradeFor.row.name} — ${gradeFor.grade}`}
+          label={`سبب التقييم (${gradeFor.round === 2 ? 'المقابلة الثانية' : 'المقابلة الأولى'})`}
+          hint="اختياري، لكنه اللي المُقابِل التاني هيقراه."
+          confirmLabel="حفظ التقييم"
+          multiline
+          busy={busyId === gradeFor.row.id}
+          onSubmit={reason => { void setGrade(gradeFor.row, gradeFor.grade, gradeFor.round, reason); }}
+          onCancel={() => setGradeFor(null)}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -344,6 +408,26 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           counts={counts}
           shown={visible.length}
         />
+      )}
+
+      {!loading && rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-gray-100 bg-white p-2.5">
+          <span className="ml-1 text-xs font-bold text-gray-500">فلتر التقييم:</span>
+          <button onClick={() => setGradeFilter('all')}
+            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            الكل ({rows.length})
+          </button>
+          {GRADES.map(g => (
+            <button key={g} onClick={() => setGradeFilter(g)}
+              className={`rounded-lg px-2.5 py-1 text-xs font-black ${gradeFilter === g ? GRADE_STYLE[g] : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              {g}{gradeCounts[g] ? ` (${gradeCounts[g]})` : ''}
+            </button>
+          ))}
+          <button onClick={() => setGradeFilter('none')}
+            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            بدون تقييم
+          </button>
+        </div>
       )}
 
       {loading ? (
@@ -431,6 +515,36 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                           <Star size={18} className={(row.interview_rating || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} />
                         </button>
                       ))}
+                    </div>
+
+                    {/* Letter grade, per interview round */}
+                    <div className="mt-2 space-y-1">
+                      {([1, 2] as const).map(round => {
+                        const current = round === 1 ? row.interview_grade : row.second_interview_grade;
+                        const by = round === 1 ? row.interviewed_by_name : row.second_interviewed_by_name;
+                        const at = round === 1 ? row.interviewed_at : row.second_interviewed_at;
+                        return (
+                          <div key={round} className="flex flex-wrap items-center gap-1">
+                            <span className="ml-1 w-20 shrink-0 text-[11px] font-bold text-gray-500">
+                              {round === 1 ? 'المقابلة 1:' : 'المقابلة 2:'}
+                            </span>
+                            {GRADES.map(g => (
+                              <button key={g} disabled={busyId === row.id}
+                                onClick={() => openGrade(row, g, round)}
+                                title={`تقييم ${g}`}
+                                className={`h-6 min-w-[26px] rounded-md px-1 text-[11px] font-black transition disabled:opacity-40 ${
+                                  current === g ? GRADE_STYLE[g] : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+                                {g}
+                              </button>
+                            ))}
+                            {by && (
+                              <span className="mr-1 text-[10px] text-gray-400">
+                                — {by}{at ? ` · ${String(at).slice(0, 16).replace('T', ' ')}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Notes */}
