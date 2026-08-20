@@ -233,11 +233,21 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
       ? 'الطلب ده مرتبط بمسار التوظيف. هنحاول نحذفه والسيرفر هو اللي هيقرر — تكمل؟'
       : 'حذف الطلب نهائيًا؟')) return;
     setBusyId(app.id);
-    const ok = await deleteJoinUsApplication(app.id);
-    setBusyId(null);
-    setToast(ok
-      ? { type: 'success', text: `تم حذف طلب ${app.name}` }
-      : { type: 'error', text: `تعذّر حذف طلب ${app.name} — راجع صلاحياتك أو حالة الطلب` });
+    try {
+      await deleteJoinUsApplication(app.id);
+      setToast({ type: 'success', text: `تم حذف طلب ${app.name}` });
+    } catch (error) {
+      // The server's own words. It distinguishes "already in the pipeline —
+      // reject it instead" from a permission problem, and each needs a
+      // different action; the old text blamed the internet for both.
+      const reason = error instanceof Error ? error.message : '';
+      setToast({
+        type: 'error',
+        text: /PIPELINE|pipeline/i.test(reason)
+          ? `${app.name} داخل مسار التوظيف — استخدم زر «مرفوض» بدل الحذف`
+          : `تعذّر حذف طلب ${app.name}${reason ? ` — ${reason}` : ''}`,
+      });
+    } finally { setBusyId(null); }
   };
 
   const [justMoved, setJustMoved] = useState<Set<string>>(new Set());

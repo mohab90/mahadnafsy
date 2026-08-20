@@ -447,13 +447,16 @@ export function useCrmCoreState(
     track('update', 'joinUs', item.name);
     return true;
   };
+  // The API refuses a converted application with 409 APPLICATION_IN_PIPELINE and
+  // says to reject it instead. Swallowing that into the generic persist-error
+  // event produced "تحقق من الاتصال بالإنترنت" — blaming the network for a
+  // deliberate, correct refusal. Rethrow so the caller can show the real reason.
   const deleteJoinUsApplication = async (id: string): Promise<boolean> => {
     try {
       await mysqlAdmin.deleteJoinUs(id);
       setJoinUsApplications((prev) => prev.filter((x) => x.id !== id));
-    } catch {
-      window.dispatchEvent(new CustomEvent('site-persist-error', { detail: { field: 'joinUs', name: id } }));
-      return false;
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('تعذّر حذف الطلب');
     }
     track('delete', 'joinUs', id);
     return true;

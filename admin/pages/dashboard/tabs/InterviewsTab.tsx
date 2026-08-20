@@ -612,7 +612,8 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                       />
                     </label>
                     {/* stage actions */}
-                    {row.stage === 'interview' && (
+                    {/* Shown from the interview stage on. It used to appear only while stage was exactly 'interview', so it vanished the moment anyone used it — and every candidate already past it had no visible path to hiring. */}
+                    {(row.stage === 'interview' || row.stage === 'offer') && (
                       <button disabled={busyId === row.id} onClick={() => advance(row, 'offer')}
                         className="flex items-center justify-center gap-1 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
                         عرض وظيفي
