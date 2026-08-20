@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../components/shared/PromptModal';
+import HireModal from './interviews-sections/HireModal';
 import {
   PHONE_RESULTS, branchLabel, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
@@ -193,6 +194,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const [filters, setFilters] = useState<InterviewFilterState>(emptyInterviewFilters);
   const [gradeFilter, setGradeFilter] = useState<Grade | 'all' | 'none'>('all');
   const [gradeFor, setGradeFor] = useState<{ row: JobApplicant; grade: Grade; round: 1 | 2 } | null>(null);
+  const [hireFor, setHireFor] = useState<JobApplicant | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -323,24 +325,21 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     }
   };
 
-  const hire = async (row: JobApplicant) => {
-    if (!window.confirm(`إنشاء سجل موظف غير نشط لـ${row.name}؟ التفعيل خطوة منفصلة من دليل الموظفين.`)) return;
-    setBusyId(row.id);
-    try {
-      await mysqlAdmin.hireHrApplicant(row.id, { branch_id: row.applicant_branch || row.job_branch || undefined });
-      notify('success', `تم إنشاء سجل ${row.name} كموظف — فعّله من دليل الموظفين`);
-      await load();
-    } catch (err) {
-      notify('error', err instanceof Error ? err.message : 'فشل التعيين');
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const hire = (row: JobApplicant) => setHireFor(row);
+
 
   return (
     <div className="space-y-4">
       {/* A letter on its own does not say why, and the reason is what the second
           interviewer actually reads — so it is asked for with the grade. */}
+      {hireFor && (
+        <HireModal
+          applicant={hireFor}
+          notify={notify}
+          onClose={() => setHireFor(null)}
+          onHired={() => { void load(); }}
+        />
+      )}
       {gradeFor && (
         <PromptModal
           title={`تقييم ${gradeFor.row.name} — ${gradeFor.grade}`}
@@ -450,7 +449,30 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                       {row.source === 'website' && <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs text-blue-700">من الموقع</span>}
                       {phone && <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${phone.tone}`}>{phone.label}</span>}
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900">{row.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-bold text-gray-900">{row.name}</h3>
+                      {([1, 2] as const).map(round => {
+                        const current = round === 1 ? row.interview_grade : row.second_interview_grade;
+                        const by = round === 1 ? row.interviewed_by_name : row.second_interviewed_by_name;
+                        const at = round === 1 ? row.interviewed_at : row.second_interviewed_at;
+                        return (
+                          <span key={round} className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-gray-400">{round === 1 ? "م1" : "م2"}</span>
+                            <select
+                              disabled={busyId === row.id}
+                              value={current || ''}
+                              onChange={e => { const g = e.target.value; if (g) openGrade(row, g as Grade, round); }}
+                              title={by ? `${by}${at ? ` · ${String(at).slice(0, 16).replace('T', ' ')}` : ''}` : 'لم يُقيَّم بعد'}
+                              className={`h-6 cursor-pointer rounded-md border-0 px-1 text-[11px] font-black outline-none ${
+                                current ? GRADE_STYLE[current] : 'bg-gray-100 text-gray-500'}`}
+                            >
+                              <option value="">—</option>
+                              {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          </span>
+                        );
+                      })}
+                    </div>
                     <p className="text-sm text-gray-600">{row.specialty || row.applicant_type || '—'}</p>
                     <div className="mt-1 flex flex-wrap gap-4 text-sm text-gray-500">
                       {row.email && <span dir="ltr">{row.email}</span>}
@@ -486,35 +508,13 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                       </p>
                     )}
 
-                    {/* Letter grade, per interview round */}
-                    <div className="mt-2 space-y-1">
-                      {([1, 2] as const).map(round => {
-                        const current = round === 1 ? row.interview_grade : row.second_interview_grade;
-                        const by = round === 1 ? row.interviewed_by_name : row.second_interviewed_by_name;
-                        const at = round === 1 ? row.interviewed_at : row.second_interviewed_at;
-                        return (
-                          <div key={round} className="flex flex-wrap items-center gap-1">
-                            <span className="ml-1 w-20 shrink-0 text-[11px] font-bold text-gray-500">
-                              {round === 1 ? 'المقابلة 1:' : 'المقابلة 2:'}
-                            </span>
-                            {GRADES.map(g => (
-                              <button key={g} disabled={busyId === row.id}
-                                onClick={() => openGrade(row, g, round)}
-                                title={`تقييم ${g}`}
-                                className={`h-6 min-w-[26px] rounded-md px-1 text-[11px] font-black transition disabled:opacity-40 ${
-                                  current === g ? GRADE_STYLE[g] : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                                {g}
-                              </button>
-                            ))}
-                            {by && (
-                              <span className="mr-1 text-[10px] text-gray-400">
-                                — {by}{at ? ` · ${String(at).slice(0, 16).replace('T', ' ')}` : ''}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {(row.interviewed_by_name || row.second_interviewed_by_name) && (
+                      <p className="mt-1 text-[10px] text-gray-400">
+                        {row.interviewed_by_name && `م1: ${row.interviewed_by_name}`}
+                        {row.interviewed_by_name && row.second_interviewed_by_name && ' · '}
+                        {row.second_interviewed_by_name && `م2: ${row.second_interviewed_by_name}`}
+                      </p>
+                    )}
 
                     {/* Notes */}
                     <div className="mt-3 flex items-center gap-2">

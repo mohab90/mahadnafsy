@@ -8,7 +8,7 @@
 #
 # Rolls back automatically if health does not come back.
 set -uo pipefail
-R=mahad-585236f995e4
+R=mahad-b707b859a23e
 TS=$(date +%Y%m%d-%H%M%S)
 
 h()  { curl -s --max-time 15 "http://127.0.0.1:$1/api/health" 2>/dev/null; }
