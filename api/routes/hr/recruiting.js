@@ -321,12 +321,28 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
     }
     const id = uuidv4();
     await conn.beginTransaction(); transactionStarted = true;
+    // A candidate added here used to keep only name/email/phone/cv/notes, while
+    // the website form collects education, years and places of experience,
+    // branch, specialty and applicant type. So the same person looked far
+    // thinner in the list depending on which door they came through, and the
+    // experience and branch filters simply could not see them. These columns all
+    // already exist on job_applicants — nothing was writing them from this path.
+    const clean = value => {
+      const text = String(value ?? '').trim();
+      return text ? text.slice(0, 500) : null;
+    };
     const [created] = await conn.query(
-      `INSERT INTO job_applicants (id, tenant_id, job_id, name, email, phone, cv_url, notes, updated_by)
-       SELECT ?,?,?,?,?,?,?,?,?
+      `INSERT INTO job_applicants (id, tenant_id, job_id, name, email, phone, cv_url, notes,
+                                   education, experience_years, experience_places, branch,
+                                   specialty, applicant_type, linkedin, updated_by)
+       SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
        WHERE EXISTS (SELECT 1 FROM job_postings WHERE id=? AND tenant_id=? AND status IN ('draft','open'))`,
       [id, req.tenantId, req.params.jobId, String(name).trim(), email ? String(email).trim().toLowerCase() : null,
-        phone || null, cv_url || null, notes || null, req.staffRecord?.id || null, req.params.jobId, req.tenantId]
+        phone || null, cv_url || null, notes || null,
+        clean(req.body.education), clean(req.body.experience_years), clean(req.body.experience_places),
+        clean(req.body.branch), clean(req.body.specialty), clean(req.body.applicant_type),
+        clean(req.body.linkedin),
+        req.staffRecord?.id || null, req.params.jobId, req.tenantId]
     );
     if (!created.affectedRows) {
       await conn.rollback(); transactionStarted = false;

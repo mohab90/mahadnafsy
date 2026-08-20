@@ -36,7 +36,9 @@ export const InterviewFilters: React.FC<{
   branches: Option[];
   counts: { all: number; interview: number; offer: number };
   shown: number;
-}> = ({ value, onChange, jobs, branches, counts, shown }) => {
+  /** Rendered inline with the other filters — keeps the grade filter in the same bar. */
+  extra?: React.ReactNode;
+}> = ({ value, onChange, jobs, branches, counts, shown, extra }) => {
   const set = (patch: Partial<InterviewFilterState>) => onChange({ ...value, ...patch });
   const active = interviewFiltersActive(value);
 
@@ -128,6 +130,7 @@ export const InterviewFilters: React.FC<{
             className="w-full rounded-xl border border-gray-200 px-2.5 py-1.5 text-xs"
           />
         </label>
+        {extra}
       </div>
 
       {active && (

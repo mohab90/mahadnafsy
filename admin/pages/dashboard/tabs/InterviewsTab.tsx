@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2, CalendarCheck, CalendarClock, GraduationCap, Briefcase,
-  Plus, RefreshCw, UserCheck, UserPlus, X, XCircle,
+  Plus, RefreshCw, Trash2, UserCheck, UserPlus, X, XCircle,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../components/shared/PromptModal';
@@ -19,6 +19,13 @@ interface Props { notify: NotifyFn; }
 type Stage = 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
 const GRADES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'R', 'W'] as const;
 type Grade = typeof GRADES[number];
+
+const GRADE_TINT: Record<Grade, string> = {
+  'A+': 'bg-emerald-50 text-emerald-700', A: 'bg-emerald-50 text-emerald-600',
+  'B+': 'bg-sky-50 text-sky-700', B: 'bg-sky-50 text-sky-600',
+  'C+': 'bg-amber-50 text-amber-700', C: 'bg-amber-50 text-amber-600',
+  R: 'bg-red-50 text-red-600', W: 'bg-gray-100 text-gray-500',
+};
 
 const GRADE_STYLE: Record<Grade, string> = {
   'A+': 'bg-emerald-600 text-white',
@@ -65,7 +72,11 @@ interface JobApplicant {
 
 interface JobOption { id: string; title: string; status: string; }
 
-const emptyForm = () => ({ jobId: '', name: '', email: '', phone: '', specialty: '', notes: '' });
+// Mirrors what the public application form collects, so a candidate added by
+// hand carries the same detail as one who applied through the website — and
+// shows up correctly under the experience and branch filters.
+const emptyForm = () => ({ jobId: '', name: '', email: '', phone: '', specialty: '',
+  education: '', experienceYears: '', experiencePlaces: '', branch: '', notes: '' });
 
 const fmtDateTime = (value: string | null) => {
   if (!value) return null;
@@ -110,7 +121,14 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
         name: form.name.trim(),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
-        notes: [form.specialty.trim() ? `التخصص: ${form.specialty.trim()}` : '', form.notes.trim()].filter(Boolean).join('\n') || undefined,
+        // Sent as real columns rather than glued into the notes text, so the
+        // experience and branch filters can actually see a hand-added candidate.
+        specialty: form.specialty.trim() || undefined,
+        education: form.education.trim() || undefined,
+        experience_years: form.experienceYears || undefined,
+        experience_places: form.experiencePlaces.trim() || undefined,
+        branch: form.branch.trim() || undefined,
+        notes: form.notes.trim() || undefined,
         stage: 'interview',
       });
       notify('success', `تمت إضافة ${form.name.trim()} مباشرة في مرحلة المقابلة`);
@@ -161,6 +179,37 @@ const AddInterviewModal: React.FC<{ notify: NotifyFn; onClose: () => void; onAdd
         <div>
           <label className="mb-1 block text-xs font-bold text-gray-600">التخصص</label>
           <input value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-bold text-gray-600">المؤهل</label>
+            <input value={form.education} onChange={e => setForm(f => ({ ...f, education: e.target.value }))}
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold text-gray-600">سنين الخبرة</label>
+            <select value={form.experienceYears} onChange={e => setForm(f => ({ ...f, experienceYears: e.target.value }))}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
+              <option value="">—</option>
+              <option value="none">بدون خبرة</option>
+              <option value="under_1">أقل من سنة</option>
+              <option value="1_3">1 – 3 سنوات</option>
+              <option value="3_5">3 – 5 سنوات</option>
+              <option value="5_10">5 – 10 سنوات</option>
+              <option value="over_10">أكثر من 10 سنوات</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-bold text-gray-600">أماكن الخبرة السابقة</label>
+          <input value={form.experiencePlaces} onChange={e => setForm(f => ({ ...f, experiencePlaces: e.target.value }))}
+            placeholder="مثال: شركة كذا، مركز كذا"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-bold text-gray-600">الفرع</label>
+          <input value={form.branch} onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}
             className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
         </div>
         <div>
@@ -327,6 +376,18 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
 
   const hire = (row: JobApplicant) => setHireFor(row);
 
+  const removeApplicant = async (row: JobApplicant) => {
+    if (!window.confirm(`حذف ${row.name} من الانترفيوهات نهائيًا؟`)) return;
+    setBusyId(row.id);
+    try {
+      await mysqlAdmin.deleteHrApplicant(row.id);
+      notify('success', `تم حذف ${row.name}`);
+      await load();
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذّر الحذف');
+    } finally { setBusyId(null); }
+  };
+
 
   return (
     <div className="space-y-4">
@@ -391,28 +452,28 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           branches={branchOptions}
           counts={counts}
           shown={visible.length}
+          extra={(
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="ml-1 text-xs font-bold text-gray-500">التقييم:</span>
+              <button type="button" onClick={() => setGradeFilter('all')}
+                className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                الكل ({rows.length})
+              </button>
+              {GRADES.map(g => (
+                <button type="button" key={g} onClick={() => setGradeFilter(g)}
+                  className={`rounded-md px-2 py-0.5 text-[11px] font-black ${gradeFilter === g ? GRADE_STYLE[g] : `${GRADE_TINT[g]} hover:brightness-95`}`}>
+                  {g}{gradeCounts[g] ? ` (${gradeCounts[g]})` : ''}
+                </button>
+              ))}
+              <button type="button" onClick={() => setGradeFilter('none')}
+                className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                بدون
+              </button>
+            </div>
+          )}
         />
       )}
 
-      {!loading && rows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-gray-100 bg-white p-2.5">
-          <span className="ml-1 text-xs font-bold text-gray-500">فلتر التقييم:</span>
-          <button onClick={() => setGradeFilter('all')}
-            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${gradeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            الكل ({rows.length})
-          </button>
-          {GRADES.map(g => (
-            <button key={g} onClick={() => setGradeFilter(g)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-black ${gradeFilter === g ? GRADE_STYLE[g] : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              {g}{gradeCounts[g] ? ` (${gradeCounts[g]})` : ''}
-            </button>
-          ))}
-          <button onClick={() => setGradeFilter('none')}
-            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${gradeFilter === 'none' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            بدون تقييم
-          </button>
-        </div>
-      )}
 
       {loading ? (
         <div className="rounded-2xl border border-gray-100 bg-white py-10 text-center text-sm font-bold text-gray-400">
@@ -474,6 +535,9 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                       })}
                     </div>
                     <p className="text-sm text-gray-600">{row.specialty || row.applicant_type || '—'}</p>
+                    <p className="mt-0.5 text-[10px] text-gray-400">
+                      أُضيف: {fmtDateTime(row.created_at) || '—'}
+                    </p>
                     <div className="mt-1 flex flex-wrap gap-4 text-sm text-gray-500">
                       {row.email && <span dir="ltr">{row.email}</span>}
                       {row.phone && <span dir="ltr">{row.phone}</span>}
@@ -547,6 +611,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                         className="w-[7.5rem] border-0 p-0 text-[11px] focus:outline-none disabled:opacity-40"
                       />
                     </label>
+                    {/* stage actions */}
                     {row.stage === 'interview' && (
                       <button disabled={busyId === row.id} onClick={() => advance(row, 'offer')}
                         className="flex items-center justify-center gap-1 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
@@ -559,6 +624,11 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                         <UserCheck size={13} /> تعيين
                       </button>
                     )}
+                    <button disabled={busyId === row.id} onClick={() => removeApplicant(row)}
+                      title="حذف نهائي من الانترفيوهات"
+                      className="flex items-center justify-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-40">
+                      <Trash2 size={13} /> حذف
+                    </button>
                     <button disabled={busyId === row.id} onClick={() => advance(row, 'rejected')}
                       className="flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
                       <XCircle size={13} /> رفض
