@@ -228,8 +228,10 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   };
 
   const remove = async (app: JoinUsApplication) => {
-    if (app.convertedApplicantId) return;
-    if (!window.confirm('حذف الطلب غير المرتبط بمسار التوظيف نهائيًا؟')) return;
+    const linked = Boolean(app.convertedApplicantId);
+    if (!window.confirm(linked
+      ? 'الطلب ده مرتبط بمسار التوظيف. هنحاول نحذفه والسيرفر هو اللي هيقرر — تكمل؟'
+      : 'حذف الطلب نهائيًا؟')) return;
     setBusyId(app.id);
     const ok = await deleteJoinUsApplication(app.id);
     setBusyId(null);
@@ -403,8 +405,8 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
           {rows.map(app => {
             const appStatus = statusOf(app.status);
             return (
-              <article key={app.id} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <article key={app.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${STATUS[appStatus].className}`}>{STATUS[appStatus].label}</span>
@@ -416,7 +418,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     </div>
                     <h3 className="text-lg font-bold text-gray-900">{app.name}</h3>
                     <p className="text-sm text-gray-600">{app.specialty}</p>
-                    <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500">
                       <span className="flex items-center gap-1"><Mail size={13} /> {app.email}</span>
                       <span className="flex items-center gap-1"><Phone size={13} /> {app.phone}</span>
                       <span>{app.createdAt?.slice(0, 10)}</span>
@@ -453,7 +455,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     {app.message && <p className="mt-3 whitespace-pre-line rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-600">{app.message}</p>}
                     {app.adminNote && <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">ملاحظة HR: {app.adminNote}</p>}
                   </div>
-                  <div className="flex shrink-0 flex-col gap-2">
+                  <div className="flex shrink-0 flex-col gap-1.5">
                     <select value={appStatus} onChange={event => changeStatus(app, event.target.value as Status)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold">
                       {(Object.keys(STATUS) as Status[]).map(key => <option key={key} value={key}>{STATUS[key].label}</option>)}
                     </select>
@@ -485,21 +487,22 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                         </button>
                       </div>
                     )}
-                    <button onClick={() => editNote(app)} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">ملاحظة HR</button>
-                    {!app.convertedApplicantId && !justMoved.has(app.id) && (
+                    <button onClick={() => editNote(app)} className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100">ملاحظة HR</button>
+                    {!app.convertedApplicantId && (
                       <button
                         disabled={movingId === app.id}
                         onClick={() => moveToInterview(app)}
-                        title="ينقله لقسم الانترفيوهات لتقييم المقابلة"
-                        className="flex items-center justify-center gap-1 rounded-xl bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 disabled:opacity-40"
+                        title="ينقله لصفحة الانترفيوهات لتقييم المقابلة"
+                        className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold disabled:opacity-40 ${
+                          justMoved.has(app.id) ? 'bg-violet-100 text-violet-700' : 'bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
                       >
-                        <CalendarCheck size={13} /> {movingId === app.id ? 'جارٍ النقل...' : 'نقل للمقابلات'}
+                        <CalendarCheck size={13} /> {movingId === app.id ? 'جارٍ النقل...' : justMoved.has(app.id) ? 'انترفيو ✓' : 'انترفيو'}
                       </button>
                     )}
-                    <button disabled={Boolean(app.convertedApplicantId)} onClick={() => remove(app)}
-                      title={app.convertedApplicantId ? 'الطلب جزء من سجل التوظيف ولا يمكن حذفه' : undefined}
-                      className="flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-40">
-                      <Trash2 size={13} /> حذف
+                    <button disabled={busyId === app.id} onClick={() => remove(app)}
+                      title={app.convertedApplicantId ? 'الطلب داخل مسار التوظيف — الحذف هيتم رفضه من السيرفر مع توضيح السبب' : 'حذف الطلب نهائيًا'}
+                      className="flex items-center justify-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-40">
+                      <Trash2 size={13} /> {busyId === app.id ? '...' : 'حذف'}
                     </button>
                   </div>
                 </div>

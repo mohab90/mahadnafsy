@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2, CalendarCheck, CalendarClock, GraduationCap, Briefcase,
-  Plus, RefreshCw, Star, UserCheck, UserPlus, X, XCircle,
+  Plus, RefreshCw, UserCheck, UserPlus, X, XCircle,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../components/shared/PromptModal';
@@ -39,7 +39,6 @@ interface JobApplicant {
   notes: string | null;
   stage: Stage;
   stage_notes: string | null;
-  interview_rating: number | null;
   interview_grade: Grade | null;
   second_interview_grade: Grade | null;
   interviewed_by_name: string | null;
@@ -62,8 +61,6 @@ interface JobApplicant {
   phone_interview_result: 'passed' | 'failed' | 'no_answer' | null;
   interview_at: string | null;
 }
-
-const STARS = [1, 2, 3, 4, 5] as const;
 
 interface JobOption { id: string; title: string; status: string; }
 
@@ -283,18 +280,6 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     return tally;
   }, [rows]);
 
-  const setRating = async (row: JobApplicant, rating: number) => {
-    setBusyId(row.id);
-    try {
-      await mysqlAdmin.updateHrApplicant(row.id, { interview_rating: row.interview_rating === rating ? null : rating });
-      notify('success', 'تم تسجيل التقييم');
-      await load();
-    } catch (err) {
-      notify('error', err instanceof Error ? err.message : 'تعذّر حفظ التقييم');
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   const saveNote = async (row: JobApplicant) => {
     const note = noteDraft[row.id];
@@ -454,7 +439,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
             const phone = row.phone_interview_result ? PHONE_RESULTS[row.phone_interview_result] : null;
             const branch = row.applicant_branch || row.job_branch;
             return (
-              <article key={row.id} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <article key={row.id} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -500,22 +485,6 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
                         اشتغل قبل كده: {row.experience_places}
                       </p>
                     )}
-
-                    {/* Rating */}
-                    <div className="mt-3 flex items-center gap-1">
-                      <span className="text-xs font-bold text-gray-500 ml-1">التقييم:</span>
-                      {STARS.map(n => (
-                        <button
-                          key={n}
-                          disabled={busyId === row.id}
-                          onClick={() => setRating(row, n)}
-                          title={`${n} من 5`}
-                          className="disabled:opacity-40"
-                        >
-                          <Star size={18} className={(row.interview_rating || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} />
-                        </button>
-                      ))}
-                    </div>
 
                     {/* Letter grade, per interview round */}
                     <div className="mt-2 space-y-1">
