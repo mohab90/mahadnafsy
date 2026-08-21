@@ -8,9 +8,23 @@ import { defineConfig, devices } from '@playwright/test';
  *   ADMIN_BASE_URL  admin dashboard     (default http://127.0.0.1:4000)
  *   API_BASE_URL    REST API            (default http://127.0.0.1:3001)
  *   TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD  → enable the admin-login spec
+ *   E2E_BASIC_AUTH  user:pass   → the nginx gate in front of staging
  *
  * Run:  npm run test:e2e         (after `npx playwright install --with-deps`)
+ *
+ * Targeting staging: admin-staging.mahadnafsy.com has no public DNS record and
+ * sits behind HTTP Basic auth (realm "Mahad staging"), so pointing ADMIN_BASE_URL
+ * at it is not enough on its own. Map the name in the OS hosts file — both
+ * Chromium and the Node-side request context read it, whereas Chromium launch
+ * flags would only fix page navigations and leave page.request failing to
+ * resolve — and pass the gate credentials through E2E_BASIC_AUTH.
  */
+const basicAuth = (process.env.E2E_BASIC_AUTH || '').trim();
+const gateIndex = basicAuth.indexOf(':');
+const httpCredentials = gateIndex > 0
+  ? { username: basicAuth.slice(0, gateIndex), password: basicAuth.slice(gateIndex + 1) }
+  : undefined;
+
 export default defineConfig({
   testDir: './tests',
   // Staff accounts intentionally allow one active session. Serial browser tests
@@ -27,6 +41,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     ignoreHTTPSErrors: true,
+    ...(httpCredentials ? { httpCredentials } : {}),
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
