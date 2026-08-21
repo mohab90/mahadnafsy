@@ -5,7 +5,7 @@ import OldDataImportPanel from '../online/OldDataImportPanel';
 import type { SubscriberSavePayload } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl';
+type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
 
 interface Props {
   collOnlineViewTab: ViewTabKey;

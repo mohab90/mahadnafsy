@@ -17,8 +17,11 @@ import { type PaymentDraft } from '../../../components/PaymentModal';
 // Kept beside the component so the URL parser and the tab strip agree on what
 // a valid view is; an unknown ?view= falls back to 'active' rather than
 // rendering an empty table.
-type OnlineViewTab = 'active' | 'real-local' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'old_intl';
-const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl'];
+type OnlineViewTab = 'active' | 'real-local' | 'real-intl' | 'finished' | 'paused' | 'refunded' | 'old_data' | 'old_local' | 'old_intl' | 'booked2024' | 'booked2025';
+const ONLINE_VIEW_TABS: OnlineViewTab[] = ['active', 'real-local', 'real-intl', 'finished', 'paused', 'refunded', 'old_data', 'old_local', 'old_intl', 'booked2024', 'booked2025'];
+// The Dokki cohort tabs. Keyed rather than parsed out of the tab name so adding
+// عملاء 26 next year is one entry here plus one in ViewTabsBar.
+const BOOKING_YEAR_TABS: Partial<Record<OnlineViewTab, number>> = { booked2024: 2024, booked2025: 2025 };
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { OnlineClientCourseDetailsModal } from './OnlineClientCourseDetailsModal';
 import { OnlineClientConvertModal, type OnlineClientConvertType } from './OnlineClientConvertModal';
@@ -174,6 +177,30 @@ export default function OnlineClientsTab({
                   });
                 });
               }
+              // سنة الحجز — the year a client was booked into a round, off
+              // attendee.bookedAt. A client can be booked into more than one
+              // round, so a cohort tab shows everyone booked that year rather
+              // than only first-timers.
+              const bookingYearsById = new Map<string, Set<number>>();
+              if (isDaqqiClientsTab) {
+                (salesOwnDaqqiRounds ?? []).forEach((round: DaqqiRound) => {
+                  (round.attendees ?? []).forEach((att: DaqqiRoundAttendee) => {
+                    const year = Number(String(att.bookedAt || '').slice(0, 4));
+                    if (!Number.isInteger(year) || year < 1900) return;
+                    const years = bookingYearsById.get(att.subscriberId) || new Set<number>();
+                    years.add(year);
+                    bookingYearsById.set(att.subscriberId, years);
+                  });
+                });
+              }
+              // A client not yet placed in any round has no booking date at all,
+              // so their registration year stands in — otherwise every unhoused
+              // client would be missing from both cohorts.
+              const bookedInYear = (s: SubscriberItem, year: number) => {
+                const booked = bookingYearsById.get(s.id);
+                if (booked?.size) return booked.has(year);
+                return Number(String(s.createdAt || '').slice(0, 4)) === year;
+              };
               const isIntlSub = isInternationalSubscriber;
               // «عملائي» = subscribers personally converted by this collection employee
               const myCollLeadIds = new Set(
@@ -223,6 +250,10 @@ export default function OnlineClientsTab({
                   if (s.isActive === false) return false;
                   if (['finished','paused','refunded','refund_pending'].includes(clientSt)) return false;
                   if ((s.enrolledCourseIds||[]).length === 0) return false;
+                } else if (BOOKING_YEAR_TABS[collOnlineViewTab]) {
+                  // A cohort, not a lifecycle state: everyone booked that year,
+                  // whatever their status happens to be now.
+                  if (!bookedInYear(s, BOOKING_YEAR_TABS[collOnlineViewTab] as number)) return false;
                 } else {
                   if (collOnlineViewTab === 'refunded') {
                     if (clientSt !== 'refunded' && clientSt !== 'refund_pending') return false;
@@ -323,6 +354,7 @@ export default function OnlineClientsTab({
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}
                     isIntlSub={isIntlSub}
+                    bookedInYear={bookedInYear}
                     collOnlineViewTab={collOnlineViewTab}
                     setCollOnlineViewTab={setCollOnlineViewTab}
                     setCollOnlinePage={setCollOnlinePage}

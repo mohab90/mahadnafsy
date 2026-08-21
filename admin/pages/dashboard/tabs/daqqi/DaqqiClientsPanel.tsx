@@ -1,31 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftRight, CreditCard, Eye, MessageCircle, Phone, Search, Upload, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeftRight, CreditCard, Eye, MessageCircle, Phone, Search, UserPlus, Users, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import type { DaqqiRound, SubscriberItem } from '../../../../types';
 import { toDialable } from '../../../../lib/whatsappLink';
-import { DaqqiClientsImportPanel } from './DaqqiClientsImportPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type ClientTab = 'all' | 'assigned' | 'unassigned' | 'booked2024' | 'booked2025' | 'import';
-
-// The two cohort tabs the desk asked for. Kept as a map rather than parsing the
-// tab name so adding عملاء 26 next year is one line here.
-const BOOKING_YEAR_TABS: Partial<Record<ClientTab, number>> = { booked2024: 2024, booked2025: 2025 };
-
-const TAB_LABELS: Record<ClientTab, string> = {
-  all: 'الكل',
-  assigned: 'المسكّنون',
-  unassigned: 'الغير مسكّنين',
-  booked2024: 'عملاء 24',
-  booked2025: 'عملاء 25',
-  import: 'استيراد',
-};
-
-const yearOf = (value: string | undefined) => {
-  const year = Number(String(value || '').slice(0, 4));
-  return Number.isInteger(year) && year > 1900 ? year : 0;
-};
+type ClientTab = 'all' | 'assigned' | 'unassigned';
 
 interface Props {
   subscribers: SubscriberItem[];
@@ -76,33 +57,10 @@ export function DaqqiClientsPanel({
   const assignedIds = useMemo(() => new Set(rounds.flatMap(round =>
     round.attendees.map(attendee => attendee.subscriberId))), [rounds]);
 
-  // سنة الحجز = the year the client was booked into a round (attendee.bookedAt).
-  // A client can sit in more than one round, so a year tab shows everyone booked
-  // in that year rather than only first-timers.
-  const bookingYearsById = useMemo(() => {
-    const map = new Map<string, Set<number>>();
-    rounds.forEach(round => round.attendees.forEach(attendee => {
-      const year = yearOf(attendee.bookedAt);
-      if (!year) return;
-      const years = map.get(attendee.subscriberId) || new Set<number>();
-      years.add(year);
-      map.set(attendee.subscriberId, years);
-    }));
-    return map;
-  }, [rounds]);
-
   const filtered = useMemo(() => subscribers.filter(subscriber => {
     const subscriberAssigned = assignedIds.has(subscriber.id);
     if (tab === 'assigned' && !subscriberAssigned) return false;
     if (tab === 'unassigned' && subscriberAssigned) return false;
-    const bookingYear = BOOKING_YEAR_TABS[tab];
-    if (bookingYear) {
-      // A client not yet placed in a round has no booking date at all; their
-      // registration year stands in so they are not invisible in every cohort.
-      const booked = bookingYearsById.get(subscriber.id);
-      const years = booked?.size ? booked : new Set([yearOf(subscriber.createdAt)]);
-      if (!years.has(bookingYear)) return false;
-    }
     const normalizedSearch = search.trim().toLowerCase();
     if (normalizedSearch && !subscriber.name.toLowerCase().includes(normalizedSearch)
       && !subscriber.phone.replace(/\D/g, '').includes(normalizedSearch.replace(/\D/g, ''))) return false;
@@ -114,7 +72,7 @@ export function DaqqiClientsPanel({
     if (paymentFilter === 'outstanding' && !(expected > 0 && paid < expected)) return false;
     if (paymentFilter === 'paid' && !(expected === 0 || paid >= expected)) return false;
     return true;
-  }), [assignedIds, bookingYearsById, bundles, courseFilter, courses, paymentFilter, receptionFilter, rounds, search, subscribers, tab]);
+  }), [assignedIds, bundles, courseFilter, courses, paymentFilter, receptionFilter, rounds, search, subscribers, tab]);
 
   const clearFilters = () => {
     setSearch('');
@@ -133,14 +91,14 @@ export function DaqqiClientsPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-blue-100 bg-blue-50/40">
         <div className="flex items-center gap-2">
           <Users size={16} className="text-blue-600" />
-          <h4 className="font-bold text-gray-800 text-sm">عملاء فرع الدقي {tab !== 'import' && <span className="text-gray-400 font-normal">({filtered.length} / {subscribers.length})</span>}</h4>
+          <h4 className="font-bold text-gray-800 text-sm">عملاء فرع الدقي <span className="text-gray-400 font-normal">({filtered.length} / {subscribers.length})</span></h4>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs">
-            {(['all', 'assigned', 'unassigned', 'booked2024', 'booked2025', 'import'] as const).map(value => (
+            {(['all', 'assigned', 'unassigned'] as const).map(value => (
               <button key={value} onClick={() => setTab(value)}
-                className={`px-3 py-1.5 font-bold transition flex items-center gap-1 ${tab === value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                {value === 'import' && <Upload size={11} />}{TAB_LABELS[value]}
+                className={`px-3 py-1.5 font-bold transition ${tab === value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                {{ all: 'الكل', assigned: 'المسكّنون', unassigned: 'الغير مسكّنين' }[value]}
               </button>
             ))}
           </div>
@@ -149,8 +107,6 @@ export function DaqqiClientsPanel({
           </button>
         </div>
       </div>
-
-      {tab === 'import' ? <DaqqiClientsImportPanel subscribers={subscribers} notify={notify} /> : <>
 
       <div className="flex flex-wrap gap-2 px-4 py-2.5 bg-gray-50/70 border-b border-gray-100">
         <div className="relative">
@@ -230,7 +186,6 @@ export function DaqqiClientsPanel({
           </table>
         </div>
       )}
-      </>}
     </div>
   );
 }

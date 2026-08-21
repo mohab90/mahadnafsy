@@ -5,13 +5,14 @@ import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { errorMessage, paymentAmountInEGP } from '../onlineClientsUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
-type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl';
+type ViewTabKey = 'active'|'real-local'|'real-intl'|'finished'|'paused'|'refunded'|'old_data'|'old_local'|'old_intl'|'booked2024'|'booked2025';
 type HousingInfo = { roundId: string; roundCode: string; receptionId: string; receptionName: string };
 
 interface Props {
   isDaqqiClientsTab: boolean;
   allCombined: SubscriberItem[];
   isIntlSub: (s: SubscriberItem) => boolean;
+  bookedInYear: (s: SubscriberItem, year: number) => boolean;
   collOnlineViewTab: ViewTabKey;
   setCollOnlineViewTab: (v: ViewTabKey) => void;
   setCollOnlinePage: (n: number) => void;
@@ -34,7 +35,7 @@ interface Props {
 }
 
 export function ViewTabsBar({
-  isDaqqiClientsTab, allCombined, isIntlSub, collOnlineViewTab, setCollOnlineViewTab,
+  isDaqqiClientsTab, allCombined, isIntlSub, bookedInYear, collOnlineViewTab, setCollOnlineViewTab,
   setCollOnlinePage, filtered, isOnlineManager, isDaqqiManager, isAdmin, setOmNewSubOpen,
   daqqiSettingsOpen, setDaqqiSettingsOpen, collOnlineSelected, courses, bundles, housingMap,
   subCsDistributing, setSubCsDistributing, actionSubscribers, reloadSubscribers, notify,
@@ -50,6 +51,8 @@ export function ViewTabsBar({
           { key: 'paused'           as const, label: 'المتوقفين',          color: 'amber'  },
           { key: 'refunded'         as const, label: 'المستردين',          color: 'red'    },
           ...(isDaqqiClientsTab ? [
+            { key: 'booked2024' as const, label: 'عملاء 24',       color: 'purple' },
+            { key: 'booked2025' as const, label: 'عملاء 25',       color: 'indigo' },
             { key: 'old_data'  as const, label: '📥 استيراد',      color: 'slate'  },
           ] : [
             { key: 'old_local' as const, label: '🏠 محلي قديم',   color: 'indigo' },
@@ -61,6 +64,8 @@ export function ViewTabsBar({
             ? allCombined.filter(s => !['finished','paused','refunded','refund_pending'].includes(s.clientStatus||'')).length
             : (vt.key === 'real-local' || vt.key === 'real-intl')
             ? base.filter(s => !['finished','paused','refunded','refund_pending'].includes(s.clientStatus||'') && (s.enrolledCourseIds||[]).length > 0).length
+            : vt.key === 'booked2024' ? allCombined.filter(s => bookedInYear(s, 2024)).length
+            : vt.key === 'booked2025' ? allCombined.filter(s => bookedInYear(s, 2025)).length
             : vt.key === 'old_data' ? allCombined.filter(s => ['old_data','daqqi_old_local','daqqi_old_intl'].includes(s.clientStatus||'')).length
             : (vt.key === 'old_local' || vt.key === 'old_intl') ? base.filter(s => s.clientStatus === vt.key).length
             : vt.key === 'refunded' ? allCombined.filter(s => s.clientStatus === 'refunded' || s.clientStatus === 'refund_pending').length

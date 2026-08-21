@@ -88,6 +88,10 @@ export default function OldDataImportPanel({
   const [parsed, setParsed] = useState<OldDataRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  // Nothing is written until this is true. The button used to call doImport
+  // directly, so one click on a freshly-parsed file wrote every selected row to
+  // the database with no chance to stop it.
+  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ created: number; dupes: number; errors: number } | null>(null);
 
   const fileCls = accent === 'violet'
@@ -103,12 +107,21 @@ export default function OldDataImportPanel({
       const rows = parseOldData(String(loaded.target?.result || ''));
       setParsed(rows);
       setSelected(new Set(rows.filter(row => row._name && row._phone).map(row => row._id)));
+      setConfirming(false);
       setResult(null);
     };
     reader.readAsText(file, 'UTF-8');
   };
 
+  // Any change to what would be written retracts the confirmation, so the row
+  // count on the confirm bar is always the count that is about to be uploaded.
+  const changeSelection = (next: Set<string>) => {
+    setSelected(next);
+    setConfirming(false);
+  };
+
   const toggleRow = (rowId: string, checked: boolean) => {
+    setConfirming(false);
     setSelected(prev => {
       const next = new Set(prev);
       if (checked) next.add(rowId);
@@ -118,6 +131,7 @@ export default function OldDataImportPanel({
   };
 
   const doImport = async () => {
+    setConfirming(false);
     setImporting(true);
     let created = 0;
     let dupes = 0;
@@ -177,8 +191,8 @@ export default function OldDataImportPanel({
           <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="text-sm font-bold text-gray-700">{parsed.length} صف - محدد: {selected.size}</span>
             <div className="flex gap-2">
-              <button onClick={() => setSelected(new Set(parsed.map(row => row._id)))} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">تحديد الكل</button>
-              <button onClick={() => setSelected(new Set())} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">إلغاء الكل</button>
+              <button onClick={() => changeSelection(new Set(parsed.map(row => row._id)))} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">تحديد الكل</button>
+              <button onClick={() => changeSelection(new Set())} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-bold">إلغاء الكل</button>
             </div>
           </div>
 
@@ -190,7 +204,7 @@ export default function OldDataImportPanel({
                     <input
                       type="checkbox"
                       checked={selected.size === parsed.length}
-                      onChange={event => setSelected(event.target.checked ? new Set(parsed.map(row => row._id)) : new Set())}
+                      onChange={event => changeSelection(event.target.checked ? new Set(parsed.map(row => row._id)) : new Set())}
                       className="w-3.5 h-3.5"
                     />
                   </th>
@@ -234,13 +248,38 @@ export default function OldDataImportPanel({
             {parsed.length > 200 && <p className="text-center py-2 text-xs text-gray-400">عرض أول 200 صف من {parsed.length}</p>}
           </div>
 
-          <button
-            disabled={importing || selected.size === 0}
-            onClick={doImport}
-            className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-60 transition ${btnCls}`}
-          >
-            {importing ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> جاري الاستيراد...</> : <>استيراد {selected.size} عميل</>}
-          </button>
+          {confirming ? (
+            <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-bold text-amber-900">
+                سيتم رفع {selected.size} عميل إلى قاعدة البيانات باسم المصدر «{source || '—'}».
+              </p>
+              <p className="text-xs text-amber-700">
+                الرفع يكتب العملاء فورًا ولا يمكن التراجع عنه من هنا. راجع الجدول أعلاه قبل التأكيد.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={doImport}
+                  className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-xl font-bold text-sm transition ${btnCls}`}
+                >
+                  تأكيد الرفع ({selected.size})
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              disabled={importing || selected.size === 0}
+              onClick={() => setConfirming(true)}
+              className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-60 transition ${btnCls}`}
+            >
+              {importing ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> جاري الاستيراد...</> : <>تأكيد ورفع {selected.size} عميل</>}
+            </button>
+          )}
         </>
       )}
 
