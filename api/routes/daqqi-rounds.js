@@ -51,6 +51,31 @@ function toMysqlDt(v) {
   return parsed.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+// mysql2 here is configured with dateStrings: ['DATE'], so a DATE column arrives
+// as a string but a DATETIME - which start_date and booked_at both are - arrives
+// as a JS Date. String(date) is the human form, 'Wed Jun 17 2026 14:00:00 GMT+0200',
+// and the first ten characters of that are 'Wed Jun 17'. That is the string the
+// schedule was rendering as a start date, and the string the UI posted back on the
+// next edit for the old toMysqlDt to truncate into the column. Migration 205
+// cleared the rows already damaged; these stop new ones being produced.
+function ymd(v) {
+  if (!v) return '';
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return '';
+    // Read off the local calendar fields on purpose: the column carries no
+    // timezone, so routing through UTC would move a Cairo evening round back a day.
+    const p2 = n => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p2(v.getMonth() + 1)}-${p2(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
+}
+
+function isoDt(v) {
+  if (!v) return '';
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString();
+  return String(v);
+}
+
 // Shared by every Dokki-schedule route below — was only actually applied to
 // GET /api/admin/daqqi-rounds; the attendance-report/export/monthly routes had no
 // role check at all, so e.g. a SALES or HR account could pull every Dokki attendee's
@@ -83,19 +108,19 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
       receptionName: r.reception_name,
       dayOfWeek: r.day_of_week,
       room: r.room || '',
-      startDate: r.start_date ? String(r.start_date).slice(0, 10) : '',
+      startDate: ymd(r.start_date),
       timeSlot: tsMap[r.time_slot] || 'مساءً',
       status: (r.status || 'NEW').toLowerCase(),
       currentLecture: Number(r.current_lecture || 0),
       postponedWeeks: r.postponed_weeks_json ? (() => {
         try { return JSON.parse(r.postponed_weeks_json); } catch { return []; }
       })() : [],
-      createdAt: r.created_at ? String(r.created_at) : '',
+      createdAt: isoDt(r.created_at),
       attendees: (attendeesMap[r.id] || []).map(a => ({
         subscriberId: a.subscriber_id,
         name: a.name,
         phone: a.phone,
-        bookedAt: a.booked_at ? String(a.booked_at) : '',
+        bookedAt: ymd(a.booked_at),
         amountPaid: Number(a.amount_paid || 0),
         attendedLectures: Number(a.attended_lectures || 0),
       })),
@@ -605,7 +630,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
         instructorName: r.instructor_name,
         receptionName: r.reception_name,
         dayOfWeek: r.day_of_week,
-        startDate: r.start_date ? String(r.start_date).slice(0, 10) : '',
+        startDate: ymd(r.start_date),
         timeSlot: tsMap[r.time_slot] || r.time_slot,
         status: (r.status || 'NEW').toLowerCase(),
         totalSessions,
@@ -614,7 +639,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
           subscriberId: a.subscriber_id,
           name: a.name,
           phone: a.phone,
-          bookedAt: a.booked_at ? String(a.booked_at).slice(0, 10) : '',
+          bookedAt: ymd(a.booked_at),
           amountPaid: Number(a.amount_paid || 0),
           attendedLectures: Number(a.attended_lectures || 0),
           absentLectures: totalSessions > 0 ? Math.max(0, totalSessions - Number(a.attended_lectures || 0)) : 0,
@@ -669,11 +694,11 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
       const statusAr = { NEW: 'جديدة', ACTIVE: 'نشطة', FINISHED: 'منتهية' }[r.status] || r.status;
       const atts = attMap[r.id] || [];
       if (!atts.length) {
-        rows.push([r.code, r.instructor_name, r.day_of_week, String(r.start_date || '').slice(0,10), r.time_slot, statusAr, total, '—', '', '', '', '', '']);
+        rows.push([r.code, r.instructor_name, r.day_of_week, ymd(r.start_date), r.time_slot, statusAr, total, '—', '', '', '', '', '']);
       } else {
         for (const a of atts) {
           const pct = total > 0 ? Math.round((Number(a.attended_lectures || 0) / total) * 100) : '';
-          rows.push([r.code, r.instructor_name, r.day_of_week, String(r.start_date || '').slice(0,10), r.time_slot, statusAr, total, a.name, a.phone, String(a.booked_at || '').slice(0,10), Number(a.attended_lectures || 0), total > 0 ? Math.max(0, total - Number(a.attended_lectures || 0)) : 0, pct !== '' ? `${pct}%` : '']);
+          rows.push([r.code, r.instructor_name, r.day_of_week, ymd(r.start_date), r.time_slot, statusAr, total, a.name, a.phone, ymd(a.booked_at), Number(a.attended_lectures || 0), total > 0 ? Math.max(0, total - Number(a.attended_lectures || 0)) : 0, pct !== '' ? `${pct}%` : '']);
         }
       }
     }
@@ -715,7 +740,7 @@ router.get('/api/admin/daqqi/attendance-monthly', requireAuth, requireAdminOrSta
     const monthMap = {};
     for (const r of rounds) {
       if (!r.start_date) continue;
-      const key = String(r.start_date).slice(0, 7); // YYYY-MM
+      const key = ymd(r.start_date).slice(0, 7); // YYYY-MM
       const m = (monthMap[key] = monthMap[key] || {
         month: key, rounds: 0, attendees: 0, sessions: 0,
         revenue: 0, pctSum: 0, pctCount: 0, receptions: {},
