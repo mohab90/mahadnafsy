@@ -53,7 +53,11 @@ let roundAId = '';
 let roundBId = '';
 let subscriberId = '';
 
-test.describe.configure({ mode: 'serial' });
+// The suite-wide 30s would be spent before loginAdmin's own 75s deadline could
+// even elapse, so a slow sign-in surfaced as a torn-down page rather than as the
+// login timing out. Each step here is one or two API calls; the budget is for
+// the login and the dashboard renders in the 4xx/5xx sweep.
+test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 test.describe('Dokki section — live pass', () => {
   test.skip(!WRITES_ALLOWED, 'set DAQQI_E2E_WRITE=1 to run: this suite creates a real round and client');

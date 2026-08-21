@@ -2,7 +2,17 @@ import type { Page } from '@playwright/test';
 import { generate } from 'otplib';
 
 export async function loginAdmin(page: Page, baseUrl: string, email: string, password: string) {
-  await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+  // 'commit', not 'domcontentloaded': the admin SPA routes '/' → '/dashboard'
+  // from the router the moment it boots, and if that client-side navigation
+  // lands while goto is still settling, Chromium aborts the original one and
+  // goto throws "net::ERR_ABORTED; maybe frame was detached?". Which of the two
+  // wins is a race, so it failed intermittently and only against a real
+  // deployment, where the bundle is big enough for the timing to go either way.
+  // 'commit' resolves as soon as the response starts, before the app can
+  // redirect; the wait below is what actually gates on the form being there.
+  await page.goto(baseUrl, { waitUntil: 'commit' });
+  await page.locator('input[type="email"], input[name="email"]').first()
+    .waitFor({ state: 'visible', timeout: 45_000 });
   await page.locator('input[type="email"], input[name="email"]').first().fill(email);
   await page.locator('input[type="password"], input[name="password"]').first().fill(password);
   await page.getByRole('button', { name: /دخول|تسجيل|login|sign/i }).first().click();
