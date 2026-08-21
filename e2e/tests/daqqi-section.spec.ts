@@ -8,17 +8,24 @@ import { loginAdmin } from '../helpers/adminLogin';
  * adding a client, marking attendance, the shape of the dates that come back,
  * and a sweep of the Dokki screens for unexpected 4xx/5xx.
  *
- * This suite WRITES. It creates a round and a client in whatever database the
- * target points at, and the API deliberately refuses to delete a round once
- * attendance exists on it — that history is not disposable. So it is gated: it
- * skips unless DAQQI_E2E_WRITE=1 is set explicitly. Point it at staging first.
+ * This suite WRITES, into whatever database the target points at, so it is gated
+ * on DAQQI_E2E_WRITE=1 being set explicitly.
  *
- *   ADMIN_BASE_URL=https://admin-staging.mahadnafsy.com \
+ *   ADMIN_BASE_URL=https://admin.mahadnafsy.com \
  *   TEST_DAQQI_MANAGER_EMAIL=... TEST_DAQQI_MANAGER_PASSWORD=... \
  *   DAQQI_E2E_WRITE=1 npm --prefix e2e test daqqi-section
  *
- * Everything it creates is named with the E2E_TAG below, and the final test
- * prints what it could not remove so it can be cleared by hand.
+ * It is written to be safe to point at production, which is where the useful
+ * answer is. Everything it creates carries the E2E_TAG below, the hall it books
+ * is a made-up name that cannot collide with a real one, and the last test puts
+ * the section back:
+ *   - the spare round is deleted outright (still empty and NEW)
+ *   - the round that took attendance is set FINISHED rather than deleted — the
+ *     API refuses to drop attendance history, and rightly so. A finished round
+ *     releases its hall and drops out of the desk's active views.
+ *   - the test client is archived through DELETE /api/admin/subscribers/:id,
+ *     which is a soft archive with a /restore counterpart, not a hard delete.
+ * Whatever it could not clear is printed at the end.
  */
 const ADMIN = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:4000';
 const EMAIL = process.env.TEST_DAQQI_MANAGER_EMAIL || process.env.TEST_ADMIN_EMAIL || '';
@@ -37,7 +44,9 @@ const START_DATE = '2026-06-17';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-const leftBehind: string[] = [];
+// id → what it is. Populated the moment a thing is created, so a crashed run
+// still reports it, and cleared by the cleanup test as each one is dealt with.
+const leftBehind = new Map<string, string>();
 let page: Page;
 let courseId = '';
 let roundAId = '';
@@ -56,8 +65,10 @@ test.describe('Dokki section — live pass', () => {
   });
 
   test.afterAll(async () => {
-    if (leftBehind.length) {
-      console.log(`\n[daqqi-e2e] left in the database (remove by hand):\n  ${leftBehind.join('\n  ')}\n`);
+    if (leftBehind.size) {
+      console.log(`\n[daqqi-e2e] left in the database:\n  ${[...leftBehind.values()].join('\n  ')}\n`);
+    } else {
+      console.log('\n[daqqi-e2e] nothing left behind.\n');
     }
     await page?.close();
   });
@@ -89,7 +100,7 @@ test.describe('Dokki section — live pass', () => {
     const saved = await response.json();
     roundAId = String(saved.id || saved.round?.id || '');
     expect(roundAId, 'created round must come back with an id').toBeTruthy();
-    leftBehind.push(`round ${roundAId} (room ${ROOM})`);
+    leftBehind.set(roundAId, `round ${roundAId} — active, holding hall ${ROOM}`);
   });
 
   test('the same hall on the same day and slot is refused', async () => {
@@ -129,6 +140,7 @@ test.describe('Dokki section — live pass', () => {
     expect(response.status(), await response.text()).toBeLessThan(300);
     roundBId = String((await response.json()).id || '');
     expect(roundBId).toBeTruthy();
+    leftBehind.set(roundBId, `spare round ${roundBId} — active, holding hall ${ROOM}-B`);
   });
 
   test('a client can be added and booked into the round', async () => {
@@ -145,7 +157,7 @@ test.describe('Dokki section — live pass', () => {
     expect(created.status(), await created.text()).toBeLessThan(300);
     subscriberId = String((await created.json()).id || '');
     expect(subscriberId, 'created client must come back with an id').toBeTruthy();
-    leftBehind.push(`subscriber ${subscriberId}`);
+    leftBehind.set(subscriberId, `subscriber ${subscriberId} — active in the CRM`);
 
     const round = await fetchRound(roundAId);
     const booked = await page.request.post(`${ADMIN}/api/admin/daqqi-rounds`, {
@@ -227,19 +239,39 @@ test.describe('Dokki section — live pass', () => {
     expect(bad, 'Dokki screens must not produce API errors').toEqual([]);
   });
 
-  test('cleanup — remove what the API still allows', async () => {
+  test('cleanup — put the section back', async () => {
+    const failures: string[] = [];
+
     // Round B never took attendance, so it is still an empty NEW round.
     if (roundBId) {
       const response = await page.request.delete(`${ADMIN}/api/admin/daqqi-rounds/${encodeURIComponent(roundBId)}`);
-      if (response.status() < 300) {
-        leftBehind.splice(leftBehind.indexOf(`round ${roundBId}`), 1);
+      if (response.status() >= 300) failures.push(`spare round ${roundBId} delete → ${response.status()}`);
+      else leftBehind.delete(roundBId);
+    }
+
+    // Round A carries attendance history, which the API refuses to delete. Close
+    // it instead: a FINISHED round releases its hall and leaves the active views.
+    if (roundAId) {
+      const round = await fetchRound(roundAId);
+      const response = await page.request.post(`${ADMIN}/api/admin/daqqi-rounds`, {
+        data: { ...round, status: 'finished' },
+      });
+      if (response.status() >= 300) {
+        failures.push(`round ${roundAId} close → ${response.status()}`);
       } else {
-        leftBehind.push(`round ${roundBId} (delete returned ${response.status()})`);
+        expect((await fetchRound(roundAId)).status, 'round must end up finished').toBe('finished');
+        leftBehind.set(roundAId, `round ${roundAId} — finished, hall released; kept for its attendance history`);
       }
     }
-    // Round A is deliberately NOT deleted: it carries attendance history, and the
-    // API refuses to drop that — correctly. It is reported instead.
-    expect(true).toBe(true);
+
+    // Soft archive — is_active=0 + deleted_at, reversible via /restore.
+    if (subscriberId) {
+      const response = await page.request.delete(`${ADMIN}/api/admin/subscribers/${encodeURIComponent(subscriberId)}`);
+      if (response.status() >= 300) failures.push(`client ${subscriberId} archive → ${response.status()}`);
+      else leftBehind.delete(subscriberId);
+    }
+
+    expect(failures, 'cleanup must not leave live test data behind').toEqual([]);
   });
 });
 
