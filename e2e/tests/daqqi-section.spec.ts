@@ -64,6 +64,11 @@ test.describe('Dokki section — live pass', () => {
   test.skip(!EMAIL || !PASSWORD, 'set TEST_DAQQI_MANAGER_EMAIL / TEST_DAQQI_MANAGER_PASSWORD');
 
   test.beforeAll(async ({ browser }) => {
+    // describe.configure({ timeout }) sets the timeout for tests, not for this
+    // hook, which kept the config's 30s while loginAdmin runs to its own 75s
+    // deadline. The hook was always torn down first, so a refused or slow login
+    // could never report itself — it surfaced as "target page has been closed".
+    test.setTimeout(120_000);
     page = await browser.newPage();
     await loginAdmin(page, ADMIN, EMAIL, PASSWORD);
   });

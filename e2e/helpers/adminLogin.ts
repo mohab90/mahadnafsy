@@ -1,6 +1,23 @@
 import type { Page } from '@playwright/test';
 import { generate } from 'otplib';
 
+// The messages admin/pages/Auth.tsx actually renders when a sign-in does not go
+// through. The previous pattern — تعذر|خطأ|فشل|invalid|failed|unauthorized —
+// matched none of them, so a wrong password or a rate-limited account was never
+// recognised as a failure: the poll below just spun until the hook was torn
+// down, and the run reported "target page has been closed", which says nothing
+// about why. Kept as source strings so a reworded notice is a visible mismatch.
+const LOGIN_REFUSED = [
+  'غير صحيحة',      // البريد الإلكتروني أو كلمة المرور غير صحيحة
+  'محاولات كثيرة',  // rate limiter: 15 per account / 50 per network per 15 min
+  'غير متاح',       // الخادم غير متاح حالياً
+  'منتهي الصلاحية', // رمز/كود غير صحيح أو منتهي الصلاحية
+  'تعذر', 'خطأ', 'فشل',
+  'invalid', 'failed', 'unauthorized',
+];
+const refusalIn = (text: string) =>
+  LOGIN_REFUSED.find(needle => text.toLowerCase().includes(needle.toLowerCase()));
+
 export async function loginAdmin(page: Page, baseUrl: string, email: string, password: string) {
   // 'commit', not 'domcontentloaded': the admin SPA routes '/' → '/dashboard'
   // from the router the moment it boots, and if that client-side navigation
@@ -47,10 +64,24 @@ export async function loginAdmin(page: Page, baseUrl: string, email: string, pas
     const cookies = await page.context().cookies().catch(() => []);
     const signedIn = cookies.some(c => c.name === 'authToken' && Boolean(c.value));
     if (signedIn && !emailVisible && !await otp.isVisible().catch(() => false) && bodyText.length > 80) return;
-    if (/تعذر|خطأ|فشل|invalid|failed|unauthorized/i.test(bodyText)) {
-      throw new Error(`login failed for ${email}: ${bodyText.slice(0, 240)}`);
+    const refusal = refusalIn(bodyText);
+    if (refusal) {
+      throw new Error(`login refused for ${email} (matched "${refusal}"): ${bodyText.slice(0, 240)}`);
     }
     await page.waitForTimeout(250);
   }
-  throw new Error(`dashboard did not render after login for ${email}`);
+  // Say what was actually on screen. "dashboard did not render" on its own sent
+  // every diagnosis back to guessing at the network.
+  const otpVisible = await page.locator('input[placeholder="000000"]').first().isVisible().catch(() => false);
+  const emailStillVisible = await page.locator('input[type="email"], input[name="email"]').first()
+    .isVisible().catch(() => false);
+  const hasToken = (await page.context().cookies().catch(() => []))
+    .some(c => c.name === 'authToken' && Boolean(c.value));
+  const seen = ((await page.locator('body').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  throw new Error(
+    `login did not complete for ${email} after 75s — url=${page.url()} authToken=${hasToken} `
+    + `loginFormVisible=${emailStillVisible} otpPromptVisible=${otpVisible} mfaAttempts=${mfaAttempts}`
+    + `${otpVisible && !process.env.UAT_TOTP_SECRET ? ' (MFA is on and UAT_TOTP_SECRET is unset)' : ''}`
+    + ` — screen: ${seen.slice(0, 240) || '(blank)'}`,
+  );
 }
