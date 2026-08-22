@@ -161,6 +161,37 @@ for (const file of migFiles) {
     noteCol(t, c);
   }
 
+  // ALTER TABLE <t> RENAME COLUMN <a> TO <b>
+  // ALTER TABLE <t> CHANGE [COLUMN] <a> <b> <definition>
+  //
+  // Without these a renamed column is counted twice — once under its old name,
+  // which nothing has any more, and once under the new one. That is how
+  // automation_workflows.conditions and .action_config came to be reported as
+  // CRITICAL columns missing from schema.sql, when the snapshot was right and
+  // the migration was the stale side. A guard that cries wolf teaches people to
+  // ignore it, which costs more than the drift it was watching for.
+  // The inner `IF EXISTS` is MariaDB's per-action guard — ALTER TABLE t CHANGE
+  // COLUMN IF EXISTS old new — and is separate from the optional one after
+  // ALTER TABLE. Missing it made the rename invisible and the old name live on.
+  const renColRe = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?\s+(?:RENAME\s+COLUMN|CHANGE(?:\s+COLUMN)?)\s+(?:IF\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?\s+(?:TO\s+)?[`"']?([A-Za-z0-9_]+)[`"']?/gi;
+  let rc;
+  while ((rc = renColRe.exec(sql))) {
+    const t = norm(rc[1]), from = norm(rc[2]), to = norm(rc[3]);
+    if (!from || !to || from === to) continue;
+    if (!expected.has(t)) continue;
+    expected.get(t).delete(from);
+    expected.get(t).add(to);
+    // The new name inherits the old one's origin: the column has existed since
+    // that migration, so a rename must not make it look newly added and slip out
+    // of the baselined-migration check.
+    const oldKey = `${t}.${from}`;
+    const newKey = `${t}.${to}`;
+    if (originColumn.has(oldKey) && !originColumn.has(newKey)) {
+      originColumn.set(newKey, originColumn.get(oldKey));
+    }
+    originColumn.delete(oldKey);
+  }
+
   // ALTER TABLE [IF EXISTS] <t> DROP [COLUMN] [IF EXISTS] <col>
   const dropColRe = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?\s+DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?[`"']?([A-Za-z0-9_]+)[`"']?/gi;
   let d;

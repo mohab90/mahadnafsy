@@ -4196,3 +4196,36 @@ CREATE TABLE `whatsapp_campaign_recipients` (
   CONSTRAINT `fk_wacamp_recipient_campaign` FOREIGN KEY (`campaign_id`) REFERENCES `whatsapp_campaigns` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+-- Created by migration 199. Present on production; the snapshot was never
+-- refreshed after that migration landed, so the drift guard reported both as
+-- tables missing from schema.sql. Definitions taken from production itself
+-- rather than retyped from the migration, so the snapshot matches what is
+-- actually running.
+CREATE TABLE `recruitment_notes` (
+  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `ref_type` enum('join_us','applicant') NOT NULL,
+  `ref_id` varchar(36) NOT NULL,
+  `kind` enum('note','contact','evaluation') NOT NULL DEFAULT 'note',
+  `body` text NOT NULL,
+  `author_id` varchar(36) DEFAULT NULL,
+  `author_name` varchar(200) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_recruitment_notes_ref` (`tenant_id`,`ref_type`,`ref_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `staff_documents` (
+  `id` varchar(36) NOT NULL DEFAULT uuid(),
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'tenant-default',
+  `staff_id` varchar(36) NOT NULL,
+  `doc_type` enum('NATIONAL_ID','PHOTOS','QUALIFICATION','BIRTH_CERT','WORK_STUB','INSURANCE_PRINT','MILITARY') NOT NULL,
+  `received` tinyint(1) NOT NULL DEFAULT 0,
+  `note` varchar(500) DEFAULT NULL,
+  `updated_by` varchar(36) DEFAULT NULL,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_staff_doc` (`tenant_id`,`staff_id`,`doc_type`),
+  KEY `idx_staff_documents_staff` (`tenant_id`,`staff_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

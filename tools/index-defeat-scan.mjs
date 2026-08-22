@@ -67,6 +67,15 @@ export function scanIndexDefeats() {
     const lines = src.split('\n');
     for (const { name, re } of PATTERNS) {
       lines.forEach((line, i) => {
+        // A line-comment is prose, not a query. Without this the guard flags the
+        // comment that explains why a query avoids DATE() — so documenting the
+        // fix re-raises the very finding the fix cleared, and the only way to a
+        // green run is to stop explaining the code. Block comments are left
+        // alone: their content is picked up line by line and the same rule
+        // applies once a `//` or `*` opens the line.
+        const code = line.replace(/^\s*(\/\/|\*).*$/, '').split('//')[0];
+        if (!code.trim()) return;
+        line = code;
         re.lastIndex = 0;
         // A projection like `SELECT DATE(created_at) AS day ... GROUP BY day` is
         // not an index defeat — nothing is being filtered on the wrapped value.

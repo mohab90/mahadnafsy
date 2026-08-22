@@ -1078,11 +1078,18 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       if (String(r.status || '').toLowerCase() === 'converted') entry.converted += count;
     }
 
-    // DATE(created_at) rather than a string prefix: created_at is a DATETIME, so
-    // comparing its text form depends on how the driver rendered it.
+    // A half-open range on the bare column, not DATE(created_at) = CURDATE().
+    //
+    // Comparing a string prefix would depend on how the driver rendered the
+    // DATETIME — the bug behind the Dokki dates — but wrapping the column in
+    // DATE() is no better: it makes the term unsargable, so
+    // idx_leads_tenant_status_created cannot be used and counting today's leads
+    // means scanning all 26,878 rows. >= midnight AND < tomorrow is exactly the
+    // same set and reads the index.
     const [[todayRow]] = await pool.query(
       `SELECT COUNT(*) AS cnt FROM leads l
-        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause} AND DATE(l.created_at) = CURDATE()`,
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.created_at >= CURDATE() AND l.created_at < CURDATE() + INTERVAL 1 DAY`,
       params,
     );
 
