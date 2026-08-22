@@ -222,11 +222,12 @@ export function DashboardDirectContentRoutes({
         />
       )}
 
-      {activeTab === 'cert_pricing' && (
-        <CertPricingTab certPricingMap={certPricingMap} saveCertPricingMap={saveCertPricingMap} notify={notify} />
-      )}
-
-      {activeTab === 'cert_requests' && (
+      {/* Pricing is a tab inside the requests screen rather than its own sidebar
+          entry: the price is what you look up while working a request, so
+          setting it used to mean leaving the queue and coming back.
+          'cert_pricing' is still accepted as a tab key so an existing link or
+          bookmark lands on the right screen, opening straight onto pricing. */}
+      {(activeTab === 'cert_requests' || activeTab === 'cert_pricing') && (
         <Suspense fallback={<div className="text-center py-8 text-gray-400">جاري التحميل...</div>}>
           <CertRequestsTab
             notify={notify}
@@ -239,6 +240,8 @@ export function DashboardDirectContentRoutes({
             setCertTypeFilter={(value) => setCertTypeFilter(value as ExtraCertificateType | 'all')}
             certStatusFilter={certStatusFilter}
             setCertStatusFilter={setCertStatusFilter}
+            initialTab={activeTab === 'cert_pricing' ? 'pricing' : 'requests'}
+            pricing={<CertPricingTab certPricingMap={certPricingMap} saveCertPricingMap={saveCertPricingMap} notify={notify} />}
           />
         </Suspense>
       )}

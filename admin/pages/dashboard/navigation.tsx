@@ -268,7 +268,6 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // under المحتوى, which meant seeing them required manage_content and the
       // whole page-editor section with it.
       { key: 'cert_requests', label: 'طلبات الشهادات', icon: FileText },
-      { key: 'cert_pricing', label: 'أسعار الشهادات الإضافية', icon: Tag },
     ],
   },
   {

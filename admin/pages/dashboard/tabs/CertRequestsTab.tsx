@@ -16,13 +16,18 @@ interface Props {
   setCertTypeFilter: (v: string) => void;
   certStatusFilter: string;
   setCertStatusFilter: (v: string) => void;
+  /** The pricing panel, passed in as an element so this screen stays unaware of
+   *  how prices are stored — it only decides where the panel sits. */
+  pricing?: React.ReactNode;
+  initialTab?: 'requests' | 'pricing';
 }
 
 export default function CertRequestsTab({
   notify, courses, subscribers, reloadSubscribers,
   certSearch, setCertSearch, certTypeFilter, setCertTypeFilter,
-  certStatusFilter, setCertStatusFilter,
+  certStatusFilter, setCertStatusFilter, pricing, initialTab = 'requests',
 }: Props) {
+  const [innerTab, setInnerTab] = useState<'requests' | 'pricing'>(initialTab);
               const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
               // Gather all extra certificate requests from all subscribers
               type CertReqRow = import('../../../types').ExtraCertificateRequest & { subscriberName: string; subscriberPhone: string; subscriberEmail: string; subscriberId: string };
@@ -123,6 +128,23 @@ export default function CertRequestsTab({
 
               return (
                 <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  {/* Requests and pricing sit on one screen: the price is what
+                      you look up while working a request. Only rendered when a
+                      pricing panel was supplied, so the screen still stands on
+                      its own wherever it is used without one. */}
+                  {pricing && (
+                    <div className="flex flex-wrap gap-1.5 border-b border-gray-200 pb-2 -mt-1">
+                      {([['requests', 'الطلبات'], ['pricing', 'أسعار الشهادات الإضافية']] as const).map(([key, label]) => (
+                        <button key={key} onClick={() => setInnerTab(key)}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold transition ${
+                            innerTab === key ? 'bg-amber-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {pricing && innerTab === 'pricing' ? pricing : (<>
                   {/* Header */}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -287,6 +309,7 @@ export default function CertRequestsTab({
                       </table>
                     </div>
                   )}
+                  </>)}
                 </article>
               );
 
