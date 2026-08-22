@@ -690,3 +690,23 @@ test('unified client finance computes balances and certificates in the branch se
   assert.doesNotMatch(handlers, /price\?\.\[(?:subPayDraft|leadPayDraft)\.currency[^\n]*price\?\.EGP/);
   assert.doesNotMatch(helpers, /price\?\.\[currency\] \?\? price\?\.EGP/);
 });
+
+test('identical in-flight GETs are shared, not repeated', () => {
+  // Measured on a dashboard load: 64 API calls across 37 distinct paths, 42% of
+  // them duplicates — five independent call sites ask for the same data and
+  // React's double-invoke doubles whatever they do. Each duplicate is a real
+  // query against the database, and that burst is where the 502s on dashboard
+  // load came from.
+  for (const relativePath of ['admin/lib/mysqlapi.ts', 'client/lib/mysqlapi.ts']) {
+    const source = read(relativePath);
+    assert.match(source, /const inFlightGets = new Map<string, Promise<unknown>>\(\)/,
+      `${relativePath}: in-flight GETs must be tracked`);
+    assert.match(source, /method === 'GET' && _retry === 0/,
+      `${relativePath}: only first-attempt GETs may be shared — a retry must not re-register`);
+    assert.match(source, /\.finally\(\(\) => \{ inFlightGets\.delete\(key\); \}\)/,
+      `${relativePath}: the entry must be dropped when the promise settles, or this becomes a stale cache`);
+    // A shared POST would collapse two intended writes into one.
+    assert.ok(!/method === 'POST'[\s\S]{0,80}inFlightGets/.test(source),
+      `${relativePath}: writes must never be shared`);
+  }
+});
