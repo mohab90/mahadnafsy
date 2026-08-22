@@ -102,3 +102,37 @@ export const saasOpsTabs = new Set<string>([
   'pg_migrate',
   'server_monitor',
 ]);
+
+/**
+ * Screens that read every lead or subscriber row, not just a page of them.
+ *
+ * The full tables used to be pulled one second after login for everyone, on
+ * every page load — 26,878 leads and 1,353 subscribers whether the session ever
+ * opened one of these or not. Reception, HR, the accountant and the instructors
+ * never do.
+ *
+ * Membership is decided by "does this screen scan the whole table", which is why
+ * duplicate review, scoring and segmentation are here while the Dokki screens
+ * are not: they work from their own scoped lists. When in doubt, add the tab —
+ * loading data nobody looks at is slow, but a screen computing over a partial
+ * array is wrong, and wrong is worse.
+ */
+export const fullCrmDataTabs = new Set<string>([
+  'leads',              // pipeline, duplicates, reminders, archive, performance
+  'lead_scoring',
+  'online_clients',
+  'archived_clients',
+  'analytics',
+  'kpi_dashboard',
+  'cohort_analysis',
+  'revenue_sources',
+  'staff_performance',
+  'marketing',          // segmentation builds audiences from the whole table
+  'email_campaigns',
+  'sms_campaigns',
+  'drip_campaigns',
+  'automation',
+  'ask_ai',
+  'followup_reminders',
+  'crm_settings',
+]);

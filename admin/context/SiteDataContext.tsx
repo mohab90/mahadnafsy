@@ -57,6 +57,10 @@ interface SiteDataShape {
   // null until the first fetch lands. A consumer that has not been migrated yet
   // keeps using `leads` and is unaffected.
   leadStats: LeadStats | null;
+  /** Pull the complete leads and subscribers tables. Screens that read every
+   *  row — duplicate review, scoring, segmentation, reminders, the archive —
+   *  call this on mount. Idempotent; safe to call from several at once. */
+  loadFullCrmData: () => Promise<void>;
   staffMembers: StaffMember[];
   consultations: ConsultationItem[];
   lectures: CourseLectureItem[];
@@ -436,7 +440,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  useAdminDataRuntime({
+  const { loadFullCrmData } = useAdminDataRuntime({
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
@@ -593,6 +597,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     subscribers,
     leads,
     leadStats,
+    loadFullCrmData,
     staffMembers,
     consultations,
     lectures,

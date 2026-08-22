@@ -27,7 +27,7 @@ import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
-import { contentHubRouteTabs, directContentTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
+import { contentHubRouteTabs, directContentTabs, fullCrmDataTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { defaultFacebookLeadAdsConfig } from './dashboard/facebookLeadAdsDefaults';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
@@ -89,6 +89,7 @@ const Dashboard: React.FC = () => {
     subscribers,
     leads,
     leadStats,
+    loadFullCrmData,
     staffMembers,
     consultations,
     orders,
@@ -658,6 +659,10 @@ const Dashboard: React.FC = () => {
   // -- Client DB base data: raw mapping + dedup (expensive, only changes when data changes) -
 
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
+  useEffect(() => {
+    if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
+  }, [activeTab, loadFullCrmData]);
+
   const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats);
 
   const exportFilteredOrdersCsv = (rows: OrderItem[]) => exportOrdersCsv(rows);

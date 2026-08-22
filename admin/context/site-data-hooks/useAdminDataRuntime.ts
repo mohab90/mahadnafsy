@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { mysqlAdmin, mysqlCatalog } from '../../lib/mysqlapi';
 import type {
@@ -128,7 +128,7 @@ function withTimeout<T>(promise: Promise<T>, ms = 7000): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-export function useAdminDataRuntime(state: RuntimeState): void {
+export function useAdminDataRuntime(state: RuntimeState): { loadFullCrmData: () => Promise<void> } {
   const {
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
@@ -192,25 +192,16 @@ export function useAdminDataRuntime(state: RuntimeState): void {
         isHydratingRef.current = false;
         setRemoteReady(true);
 
-        void (async () => {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          if (disposed) return;
-          const [fullLeadsRes, fullSubsRes] = await Promise.allSettled([
-            mysqlAdmin.listAllLeads(),
-            mysqlAdmin.listAllSubscribers(),
-          ]);
-          if (disposed) return;
-          if (fullLeadsRes.status === 'fulfilled') {
-            const leads = normalizeLeads(fullLeadsRes.value);
-            leadsRef.current = leads;
-            setLeads(leads);
-          }
-          if (fullSubsRes.status === 'fulfilled') {
-            const subscribers = normalizeSubscribers(fullSubsRes.value);
-            subscribersRef.current = subscribers;
-            setSubscribers(subscribers);
-          }
-        })();
+        // The full leads+subscribers pull used to fire here, one second after
+        // boot, for every account on every page load — 26,878 leads and 1,353
+        // subscribers whether or not the session ever opened a screen that
+        // needed them. Reception, HR, the accountant and the instructors never
+        // do, and even an admin checking today's revenue does not.
+        //
+        // It is requested now instead, by loadFullCrmData() below, from the
+        // screens that actually read the whole array. The first page of each is
+        // already in hand from the bootstrap above, so a screen that only needs
+        // recent rows still renders immediately.
 
         await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
@@ -363,4 +354,38 @@ export function useAdminDataRuntime(state: RuntimeState): void {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
+
+  // Pulls the complete leads and subscribers tables. Called by the screens that
+  // genuinely read every row — duplicate review, lead scoring, segmentation,
+  // reminders, the archive — rather than fired at boot for everyone.
+  //
+  // Idempotent by ref, not by state: several such screens can mount in the same
+  // tick, and a state flag would let each of them see "not loaded yet" and start
+  // its own copy of a six-request pull.
+  const fullLoadRef = useRef<Promise<void> | null>(null);
+  const loadFullCrmData = useCallback(async () => {
+    if (fullLoadRef.current) return fullLoadRef.current;
+    fullLoadRef.current = (async () => {
+      const [fullLeadsRes, fullSubsRes] = await Promise.allSettled([
+        mysqlAdmin.listAllLeads(),
+        mysqlAdmin.listAllSubscribers(),
+      ]);
+      if (fullLeadsRes.status === 'fulfilled') {
+        const leads = normalizeLeads(fullLeadsRes.value);
+        leadsRef.current = leads;
+        setLeads(leads);
+      }
+      if (fullSubsRes.status === 'fulfilled') {
+        const subscribers = normalizeSubscribers(fullSubsRes.value);
+        subscribersRef.current = subscribers;
+        setSubscribers(subscribers);
+      }
+      // Cleared on failure so a screen opened after a dropped connection can try
+      // again, rather than being stuck with the first page forever.
+      if (fullLeadsRes.status === 'rejected' || fullSubsRes.status === 'rejected') fullLoadRef.current = null;
+    })();
+    return fullLoadRef.current;
+  }, [leadsRef, subscribersRef, setLeads, setSubscribers]);
+
+  return { loadFullCrmData };
 }
