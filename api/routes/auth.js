@@ -268,7 +268,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
     });
     setAuthCookie(res, token);
     res.json({ ok: true, user: { uid: id, email: normalizedEmail, displayName: (name || '').trim() } });
-    if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId }).catch(() => {});
+    if (phone) sendWhatsApp(phone, `أهلاً وسهلاً ${(name || '').trim() || ''}! 🎉\nنرحب بك في معهد مهاد للدراسات النفسية.\nيمكنك الآن الدخول لحسابك واستعراض كورساتنا المتاحة.\nللتواصل أو الاستفسار راسلنا هنا. 💚`, { tenantId: req.tenantId, category: 'welcome' }).catch(() => {});
   } catch (err) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[user/signup]', err);
@@ -691,7 +691,7 @@ router.post(
           const waResult = await sendWhatsApp(
             phoneForUser,
             `مرحباً ${displayName} 👋\nتم إنشاء حسابك على منصة معهد الدراسات النفسية.\n\nللدخول: افتح mahadnafsy.com واختر "الدخول برقم الواتساب" — هيوصلك كود على نفس الرقم ده.`,
-            { tenantId: req.tenantId }
+            { tenantId: req.tenantId, category: 'welcome' }
           );
           if (waResult?.ok) whatsappsSent++;
         }
@@ -1208,7 +1208,8 @@ router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res)
       const sent = await sendWhatsApp(
         dialable,
         `رمز إعادة تعيين كلمة المرور: ${otp}\nصالح لمدة 15 دقيقة. لا تشاركه مع أحد.`,
-        { tenantId: req.tenantId }
+        // A password-reset code is an OTP: it stays on with the sign-in code.
+        { tenantId: req.tenantId, category: 'otp' }
       ).catch(e => ({ ok: false, reason: e.message }));
       if (sent.ok) {
         await pool.query(

@@ -423,7 +423,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
         `${lines}\n\n` +
         `يُرجى التواصل مع الفريق لترتيب السداد.\nشكراً لتعاونكم 🙏`;
 
-      const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId });
+      const result = await sendWhatsApp(item.subPhone, msg, { tenantId: item.tenantId, category: 'crm' });
       if (result.ok) waSent++;
     }
 

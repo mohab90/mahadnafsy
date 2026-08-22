@@ -619,7 +619,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
   const adminPhone = process.env.ADMIN_WHATSAPP_PHONE;
   if (adminPhone) {
     const msg = `💳 دفعة أونلاين جديدة!\nالعميل: ${order.customer_name || order.customer_email || '—'}\nالمبلغ: ${order.amount} ${order.currency || 'EGP'}\nالطلب: ${merchantOrderId}`;
-    sendWhatsApp(adminPhone.replace(/\D/g, ''), msg, { tenantId }).catch(() => {});
+    sendWhatsApp(adminPhone.replace(/\D/g, ''), msg, { tenantId, category: 'staff_alert' }).catch(() => {});
   }
   // Auto-update lead deal_value and convert lead on successful payment
   if (sub?.id && order.amount > 0) {

@@ -963,7 +963,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     transactionStarted = false;
 
     // 12. Post-commit: send WhatsApp welcome + enqueue registration sequence
-    const sendTenantWhatsApp = (phone, message) => sendWhatsApp(phone, message, { tenantId });
+    const sendTenantWhatsApp = (phone, message) => sendWhatsApp(phone, message, { tenantId, category: 'crm' });
     if (lead.phone) {
       sendTenantWhatsApp(lead.phone.replace(/\D/g, ''),
         `أهلاً ${lead.name} 🎉\nتم تفعيل اشتراكك في معهد مهاد للدراسات النفسية.\nيسعدنا انضمامك لأسرتنا. 💚`

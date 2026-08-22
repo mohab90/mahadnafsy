@@ -592,7 +592,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           .then(([[r]]) => r?.phone || null).catch(() => null);
         if (subPhone) {
           const waMsg = `✅ تم استلام دفعتك بنجاح!\nالمبلغ: ${payment.amount} ${payment.currency || 'EGP'}${courseLabel ? '\nالبرنامج: ' + courseLabel : ''}\nالتاريخ: ${paymentDate}\nشكراً لثقتك بمعهد الدراسات النفسية 💚`;
-          sendWhatsApp(subPhone.replace(/\D/g, ''), waMsg, { tenantId: paymentTenantId }).catch(() => {});
+          sendWhatsApp(subPhone.replace(/\D/g, ''), waMsg, { tenantId: paymentTenantId, category: 'payment' }).catch(() => {});
         }
       }
     }

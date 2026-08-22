@@ -192,7 +192,7 @@ router.post('/api/admin/messaging/inbox/reply', ...reply, bulkOperationLimiter, 
       if (!to) return res.status(409).json({ error: 'رقم العميل مش صالح للإرسال' });
       // staffId first: the rep's own number if they connected one, else the
       // company's. Same rule as everywhere else.
-      result = await sendWhatsApp(to, text, { tenantId: req.tenantId, staffId });
+      result = await sendWhatsApp(to, text, { tenantId: req.tenantId, staffId, category: 'inbox_reply' });
       usedChannelId = result.channelId || null;
     }
 

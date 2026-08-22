@@ -110,7 +110,7 @@ router.post('/api/admin/whatsapp-send', requireAuth, requireAdmin, async (req, r
   try {
     const { phone, message } = req.body;
     if (!phone || !message) return res.status(400).json({ error: 'phone and message required' });
-    const result = await sendWhatsApp(phone, message, { tenantId: scopedTenantId(req) });
+    const result = await sendWhatsApp(phone, message, { tenantId: scopedTenantId(req), category: 'broadcast' });
     if (!result.ok) return res.status(400).json({ error: 'WhatsApp send failed', detail: result.reason });
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }
@@ -128,7 +128,7 @@ router.post('/api/admin/whatsapp-bulk', requireAuth, requireAdmin, bulkOperation
     for (const phone of phones) {
       // Small delay between each send to avoid API throttling
       await new Promise(r => setTimeout(r, 300));
-      const r = await sendWhatsApp(phone, message, { tenantId: scopedTenantId(req) });
+      const r = await sendWhatsApp(phone, message, { tenantId: scopedTenantId(req), category: 'broadcast' });
       if (r.ok) results.sent++;
       else { results.failed++; results.errors.push({ phone, reason: String(r.reason) }); }
     }
@@ -226,7 +226,7 @@ router.post('/api/admin/whatsapp-proxy/send', requireAuth, requireAdmin, whatsap
   const { phone, message } = req.body;
   if (!phone || !message) return res.status(400).json({ error: 'missing phone or message' });
   try {
-    const result = await sendWhatsApp(String(phone), String(message).slice(0, 4096), { tenantId: scopedTenantId(req) });
+    const result = await sendWhatsApp(String(phone), String(message).slice(0, 4096), { tenantId: scopedTenantId(req), category: 'broadcast' });
     if (result.ok) res.json(result);
     else res.status(400).json({ ok: false, reason: result.reason });
   } catch (e) { routeError(res, e); }

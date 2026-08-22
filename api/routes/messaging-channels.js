@@ -283,7 +283,9 @@ router.post('/api/messaging/channels/:id/test', requireAuth, requireAdminOrStaff
     const result = await sendWhatsApp(
       to,
       req.body?.message || 'رسالة اختبار من منصة معهد الدراسات النفسية ✅',
-      { tenantId: req.tenantId, channelId: channel.id }
+      // An explicit admin press of "اختبار", to a number they typed. Still
+      // gated: add channel_test to WHATSAPP_OUTBOUND_CATEGORIES to use it.
+      { tenantId: req.tenantId, channelId: channel.id, category: 'channel_test' }
     );
     if (!result.ok) {
       return res.status(502).json({

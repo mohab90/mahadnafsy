@@ -40,7 +40,7 @@ function createScheduledJobHandlers({ pool, logger }) {
               dueDate,
               courseName: plan.courseTitle || 'قسط',
             }, subscriber.tenant_id);
-            await sendWhatsApp(subscriber.phone, message, { tenantId: subscriber.tenant_id }).catch(() => {});
+            await sendWhatsApp(subscriber.phone, message, { tenantId: subscriber.tenant_id, category: 'reminder' }).catch(() => {});
             sent += 1;
             if (sent % 5 === 0) await new Promise(resolve => setTimeout(resolve, 2000));
           }
@@ -69,7 +69,7 @@ function createScheduledJobHandlers({ pool, logger }) {
           currency: row.currency || 'EGP',
           date: String(row.date || '').slice(0, 10),
         }, row.tenant_id);
-        await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id });
+        await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id, category: 'reminder' });
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       const counts = rows.reduce((result, row) => {
@@ -182,7 +182,7 @@ function createScheduledJobHandlers({ pool, logger }) {
               sessionDate,
               timeLabel,
             }, round.tenant_id);
-            await sendWhatsApp(attendee.phone, message, { tenantId: round.tenant_id }).catch(() => {});
+            await sendWhatsApp(attendee.phone, message, { tenantId: round.tenant_id, category: 'reminder' }).catch(() => {});
             sent += 1;
           }
         }
@@ -207,7 +207,7 @@ function createScheduledJobHandlers({ pool, logger }) {
       let sent = 0;
       for (const lead of leads) {
         const message = renderTemplate('lead_retargeting', { name: lead.name }, lead.tenant_id);
-        const result = await sendWhatsApp(lead.phone, message, { tenantId: lead.tenant_id })
+        const result = await sendWhatsApp(lead.phone, message, { tenantId: lead.tenant_id, category: 'reminder' })
           .catch(() => ({ ok: false }));
         if (!result.ok) continue;
         await pool.query(
@@ -244,7 +244,7 @@ function createScheduledJobHandlers({ pool, logger }) {
       for (const row of rows) {
         if (!row.phone) continue;
         const message = `أهلاً ${row.name} 🎉\nيسعدنا إبلاغك بأن مقعداً أصبح متاحاً في كورس:\n📚 ${row.course_title}\n\nيرجى التواصل معنا خلال 48 ساعة لتأكيد حجزك قبل انتقاله للتالي في القائمة ⏳\n— معهد الدراسات النفسية 💚`;
-        const result = await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id })
+        const result = await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id, category: 'reminder' })
           .catch(() => ({ ok: false }));
         if (!result.ok) continue;
         await pool.query(

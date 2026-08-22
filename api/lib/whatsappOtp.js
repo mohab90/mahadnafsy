@@ -200,7 +200,9 @@ async function requestLoginCode({ tenantId, phone }) {
     result = await sendWhatsApp(
       normalized,
       `${opening}: ${code}\nصالح لمدة ${CODE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`,
-      { tenantId }
+      // The sign-in code. This is the one category that stays on when every
+      // other kind of outbound message is stopped — see the gate in lib/whatsapp.js.
+      { tenantId, category: 'otp' }
     );
   } catch (error) {
     result = { ok: false, reason: error.message };

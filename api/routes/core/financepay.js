@@ -197,7 +197,7 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
           );
           if (subscriber?.phone) {
             await sendWhatsApp(subscriber.phone.replace(/\D/g, ''),
-              `Payment confirmed: ${payment.amount} ${payment.currency || 'EGP'}`, { tenantId });
+              `Payment confirmed: ${payment.amount} ${payment.currency || 'EGP'}`, { tenantId, category: 'payment' });
           }
         } catch (error) {
           logger.warn('[patch-payment] confirmation notification failed:', error.message);

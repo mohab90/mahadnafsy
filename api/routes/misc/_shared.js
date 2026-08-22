@@ -149,7 +149,7 @@ async function runFollowUpReminders(tenantId = DEFAULT_TENANT) {
       // WhatsApp to assigned staff
       if (lead.staff_phone) {
         const msg = `🔔 تذكير متابعة\nالعميل المحتمل: ${lead.name}\nالهاتف: ${lead.phone || '—'}\nالمصدر: ${lead.source || '—'}\nالحالة: ${lead.status || '—'}\n\nيرجى التواصل اليوم 📞`;
-        sendWhatsApp(lead.staff_phone.replace(/\D/g, ''), msg, { tenantId }).catch(() => {});
+        sendWhatsApp(lead.staff_phone.replace(/\D/g, ''), msg, { tenantId, category: 'staff_alert' }).catch(() => {});
       }
 
       // Email to assigned staff
@@ -352,7 +352,7 @@ async function runPaymentDueReminders(tenantId = DEFAULT_TENANT) {
       // WhatsApp to client
       if (p.phone) {
         const msg = `مرحباً ${p.name} 👋\nهذا تذكير بموعد دفعتك القادمة:\n💰 المبلغ: ${amountFmt}\n📅 الموعد: ${p.due_date} (خلال ${daysLeft} يوم${daysLeft === 1 ? '' : 'أ'})\n\nشكراً لثقتك في معهد مهاد 💚`;
-        sendWhatsApp(p.phone.replace(/\D/g, ''), msg, { tenantId }).catch(() => {});
+        sendWhatsApp(p.phone.replace(/\D/g, ''), msg, { tenantId, category: 'crm' }).catch(() => {});
       }
 
       // Email to client

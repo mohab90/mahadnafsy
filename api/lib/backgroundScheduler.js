@@ -120,7 +120,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
         // channelId decides which identity it goes out from — the company
         // number, or the rep's own WhatsApp the campaign was composed against.
         whatsapp: ({ recipient, message, tenantId, channelId, staffId }) =>
-          sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId }),
+          sendWhatsApp(recipient, message || '', { tenantId, channelId, staffId, category: 'broadcast' }),
         messenger: async ({ recipient, message, tenantId, channelId }) => {
           const { getSendableChannel } = require('./messagingChannels');
           const resolved = await getSendableChannel({ tenantId, channelId, kind: 'messenger' });

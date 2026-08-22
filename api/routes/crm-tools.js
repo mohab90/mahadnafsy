@@ -83,7 +83,7 @@ router.post('/api/admin/payments/send-reminder', requireAuth, requireAdminOrStaf
         ? customMessage.replaceAll('{name}', subscriber.name || '').replaceAll('{amount}', amount.toFixed(0))
         : `أهلاً ${subscriber.name || ''}، لديك رصيد مستحق ${amount.toFixed(0)} ج.م. يرجى التواصل معنا لتسوية الرصيد.`;
       try {
-        await sendWhatsApp(String(subscriber.phone || '').replace(/\D/g, ''), message, { tenantId: req.tenantId });
+        await sendWhatsApp(String(subscriber.phone || '').replace(/\D/g, ''), message, { tenantId: req.tenantId, category: 'crm' });
         results.push({ id: subscriber.id, ok: true });
       } catch (error) { results.push({ id: subscriber.id, ok: false }); }
     }

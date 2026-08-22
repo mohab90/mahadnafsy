@@ -207,7 +207,13 @@ async function drain(senders, limit = 20) {
       sent++;
     } catch (e) {
       const attempts = (m.attempts || 0) + 1;
-      const dead = attempts >= MAX_ATTEMPTS;
+      // A category the system is not allowed to send is a standing decision, not
+      // a delivery fault: retrying it MAX_ATTEMPTS times over an hour changes
+      // nothing, and leaves rows sitting in `failed` as though the provider were
+      // at fault. Dead-letter it on the first attempt instead.
+      const permanentlyRefused = /category_disabled|إرسال هذا النوع من الرسائل موقوف/
+        .test(String(e.message || e));
+      const dead = permanentlyRefused || attempts >= MAX_ATTEMPTS;
       const backoff = Math.min(60, 2 ** attempts);
       await pool.query(
         `UPDATE message_outbox SET status=?,attempts=?,last_error=?,locked_at=NULL,locked_by=NULL,

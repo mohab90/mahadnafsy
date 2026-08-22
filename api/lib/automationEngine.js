@@ -375,7 +375,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
             try {
               const cleanPhone = String(lead.phone).replace(/\D/g, '');
               if (cleanPhone.length >= 10) {
-                await sendWhatsApp(cleanPhone, msg, { tenantId: tid });
+                await sendWhatsApp(cleanPhone, msg, { tenantId: tid, category: 'automation' });
                 actionsRun++;
               }
             } catch (_) { /* best-effort */ }

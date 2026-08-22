@@ -19,6 +19,37 @@ const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 const { resolveSecret } = require('./secretResolver');
 const { toDialable } = require('./phoneNumber');
 
+// ── Outbound category gate ────────────────────────────────────────────────────
+// Which kinds of message may leave the system at all. This is enforced here, in
+// the one function every send goes through, because the per-feature toggles in
+// settings did not cover the senders: of the twenty call sites, most never read
+// a setting before sending. Turning "رسائل الترحيب" off in the admin panel did
+// nothing to routes/auth.js, which fired a welcome message on every signup with
+// no check of any kind — so the numbers kept sending unsolicited traffic and
+// kept getting banned for it.
+//
+// The list is an allowlist and the default is 'otp' alone. A send that does not
+// name its category is refused, so a site added later, or one missed here, fails
+// closed rather than quietly resuming. Widen it without a deploy:
+//
+//   WHATSAPP_OUTBOUND_CATEGORIES=otp,channel_test
+//
+// 'all' restores every category. Categories in use are listed in
+// tests/whatsappOutboundGate.test.js, which also holds the line that every
+// sendWhatsApp call names one.
+const OUTBOUND_ALLOWLIST_RAW = String(process.env.WHATSAPP_OUTBOUND_CATEGORIES ?? 'otp').trim();
+const OUTBOUND_ALLOW_ALL = OUTBOUND_ALLOWLIST_RAW.toLowerCase() === 'all';
+const OUTBOUND_ALLOWED = new Set(
+  OUTBOUND_ALLOWLIST_RAW.split(',').map(part => part.trim().toLowerCase()).filter(Boolean)
+);
+
+function isCategoryAllowed(category) {
+  if (OUTBOUND_ALLOW_ALL) return true;
+  const name = String(category || '').trim().toLowerCase();
+  if (!name) return false;
+  return OUTBOUND_ALLOWED.has(name);
+}
+
 function envSecret(name) {
   try { return resolveSecret(name); } catch (_) { return ''; }
 }
@@ -121,6 +152,17 @@ async function sendWhatsApp(phone, message, options = {}) {
     const opts = typeof options === 'string' ? { tenantId: options } : (options || {});
     const tenantId = opts.tenantId || DEFAULT_TENANT;
 
+    // Refused before the number is even normalised, before any channel budget is
+    // claimed, and before the provider is touched — a blocked category must cost
+    // the account nothing at all.
+    if (!isCategoryAllowed(opts.category)) {
+      logger.info('[WhatsApp] outbound category is disabled — not sending', {
+        category: String(opts.category || '(none)'),
+        allowed: OUTBOUND_ALLOW_ALL ? 'all' : [...OUTBOUND_ALLOWED].join(',') || '(none)',
+      });
+      return { ok: false, reason: 'category_disabled', category: opts.category || null };
+    }
+
     // The delivery address must carry the country code. This used to be
     // `phone.replace(/\D/g,'').replace(/^0+/,'')`, which turns the way every
     // Egyptian customer writes their number — 01012345678 — into 1012345678, a
@@ -199,6 +241,12 @@ async function sendWhatsApp(phone, message, options = {}) {
 /** Provider errors arrive as objects; store something a human can act on. */
 function describeReason(reason) {
   if (!reason) return 'فشل الإرسال';
+  // Not a failure — a deliberate refusal. Said plainly so a staff member does not
+  // go hunting for a broken channel, and so it is not mistaken for a provider
+  // error that should mark the channel unhealthy.
+  if (reason === 'category_disabled') {
+    return 'إرسال هذا النوع من الرسائل موقوف — المسموح حالياً رسائل التحقق (OTP) فقط.';
+  }
   if (typeof reason === 'string') return reason;
   return reason?.error?.message || reason?.message || JSON.stringify(reason).slice(0, 400);
 }

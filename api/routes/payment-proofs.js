@@ -546,7 +546,7 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         const msg = action === 'approve'
           ? `✅ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}. شكراً لك! 🎓`
           : `❌ مرحباً ${sub.name || ''}، ${statusAr} إيصال دفعتك بمبلغ ${proof.amount} ${proof.currency || 'EGP'}.${reviewer_note ? '\nالسبب: ' + reviewer_note : ''} يرجى التواصل معنا للمساعدة.`;
-        await sendWhatsApp(sub.phone, msg, { tenantId: req.tenantId });
+        await sendWhatsApp(sub.phone, msg, { tenantId: req.tenantId, category: 'payment' });
       }
       if (sub?.email) {
         publishRealtimeEvent('client:payment-updated', {
