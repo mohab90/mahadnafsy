@@ -200,7 +200,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       instructorName: instructor?.name || '', receptionId: daqqiDraft.receptionId,
       receptionName: reception?.name || '', dayOfWeek: daqqiDraft.dayOfWeek,
       startDate: daqqiDraft.startDate, timeSlot: daqqiDraft.timeSlot,
-      roomId: daqqiDraft.roomId || undefined, roomName: room?.name || daqqiDraft.roomId || undefined,
+      room: daqqiDraft.roomId.trim() || undefined,
+      roomId: daqqiDraft.roomId.trim() || undefined, roomName: room?.name || daqqiDraft.roomId.trim() || undefined,
       status: 'new', attendees: [],
       createdAt: new Date().toISOString(),
     };
@@ -268,8 +269,12 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       dayOfWeek: daqqiEditDraft.dayOfWeek,
       startDate: daqqiEditDraft.startDate,
       timeSlot: daqqiEditDraft.timeSlot,
-      roomId: daqqiEditDraft.roomId || undefined,
-      roomName: room?.name || daqqiEditDraft.roomId || undefined,
+      // Empty string, not undefined, so clearing the hall actually clears it —
+      // the API reads '' as "no room", while a dropped key would leave the old
+      // one in place and the round would keep holding a hall nobody chose.
+      room: daqqiEditDraft.roomId.trim(),
+      roomId: daqqiEditDraft.roomId.trim() || undefined,
+      roomName: room?.name || daqqiEditDraft.roomId.trim() || undefined,
     });
     if (saved) {
       setDaqqiEditRoundId('');
@@ -722,14 +727,20 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                           </td>
                           <td className="px-3 py-2.5 text-xs">
                             <span className="font-semibold text-gray-800">{round.dayOfWeek}</span>
-                            <span className="text-gray-400 mr-1 text-[11px]">({round.startDate})</span>
+                            {/* Rounds whose start date could not be recovered were
+                                cleared to NULL by migration 205, and this rendered
+                                them as "الأحد()" — an empty bracket that reads as a
+                                broken page rather than as a field waiting to be set. */}
+                            {round.startDate
+                              ? <span className="text-gray-400 mr-1 text-[11px]">({round.startDate})</span>
+                              : <span className="text-amber-600 mr-1 text-[11px] font-bold">بدون تاريخ — عدّل الروند</span>}
                           </td>
                           <td className="px-3 py-2.5">
                             <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${timeSlotColors[round.timeSlot] || ''}`}>{round.timeSlot}</span>
                           </td>
                           <td className="px-3 py-2.5 text-xs text-gray-700">{round.instructorName}</td>
                           <td className="px-3 py-2.5 text-xs text-gray-700">{round.receptionName}</td>
-                          <td className="px-3 py-2.5 text-xs text-gray-700">{round.roomName || '—'}</td>
+                          <td className="px-3 py-2.5 text-xs text-gray-700">{round.room || round.roomName || '—'}</td>
                           <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                             <select
                               value={status}
@@ -768,12 +779,16 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                             <div className="flex flex-col gap-0.5 min-w-[100px]">
                               <div className="grid grid-cols-4 gap-0.5">
                                 <button onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="+ عملاء"><UserPlus size={12} /></button>
-                                <button onClick={() => { setDaqqiEditRoundId(round.id); setDaqqiEditDraft({ courseId: round.courseId, instructorId: round.instructorId, receptionId: round.receptionId, roomId: round.roomId || '', dayOfWeek: round.dayOfWeek, startDate: round.startDate, timeSlot: round.timeSlot }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="تعديل"><Pencil size={12} /></button>
+                                <button onClick={() => { setDaqqiEditRoundId(round.id); setDaqqiEditDraft({ courseId: round.courseId, instructorId: round.instructorId, receptionId: round.receptionId, roomId: round.room || round.roomName || round.roomId || '', dayOfWeek: round.dayOfWeek, startDate: round.startDate, timeSlot: round.timeSlot }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="تعديل"><Pencil size={12} /></button>
                                 <button onClick={() => setDaqqiPostponeModal({ roundId: round.id, newDate: round.startDate })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition" title="تأجيل موعد"><CalendarDays size={12} /></button>
                                 <button onClick={async () => {
                                   if (!confirm(`حذف روند ${course?.titleAr || round.code}؟`)) return;
                                   const deleted = await deleteDaqqiRound(round.id);
-                                  notify(deleted ? 'success' : 'error', deleted ? 'تم حذف الروند.' : 'تعذر حذف الروند.');
+                                  // Only the success case is announced here. A refusal
+                                  // already raises site-persist-error carrying the actual
+                                  // reason, and saying "تعذر حذف الروند" next to it put two
+                                  // toasts on screen, the vaguer one on top.
+                                  if (deleted) notify('success', 'تم حذف الروند.');
                                 }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف الروند"><X size={12} /></button>
                               </div>
                               {status === 'active' && (() => {
@@ -973,15 +988,26 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                       {receptionOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
-                  {daqqiRooms.length > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-600 font-bold mb-1 block">القاعة</label>
-                      <select value={daqqiDraft.roomId} onChange={e => setDaqqiDraft({ ...daqqiDraft, roomId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none">
-                        <option value="">— بدون قاعة —</option>
-                        {daqqiRooms.map(r => <option key={r.name} value={r.name}>{r.name}{r.capacity ? ` (${r.capacity} فرد)` : ''}</option>)}
-                      </select>
-                    </div>
-                  )}
+                  {/* Always rendered, directly under مسؤول الريسبشن. This was a
+                      <select> gated on the branch settings listing halls, so on
+                      a branch that had never configured any the field simply was
+                      not there — no room could be set and nothing said why. A
+                      combobox suggests the configured halls when there are any
+                      and still takes a name typed in when there are none. */}
+                  <div>
+                    <label className="text-xs text-gray-600 font-bold mb-1 block">القاعة</label>
+                    <input
+                      list="daqqi-room-options"
+                      value={daqqiDraft.roomId}
+                      onChange={e => setDaqqiDraft({ ...daqqiDraft, roomId: e.target.value })}
+                      placeholder={daqqiRooms.length ? 'اختر قاعة أو اكتب اسمها...' : 'اكتب اسم القاعة (اختياري)'}
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-primary-400 focus:outline-none"
+                    />
+                    <datalist id="daqqi-room-options">
+                      {daqqiRooms.map(r => <option key={r.name} value={r.name}>{r.capacity ? `${r.capacity} فرد` : ''}</option>)}
+                    </datalist>
+                    <p className="text-[10px] text-gray-400 mt-1">القاعة الواحدة لا تقبل روندين في نفس اليوم والتوقيت.</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-gray-600 font-bold mb-1 block">اليوم</label>

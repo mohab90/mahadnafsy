@@ -198,7 +198,7 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                   {STATUS_AR[round.status] || round.status}
                 </span>
                 <span className="text-sm text-gray-700 flex-1">{round.instructorName}</span>
-                <span className="text-xs text-gray-500 hidden sm:block">{round.dayOfWeek} · {round.startDate}</span>
+                <span className="text-xs text-gray-500 hidden sm:block">{round.dayOfWeek}{round.startDate ? ` · ${round.startDate}` : ' · بدون تاريخ'}</span>
                 <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5 shrink-0">
                   {round.totalSessions} جلسة
                 </span>

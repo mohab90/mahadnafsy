@@ -189,11 +189,18 @@ const Dashboard: React.FC = () => {
   // people checking their wifi over a data problem.
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ field?: string; name?: string; reason?: string }>).detail;
+      const detail = (event as CustomEvent<{ field?: string; name?: string; reason?: string; action?: string }>).detail;
       const reason = String(detail?.reason || '').trim();
+      // A delete the server refused is not a failed save. Prefixing it with
+      // "فشل الحفظ" named the wrong action and read as a bug in the panel rather
+      // than as the rule it is, so a refusal that already explains itself is
+      // shown as-is.
+      const isDelete = detail?.action === 'delete';
       notify('error', reason
-        ? `فشل الحفظ: ${reason}`
-        : 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
+        ? (isDelete ? reason : `فشل الحفظ: ${reason}`)
+        : isDelete
+          ? 'تعذر الحذف. تحقق من الاتصال بالإنترنت وأعد المحاولة.'
+          : 'فشل حفظ البيانات. تحقق من الاتصال بالإنترنت وأعد المحاولة.');
     };
     window.addEventListener('site-persist-error', handler);
     return () => window.removeEventListener('site-persist-error', handler);

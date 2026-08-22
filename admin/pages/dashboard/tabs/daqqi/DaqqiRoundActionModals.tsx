@@ -68,7 +68,7 @@ export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-800 truncate">{courseTitle(courses, round.courseId)} <span className="text-xs text-gray-400 font-mono">{round.code}</span></p>
-                    <p className="text-xs text-gray-500">{round.dayOfWeek} - {round.timeSlot} - {round.startDate}</p>
+                    <p className="text-xs text-gray-500">{round.dayOfWeek} - {round.timeSlot}{round.startDate ? ` - ${round.startDate}` : ' - بدون تاريخ'}</p>
                   </div>
                   <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full flex-shrink-0">{round.attendees.length} حاضر</span>
                 </div>
@@ -162,7 +162,7 @@ export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
                         <p className="text-sm font-bold text-gray-800 truncate">{courseTitle(courses, round.courseId)} <span className="text-xs text-gray-400 font-mono">#{round.code}</span></p>
                         {isMatchingCourse && <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">كورس العميل</span>}
                       </div>
-                      <p className="text-xs text-gray-500">{round.dayOfWeek} - {round.timeSlot} - {round.startDate}</p>
+                      <p className="text-xs text-gray-500">{round.dayOfWeek} - {round.timeSlot}{round.startDate ? ` - ${round.startDate}` : ' - بدون تاريخ'}</p>
                       {round.receptionName && <p className="text-[10px] text-gray-400 mt-0.5">{round.receptionName}</p>}
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${round.status === 'active' ? 'bg-green-50 text-green-700' : round.status === 'new' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>{round.attendees.length} حاضر</span>

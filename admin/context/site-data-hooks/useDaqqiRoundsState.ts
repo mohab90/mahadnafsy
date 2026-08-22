@@ -4,6 +4,33 @@ import type { DaqqiRound } from '../../types';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
+
+// The API states these refusals in English because they are also its contract
+// text. They are rules the desk has to act on, not faults, so they are said in
+// Arabic here and in terms of what to do instead — "Only an empty NEW round can
+// be deleted; retain operational history" reached the screen verbatim, prefixed
+// with "فشل الحفظ" on an action that was a delete.
+const DAQQI_RULES: Array<[RegExp, string]> = [
+  [/Only an empty NEW round can be deleted/i,
+    'لا يمكن حذف روند بدأت أو فيها عملاء — سجل الحضور لا يُمسح. غيّر حالتها إلى «منتهية» بدل الحذف.'],
+  [/محجوزة في نفس اليوم والتوقيت/, ''],
+  [/Attendance cannot be marked for a finished round/i,
+    'الروند منتهية — لا يمكن تسجيل حضور عليها.'],
+  [/Attendance is already recorded for this session/i,
+    'الحضور مُسجَّل بالفعل لهذه الجلسة.'],
+  [/Cannot transfer an attendee after attendance has started/i,
+    'لا يمكن نقل عميل بعد بدء تسجيل الحضور — سجل الروند يُحفظ كما هو.'],
+  [/An attendee with attendance history cannot be removed/i,
+    'لا يمكن شطب عميل له سجل حضور من الروند.'],
+];
+
+export const daqqiRuleMessage = (raw: string) => {
+  const text = String(raw || '');
+  for (const [pattern, arabic] of DAQQI_RULES) {
+    if (pattern.test(text)) return arabic || text;
+  }
+  return text;
+};
 export function useDaqqiRoundsState(
   initialDaqqiRounds: DaqqiRound[],
   lastCRMWriteRef: MutableRefObject<number>,
@@ -51,7 +78,12 @@ export function useDaqqiRoundsState(
       return true;
     } catch (err) {
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'daqqiRound', name: id, reason: err instanceof Error ? err.message : String(err) },
+        detail: {
+          field: 'daqqiRound',
+          name: id,
+          action: 'delete',
+          reason: daqqiRuleMessage(err instanceof Error ? err.message : String(err)),
+        },
       }));
       return false;
     }

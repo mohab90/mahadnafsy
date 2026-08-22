@@ -512,6 +512,12 @@ export interface DaqqiRound {
   dayOfWeek: DaqqiDayOfWeek;
   startDate: string;
   timeSlot: DaqqiTimeSlot;
+  // The hall, as the API stores and returns it: daqqi_rounds.room, a plain name.
+  // roomId/roomName are what the form used to send when there was no column to
+  // put them in; the API still accepts either, but nothing ever sends back a
+  // roomName, so anything reading roomName alone showed an empty hall for every
+  // round that had one. Read `room` first.
+  room?: string;
   roomId?: string;
   roomName?: string;
   status: 'new' | 'active' | 'finished';
