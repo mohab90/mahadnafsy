@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
-import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, NewLeadDraft, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream } from '../types';
+import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, NewLeadDraft, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream, LeadStats } from '../types';
 import { mysqlCatalog, mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
 import { useDiscountsState } from './site-data-hooks/useDiscountsState';
@@ -44,6 +44,19 @@ interface SiteDataShape {
   testimonials: TestimonialItem[];
   subscribers: SubscriberItem[];
   leads: LeadItem[];
+  // Totals for the whole leads table, computed by the database in one query.
+  //
+  // Step one of moving the CRM off "load all 26,878 rows into the browser and
+  // count them there". Every count taken from `leads.length` or
+  // `leads.filter(...).length` is only correct while the array holds every row,
+  // which is exactly what forces the full load. These come from
+  // /admin/leads/stats instead, and were verified against production to match
+  // the array-computed values exactly — total, assigned, unassigned and every
+  // status bucket — before anything was migrated onto them.
+  //
+  // null until the first fetch lands. A consumer that has not been migrated yet
+  // keeps using `leads` and is unaffected.
+  leadStats: LeadStats | null;
   staffMembers: StaffMember[];
   consultations: ConsultationItem[];
   lectures: CourseLectureItem[];
@@ -251,6 +264,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     staffScopedSubscribers, setStaffScopedSubscribers,
     staffScopedLeads, setStaffScopedLeads,
     leads, setLeads,
+    leadStats, refreshLeadStats,
     consultations, setConsultations,
     orders, setOrders,
     joinUsApplications, setJoinUsApplications,
@@ -324,6 +338,14 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // extracting authUser email into a ref so the refresh closure doesn't need authUser in deps
   const _subEmailRef = React.useRef<string | null>(null);
   useEffect(() => { _subEmailRef.current = authUser?.email ?? null; }, [authUser?.email]);
+
+  // One aggregate request per signed-in staff session. Deliberately not tied to
+  // the full leads load: the whole point is that a screen showing totals should
+  // not have to wait for — or force — 26,878 rows to arrive first.
+  useEffect(() => {
+    if (!authUser?.email) return;
+    void refreshLeadStats();
+  }, [authUser?.email, refreshLeadStats]);
 
   const _applySubscriberData = React.useCallback((mySub: unknown) => {
     const raw = mySub as unknown as SubscriberItem & { enrolledCoursesData?: Course[] };
@@ -570,6 +592,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     testimonials,
     subscribers,
     leads,
+    leadStats,
     staffMembers,
     consultations,
     lectures,

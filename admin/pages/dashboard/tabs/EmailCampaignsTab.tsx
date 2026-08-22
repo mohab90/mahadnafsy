@@ -29,7 +29,9 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
-  const { leads, subscribers } = useSiteData();
+  const { leads, leadStats, subscribers } = useSiteData();
+  // Recipient counts describe the whole table, not the slice currently loaded.
+  const leadTotal = leadStats?.total ?? leads.length;
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<'list' | 'new'>('list');
@@ -60,9 +62,9 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
   }), [campaigns]);
 
   const audienceOptions = [
-    { value: 'all', label: `كل المشتركين والليدات (${subscribers.length + leads.length})` },
+    { value: 'all', label: `كل المشتركين والليدات (${subscribers.length + leadTotal})` },
     { value: 'subscribers', label: `المشتركون (${subscribers.length})` },
-    { value: 'leads', label: `الليدات (${leads.length})` },
+    { value: 'leads', label: `الليدات (${leadTotal})` },
     { value: 'manual', label: 'قائمة بريد محددة' },
   ];
 

@@ -6,7 +6,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   const {
-    leads, subscribers, orders, courses, bundles, therapists, consultations,
+    leads, leadStats, subscribers, orders, courses, bundles, therapists, consultations,
     adminAiConfig,
   } = useSiteData();
 
@@ -88,7 +88,12 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
   // Customer names, phones, messages, health details and payment notes stay local.
   const buildSystemContext = () => {
     const totalRevEGP = _totalRevEGP;
-    const convRate = leads.length > 0 ? ((leads.filter(l => l.status === 'converted').length / leads.length) * 100).toFixed(1) : '0';
+    // Whole-table figures, from the database rather than from however much of the
+    // leads array happens to be loaded. Falls back to the array while the
+    // aggregate is still in flight, so the number is never blank and never wrong.
+    const leadTotal = leadStats?.total ?? leads.length;
+    const leadBy = (status: string) => leadStats?.byStatus?.[status] ?? leads.filter(l => l.status === status).length;
+    const convRate = leadTotal > 0 ? ((leadBy('converted') / leadTotal) * 100).toFixed(1) : '0';
     const todayStr = _now.toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     const leadSources = Object.entries(leads.reduce((result: Record<string, number>, lead) => {
       const source = lead.source || 'غير محدد';
@@ -113,7 +118,7 @@ Leads جدد: ${_todayLeads.length}
 
 ## الإجماليات
 المشتركون: ${subscribers.length} (نشط ${subscribers.filter(s => s.status === 'active').length}، موقوف ${subscribers.filter(s => s.status === 'paused').length})
-Leads: ${leads.length} (جديد ${leads.filter(l => l.status === 'new').length}، تواصل ${leads.filter(l => l.status === 'contacted').length}، تحوّل ${leads.filter(l => l.status === 'converted').length}، ضائع ${leads.filter(l => l.status === 'lost').length})
+Leads: ${leadTotal} (جديد ${leadBy('new')}، تواصل ${leadBy('contacted')}، تحوّل ${leadBy('converted')}، ضائع ${leadBy('lost')})
 معدل التحويل: ${convRate}%
 الاستشارات: ${consultations.length} (انتظار ${consultations.filter(c => c.status === 'pending').length}، مؤكد ${consultations.filter(c => c.status === 'confirmed').length}، مكتمل ${consultations.filter(c => c.status === 'completed').length})
 الكورسات: ${courses.length} | المعالجون: ${therapists.length} | المسارات: ${bundles.length}

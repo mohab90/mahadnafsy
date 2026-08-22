@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStatus, NewLeadDraft, OrderItem, SubscriberItem } from '../../types';
+import type { ConsultationItem, JoinUsApplication, LeadItem, LeadStats, LeadStatus, NewLeadDraft, OrderItem, SubscriberItem } from '../../types';
 import { mysqlAdmin, mysqlForms } from '../../lib/mysqlapi';
 
 type Track = (action: string, entity: string, label: string) => void;
@@ -30,6 +30,19 @@ export function useCrmCoreState(
   subscribersRef.current = subscribers;
   const [leads, setLeads] = useState<LeadItem[]>(initialLeads);
   leadsRef.current = leads;
+  // Whole-table totals from the database — see LeadStats in types.ts. One small
+  // request in place of counting 26,878 rows the browser had to download first.
+  // Kept beside `leads` so a consumer can move onto it without the two ever
+  // disagreeing about which tenant or which moment they describe.
+  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
+  const refreshLeadStats = useCallback(async () => {
+    try {
+      setLeadStats(await mysqlAdmin.getLeadStats() as unknown as LeadStats);
+    } catch {
+      // A failed aggregate must not blank a figure already on screen: consumers
+      // fall back to counting the array while this is null.
+    }
+  }, []);
   // Scoped data for non-admin staff — set by Dashboard after fetchSalesData
   const [staffScopedSubscribers, setStaffScopedSubscribers] = useState<SubscriberItem[]>([]);
   const [staffScopedLeads, setStaffScopedLeads] = useState<LeadItem[]>([]);
@@ -467,6 +480,7 @@ export function useCrmCoreState(
     staffScopedSubscribers, setStaffScopedSubscribers,
     staffScopedLeads, setStaffScopedLeads,
     leads, setLeads,
+    leadStats, refreshLeadStats,
     consultations, setConsultations,
     orders, setOrders,
     joinUsApplications, setJoinUsApplications,

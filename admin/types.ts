@@ -1152,3 +1152,21 @@ export interface LiveStream {
   description?: string;
   createdAt: string;
 }
+
+/**
+ * Whole-table lead totals, computed by the database rather than by counting a
+ * fully-loaded array in the browser.
+ *
+ * Every `leads.length` / `leads.filter(...).length` in the CRM is only correct
+ * while the context holds all 26,878 rows, and holding them is what makes the
+ * dashboard heavy. These are the same numbers from /admin/leads/stats — verified
+ * against production to match the array-computed values exactly, bucket for
+ * bucket, before any consumer was migrated onto them.
+ */
+export interface LeadStats {
+  total: number;
+  byStatus: Record<string, number>;
+  assigned: number;
+  unassigned: number;
+  totalDealValue: number;
+}
