@@ -829,7 +829,12 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                                         return (
                                           <tr key={a.subscriberId} className="border-t border-gray-200">
                                             <td className="py-1.5 pr-1">
-                                              <div className="font-bold text-gray-800">{a.name}</div>
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="font-bold text-gray-800">{a.name}</span>
+                                                {a.archived && (
+                                                  <span className="text-[9px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="عميل مؤرشف — يظل محفوظاً في سجل الروند">مؤرشف</span>
+                                                )}
+                                              </div>
                                               {attSub?.clientCode && (
                                                 <button onClick={e => { e.stopPropagation(); navigate(`/client/${attSub.clientCode}`); }} className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 mt-0.5 inline-block">#{attSub.clientCode}</button>
                                               )}

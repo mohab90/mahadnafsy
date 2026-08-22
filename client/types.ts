@@ -407,6 +407,9 @@ export interface DaqqiRoundAttendee {
   bookedAt: string;
   amountPaid: number;
   attendedLectures?: number;
+  // The client has since been archived. The booking and its attendance stay on
+  // the round as history — the row is labelled, never dropped from the list.
+  archived?: boolean;
 }
 
 export interface DaqqiRound {

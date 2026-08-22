@@ -7,6 +7,7 @@ interface AttendeeRow {
   name: string;
   phone: string;
   bookedAt: string;
+  archived?: boolean;
   amountPaid: number;
   attendedLectures: number;
   absentLectures: number;
@@ -25,6 +26,7 @@ interface RoundReport {
   status: string;
   totalSessions: number;
   attendeeCount: number;
+  archivedAttendeeCount?: number;
   attendees: AttendeeRow[];
 }
 
@@ -204,6 +206,9 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                 </span>
                 <span className="text-xs bg-gray-50 text-gray-700 border border-gray-200 rounded-full px-2 py-0.5 shrink-0">
                   {round.attendeeCount} متدرب
+                  {(round.archivedAttendeeCount ?? 0) > 0 && (
+                    <span className="text-gray-400"> · {round.archivedAttendeeCount} مؤرشف</span>
+                  )}
                 </span>
                 {avgRoundPct !== null && (
                   <span className={`text-sm ${pctColor(avgRoundPct)} shrink-0`}>{avgRoundPct}%</span>
@@ -239,7 +244,14 @@ export default function DaqqiAttendanceTab({ notify }: { notify: (msg: string, t
                             .sort((a, b) => (b.attendancePct ?? -1) - (a.attendancePct ?? -1))
                             .map(att => (
                               <tr key={att.subscriberId} className="border-t border-gray-100 hover:bg-gray-50">
-                                <td className="px-4 py-2 font-medium text-gray-800">{att.name}</td>
+                                <td className="px-4 py-2 font-medium text-gray-800">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {att.name}
+                                    {att.archived && (
+                                      <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="عميل مؤرشف — يظل محسوباً في تقرير الحضور">مؤرشف</span>
+                                    )}
+                                  </span>
+                                </td>
                                 <td className="px-4 py-2 text-gray-500 font-mono text-xs" dir="ltr">{att.phone}</td>
                                 <td className="px-4 py-2 text-center">
                                   <span className="bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 text-xs font-bold">

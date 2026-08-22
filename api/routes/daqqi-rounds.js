@@ -123,6 +123,8 @@ router.get('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, requireP
         bookedAt: ymd(a.booked_at),
         amountPaid: Number(a.amount_paid || 0),
         attendedLectures: Number(a.attended_lectures || 0),
+        // The client is archived but their attendance stands — see lib/daqqiAttendees.js.
+        archived: Boolean(Number(a.archived || 0)),
       })),
     }));
     res.json(result);
@@ -321,6 +323,13 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       for (const a of d.attendees) {
         const subId = a.subscriberId || a.subscriber_id;
         if (!subId) continue;
+        // An attendee already on this round is re-inserted on every save, because
+        // the rows above are deleted and rebuilt. Now that an archived client
+        // stays visible in the round (lib/daqqiAttendees.js), the desk posts them
+        // back with everyone else — and requiring deleted_at IS NULL would fail
+        // that row and take the whole save down with "Subscriber not found".
+        // Keeping an existing booking is allowed; making a new one is not.
+        const alreadyBooked = persistedAttendance.has(String(subId));
         const attendedLectures = existing ? (persistedAttendance.get(String(subId)) || 0) : 0;
         if (!Number.isInteger(attendedLectures) || attendedLectures < 0 || attendedLectures > currentLecture) {
           const error = new Error('attendedLectures must be an integer within the round lecture count');
@@ -341,7 +350,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
                   ))
              ),0),?
            FROM subscribers s
-          WHERE s.id=? AND s.tenant_id=? AND s.deleted_at IS NULL`,
+          WHERE s.id=? AND s.tenant_id=?${alreadyBooked ? '' : ' AND s.deleted_at IS NULL'}`,
           [
             id, req.tenantId,
             toMysqlDt(a.bookedAt || a.booked_at || new Date().toISOString()),
@@ -350,8 +359,17 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
           ]
         );
         if (attendeeInsert.affectedRows !== 1) {
-          const error = new Error('Subscriber not found');
-          error.statusCode = 404;
+          // "Subscriber not found" was the answer for an archived client too,
+          // which sent the desk looking for a client that is plainly on screen.
+          const [[known]] = await conn.query(
+            'SELECT deleted_at FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
+            [subId, req.tenantId]
+          );
+          const blockedAsArchived = Boolean(known && known.deleted_at);
+          const error = new Error(blockedAsArchived
+            ? 'An archived client cannot be booked into a round'
+            : 'Subscriber not found');
+          error.statusCode = blockedAsArchived ? 409 : 404;
           throw error;
         }
       }
@@ -635,6 +653,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
         status: (r.status || 'NEW').toLowerCase(),
         totalSessions,
         attendeeCount: atts.length,
+        archivedAttendeeCount: atts.filter(a => Number(a.archived || 0) === 1).length,
         attendees: atts.map(a => ({
           subscriberId: a.subscriber_id,
           name: a.name,
@@ -642,6 +661,7 @@ router.get('/api/admin/daqqi/attendance-report', requireAuth, requireAdminOrStaf
           bookedAt: ymd(a.booked_at),
           amountPaid: Number(a.amount_paid || 0),
           attendedLectures: Number(a.attended_lectures || 0),
+          archived: Boolean(Number(a.archived || 0)),
           absentLectures: totalSessions > 0 ? Math.max(0, totalSessions - Number(a.attended_lectures || 0)) : 0,
           attendancePct: totalSessions > 0 ? Math.round((Number(a.attended_lectures || 0) / totalSessions) * 100) : null,
         })),
@@ -686,7 +706,7 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
     }
 
     const rows = [];
-    const headers = ['كود الدورة', 'المحاضر', 'يوم الأسبوع', 'تاريخ البدء', 'الوقت', 'الحالة', 'إجمالي الجلسات', 'اسم المتدرب', 'رقم الهاتف', 'تاريخ التسجيل', 'جلسات الحضور', 'جلسات الغياب', 'نسبة الحضور%'];
+    const headers = ['كود الدورة', 'المحاضر', 'يوم الأسبوع', 'تاريخ البدء', 'الوقت', 'الحالة', 'إجمالي الجلسات', 'اسم المتدرب', 'رقم الهاتف', 'تاريخ التسجيل', 'جلسات الحضور', 'جلسات الغياب', 'نسبة الحضور%', 'حالة العميل'];
     rows.push(headers);
 
     for (const r of rounds) {
@@ -694,11 +714,11 @@ router.get('/api/admin/daqqi/attendance-export', requireAuth, requireAdminOrStaf
       const statusAr = { NEW: 'جديدة', ACTIVE: 'نشطة', FINISHED: 'منتهية' }[r.status] || r.status;
       const atts = attMap[r.id] || [];
       if (!atts.length) {
-        rows.push([r.code, r.instructor_name, r.day_of_week, ymd(r.start_date), r.time_slot, statusAr, total, '—', '', '', '', '', '']);
+        rows.push([r.code, r.instructor_name, r.day_of_week, ymd(r.start_date), r.time_slot, statusAr, total, '—', '', '', '', '', '', '']);
       } else {
         for (const a of atts) {
           const pct = total > 0 ? Math.round((Number(a.attended_lectures || 0) / total) * 100) : '';
-          rows.push([r.code, r.instructor_name, r.day_of_week, ymd(r.start_date), r.time_slot, statusAr, total, a.name, a.phone, ymd(a.booked_at), Number(a.attended_lectures || 0), total > 0 ? Math.max(0, total - Number(a.attended_lectures || 0)) : 0, pct !== '' ? `${pct}%` : '']);
+          rows.push([r.code, r.instructor_name, r.day_of_week, ymd(r.start_date), r.time_slot, statusAr, total, a.name, a.phone, ymd(a.booked_at), Number(a.attended_lectures || 0), total > 0 ? Math.max(0, total - Number(a.attended_lectures || 0)) : 0, pct !== '' ? `${pct}%` : '', Number(a.archived || 0) === 1 ? 'مؤرشف' : 'نشط']);
         }
       }
     }

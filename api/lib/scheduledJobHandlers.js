@@ -152,11 +152,19 @@ function createScheduledJobHandlers({ pool, logger }) {
           return next.getTime() >= from && next.getTime() <= to;
         });
         if (!due.length) continue;
+        // Recipient filter, deliberately scoped to this messaging path only.
+        // Archiving a client (DELETE /api/admin/subscribers/:id -> is_active=0
+        // + deleted_at) and privacy erasure (is_unsubscribed=1) both leave the
+        // daqqi_attendees row intact, which is what keeps the attendance history
+        // and the per-round counts whole. Neither client should still receive a
+        // WhatsApp, so the narrowing belongs here and must not be pushed down
+        // into getDaqqiAttendees(), which feeds those counts.
         const [attendees] = await pool.query(
           `SELECT da.round_id,da.tenant_id,s.phone,s.name
              FROM daqqi_attendees da
              JOIN subscribers s ON s.id=da.subscriber_id AND s.tenant_id=da.tenant_id
-            WHERE da.round_id IN (?)`,
+            WHERE da.round_id IN (?)
+              AND s.deleted_at IS NULL AND s.is_active=1 AND s.is_unsubscribed=0`,
           [due.map(round => round.id)]
         );
         let sent = 0;
