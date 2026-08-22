@@ -651,6 +651,14 @@ export const mysqlAdmin = {
     patch(`/admin/consultations/${id}`, { status, notes, meeting_link: link }),
   deleteConsultation: (id: string) => del(`/admin/consultations/${id}`),
 
+  // Staff-created refund. The route has existed since refunds were built but
+  // nothing in the admin ever called it, so a refund could only ever start from
+  // the customer's side.
+  createRefundByAdmin: (payload: {
+    subscriber_id: string; payment_id: string; amount: number;
+    currency: string; reason: string; refund_method: string;
+  }) => post('/admin/refund-requests/by-admin', payload as unknown as AR),
+
   // ── Orders ──
   saveOrder:         (o: AR) => post('/admin/orders', o),
   updateOrderStatus: (id: string, status: string) => patch(`/admin/orders/${id}`, { status }),

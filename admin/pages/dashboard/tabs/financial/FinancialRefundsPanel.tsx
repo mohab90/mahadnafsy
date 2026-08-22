@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  CheckCircle2, Clock, RefreshCw, XCircle, Wrench, ArrowUpCircle,
+  CheckCircle2, Clock, RefreshCw, Plus, XCircle, Wrench, ArrowUpCircle,
   UserX, Trash2, BadgeCheck, Search,
 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../../context/SiteDataContext';
+import { AddRefundModal } from './AddRefundModal';
 
 // A refund is a money decision with a story: which course, at which branch, how
 // much of it the customer had actually paid, how much they asked back, when
@@ -68,6 +69,7 @@ const day = (value?: string) => (value ? String(value).slice(0, 10) : '—');
 // per branch, and the server checks the caller may act on that branch.
 export default function FinancialRefundsPanel({ notify, branch }: { notify: Notify; branch?: string }) {
   const { staffMembers, isAdmin } = useSiteData();
+  const [addOpen, setAddOpen] = useState(false);
   const [rows, setRows] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -211,6 +213,9 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
         <button onClick={() => void load()} className="rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center gap-1">
           <RefreshCw size={12} /> تحديث
         </button>
+        <button onClick={() => setAddOpen(true)} className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition flex items-center gap-1">
+          <Plus size={12} /> إضافة استرداد
+        </button>
       </div>
 
       {loading ? (
@@ -331,6 +336,17 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* This panel's notify takes (message, tone); the modal uses the
+          (type, text) shape the rest of the admin does. Adapted at the call
+          site rather than changing either signature. */}
+      {addOpen && (
+        <AddRefundModal
+          notify={(type, text) => notify(text, type === 'error' ? 'error' : 'success')}
+          onClose={() => setAddOpen(false)}
+          onCreated={() => void load()}
+        />
       )}
     </div>
   );
