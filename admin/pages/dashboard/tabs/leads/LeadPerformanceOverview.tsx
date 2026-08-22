@@ -3,6 +3,7 @@ import type { NavigateFunction } from 'react-router-dom';
 
 import type { LeadItem, LeadStatus, SalesTarget, StaffMember } from '../../../../types';
 import type { NotifyFn } from '../CrmSettingsModal';
+import { useSiteData } from '../../../../context/SiteDataContext';
 import { calcLeadScore } from '../leadUtils';
 import { LEAD_STATUS_CFG, ScoreBadge, crmStatusLabels } from './LeadSubcomponents';
 
@@ -79,6 +80,15 @@ export function LeadPerformanceOverview({
   totalConverted,
   overdueLeads,
 }: LeadPerformanceOverviewProps) {
+  const { leadStats } = useSiteData();
+  // Both /admin/leads and /admin/leads/stats filter hidden = 0 under the same
+  // role scoping, so they describe the same population and this substitution is
+  // exact rather than merely close. Falls back to counting the array while the
+  // aggregate is still in flight.
+  const activeLeadCount = leadStats
+    ? Math.max(0, leadStats.total - (leadStats.byStatus?.converted || 0) - (leadStats.byStatus?.lost || 0))
+    : leads.filter(l => !['converted', 'lost'].includes(l.status) && !l.hidden).length;
+
   return (
     <div className="space-y-6">
       {/* ── Header row: month filter + distribute ── */}
@@ -464,7 +474,7 @@ export function LeadPerformanceOverview({
       {/* KPI overview cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'ليدز نشطة', val: leads.filter(l => !['converted','lost'].includes(l.status) && !l.hidden).length, color: 'bg-blue-50 text-blue-700 border-blue-200' },
+          { label: 'ليدز نشطة', val: activeLeadCount, color: 'bg-blue-50 text-blue-700 border-blue-200' },
           { label: 'محوّل لمشترك',  val: totalConverted, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
           { label: 'تذكيرات متأخرة', val: overdueLeads.length, color: 'bg-red-50 text-red-700 border-red-200' },
           {

@@ -8,6 +8,7 @@ import type { ConsultationItem, Course, LeadItem, OrderItem, StaffMember, Subscr
 import { AnalyticsTab } from '../lazyTabs';
 import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useSiteData } from '../../../context/SiteDataContext';
 import type { TabKey } from '../navigation';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -66,6 +67,12 @@ export default function OverviewTab({
   onlineTeamMembers, onlineUsers, kpiModal, setKpiModal,
   notify, setActiveTab, navigate,
 }: Props) {
+              // The headline lead figure and the percentages under it describe
+              // the whole table, so they come from the database aggregate rather
+              // than from however much of the array is loaded. Falls back to the
+              // array while the aggregate is in flight — see LeadStats.
+              const { leadStats } = useSiteData();
+              const leadTotal = leadStats?.total ?? leads.length;
               const targetPeriod = new Date().toISOString().slice(0, 7);
               const [collectionMonthlyTarget, setCollectionMonthlyTarget] = useState(160000);
               useEffect(() => {
@@ -892,7 +899,7 @@ export default function OverviewTab({
                   onDetail: () => setKpiModal({ title: 'عملاء فرع الدقي', rows: daqqiClients.map(s => ({ label: s.name || s.email || '', sub: s.phone || s.email || '' })) }),
                 },
                 {
-                  title: 'العملاء المحتملون', value: leads.length, icon: UserPlus, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200',
+                  title: 'العملاء المحتملون', value: leadTotal, icon: UserPlus, bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200',
                   onDetail: () => setKpiModal({ title: 'العملاء المحتملون', rows: leads.slice(0, 50).map(l => ({ label: l.name || l.email || '', sub: `${l.source || ''} · ${l.status || ''}` })) }),
                 },
                 {
@@ -1022,16 +1029,16 @@ export default function OverviewTab({
                           <div key={s.label}>
                             <div className="flex items-center justify-between mb-1.5">
                               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.pill}`}>{s.label}</span>
-                              <span className="text-sm font-bold text-gray-700">{s.count} ({leads.length > 0 ? Math.round((s.count / leads.length) * 100) : 0}%)</span>
+                              <span className="text-sm font-bold text-gray-700">{s.count} ({leadTotal > 0 ? Math.round((s.count / leadTotal) * 100) : 0}%)</span>
                             </div>
                             <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                              <div className={`h-full ${s.color} rounded-full`} style={{ width: `${leads.length > 0 ? (s.count / leads.length) * 100 : 0}%` }} />
+                              <div className={`h-full ${s.color} rounded-full`} style={{ width: `${leadTotal > 0 ? (s.count / leadTotal) * 100 : 0}%` }} />
                             </div>
                           </div>
                         ))}
                         <div className="pt-3 border-t border-gray-100 flex justify-between text-sm">
                           <span className="text-gray-500">معدل التحويل</span>
-                          <span className="font-bold text-emerald-600">{leads.length > 0 ? Math.round((convertedLeads / leads.length) * 100) : 0}%</span>
+                          <span className="font-bold text-emerald-600">{leadTotal > 0 ? Math.round((convertedLeads / leadTotal) * 100) : 0}%</span>
                         </div>
                       </div>
                     </article>
