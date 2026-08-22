@@ -84,6 +84,25 @@ async function saveAssignmentMembers(tenantId, members, db = pool) {
         member.isAvailable === false ? 0 : 1]
     );
   }
+
+  // The payload is the whole intended list, so anyone no longer in it has been
+  // removed and their row has to go with them. Without this the function only
+  // ever inserted and updated: taking someone out of the list in the UI and
+  // saving returned ok:true and left them in the table, so a member could be
+  // added but never removed — including the one whose stale row was blocking
+  // every save of this screen.
+  const keepIds = [...new Set(members.map(member => String(member.staffId || '')).filter(Boolean))];
+  if (keepIds.length) {
+    await db.query(
+      `DELETE FROM crm_assignment_members
+        WHERE tenant_id=? AND staff_id NOT IN (${keepIds.map(() => '?').join(',')})`,
+      [tenantId, ...keepIds]
+    );
+  } else {
+    // An empty list means "distribute to nobody", which is a real choice — the
+    // round-robin then falls back to every active SALES rep unweighted.
+    await db.query('DELETE FROM crm_assignment_members WHERE tenant_id=?', [tenantId]);
+  }
   return listAssignmentMembers(tenantId, db);
 }
 
