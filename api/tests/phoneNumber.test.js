@@ -5,7 +5,7 @@
 // and, most importantly, that they are NOT the same value.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { toIdentity, toDialable, toDisplay, isDialable, isPlausible } = require('../lib/phoneNumber');
+const { toIdentity, toDialable, toDisplay, isDialable, isPlausible, identitySpellings } = require('../lib/phoneNumber');
 
 const SPELLINGS = [
   '01012345678',        // local — how customers actually type it
@@ -98,4 +98,47 @@ test('dialable is stable when applied twice', () => {
   for (const n of SPELLINGS.concat(['+966501234567'])) {
     assert.equal(toDialable(toDialable(n)), toDialable(n), n);
   }
+});
+
+// ── identitySpellings ───────────────────────────────────────────────────────
+// Regression cover for the subscriber-adoption match in lib/whatsappOtp.js.
+// That lookup used `REGEXP_REPLACE(phone,'[^0-9]','') LIKE '%<identity>'`, which
+// matches on a shared tail rather than on the number itself.
+
+test('identitySpellings covers the ways an Egyptian number gets stored', () => {
+  const spellings = identitySpellings('01012345678');
+  assert.ok(spellings.includes('1012345678'), 'identity form');
+  assert.ok(spellings.includes('01012345678'), 'local form with trunk zero');
+  assert.ok(spellings.includes('201012345678'), 'international form');
+  assert.ok(spellings.includes('00201012345678'), '00-prefixed international form');
+});
+
+test('identitySpellings treats every spelling of one number as that same number', () => {
+  const fromLocal = identitySpellings('01012345678').slice().sort();
+  const fromIntl = identitySpellings('+20 101 234 5678').slice().sort();
+  assert.deepEqual(fromLocal, fromIntl);
+});
+
+test('identitySpellings never returns a value another number ends with', () => {
+  // The reported case: a Saudi client stored as 966501234567 was adopted by a
+  // request for 66501234567, because the stored digits end with those digits.
+  const attacker = identitySpellings('66501234567');
+  assert.ok(!attacker.includes('966501234567'),
+    'must not produce the victim number it is merely a tail of');
+  // And the reverse: the victim's own spellings must not include the tail.
+  const victim = identitySpellings('966501234567');
+  assert.ok(!victim.includes('66501234567'),
+    'a shorter tail is a different number, not a spelling of this one');
+});
+
+test('identitySpellings does not put an Egyptian country code on a foreign number', () => {
+  for (const spelling of identitySpellings('966501234567')) {
+    assert.ok(!spelling.startsWith('20966'), `invented a spelling: ${spelling}`);
+  }
+});
+
+test('identitySpellings returns nothing for junk', () => {
+  assert.deepEqual(identitySpellings(''), []);
+  assert.deepEqual(identitySpellings('abc'), []);
+  assert.deepEqual(identitySpellings(null), []);
 });

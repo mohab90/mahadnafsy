@@ -1,5 +1,6 @@
 'use strict';
 const { toIdentity } = require('../../lib/phoneNumber');
+const { findLeadByContact } = require('../../lib/leadMatching');
 const logger = require('../../lib/logger');
 const crypto   = require('crypto');
 const bcrypt   = require('../../lib/passwordHash');
@@ -758,12 +759,13 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
       const [[subCheck]] = await conn.query('SELECT lead_id FROM subscribers WHERE id = ? AND tenant_id=? LIMIT 1', [id, tenantId]);
       const needsLink = !subCheck?.lead_id;
       if (needsLink && (safePhone || safeEmail)) {
-        const normPhone = safePhone ? safePhone.replace(/\D/g, '').replace(/^(20|0020)?([0-9]{10})$/, '0$2') : null;
-        const matchQ = normPhone
-          ? `SELECT id, status FROM leads WHERE tenant_id=? AND (REGEXP_REPLACE(phone,'[^0-9]','') LIKE ? OR email = ?) AND hidden=0 ORDER BY created_at DESC LIMIT 1`
-          : 'SELECT id, status FROM leads WHERE tenant_id=? AND email = ? AND hidden=0 ORDER BY created_at DESC LIMIT 1';
-        const matchParams = normPhone ? [tenantId, `%${normPhone.slice(-9)}`, safeEmail || ''] : [tenantId, safeEmail];
-        const [[matchedLead]] = await conn.query(matchQ, matchParams);
+        // conn, not the pool: this runs inside the subscriber-save transaction
+        // and must see its uncommitted rows. Matching looser than the number
+        // itself marks a stranger's lead converted and adopts their id and
+        // client_code — see lib/leadMatching.js.
+        const matchedLead = await findLeadByContact(conn, {
+          tenantId, phone: safePhone, email: safeEmail,
+        });
         if (matchedLead) {
           await conn.query(
             "UPDATE subscribers SET lead_id=? WHERE id=? AND tenant_id=? AND lead_id IS NULL",

@@ -23,6 +23,7 @@ const { isString, validateBody } = require('../../middleware/validate');
 const { getNextSalesRep } = require('../../lib/leadAssignment');
 const { branchIdForBranch } = require('../../lib/branches');
 const { normalizeQuizDefinition } = require('../../lib/quizValidation');
+const { phoneIdentityClause } = require('../../lib/leadMatching');
 
 // ── Initialize extra tables on startup ───────────────────────────────────────
 // ── Initialize extra tables on startup ───────────────────────────────────────
@@ -415,19 +416,27 @@ router.post('/api/admin/consultations', requireAuth, requireAdmin, async (req, r
     );
     let leadId = null;
     if (!existing && (clientEmail || clientPhone)) {
-      const normalizedPhone = clientPhone.replace(/\D/g, '');
-      const [[knownSubscriber]] = await conn.query(
+      // RIGHT(digits,10) treated two different numbers as one: it is only safe
+      // while every number is a 10-digit Egyptian national one, and the institute
+      // sells through ONLINE_SAUDI and ONLINE_ABROAD. Egyptian 201012345678 and
+      // UK 441012345678 both reduce to 1012345678, so two unrelated people
+      // deduped onto one record. Exact spellings only — lib/leadMatching.js.
+      const phoneClause = phoneIdentityClause(clientPhone);
+      const matchTerms = [];
+      const matchParams = [];
+      if (phoneClause) { matchTerms.push(phoneClause.sql); matchParams.push(...phoneClause.params); }
+      if (clientEmail) { matchTerms.push('LOWER(TRIM(email))=?'); matchParams.push(clientEmail); }
+      const matchSql = matchTerms.join(' OR ');
+      const [[knownSubscriber]] = matchTerms.length ? await conn.query(
         `SELECT id FROM subscribers WHERE tenant_id=? AND deleted_at IS NULL
-          AND ((? <> '' AND RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''),10)=RIGHT(?,10))
-            OR (? <> '' AND LOWER(TRIM(email))=?)) LIMIT 1 FOR UPDATE`,
-        [req.tenantId, normalizedPhone, normalizedPhone, clientEmail, clientEmail]
-      );
-      const [[knownLead]] = await conn.query(
+          AND (${matchSql}) LIMIT 1 FOR UPDATE`,
+        [req.tenantId, ...matchParams]
+      ) : [[null]];
+      const [[knownLead]] = matchTerms.length ? await conn.query(
         `SELECT id FROM leads WHERE tenant_id=? AND hidden=0
-          AND ((? <> '' AND RIGHT(REGEXP_REPLACE(phone,'[^0-9]',''),10)=RIGHT(?,10))
-            OR (? <> '' AND LOWER(TRIM(email))=?)) LIMIT 1 FOR UPDATE`,
-        [req.tenantId, normalizedPhone, normalizedPhone, clientEmail, clientEmail]
-      );
+          AND (${matchSql}) LIMIT 1 FOR UPDATE`,
+        [req.tenantId, ...matchParams]
+      ) : [[null]];
       if (!knownSubscriber && !knownLead) {
         leadId = uuidv4();
         const clientCode = await getNextClientCode(conn);

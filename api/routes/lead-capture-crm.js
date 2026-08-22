@@ -19,6 +19,7 @@ const { logLeadEvent } = require('../lib/crm');
 const { getNextSalesRep } = require('../lib/leadAssignment');
 const { resolveClientContext } = require('../lib/clientContext');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
+const { phoneIdentityClause } = require('../lib/leadMatching');
 
 function routeError(res, error, message = 'lead capture crm route failed') {
   logger.error(message, error);
@@ -55,13 +56,17 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     let id = uuidv4();
     let existing = null;
     if (normPhone) {
-      [[existing]] = await conn.query(
+      // Exact spellings, not RIGHT(digits,10): truncating a foreign number to
+      // its last ten digits made different people equal, and the second one
+      // inherited the first one's id, client_code and sales assignment.
+      const phoneClause = phoneIdentityClause(normPhone);
+      [[existing]] = phoneClause ? await conn.query(
         `SELECT id, client_code, crm_json, assigned_sales_id, assigned_sales_name
            FROM leads
-          WHERE tenant_id=? AND RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10)=RIGHT(?,10)
+          WHERE tenant_id=? AND ${phoneClause.sql}
             AND hidden=0 LIMIT 1 FOR UPDATE`,
-        [tenantId, normPhone]
-      );
+        [tenantId, ...phoneClause.params]
+      ) : [[null]];
       if (existing) id = existing.id;
     }
     let code = existing?.client_code || null;
@@ -132,10 +137,11 @@ router.post('/api/leads-public', publicLimiter, async (req, res) => {
     await conn.beginTransaction();
     transactionStarted = true;
     if (normPhone) {
-      const [[existing]] = await conn.query(
-        `SELECT id FROM leads WHERE tenant_id=? AND RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = RIGHT(?, 10) AND hidden = 0 LIMIT 1 FOR UPDATE`,
-        [tenantId, normPhone]
-      );
+      const dedupClause = phoneIdentityClause(normPhone);
+      const [[existing]] = dedupClause ? await conn.query(
+        `SELECT id FROM leads WHERE tenant_id=? AND ${dedupClause.sql} AND hidden = 0 LIMIT 1 FOR UPDATE`,
+        [tenantId, ...dedupClause.params]
+      ) : [[null]];
       if (existing) {
         await conn.query(
           `UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE CONCAT(notes, '\n', ?) END, updated_at = NOW() WHERE id = ? AND tenant_id=?`,

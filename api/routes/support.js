@@ -18,6 +18,7 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { publicLimiter } = require('../middleware/rateLimits');
 const { findSubscriberForIdentity } = require('../lib/privacyService');
 const { writeAuditEvent } = require('../lib/auditTrail');
+const { phoneIdentityClause } = require('../lib/leadMatching');
 const {
   CATEGORY_META, DEPARTMENT_LABEL, DEPARTMENT_ROLES, resolveDepartment, defaultPriority,
   computeSlaDue, pickAssignee, logTicketEvent,
@@ -684,15 +685,21 @@ router.post('/api/public/enquiry', publicLimiter, async (req, res) => {
     // shared identity helper only knows uid/email.
     let subscriberId = null;
     try {
-      const digits = phone.replace(/\D/g, '').slice(-9);
-      const [[match]] = await conn.query(
+      // The last nine digits behind a trailing wildcard is not this number, it
+      // is anything ending in them — this attached a visitor's ticket, and the
+      // conversation in it, to a stranger's client record. Exact spellings
+      // only — lib/leadMatching.js.
+      const phoneClause = phoneIdentityClause(phone);
+      const terms = [];
+      const params = [];
+      if (email) { terms.push('LOWER(TRIM(email))=?'); params.push(email); }
+      if (phoneClause) { terms.push(phoneClause.sql); params.push(...phoneClause.params); }
+      const [[match]] = terms.length ? await conn.query(
         `SELECT id FROM subscribers
-          WHERE tenant_id=? AND deleted_at IS NULL
-            AND ((?<>'' AND LOWER(TRIM(email))=?)
-              OR (?<>'' AND REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+','') LIKE CONCAT('%', ?)))
+          WHERE tenant_id=? AND deleted_at IS NULL AND (${terms.join(' OR ')})
           LIMIT 1`,
-        [req.tenantId, email, email, digits, digits]
-      );
+        [req.tenantId, ...params]
+      ) : [[null]];
       subscriberId = match?.id || null;
     } catch { /* an unmatched visitor is normal, not an error */ }
 
