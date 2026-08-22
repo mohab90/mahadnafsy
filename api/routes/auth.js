@@ -39,7 +39,7 @@ const {
   requestLoginCode, verifyLoginCode, CODE_TTL_MINUTES: WA_CODE_TTL_MINUTES,
   claimWhatsAppIdentity, normalizeWhatsAppNumber, isPlausibleNumber,
 } = require('../lib/whatsappOtp');
-const { toDialable } = require('../lib/phoneNumber');
+const { toDialable, identitySpellings } = require('../lib/phoneNumber');
 
 function hashOtp({ tenantId, email, type, code }) {
   const secret = String(resolveSecret('OTP_HMAC_SECRET') || JWT_SECRET);
@@ -755,30 +755,71 @@ router.post('/api/auth/login', loginLimiter, requireDb,
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
            FROM users u WHERE u.tenant_id=? AND u.email = ? AND u.is_active = 1`,
           [req.tenantId, email])
-      : await conn.execute(
+      // Every spelling the number can be stored as, not the one this normaliser
+      // happens to produce. `u.phone = ?` compared against toIdentity() only
+      // finds an account whose stored phone is already in identity form —
+      // 1012345678. Rows written by an import, by staff creating the account, or
+      // by any path that saved what the customer typed hold 01012345678 or
+      // 201012345678 instead, and their owner could not sign in with the very
+      // number they gave: 16 accounts on production are in that state, and for a
+      // customer with no email on file it is their only way in.
+      //
+      // Exact set, never a trailing wildcard — see lib/leadMatching.js for why
+      // "ends with these digits" is not the same as "is this number".
+      : await (async () => {
+        const spellings = identitySpellings(rawIdentifier);
+        if (!spellings.length) return [[]];
+        return conn.execute(
           `SELECT u.id, u.email, u.name, u.password_hash, u.session_version, u.totp_enabled,
                   EXISTS(SELECT 1 FROM staff s WHERE s.tenant_id=u.tenant_id AND s.is_active=1
                           AND s.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))) AS is_staff
-           FROM users u WHERE u.tenant_id=? AND u.phone = ? AND u.is_active = 1`,
-          [req.tenantId, phoneIdentity]);
+           FROM users u
+            WHERE u.tenant_id=? AND u.is_active = 1
+              AND u.phone IN (${spellings.map(() => '?').join(',')})
+            LIMIT 1`,
+          [req.tenantId, ...spellings]);
+      })();
     if (rows.length === 0) {
-      // No users record — check if they exist as a subscriber (admin-added clients).
-      // Subscribers are only keyed by email, so this hint doesn't apply to a
-      // phone identifier.
-      const [[subExists]] = identifierIsEmail
-        ? await conn.execute(
-            'SELECT id FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1',
+      // No users record — check whether they exist as a subscriber (a client the
+      // desk added). Looked up by phone as well as by email now: a client with
+      // no email on file who types the number the institute has for them used to
+      // fall straight through to "no active account", which tells a paying
+      // customer they do not exist. 28 subscribers on production have no email,
+      // and for them the phone is the only identifier there is.
+      const [[subExists]] = await (async () => {
+        if (identifierIsEmail) {
+          return conn.execute(
+            'SELECT id, email FROM subscribers WHERE tenant_id=? AND LOWER(TRIM(email)) = ? AND is_active = 1 LIMIT 1',
             [req.tenantId, email]
-          )
-        : [[null]];
+          );
+        }
+        const spellings = identitySpellings(rawIdentifier);
+        if (!spellings.length) return [[null]];
+        return conn.execute(
+          `SELECT id, email FROM subscribers
+            WHERE tenant_id=? AND is_active = 1 AND deleted_at IS NULL
+              AND REGEXP_REPLACE(phone,'[^0-9]','') IN (${spellings.map(() => '?').join(',')})
+            LIMIT 1`,
+          [req.tenantId, ...spellings]
+        );
+      })();
       conn.release();
       conn = null;
       if (subExists) {
-        logger.info('[login] subscriber exists but no users record — directing to reset:', logIdentifier);
+        // "Press forgot password" sends a code to an email address. A client who
+        // has none cannot act on that, so they are pointed at the WhatsApp code
+        // instead — the route that does work for them, and the one that creates
+        // their account on first use.
+        const hasEmail = Boolean(String(subExists.email || '').trim());
+        logger.info('[login] subscriber exists but no users record — directing to %s:',
+          hasEmail ? 'reset' : 'whatsapp code', logIdentifier);
         await logLoginAttempt({ email: logIdentifier, req, status: 'failed', failureReason: 'password_not_set' });
         return res.status(401).json({
-          error: '\u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u0644\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0639\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0636\u063a\u0637 \u0639\u0644\u0649 "\u0646\u0633\u064a\u062a \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" \u0644\u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062c\u062f\u064a\u062f\u0629.',
-          needsPasswordReset: true,
+          error: hasEmail
+            ? '\u0644\u0645 \u064a\u062a\u0645 \u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u0644\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u0639\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0636\u063a\u0637 \u0639\u0644\u0649 "\u0646\u0633\u064a\u062a \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" \u0644\u062a\u0639\u064a\u064a\u0646 \u0643\u0644\u0645\u0629 \u0645\u0631\u0648\u0631 \u062c\u062f\u064a\u062f\u0629.'
+            : '\u062d\u0633\u0627\u0628\u0643 \u0645\u0633\u062c\u0651\u0644 \u0628\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062a\u0641 \u0648\u0628\u062f\u0648\u0646 \u0628\u0631\u064a\u062f \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a. \u0627\u062f\u062e\u0644 \u0639\u0646 \u0637\u0631\u064a\u0642 "\u0627\u0644\u062f\u062e\u0648\u0644 \u0628\u0631\u0642\u0645 \u0627\u0644\u0648\u0627\u062a\u0633\u0627\u0628" \u2014 \u0647\u064a\u0648\u0635\u0644\u0643 \u0643\u0648\u062f \u0639\u0644\u0649 \u0646\u0641\u0633 \u0627\u0644\u0631\u0642\u0645.',
+          needsPasswordReset: hasEmail,
+          useWhatsappLogin: !hasEmail,
         });
       }
       logger.info('[login] no active account for:', logIdentifier);
