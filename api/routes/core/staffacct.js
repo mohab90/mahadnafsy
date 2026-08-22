@@ -17,7 +17,12 @@ router.get('/api/staff/me/preferences', requireAuth, async (req, res) => {
       'SELECT preferences_json FROM staff WHERE tenant_id=? AND LOWER(TRIM(email))=? AND is_active=1 LIMIT 1',
       [tenantId, email]
     );
-    if (!row) return res.status(404).json({ error: 'Staff not found' });
+    // An owner or super-admin signed in by email has no staff row, and personal
+    // preferences for such an account are legitimately empty — that is "nothing
+    // set", not "not found". Answering 404 put one on every dashboard load for
+    // those accounts: noise in the log, and a false alarm to anything watching
+    // the error rate.
+    if (!row) return res.json({});
     res.json(row.preferences_json ? tryJson(row.preferences_json, {}) : {});
   } catch (error) {
     logger.error('[staff-preferences]', error.message);
