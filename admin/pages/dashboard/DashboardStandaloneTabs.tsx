@@ -4,7 +4,7 @@ import type { TabKey } from './navigation';
 import {
   ActivityTab,
   CohortAnalysisTab,
-  ConsultationCalendarTab,
+  ConsultationsTab,
   DaqqiAttendanceTab,
   CourseWaitlistTab,
   KpiDashboardTab,
@@ -50,7 +50,9 @@ export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: Dash
       {activeTab === 'consultations' && (
         <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" /></div>}>
           <TabErrorBoundary>
-            <ConsultationCalendarTab />
+            {/* The calendar is now one tab inside this screen rather than the
+                whole of it — the bookings list it never had is the default. */}
+            <ConsultationsTab notify={notify} />
           </TabErrorBoundary>
         </Suspense>
       )}

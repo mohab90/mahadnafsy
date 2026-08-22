@@ -13,6 +13,7 @@ export const BudgetTrackerTab = lazy(() => import('./tabs/BudgetTrackerTab'));
 export const CashFlowTab = lazy(() => import('./tabs/CashFlowTab'));
 export const ClientDbTab = lazy(() => import('./tabs/ClientDbTab'));
 export const ConsultationCalendarTab = lazy(() => import('./tabs/ConsultationCalendarTab'));
+export const ConsultationsTab = lazy(() => import('./tabs/ConsultationsTab'));
 export const ContactsTab = lazy(() => import('./tabs/ContactsTab'));
 export const CohortAnalysisTab = lazy(() => import('./tabs/CohortAnalysisTab'));
 export const CoursesTab = lazy(() => import('./tabs/CoursesTab'));
