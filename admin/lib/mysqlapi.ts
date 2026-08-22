@@ -382,7 +382,7 @@ export const mysqlAdmin = {
     fetchAllPages(offset => `/admin/leads?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
   // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
   // query, so the CRM shows correct counts without loading every row.
-  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number }> =>
+  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number }>; createdToday: number }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
   listStaffSubscribers:    async (pageSize = 2000): Promise<AR[]> => {

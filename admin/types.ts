@@ -1169,4 +1169,10 @@ export interface LeadStats {
   assigned: number;
   unassigned: number;
   totalDealValue: number;
+  /** Lead count per assigned sales rep id. The unassigned bucket is deliberately
+   *  absent — it is reported once as `unassigned`, so summing this map and
+   *  adding that figure cannot double-count. */
+  byOwner: Record<string, { total: number; converted: number }>;
+  /** Leads created today, by the database's own date, not a string prefix. */
+  createdToday: number;
 }

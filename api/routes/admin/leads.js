@@ -1022,7 +1022,12 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
     let scopeClause = '';
     const params = [req.tenantId];
     const accessScope = leadScope(req, 'l');
-    if (accessScope.none) return res.json({ total: 0, byStatus: {}, assigned: 0, unassigned: 0, totalDealValue: 0 });
+    if (accessScope.none) {
+      return res.json({
+        total: 0, byStatus: {}, assigned: 0, unassigned: 0, totalDealValue: 0,
+        byOwner: {}, createdToday: 0,
+      });
+    }
     scopeClause = accessScope.sql;
     params.push(...accessScope.params);
     const [rows] = await pool.query(
@@ -1041,7 +1046,50 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       unassigned += Number(r.unassigned_cnt);
       totalDealValue += Number(r.deal_sum || 0);
     }
-    res.json({ total, byStatus, assigned: total - unassigned, unassigned, totalDealValue });
+
+    // Per-rep and today's intake. The dashboard's "leads per sales rep" tiles and
+    // its "new leads today" figure were the last two things counting the whole
+    // leads array in the browser, and they are the reason the array had to be
+    // there at all. Two more GROUP BYs over the same scoped set is cheaper than
+    // shipping 26k rows to compute them client-side.
+    //
+    // Same WHERE as above, so every figure in this response describes one
+    // population — a caller can subtract them from each other and be right.
+    // Grouped by owner AND status, not owner alone: the dashboard shows each
+    // rep's conversion rate, so a total without its converted count would leave
+    // the numerator on the array and the denominator here — and once the array
+    // stops holding every row that rate goes above 100%.
+    const [ownerRows] = await pool.query(
+      `SELECT COALESCE(NULLIF(l.assigned_sales_id, ''), '') AS owner_id,
+              l.status AS status, COUNT(*) AS cnt
+       FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+       GROUP BY COALESCE(NULLIF(l.assigned_sales_id, ''), ''), l.status`,
+      params,
+    );
+    const byOwner = {};
+    for (const r of ownerRows) {
+      // '' is the unassigned bucket, already reported as `unassigned`; keeping it
+      // out of byOwner stops a caller summing the map and double-counting.
+      if (!r.owner_id) continue;
+      const id = String(r.owner_id);
+      const entry = byOwner[id] || (byOwner[id] = { total: 0, converted: 0 });
+      const count = Number(r.cnt);
+      entry.total += count;
+      if (String(r.status || '').toLowerCase() === 'converted') entry.converted += count;
+    }
+
+    // DATE(created_at) rather than a string prefix: created_at is a DATETIME, so
+    // comparing its text form depends on how the driver rendered it.
+    const [[todayRow]] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause} AND DATE(l.created_at) = CURDATE()`,
+      params,
+    );
+
+    res.json({
+      total, byStatus, assigned: total - unassigned, unassigned, totalDealValue,
+      byOwner, createdToday: Number(todayRow?.cnt || 0),
+    });
   } catch (e) { logger.error('[leads-stats]', e.message); sendRouteError(res, e); }
 });
 

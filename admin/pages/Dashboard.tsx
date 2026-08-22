@@ -88,6 +88,7 @@ const Dashboard: React.FC = () => {
     therapists,
     subscribers,
     leads,
+    leadStats,
     staffMembers,
     consultations,
     orders,
@@ -657,7 +658,7 @@ const Dashboard: React.FC = () => {
   // -- Client DB base data: raw mapping + dedup (expensive, only changes when data changes) -
 
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
-  const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content);
+  const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats);
 
   const exportFilteredOrdersCsv = (rows: OrderItem[]) => exportOrdersCsv(rows);
 

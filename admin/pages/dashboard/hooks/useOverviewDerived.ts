@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ConsultationItem, Course, LeadItem, OrderItem, StaffMember, SubscriberItem } from '../../../types';
+import type { ConsultationItem, Course, LeadItem, LeadStats, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 
 /**
  * Pure derived values for the Overview tab: revenue totals (converted to EGP
@@ -16,6 +16,9 @@ export function useOverviewDerived(
   staffMembers: StaffMember[],
   consultations: ConsultationItem[],
   content: Record<string, string>,
+  /** Whole-table lead figures. Optional so a caller that has not been updated
+   *  still compiles and falls back to counting the array. */
+  leadStats?: LeadStats | null,
 ) {
   const overviewStats = useMemo(() => {
     const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
@@ -53,7 +56,9 @@ export function useOverviewDerived(
         .filter(p => !p.isInstallment && (p.at || '').slice(0, 10) === todayStr)
         .reduce((ps, p) => ps + toEGP(p), 0), 0);
     const todayNewSubscribers = subscribers.filter(s => (s.createdAt || '').slice(0, 10) === todayStr).length;
-    const todayNewLeads = leads.filter(l => (l.createdAt || '').slice(0, 10) === todayStr).length;
+    // The database's own CURDATE(), not a string prefix of whatever shape
+    // created_at arrived in.
+    const todayNewLeads = leadStats?.createdToday ?? leads.filter(l => (l.createdAt || '').slice(0, 10) === todayStr).length;
     const thisMonthStr = new Date().toISOString().slice(0, 7);
     const monthRevenue = paidOrders
       .filter(o => (o.createdAt || '').slice(0, 7) === thisMonthStr)
@@ -62,7 +67,7 @@ export function useOverviewDerived(
         .filter(p => !p.isInstallment && (p.at || '').slice(0, 7) === thisMonthStr)
         .reduce((ps, p) => ps + toEGP(p), 0), 0);
     return { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats: salesStatsCalc, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue };
-  }, [orders, subscribers, leads, courses, staffMembers, consultations, content]);
+  }, [orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats]);
 
   return { overviewStats };
 }
