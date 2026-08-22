@@ -29,14 +29,27 @@ const supportedColumns = [
   ['الاسترداد / refund', 'المتبقي / remaining', 'شهادة / حضور / ملاحظات'],
 ];
 
-const normalizeCell = (value: string | undefined) => (value || '').replace(/^"|"$/g, '').trim();
+const normalizeCell = (value: string | undefined) =>
+  // Excel writes a BOM at the start of a UTF-8 CSV, which lands on the
+  // first header — "\uFEFFالاسم" matched no key, so the name column was never
+  // found and every row parsed empty.
+  (value || '').replace(/^\uFEFF/, '').replace(/^"|"$/g, '').trim();
 
 const findColumn = (headers: string[], ...keys: string[]) =>
   headers.findIndex(header => keys.some(key => header.includes(key)));
 
+// Excel on an Arabic/European locale writes ';' rather than ',', and a sheet
+// pasted out of Google Sheets uses tabs. Guessing ',' meant the whole header row
+// parsed as one cell and nothing matched.
+const detectSeparator = (headerLine: string) =>
+  [';', '\t', ',']
+    .map(candidate => ({ candidate, count: headerLine.split(candidate).length - 1 }))
+    .sort((a, b) => b.count - a.count)
+    .filter(entry => entry.count > 0)[0]?.candidate || ',';
+
 function parseOldData(text: string): OldDataRow[] {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  const separator = lines[0]?.includes('\t') ? '\t' : ',';
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+  const separator = detectSeparator(lines[0] || '');
   const headers = (lines[0] || '').split(separator).map(header => normalizeCell(header).toLowerCase());
   const nameCol = findColumn(headers, 'name', 'اسم');
   const phoneCol = findColumn(headers, 'phone', 'هاتف');
@@ -93,6 +106,7 @@ export default function OldDataImportPanel({
   // the database with no chance to stop it.
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ created: number; dupes: number; errors: number } | null>(null);
+  const [parseError, setParseError] = useState('');
 
   const fileCls = accent === 'violet'
     ? 'file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100'
@@ -104,12 +118,27 @@ export default function OldDataImportPanel({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = loaded => {
-      const rows = parseOldData(String(loaded.target?.result || ''));
+      const text = String(loaded.target?.result || '');
+      const rows = parseOldData(text);
       setParsed(rows);
       setSelected(new Set(rows.filter(row => row._name && row._phone).map(row => row._id)));
       setConfirming(false);
       setResult(null);
+      // A file that parsed to nothing used to render nothing: no rows, no
+      // button, no message. It looked like the upload control was missing.
+      // Say what was actually read, and show the headers so the mismatch is
+      // obvious — it is nearly always a column name or a separator.
+      if (!rows.length) {
+        const headerLine = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean)[0] || '';
+        const headers = headerLine
+          ? headerLine.split(detectSeparator(headerLine)).map(normalizeCell).filter(Boolean)
+          : [];
+        setParseError(headers.length
+          ? `الملف اتقرا بس مفيش ولا صف فيه اسم أو رقم. الأعمدة اللي لقيتها: ${headers.join(' | ')} — لازم يكون فيه عمود للاسم وعمود للهاتف.`
+          : 'الملف فاضي أو مش CSV/TSV.');
+      } else setParseError('');
     };
+    reader.onerror = () => setParseError('تعذّرت قراءة الملف.');
     reader.readAsText(file, 'UTF-8');
   };
 
@@ -174,6 +203,12 @@ export default function OldDataImportPanel({
           />
         </div>
       </div>
+
+      {parseError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 font-bold leading-6">
+          {parseError}
+        </div>
+      )}
 
       <div className="text-[11px] text-gray-400 space-y-1">
         <span>الأعمدة المدعومة:</span>
