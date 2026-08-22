@@ -19,6 +19,11 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
   const [channel, setChannel] = useState<MessagingChannel | null>(null);
   const [loading, setLoading] = useState(true);
+  // A personal WhatsApp channel hangs off a staff row. An owner or super-admin
+  // signed in by email has no such row, so the API answers 403 "حساب موظف
+  // مطلوب" — a correct answer, not a fault. It was being caught and shown as
+  // "تعذر تحميل بيانات القناة" on every visit, which read as a broken page.
+  const [notStaff, setNotStaff] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -41,7 +46,11 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
         setProvider(mine.provider === 'meta' ? 'meta' : mine.provider === 'wapilot' ? 'wapilot' : 'green-api');
         setDisplayNumber(mine.display_number || '');
       }
-    } catch { notify('error', 'تعذر تحميل بيانات القناة'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('حساب موظف مطلوب') || message.includes('403')) setNotStaff(true);
+      else notify('error', `تعذر تحميل بيانات القناة: ${message}`);
+    }
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, []);
@@ -115,6 +124,14 @@ export function MyWhatsappChannelPanel({ notify }: { notify: NotifyFn }) {
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
           <Loader2 className="animate-spin mx-auto mb-2" size={22} />جاري التحميل...
+        </div>
+      ) : notStaff ? (
+        <div className="bg-white border border-amber-200 rounded-2xl p-8 text-center">
+          <p className="font-bold text-gray-800 mb-1">الصفحة دي لحسابات الموظفين</p>
+          <p className="text-sm text-gray-500 leading-6">
+            الرقم الشخصي بيتربط بحساب موظف، وحسابك ده حساب إدارة مربوط بالإيميل مش بسجل موظف.
+            <br />لو عايز ترسل باسم رقمك، اربط الرقم من حساب الموظف نفسه — أو استخدم رقم الشركة من إعدادات القنوات.
+          </p>
         </div>
       ) : (
         <>
