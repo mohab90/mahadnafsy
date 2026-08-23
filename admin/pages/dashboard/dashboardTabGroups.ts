@@ -166,12 +166,25 @@ export const fullLeadArraySubTabs = new Set<string>([
  *     fullLeadArraySubTabs above for the sub-tabs that still scan the array.
  */
 
-/** Reads every lead, no subscribers. */
+/** Reads every lead, no subscribers.
+ *
+ *  Two left, and each needs a different piece of server work before it can go:
+ *
+ *    revenue_sources does leads.find(l => l.id === order.leadId) to label each
+ *      order with its lead's source. It wants the source of the few hundred
+ *      leads that have orders, not the table — the orders endpoint should carry
+ *      the source and the lookup disappears.
+ *
+ *    staff_performance counts leads per rep inside a date range the user picks.
+ *      leadStats.byOwner already answers it for all time; it needs the same
+ *      grouping with from/to bounds.
+ *
+ *  lead_scoring and followup_reminders used to be here. Both are served by
+ *  endpoints now — /admin/leads/scored and the reminders half of
+ *  /admin/leads/crm-insights — and neither reads the array any more. */
 export const fullLeadTabs = new Set<string>([
-  'lead_scoring',        // scores and sorts every lead
-  'followup_reminders',  // buckets every lead by follow-up date
   'revenue_sources',
-  'staff_performance',   // per-rep counts over a date range
+  'staff_performance',
 ]);
 
 /** Reads every subscriber, no leads. */

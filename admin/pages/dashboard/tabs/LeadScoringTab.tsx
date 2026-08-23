@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Star, MessageSquare, Send, X, Zap } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useScoredLeads } from '../hooks/useScoredLeads';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { toDialable } from '../../../lib/whatsappLink';
 import { numericTooltip } from '../../../lib/chartFormat';
@@ -141,34 +142,49 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkModal, setShowBulkModal] = useState(false);
 
-  const scoredLeads = useMemo(() =>
+  // The database scores, filters and sorts; this screen renders fifty rows and
+  // used to pull 26,878 to pick them.
+  const server = useScoredLeads({ minScore, status: statusFilter, source: sourceFilter, q: searchQ, sortBy });
+
+  // The array path is what runs until the first response lands. It is the
+  // original code, unchanged, and it is why an empty screen never appears while
+  // the query is in flight.
+  const localScored = useMemo(() =>
     leads.map(l => ({ ...l, score: calcLeadScore(l) }))
          .sort((a, b) => sortBy === 'score' ? b.score - a.score : (b.createdAt || '').localeCompare(a.createdAt || '')),
     [leads, sortBy]
   );
 
-  const filtered = useMemo(() =>
-    scoredLeads.filter(l =>
+  const localFiltered = useMemo(() =>
+    localScored.filter(l =>
       l.score >= minScore &&
       (statusFilter === 'all' || l.status === statusFilter) &&
       (sourceFilter === 'all' || (l.source || '').toLowerCase() === sourceFilter) &&
       (!searchQ || l.name?.toLowerCase().includes(searchQ.toLowerCase()) || l.phone?.includes(searchQ))
     ),
-    [scoredLeads, minScore, statusFilter, sourceFilter, searchQ]
+    [localScored, minScore, statusFilter, sourceFilter, searchQ]
   );
 
-  const distribution = useMemo(() => [
-    { label: 'ساخن (80+)', count: scoredLeads.filter(l => l.score >= 80).length, fill: '#ef4444' },
-    { label: 'دافئ (60-79)', count: scoredLeads.filter(l => l.score >= 60 && l.score < 80).length, fill: '#f97316' },
-    { label: 'متوسط (40-59)', count: scoredLeads.filter(l => l.score >= 40 && l.score < 60).length, fill: '#f59e0b' },
-    { label: 'بارد (<40)', count: scoredLeads.filter(l => l.score < 40).length, fill: '#3b82f6' },
-  ], [scoredLeads]);
+  const filtered = server ? server.rows : localFiltered;
 
-  const avgScore = scoredLeads.length > 0
-    ? Math.round(scoredLeads.reduce((a, l) => a + l.score, 0) / scoredLeads.length) : 0;
+  const distribution = useMemo(() => {
+    const d = server?.distribution;
+    return [
+      { label: 'ساخن (80+)', count: d ? d.hot : localScored.filter(l => l.score >= 80).length, fill: '#ef4444' },
+      { label: 'دافئ (60-79)', count: d ? d.warm : localScored.filter(l => l.score >= 60 && l.score < 80).length, fill: '#f97316' },
+      { label: 'متوسط (40-59)', count: d ? d.medium : localScored.filter(l => l.score >= 40 && l.score < 60).length, fill: '#f59e0b' },
+      { label: 'بارد (<40)', count: d ? d.cold : localScored.filter(l => l.score < 40).length, fill: '#3b82f6' },
+    ];
+  }, [server, localScored]);
 
-  const sources = [...new Set(leads.map(l => (l.source || '').toLowerCase()))].filter(Boolean);
-  const statuses = [...new Set(leads.map(l => l.status))].filter(Boolean);
+  const avgScore = server
+    ? server.avgScore
+    : (localScored.length > 0
+        ? Math.round(localScored.reduce((a, l) => a + l.score, 0) / localScored.length)
+        : 0);
+
+  const sources = server ? server.sources : [...new Set(leads.map(l => (l.source || '').toLowerCase()))].filter(Boolean);
+  const statuses = server ? server.statuses : [...new Set(leads.map(l => l.status))].filter(Boolean);
 
   const allSelected = filtered.length > 0 && filtered.every(l => selectedIds.has(l.id));
   const toggleAll = () => { if (allSelected) setSelectedIds(new Set()); else setSelectedIds(new Set(filtered.slice(0, 50).map(l => l.id))); };

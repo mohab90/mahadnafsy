@@ -2,7 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
-import { AuthUser, CrmInsights, SubscriberStats } from '../types';
+import { AuthUser, CrmInsights, ScoredLeadsResult, SubscriberStats } from '../types';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -387,6 +387,19 @@ export const mysqlAdmin = {
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
   // suggestions — in one request. Each of them used to filter the full leads
   // array in the browser, which is what forced all 26k rows down the wire.
+  // Scored, filtered, sorted leads — the scoring screen's fifty rows, chosen by
+  // the database instead of by scoring 26,878 of them in the browser.
+  getScoredLeads:          (opts: { minScore?: number; status?: string; source?: string; q?: string; sortBy?: string; limit?: number } = {}): Promise<ScoredLeadsResult> => {
+    const params = new URLSearchParams();
+    if (opts.minScore) params.set('minScore', String(opts.minScore));
+    if (opts.status && opts.status !== 'all') params.set('status', opts.status);
+    if (opts.source && opts.source !== 'all') params.set('source', opts.source);
+    if (opts.q) params.set('q', opts.q);
+    if (opts.sortBy) params.set('sortBy', opts.sortBy);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return apiFetch(`/admin/leads/scored${qs ? `?${qs}` : ''}`, {}, A);
+  },
   // The subscriber count, so an audience picker does not have to hold the table.
   getSubscriberStats:      (): Promise<SubscriberStats> =>
     apiFetch(`/admin/subscribers/stats`, {}, A),

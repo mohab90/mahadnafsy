@@ -1123,6 +1123,137 @@ function mapLeadRow(r, communicationsByLead) {
   };
 }
 
+// GET /api/admin/leads/scored?minScore=&status=&source=&q=&sortBy=&limit=
+//
+// The lead-scoring screen renders filtered.slice(0, 50) — fifty rows — and was
+// downloading all 26,878 leads to pick them, because the score it sorts by is
+// computed per lead in the browser. LEAD_SCORE_SQL computes the same number in
+// the database, so the sort, the filters and the histogram are all queries.
+//
+// Three things come back unfiltered on purpose: the distribution, the mean, and
+// the source/status lists that populate the filter dropdowns. All three describe
+// the whole table in the browser's version too — narrowing them to the current
+// filter would make the histogram change shape every time someone moved the
+// score slider, and would drop the options needed to undo a filter.
+router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) {
+      return res.json({ rows: [], total: 0, distribution: { hot: 0, warm: 0, medium: 0, cold: 0 }, avgScore: 0, sources: [], statuses: [] });
+    }
+    const scopeClause = accessScope.sql;
+    const base = [req.tenantId, ...accessScope.params];
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const minScore = Math.min(Math.max(parseInt(req.query.minScore, 10) || 0, 0), 100);
+    const status = String(req.query.status || '').trim();
+    const source = String(req.query.source || '').trim();
+    const q = String(req.query.q || '').trim();
+    const sortBy = req.query.sortBy === 'date' ? 'date' : 'score';
+
+    // The communications rollup the score needs, joined once.
+    const commJoin = `
+       LEFT JOIN (
+         SELECT lead_id, COUNT(*) AS comm_count, MAX(date) AS last_comm
+           FROM communications WHERE tenant_id = ? AND lead_id IS NOT NULL
+          GROUP BY lead_id
+       ) lc ON lc.lead_id = l.id`;
+
+    let filterClause = '';
+    const filterParams = [];
+    if (status && status !== 'all') { filterClause += ' AND l.status = ?'; filterParams.push(status); }
+    if (source && source !== 'all') {
+      // The browser compares (source || '').toLowerCase() against the dropdown
+      // value; the column collates case-insensitively, so a direct comparison is
+      // the same test without putting LOWER() around an indexed column.
+      filterClause += ' AND l.source = ?';
+      filterParams.push(source);
+    }
+    if (q) {
+      filterClause += ' AND (l.name LIKE ? OR l.phone LIKE ?)';
+      filterParams.push(`%${q}%`, `%${q}%`);
+    }
+
+    // HAVING, not WHERE: lead_score is computed in the select list, and MariaDB
+    // cannot see a select alias in WHERE.
+    const [rows] = await pool.query(
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+              l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+              l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+              l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+              l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score,
+              l.created_at, l.updated_at,
+              COALESCE(lc.comm_count, 0) AS communication_count,
+              ${LEAD_SCORE_SQL} AS lead_score
+         FROM leads l
+         LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+         LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+         ${commJoin}
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}${filterClause}
+       HAVING lead_score >= ?
+        ORDER BY ${sortBy === 'date' ? 'l.created_at DESC, l.id DESC' : 'lead_score DESC, l.id ASC'}
+        LIMIT ?`,
+      [req.tenantId, ...base, ...filterParams, minScore, limit],
+    );
+
+    // How many match the filter in total, so the screen can say "showing 50 of N"
+    // rather than implying the fifty rows are everything.
+    const [[totalRow]] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM (
+         SELECT ${LEAD_SCORE_SQL} AS lead_score
+           FROM leads l ${commJoin}
+          WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}${filterClause}
+         HAVING lead_score >= ?
+       ) x`,
+      [req.tenantId, ...base, ...filterParams, minScore],
+    );
+
+    // Histogram and mean over the whole scoped table, matching the browser.
+    const [[distRow]] = await pool.query(
+      `SELECT
+         COALESCE(SUM(lead_score >= 80), 0) AS hot,
+         COALESCE(SUM(lead_score >= 60 AND lead_score < 80), 0) AS warm,
+         COALESCE(SUM(lead_score >= 40 AND lead_score < 60), 0) AS medium,
+         COALESCE(SUM(lead_score < 40), 0) AS cold,
+         COALESCE(AVG(lead_score), 0) AS avg_score
+       FROM (
+         SELECT ${LEAD_SCORE_SQL} AS lead_score
+           FROM leads l ${commJoin}
+          WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+       ) x`,
+      [req.tenantId, ...base],
+    );
+
+    const [facetRows] = await pool.query(
+      `SELECT DISTINCT COALESCE(NULLIF(l.source, ''), '') AS source, l.status AS status
+         FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}`,
+      base,
+    );
+    const sources = [...new Set(facetRows.map(r => String(r.source || '').toLowerCase()).filter(Boolean))].sort();
+    const statuses = [...new Set(facetRows.map(r => String(r.status || '').toLowerCase()).filter(Boolean))].sort();
+
+    const communicationsByLead = new Map();
+    const mapped = rows.map(r => ({
+      ...mapLeadRow(r, communicationsByLead),
+      score: Number(r.lead_score),
+    }));
+
+    res.json({
+      rows: mapped,
+      total: Number(totalRow?.cnt || 0),
+      distribution: {
+        hot: Number(distRow?.hot || 0),
+        warm: Number(distRow?.warm || 0),
+        medium: Number(distRow?.medium || 0),
+        cold: Number(distRow?.cold || 0),
+      },
+      avgScore: Math.round(Number(distRow?.avg_score || 0)),
+      sources,
+      statuses,
+    });
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
 // GET /api/admin/leads/crm-insights?idleDays=N
 //
 // The three CRM workspace panels — reminders, the weekly scorecard, and the

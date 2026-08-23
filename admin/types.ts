@@ -1194,6 +1194,23 @@ export interface LeadStats {
   /** Leads created today, by the database's own date, not a string prefix. */
   createdToday: number;
 }
+/** GET /admin/leads/scored — the lead-scoring screen's rows and summary, with
+ *  the score computed in SQL rather than per lead in the browser. */
+export interface ScoredLeadsResult {
+  /** Only as many rows as the screen shows, already sorted and filtered. */
+  rows: (LeadItem & { score: number })[];
+  /** How many leads match the filter, so the screen can say "50 of N". */
+  total: number;
+  /** The histogram, over the whole table rather than the current filter — the
+   *  same population the browser charted. */
+  distribution: { hot: number; warm: number; medium: number; cold: number };
+  avgScore: number;
+  /** Filter-dropdown options, likewise over the whole table so a filter can
+   *  always be undone. */
+  sources: string[];
+  statuses: string[];
+}
+
 /** GET /admin/subscribers/stats — the subscriber counts a screen needs without
  *  holding the table. Scoped by the same rule as the subscriber list. */
 export interface SubscriberStats {

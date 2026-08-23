@@ -5,6 +5,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmInsights } from './leads/useCrmInsights';
 import type { LeadItem, LeadStatus } from '../../../types';
 import { toDialable } from '../../../lib/whatsappLink';
 
@@ -44,6 +45,16 @@ function bucket(lead: LeadItem): 'overdue' | 'today' | 'tomorrow' | 'week' | nul
 
 const FollowupRemindersTab: React.FC<Props> = () => {
   const { leads, staffMembers } = useSiteData();
+  // The server returns exactly this screen's population: open leads with a
+  // follow-up date inside the next seven days — 14 rows on production against
+  // 26,878 in the table. bucket() below then splits them the way it always did,
+  // and the status filter keeps dropping not_interested, which the server's
+  // slice includes.
+  //
+  // idleDays is irrelevant here: it only bounds the redistribution list, which
+  // this screen does not read. 14 is the endpoint's own default.
+  const insights = useCrmInsights(14);
+  const source = insights?.reminders ?? leads;
   const [filterSales, setFilterSales] = useState<string>('all');
   const [showBucket, setShowBucket] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
@@ -54,7 +65,7 @@ const FollowupRemindersTab: React.FC<Props> = () => {
   );
 
   const reminders = useMemo(() => {
-    return leads
+    return source
       .filter(l => {
         if (l.status === 'converted' || l.status === 'lost' || l.status === 'not_interested' || l.status === 'not_interested_hidden') return false;
         if (!bucket(l)) return false;
@@ -66,16 +77,16 @@ const FollowupRemindersTab: React.FC<Props> = () => {
         if (sortBy === 'date') return (a.nextFollowUpDate || '') < (b.nextFollowUpDate || '') ? -1 : 1;
         return a.name.localeCompare(b.name, 'ar');
       });
-  }, [leads, filterSales, showBucket, sortBy]);
+  }, [source, filterSales, showBucket, sortBy]);
 
   const overdue = reminders.filter(l => bucket(l) === 'overdue');
   const todayList = reminders.filter(l => bucket(l) === 'today');
 
   const buckets = [
-    { key: 'overdue',  label: 'متأخرة',  count: leads.filter(l => bucket(l) === 'overdue').length,   icon: '🔴', bg: 'bg-red-50 border-red-200', header: 'bg-red-100 text-red-800' },
-    { key: 'today',    label: 'اليوم',    count: leads.filter(l => bucket(l) === 'today').length,    icon: '🟠', bg: 'bg-orange-50 border-orange-200', header: 'bg-orange-100 text-orange-800' },
-    { key: 'tomorrow', label: 'غداً',     count: leads.filter(l => bucket(l) === 'tomorrow').length, icon: '🟡', bg: 'bg-yellow-50 border-yellow-200', header: 'bg-yellow-100 text-yellow-800' },
-    { key: 'week',     label: 'هذا الأسبوع', count: leads.filter(l => bucket(l) === 'week').length, icon: '🟢', bg: 'bg-green-50 border-green-200', header: 'bg-green-100 text-green-800' },
+    { key: 'overdue',  label: 'متأخرة',  count: source.filter(l => bucket(l) === 'overdue').length,   icon: '🔴', bg: 'bg-red-50 border-red-200', header: 'bg-red-100 text-red-800' },
+    { key: 'today',    label: 'اليوم',    count: source.filter(l => bucket(l) === 'today').length,    icon: '🟠', bg: 'bg-orange-50 border-orange-200', header: 'bg-orange-100 text-orange-800' },
+    { key: 'tomorrow', label: 'غداً',     count: source.filter(l => bucket(l) === 'tomorrow').length, icon: '🟡', bg: 'bg-yellow-50 border-yellow-200', header: 'bg-yellow-100 text-yellow-800' },
+    { key: 'week',     label: 'هذا الأسبوع', count: source.filter(l => bucket(l) === 'week').length, icon: '🟢', bg: 'bg-green-50 border-green-200', header: 'bg-green-100 text-green-800' },
   ];
 
   const totalActionable = overdue.length + todayList.length;
@@ -128,8 +139,8 @@ const FollowupRemindersTab: React.FC<Props> = () => {
           <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2"><BarChart3 size={16} className="text-rose-500" /> متابعات اليوم حسب الموظف</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {salesTeam.map(s => {
-              const overdueCount = leads.filter(l => l.assignedSalesId === s.id && bucket(l) === 'overdue').length;
-              const todayCount = leads.filter(l => l.assignedSalesId === s.id && bucket(l) === 'today').length;
+              const overdueCount = source.filter(l => l.assignedSalesId === s.id && bucket(l) === 'overdue').length;
+              const todayCount = source.filter(l => l.assignedSalesId === s.id && bucket(l) === 'today').length;
               const total = overdueCount + todayCount;
               return (
                 <div key={s.id} onClick={() => setFilterSales(s.id)}
