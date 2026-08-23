@@ -18,7 +18,7 @@ function getLast6Months() {
 }
 
 export default function RevenueSourcesTab() {
-  const { orders, leads, courses, bundles } = useSiteData();
+  const { orders, courses, bundles } = useSiteData();
   const [range, setRange] = useState<Range>('month');
   const months = getLast6Months();
 
@@ -41,12 +41,14 @@ export default function RevenueSourcesTab() {
   const byLeadSource = useMemo(() => {
     const map: Record<string, number> = {};
     filteredOrders.forEach(o => {
-      const lead = leads.find(l => l.id === o.leadId);
-      const source = lead?.source || o.source || 'مباشر';
+      // leadSource comes from the server now. The lookup it replaces could never
+      // succeed — o.leadId was never populated — so every order used to land in
+      // 'مباشر' regardless of where it actually came from.
+      const source = o.leadSource || o.source || 'مباشر';
       map[source] = (map[source] || 0) + (Number(o.amount) || 0);
     });
     return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [filteredOrders, leads]);
+  }, [filteredOrders]);
 
   // By product type (course vs bundle vs consultation)
   const byProductType = useMemo(() => {
@@ -82,14 +84,13 @@ export default function RevenueSourcesTab() {
       const mo = orders.filter(o => o.status === 'paid' && (o.createdAt || '').slice(0, 7) === m);
       const entry: Record<string, any> = { month: m.slice(5) };
       topSources.forEach(src => {
-        entry[src] = mo.filter(o => {
-          const lead = leads.find(l => l.id === o.leadId);
-          return (lead?.source || o.source || 'مباشر') === src;
-        }).reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+        entry[src] = mo
+          .filter(o => (o.leadSource || o.source || 'مباشر') === src)
+          .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
       });
       return entry;
     });
-  }, [orders, leads, months, byLeadSource]);
+  }, [orders, months, byLeadSource]);
 
   const topSources = byLeadSource.slice(0, 3).map(s => s.name);
   const fmtMoney = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}ك` : String(n);

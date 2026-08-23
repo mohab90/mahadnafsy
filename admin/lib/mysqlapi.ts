@@ -2,7 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
-import { AuthUser, CrmInsights, ScoredLeadsResult, SubscriberStats } from '../types';
+import { AuthUser, CrmInsights, ScoredLeadsResult, StaffLeadPerformance, SubscriberStats } from '../types';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -387,6 +387,10 @@ export const mysqlAdmin = {
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
   // suggestions — in one request. Each of them used to filter the full leads
   // array in the browser, which is what forced all 26k rows down the wire.
+  // Per-rep lead counts for a date range, so the staff scoreboard does not need
+  // the table to count rows per person.
+  getStaffLeadPerformance: (from?: string | null): Promise<StaffLeadPerformance> =>
+    apiFetch(`/admin/leads/staff-performance${from ? `?from=${encodeURIComponent(from)}` : ''}`, {}, A),
   // Scored, filtered, sorted leads — the scoring screen's fifty rows, chosen by
   // the database instead of by scoring 26,878 of them in the browser.
   getScoredLeads:          (opts: { minScore?: number; status?: string; source?: string; q?: string; sortBy?: string; limit?: number } = {}): Promise<ScoredLeadsResult> => {

@@ -168,24 +168,21 @@ export const fullLeadArraySubTabs = new Set<string>([
 
 /** Reads every lead, no subscribers.
  *
- *  Two left, and each needs a different piece of server work before it can go:
+ *  Empty, and kept rather than deleted: it is the hook a future lead-scanning
+ *  screen should reach for instead of quietly adding itself to fullCrmDataTabs
+ *  and pulling the subscriber table it does not want as well.
  *
- *    revenue_sources does leads.find(l => l.id === order.leadId) to label each
- *      order with its lead's source. It wants the source of the few hundred
- *      leads that have orders, not the table — the orders endpoint should carry
- *      the source and the lookup disappears.
+ *  What used to be here, and what replaced it:
  *
- *    staff_performance counts leads per rep inside a date range the user picks.
- *      leadStats.byOwner already answers it for all time; it needs the same
- *      grouping with from/to bounds.
- *
- *  lead_scoring and followup_reminders used to be here. Both are served by
- *  endpoints now — /admin/leads/scored and the reminders half of
- *  /admin/leads/crm-insights — and neither reads the array any more. */
-export const fullLeadTabs = new Set<string>([
-  'revenue_sources',
-  'staff_performance',
-]);
+ *    lead_scoring        → GET /admin/leads/scored
+ *    followup_reminders  → the reminders half of /admin/leads/crm-insights
+ *    staff_performance   → GET /admin/leads/staff-performance
+ *    revenue_sources     → the orders list now carries the lead's source, so
+ *                          the browser-side lookup it needed the table for is
+ *                          gone. That lookup never worked: orders has no
+ *                          lead_id column and the mapper never set leadId, so
+ *                          every order fell into the 'مباشر' bucket. */
+export const fullLeadTabs = new Set<string>([]);
 
 /** Reads every subscriber, no leads. */
 export const fullSubscriberTabs = new Set<string>([

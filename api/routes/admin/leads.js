@@ -1123,6 +1123,82 @@ function mapLeadRow(r, communicationsByLead) {
   };
 }
 
+// GET /api/admin/leads/staff-performance?from=YYYY-MM-DD
+//
+// Per-rep lead counts inside a date range. Its own endpoint rather than a
+// parameter on /stats, because /stats.byOwner is read by the CRM performance
+// panel with no range at all — adding one there would silently move numbers on
+// a screen that never asked for it.
+//
+// `from` is computed by the caller and passed as a plain date. The range labels
+// (week/month/quarter) live in the screen that offers them; the server only
+// needs the boundary they resolve to, and duplicating the label arithmetic here
+// would give two places to disagree about when a month starts.
+//
+// Three counts, two date columns. leads and converted are bounded by created_at;
+// contacted is bounded by updated_at falling back to created_at, which is what
+// the browser did — a lead contacted this month but created last year belongs in
+// this month's contacted figure and not in this month's new-lead figure.
+router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) return res.json({ from: null, byStaff: {} });
+    const scopeClause = accessScope.sql;
+    const base = [req.tenantId, ...accessScope.params];
+
+    // Anything that is not a bare calendar date is treated as no bound at all,
+    // which is the 'all' range the screen also offers.
+    const rawFrom = String(req.query.from || '').trim();
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(rawFrom) ? rawFrom : null;
+
+    const createdBound = from ? ' AND l.created_at >= ?' : '';
+    const touchedBound = from ? ' AND COALESCE(l.updated_at, l.created_at) >= ?' : '';
+    const fromParam = from ? [from] : [];
+
+    const byStaff = {};
+    const entryFor = (id) => {
+      const key = String(id || '');
+      if (!key) return null;
+      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0 };
+      return byStaff[key];
+    };
+
+    // leads and converted in one pass, grouped by status so both come from the
+    // same population — the reason /stats groups this way too.
+    const [createdRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, l.status AS status, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''${createdBound}
+        GROUP BY l.assigned_sales_id, l.status`,
+      [...base, ...fromParam],
+    );
+    for (const r of createdRows) {
+      const entry = entryFor(r.staff_id);
+      if (!entry) continue;
+      const count = Number(r.cnt);
+      entry.leads += count;
+      if (String(r.status || '').toLowerCase() === 'converted') entry.converted += count;
+    }
+
+    const [contactedRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.status IN ('contacted','interested','interested_booking','converted')${touchedBound}
+        GROUP BY l.assigned_sales_id`,
+      [...base, ...fromParam],
+    );
+    for (const r of contactedRows) {
+      const entry = entryFor(r.staff_id);
+      if (entry) entry.contacted = Number(r.cnt);
+    }
+
+    res.json({ from, byStaff });
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
 // GET /api/admin/leads/scored?minScore=&status=&source=&q=&sortBy=&limit=
 //
 // The lead-scoring screen renders filtered.slice(0, 50) — fifty rows — and was

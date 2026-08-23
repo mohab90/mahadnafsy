@@ -619,6 +619,9 @@ export interface OrderItem {
   bundleId?: string;
   courseName?: string;
   leadId?: string;
+  /** The source of the lead behind this order, resolved server-side through the
+   *  subscriber. Absent when the order has no subscriber or no lead. */
+  leadSource?: string;
   source?: string;
   clientEmail?: string;
 }
@@ -1194,6 +1197,15 @@ export interface LeadStats {
   /** Leads created today, by the database's own date, not a string prefix. */
   createdToday: number;
 }
+/** GET /admin/leads/staff-performance — per-rep lead counts inside a date
+ *  range, keyed by staff id. */
+export interface StaffLeadPerformance {
+  /** The lower bound applied, or null for no bound. Echoed back so a caller can
+   *  tell which range the numbers describe. */
+  from: string | null;
+  byStaff: Record<string, { leads: number; converted: number; contacted: number }>;
+}
+
 /** GET /admin/leads/scored — the lead-scoring screen's rows and summary, with
  *  the score computed in SQL rather than per lead in the browser. */
 export interface ScoredLeadsResult {

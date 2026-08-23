@@ -36,11 +36,26 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
     let orderParams = [req.tenantId];
     [orderWhere, orderParams] = appendScope(orderWhere, orderParams, scope, 'o');
     const [rows] = await pool.query(
+      // lead_source, resolved through the subscriber.
+      //
+      // The revenue-by-source chart did leads.find(l => l.id === order.leadId)
+      // in the browser, which is why that screen downloaded all 26,878 leads.
+      // It never matched: orders has no lead_id column and the order mapper
+      // never set leadId, so the lookup returned undefined every time and every
+      // order fell through to the 'مباشر' bucket. The chart has been showing one
+      // bar for its whole life.
+      //
+      // The link that does exist is orders → subscribers.lead_id → leads, and it
+      // resolves a real source for 4 of the 15 orders on production. The other 11
+      // have no subscriber or no lead behind them and still read 'مباشر' — now
+      // because that is true of them, not because the lookup was broken.
       `SELECT o.id, o.type, o.item_id, o.item_title, o.amount, o.currency, o.payment_method, o.customer_name,
        o.customer_email, o.customer_phone, o.status, o.transaction_id, o.coupon_code, o.subscriber_id,
-       o.course_id, o.bundle_id, o.notes, o.staff_id, o.staff_name, o.branch_id, o.created_at, o.paid_at, o.linked_transfer_id
+       o.course_id, o.bundle_id, o.notes, o.staff_id, o.staff_name, o.branch_id, o.created_at, o.paid_at, o.linked_transfer_id,
+       COALESCE(NULLIF(ol.source, ''), '') AS lead_source
        FROM orders o
        LEFT JOIN subscribers s ON s.id=o.subscriber_id AND s.tenant_id=o.tenant_id
+       LEFT JOIN leads ol ON ol.id=s.lead_id AND ol.tenant_id=o.tenant_id
        WHERE ${orderWhere} ORDER BY o.created_at DESC LIMIT ?`, [...orderParams, limit]);
 
     let paymentWhere = 'p.tenant_id=? AND p.deleted_at IS NULL AND p.amount > 0';

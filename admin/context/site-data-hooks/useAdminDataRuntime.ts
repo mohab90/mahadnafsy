@@ -99,6 +99,10 @@ function normalizeOrders(rows: unknown): OrderItem[] {
     staffId: (row.staffId ?? row.staff_id ?? undefined) as string | undefined,
     staffName: (row.staffName ?? row.staff_name ?? undefined) as string | undefined,
     linkedTransferId: (row.linkedTransferId ?? row.linked_transfer_id ?? undefined) as string | undefined,
+    // Resolved server-side through the subscriber. The screen that reads it used
+    // to look the lead up in the full leads array, which is what kept that array
+    // on the revenue screen.
+    leadSource: (row.leadSource ?? row.lead_source ?? undefined) as string | undefined,
   }));
 }
 

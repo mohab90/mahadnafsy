@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, TrendingUp, Users, Target, Trophy, Star, Award } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
+import type { StaffLeadPerformance } from '../../../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 type TimeRange = 'week' | 'month' | '3months' | 'all';
@@ -34,6 +36,25 @@ export default function StaffPerformanceTab() {
   const [range, setRange] = useState<TimeRange>('month');
   const [roleFilter, setRoleFilter] = useState('all');
 
+  // Per-rep lead counts from the database. The range boundary is computed here,
+  // where the range labels are defined, and sent as a plain date — the server
+  // filters, it does not decide when a month starts.
+  const [perf, setPerf] = useState<StaffLeadPerformance | null>(null);
+  const rangeStart = range === 'all' ? null : getRangeStart(range);
+  useEffect(() => {
+    let cancelled = false;
+    setPerf(null);
+    void (async () => {
+      try {
+        const data = await mysqlAdmin.getStaffLeadPerformance(rangeStart);
+        if (!cancelled) setPerf(data);
+      } catch {
+        // Falls back to counting the array, which is what this screen did before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rangeStart]);
+
   const frontlineRoles = ['sales', 'collection', 'support', 'consultant', 'online_manager', 'sales_collection_manager'];
   const staff = useMemo(() =>
     staffMembers.filter(s => s.status === 'active' && (roleFilter === 'all' || s.role === roleFilter)),
@@ -42,15 +63,27 @@ export default function StaffPerformanceTab() {
 
   const stats = useMemo(() => {
     return staff.map(s => {
-      const myLeads = leads.filter(l => l.assignedSalesId === s.id && inRange(l.createdAt, range));
-      const myConverted = leads.filter(l => l.assignedSalesId === s.id && l.status === 'converted' && inRange(l.createdAt, range));
+      // A rep with no leads in the range is absent from the aggregate rather
+      // than present with zeroes, so the row is still built for them.
+      const agg = perf?.byStaff?.[s.id];
+      const myLeadCount = agg
+        ? agg.leads
+        : leads.filter(l => l.assignedSalesId === s.id && inRange(l.createdAt, range)).length;
+      const myConvertedCount = agg
+        ? agg.converted
+        : leads.filter(l => l.assignedSalesId === s.id && l.status === 'converted' && inRange(l.createdAt, range)).length;
+      const contacted = agg
+        ? agg.contacted
+        : leads.filter(l => l.assignedSalesId === s.id && ['contacted', 'interested', 'interested_booking', 'converted'].includes(l.status) && inRange(l.updatedAt || l.createdAt, range)).length;
+
+      // Revenue stays on the orders array: it is a few hundred rows the screen
+      // already holds, and it is scoped by staff_id rather than by lead owner.
       const myOrders = orders.filter(o => o.staffId === s.id && inRange(o.createdAt, range));
       const revenue = myOrders.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
-      const convRate = myLeads.length > 0 ? Math.round((myConverted.length / myLeads.length) * 100) : 0;
-      const myContacted = leads.filter(l => l.assignedSalesId === s.id && ['contacted', 'interested', 'interested_booking', 'converted'].includes(l.status) && inRange(l.updatedAt || l.createdAt, range));
-      return { ...s, myLeads: myLeads.length, myConverted: myConverted.length, revenue, convRate, contacted: myContacted.length };
+      const convRate = myLeadCount > 0 ? Math.round((myConvertedCount / myLeadCount) * 100) : 0;
+      return { ...s, myLeads: myLeadCount, myConverted: myConvertedCount, revenue, convRate, contacted };
     }).sort((a, b) => b.revenue - a.revenue);
-  }, [staff, leads, orders, range]);
+  }, [staff, leads, orders, range, perf]);
 
   const totals = useMemo(() => ({
     leads: stats.reduce((a, s) => a + s.myLeads, 0),
