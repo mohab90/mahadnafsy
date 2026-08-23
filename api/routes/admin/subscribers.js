@@ -594,6 +594,37 @@ router.post('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requireP
     // collapses every spelling of one number onto a single comparable key.
     const safePhone = toIdentity(phone) || null; // NULL not '' so UNIQUE allows many blanks
     const safeNotes = sanitize(notes, 2000);
+
+    // ── A new client needs a way to be reached ────────────────────────────────
+    //
+    // There was no check at all here, and nine subscribers on production have
+    // neither a phone nor a usable email. They cannot sign in by either route,
+    // cannot be sent an OTP, and cannot be contacted. One of them has no name
+    // either.
+    //
+    // Worse than being unreachable: a contactless save used to be handed to
+    // findLeadByContact, which searched `email = ''` and matched whichever lead
+    // happened to have a blank email most recently — a stranger. It then marked
+    // that stranger's lead converted. Fifty-six subscribers on production are
+    // attached to somebody else's lead that way, and fifty-six leads are
+    // recorded as converted because of it. The matcher no longer does this
+    // (lib/leadMatching.js requires a real value on both sides), but nothing
+    // stopped the contactless record being created in the first place.
+    //
+    // Enforced on creation only. The existing nine must stay editable, because
+    // editing them is how the desk repairs them — a rule that locked them would
+    // make the damage permanent.
+    const [[existingRow]] = await conn.query(
+      'SELECT id FROM subscribers WHERE id = ? AND tenant_id = ? LIMIT 1', [id, tenantId]);
+    if (!existingRow) {
+      if (!safeName) {
+        return res.status(400).json({ error: '\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064a\u0644 \u0645\u0637\u0644\u0648\u0628.' });
+      }
+      if (!safePhone && !safeEmail) {
+        return res.status(400).json({ error: '\u0644\u0627 \u064a\u0645\u0643\u0646 \u062d\u0641\u0638 \u0639\u0645\u064a\u0644 \u0628\u062f\u0648\u0646 \u0631\u0642\u0645 \u0647\u0627\u062a\u0641 \u0648\u0628\u062f\u0648\u0646 \u0628\u0631\u064a\u062f \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a. \u0644\u0627\u0632\u0645 \u0648\u0627\u062d\u062f \u0645\u0646\u0647\u0645 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644\u060c \u0648\u0625\u0644\u0627 \u0627\u0644\u0639\u0645\u064a\u0644 \u0645\u0634 \u0647\u064a\u0642\u062f\u0631 \u064a\u0633\u062c\u0651\u0644 \u062f\u062e\u0648\u0644 \u0648\u0644\u0627 \u064a\u0633\u062a\u0642\u0628\u0644 \u0623\u064a \u0631\u0633\u0627\u0644\u0629.' });
+      }
+    }
+
     // Auto-generate client_code if not provided — never allow a subscriber to be saved without one
     let code = clientCode || client_code || null;
     if (!code) {
