@@ -1194,6 +1194,14 @@ export interface LeadStats {
   /** Leads created today, by the database's own date, not a string prefix. */
   createdToday: number;
 }
+/** GET /admin/subscribers/stats — the subscriber counts a screen needs without
+ *  holding the table. Scoped by the same rule as the subscriber list. */
+export interface SubscriberStats {
+  total: number;
+  /** Count per branch. '' is the bucket for subscribers with no branch set. */
+  byBranch: Record<string, number>;
+}
+
 /** One rep's week, as counted by the database rather than by filtering the
  *  leads array in the browser. */
 export interface CrmScorecardRow {

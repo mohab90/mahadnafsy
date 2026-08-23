@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessageSquare, Plus, Send, Trash2, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useSubscriberStats } from '../hooks/useSubscriberStats';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -28,7 +29,12 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
-  const { leads, subscribers } = useSiteData();
+  const { leads, leadStats, subscribers } = useSiteData();
+  // Same as the email screen: both figures are server counts, so neither table
+  // has to be in memory to render the picker.
+  const subscriberStats = useSubscriberStats();
+  const subscriberTotal = subscriberStats?.total ?? subscribers.length;
+  const leadTotal = leadStats?.total ?? leads.length;
   const [campaigns, setCampaigns] = useState<SmsCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'list' | 'new'>('list');
@@ -60,9 +66,9 @@ export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
   const MAX_SMS_LENGTH = 160;
 
   const audienceOptions = [
-    { value: 'all', label: `كل المشتركين والليدات (${subscribers.length + leads.length})` },
-    { value: 'subscribers', label: `المشتركون (${subscribers.length})` },
-    { value: 'leads', label: `الليدات (${leads.length})` },
+    { value: 'all', label: `كل المشتركين والليدات (${subscriberTotal + leadTotal})` },
+    { value: 'subscribers', label: `المشتركون (${subscriberTotal})` },
+    { value: 'leads', label: `الليدات (${leadTotal})` },
     { value: 'manual', label: 'قائمة أرقام محددة' },
   ];
 

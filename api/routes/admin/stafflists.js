@@ -58,6 +58,65 @@ async function loadCompletionProjection(tenantId, subscriberIds) {
   }, {});
 }
 
+// GET /api/admin/subscribers/stats
+//
+// The campaign screens show "المشتركون (1,353)" beside "الليدات (26,878)" in an
+// audience picker. Rendering that one number was the entire reason those screens
+// pulled both whole tables into the browser.
+//
+// Scoped exactly like the list route above — same resolveDataScope call, same
+// branch/assigned_sales/assigned_cs clauses — so a rep's count describes the
+// same population their list does. A count that disagreed with the list beneath
+// it would be worse than no count.
+router.get('/api/admin/subscribers/stats', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
+  try {
+    const isSuper = !!req.isSuperAdmin;
+    const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: isSuper, fallback: 'assigned_sales' });
+    if (scope === 'none') return res.json({ total: 0, active: 0, byBranch: {} });
+
+    const adminExclusions = ADMIN_EMAILS.length > 0
+      ? `AND (s.email IS NULL OR s.email NOT IN (${ADMIN_EMAILS.map(() => '?').join(',')}))`
+      : '';
+    let scopeClause = '1=1';
+    const scopeParams = [];
+    if (scope.startsWith('branch:')) {
+      const branches = branchesFromScope(scope);
+      scopeClause = branches.length ? `s.branch IN (${branches.map(() => '?').join(',')})` : '1=0';
+      scopeParams.push(...branches);
+    } else if (scope === 'assigned_sales') {
+      const staffId = req.staffRecord?.id;
+      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
+      scopeClause = `(s.assigned_sales_id = ? OR (s.lead_id IS NOT NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.id = s.lead_id AND l.tenant_id=s.tenant_id AND l.assigned_sales_id = ?)))`;
+      scopeParams.push(staffId, staffId);
+    } else if (scope === 'assigned_cs') {
+      const staffId = req.staffRecord?.id;
+      if (!staffId) return res.status(403).json({ error: 'Staff record required' });
+      scopeClause = `s.assigned_cs_id = ?`;
+      scopeParams.push(staffId);
+    }
+
+    const params = [req.tenantId, ...ADMIN_EMAILS, ...scopeParams];
+    const [rows] = await pool.query(
+      `SELECT COALESCE(NULLIF(s.branch, ''), '') AS branch, COUNT(*) AS cnt
+         FROM subscribers s
+        WHERE s.tenant_id = ? AND s.deleted_at IS NULL ${adminExclusions}
+          AND ${scopeClause}
+        GROUP BY COALESCE(NULLIF(s.branch, ''), '')`,
+      params,
+    );
+
+    const byBranch = {};
+    let total = 0;
+    for (const row of rows) {
+      const count = Number(row.cnt);
+      byBranch[String(row.branch || '')] = count;
+      total += count;
+    }
+
+    res.json({ total, byBranch });
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
 router.get('/api/admin/subscribers', requireAuth, requireAdminOrStaff, requirePermission('view_subscribers'), async (req, res) => {
   try {
     const limit  = parseLimit(req.query.limit, 500, 5000);

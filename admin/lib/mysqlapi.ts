@@ -2,7 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
-import { AuthUser, CrmInsights } from '../types';
+import { AuthUser, CrmInsights, SubscriberStats } from '../types';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -387,6 +387,9 @@ export const mysqlAdmin = {
   // The CRM workspace panels — reminders, weekly scorecard, redistribution
   // suggestions — in one request. Each of them used to filter the full leads
   // array in the browser, which is what forced all 26k rows down the wire.
+  // The subscriber count, so an audience picker does not have to hold the table.
+  getSubscriberStats:      (): Promise<SubscriberStats> =>
+    apiFetch(`/admin/subscribers/stats`, {}, A),
   getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
     apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)

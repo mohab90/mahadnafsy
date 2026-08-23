@@ -139,24 +139,51 @@ export const fullLeadArraySubTabs = new Set<string>([
   'archive',
 ]);
 
-export const fullCrmDataTabs = new Set<string>([
-  'lead_scoring',
-  'online_clients',
-  'archived_clients',
-  'analytics',
-  // kpi_dashboard and cohort_analysis are deliberately absent: both render from
-  // their own endpoint and receive nothing from SiteDataContext — <KpiDashboardTab
-  // notify={notify} /> is the whole call. Listing them here downloaded 26,878
-  // leads and every subscriber to draw a screen that reads neither.
+/**
+ * Which whole table a screen needs, split three ways.
+ *
+ * There used to be one list and one loader, so every screen on it paid for both
+ * tables. The client screens read subscribers and never touch a lead; the
+ * scoring and reminder screens are the exact opposite. Opening the online-client
+ * list downloaded 26,878 leads it does not render, and opening lead scoring
+ * downloaded every subscriber it does not render.
+ *
+ * Screens absent from all three sets need neither. That is not an oversight:
+ *
+ *   kpi_dashboard, cohort_analysis, automation — render from their own
+ *     endpoints and receive nothing from SiteDataContext. <KpiDashboardTab
+ *     notify={notify} /> is the whole call site.
+ *
+ *   archived_clients — fetches /admin/subscribers/archived itself, with its own
+ *     search. It never reads the context array, so pulling one for it was pure
+ *     waste.
+ *
+ *   email_campaigns, sms_campaigns — wanted both tables to render two numbers
+ *     in an audience dropdown: "المشتركون (1,353)" and "الليدات (26,878)".
+ *     Both now come from leadStats and /admin/subscribers/stats.
+ *
+ *   leads — its landing table is paginated and its panels read aggregates; see
+ *     fullLeadArraySubTabs above for the sub-tabs that still scan the array.
+ */
+
+/** Reads every lead, no subscribers. */
+export const fullLeadTabs = new Set<string>([
+  'lead_scoring',        // scores and sorts every lead
+  'followup_reminders',  // buckets every lead by follow-up date
   'revenue_sources',
-  'staff_performance',
-  'marketing',          // segmentation builds audiences from the whole table
-  'email_campaigns',
-  'sms_campaigns',
-  'drip_campaigns',
-  // automation is absent for the same reason: <AutomationTab notify setActiveTab />
-  // takes no data props and reads no leads.
+  'staff_performance',   // per-rep counts over a date range
+]);
+
+/** Reads every subscriber, no leads. */
+export const fullSubscriberTabs = new Set<string>([
+  'online_clients',
+]);
+
+/** Genuinely reads both tables. */
+export const fullCrmDataTabs = new Set<string>([
+  'analytics',
+  'marketing',          // segmentation builds audiences from both tables
+  'drip_campaigns',     // enrolment picker lists real people, needs rows
   'ask_ai',
-  'followup_reminders',
   'crm_settings',
 ]);

@@ -61,6 +61,10 @@ interface SiteDataShape {
    *  row — duplicate review, scoring, segmentation, reminders, the archive —
    *  call this on mount. Idempotent; safe to call from several at once. */
   loadFullCrmData: () => Promise<void>;
+  /** Just the leads table — for screens that read every lead and no subscriber. */
+  loadFullLeads: () => Promise<void>;
+  /** Just the subscribers table — for the client screens, which read no leads. */
+  loadFullSubscribers: () => Promise<void>;
   staffMembers: StaffMember[];
   consultations: ConsultationItem[];
   lectures: CourseLectureItem[];
@@ -440,7 +444,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, isAdmin]);
 
-  const { loadFullCrmData } = useAdminDataRuntime({
+  const { loadFullCrmData, loadFullLeads, loadFullSubscribers } = useAdminDataRuntime({
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
@@ -598,6 +602,8 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     leads,
     leadStats,
     loadFullCrmData,
+    loadFullLeads,
+    loadFullSubscribers,
     staffMembers,
     consultations,
     lectures,

@@ -27,7 +27,7 @@ import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
-import { contentHubRouteTabs, directContentTabs, fullCrmDataTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
+import { contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
 import { defaultFacebookLeadAdsConfig } from './dashboard/facebookLeadAdsDefaults';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
@@ -90,6 +90,8 @@ const Dashboard: React.FC = () => {
     leads,
     leadStats,
     loadFullCrmData,
+    loadFullLeads,
+    loadFullSubscribers,
     staffMembers,
     consultations,
     orders,
@@ -661,7 +663,9 @@ const Dashboard: React.FC = () => {
   // -- Client DB filtered+sorted list (only recomputes when filter state changes) -
   useEffect(() => {
     if (fullCrmDataTabs.has(activeTab)) void loadFullCrmData();
-  }, [activeTab, loadFullCrmData]);
+    else if (fullLeadTabs.has(activeTab)) void loadFullLeads();
+    else if (fullSubscriberTabs.has(activeTab)) void loadFullSubscribers();
+  }, [activeTab, loadFullCrmData, loadFullLeads, loadFullSubscribers]);
 
   const { overviewStats } = useOverviewDerived(orders, subscribers, leads, courses, staffMembers, consultations, content, leadStats);
 

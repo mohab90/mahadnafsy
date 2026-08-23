@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Mail, Plus, Send, Trash2, Eye, RefreshCw, CheckCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useSubscriberStats } from '../hooks/useSubscriberStats';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -30,6 +31,11 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
   const { leads, leadStats, subscribers } = useSiteData();
+  // Both counts come from the server. The arrays behind them are only the first
+  // page now — this screen no longer asks for either table in full, because two
+  // numbers in a dropdown label were the only thing it wanted them for.
+  const subscriberStats = useSubscriberStats();
+  const subscriberTotal = subscriberStats?.total ?? subscribers.length;
   // Recipient counts describe the whole table, not the slice currently loaded.
   const leadTotal = leadStats?.total ?? leads.length;
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -62,8 +68,8 @@ export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
   }), [campaigns]);
 
   const audienceOptions = [
-    { value: 'all', label: `كل المشتركين والليدات (${subscribers.length + leadTotal})` },
-    { value: 'subscribers', label: `المشتركون (${subscribers.length})` },
+    { value: 'all', label: `كل المشتركين والليدات (${subscriberTotal + leadTotal})` },
+    { value: 'subscribers', label: `المشتركون (${subscriberTotal})` },
     { value: 'leads', label: `الليدات (${leadTotal})` },
     { value: 'manual', label: 'قائمة بريد محددة' },
   ];

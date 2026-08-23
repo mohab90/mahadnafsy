@@ -128,7 +128,11 @@ function withTimeout<T>(promise: Promise<T>, ms = 7000): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-export function useAdminDataRuntime(state: RuntimeState): { loadFullCrmData: () => Promise<void> } {
+export function useAdminDataRuntime(state: RuntimeState): {
+  loadFullCrmData: () => Promise<void>;
+  loadFullLeads: () => Promise<void>;
+  loadFullSubscribers: () => Promise<void>;
+} {
   const {
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
@@ -140,6 +144,12 @@ export function useAdminDataRuntime(state: RuntimeState): { loadFullCrmData: () 
     setAiAgentConfigState, setMessagingChannelsState, setFbLeadAdsConfigState,
     reloadOrders, reloadJoinUsApplications,
   } = state;
+
+  // Declared up here because the background poll below reads them: it must be
+  // able to tell whether a full table was ever pulled, and refreshing something
+  // nobody asked for is exactly what this change stops.
+  const fullLeadsRef = useRef<Promise<void> | null>(null);
+  const fullSubsRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     if (!authUser?.email || (!authUser.isAdmin && !authUser.uid)) return;
@@ -307,9 +317,22 @@ export function useAdminDataRuntime(state: RuntimeState): { loadFullCrmData: () 
       if (cancelled || Date.now() - lastRefreshAt < 90_000) return;
       lastRefreshAt = Date.now();
       try {
+        // Refresh what the session actually has, not everything that exists.
+        //
+        // This poll called listAllLeads() unconditionally, so an admin sitting
+        // on any screen re-downloaded all 26,878 leads every two minutes — which
+        // put back, on a timer, precisely the load the screens had just stopped
+        // asking for. If the full table was never pulled, the first page is what
+        // is on screen and the first page is what gets refreshed.
+        const leadsFetch = fullLeadsRef.current
+          ? mysqlAdmin.listAllLeads()
+          : mysqlAdmin.listLeadsPage(500, 0);
+        const subsFetch = fullSubsRef.current
+          ? mysqlAdmin.listAllSubscribers()
+          : mysqlAdmin.listSubscribersPage(500, 0);
         const [leadsRes, subscribersRes, roundsRes, expensesRes] = await Promise.allSettled([
-          mysqlAdmin.listAllLeads(),
-          mysqlAdmin.listAllSubscribers(),
+          leadsFetch,
+          subsFetch,
           mysqlAdmin.listAllDaqqiRounds(),
           mysqlAdmin.listAllExpenses(),
         ]);
@@ -355,37 +378,57 @@ export function useAdminDataRuntime(state: RuntimeState): { loadFullCrmData: () 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid]);
 
-  // Pulls the complete leads and subscribers tables. Called by the screens that
-  // genuinely read every row — duplicate review, lead scoring, segmentation,
-  // reminders, the archive — rather than fired at boot for everyone.
+  // The two tables are pulled separately because the screens want them
+  // separately. The client screens read subscribers and never touch a lead; the
+  // scoring and duplicate screens are the other way round. Fetching both
+  // together meant every one of them paid for the other's table — opening the
+  // archived-clients list downloaded 26,878 leads it does not render.
   //
-  // Idempotent by ref, not by state: several such screens can mount in the same
-  // tick, and a state flag would let each of them see "not loaded yet" and start
-  // its own copy of a six-request pull.
-  const fullLoadRef = useRef<Promise<void> | null>(null);
-  const loadFullCrmData = useCallback(async () => {
-    if (fullLoadRef.current) return fullLoadRef.current;
-    fullLoadRef.current = (async () => {
-      const [fullLeadsRes, fullSubsRes] = await Promise.allSettled([
-        mysqlAdmin.listAllLeads(),
-        mysqlAdmin.listAllSubscribers(),
-      ]);
-      if (fullLeadsRes.status === 'fulfilled') {
-        const leads = normalizeLeads(fullLeadsRes.value);
+  // Idempotent by ref, not by state: several screens can mount in the same tick,
+  // and a state flag would let each see "not loaded yet" and start its own copy
+  // of the same pull.
+  //
+  // The ref doubles as the signal the background poll reads, which is why a
+  // failure clears it: the next request should retry rather than leave the
+  // session stuck on the first page forever, and the poll should not keep
+  // refreshing a full table that never arrived.
+  const loadFullLeads = useCallback(async () => {
+    if (fullLeadsRef.current) return fullLeadsRef.current;
+    fullLeadsRef.current = (async () => {
+      try {
+        const rows = await mysqlAdmin.listAllLeads();
+        const leads = normalizeLeads(rows);
         leadsRef.current = leads;
         setLeads(leads);
+      } catch (error) {
+        fullLeadsRef.current = null;
+        throw error;
       }
-      if (fullSubsRes.status === 'fulfilled') {
-        const subscribers = normalizeSubscribers(fullSubsRes.value);
+    })();
+    return fullLeadsRef.current;
+  }, [leadsRef, setLeads]);
+
+  const loadFullSubscribers = useCallback(async () => {
+    if (fullSubsRef.current) return fullSubsRef.current;
+    fullSubsRef.current = (async () => {
+      try {
+        const rows = await mysqlAdmin.listAllSubscribers();
+        const subscribers = normalizeSubscribers(rows);
         subscribersRef.current = subscribers;
         setSubscribers(subscribers);
+      } catch (error) {
+        fullSubsRef.current = null;
+        throw error;
       }
-      // Cleared on failure so a screen opened after a dropped connection can try
-      // again, rather than being stuck with the first page forever.
-      if (fullLeadsRes.status === 'rejected' || fullSubsRes.status === 'rejected') fullLoadRef.current = null;
     })();
-    return fullLoadRef.current;
-  }, [leadsRef, subscribersRef, setLeads, setSubscribers]);
+    return fullSubsRef.current;
+  }, [subscribersRef, setSubscribers]);
 
-  return { loadFullCrmData };
+  // Both halves, for the screens that genuinely read both. Settled rather than
+  // all-or-nothing so one table failing still delivers the other.
+  const loadFullCrmData = useCallback(async () => {
+    await Promise.allSettled([loadFullLeads(), loadFullSubscribers()]);
+  }, [loadFullLeads, loadFullSubscribers]);
+
+  return { loadFullCrmData, loadFullLeads, loadFullSubscribers };
 }
