@@ -1,4 +1,5 @@
 import { Activity, BarChart2, Phone, TrendingUp } from 'lucide-react';
+import { useSiteData } from '../../../../context/SiteDataContext';
 import {
   BarChart,
   Bar,
@@ -38,7 +39,17 @@ export function LeadPerformancePanel({
   sourcesData,
   commsByRep,
 }: LeadPerformancePanelProps) {
-  const visibleLeads = leads.filter(l => !l.hidden);
+  const { leadStats } = useSiteData();
+  // Three whole-table counts. leadStats answers each of them without the array;
+  // the array arms are what run before the stats request resolves.
+  const visibleCount = leadStats ? leadStats.total : leads.filter(l => !l.hidden).length;
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const totalComms = leadStats
+    ? leadStats.totalCommunications
+    : leads.reduce((s, l) => s + (l.communicationCount ?? l.communications?.length ?? 0), 0);
+  const monthlyLeads = leadStats
+    ? (leadStats.byMonth?.[thisMonth]?.total ?? 0)
+    : leads.filter(l => (l.createdAt || '').startsWith(thisMonth)).length;
 
   return (
     <div className="space-y-5">
@@ -52,11 +63,11 @@ export function LeadPerformancePanel({
       </div>
 
       <LeadPerformanceAnalyticsKpis
-        totalLeads={visibleLeads.length}
-        conversionRate={visibleLeads.length > 0 ? `${Math.round((totalConverted / visibleLeads.length) * 100)}%` : '0%'}
+        totalLeads={visibleCount}
+        conversionRate={visibleCount > 0 ? `${Math.round((totalConverted / visibleCount) * 100)}%` : '0%'}
         convertedCount={totalConverted}
-        totalCommunications={leads.reduce((s, l) => s + (l.communicationCount ?? l.communications?.length ?? 0), 0)}
-        monthlyLeads={leads.filter(l => (l.createdAt || '').startsWith(new Date().toISOString().slice(0, 7))).length}
+        totalCommunications={totalComms}
+        monthlyLeads={monthlyLeads}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

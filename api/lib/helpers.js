@@ -109,8 +109,26 @@ function parseCrm(str) {
   return raw;
 }
 
+// ── Date helpers ──────────────────────────────────────────────────────────────
+// A DATETIME column arrives from mysql2 as a JS Date, not a string — only DATE
+// columns are stringified (dateStrings: ['DATE']). String(date).slice(0, 10) on
+// one of those yields "Wed Jun 17", which is how the Dokki round dates were
+// corrupted. Lived in routes/daqqi-rounds.js until a second route needed it;
+// shared now so the next caller cannot reinvent the broken version.
+function ymd(v) {
+  if (!v) return '';
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return '';
+    // Local calendar fields on purpose: the column carries no timezone, so
+    // routing through UTC would move a Cairo evening back a day.
+    const p2 = n => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p2(v.getMonth() + 1)}-${p2(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
+}
+
 // ── Pagination helpers ────────────────────────────────────────────────────────
 const parseLimit  = (v, def = 100, max = 1000) => Math.min(parseInt(v) || def, max);
 const parseOffset = (v)                          => parseInt(v) || 0;
 
-module.exports = { sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone };
+module.exports = { ymd, sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone };

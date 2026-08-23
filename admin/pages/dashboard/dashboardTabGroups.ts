@@ -117,8 +117,29 @@ export const saasOpsTabs = new Set<string>([
  * loading data nobody looks at is slow, but a screen computing over a partial
  * array is wrong, and wrong is worse.
  */
+/** Sub-tabs of the leads screen that genuinely need every lead in memory.
+ *
+ *  The screen itself is deliberately not in `fullCrmDataTabs` any more. Its
+ *  landing view is the table, which is paginated and searched on the server, and
+ *  the reminder / performance / analytics panels now read server aggregates. Only
+ *  These still scan the array: the pipeline board renders every card, the
+ *  duplicate finder compares every pair, and the four archive-family views
+ *  (localNew, dawliNew, dawliOld, archive) filter the whole table — the archive
+ *  specifically lists hidden rows, which the paged fetch never returns at all.
+ *
+ *  LeadsTab calls loadFullCrmData() when one of these opens, so the 26,878-row
+ *  fetch happens on the screens that need it and nowhere else. */
+export const fullLeadArraySubTabs = new Set<string>([
+  'pipeline',
+  'duplicates',
+  'communications',
+  'localNew',
+  'dawliNew',
+  'dawliOld',
+  'archive',
+]);
+
 export const fullCrmDataTabs = new Set<string>([
-  'leads',              // pipeline, duplicates, reminders, archive, performance
   'lead_scoring',
   'online_clients',
   'archived_clients',

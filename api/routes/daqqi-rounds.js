@@ -10,6 +10,7 @@ const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
+const { ymd } = require('../lib/helpers');
 function sendRouteError(res, err) {
   if (res.headersSent) return;
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
@@ -58,17 +59,6 @@ function toMysqlDt(v) {
 // schedule was rendering as a start date, and the string the UI posted back on the
 // next edit for the old toMysqlDt to truncate into the column. Migration 205
 // cleared the rows already damaged; these stop new ones being produced.
-function ymd(v) {
-  if (!v) return '';
-  if (v instanceof Date) {
-    if (Number.isNaN(v.getTime())) return '';
-    // Read off the local calendar fields on purpose: the column carries no
-    // timezone, so routing through UTC would move a Cairo evening round back a day.
-    const p2 = n => String(n).padStart(2, '0');
-    return `${v.getFullYear()}-${p2(v.getMonth() + 1)}-${p2(v.getDate())}`;
-  }
-  return String(v).slice(0, 10);
-}
 
 function isoDt(v) {
   if (!v) return '';

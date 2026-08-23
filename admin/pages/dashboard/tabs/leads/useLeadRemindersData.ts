@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type React from 'react';
-import type { CommunicationRecord, LeadItem } from '../../../../types';
+import type { CommunicationRecord, CrmInsights, LeadItem } from '../../../../types';
 import { calcLeadScore } from '../leadUtils';
 
 export type ReminderLead = LeadItem & {
@@ -15,7 +15,22 @@ interface UseLeadRemindersDataArgs {
   snoozeIds: Set<string>;
   updateLead: (lead: LeadItem) => void | Promise<boolean>;
   setSnoozeIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  insights?: CrmInsights | null;
 }
+
+/**
+ * The follow-up reminder panel.
+ *
+ * `insights.reminders` is the same set this hook used to carve out of the full
+ * leads array — open leads with a follow-up date due within seven days — except
+ * the database does the carving. On production that is 14 rows out of 26,887,
+ * and the panel renders 2 of them: this screen was pulling the whole table down
+ * the wire to show two names.
+ *
+ * The array path stays as the fallback for before the request resolves and for
+ * if it fails. Both paths apply the same three conditions, so whichever one runs
+ * the panel shows the same leads.
+ */
 
 export function useLeadRemindersData({
   leads,
@@ -23,12 +38,16 @@ export function useLeadRemindersData({
   snoozeIds,
   updateLead,
   setSnoozeIds,
+  insights,
 }: UseLeadRemindersDataArgs) {
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const next7 = useMemo(() => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), []);
 
   const data = useMemo(() => {
-    const remindersAll: ReminderLead[] = leads.filter(lead =>
+    // The server already applied hidden/status/window; re-applying them to its
+    // rows costs nothing and keeps one definition of a reminder in this file.
+    const source = insights?.reminders ?? leads;
+    const remindersAll: ReminderLead[] = source.filter(lead =>
       !lead.hidden && lead.nextFollowUpDate && !['converted', 'lost', 'not_interested_hidden'].includes(lead.status)
     ).map(lead => ({
       ...lead,
@@ -52,11 +71,20 @@ export function useLeadRemindersData({
     const filterByStaff = (items: ReminderLead[]) =>
       reminderStaffFilter ? items.filter(lead => lead.assignedSalesId === reminderStaffFilter) : items;
 
-    const totalDue = leads.filter(lead => lead.nextFollowUpDate && lead.nextFollowUpDate <= todayStr && !lead.hidden).length;
-    const completed = leads.filter(lead => {
-      if (!lead.nextFollowUpDate || lead.nextFollowUpDate > todayStr || lead.hidden) return false;
-      return (lead.communications || []).some(comm => comm.date.slice(0, 10) >= lead.nextFollowUpDate!);
-    }).length;
+    // completionRate counts leads whose date has passed whether or not they are
+    // still open, so it cannot come from remindersAll above — the server returns
+    // it directly, and the array fallback recomputes it the old way.
+    let completionRate: number;
+    if (insights) {
+      completionRate = insights.remindersCompletionRate;
+    } else {
+      const totalDue = leads.filter(lead => lead.nextFollowUpDate && lead.nextFollowUpDate <= todayStr && !lead.hidden).length;
+      const completed = leads.filter(lead => {
+        if (!lead.nextFollowUpDate || lead.nextFollowUpDate > todayStr || lead.hidden) return false;
+        return (lead.communications || []).some(comm => comm.date.slice(0, 10) >= lead.nextFollowUpDate!);
+      }).length;
+      completionRate = totalDue > 0 ? Math.round((completed / totalDue) * 100) : 0;
+    }
 
     return {
       overdue,
@@ -65,9 +93,9 @@ export function useLeadRemindersData({
       overdueFiltered: filterByStaff(overdue).filter(lead => !snoozeIds.has(lead.id)),
       todayFiltered: filterByStaff(today).filter(lead => !snoozeIds.has(lead.id)),
       upcomingFiltered: filterByStaff(upcoming).filter(lead => !snoozeIds.has(lead.id)),
-      completionRate: totalDue > 0 ? Math.round((completed / totalDue) * 100) : 0,
+      completionRate,
     };
-  }, [leads, next7, reminderStaffFilter, snoozeIds, todayStr]);
+  }, [insights, leads, next7, reminderStaffFilter, snoozeIds, todayStr]);
 
   const snooze1Day = useCallback(async (lead: LeadItem) => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);

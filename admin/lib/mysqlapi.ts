@@ -2,7 +2,7 @@
 // lib/mysqlapi.ts — MySQL REST API client (complete)
 // ══════════════════════════════════════════════════════════════
 
-import { AuthUser } from '../types';
+import { AuthUser, CrmInsights } from '../types';
 
 // Relative by default — always targets whatever origin actually served the page
 // (Nginx-proxied in every real deploy). A hardcoded absolute production URL here
@@ -382,8 +382,13 @@ export const mysqlAdmin = {
     fetchAllPages(offset => `/admin/leads?limit=${pageSize}&offset=${offset}`, pageSize, maxRows),
   // Server-side pipeline/KPI aggregates — the whole leads table summarised in one
   // query, so the CRM shows correct counts without loading every row.
-  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number }>; createdToday: number }> =>
+  getLeadStats:            (): Promise<{ total: number; byStatus: Record<string, number>; assigned: number; unassigned: number; totalDealValue: number; byOwner: Record<string, { total: number; converted: number; avgScore: number; comms: Record<string, number> }>; bySource: Record<string, number>; byMonth: Record<string, { total: number; converted: number }>; avgScore: number; totalCommunications: number; createdToday: number }> =>
     apiFetch(`/admin/leads/stats`, {}, A),
+  // The CRM workspace panels — reminders, weekly scorecard, redistribution
+  // suggestions — in one request. Each of them used to filter the full leads
+  // array in the browser, which is what forced all 26k rows down the wire.
+  getCrmInsights:          (idleDays = 14): Promise<CrmInsights> =>
+    apiFetch(`/admin/leads/crm-insights?idleDays=${idleDays}`, {}, A),
   // Unified endpoint — server auto-scopes by role (replaces my-subscribers / my-collection-clients / my-daqqi-clients)
   listStaffSubscribers:    async (pageSize = 2000): Promise<AR[]> => {
     const all: AR[] = [];

@@ -114,7 +114,6 @@ export function LeadPerformanceOverview({
           <h3 className="font-extrabold text-gray-800">قمع التحويل — كل الليدز</h3>
         </div>
         {(() => {
-          const allActive = leads.filter(l => !l.hidden);
           const stages = [
             { key: 'new',                  label: 'جديد',          color: 'bg-slate-400',   textColor: 'text-slate-700' },
             { key: 'contacted',            label: 'تم التواصل',    color: 'bg-blue-400',    textColor: 'text-blue-700' },
@@ -122,10 +121,21 @@ export function LeadPerformanceOverview({
             { key: 'interested_booking',   label: 'حجز موعد',      color: 'bg-violet-400',  textColor: 'text-violet-700' },
             { key: 'converted',            label: 'محوّل',         color: 'bg-emerald-500', textColor: 'text-emerald-700' },
           ];
-          const counts = stages.map(s => ({
-            ...s,
-            count: allActive.filter(l => l.status === s.key || (s.key === 'interested_followup' && ['interested_followup','interested_booking','negotiating','proposal_sent'].includes(l.status))).length,
-          }));
+          // One stage folds four statuses together; every other stage is its own.
+          // byStatus is already scoped to hidden = 0, which is what the array
+          // filter did by hand.
+          const statusesFor = (key: string) => (key === 'interested_followup'
+            ? ['interested_followup', 'interested_booking', 'negotiating', 'proposal_sent']
+            : [key]);
+          const counts = stages.map(s => {
+            const wanted = statusesFor(s.key);
+            return {
+              ...s,
+              count: leadStats
+                ? wanted.reduce((sum, status) => sum + (leadStats.byStatus?.[status] || 0), 0)
+                : leads.filter(l => !l.hidden && wanted.includes(l.status)).length,
+            };
+          });
           const maxCount = Math.max(...counts.map(s => s.count), 1);
           return (
             <div className="space-y-2">
@@ -479,9 +489,11 @@ export function LeadPerformanceOverview({
           { label: 'تذكيرات متأخرة', val: overdueLeads.length, color: 'bg-red-50 text-red-700 border-red-200' },
           {
             label: 'متوسط السكور',
-            val: leads.filter(l => !l.hidden).length > 0
-              ? Math.round(leads.filter(l => !l.hidden).reduce((s, l) => s + calcLeadScore(l), 0) / leads.filter(l => !l.hidden).length)
-              : 0,
+            val: leadStats
+              ? leadStats.avgScore
+              : (leads.filter(l => !l.hidden).length > 0
+                  ? Math.round(leads.filter(l => !l.hidden).reduce((s, l) => s + calcLeadScore(l), 0) / leads.filter(l => !l.hidden).length)
+                  : 0),
             color: 'bg-violet-50 text-violet-700 border-violet-200',
           },
         ].map(c => (

@@ -1172,7 +1172,61 @@ export interface LeadStats {
   /** Lead count per assigned sales rep id. The unassigned bucket is deliberately
    *  absent — it is reported once as `unassigned`, so summing this map and
    *  adding that figure cannot double-count. */
-  byOwner: Record<string, { total: number; converted: number }>;
+  byOwner: Record<string, {
+    total: number;
+    converted: number;
+    /** Mean lead score, weighted by lead count — not an average of averages. */
+    avgScore: number;
+    /** Communication count per lowercased channel ('call', 'whatsapp', …). */
+    comms: Record<string, number>;
+  }>;
+  /** Mean score across every visible lead, by the same formula the browser
+   *  applies per lead — computed in SQL, checked against the JavaScript original
+   *  on all 26,888 production rows. */
+  avgScore: number;
+  /** Communications logged against visible leads, all channels. */
+  totalCommunications: number;
+  /** Lead count per source. '' is the bucket for leads with no source set. */
+  bySource: Record<string, number>;
+  /** The last six calendar months, keyed 'YYYY-MM'. Months with no leads are
+   *  absent rather than zero — the caller builds the axis, not this map. */
+  byMonth: Record<string, { total: number; converted: number }>;
   /** Leads created today, by the database's own date, not a string prefix. */
   createdToday: number;
 }
+/** One rep's week, as counted by the database rather than by filtering the
+ *  leads array in the browser. */
+export interface CrmScorecardRow {
+  staffId: string;
+  calls: number;
+  wa: number;
+  meetings: number;
+  totalComms: number;
+  followupsDone: number;
+  newLeadsThisWeek: number;
+  overdueOwn: number;
+}
+
+/** A lead nobody has touched for `daysSilent` days. A whole LeadItem, because
+ *  the panel's reassign button saves the object straight back. */
+export interface CrmRedistCandidate {
+  lead: LeadItem;
+  lastDate: string;
+  daysSilent: number;
+}
+
+/** GET /admin/leads/crm-insights — everything the three CRM workspace panels
+ *  used to compute by scanning all 26k leads client-side. */
+export interface CrmInsights {
+  idleDays: number;
+  /** Whole leads, but only those with a follow-up date inside the panel's
+   *  window — 14 rows on production, not 26,887. */
+  reminders: LeadItem[];
+  remindersCompletionRate: number;
+  scorecard: CrmScorecardRow[];
+  redistCandidates: CrmRedistCandidate[];
+  /** Open (non-closed) lead count per rep, used to suggest the least-loaded
+   *  new owner for an idle lead. */
+  openLoadByRep: Record<string, number>;
+}
+

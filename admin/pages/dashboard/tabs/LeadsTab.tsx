@@ -22,6 +22,8 @@ import { useLeadFilteringData } from './leads/useLeadFilteringData';
 import { useLeadQuickCommunication } from './leads/useLeadQuickCommunication';
 import { useLeadRemindersData } from './leads/useLeadRemindersData';
 import { useLeadOpsInsights } from './leads/useLeadOpsInsights';
+import { useCrmInsights } from './leads/useCrmInsights';
+import { fullLeadArraySubTabs } from '../dashboardTabGroups';
 import { useLeadAnalyticsData } from './leads/useLeadAnalyticsData';
 import { useLeadEffectiveRecords } from './leads/useLeadEffectiveRecords';
 import { useSalesTargetsStorage } from './leads/useSalesTargetsStorage';
@@ -79,7 +81,7 @@ const LeadSectionFallback = () => (
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLeads, salesOwnSubscribers, salesDataLoading, fetchSalesData, setActiveTab: setActiveDashboardTab, branchFilter: workspaceBranchFilter }: LeadsTabProps) {
   const {
-    leads, staffMembers, subscribers, courses, bundles, updateLead, addLead,
+    leads, leadStats, loadFullCrmData, staffMembers, subscribers, courses, bundles, updateLead, addLead,
     reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
     authUser, isAdmin, recordSubscriberPayment, bulkRedistributeLeads,
   } = useSiteData();
@@ -104,6 +106,14 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
   const [dragOverCol, setDragOverCol] = useState<LeadStatus | null>(null);
 
   const { subTab, setSubTab } = useLeadSubTab();
+  // The whole leads table, fetched only for the sub-tabs that scan it. Opening
+  // the CRM used to pull all 26,878 rows before drawing anything; the landing
+  // table is paginated and the panels beside it read aggregates, so nothing here
+  // needs them until one of these four views is opened. loadFullCrmData()
+  // de-duplicates its own in-flight promise, so repeated switching is one fetch.
+  useEffect(() => {
+    if (fullLeadArraySubTabs.has(subTab)) void loadFullCrmData();
+  }, [subTab, loadFullCrmData]);
   const { crmSettings, setCrmSettings, pipelineStages, reloadPipeline, selfStaff } =
     useLeadCrmBootstrap(notify);
   const {
@@ -200,6 +210,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   // ── Smart redistribution threshold (admin-tunable) ───────────────────────
   const [smartIdleDays, setSmartIdleDays] = useState(7);
+  // One request that answers what the reminders, scorecard and redistribution
+  // panels used to answer by scanning every lead in the browser.
+  const crmInsights = useCrmInsights(smartIdleDays);
   // ── Communications tab state ─────────────────────────────────────────────
   const [commFilter, setCommFilter] = useState<LeadCommunicationFilter>({ staffId: '', type: '', dateFrom: '', dateTo: '', search: '' });
   const {
@@ -238,6 +251,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     snoozeIds,
     updateLead,
     setSnoozeIds,
+    insights: crmInsights,
   });
 
   const salesReps = useMemo(() =>
@@ -269,7 +283,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     repStats,
   } = useLeadCommunicationsData(effectiveLeads, commFilter, salesReps);
 
-  const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays);
+  const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
 
   const { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads } = useLeadFilteringData({
     effectiveLeads,
@@ -325,9 +339,9 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     setLeadsFollowupFilter('all');
   }, [workspaceBranchFilter]);
 
-  const { salesPerformance, commsByRep } = useLeadPerformanceData(salesReps, leads, subscribers, salesTargets, targetMonth);
+  const { salesPerformance, commsByRep } = useLeadPerformanceData(salesReps, leads, subscribers, salesTargets, targetMonth, leadStats);
 
-  const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leads, effectiveLeads);
+  const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leads, effectiveLeads, leadStats);
 
 
   const waActiveRep = waRepId ? salesReps.find(r => r.id === waRepId) ?? null : null;

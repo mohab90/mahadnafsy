@@ -10,7 +10,7 @@ const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer } = require('../../lib/helpers');
+const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer, ymd } = require('../../lib/helpers');
 const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent, logLeadEventStrict } = require('../../lib/crm');
@@ -1011,6 +1011,419 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
 // POST /api/admin/migrate-branches — one-time migration to normalize old branch values
 
 // GET /api/admin/leads?limit=500&offset=0
+// calcLeadScoreServer(), expressed in SQL.
+//
+// lib/helpers.js holds the JavaScript original and remains the version the write
+// path uses; this is the same formula arranged so a rep's mean score can be a
+// GROUP BY instead of 26,888 rows crossing the network to be averaged in a
+// browser. The two are checked against each other on real data — every lead,
+// both ways — and they agree exactly.
+//
+// Expects a joined subquery aliased `lc` carrying comm_count and last_comm.
+//
+// Three fields read crm_json when their own column is empty, because the row
+// mapper does the same and the JS formula is fed the mapped value. Without those
+// arms two leads out of 26,888 scored differently — old rows whose course list
+// and interest level only ever made it into the JSON blob. JSON_VALID guards
+// each one: crm_json is free-form text on old rows and MariaDB will not extract
+// from something that is not JSON.
+//
+// The two day-counts deliberately differ in shape, matching the original: the
+// contact decay measures from the calendar day of the last communication (the JS
+// slices the date before parsing it), while the no-contact decay measures from
+// the full created_at timestamp. FLOOR(TIMESTAMPDIFF(SECOND …)/86400) rather than
+// DATEDIFF because DATEDIFF rounds both operands to dates and would count a day
+// too many on the second one.
+const LEAD_SCORE_SQL = `
+  LEAST(100, GREATEST(0,
+    -- No LOWER() on the subject: the column collates utf8mb4_unicode_ci, so
+    -- 'NEW' matches the 'new' arm on its own. Wrapping it changed nothing but
+    -- the query plan.
+    CASE l.status
+      WHEN 'new' THEN 5 WHEN 'contacted' THEN 15
+      WHEN 'interested' THEN 35 WHEN 'interested_booking' THEN 35
+      WHEN 'interested_followup' THEN 35
+      WHEN 'postpone_month' THEN 10
+      WHEN 'no_answer' THEN 8 WHEN 'no_answer_wa' THEN 8 WHEN 'no_answer_nowa' THEN 8
+      WHEN 'wrong_number' THEN 0 WHEN 'with_colleague' THEN 10
+      WHEN 'not_interested' THEN 0 WHEN 'not_interested_hidden' THEN 0
+      WHEN 'closed' THEN 50 WHEN 'converted' THEN 100 WHEN 'lost' THEN 0
+      WHEN 'other' THEN 2 ELSE 0
+    END
+    + CASE LOWER(COALESCE(
+        NULLIF(l.interest_level, ''),
+        NULLIF(IF(JSON_VALID(l.crm_json)
+                  AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.interestLevel')) NOT IN ('NULL'),
+                  JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.interestLevel')), NULL), ''),
+        ''))
+        WHEN 'high' THEN 30 WHEN 'medium' THEN 15 ELSE 5
+      END
+    + LEAST(COALESCE(lc.comm_count, 0) * 5, 25)
+    + IF(l.next_follow_up_date IS NOT NULL
+         OR COALESCE(NULLIF(IF(JSON_VALID(l.crm_json)
+                               AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')) NOT IN ('NULL'),
+                               JSON_UNQUOTE(JSON_EXTRACT(l.crm_json, '$.nextFollowUpDate')), NULL), ''),
+                     '') <> '', 5, 0)
+    + IF(COALESCE(
+           JSON_LENGTH(l.interested_course_ids_json),
+           IF(JSON_VALID(l.crm_json)
+              AND JSON_TYPE(JSON_EXTRACT(l.crm_json, '$.interestedCourseIds')) = 'ARRAY',
+              JSON_LENGTH(JSON_EXTRACT(l.crm_json, '$.interestedCourseIds')), NULL),
+           0) > 0, 10, 0)
+    - IF(l.status IN ('converted','lost','not_interested','not_interested_hidden','wrong_number'),
+         0,
+         IF(lc.last_comm IS NOT NULL,
+            GREATEST(0, LEAST((FLOOR(TIMESTAMPDIFF(SECOND, DATE(lc.last_comm), NOW()) / 86400) - 7) * 2, 30)),
+            GREATEST(0, LEAST((FLOOR(TIMESTAMPDIFF(SECOND, l.created_at, NOW()) / 86400) - 14) * 1, 20))
+         )
+      )
+  ))`;
+
+// Row → LeadItem, shared by every route that returns whole leads.
+//
+// This was inline in GET /api/admin/leads and nowhere else, because that route
+// was the only way to get a lead out of the database. The reminders route needs
+// the identical shape — same crm_json precedence, same lowercased status, same
+// branch normalisation — and a second copy of it would drift.
+function mapLeadRow(r, communicationsByLead) {
+  const crm = parseCrm(r.crm_json);
+  // client_code column is authoritative; crm_json clientCode is a fallback
+  const clientCode = r.client_code || crm.clientCode || null;
+  // Normalize status to lowercase (schema stores ENUM as uppercase: 'NEW','CONVERTED', etc.)
+  const status = (r.status || 'new').toLowerCase();
+  // DB columns take precedence over crm_json values for branch and interestedCourseIds
+  const rawBranch = r.branch || crm.branch || null;
+
+  const normB = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
+  const branch = (normB && VALID_BRANCHES.has(normB)) ? normB : rawBranch;
+  const interestedCourseIds = tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []);
+  const dealValue = r.deal_value != null ? Number(r.deal_value) : (crm.dealValue || null);
+  const canonicalCommunications = communicationsByLead.get(r.id);
+  const communications = canonicalCommunications || [];
+  // crm_json spread goes FIRST so explicit DB columns always win
+  return { ...crm,
+    id: r.id, name: r.name, email: r.email, phone: r.phone,
+    source: r.source, status, notes: cleanLegacyLeadText(r.notes), createdAt: r.created_at,
+    branch, rawBranch: cleanLegacyLeadText(crm.rawBranch || rawBranch || ''), interestedCourseIds, clientCode, dealValue,
+    assignedSalesId: r.assigned_sales_id || null,
+    assignedSalesName: r.assigned_sales_name || null,
+    assignedCsId: r.assigned_cs_id || null,
+    assignedCsName: r.assigned_cs_name || null,
+    interestLevel: r.interest_level || crm.interestLevel || null,
+    // ymd(), because next_follow_up_date is a DATETIME: mysql2 hands it back as
+    // a Date, JSON turns that into '2026-08-23T00:00:00.000Z', and the reminders
+    // panel compares it with === against a plain '2026-08-23'. That comparison
+    // could never be true, so the "due today" column was always empty and today's
+    // follow-ups were being listed under "upcoming" instead.
+    nextFollowUpDate: ymd(r.next_follow_up_date) || crm.nextFollowUpDate || null,
+    lastFollowUp: r.last_follow_up || crm.lastFollowUp || null,
+    communications,
+    communicationCount: Number(r.communication_count || 0),
+    communications_count: Number(r.communication_count || 0),
+  };
+}
+
+// GET /api/admin/leads/crm-insights?idleDays=N
+//
+// The three CRM workspace panels — reminders, the weekly scorecard, and the
+// redistribution suggestions — each used to read the entire leads array. That is
+// why opening the CRM downloaded all 26,887 rows: not to list them (the table has
+// been paginated since), but so three hooks could filter them in the browser.
+//
+// Every one of those filters is a query. The reminders panel is the clearest
+// case: 14 leads on this database carry a follow-up date at all, and the panel
+// shows the 2 inside its window — 26,887 rows fetched to render two.
+//
+// Same role scoping as the list and stats routes, so a SALES rep's insights
+// cover their own leads and nothing else.
+router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
+  try {
+    const accessScope = leadScope(req, 'l');
+    if (accessScope.none) {
+      return res.json({ reminders: [], scorecard: [], redistCandidates: [], idleDays: 0 });
+    }
+    const scopeClause = accessScope.sql;
+    const scopeParams = accessScope.params;
+
+    // Clamped rather than trusted: this value goes into a comparison, and an
+    // absurd one would either return the whole table or nothing at all.
+    const idleDays = Math.min(Math.max(parseInt(req.query.idleDays, 10) || 14, 1), 3650);
+
+    // Closed leads are excluded below in the same spellings the browser used, so
+    // the two paths cannot disagree about what "open" means.
+    const CLOSED = ['converted', 'lost', 'not_interested_hidden'];
+    const REDIST_EXCLUDED = [...CLOSED, 'wrong_number'];
+    const closedSql = CLOSED.map(() => '?').join(',');
+    const redistSql = REDIST_EXCLUDED.map(() => '?').join(',');
+
+    // ── 1. Reminders ────────────────────────────────────────────────────────
+    // Whole rows, because the panel lists them by name and acts on them. Bounded
+    // by the same window the browser applied: anything overdue, plus the next
+    // seven days. LIMIT is a backstop, not a filter — a database holding more
+    // than 500 open follow-ups was never going to render them all anyway.
+    const [reminderRows] = await pool.query(
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+              l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+              l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+              l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+              l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score,
+              l.created_at, l.updated_at,
+              (SELECT COUNT(*) FROM communications lc
+                WHERE lc.tenant_id=l.tenant_id AND lc.lead_id=l.id) AS communication_count
+         FROM leads l
+         LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+         LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.next_follow_up_date IS NOT NULL
+          AND l.status NOT IN (${closedSql})
+          AND l.next_follow_up_date <= CURDATE() + INTERVAL 7 DAY
+        ORDER BY l.next_follow_up_date ASC, l.id ASC
+        LIMIT 500`,
+      [req.tenantId, ...scopeParams, ...CLOSED],
+    );
+
+    const communicationsByLead = new Map();
+    if (reminderRows.length) {
+      const communications = await listLeadCommunications({
+        tenantId: req.tenantId,
+        leadIds: reminderRows.map(row => row.id),
+      });
+      for (const communication of communications) {
+        const list = communicationsByLead.get(communication.lead_id) || [];
+        list.push({
+          id: communication.id,
+          type: String(communication.type || 'note').toLowerCase(),
+          date: communication.date,
+          notes: communication.notes,
+          outcome: communication.outcome,
+          nextFollowUp: communication.next_follow_up,
+          staffId: communication.staff_id,
+        });
+        communicationsByLead.set(communication.lead_id, list);
+      }
+    }
+    const reminders = reminderRows.map(r => mapLeadRow(r, communicationsByLead));
+
+    // completionRate counts leads whose follow-up date has already passed —
+    // including closed ones the list above excludes, matching what the browser
+    // counted — and whether a communication landed on or after that date. Only
+    // the percentage is displayed, so only the two totals are computed.
+    const [[dueRow]] = await pool.query(
+      `SELECT COUNT(*) AS due,
+              COALESCE(SUM(EXISTS (
+                SELECT 1 FROM communications c
+                 WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id
+                   AND c.date >= l.next_follow_up_date
+              )), 0) AS completed
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.next_follow_up_date IS NOT NULL
+          AND l.next_follow_up_date <= CURDATE()`,
+      [req.tenantId, ...scopeParams],
+    );
+    const totalDue = Number(dueRow?.due || 0);
+    const completedDue = Number(dueRow?.completed || 0);
+
+    // ── 2. Weekly scorecard ─────────────────────────────────────────────────
+    // Four aggregates keyed by rep, merged into one row each. Deliberately four
+    // queries and not one wide join: joining communications to leads multiplies
+    // the lead rows by their communications, and every count after the first
+    // would come back inflated.
+    const scorecardById = new Map();
+    const scoreEntry = (id) => {
+      const key = String(id || '');
+      if (!key) return null;
+      if (!scorecardById.has(key)) {
+        scorecardById.set(key, {
+          staffId: key, calls: 0, wa: 0, meetings: 0, totalComms: 0,
+          followupsDone: 0, newLeadsThisWeek: 0, overdueOwn: 0,
+        });
+      }
+      return scorecardById.get(key);
+    };
+
+    const [weekCommRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, c.type AS type, COUNT(*) AS cnt
+         FROM communications c
+         JOIN leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND c.date >= CURDATE() - INTERVAL 7 DAY
+        GROUP BY l.assigned_sales_id, c.type`,
+      [req.tenantId, ...scopeParams],
+    );
+    for (const r of weekCommRows) {
+      const entry = scoreEntry(r.staff_id);
+      if (!entry) continue;
+      const count = Number(r.cnt);
+      const type = String(r.type || '').trim().toLowerCase();
+      entry.totalComms += count;
+      if (type === 'call') entry.calls += count;
+      else if (type === 'whatsapp') entry.wa += count;
+      else if (type === 'meeting') entry.meetings += count;
+    }
+
+    const [followupRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.next_follow_up_date >= CURDATE() - INTERVAL 7 DAY
+          AND l.next_follow_up_date <= CURDATE()
+          AND EXISTS (
+            SELECT 1 FROM communications c
+             WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id
+               AND c.date >= l.next_follow_up_date
+          )
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams],
+    );
+    for (const r of followupRows) {
+      const entry = scoreEntry(r.staff_id);
+      if (entry) entry.followupsDone = Number(r.cnt);
+    }
+
+    // Bare column, no DATE() wrapper — same reason /stats uses a half-open
+    // range: wrapping created_at puts idx_leads_tenant_status_created out of
+    // reach and turns this into a full scan.
+    const [newLeadRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.created_at >= CURDATE() - INTERVAL 7 DAY
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams],
+    );
+    for (const r of newLeadRows) {
+      const entry = scoreEntry(r.staff_id);
+      if (entry) entry.newLeadsThisWeek = Number(r.cnt);
+    }
+
+    // overdueOwn excludes converted and lost only — not not_interested_hidden.
+    // That is what the browser counted, and quietly widening it here would move
+    // a number the user reads without anyone having decided to.
+    const [overdueRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.next_follow_up_date IS NOT NULL
+          AND l.next_follow_up_date < CURDATE()
+          AND l.status NOT IN ('converted','lost')
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams],
+    );
+    for (const r of overdueRows) {
+      const entry = scoreEntry(r.staff_id);
+      if (entry) entry.overdueOwn = Number(r.cnt);
+    }
+
+    // ── 3. Redistribution candidates ────────────────────────────────────────
+    // "Silent" is measured from the most recent communication, falling back to
+    // creation for a lead never contacted — the browser's rule, written as a
+    // COALESCE over a correlated MAX.
+    //
+    // DATE(last_activity), not the bare timestamp: the browser floors the last
+    // activity to its calendar day before subtracting, so a lead last touched at
+    // 09:00 seven days ago counts as seven days silent there. Comparing the raw
+    // DATETIME excluded thirteen leads on production that the panel had always
+    // listed.
+    //
+    // Only the 50 quietest come back because only 50 are ever shown, and the
+    // per-rep open load the panel needs to suggest a new owner is the aggregate
+    // below rather than a count over the array.
+    // The full column set, not a slim projection: the panel's "تحويل" button
+    // saves with updateLead({ ...lead, assignedSalesId }), which PUTs the whole
+    // lead back. A partial object there would blank every field it omitted, and
+    // the "عرض" link needs client_code to resolve. Fifty rows is cheap; losing a
+    // lead's notes to a reassignment is not.
+    const [idleRows] = await pool.query(
+      `SELECT l.id, l.client_code, l.name, l.email, l.phone, l.source, l.status, l.lead_type, l.branch,
+              l.interest_level, l.interested_course_ids_json, l.enrolled_course_id, l.deal_value,
+              l.assigned_sales_id, COALESCE(ss.name, l.assigned_sales_name) AS assigned_sales_name,
+              l.assigned_cs_id, COALESCE(cs.name, l.assigned_cs_name) AS assigned_cs_name,
+              l.notes, l.last_follow_up, l.next_follow_up_date, l.crm_json, l.hidden, l.score,
+              l.created_at, l.updated_at,
+              (SELECT COUNT(*) FROM communications lc
+                WHERE lc.tenant_id=l.tenant_id AND lc.lead_id=l.id) AS communication_count,
+              COALESCE(
+                (SELECT MAX(c.date) FROM communications c
+                  WHERE c.tenant_id = l.tenant_id AND c.lead_id = l.id),
+                l.created_at
+              ) AS last_activity
+         FROM leads l
+         LEFT JOIN staff ss ON ss.id = l.assigned_sales_id AND ss.tenant_id = l.tenant_id
+         LEFT JOIN staff cs ON cs.id = l.assigned_cs_id AND cs.tenant_id = l.tenant_id
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.status NOT IN (${redistSql})
+       HAVING DATE(last_activity) <= CURDATE() - INTERVAL ? DAY
+        ORDER BY last_activity ASC, l.id ASC
+        LIMIT 50`,
+      [req.tenantId, ...scopeParams, ...REDIST_EXCLUDED, idleDays],
+    );
+
+    const [loadRows] = await pool.query(
+      `SELECT l.assigned_sales_id AS staff_id, COUNT(*) AS cnt
+         FROM leads l
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+          AND l.assigned_sales_id IS NOT NULL AND l.assigned_sales_id <> ''
+          AND l.status NOT IN (${closedSql})
+        GROUP BY l.assigned_sales_id`,
+      [req.tenantId, ...scopeParams, ...CLOSED],
+    );
+    const openLoadByRep = {};
+    for (const r of loadRows) openLoadByRep[String(r.staff_id)] = Number(r.cnt);
+
+    const idleCommsByLead = new Map();
+    if (idleRows.length) {
+      const idleComms = await listLeadCommunications({
+        tenantId: req.tenantId,
+        leadIds: idleRows.map(row => row.id),
+      });
+      for (const communication of idleComms) {
+        const list = idleCommsByLead.get(communication.lead_id) || [];
+        list.push({
+          id: communication.id,
+          type: String(communication.type || 'note').toLowerCase(),
+          date: communication.date,
+          notes: communication.notes,
+          outcome: communication.outcome,
+          nextFollowUp: communication.next_follow_up,
+          staffId: communication.staff_id,
+        });
+        idleCommsByLead.set(communication.lead_id, list);
+      }
+    }
+
+    const nowMs = Date.now();
+    const redistCandidates = idleRows.map(r => {
+      // ymd(), not String().slice(): last_activity is a COALESCE over two
+      // DATETIME columns, so it arrives as a Date and slicing it would produce
+      // "Wed Aug 05" — which then parses back as Invalid Date and makes every
+      // daysSilent NaN.
+      const lastDate = ymd(r.last_activity);
+      return {
+        lead: mapLeadRow(r, idleCommsByLead),
+        lastDate,
+        daysSilent: lastDate
+          ? Math.floor((nowMs - new Date(lastDate).getTime()) / 86400000)
+          : 999,
+      };
+    });
+
+    res.json({
+      idleDays,
+      reminders,
+      remindersCompletionRate: totalDue > 0 ? Math.round((completedDue / totalDue) * 100) : 0,
+      scorecard: [...scorecardById.values()],
+      redistCandidates,
+      openLoadByRep,
+    });
+  } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
+});
+
 // GET /api/admin/leads/stats — server-side pipeline/KPI aggregates so the CRM
 // never has to pull the whole leads table into the browser just to show counts.
 // Same role scoping as the list below. Stays fast at 500k+: one GROUP BY that
@@ -1059,12 +1472,32 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
     // rep's conversion rate, so a total without its converted count would leave
     // the numerator on the array and the denominator here — and once the array
     // stops holding every row that rate goes above 100%.
+    //
+    // score_sum rather than AVG(): the caller wants one average per rep, but the
+    // rows arrive split by status, so an average of averages would weight a rep's
+    // four converted leads the same as their four hundred new ones. Summing and
+    // dividing by the same total at the end gives the real mean.
+    //
+    // The formula is recomputed here rather than read from leads.score, which
+    // would have been far cheaper and silently wrong twice over. On production
+    // 13,298 rows carry a score and 15,974 carry zero — every Google-Sheet import
+    // was written without ever being scored — so all six reps' leads average 0 in
+    // the column against 20 by the formula. And even a fully backfilled column
+    // would drift, because the last term below decays with time and the column
+    // only changes when the lead is written.
     const [ownerRows] = await pool.query(
       `SELECT COALESCE(NULLIF(l.assigned_sales_id, ''), '') AS owner_id,
-              l.status AS status, COUNT(*) AS cnt
-       FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+              l.status AS status, COUNT(*) AS cnt,
+              COALESCE(SUM(${LEAD_SCORE_SQL}), 0) AS score_sum
+       FROM leads l
+       LEFT JOIN (
+         SELECT lead_id, COUNT(*) AS comm_count, MAX(date) AS last_comm
+           FROM communications WHERE tenant_id = ? AND lead_id IS NOT NULL
+          GROUP BY lead_id
+       ) lc ON lc.lead_id = l.id
+       WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
        GROUP BY COALESCE(NULLIF(l.assigned_sales_id, ''), ''), l.status`,
-      params,
+      [req.tenantId, ...params],
     );
     const byOwner = {};
     for (const r of ownerRows) {
@@ -1072,10 +1505,91 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
       // out of byOwner stops a caller summing the map and double-counting.
       if (!r.owner_id) continue;
       const id = String(r.owner_id);
-      const entry = byOwner[id] || (byOwner[id] = { total: 0, converted: 0 });
+      const entry = byOwner[id] || (byOwner[id] = { total: 0, converted: 0, scoreSum: 0, comms: {} });
       const count = Number(r.cnt);
       entry.total += count;
+      entry.scoreSum += Number(r.score_sum) || 0;
       if (String(r.status || '').toLowerCase() === 'converted') entry.converted += count;
+    }
+
+    // Communication counts per rep per channel, for the same reason the statuses
+    // are grouped above: the performance screen charts calls/WhatsApp/meetings
+    // side by side, and counting them in the browser is what forces every lead's
+    // communications array to be downloaded.
+    //
+    // Joined through leads so the tenant scope and the hidden filter apply here
+    // too — communications carries a tenant_id, but not the lead's hidden flag.
+    const [commRows] = await pool.query(
+      `SELECT COALESCE(NULLIF(l.assigned_sales_id, ''), '') AS owner_id,
+              c.type AS type, COUNT(*) AS cnt
+       FROM communications c
+       JOIN leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id
+       WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+       GROUP BY COALESCE(NULLIF(l.assigned_sales_id, ''), ''), c.type`,
+      params,
+    );
+    for (const r of commRows) {
+      if (!r.owner_id) continue;
+      const id = String(r.owner_id);
+      // A rep can have communications on leads that are all converted away or
+      // reassigned, so this map is not guaranteed to have an entry yet.
+      const entry = byOwner[id] || (byOwner[id] = { total: 0, converted: 0, scoreSum: 0, comms: {} });
+      const type = String(r.type || '').trim().toLowerCase();
+      if (!type) continue;
+      entry.comms[type] = (entry.comms[type] || 0) + Number(r.cnt);
+    }
+
+    // avgScore is derived here, once, so no caller has to remember that scoreSum
+    // is a sum and not already a mean.
+    for (const entry of Object.values(byOwner)) {
+      entry.avgScore = entry.total > 0 ? Math.round(entry.scoreSum / entry.total) : 0;
+      delete entry.scoreSum;
+    }
+
+    // The two whole-table figures the performance screen still counted in the
+    // browser: the mean score across every visible lead, and the total number of
+    // communications logged against them.
+    const [[globalRow]] = await pool.query(
+      `SELECT COALESCE(AVG(${LEAD_SCORE_SQL}), 0) AS avg_score,
+              COALESCE(SUM(COALESCE(lc.comm_count, 0)), 0) AS total_comms
+         FROM leads l
+         LEFT JOIN (
+           SELECT lead_id, COUNT(*) AS comm_count, MAX(date) AS last_comm
+             FROM communications WHERE tenant_id = ? AND lead_id IS NOT NULL
+            GROUP BY lead_id
+         ) lc ON lc.lead_id = l.id
+        WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}`,
+      [req.tenantId, ...params],
+    );
+
+    // Lead source breakdown, for the analytics pie. Counting this in the browser
+    // is one of the last three reasons the CRM wanted every row.
+    const [sourceRows] = await pool.query(
+      `SELECT COALESCE(NULLIF(l.source, ''), '') AS source, COUNT(*) AS cnt
+       FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+       GROUP BY COALESCE(NULLIF(l.source, ''), '')`,
+      params,
+    );
+    const bySource = {};
+    for (const r of sourceRows) bySource[String(r.source || '')] = Number(r.cnt);
+
+    // Six months of new-vs-converted, keyed 'YYYY-MM'.
+    //
+    // DATE_FORMAT on created_at is not sargable, but the range test beside it is,
+    // so the index still selects the six months and the formatting only runs on
+    // what survives. Without the range this would format all 26,878 rows.
+    const [trendRows] = await pool.query(
+      `SELECT DATE_FORMAT(l.created_at, '%Y-%m') AS ym,
+              COUNT(*) AS cnt,
+              SUM(l.status = 'converted') AS converted
+       FROM leads l WHERE l.tenant_id = ? AND l.hidden = 0${scopeClause}
+         AND l.created_at >= DATE_FORMAT(CURDATE() - INTERVAL 5 MONTH, '%Y-%m-01')
+       GROUP BY DATE_FORMAT(l.created_at, '%Y-%m')`,
+      params,
+    );
+    const byMonth = {};
+    for (const r of trendRows) {
+      byMonth[String(r.ym)] = { total: Number(r.cnt), converted: Number(r.converted || 0) };
     }
 
     // A half-open range on the bare column, not DATE(created_at) = CURDATE().
@@ -1095,7 +1609,10 @@ router.get('/api/admin/leads/stats', requireAuth, requireAdminOrStaff, requirePe
 
     res.json({
       total, byStatus, assigned: total - unassigned, unassigned, totalDealValue,
-      byOwner, createdToday: Number(todayRow?.cnt || 0),
+      byOwner, bySource, byMonth,
+      avgScore: Math.round(Number(globalRow?.avg_score || 0)),
+      totalCommunications: Number(globalRow?.total_comms || 0),
+      createdToday: Number(todayRow?.cnt || 0),
     });
   } catch (e) { logger.error('[leads-stats]', e.message); sendRouteError(res, e); }
 });
@@ -1202,38 +1719,7 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
         communicationsByLead.set(communication.lead_id, list);
       }
     }
-    res.json(rows.map(r => {
-      const crm = parseCrm(r.crm_json);
-      // client_code column is authoritative; crm_json clientCode is a fallback
-      const clientCode = r.client_code || crm.clientCode || null;
-      // Normalize status to lowercase (schema stores ENUM as uppercase: 'NEW','CONVERTED', etc.)
-      const status = (r.status || 'new').toLowerCase();
-      // DB columns take precedence over crm_json values for branch and interestedCourseIds
-      const rawBranch = r.branch || crm.branch || null;
-
-      const normB = rawBranch ? rawBranch.toUpperCase().replace(/[-\s]/g,'_') : null;
-      const branch = (normB && VALID_BRANCHES.has(normB)) ? normB : rawBranch;
-      const interestedCourseIds = tryJson(r.interested_course_ids_json, crm.interestedCourseIds || []);
-      const dealValue = r.deal_value != null ? Number(r.deal_value) : (crm.dealValue || null);
-      const canonicalCommunications = communicationsByLead.get(r.id);
-      const communications = canonicalCommunications || [];
-      // crm_json spread goes FIRST so explicit DB columns always win
-      return { ...crm,
-        id: r.id, name: r.name, email: r.email, phone: r.phone,
-        source: r.source, status, notes: cleanLegacyLeadText(r.notes), createdAt: r.created_at,
-        branch, rawBranch: cleanLegacyLeadText(crm.rawBranch || rawBranch || ''), interestedCourseIds, clientCode, dealValue,
-        assignedSalesId: r.assigned_sales_id || null,
-        assignedSalesName: r.assigned_sales_name || null,
-        assignedCsId: r.assigned_cs_id || null,
-        assignedCsName: r.assigned_cs_name || null,
-        interestLevel: r.interest_level || crm.interestLevel || null,
-        nextFollowUpDate: r.next_follow_up_date || crm.nextFollowUpDate || null,
-        lastFollowUp: r.last_follow_up || crm.lastFollowUp || null,
-        communications,
-        communicationCount: Number(r.communication_count || 0),
-        communications_count: Number(r.communication_count || 0),
-      };
-    }));
+    res.json(rows.map(r => mapLeadRow(r, communicationsByLead)));
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 

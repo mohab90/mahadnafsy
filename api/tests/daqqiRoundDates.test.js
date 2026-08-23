@@ -9,15 +9,19 @@ const root = path.join(__dirname, '..', '..');
 const route = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'utf8');
 const db = fs.readFileSync(path.join(root, 'api/lib/db.js'), 'utf8');
 
-// Pulls ymd out of the route source. The route module cannot simply be required
-// here — it opens the pool at import — and every other Dokki test reads this file
-// as text for the same reason.
-const ymd = (() => {
-  const start = route.indexOf('function ymd(');
-  const end = route.indexOf('function isoDt(');
-  assert.ok(start > -1 && end > start, 'ymd must exist in the route');
-  return new Function(`${route.slice(start, end)}; return ymd;`)();
-})();
+// ymd now lives in lib/helpers.js — a second route needed it — so this imports
+// the real function instead of extracting it from the route's source. helpers.js
+// is pure and opens no pool, which the route itself does at import time; that is
+// why the rest of this file still reads sources as text.
+const { ymd } = require('../lib/helpers');
+
+test('the route uses the shared helper rather than its own copy', () => {
+  assert.ok(route.includes("require('../lib/helpers')"),
+    'daqqi-rounds.js must import ymd rather than define it');
+  assert.ok(!route.includes('function ymd('),
+    'a local ymd() beside the shared one is how the two drift apart');
+});
+
 
 test('the pool leaves DATETIME as a JS Date, so the route must not stringify one', () => {
   // The premise of the bug. If this ever changes to dateStrings: true the helpers
