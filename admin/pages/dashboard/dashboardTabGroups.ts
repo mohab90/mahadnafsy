@@ -144,15 +144,18 @@ export const fullCrmDataTabs = new Set<string>([
   'online_clients',
   'archived_clients',
   'analytics',
-  'kpi_dashboard',
-  'cohort_analysis',
+  // kpi_dashboard and cohort_analysis are deliberately absent: both render from
+  // their own endpoint and receive nothing from SiteDataContext — <KpiDashboardTab
+  // notify={notify} /> is the whole call. Listing them here downloaded 26,878
+  // leads and every subscriber to draw a screen that reads neither.
   'revenue_sources',
   'staff_performance',
   'marketing',          // segmentation builds audiences from the whole table
   'email_campaigns',
   'sms_campaigns',
   'drip_campaigns',
-  'automation',
+  // automation is absent for the same reason: <AutomationTab notify setActiveTab />
+  // takes no data props and reads no leads.
   'ask_ai',
   'followup_reminders',
   'crm_settings',
