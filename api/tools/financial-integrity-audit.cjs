@@ -45,14 +45,22 @@ const report = (severity, label, count, detail) => {
     `SELECT COUNT(*) n FROM payments WHERE tenant_id=? AND deleted_at IS NULL AND (amount IS NULL OR amount <= 0)`, [T]);
   report(bad.n > 0 ? 'med' : 'ok', 'مدفوعات بقيمة صفر أو سالبة', bad.n);
 
-  // ── Exact duplicates: same person, same amount, same day ──────────────────
+  // ── Same person, same amount, same day ───────────────────────────────────
+  //
+  // Not marked high, because it is not a defect on its own. Six groups on
+  // production match this pattern and are genuine second instalments —
+  // different transaction ids, different courses. The byte-identical ones were
+  // removed in a separate pass; what remains here always will.
+  //
+  // A permanent !! that is always a false alarm teaches people to ignore the
+  // tool, which costs more than the check is worth.
   const [dupes] = await pool.query(
     `SELECT subscriber_id, amount, DATE(date) d, COUNT(*) n
        FROM payments WHERE tenant_id=? AND deleted_at IS NULL AND subscriber_id IS NOT NULL
       GROUP BY subscriber_id, amount, DATE(date) HAVING n > 1`, [T]);
   const dupExtra = dupes.reduce((a, r) => a + (Number(r.n) - 1), 0);
   const dupValue = dupes.reduce((a, r) => a + (Number(r.n) - 1) * Number(r.amount), 0);
-  report(dupExtra > 0 ? 'high' : 'ok', 'مدفوعات مكررة — تحتاج تأكيد يدوي (الأقساط الحقيقية بتظهر هنا كمان)', dupExtra,
+  report(dupExtra > 0 ? 'med' : 'ok', 'مدفوعات مكررة — تحتاج تأكيد يدوي (الأقساط الحقيقية بتظهر هنا كمان)', dupExtra,
     dupExtra > 0 ? `بقيمة ${money(dupValue)} جنيه — محتاجة تأكيد إن مش دفعتين حقيقيتين` : '');
 
   // ── No date ───────────────────────────────────────────────────────────────
