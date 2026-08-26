@@ -1159,7 +1159,11 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
     const entryFor = (id) => {
       const key = String(id || '');
       if (!key) return null;
-      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0 };
+      // byStatus rather than a field per status: two screens want different
+      // slices of the same grouping — one needs lost and active, the other only
+      // converted — and adding a column each time they differ is how a response
+      // grows fields nobody reads.
+      if (!byStaff[key]) byStaff[key] = { leads: 0, converted: 0, contacted: 0, byStatus: {} };
       return byStaff[key];
     };
 
@@ -1177,8 +1181,10 @@ router.get('/api/admin/leads/staff-performance', requireAuth, requireAdminOrStaf
       const entry = entryFor(r.staff_id);
       if (!entry) continue;
       const count = Number(r.cnt);
+      const status = String(r.status || '').toLowerCase();
       entry.leads += count;
-      if (String(r.status || '').toLowerCase() === 'converted') entry.converted += count;
+      if (status) entry.byStatus[status] = (entry.byStatus[status] || 0) + count;
+      if (status === 'converted') entry.converted += count;
     }
 
     const [contactedRows] = await pool.query(

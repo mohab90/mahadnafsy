@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { SalesTarget } from '../../../types';
+import type { SalesTarget, StaffLeadPerformance } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -94,14 +94,48 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
       .catch(() => notify('error', 'تعذر تحميل رسائل الفريق من السيرفر'));
   }, [notify]);
 
+  // Per-rep counts from the database.
+  //
+  // This screen showed "500 إجمالي اللييدات" with the five reps summing to
+  // exactly 500 — the size of the bootstrap page, not the table. It is not one
+  // of the screens that loads every lead, so counting the array here was only
+  // ever counting the first page; the two-minute poll used to paper over it by
+  // re-fetching everything, and that poll now leaves alone what nobody opened.
+  const [perf, setPerf] = useState<StaffLeadPerformance | null>(null);
+  const rangeStart = timeRange === 'all' ? null : getRangeStart(timeRange);
+  useEffect(() => {
+    let cancelled = false;
+    setPerf(null);
+    void (async () => {
+      try {
+        const data = await mysqlAdmin.getStaffLeadPerformance(rangeStart);
+        if (!cancelled) setPerf(data);
+      } catch {
+        // Falls back to the array, which is what this screen did before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rangeStart]);
+
   // ── Per-staff stats ────────────────────────────────────────────────────
   const staffStats = useMemo(() => {
     return salesTeam.map(s => {
       const myLeads = leads.filter(l => !l.hidden && l.assignedSalesId === s.id && inRange(l.createdAt, timeRange));
+      const agg = perf?.byStaff?.[s.id];
+      // byStatus carries every status, so lost and active are derived from it
+      // rather than needing their own fields on the response.
+      const totalLeads = agg ? agg.leads : myLeads.length;
+      const convertedCount = agg ? agg.converted : myLeads.filter(l => l.status === 'converted').length;
+      const lostCount = agg
+        ? (agg.byStatus?.lost || 0)
+        : myLeads.filter(l => l.status === 'lost').length;
+      const activeCount = agg
+        ? Math.max(0, agg.leads - convertedCount - lostCount)
+        : myLeads.filter(l => !['converted', 'lost'].includes(l.status || '')).length;
       const converted = myLeads.filter(l => l.status === 'converted');
       const lost = myLeads.filter(l => l.status === 'lost');
       const active = myLeads.filter(l => !['converted', 'lost'].includes(l.status || ''));
-      const convRate = percent(converted.length, myLeads.length);
+      const convRate = percent(convertedCount, totalLeads);
 
       // Revenue from orders attributed to this staff
       const myOrders = orders.filter(o =>
@@ -126,10 +160,10 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
 
       return {
         staff: s,
-        totalLeads: myLeads.length,
-        converted: converted.length,
-        lost: lost.length,
-        active: active.length,
+        totalLeads,
+        converted: convertedCount,
+        lost: lostCount,
+        active: activeCount,
         convRate,
         revenue,
         targetAmt,

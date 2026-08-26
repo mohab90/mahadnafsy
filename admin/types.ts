@@ -1203,7 +1203,14 @@ export interface StaffLeadPerformance {
   /** The lower bound applied, or null for no bound. Echoed back so a caller can
    *  tell which range the numbers describe. */
   from: string | null;
-  byStaff: Record<string, { leads: number; converted: number; contacted: number }>;
+  byStaff: Record<string, {
+    leads: number;
+    converted: number;
+    contacted: number;
+    /** Lead count per lowercased status, so a caller can derive lost, active or
+     *  anything else without the response growing a field for each. */
+    byStatus: Record<string, number>;
+  }>;
 }
 
 /** GET /admin/leads/scored — the lead-scoring screen's rows and summary, with
