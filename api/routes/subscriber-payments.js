@@ -191,9 +191,24 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // A normal recorder can only attribute a payment to themselves. Finance
     // managers/admins may explicitly attribute it to another tenant staff member.
     const requestedStaffId = payment.staffId || payment.staff_id || null;
+    // Falls back to whoever is signed in, rather than to nothing.
+    //
+    // A staff member without approval rights is always recorded as the taker —
+    // that branch was already right. Anyone who *can* approve got
+    // requestedStaffId instead, and the admin UI does not send one, so every
+    // payment an admin or manager recorded stored a NULL staff_id. That is 264
+    // of 287 payments on production, 92%, which makes per-staff revenue
+    // meaningless by construction rather than by neglect.
+    //
+    // Attribution to another staff member still works: requestedStaffId wins
+    // when it is given, and is validated against the tenant just below. Only the
+    // empty case changes, from "nobody" to "the person who did it".
+    //
+    // An account with no staff row — the admin login is one — still resolves to
+    // null, which is the honest answer for someone who is not staff.
     const resolvedStaffId = !canApprovePayment && req.staffRecord?.id
       ? req.staffRecord.id
-      : requestedStaffId;
+      : (requestedStaffId || req.staffRecord?.id || null);
     let resolvedStaffName = null;
     if (resolvedStaffId) {
       const [[su]] = await pool.query(
@@ -232,6 +247,20 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     const courseId = payment.courseId || payment.course_id || null;
     const bundleId = payment.bundleId || payment.bundle_id || null;
     if (courseId && bundleId) return res.status(400).json({ error: 'Payment cannot target a course and bundle together' });
+    // A COURSE payment has to name what was bought.
+    //
+    // 88 rows on production are payment_type COURSE with neither a course nor a
+    // bundle — 238,731 EGP whose purpose cannot be answered from the data. Four
+    // ways to recover it were tried and every one came back empty: none has an
+    // item_title, none is a certificate, none links to a certificate request,
+    // and not one belongs to a subscriber enrolled in exactly one course. The
+    // history needs a person; this stops it growing.
+    //
+    // Only COURSE is held to it. CERTIFICATE carries its own request id, and
+    // OTHER exists precisely for payments that fit nothing else.
+    if (safeType === 'COURSE' && !courseId && !bundleId) {
+      return res.status(400).json({ error: '\u062f\u0641\u0639\u0629 \u0646\u0648\u0639\u0647\u0627 \u0643\u0648\u0631\u0633 \u0644\u0627\u0632\u0645 \u062a\u062d\u062f\u062f \u0627\u0644\u0643\u0648\u0631\u0633 \u0623\u0648 \u0627\u0644\u0628\u0627\u0642\u0629. \u0645\u0646 \u063a\u064a\u0631\u0647\u0645 \u0645\u0634 \u0647\u064a\u0628\u0642\u0649 \u0645\u0639\u0631\u0648\u0641 \u0627\u062a\u062f\u0641\u0639\u062a \u0645\u0642\u0627\u0628\u0644 \u0625\u064a\u0647.' });
+    }
     const suppliedExpected = payment.courseExpected ?? payment.course_expected;
     const courseExpected = suppliedExpected == null ? null : Number(suppliedExpected);
     if (courseExpected != null && (!Number.isFinite(courseExpected) || courseExpected <= 0 || courseExpected > 10000000)) {
