@@ -268,6 +268,55 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         }
         await conn.beginTransaction();
         await assertWritable(resolvedDate, conn, paymentTenantId);
+
+        // ── Refuse a payment identical to one already recorded ───────────────
+        //
+        // Sixteen rows on production were byte-identical to another: same
+        // subscriber, amount, day, method, transaction id and note. 49,460 EGP
+        // recorded twice, removed and reversed separately.
+        //
+        // The GET_LOCK above stops two requests racing, which is a different
+        // problem: it does nothing about the same payment being entered twice
+        // ten minutes apart, and that is what actually happened.
+        //
+        // Every distinguishing field is compared, deliberately. Six groups on
+        // production share subscriber, amount and day and are genuine second
+        // payments — سهر احمد ربيع paid 900 EGP twice on 2026-05-07 against two
+        // courses with two transfer numbers. A looser check would refuse real
+        // money, so the error says which field to vary.
+        //
+        // COALESCE on both sides because NULL = NULL is never true in SQL, and a
+        // pair of NULL transaction ids is exactly the case that needs catching.
+        //
+        // Inside the transaction and after the lock: a check outside either
+        // would be a read that another writer can invalidate before the insert.
+        {
+          const [[twin]] = await conn.query(
+            `SELECT id FROM payments
+              WHERE tenant_id = ? AND deleted_at IS NULL
+                AND subscriber_id = ?
+                AND amount = ?
+                AND DATE(\`date\`) = DATE(?)
+                AND COALESCE(payment_method, '') = COALESCE(?, '')
+                AND COALESCE(transaction_id, '') = COALESCE(?, '')
+                AND COALESCE(course_id, '')     = COALESCE(?, '')
+                AND COALESCE(bundle_id, '')     = COALESCE(?, '')
+                AND COALESCE(note, '')          = COALESCE(?, '')
+              LIMIT 1`,
+            // The same expressions the INSERT below uses, so the check compares
+            // what will actually be written rather than what was sent.
+            [paymentTenantId, subscriber_id, paymentAmount, resolvedDate,
+             sanitize(payment.paymentMethod || payment.payment_method || '', 100) || null,
+             sanitize(payment.transactionId || payment.transaction_id || '', 191) || null,
+             courseId || null, bundleId || null,
+             sanitize(payment.note || payment.notes || '', 2000) || null]
+          );
+          if (twin) {
+            const dupeError = new Error('\u062f\u0641\u0639\u0629 \u0645\u0637\u0627\u0628\u0642\u0629 \u062a\u0645\u0627\u0645\u0627\u064b \u0645\u0633\u062c\u0644\u0629 \u0628\u0627\u0644\u0641\u0639\u0644 \u0644\u0646\u0641\u0633 \u0627\u0644\u0639\u0645\u064a\u0644 \u0641\u064a \u0646\u0641\u0633 \u0627\u0644\u064a\u0648\u0645 \u2014 \u0628\u0646\u0641\u0633 \u0627\u0644\u0645\u0628\u0644\u063a \u0648\u0637\u0631\u064a\u0642\u0629 \u0627\u0644\u062f\u0641\u0639 \u0648\u0631\u0642\u0645 \u0627\u0644\u0639\u0645\u0644\u064a\u0629. \u0644\u0648 \u062f\u064a \u062f\u0641\u0639\u0629 \u062a\u0627\u0646\u064a\u0629 \u062d\u0642\u064a\u0642\u064a\u0629\u060c \u063a\u064a\u0651\u0631 \u0631\u0642\u0645 \u0627\u0644\u0639\u0645\u0644\u064a\u0629 \u0623\u0648 \u0627\u0644\u0645\u0644\u0627\u062d\u0638\u0629 \u0642\u0628\u0644 \u0627\u0644\u062d\u0641\u0638.');
+            dupeError.statusCode = 409;
+            throw dupeError;
+          }
+        }
     if (createFromDraft) {
       const [[racedSubscriber]] = await conn.query(
         `SELECT id FROM subscribers
