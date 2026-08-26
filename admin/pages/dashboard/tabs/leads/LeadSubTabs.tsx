@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, Phone, TrendingUp, UserX, Users } from 'lucide-react';
+import { AlarmClock, Archive, Columns, FileText, GitMerge, Globe, TrendingUp, UserX, Users } from 'lucide-react';
 
 export type SubTabKey =
   | 'pipeline' | 'table' | 'communications' | 'reminders' | 'quotes'

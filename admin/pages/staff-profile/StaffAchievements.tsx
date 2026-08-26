@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Award } from 'lucide-react';
 import { fmtMoney, fmtNum, monthLabel, type StaffProfileData } from './types';
 

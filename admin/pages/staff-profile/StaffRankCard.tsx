@@ -1,4 +1,3 @@
-import React from 'react';
 import { Trophy, Medal } from 'lucide-react';
 import { fmtMoney, fmtNum, type StaffProfileData } from './types';
 

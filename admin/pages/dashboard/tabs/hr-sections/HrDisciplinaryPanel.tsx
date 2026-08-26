@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Gavel, Plus, Trash2, Check, X, ShieldAlert } from 'lucide-react';
+import { Gavel, Plus, Trash2, Check, ShieldAlert } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { StaffMember } from '../../../../types';
 

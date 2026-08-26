@@ -1,4 +1,3 @@
-import React from 'react';
 import { Phone, CreditCard, Users, ListChecks, AlertTriangle, Wallet } from 'lucide-react';
 import { fmtMoney, fmtNum, type StaffProfileData } from './types';
 

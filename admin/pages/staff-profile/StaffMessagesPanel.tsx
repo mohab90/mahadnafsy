@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquare, Send, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { StaffMessage } from './types';

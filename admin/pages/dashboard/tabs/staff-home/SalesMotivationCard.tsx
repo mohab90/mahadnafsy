@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Flame, Quote, Sparkles, Target, TrendingUp, Sunrise } from 'lucide-react';
 
 export interface MotivationStats {

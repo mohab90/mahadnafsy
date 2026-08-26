@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { UserPlus, RefreshCw, UserCheck, UserX, Trash2, ExternalLink, Lock } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { UserPlus, RefreshCw, UserCheck, UserX, Trash2, Lock } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { RegistrationItem } from '../../../lib/mysqlapi';

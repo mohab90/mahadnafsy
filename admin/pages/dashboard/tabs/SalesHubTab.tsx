@@ -132,9 +132,6 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
       const activeCount = agg
         ? Math.max(0, agg.leads - convertedCount - lostCount)
         : myLeads.filter(l => !['converted', 'lost'].includes(l.status || '')).length;
-      const converted = myLeads.filter(l => l.status === 'converted');
-      const lost = myLeads.filter(l => l.status === 'lost');
-      const active = myLeads.filter(l => !['converted', 'lost'].includes(l.status || ''));
       const convRate = percent(convertedCount, totalLeads);
 
       // Revenue from orders attributed to this staff

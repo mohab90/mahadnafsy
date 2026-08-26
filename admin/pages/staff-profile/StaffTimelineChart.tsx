@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BarChart3 } from 'lucide-react';
 import { fmtMoney, fmtNum, monthLabel, monthShort, type TimelinePoint } from './types';
 
