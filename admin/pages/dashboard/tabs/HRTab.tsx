@@ -155,6 +155,26 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     role: currentStaff.role as RoleKey,
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   }, 'manage_financial'));
+
+  // The two staff actions have different gates on the server, so they get
+  // different gates here rather than one shared "can I manage HR".
+  //
+  // Someone holding only view_hr could see both buttons. The routes refuse
+  // them, so nothing was exposed — but a button that always errors is its own
+  // bug, and it invites people to keep trying.
+  //
+  // POST /api/admin/staff requires manage_staff.
+  const canAddStaff = isAdmin || Boolean(currentStaff && hasPermission({
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  }, 'manage_staff'));
+
+  // No gate for deletion, because there is no delete button to gate. The audit
+  // report claimed one was visible to anyone holding view_hr; there is none in
+  // the UI at all. handleDelete below is defined and never called, and Trash2 is
+  // imported and never rendered — the route exists, the handler exists, and
+  // nothing ever wired them to a control. Left as found: finishing the feature
+  // or removing it is a product decision, not a fix.
   const [showAddStaff, setShowAddStaff] = useState(false);
   const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('directory');
   const [search, setSearch] = useState('');
@@ -516,10 +536,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
             <span className="text-sm text-gray-400 self-center">{filtered.length} موظف</span>
             {/* HR had no way at all to add an employee — the only door into the
                 staff table was the interview→hire flow. */}
-            <button type="button" onClick={() => setShowAddStaff(true)}
-              className="flex items-center gap-1.5 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
-              <UserPlus size={15} /> إضافة موظف جديد
-            </button>
+            {canAddStaff && (
+              <button type="button" onClick={() => setShowAddStaff(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
+                <UserPlus size={15} /> إضافة موظف جديد
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.length === 0 ? (
