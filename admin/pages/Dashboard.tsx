@@ -28,16 +28,12 @@ import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
 import { contentHubRouteTabs, directContentTabs, fullCrmDataTabs, fullLeadTabs, fullSubscriberTabs, growthOpsTabs, saasOpsTabs } from './dashboard/dashboardTabGroups';
-import { defaultFacebookLeadAdsConfig } from './dashboard/facebookLeadAdsDefaults';
 import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
-import { useLeadsDerived } from './dashboard/hooks/useLeadsDerived';
-import { useSubscribersDerived } from './dashboard/hooks/useSubscribersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
 import { useCommunityDrafts } from './dashboard/hooks/useCommunityDrafts';
 import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts';
-import { useCsvFbImportState } from './dashboard/hooks/useCsvFbImportState';
 import { useLeadFilters } from './dashboard/useLeadFilters';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
 import { useSubscriberModals } from './dashboard/hooks/useSubscriberModals';
@@ -318,20 +314,6 @@ const Dashboard: React.FC = () => {
   } = useLeadCrmTabState();
 
   const {
-    fbDraft, setFbDraft,
-    bulkUploadNotice, setBulkUploadNotice,
-    csvImportOpen, setCsvImportOpen,
-    csvHeaders, setCsvHeaders,
-    csvImporting, setCsvImporting,
-    fbSyncLoading, setFbSyncLoading,
-    fbSyncNotice, setFbSyncNotice,
-    fbFormsLoading, setFbFormsLoading,
-    fbAvailableForms, setFbAvailableForms,
-    csvRows, setCsvRows,
-    csvMapping, setCsvMapping,
-  } = useCsvFbImportState(fbLeadAdsConfig, defaultFacebookLeadAdsConfig);
-
-  const {
     leadsSearch, 
     leadsStatusFilter, 
     leadsFollowupFilter, setLeadsFollowupFilter,
@@ -605,12 +587,6 @@ const Dashboard: React.FC = () => {
     [branchQueryFilter, effectiveOrders, effectiveSubs]
   );
 
-  const { filteredSubscribers, enabledConsultationTherapists, subscriberPaidTotalsMap, getSubscriberPaidTotals } = useSubscribersDerived(
-    branchFilteredEffectiveSubs, effectiveSubs, effectiveLeads, effectiveOrders, therapists, bundles,
-    isSalesOnly, isAdmin, isDaqqiManager, isReceptionDaqqi, currentStaff,
-    subscriberSubTab, subscriberSearch, subscriberCourseFilter, subscriberSalesFilter, subscriberCsFilter,
-    subscriberInstFilter, subscriberRemainingFilter, subscriberCertFilter, subscriberPayFilter, setSubscriberPage,
-  );
   const { filteredOrders, ordersStats } = useOrdersDerived(
     branchFilteredEffectiveOrders, orderSearch, orderStatusFilter, orderTypeFilter, orderMethodFilter, orderStaffFilter, orderDateFrom, orderDateTo,
   );
@@ -653,10 +629,6 @@ const Dashboard: React.FC = () => {
 
   // normalizeAr defined at module level
 
-  const { filteredCourseLeads, filteredConsultLeads, leadsStats, filteredStaffList, salesStaff, csStaff } = useLeadsDerived(
-    effectiveLeads, isSalesOnly, leadsSearch, leadsStatusFilter, leadsFollowupFilter, leadsBranchFilter, leadsSalesFilter, leadsCourseFilter, bundles,
-    staffMembers, staffSearch, staffRoleFilter,
-  );
 
   // -- Client DB base data: raw mapping + dedup (expensive, only changes when data changes) -
 

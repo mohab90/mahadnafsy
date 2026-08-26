@@ -305,17 +305,18 @@ test('subscriber profile and login credentials save in one transaction', () => {
 
 test('Dokki subscriber archival uses the canonical action and explicit permission', () => {
   const schedule = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
-  const clients = read('admin/pages/dashboard/tabs/daqqi/DaqqiClientsPanel.tsx');
+  const clientsTable = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
   const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
   const catalog = read('api/routes/core/catalog.js');
-  // The panel is no longer rendered on the schedule page — that page is the
-  // schedule, and عملاء الدقي has its own tab. What matters here is that
-  // archival still goes through the canonical action with an explicit
-  // permission, not where the list happens to be mounted.
+  // عملاء الدقي is a tab on OnlineClientsTab, not a panel on the schedule page.
+  // DaqqiClientsPanel.tsx was an earlier build of the same list and had no
+  // importer left, so it was removed; the assertions that named it now name the
+  // list that renders. What matters is unchanged: archival goes through the
+  // canonical action, and the permission is enforced on the route.
   assert.doesNotMatch(schedule, /<DaqqiClientsPanel/);
   assert.match(schedule, /onAddClient=\{/);
-  assert.match(clients, /await deleteSubscriber\(subscriber\.id\)/);
-  assert.doesNotMatch(clients, /mysqlAdmin\.deleteSubscriber/);
+  assert.match(clientsTable, /await deleteSubscriber\(row\.id\)/);
+  assert.doesNotMatch(clientsTable, /mysqlAdmin\.deleteSubscriber/);
   assert.match(growth, /canDeleteSubscriber=\{canDeleteSubscriber\}/);
   assert.match(catalog, /subscribers\/:id'[\s\S]{0,160}requirePermission\('delete_subscribers'\)/);
 });

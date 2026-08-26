@@ -360,19 +360,6 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
     }
   };
 
-  const reschedule = async (row: JobApplicant, date: string) => {
-    if (!date) return;
-    setBusyId(row.id);
-    try {
-      await mysqlAdmin.updateHrApplicant(row.id, { interview_at: `${date} 10:00:00` });
-      notify('success', `اتحدد ميعاد مقابلة ${row.name}`);
-      await load();
-    } catch (err) {
-      notify('error', err instanceof Error ? err.message : 'تعذّر حفظ الميعاد');
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   const hire = (row: JobApplicant) => setHireFor(row);
 

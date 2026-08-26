@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Inbox, Loader2, Send, RefreshCw, MessageCircle, Facebook, Clock, CornerUpLeft,
+  Inbox, Loader2, RefreshCw, MessageCircle, Facebook, Clock, CornerUpLeft,
 } from 'lucide-react';
 import {
   mysqlAdmin, type InboxConversation, type InboxMessage,

@@ -261,7 +261,6 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
   // Helper: get payment method from entry (new field first, then scan note for compat)
-  const DEFAULT_METHODS = ['خزنة الدقي', 'خزنة الفرع', 'فودافون كاش', 'انستا باي', 'تحويل بنكي', 'احمد السعودية'];
   const PAYMENT_METHODS: string[] = parsePaymentMethods(content['finance.payment_methods']);
   const getMethod = (p: { paymentMethod?: string; note?: string }) =>
     p.paymentMethod || PAYMENT_METHODS.find(m => (p.note || '').includes(m)) || '';
