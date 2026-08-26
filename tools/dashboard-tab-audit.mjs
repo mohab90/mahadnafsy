@@ -132,6 +132,21 @@ const reachable = (key) => {
 // ── findings ────────────────────────────────────────────────────────────────
 const unreachable = leaves.filter(t => !reachable(t.key));
 
+// ── the e2e screen list ─────────────────────────────────────────────────────
+// e2e/tests/dashboard-screens.spec.ts opens every screen and asserts it draws
+// something. A list that drifts from the nav is a test that quietly stops
+// covering the screens it was written for — the failure mode being guarded
+// against here, one level up.
+const SPEC = path.join(ROOT, 'e2e/tests/dashboard-screens.spec.ts');
+let specGap = [];
+if (fs.existsSync(SPEC)) {
+  const spec = fs.readFileSync(SPEC, 'utf8');
+  const from = spec.indexOf('const SCREENS');
+  const listed = new Set([...spec.slice(from, spec.indexOf('];', from))
+    .matchAll(/'([a-z_0-9]+)'/g)].map(m => m[1]));
+  specGap = leaves.filter(t => !listed.has(t.key))
+    .map(t => ({ key: t.key, detail: `"${t.label}" — in the nav but not in the e2e screen list` }));
+}
 const LOAD_SETS = ['fullCrmDataTabs', 'fullLeadTabs', 'fullSubscriberTabs'];
 const deadKeys = [];
 for (const name of LOAD_SETS) {
@@ -157,6 +172,7 @@ export function scanDashboardTabs() {
       };
     }),
     ...deadKeys.map(d => ({ key: d.key, detail: `in ${d.set} — ${d.why}` })),
+    ...specGap,
   ];
 }
 
@@ -180,15 +196,15 @@ if (RUN_DIRECTLY) {
   const gate = owners ? (INHERITS[owners[0]] || owners[0]) : null;
   console.log(`  ✗ ${t.key.padEnd(24)} "${t.label}" — ${owners ? `drawn by ${owners.join(',')} but its gate excludes it (${gate})` : 'no container draws it'}`);
 }
-  for (const d of deadKeys) {
+  for (const d of [...deadKeys, ...specGap.map(g => ({ key: g.key, set: 'e2e', why: g.detail }))]) {
   console.log(`  ✗ ${d.key.padEnd(24)} in ${d.set} — ${d.why}`);
 }
 
 }
 
-const total = unreachable.length + deadKeys.length;
+const total = unreachable.length + deadKeys.length + specGap.length;
 if (RUN_DIRECTLY) console.log(total === 0
   ? `  ✓  dashboard tabs: every one of ${leaves.length} nav entries is drawable, and every loading-set key names a screen`
-  : `  ✗  dashboard tabs: ${unreachable.length} unreachable tab(s), ${deadKeys.length} dead loading key(s)`);
+  : `  ✗  dashboard tabs: ${unreachable.length} unreachable, ${deadKeys.length} dead loading key(s), ${specGap.length} missing from the e2e list`);
 
 if (RUN_DIRECTLY) process.exit(total === 0 ? 0 : 1);
