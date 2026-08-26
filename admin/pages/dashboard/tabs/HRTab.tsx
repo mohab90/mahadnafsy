@@ -13,6 +13,7 @@ import HrAppraisalsPanel from './hr-sections/HrAppraisalsPanel';
 import HrAdvancesPanel from './hr-sections/HrAdvancesPanel';
 import HrDisciplinaryPanel from './hr-sections/HrDisciplinaryPanel';
 import HrResignationsPanel from './hr-sections/HrResignationsPanel';
+import { ROLE_LABELS, ROLE_COLORS, LEAVE_TYPE_LABELS, LEAVE_TYPE_COLORS, LEAVE_STATUS_LABELS, LEAVE_STATUS_COLORS, PAYROLL_STATUS_LABELS, PAYROLL_STATUS_COLORS } from './hr-sections/hrLabels';
 
 const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 const RecruitmentPipelinePanel = React.lazy(() => import('./hr-sections/RecruitmentPipelinePanel'));
@@ -84,54 +85,7 @@ type PerformanceRow = {
   bonus: number;
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  instructor: 'مدرب', trainer: 'مدرب', expert: 'خبير', sales: 'مبيعات',
-  manager: 'مدير', admin: 'مسؤول', support: 'دعم فني', reception_daqqi: 'استقبال دقي',
-  daqqi_manager: 'مدير دقي', collection: 'تحصيل', accountant: 'محاسب',
-  consultant: 'مستشار', other: 'أخرى',
-};
-const ROLE_COLORS: Record<string, string> = {
-  manager: 'bg-purple-100 text-purple-700', admin: 'bg-gray-100 text-gray-700',
-  sales: 'bg-blue-100 text-blue-700', support: 'bg-teal-100 text-teal-700',
-  instructor: 'bg-indigo-100 text-indigo-700', trainer: 'bg-indigo-100 text-indigo-700',
-  collection: 'bg-orange-100 text-orange-700', accountant: 'bg-amber-100 text-amber-700',
-  reception_daqqi: 'bg-cyan-100 text-cyan-700', daqqi_manager: 'bg-cyan-100 text-cyan-700',
-  consultant: 'bg-rose-100 text-rose-700', expert: 'bg-pink-100 text-pink-700',
-  other: 'bg-gray-100 text-gray-700',
-};
-const ABSENCE_LABELS: Record<string, string> = {
-  absence: 'غياب', leave: 'إجازة', sick: 'مرضي', late: 'تأخير'
-};
-const ABSENCE_COLORS: Record<string, string> = {
-  absence: 'bg-red-100 text-red-700', leave: 'bg-blue-100 text-blue-700',
-  sick: 'bg-amber-100 text-amber-700', late: 'bg-orange-100 text-orange-700'
-};
 
-const LEAVE_TYPE_LABELS: Record<string, string> = {
-  ANNUAL: 'إجازة سنوية', SICK: 'إجازة مرضية', UNPAID: 'إجازة بدون راتب',
-  MATERNITY: 'إجازة أمومة', EMERGENCY: 'إجازة طارئة',
-  PERMISSION: 'إذن', OTHER: 'أخرى',
-};
-const LEAVE_TYPE_COLORS: Record<string, string> = {
-  ANNUAL: 'bg-blue-100 text-blue-700', SICK: 'bg-amber-100 text-amber-700',
-  UNPAID: 'bg-gray-100 text-gray-600', MATERNITY: 'bg-pink-100 text-pink-700',
-  EMERGENCY: 'bg-red-100 text-red-700', PERMISSION: 'bg-cyan-100 text-cyan-700',
-  OTHER: 'bg-gray-100 text-gray-600',
-};
-const LEAVE_STATUS_LABELS: Record<string, string> = {
-  PENDING: 'معلق', APPROVED: 'موافق عليه', REJECTED: 'مرفوض', CANCELLED: 'ملغي',
-};
-const LEAVE_STATUS_COLORS: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-700', APPROVED: 'bg-emerald-100 text-emerald-700',
-  REJECTED: 'bg-red-100 text-red-700', CANCELLED: 'bg-gray-100 text-gray-500',
-};
-const PAYROLL_STATUS_LABELS: Record<string, string> = {
-  CALCULATED: 'محسوب', APPROVED: 'معتمد', PAID: 'مدفوع', CANCELLED: 'ملغي',
-};
-const PAYROLL_STATUS_COLORS: Record<string, string> = {
-  CALCULATED: 'bg-blue-100 text-blue-700', APPROVED: 'bg-emerald-100 text-emerald-700',
-  PAID: 'bg-green-100 text-green-800', CANCELLED: 'bg-gray-100 text-gray-500',
-};
 
 function getMonthsOfService(joinedAt: string) {
   const ms = Date.now() - new Date(joinedAt).getTime();
@@ -171,16 +125,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
   // No gate for deletion, because there is no delete button to gate. The audit
   // report claimed one was visible to anyone holding view_hr; there is none in
-  // the UI at all. handleDelete below is defined and never called, and Trash2 is
-  // imported and never rendered — the route exists, the handler exists, and
-  // nothing ever wired them to a control. Left as found: finishing the feature
-  // or removing it is a product decision, not a fix.
+  // this screen at all.
   const [showAddStaff, setShowAddStaff] = useState(false);
   const [subTab, setSubTab] = useState<'directory' | 'performance' | 'attendance' | 'leaves' | 'payroll' | 'recruitment'>('directory');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedMember, setSelectedMember] = useState<StaffMember | null>(null);
   const [perfMonth, setPerfMonth] = useState(new Date().toISOString().slice(0, 7));
   const [serverPerformance, setServerPerformance] = useState<PerformanceRow[]>([]);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
@@ -413,61 +363,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     .filter(row => row.revenue > 0 || row.leadsCount > 0 || row.member.salary),
   [safeStaff, serverPerformance]);
 
-  const handleSave = useCallback(async (updated: StaffMember): Promise<boolean> => {
-    const salaryChanged = Number(updated.salary || 0) !== Number(selectedMember?.salary || 0);
-    if (salaryChanged && currentStaff?.id === updated.id) {
-      notify('error', 'لا يمكنك تعديل راتبك بنفسك؛ يلزم موظف HR آخر');
-      return false;
-    }
-    try {
-      await mysqlAdmin.updateHrEmployee(updated.id, {
-        name: updated.name.trim(),
-        email: updated.email.trim().toLowerCase(),
-        phone: updated.phone.trim(),
-        specialization: updated.specialization || null,
-        joined_at: updated.joinedAt?.slice(0, 10) || null,
-        notes: updated.notes || null,
-        national_id: updated.nationalId || null,
-        address: updated.address || null,
-        hr_notes: updated.hrNotes || null,
-        commission_rate: Number(updated.commissionRate) || 0,
-        monthly_target: Number(updated.monthlyTarget) || 0,
-        monthly_target_type: updated.monthlyTargetType || 'egp',
-        monthly_bonus: Number(updated.monthlyBonus) || 0,
-        ...(isAdmin ? { role: updated.role } : {}),
-      });
-      let salaryPending = false;
-      if (salaryChanged) {
-        const effectiveDate = new Date();
-        effectiveDate.setUTCDate(1);
-        effectiveDate.setUTCMonth(effectiveDate.getUTCMonth() + 1);
-        await mysqlAdmin.adminPost('/admin/hr/salary', {
-          staff_id: updated.id,
-          base_salary: Number(updated.salary) || 0,
-          currency: 'EGP',
-          effective_from: effectiveDate.toISOString().slice(0, 10),
-        });
-        salaryPending = true;
-      }
-      await reloadStaffMembers();
-      setSelectedMember(salaryPending ? { ...updated, salary: selectedMember?.salary } : updated);
-      notify(salaryPending ? 'info' : 'success',
-        salaryPending
-          ? `تم حفظ بيانات ${updated.name} وإرسال تعديل الراتب للاعتماد`
-          : `تم حفظ بيانات ${updated.name} ✅`);
-      return true;
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'تعذر حفظ بيانات الموظف');
-      return false;
-    }
-  }, [currentStaff?.id, isAdmin, notify, reloadStaffMembers, selectedMember?.salary]);
 
-  // A delete handler lived here, never called, beside a Trash2 import never
-  // rendered — and selectedMember is still set by the table row with no panel
-  // reading it. The DELETE route exists and works; nothing was ever wired to
-  // it. Removed rather than half-finished: a destructive staff action behind
-  // requireSuperAdmin needs a considered UI, not one bolted on to clear a
-  // lint warning.
+  // A staff editor used to sit here — selectedMember, handleSave, handleDelete —
+  // none of it reachable: the state was set by a performance-table row that no
+  // panel read. It was a stale copy of StaffProfile.tsx, which is the editor
+  // users actually get, linked from the directory grid below. Removed rather
+  // than carried into the split, where one dead block becomes three dead files.
 
   const uniqueRoles = [...new Set(safeStaff.map(s => s.role))];
 
@@ -613,7 +514,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {perfData.map((p, i) => (
-                    <tr key={p.member.id} className="hover:bg-gray-50 transition cursor-pointer" onClick={() => setSelectedMember(p.member)}>
+                    <tr key={p.member.id} className="hover:bg-gray-50 transition">
                       <td className="px-4 py-3 text-center"><span className="text-sm font-bold text-gray-500">{i === 0 ? '1st' : i === 1 ? '2nd' : i === 2 ? '3rd' : `${i+1}`}</span></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">

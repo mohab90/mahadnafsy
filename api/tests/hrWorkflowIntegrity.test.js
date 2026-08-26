@@ -29,6 +29,7 @@ const instructorRateMigration = read('migrations', '152_v25_instructor_rate_appr
 const dashboard = read('..', 'admin', 'pages', 'Dashboard.tsx');
 const settings = read('..', 'admin', 'pages', 'dashboard', 'DashboardStaffSettingsPanel.tsx');
 const hrTab = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'HRTab.tsx');
+const staffProfile = read('..', 'admin', 'pages', 'StaffProfile.tsx');
 
 test('disabled users are rejected by every authenticated request and cache can be invalidated immediately', () => {
   assert.match(auth, /async function activeIdentity/);
@@ -217,8 +218,15 @@ test('private employee fields are schema-owned and saved through the HR endpoint
   assert.match(privateFieldsMigration, /ALTER TABLE staff[\s\S]*national_id[\s\S]*address[\s\S]*hr_notes/);
   assert.match(employees, /national_id/);
   assert.match(employees, /hr_notes/);
-  assert.match(hrTab, /mysqlAdmin\.updateHrEmployee/);
-  assert.doesNotMatch(hrTab, /updateStaffMember\(updated\.id/);
+  // The editor users reach is StaffProfile.tsx, linked from the HR directory.
+  // This assertion used to name HRTab.tsx, which held an older unreachable copy
+  // of the same save; that copy is gone, and guarding it had left the live one
+  // unguarded — the opposite of the intent. Both files are checked for the
+  // generic endpoint, so neither can start routing private fields through it.
+  assert.match(staffProfile, /mysqlAdmin\.updateHrEmployee/);
+  assert.match(staffProfile, /national_id: payload\.nationalId/);
+  assert.doesNotMatch(staffProfile, /updateStaffMember\(/);
+  assert.doesNotMatch(hrTab, /updateStaffMember\(/);
 });
 
 test('leave-day calculation excludes configured weekends and treats permission/maternity explicitly', () => {
