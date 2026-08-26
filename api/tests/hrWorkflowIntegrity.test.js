@@ -30,6 +30,7 @@ const dashboard = read('..', 'admin', 'pages', 'Dashboard.tsx');
 const settings = read('..', 'admin', 'pages', 'dashboard', 'DashboardStaffSettingsPanel.tsx');
 const hrTab = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'HRTab.tsx');
 const staffProfile = read('..', 'admin', 'pages', 'StaffProfile.tsx');
+const hrLeavesPanel = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sections', 'HrLeavesPanel.tsx');
 
 test('disabled users are rejected by every authenticated request and cache can be invalidated immediately', () => {
   assert.match(auth, /async function activeIdentity/);
@@ -123,8 +124,11 @@ test('staff settings only calls least-privilege self-service HR endpoints', () =
 });
 
 test('admin leave UI consumes the actual API field name `type`', () => {
-  assert.doesNotMatch(hrTab, /leave\.leave_type/);
-  assert.match(hrTab, /leave\.type/);
+  // The leave markup lives in HrLeavesPanel.tsx since HRTab.tsx was split; HRTab
+  // is still checked so the wrong field name cannot come back on either side.
+  assert.doesNotMatch(hrLeavesPanel, /leave.leave_type/);
+  assert.doesNotMatch(hrTab, /leave.leave_type/);
+  assert.match(hrLeavesPanel, /leave.type/);
 });
 
 test('attendance self service is idempotent and checkout cannot precede check-in', () => {
