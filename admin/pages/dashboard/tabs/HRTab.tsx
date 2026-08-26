@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, Trash2, UserPlus } from 'lucide-react';
+import { Users, Briefcase, Award, Search, BarChart3, Target, Edit3, Save, X, Plus, ChevronRight, Wallet, Calendar, Clock, CheckCircle, XCircle, Upload, UserPlus } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -462,25 +462,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     }
   }, [currentStaff?.id, isAdmin, notify, reloadStaffMembers, selectedMember?.salary]);
 
-  // Soft-delete (is_active=0) via the existing superadmin-only endpoint —
-  // was already built (api/routes/staff.js DELETE /api/admin/staff/:id) but
-  // had no UI trigger anywhere in the admin app.
-  const handleDelete = useCallback(async (member: StaffMember) => {
-    if (currentStaff?.id === member.id) {
-      notify('error', 'لا يمكنك حذف حسابك الخاص');
-      return false;
-    }
-    if (!window.confirm(`حذف ${member.name} نهائيًا من قائمة الموظفين النشطين؟ سجله وتاريخه المالي يبقى محفوظًا، ويمكن إعادة تفعيله لاحقًا.`)) return false;
-    try {
-      await mysqlAdmin.deleteStaff(member.id);
-      await reloadStaffMembers();
-      notify('success', `تم حذف ${member.name}`);
-      return true;
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : 'تعذر حذف الموظف — قد تحتاج صلاحية سوبر أدمن');
-      return false;
-    }
-  }, [currentStaff?.id, notify, reloadStaffMembers]);
+  // A delete handler lived here, never called, beside a Trash2 import never
+  // rendered — and selectedMember is still set by the table row with no panel
+  // reading it. The DELETE route exists and works; nothing was ever wired to
+  // it. Removed rather than half-finished: a destructive staff action behind
+  // requireSuperAdmin needs a considered UI, not one bolted on to clear a
+  // lint warning.
 
   const uniqueRoles = [...new Set(safeStaff.map(s => s.role))];
 

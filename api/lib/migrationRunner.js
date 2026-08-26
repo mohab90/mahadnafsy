@@ -32,8 +32,25 @@ function migrationNumber(file) {
   return m ? parseInt(m[1], 10) : NaN;
 }
 
-// Migrations here are plain DDL/DML — no DELIMITER / stored-proc blocks — so a
-// semicolon split (after stripping line comments) is safe.
+// Migrations here are plain DDL/DML — no DELIMITER / stored-proc blocks — so
+// splitting on semicolons is the right approach. Splitting on *every* semicolon
+// is not.
+//
+// The comment stripper below has always tracked quotes. The split did not: it
+// was a plain `.split(';')`, so a semicolon inside a string literal cut the
+// statement in half and the halves were sent to the server as two invalid ones.
+//
+// That is not hypothetical. Migration 209 removed Word markup with the pattern
+//
+//     REGEXP_REPLACE(short_description, '\s*mso-[a-zA-Z-]+\s*:[^;"]*;?', '')
+//
+// whose two semicolons live inside a quoted regex. It failed on deploy, and
+// because a failed migration stops the runner, every migration numbered after
+// it would have sat unapplied until someone noticed. It had to be rewritten
+// with \x{3B} to hide the semicolons from this function.
+//
+// Now the split respects quotes exactly as the stripper does, so a migration
+// can contain a semicolon in a string and mean it.
 function splitStatements(sql) {
   const noComments = sql.split('\n').map((line) => {
     let quote = null;
@@ -49,7 +66,30 @@ function splitStatements(sql) {
     }
     return line;
   }).join('\n');
-  return noComments.split(';').map(s => s.trim()).filter(Boolean);
+
+  const statements = [];
+  let current = '';
+  let quote = null;
+  for (let i = 0; i < noComments.length; i++) {
+    const char = noComments[i];
+    if (quote) {
+      // A doubled quote ('' inside a '…') escapes itself in SQL, as does a
+      // backslash. Both keep us inside the literal.
+      if (char === quote && noComments[i - 1] !== '\\') {
+        if (noComments[i + 1] === quote) { current += char + char; i++; continue; }
+        quote = null;
+      }
+    } else if (char === "'" || char === '"' || char === '`') {
+      quote = char;
+    } else if (char === ';') {
+      statements.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  statements.push(current);
+  return statements.map(s => s.trim()).filter(Boolean);
 }
 
 function checksumOf(sql) {
