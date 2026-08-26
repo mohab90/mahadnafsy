@@ -13,6 +13,7 @@ import { scanBulkRateLimitViolations } from './bulk-rate-limit-scan.mjs';
 import { scanPublicRateLimitViolations } from './public-rate-limit-scan.mjs';
 import { scanPermissionMatrix } from './permission-matrix-scan.mjs';
 import { scanSchemaSourceDrift } from './schema-source-drift.mjs';
+import { scanDashboardTabs, navLeafCount } from './dashboard-tab-audit.mjs';
 import { scanIndexDefeats } from './index-defeat-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
@@ -581,6 +582,30 @@ console.log('\n25. Cross-environment API base (no live host compiled into a buil
   } else {
     fail(`api base guard: ${offenders.length} site(s) compile a live host into the bundle — a staging build silently writes to production: ${offenders.slice(0, 8).join(', ')}`);
   }
+}
+
+// ── 26. Dashboard tab reachability ────────────────────────────────────────────
+// Two silent failures, both found by hand on 2026-08-26 and only because a
+// number on screen looked wrong.
+//
+// A tab whose container is gated by a Set that omits its key draws nothing at
+// all: the URL changes, no content, no request, no error, and the component's
+// chunk is never fetched. أرشيف العملاء and الفروع both did this.
+//
+// A key in a loading set that names no screen means the load effect never
+// fires. fullCrmDataTabs held 'marketing' — the nav group header above a screen
+// whose key is 'marketing_hub' — so that screen reported 500 leads against
+// 27,000. 'analytics' and 'crm_settings' named nothing at all.
+//
+// Invisible to TypeScript, to the tests and to a bundle grep: the code
+// compiles, ships and runs. It simply never matches. Locked at zero.
+console.log('\n26. Dashboard tab reachability');
+const tabFindings = scanDashboardTabs();
+if (tabFindings.length === 0) {
+  pass(`dashboard tabs: all ${navLeafCount} nav entries are drawable, and every loading-set key names a screen`);
+} else {
+  for (const finding of tabFindings.slice(0, 8)) console.log(`     ${finding.key} — ${finding.detail}`);
+  fail(`dashboard tabs: ${tabFindings.length} tab(s) that cannot render, or key(s) naming no screen — run: node tools/dashboard-tab-audit.mjs --list`);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────
