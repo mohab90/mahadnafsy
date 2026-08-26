@@ -45,19 +45,53 @@ async function refreshLeadScores(pool, { tenantId = null, limit = 2000 } = {}) {
             l.interested_course_ids_json, l.created_at, l.score, l.crm_json
        FROM leads l
       WHERE ${where}
-      ORDER BY l.updated_at ASC
+      ORDER BY l.score_refreshed_at IS NOT NULL, l.score_refreshed_at ASC, l.id ASC
       LIMIT ?`,
     [...params, cap]
   );
 
+  // Communications from the table, not from crm_json.
+  //
+  // crm_json.communications is a write-once snapshot taken when the lead was
+  // created; the live record is the communications table. Scoring from the
+  // snapshot gives a lead credit for the contacts it had on day one and none
+  // for anything since — and it disagrees with LEAD_SCORE_SQL in
+  // routes/admin/leads.js, which reads the table. Two scores for one lead
+  // depending on who asked.
+  //
+  // One query for the batch: 2,000 correlated lookups would make a six-hourly
+  // sweep expensive enough that someone turns it off.
+  const commsByLead = new Map();
+  if (rows.length) {
+    const [commRows] = await pool.query(
+      `SELECT lead_id, type, date FROM communications
+        WHERE lead_id IN (${rows.map(() => '?').join(',')})`,
+      rows.map(r => r.id)
+    );
+    for (const c of commRows) {
+      const list = commsByLead.get(c.lead_id) || [];
+      // calcLeadScoreServer slices the date as a string, so it is handed one.
+      const d = c.date instanceof Date
+        ? `${c.date.getFullYear()}-${String(c.date.getMonth() + 1).padStart(2, '0')}-${String(c.date.getDate()).padStart(2, '0')}`
+        : String(c.date || '');
+      list.push({ type: String(c.type || '').toLowerCase(), date: d });
+      commsByLead.set(c.lead_id, list);
+    }
+  }
+
   let updated = 0;
+  const scanned = [];
   for (const row of rows) {
     const crm = parseCrm(row.crm_json);
-    const comms = Array.isArray(crm.communications) ? crm.communications : [];
+    const comms = commsByLead.get(row.id) || [];
     const courseIds = tryJson(row.interested_course_ids_json, crm.interestedCourseIds || []);
     const next = calcLeadScoreServer(
       row.status, row.interest_level, comms, row.next_follow_up_date, courseIds, row.created_at
     );
+    // Stamped whether or not the score moved. This is the cursor: a row that
+    // was scanned has been dealt with for this pass, and skipping the stamp on
+    // unchanged rows would put them straight back at the front of the queue.
+    scanned.push(row.id);
     if (Number(next) === Number(row.score)) continue;
     // `updated_at = updated_at` is load-bearing, not redundant: the column is
     // declared ON UPDATE current_timestamp(), so any write bumps it unless it is
@@ -71,6 +105,14 @@ async function refreshLeadScores(pool, { tenantId = null, limit = 2000 } = {}) {
       [next, row.id, row.tenant_id]
     );
     updated++;
+  }
+  // One statement for the whole batch rather than 2,000 round trips.
+  if (scanned.length) {
+    await pool.query(
+      `UPDATE leads SET score_refreshed_at = NOW(), updated_at = updated_at
+        WHERE id IN (${scanned.map(() => '?').join(',')})`,
+      scanned
+    );
   }
   return { scanned: rows.length, updated };
 }
