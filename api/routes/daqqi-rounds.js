@@ -11,6 +11,27 @@ const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { ymd } = require('../lib/helpers');
+
+// Arabic weekday name → MySQL DAYOFWEEK (1 = Sunday … 7 = Saturday).
+//
+// daqqi_rounds.day_of_week is a recurring weekday written in Arabic;
+// classroom_bookings holds absolute start_time/end_time. Comparing the two
+// needs this one translation, and there is nowhere else in the codebase that
+// already does it.
+//
+// Both spellings of Monday are listed because both appear in Arabic UIs and
+// neither is wrong.
+const ARABIC_WEEKDAY_TO_MYSQL = Object.freeze({
+  '\u0627\u0644\u0623\u062d\u062f': 1,
+  '\u0627\u0644\u0625\u062b\u0646\u064a\u0646': 2,
+  '\u0627\u0644\u0627\u062b\u0646\u064a\u0646': 2,
+  '\u0627\u0644\u062b\u0644\u0627\u062b\u0627\u0621': 3,
+  '\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621': 4,
+  '\u0627\u0644\u062e\u0645\u064a\u0633': 5,
+  '\u0627\u0644\u062c\u0645\u0639\u0629': 6,
+  '\u0627\u0644\u0633\u0628\u062a': 7,
+});
+
 function sendRouteError(res, err) {
   if (res.headersSent) return;
   const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
@@ -176,6 +197,42 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
         const error = new Error(`القاعة ${room} محجوزة في نفس اليوم والتوقيت للروند ${clash.code || clash.id}`);
         error.statusCode = 409;
         throw error;
+      }
+
+      // The other booking system.
+      //
+      // routes/dokki-operations.js books the same physical rooms through
+      // physical_classrooms + classroom_bookings with start_time/end_time
+      // overlap checks, and neither system consulted the other — so one room
+      // could be taken from both screens with each one satisfied.
+      //
+      // Nobody has hit it: both of those tables are empty on production and the
+      // only rounds carrying a room are two rows left by a live test. The
+      // conflict is real but dormant, which is why this is a check rather than a
+      // migration — the moment the desk defines its first classroom, the two
+      // stop being blind to each other.
+      //
+      // Matched on the classroom's name, because that is all a round stores: the
+      // room is free text here and an entity there. A round naming something
+      // that is not a defined classroom clashes with nothing, which is the rule
+      // the check above already applies.
+      const bookingDay = ARABIC_WEEKDAY_TO_MYSQL[String(dayOfWeek || '').trim()];
+      if (bookingDay) {
+        const [[roomBooking]] = await conn.query(
+          `SELECT cb.id, cb.start_time
+             FROM classroom_bookings cb
+             JOIN physical_classrooms pc
+               ON pc.id = cb.classroom_id AND pc.tenant_id = cb.tenant_id
+            WHERE cb.tenant_id = ? AND pc.name = ?
+              AND DAYOFWEEK(cb.start_time) = ?
+            LIMIT 1`,
+          [req.tenantId, room, bookingDay]
+        );
+        if (roomBooking) {
+          const error = new Error(`القاعة ${room} محجوزة يوم ${dayOfWeek} من نظام حجز القاعات`);
+          error.statusCode = 409;
+          throw error;
+        }
       }
     }
     const [[course]] = await conn.query(
