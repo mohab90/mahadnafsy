@@ -16,6 +16,13 @@ export const directContentTabs = new Set<string>([
 ]);
 
 export const contentHubRouteTabs = new Set<string>([
+  // Both of these are registered in GeneralDashboardTabs, which renders only
+  // inside DashboardContentHubRoutes, which renders only when activeTab is in
+  // this set. Missing from it, they changed the URL and drew nothing: no
+  // content, no request, no error, and their chunk was never fetched. The nav
+  // offered both to every admin and neither would open.
+  'archived_clients',
+  'branches_settings',
   'content_hub',
   'footer_settings',
   'customer_inbox',
