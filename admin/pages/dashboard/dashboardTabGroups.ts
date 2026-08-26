@@ -194,6 +194,12 @@ export const fullLeadTabs = new Set<string>([]);
 /** Reads every subscriber, no leads. */
 export const fullSubscriberTabs = new Set<string>([
   'online_clients',
+  // retention buckets every subscriber into the month they joined and the month
+  // they finished, twelve months at a time, then averages across all of them.
+  // That genuinely needs the table — unlike the dashboard tile, a count would
+  // not do. It was in no loading set at all, so it read the 500-row bootstrap
+  // page and reported "500 إجمالي المشتركين" against 1,371.
+  'retention',
 ]);
 
 /** Genuinely reads both tables. */
