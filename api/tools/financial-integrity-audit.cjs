@@ -52,7 +52,7 @@ const report = (severity, label, count, detail) => {
       GROUP BY subscriber_id, amount, DATE(date) HAVING n > 1`, [T]);
   const dupExtra = dupes.reduce((a, r) => a + (Number(r.n) - 1), 0);
   const dupValue = dupes.reduce((a, r) => a + (Number(r.n) - 1) * Number(r.amount), 0);
-  report(dupExtra > 0 ? 'high' : 'ok', 'مدفوعات مكررة (نفس العميل ونفس المبلغ ونفس اليوم)', dupExtra,
+  report(dupExtra > 0 ? 'high' : 'ok', 'مدفوعات مكررة — تحتاج تأكيد يدوي (الأقساط الحقيقية بتظهر هنا كمان)', dupExtra,
     dupExtra > 0 ? `بقيمة ${money(dupValue)} جنيه — محتاجة تأكيد إن مش دفعتين حقيقيتين` : '');
 
   // ── No date ───────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ const report = (severity, label, count, detail) => {
     const [[refund]] = await pool.query(
       `SELECT COUNT(*) n FROM refund_requests r
         LEFT JOIN subscribers s ON s.id = r.subscriber_id AND s.tenant_id = r.tenant_id
-       WHERE r.tenant_id=? AND (r.subscriber_id IS NULL OR s.id IS NULL)`, [T]).catch(() => [[{ n: 0 }]]);
+       WHERE r.tenant_id=? AND r.deleted_at IS NULL AND (r.subscriber_id IS NULL OR s.id IS NULL)`, [T]).catch(() => [[{ n: 0 }]]);
     report(refund.n > 0 ? 'med' : 'ok', 'طلبات استرداد لعميل مش موجود', refund.n);
   }
 
