@@ -85,9 +85,21 @@ async function mergeLeads({ tenantId, targetId, sourceIds, actor = null }) {
   try {
     await conn.beginTransaction();
     const ids = [String(targetId), ...sources];
+    // Locked in a fixed order, sorted by id, so two merges that overlap cannot
+    // deadlock. Unsorted, A→B and B→A running at the same moment each take the
+    // lock the other is waiting for: the target is listed first, so opposing
+    // merges request the same two rows in opposite sequences. Sorting means
+    // every caller asks for them in the same sequence, and the second simply
+    // waits.
+    //
+    // `ids` itself keeps its original order — the two lines below identify the
+    // target and the sources by value, and reordering it would be a silent way
+    // to merge into the wrong lead.
+    const lockOrder = [...ids].sort();
     const [rows] = await conn.query(
-      `SELECT * FROM leads WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')}) FOR UPDATE`,
-      [tenantId, ...ids]
+      `SELECT * FROM leads WHERE tenant_id=? AND id IN (${lockOrder.map(() => '?').join(',')})
+        ORDER BY id FOR UPDATE`,
+      [tenantId, ...lockOrder]
     );
     const target = rows.find(row => String(row.id) === String(targetId));
     const sourceRows = rows.filter(row => sources.includes(String(row.id)));

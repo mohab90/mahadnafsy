@@ -74,6 +74,19 @@ function computeSlaDue(priority, from = new Date()) {
 /**
  * Pick the least-loaded active agent for a department (fewest currently-open
  * tickets). Returns { id, name } or null (→ leave in the dept queue, unassigned).
+ *
+ * FOR UPDATE on the chosen staff row, because without it this is a read two
+ * requests can make in the same instant and both act on. The load count is
+ * derived from support_tickets, and the ticket that changes it is inserted
+ * after this returns — so two tickets arriving together both saw the same agent
+ * as least loaded and both went to them, defeating the routing this function
+ * exists to provide.
+ *
+ * The lock serialises the pick: the second caller waits for the first to commit,
+ * then re-reads and sees the count it just changed. Three of the four call sites
+ * pass an open transaction connection, which is what gives the lock a lifetime;
+ * the fourth is the SLA sweep, where it releases immediately under autocommit
+ * and the escalation it performs is idempotent regardless.
  */
 async function pickAssignee(pool, tenantId, department) {
   const roles = DEPARTMENT_ROLES[department];
@@ -88,7 +101,8 @@ async function pickAssignee(pool, tenantId, department) {
       WHERE s.tenant_id=? AND s.is_active=1 AND s.deleted_at IS NULL
         AND LOWER(TRIM(s.role)) IN (${placeholders})
       ORDER BY load_count ASC,s.name ASC
-      LIMIT 1`,
+      LIMIT 1
+      FOR UPDATE`,
     [tenantId, ...roles.map(role => role.toLowerCase())]
   );
   return rows.length ? { id: rows[0].id, name: rows[0].name } : null;
