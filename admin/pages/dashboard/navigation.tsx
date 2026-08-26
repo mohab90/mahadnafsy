@@ -7,7 +7,6 @@ import {
   BarChart3,
   Bell,
   Mail,
-  Tag,
   BookOpen,
   Bot,
   Briefcase,

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BookOpen, Plus, X } from 'lucide-react';
 
-import type { Course, CourseAccessSetting, SubscriberItem } from '../../types';
+import type { Course, SubscriberItem } from '../../types';
 import { normalizeAccess } from './constants';
 import { ClientCourseAccessPanel } from '../dashboard/tabs/online-clients-sections/ClientCourseAccessPanel';
 

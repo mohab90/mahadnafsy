@@ -4,7 +4,7 @@ import { Users, Briefcase, Award, Search, BarChart3, X, Plus, ChevronRight, Wall
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import type { StaffMember, StaffRole } from '../../../types';
+import type { StaffMember } from '../../../types';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import HrPolicyPanel from './hr-sections/HrPolicyPanel';
 import StaffOnboardModal, { type OnboardResult } from './hr-sections/StaffOnboardModal';

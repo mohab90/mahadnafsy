@@ -7,8 +7,7 @@ import { Suspense } from 'react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { useBranches } from '../../../hooks/useBranches';
 import type {
-  LeadItem, LeadStatus, CommunicationRecord, 
-  SubscriberItem, StaffMember,
+  LeadItem, LeadStatus, SubscriberItem, StaffMember,
 } from '../../../types';
 import type { PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';

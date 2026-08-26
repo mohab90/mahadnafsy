@@ -1,5 +1,5 @@
 import type {
-  Bundle, BranchType, Course, CourseAccessSetting,
+  Bundle, Course, CourseAccessSetting,
   ExtraCertificateRequest, ExtraCertificateType,
   LeadItem, PaymentHistoryEntry, StaffMember, SubscriberItem,
 } from '../../types';

@@ -4,8 +4,7 @@ import {
   Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
   ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
   LogOut, Monitor, RotateCcw, Shield, Tag, TrendingUp,
-  UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, X, MessageSquareText,
-  Home,
+  UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
   type LucideIcon,
 } from 'lucide-react';
 

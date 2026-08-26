@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  CalendarClock, ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
+  ExternalLink, MessageSquareText, Phone, Receipt, RefreshCw, Trash2, Wallet,
 } from 'lucide-react';
 import type {
   Bundle, CommunicationRecord, Course, 
