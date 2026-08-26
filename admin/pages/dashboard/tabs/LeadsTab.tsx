@@ -341,6 +341,22 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   const { salesPerformance, commsByRep } = useLeadPerformanceData(salesReps, leads, subscribers, salesTargets, targetMonth, leadStats);
 
+  // The CRM header's "N عميل محتمل" — every lead whose source is not one of the
+  // online ones. It counted the array, which since this screen stopped loading
+  // the table is the 500-row bootstrap page: the header read 500 against 27,012.
+  //
+  // bySource answers it exactly, because it is a count per source over the whole
+  // table: total minus the online buckets is the offline count. Falls back to
+  // the array until the aggregate lands.
+  const offlineLeadTotal = useMemo(() => {
+    if (!leadStats?.bySource) {
+      return leads.filter(l => !l.hidden && !isOnlineSource(l.source)).length;
+    }
+    return Object.entries(leadStats.bySource)
+      .filter(([source]) => !isOnlineSource(source))
+      .reduce((sum, [, count]) => sum + count, 0);
+  }, [leadStats, leads]);
+
   const { monthlyTrend, funnelData, sourcesData, totalConverted, totalLost } = useLeadAnalyticsData(leads, effectiveLeads, leadStats);
 
 
@@ -372,7 +388,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         canExportLeads={canExportLeads}
         canBulkWhatsApp={canBulkWhatsApp}
         canManageDuplicates={isAdmin}
-        totalOfflineLeads={leads.filter(l => !l.hidden && !isOnlineSource(l.source)).length}
+        totalOfflineLeads={offlineLeadTotal}
         overdueCount={overdueLeads.length}
         rottenCount={effectiveLeads.filter(l => !l.hidden && getRottenLevel(l) >= 2).length}
         dueTodayCount={dueToday.length}
