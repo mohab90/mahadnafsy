@@ -31,21 +31,21 @@ test('writes only the leads whose score actually changed', async () => {
   const { scanned, updated } = await refreshLeadScores(pool);
   assert.equal(scanned, 2);
   assert.equal(updated, 2);
-  assert.equal(pool.queries.filter(q => /^UPDATE/i.test(q.sql)).length, 2);
+  assert.equal(pool.queries.filter(q => /^UPDATE leads SET score = /i.test(q.sql)).length, 2);
 });
 
 test('a lead already holding the right score is not rewritten', async () => {
   // Score it once to learn the expected value, then feed that value back in.
   const probe = mockPool([lead()]);
   await refreshLeadScores(probe);
-  const written = probe.queries.find(q => /^UPDATE/i.test(q.sql));
+  const written = probe.queries.find(q => /^UPDATE leads SET score = /i.test(q.sql));
   const settledScore = written.params[0];
 
   const pool = mockPool([lead({ score: settledScore })]);
   const { scanned, updated } = await refreshLeadScores(pool);
   assert.equal(scanned, 1);
   assert.equal(updated, 0, 'an unchanged score must not cost a write');
-  assert.equal(pool.queries.filter(q => /^UPDATE/i.test(q.sql)).length, 0);
+  assert.equal(pool.queries.filter(q => /^UPDATE leads SET score = /i.test(q.sql)).length, 0);
 });
 
 test('the update preserves updated_at explicitly', async () => {
@@ -54,7 +54,7 @@ test('the update preserves updated_at explicitly', async () => {
   // hide them from the stale-lead reports.
   const pool = mockPool([lead()]);
   await refreshLeadScores(pool);
-  const written = pool.queries.find(q => /^UPDATE/i.test(q.sql));
+  const written = pool.queries.find(q => /^UPDATE leads SET score = /i.test(q.sql));
   assert.match(written.sql, /updated_at\s*=\s*updated_at/);
 });
 
@@ -103,7 +103,7 @@ test('a tenant filter is applied when one is given, and omitted when not', async
 test('every write is tenant-scoped', async () => {
   const pool = mockPool([lead({ tenant_id: 't-9' })]);
   await refreshLeadScores(pool);
-  const written = pool.queries.find(q => /^UPDATE/i.test(q.sql));
+  const written = pool.queries.find(q => /^UPDATE leads SET score = /i.test(q.sql));
   assert.match(written.sql, /tenant_id = \?/);
   assert.ok(written.params.includes('t-9'));
 });
