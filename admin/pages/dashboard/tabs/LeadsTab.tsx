@@ -440,7 +440,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         visible={subTab === 'pipeline' || subTab === 'table'}
         isSalesOnly={isSalesOnly}
         salesDataLoading={salesDataLoading}
-        totalLeads={leads.length}
+        totalLeads={leadStats?.total ?? leads.length}
         effectiveCount={effectiveLeads.length}
         visibleCount={visibleLeads.length}
         filtersActive={leadFiltersActive}

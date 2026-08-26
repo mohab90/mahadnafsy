@@ -133,7 +133,7 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
 }
 
 export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
-  const { leads } = useSiteData();
+  const { leads, leadStats } = useSiteData();
   const [minScore, setMinScore] = useState(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -202,7 +202,7 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-2xl p-4 text-center">
-          <div className="text-2xl font-extrabold text-gray-900">{leads.length}</div>
+          <div className="text-2xl font-extrabold text-gray-900">{leadStats?.total ?? leads.length}</div>
           <div className="text-xs text-gray-500 mt-1">إجمالي الليدات</div>
         </div>
         <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-center">

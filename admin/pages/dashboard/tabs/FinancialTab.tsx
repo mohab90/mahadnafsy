@@ -11,6 +11,7 @@ import { useFinancialOrdersData } from './financial/useFinancialOrdersData';
 import { usePaymentProofsReview } from './financial/usePaymentProofsReview';
 import { exportCSV, exportExpensesPdfReport, exportFullFinancialReport, exportPaymentsExcelReport } from './financial/financialExports';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
 import { branchMatches, createBlankIncomeDraft, type FinancialSubTab } from './financial/financialTabUtils';
@@ -43,6 +44,9 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
     expenses: _allExpenses, addExpense, updateExpense, deleteExpense, content, setContentValue, courses,
     authUser,
   } = useSiteData();
+  // This screen does not load the subscriber table, so counting the array here
+  // reported the first page — 500 against a real 1,361.
+  const subscriberStats = useSubscriberStats();
 
   // Apply branch filter: daqqi_accounting passes branchFilter='daqqi' to restrict data to that branch only
   const subscribers = branchFilter ? _allSubscribers.filter(s => branchMatches(s.branch, branchFilter)) : _allSubscribers;
@@ -365,7 +369,7 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
             <p className="font-bold text-amber-800 text-sm">محاسبة فرع الدقي فقط</p>
             <p className="text-xs text-amber-600">البيانات مفلترة على المشتركين المسجلين في فرع الدقي · المدفوعات اليدوية فقط (الأونلاين يُحسب في النظام المحاسبي الرئيسي)</p>
           </div>
-          <span className="mr-auto text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-3 py-1 rounded-lg">{subscribers.length} مشترك</span>
+          <span className="mr-auto text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-3 py-1 rounded-lg">{subscriberStats?.total ?? subscribers.length} مشترك</span>
         </div>
       )}
       {/* Sub-tabs + quick action buttons */}

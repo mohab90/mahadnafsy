@@ -8,6 +8,7 @@ import type { ConsultationItem, Course, LeadItem, OrderItem, StaffMember, Subscr
 import { AnalyticsTab } from '../lazyTabs';
 import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { TabKey } from '../navigation';
 
@@ -73,6 +74,20 @@ export default function OverviewTab({
               // array while the aggregate is in flight — see LeadStats.
               const { leadStats } = useSiteData();
               const leadTotal = leadStats?.total ?? leads.length;
+              // Same reasoning for the client tiles, and the same fix: this
+              // dashboard is not one of the screens that loads the subscriber
+              // table, so subscribers.length is the size of the first page —
+              // 500 — not the number of clients. It read 500 against a real
+              // 1,361.
+              //
+              // It used to correct itself: the two-minute background poll
+              // re-fetched every subscriber unconditionally, so the tile was
+              // wrong for two minutes and right afterwards. That poll now only
+              // refreshes a table the session actually loaded, which is what
+              // stopped the CRM re-downloading 26,878 leads on a timer — and it
+              // left this tile permanently on 500.
+              const subscriberStats = useSubscriberStats();
+              const subscriberTotal = subscriberStats?.total ?? subscribers.length;
               const targetPeriod = new Date().toISOString().slice(0, 7);
               const [collectionMonthlyTarget, setCollectionMonthlyTarget] = useState(160000);
               useEffect(() => {
@@ -888,14 +903,20 @@ export default function OverviewTab({
               const convertedLeads = leads.filter(l => l.status === 'converted').length;
               const maxSource = Math.max(...leadsBySource.map(([,n]) => n), 1);
               const maxEnroll = Math.max(...courseEnrollments.map(c => c.count), 1);
-              const daqqiClients = subscribers.filter(s => s.branch === 'daqqi');
+              // branch is stored upper case — 'DAQQI' — so this comparison
+              // never matched and the tile has always read 0. There are 11.
+              // The count comes from the aggregate for the same reason as the
+              // total above; the array is still what the detail list shows,
+              // since that only ever displayed what was loaded.
+              const daqqiClients = subscribers.filter(s => String(s.branch || '').toUpperCase() === 'DAQQI');
+              const daqqiTotal = subscriberStats?.byBranch?.DAQQI ?? daqqiClients.length;
               const kpiCards: { title: string; value: string | number; icon: React.ElementType; bg: string; text: string; border: string; onDetail: () => void }[] = [
                 {
-                  title: 'العملاء', value: subscribers.length, icon: UserCheck, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200',
+                  title: 'العملاء', value: subscriberTotal, icon: UserCheck, bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200',
                   onDetail: () => setKpiModal({ title: 'العملاء (آخر 50)', rows: subscribers.slice(0, 50).map(s => ({ label: s.name || s.email || '', sub: `${s.branch || '—'} · ${(s.enrolledCourseIds || []).length} كورس` })) }),
                 },
                 {
-                  title: 'عملاء الدقي', value: daqqiClients.length, icon: UserCheck, bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200',
+                  title: 'عملاء الدقي', value: daqqiTotal, icon: UserCheck, bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200',
                   onDetail: () => setKpiModal({ title: 'عملاء فرع الدقي', rows: daqqiClients.map(s => ({ label: s.name || s.email || '', sub: s.phone || s.email || '' })) }),
                 },
                 {
