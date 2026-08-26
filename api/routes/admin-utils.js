@@ -590,6 +590,24 @@ router.post('/api/admin/refund-requests/by-admin', requireAuth, requireAdminOrSt
       [tenantId, payment_id]
     );
     if (existing) return res.json({ ok: true, id: existing.id, skipped: true });
+
+    // The subscriber has to exist.
+    //
+    // subscriber_id arrives from the caller and went straight into the row. Five
+    // requests on production pointed at ids with no subscriber behind them —
+    // auto-generated lifecycle refunds of 50 EGP each, for people the system
+    // could no longer name. They were cleared; this is what stops more.
+    //
+    // The sibling route above resolves the subscriber first and passes sub.id,
+    // which is why it never produced one of these.
+    const [[refundSubscriber]] = await pool.query(
+      'SELECT id FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
+      [subscriber_id, tenantId]
+    );
+    if (!refundSubscriber) {
+      return res.status(404).json({ error: 'Subscriber not found — cannot open a refund request against a client that does not exist' });
+    }
+
     const id = uuidv4();
     await pool.query(
       'INSERT INTO refund_requests (id, tenant_id, subscriber_id, payment_id, amount, currency, reason, refund_method, status) VALUES (?,?,?,?,?,?,?,?,?)',
