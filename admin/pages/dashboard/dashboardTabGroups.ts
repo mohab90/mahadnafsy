@@ -198,9 +198,17 @@ export const fullSubscriberTabs = new Set<string>([
 
 /** Genuinely reads both tables. */
 export const fullCrmDataTabs = new Set<string>([
-  'analytics',
-  'marketing',          // segmentation builds audiences from both tables
+  // Every key here has to name a screen. One that names nothing is silent: the
+  // effect loading the data never fires, and the screen counts the 500-row
+  // bootstrap page while presenting it as the table.
+  //
+  // Three of the five were wrong. 'marketing' is the nav group header above the
+  // screen, whose key is 'marketing_hub' — so the marketing hub reported
+  // "500 ليدات جديدة" against 27,000. 'analytics' and 'crm_settings' name
+  // nothing at all: AnalyticsTab renders under 'daqqi_stats', and no screen
+  // answers to crm_settings.
+  'daqqi_stats',        // renders AnalyticsTab, which filters both tables by date
+  'marketing_hub',      // segmentation builds audiences from both tables
   'drip_campaigns',     // enrolment picker lists real people, needs rows
   'ask_ai',
-  'crm_settings',
 ]);
