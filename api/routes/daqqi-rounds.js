@@ -172,10 +172,15 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     const postponedWeeks = d.postponedWeeks ?? (() => {
       try { return JSON.parse(d.postponed_weeks_json || '[]'); } catch { return null; }
     })();
-    if (!courseId || !startDate || Number.isNaN(Date.parse(startDate))
-      || !Number.isInteger(currentLecture) || currentLecture < 0 || currentLecture > 1000
-      || !Array.isArray(postponedWeeks) || postponedWeeks.length > 200) {
-      const error = new Error('Valid course, start date, lecture count and postponed weeks are required');
+    // Named one at a time. The old message listed all four every time and left
+    // the desk to work out which one it meant.
+    const missing = [];
+    if (!courseId) missing.push('الكورس');
+    if (!startDate || Number.isNaN(Date.parse(startDate))) missing.push('تاريخ البدء');
+    if (!Number.isInteger(currentLecture) || currentLecture < 0 || currentLecture > 1000) missing.push('رقم المحاضرة الحالية');
+    if (!Array.isArray(postponedWeeks) || postponedWeeks.length > 200) missing.push('أسابيع التأجيل');
+    if (missing.length) {
+      const error = new Error(`الحقول دي ناقصة أو غير صحيحة: ${missing.join('، ')}`);
       error.statusCode = 400;
       throw error;
     }
@@ -613,6 +618,43 @@ router.post('/api/admin/daqqi-rounds/transfer-attendee', requireAuth, requireAdm
   } finally {
     conn.release();
   }
+});
+
+// DELETE /api/admin/daqqi-rounds/:roundId/attendees/:subscriberId
+//
+// Taking one client off a round is a roster change, so it touches one row.
+// The admin used to do this by sending the whole round back with the client
+// filtered out, which put it through the round upsert and its validation —
+// and rounds saved before start_date was required could not pass, so removing
+// a client from one of them was refused for a reason that had nothing to do
+// with the client.
+router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[round]] = await conn.query(
+      'SELECT id FROM daqqi_rounds WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
+      [req.params.roundId, req.tenantId]
+    );
+    if (!round) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Round not found' });
+    }
+    const [result] = await conn.query(
+      'DELETE FROM daqqi_attendees WHERE tenant_id=? AND round_id=? AND subscriber_id=?',
+      [req.tenantId, req.params.roundId, req.params.subscriberId]
+    );
+    if (!result.affectedRows) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Client is not booked into this round' });
+    }
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    logger.error('[daqqi]', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {

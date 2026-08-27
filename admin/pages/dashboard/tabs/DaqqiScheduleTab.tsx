@@ -39,6 +39,7 @@ import {
 } from './daqqi/daqqiScheduleUtils';
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 import { DaqqiNewRoundModal } from './daqqi/DaqqiNewRoundModal';
 import { DaqqiAddClientsModal } from './daqqi/DaqqiAddClientsModal';
@@ -66,7 +67,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment,
     daqqiRounds: ctxRounds, addDaqqiRound: ctxAddDaqqiRound, updateDaqqiRound: ctxUpdateDaqqiRound,
-    deleteDaqqiRound, transferDaqqiAttendee, content, authUser,
+    deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser,
   } = useSiteData();
 
   // Track IDs of subscribers that this staff member is allowed to see.
@@ -269,11 +270,18 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
+  // One row, through its own route. This used to send the whole round back
+  // with the client filtered out, which put a roster change through the
+  // round's own validation — so a round saved before start_date was required
+  // refused to let anyone be removed from it.
   const handleRemoveAttendeeFromRound = async (roundId: string, subscriberId: string) => {
-    const round = daqqiRounds.find(r => r.id === roundId);
-    if (!round) return;
-    if (!await doUpdateRound({ ...round, attendees: round.attendees.filter(a => a.subscriberId !== subscriberId) })) {
-      notify('error', 'تعذر حذف العميل من الروند.');
+    try {
+      await mysqlAdmin.removeDaqqiAttendee(roundId, subscriberId);
+      bulkSetDaqqiRounds(daqqiRounds.map(r => (r.id === roundId
+        ? { ...r, attendees: r.attendees.filter(a => a.subscriberId !== subscriberId) }
+        : r)));
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : 'تعذر حذف العميل من الروند.');
     }
   };
 

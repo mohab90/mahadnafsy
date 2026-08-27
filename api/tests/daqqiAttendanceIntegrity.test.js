@@ -11,6 +11,7 @@ const route = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'ut
 // rounds and the writes, the row renders one round and its attendees.
 const scheduleTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), 'utf8');
 const ui = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx'), 'utf8');
+const roundsRoute = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'api/migrations/158_v25_daqqi_attendance_events.sql'), 'utf8');
 const attendanceTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiAttendanceTab.tsx'), 'utf8');
 const privacyService = fs.readFileSync(path.join(root, 'api/lib/privacyService.js'), 'utf8');
@@ -143,4 +144,27 @@ test('the UI labels archived attendees rather than hiding them', () => {
   assert.match(ui, /a\.archived &&[\s\S]{0,240}مؤرشف/);
   assert.match(attendanceTab, /att\.archived &&[\s\S]{0,240}مؤرشف/);
   assert.match(attendanceTab, /archivedAttendeeCount/);
+});
+
+
+test('removing a client from a round does not re-save the round', () => {
+  // It used to send the whole round back with the client filtered out, so a
+  // roster change went through the round upsert and its validation. Rounds
+  // saved before start_date was required could not pass, and the desk was told
+  // "تعذر حذف العميل من الروند" for a reason that had nothing to do with the
+  // client.
+  assert.ok(roundsRoute.includes("router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId'"),
+    'taking a client off a round needs its own route');
+  assert.ok(roundsRoute.includes('DELETE FROM daqqi_attendees WHERE tenant_id=? AND round_id=? AND subscriber_id=?'),
+    'it must touch one attendee row, not the round');
+  assert.ok(scheduleTab.includes('mysqlAdmin.removeDaqqiAttendee(roundId, subscriberId)'),
+    'the admin must call that route rather than re-saving the round');
+});
+
+test('a refused round save names the field that is missing', () => {
+  // The old message listed all four fields every time, so the desk could not
+  // tell which one it meant — and it was always the start date.
+  assert.ok(roundsRoute.includes("missing.push('تاريخ البدء')"),
+    'the start date must be named on its own');
+  assert.doesNotMatch(roundsRoute, /Valid course, start date, lecture count and postponed weeks are required/);
 });

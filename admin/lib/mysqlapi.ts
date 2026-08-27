@@ -734,6 +734,8 @@ export const mysqlAdmin = {
   // ── Daqqi Rounds ──
   saveDaqqiRound:   (o: AR) => post('/admin/daqqi-rounds', o),
   deleteDaqqiRound: (id: string) => del(`/admin/daqqi-rounds/${id}`),
+  removeDaqqiAttendee: (roundId: string, subscriberId: string) =>
+    del(`/admin/daqqi-rounds/${encodeURIComponent(roundId)}/attendees/${encodeURIComponent(subscriberId)}`),
   transferDaqqiAttendee: (data: { subscriberId: string; fromRoundId: string; toRoundId: string }) =>
     post('/admin/daqqi-rounds/transfer-attendee', data),
 
