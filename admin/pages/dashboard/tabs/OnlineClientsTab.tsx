@@ -533,7 +533,6 @@ export default function OnlineClientsTab({
                     onlineTeamMembers={onlineTeamMembers}
                     isAdmin={isAdmin}
                     isOnlineManager={isOnlineManager}
-                    isDaqqiManager={isDaqqiManager}
                     shouldUseScopedSubscribers={shouldUseScopedSubscribers}
                     updateSubscriber={updateSubscriber}
                     reloadSubscribers={reloadSubscribers}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import { applyBrandTheme, BRAND_KEYS } from '../../lib/brandTheme';
@@ -19,7 +19,7 @@ export function useContentState(
     setContent(contentRef.current);
   };
 
-  const queueContentMutation = (
+  const queueContentMutation = useCallback((
     keys: string[],
     action: 'create' | 'update' | 'delete',
     mutate: (current: Record<string, string>) => Record<string, string>,
@@ -59,10 +59,10 @@ export function useContentState(
     });
     contentWriteQueueRef.current = queued;
     return queued;
-  };
+  }, []);
 
-  const setContentValue = (key: string, value: string) =>
-    queueContentMutation([key], 'update', (current) => ({ ...current, [key]: value }));
+  const setContentValue = useCallback((key: string, value: string) =>
+    queueContentMutation([key], 'update', (current) => ({ ...current, [key]: value })), [queueContentMutation]);
 
   /**
    * Save a whole form in one request.

@@ -37,7 +37,6 @@ interface Props {
   onlineTeamMembers: StaffMember[];
   isAdmin: boolean;
   isOnlineManager: boolean;
-  isDaqqiManager: boolean;
   canDeleteSubscriber: boolean;
   shouldUseScopedSubscribers: boolean;
   updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
@@ -68,7 +67,7 @@ interface Props {
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
-  isDaqqiManager, canDeleteSubscriber, shouldUseScopedSubscribers,
+  canDeleteSubscriber, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setSubContactRow, setSubContactDraft, setSubWaRow,
   setDaqqiHousingModal, setDaqqiHousingRoundId,
@@ -322,7 +321,7 @@ export function ClientsTable({
                   }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-600 flex items-center justify-center transition"><Wallet size={12}/></button>
                   <button title="تواصل" onClick={()=>{setSubContactRow(row);setSubContactDraft({type:'call',date:new Date().toISOString().slice(0,16),notes:'',outcome:'',nextFollowUp:''}); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition"><Phone size={12}/></button>
                 </div>
-                <div className={`grid gap-0.5 ${(isDaqqiClientsTab||isAdmin||isOnlineManager||isDaqqiManager)?'grid-cols-4':'grid-cols-3'}`}>
+                <div className={`grid gap-0.5 ${canDeleteSubscriber?'grid-cols-4':'grid-cols-3'}`}>
                   <button title="واتساب" onClick={()=>setSubWaRow(row)} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition"><MessageSquareText size={12}/></button>
                   {isDaqqiClientsTab ? (
                     <button title={rowHousing ? `مسكن في روند ${rowHousing.roundCode}` : 'تسكين في روند'} onClick={()=>{ setDaqqiHousingModal(row); setDaqqiHousingRoundId(rowHousing?.roundId||''); }}

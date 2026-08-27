@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Eye, EyeOff, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import {
   PERMISSION_CATEGORIES, PERMISSION_LABELS, ROLE_LABELS, getDefaultPermsArray,
@@ -55,11 +55,12 @@ export default function StaffOnboardModal({
   notify: Notify;
 }) {
   const branches = useBranches();
-  const [form, setForm] = useState<OnboardResult>(() => ({
+  const blankForm = useCallback((): OnboardResult => ({
     name: initial?.name || '', email: initial?.email || '', phone: initial?.phone || '',
     password: '', role: initial?.role || 'SALES', position: initial?.position || '',
     branchId: initial?.branchId || '', permissions: null, activate: true,
-  }));
+  }), [initial]);
+  const [form, setForm] = useState<OnboardResult>(blankForm);
   const [showPassword, setShowPassword] = useState(false);
   const [customisePerms, setCustomisePerms] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -74,6 +75,15 @@ export default function StaffOnboardModal({
     [form.role],
   );
   const effectivePerms = form.permissions ?? rolePerms;
+
+  // A fresh form each time it opens. Without this the modal reopened holding
+  // the person who had just been created.
+  useEffect(() => {
+    if (!open) return;
+    setForm(blankForm());
+    setShowPassword(false);
+    setCustomisePerms(false);
+  }, [open, blankForm]);
 
   if (!open) return null;
 

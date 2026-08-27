@@ -111,7 +111,7 @@ test('CRM assignment and success feedback are server-authoritative', () => {
   const editing = read('admin/pages/unified-client/useUnifiedClientEditState.ts');
   const route = read('api/routes/admin/leads.js');
 
-  assert.match(state, /const updateLead = async[\s\S]{0,500}await mysqlAdmin\.saveLead/);
+  assert.match(state, /const updateLead = useCallback\(async[\s\S]{0,500}await mysqlAdmin\.saveLead/);
   assert.match(state, /catch[\s\S]{0,300}return false[\s\S]{0,300}return true/);
   // Scope stays 'unassigned' and distribution stays a single server call — the
   // point of this guard. A second argument (the per-rep daily cap) is passed

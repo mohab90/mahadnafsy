@@ -268,7 +268,7 @@ export function useCrmCoreState(
     }
   };
 
-  const updateLead = async (item: LeadItem): Promise<boolean> => {
+  const updateLead = useCallback(async (item: LeadItem): Promise<boolean> => {
     lastCRMWriteRef.current = Date.now();
     const prevLeads = leadsRef.current;
     const nextLeads = leadsRef.current.map((row) => (row.id === item.id ? item : row));
@@ -286,7 +286,7 @@ export function useCrmCoreState(
     }
     track('update', 'lead', item.name);
     return true;
-  };
+  }, []);
 
   // Updates local state only — no API call. Use for bulk auto-convert on mount.
   const markLeadsConverted = (ids: string[]) => {
