@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
-import { Bundle, Course, CourseChapterItem, Therapist, TherapistAvailabilitySlot } from '../../../types';
+import { Course, CourseChapterItem, Therapist, TherapistAvailabilitySlot } from '../../../types';
 import { defaultMeetingBaseUrls } from '../../../lib/consultations';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
@@ -15,6 +15,7 @@ import { CoursePrerequisitesPanel } from './courses/CoursePrerequisitesPanel';
 import { CourseCohortsPanel } from './courses/CourseCohortsPanel';
 import type { TabKey } from '../navigation';
 import TestimonialsPanel from './courses/TestimonialsPanel';
+import BundlesPanel from './courses/BundlesPanel';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type RichField = 'shortDescription' | 'description';
@@ -35,16 +36,17 @@ const _vk = '\x6d\x68\x64\x2d\x6e\x61\x66\x73\x79\x2d\x32\x30\x32\x36';
 const obfV = (u: string): string => { if (!u || u.startsWith('enc:')) return u; try { return 'enc:' + btoa(u.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))).join('')); } catch { return u; } };
 const deobfV = (u: string): string => { if (!u || !u.startsWith('enc:')) return u; try { return atob(u.slice(4)).split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ _vk.charCodeAt(i % _vk.length))).join(''); } catch { return u; } };
 
-const slugify = (text: string): string => {
-  const arabicToLatin: Record<string, string> = { '\u0623':'a','\u0625':'a','\u0622':'a','\u0627':'a','\u0628':'b','\u062a':'t','\u062b':'th','\u062c':'j','\u062d':'h','\u062e':'kh','\u062f':'d','\u0630':'z','\u0631':'r','\u0632':'z','\u0633':'s','\u0634':'sh','\u0635':'s','\u0636':'d','\u0637':'t','\u0638':'z','\u0639':'a','\u063a':'g','\u0641':'f','\u0642':'q','\u0643':'k','\u0644':'l','\u0645':'m','\u0646':'n','\u0647':'h','\u0648':'w','\u064a':'y','\u0649':'a','\u0629':'a','\u0621':'a' };
-  return text.split('').map(c => arabicToLatin[c] ?? c).join('').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-};
 
 // isPublished is set here on purpose. This form never sent the field at all, and
 // the server falls back to `false`, so every course created through this screen
 // was saved unpublished and simply never appeared on the site \u2014 "I added the
 // course and it doesn't work". A course someone has just filled in and priced is
 // meant to be sold; the toggle in the form below can still hold one back.
+const slugify = (text: string): string => {
+  const arabicToLatin: Record<string, string> = { '\u0623':'a','\u0625':'a','\u0622':'a','\u0627':'a','\u0628':'b','\u062a':'t','\u062b':'th','\u062c':'j','\u062d':'h','\u062e':'kh','\u062f':'d','\u0630':'z','\u0631':'r','\u0632':'z','\u0633':'s','\u0634':'sh','\u0635':'s','\u0636':'d','\u0637':'t','\u0638':'z','\u0639':'a','\u063a':'g','\u0641':'f','\u0642':'q','\u0643':'k','\u0644':'l','\u0645':'m','\u0646':'n','\u0647':'h','\u0648':'w','\u064a':'y','\u0649':'a','\u0629':'a','\u0621':'a' };
+  return text.split('').map(c => arabicToLatin[c] ?? c).join('').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+};
+
 const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '', isPublished: true });
 
 const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
@@ -89,7 +91,6 @@ export default function CoursesTab({
     lectures, addLecture, updateLecture, deleteLecture, getCourseLectures,
     chapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
     therapists, addTherapist, updateTherapist, deleteTherapist,
-    bundles, addBundle, updateBundle, deleteBundle,
     
     subscribers, consultations, staffMembers,
     
@@ -114,18 +115,6 @@ export default function CoursesTab({
   const [editingTherapistId, setEditingTherapistId] = useState('');
   const [isTherapistFormOpen, setIsTherapistFormOpen] = useState(false);
   const [therapistDraft, setTherapistDraft] = useState<Therapist>(blankTherapist());
-  const [editingBundleId, setEditingBundleId] = useState('');
-  const [isBundleFormOpen, setIsBundleFormOpen] = useState(false);
-  const [bundleTitle, setBundleTitle] = useState('');
-  const [bundleTitleEn, setBundleTitleEn] = useState('');
-  const [bundleSlug, setBundleSlug] = useState('');
-  const [bundleVideoUrl, setBundleVideoUrl] = useState('');
-  const [bundleShortDesc, setBundleShortDesc] = useState('');
-  const [bundleDescription, setBundleDescription] = useState('');
-  const [bundleCourseIds, setBundleCourseIds] = useState<string[]>([]);
-  const [bundlePrice, setBundlePrice] = useState({ EGP: 0, SAR: 0, USD: 0 });
-  const [bundleOriginalPrice, setBundleOriginalPrice] = useState({ EGP: 0, SAR: 0, USD: 0 });
-  const [bundleDetailsJson, setBundleDetailsJson] = useState('{}');
   const [expandedLectureCourses, setExpandedLectureCourses] = useState<Record<string, boolean>>({});
   const [expandedLectureChapters, setExpandedLectureChapters] = useState<Record<string, boolean>>({});
   const [editingLectureId, setEditingLectureId] = useState('');
@@ -392,73 +381,7 @@ const saveTherapist = async () => {
   notify('success', `تم حفظ المحاضر: ${payload.name}`);
 };
 
-const startEditBundle = (row: Bundle) => {
-  setEditingBundleId(row.id);
-  setIsBundleFormOpen(true);
-  setBundleTitle(row.title);
-  setBundleTitleEn(row.titleEn || '');
-  setBundleSlug(row.slug || '');
-  setBundleVideoUrl(row.videoUrl || '');
-  setBundleShortDesc(row.shortDescription || '');
-  setBundleDescription(row.description);
-  setBundleCourseIds(row.courses.map((c) => c.id));
-  setBundlePrice({ ...row.price });
-  setBundleOriginalPrice({ ...row.originalPrice });
-  setBundleDetailsJson(JSON.stringify(row.detailsContent ?? {}, null, 2));
-  setActiveTab('bundles');
-};
 
-const saveBundle = async () => {
-  if (!bundleTitle.trim()) {
-    notify('error', 'لا يمكن حفظ المسار بدون عنوان.');
-    return;
-  }
-  if (bundleCourseIds.length === 0) {
-    notify('error', 'اختر كورس واحد على الأقل داخل المسار قبل الحفظ.');
-    return;
-  }
-  let parsedDetails: Record<string, string> = {};
-  try {
-    const raw = bundleDetailsJson.trim();
-    parsedDetails = raw ? JSON.parse(raw) : {};
-  } catch {
-    notify('error', 'تنسيق JSON في تفاصيل صفحة المسار غير صحيح.');
-    return;
-  }
-
-  const selectedCourses = courses.filter((c) => bundleCourseIds.includes(c.id));
-  const rawSlug = bundleSlug.trim().replace(/\s+/g, '-').toLowerCase();
-  const payload: Bundle = {
-    id: editingBundleId || `b-${Date.now()}`,
-    title: bundleTitle,
-    titleEn: bundleTitleEn.trim() || undefined,
-    slug: rawSlug || undefined,
-    videoUrl: bundleVideoUrl.trim() || undefined,
-    shortDescription: bundleShortDesc.trim() || undefined,
-    description: bundleDescription,
-    courses: selectedCourses,
-    price: { ...bundlePrice },
-    originalPrice: { ...bundleOriginalPrice },
-    detailsContent: parsedDetails,
-  };
-  setCatalogSaving(true);
-  const saved = editingBundleId ? await updateBundle(payload) : await addBundle(payload);
-  setCatalogSaving(false);
-  if (!saved) { notify('error', 'تعذر حفظ المسار.'); return; }
-  setEditingBundleId('');
-  setIsBundleFormOpen(false);
-  setBundleTitle('');
-  setBundleTitleEn('');
-  setBundleSlug('');
-  setBundleVideoUrl('');
-  setBundleShortDesc('');
-  setBundleDescription('');
-  setBundleCourseIds([]);
-  setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
-  setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
-  setBundleDetailsJson('{}');
-  notify('success', `تم حفظ المسار: ${payload.title}`);
-};
 
 
 
@@ -1167,102 +1090,7 @@ const saveChapter = async () => {
     deleteTherapist={deleteTherapist}
   />
 
-  {activeTab === 'bundles' && (
-    <article className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h3 className="font-bold text-gray-900">إدارة المسارات والباقات</h3>
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <button
-              onClick={() => {
-                const now = new Date();
-                const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'00')}`;
-                const backup = { _meta: { createdAt: now.toISOString(), type: 'bundles' }, bundles };
-                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `backup_bundles_${stamp}.json`; a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-xl text-sm font-bold hover:bg-green-100 transition flex items-center gap-1"
-            >
-              💾 نسخة احتياطية
-            </button>
-          )}
-          <button
-            onClick={() => {
-              if (isBundleFormOpen && !editingBundleId) {
-                setIsBundleFormOpen(false);
-                return;
-              }
-              setEditingBundleId('');
-              setBundleTitle('');
-              setBundleTitleEn('');
-              setBundleSlug('');
-              setBundleVideoUrl('');
-              setBundleShortDesc('');
-              setBundleDescription('');
-              setBundleCourseIds([]);
-              setBundlePrice({ EGP: 0, SAR: 0, USD: 0 });
-              setBundleOriginalPrice({ EGP: 0, SAR: 0, USD: 0 });
-              setBundleDetailsJson('{}');
-              setIsBundleFormOpen(true);
-            }}
-            className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm"
-          >
-            <Plus size={16} className="inline ml-1" />
-            {isBundleFormOpen ? 'إغلاق نموذج المسار' : 'إضافة مسار'}
-          </button>
-        </div>
-      </div>
-
-      {isBundleFormOpen && (
-        <div className="border border-gray-200 rounded-2xl p-4 mb-4 bg-gray-50/70 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="عنوان المسار (عربي)" value={bundleTitle} onChange={(e) => setBundleTitle(e.target.value)} />
-            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="اسم المسار بالإنجليزية (English Name)" value={bundleTitleEn} onChange={(e) => setBundleTitleEn(e.target.value)} />
-            <input className="border border-gray-300 rounded-xl px-4 py-2.5" placeholder="رابط URL المسار (slug) مثال: psychology-track" value={bundleSlug} onChange={(e) => setBundleSlug(e.target.value)} />
-            <input className="border border-gray-300 rounded-xl px-4 py-2.5 md:col-span-1" placeholder="رابط فيديو تعريفي (YouTube embed)" value={bundleVideoUrl} onChange={(e) => setBundleVideoUrl(e.target.value)} />
-            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي EGP (جنيه مصري)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.EGP} onChange={(e) => setBundlePrice({ ...bundlePrice, EGP: Number(e.target.value) })} /></div>
-            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم EGP (جنيه)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.EGP} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, EGP: Number(e.target.value) })} /></div>
-            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي SAR (ريال سعودي)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.SAR} onChange={(e) => setBundlePrice({ ...bundlePrice, SAR: Number(e.target.value) })} /></div>
-            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم SAR (ريال)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.SAR} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, SAR: Number(e.target.value) })} /></div>
-            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر الحالي USD (دولار أمريكي)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundlePrice.USD} onChange={(e) => setBundlePrice({ ...bundlePrice, USD: Number(e.target.value) })} /></div>
-            <div><label className="block text-xs font-bold text-gray-600 mb-1">السعر قبل الخصم USD (دولار)</label><input className="w-full border border-gray-300 rounded-xl px-4 py-2.5" placeholder="0" type="number" value={bundleOriginalPrice.USD} onChange={(e) => setBundleOriginalPrice({ ...bundleOriginalPrice, USD: Number(e.target.value) })} /></div>
-            <div className="md:col-span-2 text-xs text-gray-500 -mb-1">لاختيار أكثر من كورس: استخدم Ctrl أو Cmd أثناء التحديد.</div>
-            <select multiple className="border border-gray-300 rounded-xl px-4 py-2.5 min-h-36" value={bundleCourseIds} onChange={(e) => setBundleCourseIds(Array.from(e.target.selectedOptions).map((o) => (o as HTMLOptionElement).value))}>
-              {courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-            </select>
-            <div className="flex gap-2 md:col-span-2">
-              <button onClick={() => setBundleCourseIds(courses.map((c) => c.id))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">اختيار كل الكورسات</button>
-              <button onClick={() => setBundleCourseIds([])} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">مسح الاختيار</button>
-            </div>
-            <textarea className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" rows={2} placeholder="وصف قصير (tagline) - يظهر تحت العنوان في الهيدر" value={bundleShortDesc} onChange={(e) => setBundleShortDesc(e.target.value)} />
-            <textarea className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5" rows={3} placeholder="وصف كامل للمسار - يظهر في أول الصفحة" value={bundleDescription} onChange={(e) => setBundleDescription(e.target.value)} />
-            <textarea
-              className="md:col-span-2 border border-gray-300 rounded-xl px-4 py-2.5 font-mono text-xs"
-              rows={8}
-              placeholder='تفاصيل صفحة المسار JSON (key:value)'
-              value={bundleDetailsJson}
-              onChange={(e) => setBundleDetailsJson(e.target.value)}
-            />
-          </div>
-          <button onClick={() => void saveBundle()} disabled={catalogSaving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingBundleId ? 'تحديث المسار' : 'إضافة مسار'}</button>
-        </div>
-      )}
-      <div className="mt-5 border-t pt-4 space-y-2 max-h-80 overflow-auto">
-        {bundles.map((row) => (
-          <div key={row.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl p-3">
-            <div><p className="font-bold text-gray-800">{row.title}</p><p className="text-xs text-gray-500">{row.courses.length} كورس</p></div>
-            <div className="flex gap-2">
-              <button onClick={() => window.open(`https://mahadnafsy.com/bundle/${row.id}`, '_blank')} className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm">عرض</button>
-              <button onClick={() => startEditBundle(row)} className="px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 text-sm">تعديل</button>
-              <button onClick={() => { void deleteBundle(row.id).then(ok => notify(ok ? 'success' : 'error', ok ? 'تم حذف المسار.' : 'تعذر حذف المسار.')); }} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-sm">حذف</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </article>
-  )}
+  {activeTab === 'bundles' && <BundlesPanel notify={notify} />}
 
   {activeTab === 'testimonials' && <TestimonialsPanel notify={notify} />}
 
