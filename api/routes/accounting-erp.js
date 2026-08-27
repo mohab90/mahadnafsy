@@ -155,6 +155,13 @@ router.post('/api/admin/accounting/journal-entries', requireAuth, requireAdminOr
   try {
     const scope = resolveFinancialScope(req, { requestedBranch: req.body.branch || null });
     const date = String(req.body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    // Written through unchecked before, so any string the caller sent reached
+    // the ledger and MySQL turned what it could not read into a zero date.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || date.startsWith('0000-00-00')
+      || Number.isNaN(Date.parse(date))) {
+      return res.status(400).json({ error: 'تاريخ القيد غير صحيح' });
+    }
     const description = String(req.body.description || '').trim();
     const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
     if (!description || lines.length < 2) return res.status(400).json({ error: 'يجب إدخال وصف وسطرين على الأقل' });

@@ -50,6 +50,13 @@ async function logFinancialAudit({ entityType, entityId, action, oldData, newDat
 //  5100 = رواتب موظفين    (Staff Salaries)
 //  2100 = مستحقات الرواتب  (Accrued Salaries Payable)
 async function postJournalEntry(refType, refId, entryDate, description, lines, postedBy, db = pool, tenantId = 'tenant-default', scope = {}) {
+  // A real date, not merely a date-shaped one: the shape check below accepts
+  // '0000-00-00', which MySQL stores happily and which then sits outside every
+  // dated report — in the books, in no period.
+  const isRealDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v)
+    && !String(v).startsWith('0000-00-00')
+    && !Number.isNaN(Date.parse(v));
+
   const date = (entryDate instanceof Date ? entryDate.toISOString() : String(entryDate || '')).slice(0, 10);
   const normalizedLines = Array.isArray(lines) ? lines.map(line => ({
     account_code: String(line?.account_code || '').trim(),
@@ -67,7 +74,7 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
   );
   const totalDebit = Number(normalizedLines.reduce((sum, line) => sum + line.debit, 0).toFixed(2));
   const totalCredit = Number(normalizedLines.reduce((sum, line) => sum + line.credit, 0).toFixed(2));
-  if (!refType || !tenantId || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+  if (!refType || !tenantId || !isRealDate(date)
     || normalizedLines.length < 2 || invalidLine || totalDebit <= 0
     || Math.abs(totalDebit - totalCredit) >= 0.01) {
     logger.warn('[journal] rejected invalid or unbalanced journal entry', { refType, refId, tenantId });

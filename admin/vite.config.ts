@@ -76,7 +76,6 @@ export default defineConfig(({ mode }) => {
             // eager but in its own chunk, not lumped into the catch-all 'vendor'
             // bucket, so it doesn't get cache-busted every time an unrelated
             // small dependency changes (BUILD-02).
-            if (id.includes('socket.io-client') || id.includes('engine.io-client')) return 'socket-vendor';
             // dompurify is used by the always-loaded SafeHtml component (via
             // Dashboard.tsx) — keep it OUT of pdf-vendor, otherwise Vite's
             // modulePreload sees dompurify as eagerly-reachable and preloads

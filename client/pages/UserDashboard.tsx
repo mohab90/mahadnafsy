@@ -14,7 +14,6 @@ import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJourneyTimeline';
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
-import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 import { toDialable } from '../lib/whatsappLink';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
@@ -83,23 +82,7 @@ const UserDashboard: React.FC = () => {
   const [accountSection, setAccountSection] = useState<AccountSection>('payments');
   const [realtimeNotice, setRealtimeNotice] = useState('');
 
-  useRealtimeEvents<{ message?: string }>(
-    'client:payment-updated',
-    (payload) => {
-      setRealtimeNotice(payload.message || 'تم تحديث بيانات المدفوعات الخاصة بك.');
-      refreshMySubscriber();
-    },
-    Boolean(authUser && import.meta.env.VITE_WS_URL),
-  );
 
-  useRealtimeEvents<{ message?: string }>(
-    'client:certificate-updated',
-    (payload) => {
-      setRealtimeNotice(payload.message || 'تم تحديث بيانات الشهادات الخاصة بك.');
-      refreshMySubscriber();
-    },
-    Boolean(authUser && import.meta.env.VITE_WS_URL),
-  );
 
   // Deep-link portal sections: ?tab=account&section=payments (used by PaymentSuccess, emails, etc.)
   const [dashSearchParams] = useSearchParams();

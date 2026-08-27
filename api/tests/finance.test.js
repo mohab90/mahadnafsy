@@ -6,6 +6,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { _paymentAccountCode, _expenseAccountCode, toEgp } = require('../lib/finance');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.join(__dirname, '..');
+const financeSrc = fs.readFileSync(path.join(root, 'lib/finance.js'), 'utf8');
+const erpRoute = fs.readFileSync(path.join(root, 'routes/accounting-erp.js'), 'utf8');
 
 test('payment GL account: revenue codes per payment type', () => {
   assert.deepEqual(_paymentAccountCode('COURSE'),       ['4100', 'إيرادات كورسات']);
@@ -36,4 +41,20 @@ test('toEgp: invalid/empty amount coerces to 0 (never NaN)', async () => {
   assert.equal(await toEgp(undefined, 'EGP'), 0);
   assert.equal(await toEgp('abc', 'EGP'), 0);
   assert.equal(await toEgp(null, 'EGP'), 0);
+});
+
+
+test('a journal entry cannot be posted with a date that is not a date', () => {
+  // The shape check accepted '0000-00-00' — four digits, two, two — so the
+  // entry went into the ledger and then fell outside every dated report: in
+  // the books, in no period. Two entries on production carry one.
+  assert.ok(financeSrc.includes('const isRealDate ='),
+    'the ledger needs a real-date check, not a shape check');
+  assert.ok(financeSrc.includes("!String(v).startsWith('0000-00-00')"),
+    'a zero date must be refused');
+  assert.ok(financeSrc.includes('!isRealDate(date)'),
+    'the entry date must go through it');
+  // The manual-entry route wrote whatever string it was given.
+  assert.ok(erpRoute.includes("error: 'تاريخ القيد غير صحيح'"),
+    'a manual entry with an unreadable date must be refused');
 });

@@ -23,7 +23,6 @@ import {
   type PermissionKey,
 } from '../constants/permissions';
 import { useToast } from '../../shared/ui/Toast';
-import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 import type { PaymentDraft } from '../components/PaymentModal';
 import { createClientPaymentDraft } from '../lib/clientActionDrafts';
 import { currencyForBranch } from '../lib/branchCurrency';
@@ -154,24 +153,6 @@ const Dashboard: React.FC = () => {
   const notify = useCallback(
     (type: 'success' | 'error' | 'info' | 'warning', text: string) => toastShow(text, type),
     [toastShow]
-  );
-  useRealtimeEvents<{ action?: string; entity?: string; actor?: string }>(
-    'admin:mutation',
-    (event) => {
-      const actionLabel = event.action === 'create' ? 'إضافة'
-        : event.action === 'update' ? 'تحديث'
-          : event.action === 'delete' ? 'حذف'
-            : event.action || 'تغيير';
-      notify('info', `${actionLabel} ${event.entity || 'بيانات'}${event.actor ? ` بواسطة ${event.actor}` : ''}`);
-    },
-    Boolean(import.meta.env.VITE_WS_URL),
-  );
-  useRealtimeEvents<{ section?: string; actor?: string }>(
-    'system-config:updated',
-    (event) => {
-      notify('info', `تم تحديث إعدادات ${event.section || 'النظام'}${event.actor ? ` بواسطة ${event.actor}` : ''}`);
-    },
-    Boolean(import.meta.env.VITE_WS_URL),
   );
 
   // Show a persistent error toast whenever a MySQL save fails in SiteDataContext.
