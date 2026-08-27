@@ -56,7 +56,7 @@ const Checkout: React.FC = () => {
   const [serverCurrency, setServerCurrency] = useState<'EGP' | 'SAR' | 'USD' | null>(null);
   // What the server decided and on what basis, so the page can show the
   // instalment plan rather than silently charging a number nobody explained.
-  const [serverPayMode, setServerPayMode] = useState<'cash' | 'installment'>('cash');
+  const [, setServerPayMode] = useState<'cash' | 'installment'>('cash');
   const [serverPlanTotal, setServerPlanTotal] = useState<number | null>(null);
   // Self-service receipt upload (after order is placed)
   const [proofImage, setProofImage] = useState('');

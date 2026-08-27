@@ -94,7 +94,7 @@ interface VideoPlayerProps {
   onClose: () => void;
 }
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) => {
-  const { getCourseLectures, getCourseChapters, subscribers, authUser, mySubscriberId, refreshMySubscriber } = useSiteData();
+  const { getCourseLectures, getCourseChapters, subscribers, mySubscriberId, refreshMySubscriber } = useSiteData();
   const [selectedId, setSelectedId] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Award, BookOpen, CreditCard, LifeBuoy, ShoppingBag } from 'lucide-react';
 import { mysqlClient } from '../../lib/mysqlapi';
 

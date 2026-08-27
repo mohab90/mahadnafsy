@@ -50,7 +50,7 @@ const CourseDetails: React.FC = () => {
     }).catch(() => {}).finally(() => setFallbackTried(true));
   }, [id, slug, courseFromCtx]);
   const course = courseFromCtx ?? apiFallbackCourse;
-  const [showLeadForm, setShowLeadForm] = useState(true);
+  const [, setShowLeadForm] = useState(true);
     const [selectedLectureId, setSelectedLectureId] = useState('');
     // Resolved playable URL — paid lectures no longer ship their URL publicly; fetched on demand.
     const [resolvedLectureUrl, setResolvedLectureUrl] = useState('');
