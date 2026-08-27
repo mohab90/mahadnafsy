@@ -7,7 +7,10 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..', '..');
 const route = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'utf8');
-const ui = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), 'utf8');
+// The Dokki schedule is two files since the table was split: the tab owns the
+// rounds and the writes, the row renders one round and its attendees.
+const scheduleTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), 'utf8');
+const ui = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'api/migrations/158_v25_daqqi_attendance_events.sql'), 'utf8');
 const attendanceTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiAttendanceTab.tsx'), 'utf8');
 const privacyService = fs.readFileSync(path.join(root, 'api/lib/privacyService.js'), 'utf8');
@@ -31,7 +34,7 @@ test('Dokki attendance is an immutable session event, not a client-side counter 
   assert.match(route, /DAQQI_ATTENDANCE_MARKED/);
   assert.match(route, /SELECT id,status,current_lecture FROM daqqi_rounds[\s\S]{0,180}FOR UPDATE/);
   assert.match(route, /Attendance is already recorded for this session/);
-  assert.match(ui, /\/api\/admin\/daqqi-rounds\/\$\{encodeURIComponent\(roundId\)\}\/attendance/);
+  assert.match(scheduleTab, /\/api\/admin\/daqqi-rounds\/\$\{encodeURIComponent\(roundId\)\}\/attendance/);
 });
 
 test('round edits cannot overwrite or remove persisted attendance history', () => {
