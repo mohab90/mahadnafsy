@@ -580,13 +580,14 @@ test('catalog and therapist schedules are server-first and saved atomically', ()
   const state = read('admin/context/site-data-hooks/useCatalogState.ts');
   const courses = read('admin/pages/dashboard/tabs/CoursesTab.tsx');
   const route = read('api/routes/lms-admin.js');
+  const instructors = read('admin/pages/dashboard/tabs/courses/CourseInstructorsPanel.tsx');
 
   assert.match(state, /await persist\(mysqlAdmin\.saveCourse/);
   assert.match(state, /await persist\(mysqlAdmin\.saveTherapist/);
   assert.match(state, /await persist\(mysqlAdmin\.saveBundle/);
   assert.doesNotMatch(state, /persistOrRevert|setTimeout/);
   assert.match(courses, /const saved = editingCourseId \? await updateCourse/);
-  assert.match(courses, /const saved = editingTherapistId \? await updateTherapist/);
+  assert.ok(instructors.includes('const saved = editingTherapistId ? await updateTherapist(payload) : await addTherapist(payload);'), 'the therapist save must wait for the write to be confirmed');
   const therapistRoute = route.slice(route.indexOf("router.post('/api/admin/therapists'"), route.indexOf("// POST /api/admin/testimonials"));
   assert.match(therapistRoute, /await conn\.beginTransaction\(\)/);
   assert.match(therapistRoute, /DELETE FROM therapist_slots/);

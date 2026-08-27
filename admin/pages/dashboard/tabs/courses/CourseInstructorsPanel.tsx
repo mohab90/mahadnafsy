@@ -2,56 +2,99 @@ import React from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { defaultMeetingBaseUrls, meetingProviderLabels } from '../../../../lib/consultations';
 import type { ConsultationItem, StaffMember, Therapist, TherapistAvailabilitySlot } from '../../../../types';
+import { useRef, useState } from 'react';
+import { useSiteData } from '../../../../context/SiteDataContext';
+import { compressImageFile } from '../../../../lib/imageBudget';
+
+const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
+const blankTherapistSlot = (): TherapistAvailabilitySlot => ({ id: `slot-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, day: 'sunday', startTime: '17:00', endTime: '17:50', timezone: 'Africa/Cairo', label: '', meetingLink: '', isActive: true });
+const therapistAvatarDataUrl = (name?: string) => {
+  const initial = String(name || 'M').trim().charAt(0).toUpperCase() || 'M';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112"><rect width="112" height="112" rx="24" fill="#eef2ff"/><circle cx="56" cy="44" r="18" fill="#818cf8"/><path d="M24 100c5-22 18-34 32-34s27 12 32 34" fill="#6366f1"/><text x="56" y="62" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700" fill="white">${initial}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+const safeTherapistImageSrc = (image: string | undefined, name?: string) => {
+  const value = String(image || '').trim();
+  if (!value || /top4top\.io/i.test(value)) return therapistAvatarDataUrl(name);
+  return value;
+};
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
 interface Props {
   activeTab: string;
-  isAdmin: boolean;
-  therapists: Therapist[];
-  staffMembers: StaffMember[];
-  consultations: ConsultationItem[];
-  isTherapistFormOpen: boolean;
-  setIsTherapistFormOpen: (open: boolean) => void;
-  editingTherapistId: string;
-  setEditingTherapistId: (id: string) => void;
-  therapistDraft: Therapist;
-  setTherapistDraft: SetState<Therapist>;
-  therapistImageInputRef: React.RefObject<HTMLInputElement | null>;
-  handleTherapistImageUpload: (files: FileList | null) => Promise<void>;
-  blankTherapist: () => Therapist;
-  blankTherapistSlot: () => TherapistAvailabilitySlot;
-  therapistAvatarDataUrl: (name?: string) => string;
-  safeTherapistImageSrc: (image: string | undefined, name?: string) => string;
-  saveTherapist: () => Promise<void>;
-  updateTherapist: (row: Therapist) => Promise<boolean>;
-  startEditTherapist: (row: Therapist) => void;
-  deleteTherapist: (id: string) => Promise<boolean>;
+  notify: (type: 'success' | 'error' | 'info', text: string) => void;
 }
 
-export function CourseInstructorsPanel({
-  activeTab,
-  isAdmin,
-  therapists,
-  staffMembers,
-  consultations,
-  isTherapistFormOpen,
-  setIsTherapistFormOpen,
-  editingTherapistId,
-  setEditingTherapistId,
-  therapistDraft,
-  setTherapistDraft,
-  therapistImageInputRef,
-  handleTherapistImageUpload,
-  blankTherapist,
-  blankTherapistSlot,
-  therapistAvatarDataUrl,
-  safeTherapistImageSrc,
-  saveTherapist,
-  updateTherapist,
-  startEditTherapist,
-  deleteTherapist,
-}: Props) {
+export function CourseInstructorsPanel({ activeTab, notify }: Props) {
+  const { therapists, staffMembers, consultations, isAdmin, addTherapist, updateTherapist, deleteTherapist } = useSiteData();
+  const [saving, setSaving] = useState(false);
+  const therapistImageInputRef = useRef<HTMLInputElement | null>(null);
+  const [editingTherapistId, setEditingTherapistId] = useState('');
+  const [isTherapistFormOpen, setIsTherapistFormOpen] = useState(false);
+  const [therapistDraft, setTherapistDraft] = useState<Therapist>(blankTherapist());
+  const handleTherapistImageUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await compressImageFile(file, { maxPx: 720, quality: 0.76 }); setTherapistDraft((prev) => ({ ...prev, image: uploaded })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627.'); } };
+
+  const startEditTherapist = (row: Therapist) => {
+  setEditingTherapistId(row.id);
+  setIsTherapistFormOpen(true);
+  setTherapistDraft({
+    ...row,
+    languages: [...(row.languages || [])],
+    focusAreas: [...(row.focusAreas || [])],
+    qualifications: [...(row.qualifications || [])],
+    consultationSettings: row.consultationSettings
+      ? {
+          ...row.consultationSettings,
+          sessionPrice: { ...row.consultationSettings.sessionPrice },
+          availableSlots: row.consultationSettings.availableSlots.map((slot) => ({ ...slot })),
+          portal: { ...row.consultationSettings.portal },
+        }
+      : blankTherapist().consultationSettings,
+  });
+};
+
+  const saveTherapist = async () => {
+  if (!therapistDraft.name.trim()) {
+    notify('error', 'لا يمكن حفظ المحاضر بدون اسم.');
+    return;
+  }
+  if (therapistDraft.consultationSettings?.enabled) {
+    if ((therapistDraft.consultationSettings.availableSlots || []).filter((slot) => slot.isActive).length === 0) {
+      notify('error', 'أضف موعداً متاحاً واحداً على الأقل قبل تفعيل الاستشارات.');
+      return;
+    }
+  }
+  const payload = {
+    ...therapistDraft,
+    id: therapistDraft.id || `t-${Date.now()}`,
+    image: therapistDraft.image || '',
+    languages: (therapistDraft.languages || []).filter(Boolean),
+    focusAreas: (therapistDraft.focusAreas || []).filter(Boolean),
+    qualifications: (therapistDraft.qualifications || []).filter(Boolean),
+    consultationSettings: therapistDraft.consultationSettings
+      ? {
+          ...therapistDraft.consultationSettings,
+          providerBaseUrl:
+            therapistDraft.consultationSettings.providerBaseUrl ||
+            defaultMeetingBaseUrls[therapistDraft.consultationSettings.meetingProvider],
+          availableSlots: therapistDraft.consultationSettings.availableSlots.map((slot) => ({
+            ...slot,
+            timezone: slot.timezone || 'Africa/Cairo',
+          })),
+        }
+      : undefined,
+  };
+  setSaving(true);
+  const saved = editingTherapistId ? await updateTherapist(payload) : await addTherapist(payload);
+  setSaving(false);
+  if (!saved) { notify('error', 'تعذر حفظ المحاضر.'); return; }
+  setEditingTherapistId('');
+  setIsTherapistFormOpen(false);
+  setTherapistDraft(blankTherapist());
+  notify('success', `تم حفظ المحاضر: ${payload.name}`);
+};
+
   return (
     <>
   {activeTab === 'instructors' && (
@@ -271,7 +314,7 @@ export function CourseInstructorsPanel({
             )}
           </div>
 
-          <button onClick={() => void saveTherapist()} className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTherapistId ? 'تحديث المحاضر' : 'إضافة محاضر'}</button>
+          <button onClick={() => void saveTherapist()} disabled={saving} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition">{editingTherapistId ? 'تحديث المحاضر' : 'إضافة محاضر'}</button>
         </div>
       )}
       <div className="mt-5 border-t pt-4 grid grid-cols-1 xl:grid-cols-2 gap-3 max-h-[620px] overflow-auto">

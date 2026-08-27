@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
-import { Course, CourseChapterItem, Therapist, TherapistAvailabilitySlot } from '../../../types';
-import { defaultMeetingBaseUrls } from '../../../lib/consultations';
+import { Course, CourseChapterItem } from '../../../types';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -49,21 +48,9 @@ const slugify = (text: string): string => {
 
 const blankCourse = (): Course => ({ id: '', slug: '', title: '', description: '', shortDescription: '', instructor: '', thumbnail: '', category: 'General', type: 'Recorded', price: { EGP: 0, SAR: 0, USD: 0 }, originalPrice: { EGP: 0, SAR: 0, USD: 0 }, rating: 4.8, students: 0, modules: [], courseModules: [], duration: '', level: '\u0645\u0628\u062a\u062f\u0626', detailsContent: {}, promoVideoUrl: '', liveSessionUrl: '', galleryImages: [], certificateTemplateUrl: '', certificateTemplateName: '', isPublished: true });
 
-const blankTherapist = (): Therapist => ({ id: '', name: '', specialty: '', image: '', experience: 1, rating: 4.8, price: { EGP: 0, SAR: 0, USD: 0 }, title: '', bio: '', featured: false, sortOrder: 99, showOnHome: false, showOnAbout: false, languages: [], focusAreas: [], qualifications: [], consultationSettings: { enabled: false, sessionDurationMinutes: 50, sessionPrice: { EGP: 0, SAR: 0, USD: 0 }, meetingProvider: 'google_meet', providerBaseUrl: defaultMeetingBaseUrls.google_meet, autoCreateMeetingLink: true, intakeFormUrl: '', bookingNotes: '', availableSlots: [], portal: { username: '', password: '', temporaryPassword: true } } });
 
-const blankTherapistSlot = (): TherapistAvailabilitySlot => ({ id: `slot-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, day: 'sunday', startTime: '17:00', endTime: '17:50', timezone: 'Africa/Cairo', label: '', meetingLink: '', isActive: true });
 
-const therapistAvatarDataUrl = (name?: string) => {
-  const initial = String(name || 'M').trim().charAt(0).toUpperCase() || 'M';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112"><rect width="112" height="112" rx="24" fill="#eef2ff"/><circle cx="56" cy="44" r="18" fill="#818cf8"/><path d="M24 100c5-22 18-34 32-34s27 12 32 34" fill="#6366f1"/><text x="56" y="62" text-anchor="middle" font-family="Arial" font-size="30" font-weight="700" fill="white">${initial}</text></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-};
 
-const safeTherapistImageSrc = (image: string | undefined, name?: string) => {
-  const value = String(image || '').trim();
-  if (!value || /top4top\.io/i.test(value)) return therapistAvatarDataUrl(name);
-  return value;
-};
 
 interface Props {
   notify: NotifyFn;
@@ -90,9 +77,9 @@ export default function CoursesTab({
     courses, addCourse, updateCourse, deleteCourse,
     lectures, addLecture, updateLecture, deleteLecture, getCourseLectures,
     chapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
-    therapists, addTherapist, updateTherapist, deleteTherapist,
+    therapists,
     
-    subscribers, consultations, staffMembers,
+    subscribers,
     
     isAdmin,
   } = useSiteData();
@@ -111,10 +98,6 @@ export default function CoursesTab({
   const [courseModulesDraft, setCourseModulesDraft] = useState<{ title: string; items: string[] }[]>([]);
   const [courseMaterialsDraft, setCourseMaterialsDraft] = useState<import('../../../types').CourseMaterial[]>([]);
   const [coursePainPoints, setCoursePainPoints] = useState<{ left: string[]; right: string[] }>({ left: ['', '', ''], right: ['', '', ''] });
-  const therapistImageInputRef = useRef<HTMLInputElement | null>(null);
-  const [editingTherapistId, setEditingTherapistId] = useState('');
-  const [isTherapistFormOpen, setIsTherapistFormOpen] = useState(false);
-  const [therapistDraft, setTherapistDraft] = useState<Therapist>(blankTherapist());
   const [expandedLectureCourses, setExpandedLectureCourses] = useState<Record<string, boolean>>({});
   const [expandedLectureChapters, setExpandedLectureChapters] = useState<Record<string, boolean>>({});
   const [editingLectureId, setEditingLectureId] = useState('');
@@ -196,7 +179,6 @@ export default function CoursesTab({
   const readFileAsDataUrl = (file: File, maxPx = 900, quality = 0.78) => compressImageFile(file, { maxPx, quality });
   const handleGalleryUpload = async (files: FileList | null) => { if (!files || files.length === 0) return; try { const uploaded = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file))); setCourseDraft((prev) => ({ ...prev, galleryImages: Array.from(new Set([...(prev.galleryImages || []), ...uploaded])) })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627. \u062c\u0631\u0628 \u0635\u0648\u0631\u0629 \u0623\u0635\u063a\u0631.'); } };
   const handleCertificateUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file, 1200, 0.82); setCourseDraft((prev) => ({ ...prev, certificateTemplateUrl: uploaded, certificateTemplateName: file.name })); } catch { notify('error', '\u0646\u0645\u0648\u0630\u062c \u0627\u0644\u0634\u0647\u0627\u062f\u0629 \u0643\u0628\u064a\u0631 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647.'); } };
-  const handleTherapistImageUpload = async (files: FileList | null) => { const file = files?.[0]; if (!file) return; try { const uploaded = await readFileAsDataUrl(file, 720, 0.76); setTherapistDraft((prev) => ({ ...prev, image: uploaded })); } catch { notify('error', '\u0627\u0644\u0635\u0648\u0631\u0629 \u0643\u0628\u064a\u0631\u0629 \u062c\u062f\u0627\u064b \u0623\u0648 \u062a\u0639\u0630\u0631 \u0636\u063a\u0637\u0647\u0627.'); } };
 const startEditCourse = (course: Course) => {
   setEditingCourseId(course.id);
   setCourseDraft({
@@ -320,66 +302,7 @@ const saveCourse = async () => {
   notify('success', `تم حفظ الكورس بنجاح: ${payload.title}`);
 };
 
-const startEditTherapist = (row: Therapist) => {
-  setEditingTherapistId(row.id);
-  setIsTherapistFormOpen(true);
-  setTherapistDraft({
-    ...row,
-    languages: [...(row.languages || [])],
-    focusAreas: [...(row.focusAreas || [])],
-    qualifications: [...(row.qualifications || [])],
-    consultationSettings: row.consultationSettings
-      ? {
-          ...row.consultationSettings,
-          sessionPrice: { ...row.consultationSettings.sessionPrice },
-          availableSlots: row.consultationSettings.availableSlots.map((slot) => ({ ...slot })),
-          portal: { ...row.consultationSettings.portal },
-        }
-      : blankTherapist().consultationSettings,
-  });
-  setActiveTab('instructors');
-};
 
-const saveTherapist = async () => {
-  if (!therapistDraft.name.trim()) {
-    notify('error', 'لا يمكن حفظ المحاضر بدون اسم.');
-    return;
-  }
-  if (therapistDraft.consultationSettings?.enabled) {
-    if ((therapistDraft.consultationSettings.availableSlots || []).filter((slot) => slot.isActive).length === 0) {
-      notify('error', 'أضف موعداً متاحاً واحداً على الأقل قبل تفعيل الاستشارات.');
-      return;
-    }
-  }
-  const payload = {
-    ...therapistDraft,
-    id: therapistDraft.id || `t-${Date.now()}`,
-    image: therapistDraft.image || '',
-    languages: (therapistDraft.languages || []).filter(Boolean),
-    focusAreas: (therapistDraft.focusAreas || []).filter(Boolean),
-    qualifications: (therapistDraft.qualifications || []).filter(Boolean),
-    consultationSettings: therapistDraft.consultationSettings
-      ? {
-          ...therapistDraft.consultationSettings,
-          providerBaseUrl:
-            therapistDraft.consultationSettings.providerBaseUrl ||
-            defaultMeetingBaseUrls[therapistDraft.consultationSettings.meetingProvider],
-          availableSlots: therapistDraft.consultationSettings.availableSlots.map((slot) => ({
-            ...slot,
-            timezone: slot.timezone || 'Africa/Cairo',
-          })),
-        }
-      : undefined,
-  };
-  setCatalogSaving(true);
-  const saved = editingTherapistId ? await updateTherapist(payload) : await addTherapist(payload);
-  setCatalogSaving(false);
-  if (!saved) { notify('error', 'تعذر حفظ المحاضر.'); return; }
-  setEditingTherapistId('');
-  setIsTherapistFormOpen(false);
-  setTherapistDraft(blankTherapist());
-  notify('success', `تم حفظ المحاضر: ${payload.name}`);
-};
 
 
 
@@ -1066,29 +989,7 @@ const saveChapter = async () => {
     </article>
   )}
 
-  <CourseInstructorsPanel
-    activeTab={activeTab}
-    isAdmin={isAdmin}
-    therapists={therapists}
-    staffMembers={staffMembers}
-    consultations={consultations}
-    isTherapistFormOpen={isTherapistFormOpen}
-    setIsTherapistFormOpen={setIsTherapistFormOpen}
-    editingTherapistId={editingTherapistId}
-    setEditingTherapistId={setEditingTherapistId}
-    therapistDraft={therapistDraft}
-    setTherapistDraft={setTherapistDraft}
-    therapistImageInputRef={therapistImageInputRef}
-    handleTherapistImageUpload={handleTherapistImageUpload}
-    blankTherapist={blankTherapist}
-    blankTherapistSlot={blankTherapistSlot}
-    therapistAvatarDataUrl={therapistAvatarDataUrl}
-    safeTherapistImageSrc={safeTherapistImageSrc}
-    saveTherapist={saveTherapist}
-    updateTherapist={updateTherapist}
-    startEditTherapist={startEditTherapist}
-    deleteTherapist={deleteTherapist}
-  />
+  <CourseInstructorsPanel activeTab={activeTab} notify={notify} />
 
   {activeTab === 'bundles' && <BundlesPanel notify={notify} />}
 
