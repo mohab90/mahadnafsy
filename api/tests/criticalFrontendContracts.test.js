@@ -553,13 +553,14 @@ test('lecture, chapter and generated-note edits wait for database persistence', 
   const state = read('admin/context/site-data-hooks/useLecturesChaptersState.ts');
   const courses = read('admin/pages/dashboard/tabs/CoursesTab.tsx');
   const quizzes = read('admin/pages/dashboard/tabs/QuizzesTab.tsx');
+  const lecturesPanel = read('admin/pages/dashboard/tabs/courses/LecturesPanel.tsx');
 
   assert.match(state, /await mysqlAdmin\.saveLecture/);
   assert.match(state, /await mysqlAdmin\.saveChapter/);
   assert.match(state, /await mysqlAdmin\.deleteLecture/);
   assert.match(state, /await mysqlAdmin\.deleteChapter/);
-  assert.match(courses, /const saved = editingLectureId \? await updateLecture/);
-  assert.match(courses, /const saved = editingChapterId \? await updateChapter/);
+  assert.ok(lecturesPanel.includes('const saved = editingLectureId ? await updateLecture(payload) : await addLecture(payload);'), 'the lecture save must wait for the write to be confirmed');
+  assert.ok(lecturesPanel.includes('const saved = editingChapterId ? await updateChapter(payload) : await addChapter(payload);'), 'the chapter save must wait for the write to be confirmed');
   assert.match(quizzes, /if \(!await updateLecture/);
   assert.doesNotMatch(quizzes, /lecture_notes:|localStorage/);
 });
