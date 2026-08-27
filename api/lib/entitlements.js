@@ -5,6 +5,12 @@ const { uuidv4 } = require('./id');
 const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
 const { assertLearningPrerequisites } = require('./learningPrerequisites');
 
+// Grants that follow money rather than a person deciding. A recomputation on
+// one of these must never take away access the client has already paid for.
+const PAYMENT_DRIVEN_SOURCES = new Set([
+  'manual_payment', 'payment_proof', 'manual_order_payment',
+  'payment_status_review', 'paymob',
+]);
 function accessPolicy(accessType, lectureLimit) {
   const mode = String(accessType || 'full').toLowerCase() === 'limited' ? 'limited' : 'full';
   const limit = mode === 'limited' ? Math.max(Number(lectureLimit) || 0, 1) : null;
@@ -53,8 +59,21 @@ async function grantCourseEntitlement({
         WHERE tenant_id=? AND subscriber_id=? AND course_id=? LIMIT 1 FOR UPDATE`,
       [tenantId, subscriberId, courseId]
     );
+    // A client who has paid in full keeps full access. resolvePaymentAccess
+    // answers 'limited' whenever it cannot prove the course is covered — a
+    // missing course_expected is enough — and the upsert below writes that
+    // straight over an existing grant. So a later bookkeeping row could lock a
+    // paid-up client out of lectures they had already been given. 26 of them
+    // were locked out that way, which is what reached the desk as
+    // "المحاضرات مقفوله".
+    //
+    // Only payment-driven grants are held back. An admin setting someone to
+    // limited is a decision, not a recomputation, and still applies.
+    const effective = PAYMENT_DRIVEN_SOURCES.has(source) && existing?.access_type === 'full' && policy.mode === 'limited'
+      ? accessPolicy('full', null)
+      : policy;
     const changed = !existing || existing.status !== 'active' ||
-      existing.access_type !== policy.mode || Number(existing.lecture_limit || 0) !== Number(policy.lectureLimit || 0);
+      existing.access_type !== effective.mode || Number(existing.lecture_limit || 0) !== Number(effective.lectureLimit || 0);
     const enrollmentId = existing?.id || uuidv4();
     await conn.query(
       `INSERT INTO enrollments
@@ -69,7 +88,7 @@ async function grantCourseEntitlement({
          branch_id=VALUES(branch_id),updated_at=NOW()`,
       [enrollmentId, tenantId, subscriberId, courseId, bundleId, enrolledAt,
         accessMonths, enrolledAt, accessMonths,
-        policy.mode, policy.lectureLimit,
+        effective.mode, effective.lectureLimit,
         source, actor, branchId || subject.branch_id || 'branch-other']
     );
     if (changed) {
@@ -78,7 +97,7 @@ async function grantCourseEntitlement({
          (id,tenant_id,enrollment_id,subscriber_id,course_id,event_type,source,actor,meta_json)
          VALUES (?,?,?,?,?,'granted',?,?,?)`,
         [uuidv4(), tenantId, enrollmentId, subscriberId, courseId, source, actor,
-          JSON.stringify({ accessType: policy.mode, lectureLimit: policy.lectureLimit, bundleId })]
+          JSON.stringify({ accessType: effective.mode, lectureLimit: effective.lectureLimit, bundleId })]
       );
     }
     if (ownsConnection) await conn.commit();
