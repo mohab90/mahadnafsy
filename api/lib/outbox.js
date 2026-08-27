@@ -55,18 +55,62 @@ async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAUL
  * notifications that say nothing the campaign report does not already say
  * better.
  */
+// Faults that belong to the channel, not to the person being written to.
+//
+// The campaign exclusion below was meant to stop one bad run from burying the
+// inbox, but a channel outage does the same thing by a different route: every
+// message fails, every failure is its own notification. It happened — bad SMTP
+// credentials and a WhatsApp daily cap produced 4,610 delivery_failed notices,
+// 4,267 of them unread and 55% of every notification in the system, which
+// buried the lead and payment notices they sit next to.
+//
+// One notice per channel per hour says the same thing and leaves the inbox
+// usable. Per-recipient faults are excluded on purpose: an invalid number is
+// one customer to fix, and the rep who owns them should still hear about it.
+const SYSTEMIC_FAILURE = [
+  /authentication failed|Invalid login|535/i,
+  /daily_limit_reached/i,
+  /category_disabled/i,
+  /ETIMEDOUT|ENETUNREACH|ECONNREFUSED|Connection timeout/i,
+];
+
+function isSystemicFailure(message) {
+  const text = String(message || '');
+  return SYSTEMIC_FAILURE.some(pattern => pattern.test(text));
+}
+
+async function channelAlreadyAnnounced(tenantId, channel) {
+  try {
+    const [[recent]] = await pool.query(
+      `SELECT id FROM notifications
+        WHERE type=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+          AND data_json LIKE ? LIMIT 1`,
+      ['delivery_failed', `%"channelOutage":"${channel}"%`]
+    );
+    return !!recent;
+  } catch (lookupError) {
+    // If the check itself fails, announce. A duplicate notice beats silence.
+    logger.warn('[outbox] outage-notice lookup failed', lookupError.message);
+    return false;
+  }
+}
 async function announceDeadLetter(row, error) {
   if (row.ref_type === 'whatsapp_campaign' || row.ref_type === 'email_campaign' || row.ref_type === 'sms_campaign') {
     return;
   }
+  // A channel-level fault is announced once an hour, not once per message.
+  const systemic = isSystemicFailure(error?.message || error);
+  if (systemic && await channelAlreadyAnnounced(row.tenant_id, row.channel)) return;
   const { createNotification } = require('./notification');
   const recipient = String(row.recipient || '').slice(0, 40);
 
   // Find who owns this customer, so the person who will actually chase it is
   // the one who hears about it. Matched on the address the message went to.
+  // Skipped on an outage: the notice goes to everyone and names no customer,
+  // so neither lookup would be read.
   let staffId = null;
   let name = null;
-  try {
+  if (!systemic) try {
     const [[owner]] = await pool.query(
       `SELECT s.assigned_cs_id AS staff_id, s.name
          FROM subscribers s
@@ -92,13 +136,22 @@ async function announceDeadLetter(row, error) {
 
   const channelLabel = row.channel === 'email' ? 'إيميل'
     : row.channel === 'messenger' ? 'ماسنجر' : 'واتساب';
+  // On an outage the recipient is incidental — naming one customer reads as one
+  // customer's problem when every message is failing. Say what is actually wrong.
   await createNotification(
     'delivery_failed',
-    `⚠️ رسالة ${channelLabel} لم تصل`,
-    `${name ? `${name} — ` : ''}${recipient}: ${String(error?.message || error || '').slice(0, 140)}`,
-    { outboxId: row.id, channel: row.channel, recipient, refType: row.ref_type || null },
+    systemic
+      ? `⚠️ قناة ${channelLabel} متوقفة`
+      : `⚠️ رسالة ${channelLabel} لم تصل`,
+    systemic
+      ? `فشل الإرسال على القناة كلها: ${String(error?.message || error || '').slice(0, 140)}`
+      : `${name ? `${name} — ` : ''}${recipient}: ${String(error?.message || error || '').slice(0, 140)}`,
+    {
+      outboxId: row.id, channel: row.channel, recipient, refType: row.ref_type || null,
+      ...(systemic ? { channelOutage: row.channel } : {}),
+    },
     row.tenant_id,
-    staffId
+    systemic ? null : staffId,
   );
 }
 
@@ -231,4 +284,4 @@ async function drain(senders, limit = 20) {
   return sent;
 }
 
-module.exports = { enqueue, drain, MAX_ATTEMPTS, finalizeCampaign, announceDeadLetter };
+module.exports = { enqueue, drain, MAX_ATTEMPTS, finalizeCampaign, announceDeadLetter, isSystemicFailure };
