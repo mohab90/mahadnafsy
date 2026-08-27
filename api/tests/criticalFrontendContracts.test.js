@@ -303,6 +303,20 @@ test('subscriber profile and login credentials save in one transaction', () => {
   assert.match(subscribersRoute, /await conn\.commit\(\)/);
 });
 
+test('context reload functions are stable, so an effect can depend on one', () => {
+  const crm = read('admin/context/site-data-hooks/useCrmCoreState.ts');
+  const joinUsTab = read('admin/pages/dashboard/tabs/JoinUsAdminTab.tsx');
+  // JoinUsAdminTab refetches from an effect that depends on the reload function,
+  // which is what the exhaustive-deps rule asks for. When that function was a
+  // plain declaration the provider handed out a new reference every render, so
+  // the effect re-ran on its own result: about 13 requests a second to
+  // /api/admin/join-us for as long as the screen was open.
+  assert.ok(joinUsTab.includes('}, [reloadJoinUsApplications]);'), 'the applications tab refetches from an effect keyed on the reload function');
+  for (const fn of ['reloadLeads', 'reloadSubscribers', 'reloadOrders', 'reloadJoinUsApplications']) {
+    assert.ok(crm.includes(`const ${fn} = useCallback(async`), `${fn} must be memoised — an effect depending on it would loop`);
+  }
+});
+
 test('Dokki subscriber archival uses the canonical action and explicit permission', () => {
   const schedule = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
   const clientsTable = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');

@@ -57,7 +57,7 @@ export function useCrmCoreState(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const persistPaymentHistoryToCollection = (_subscriberId: string, _entries: SubscriberItem['paymentHistory']) => { /* PG-only */ };
 
-  const reloadLeads = async () => {
+  const reloadLeads = useCallback(async () => {
     try {
       const fresh = await mysqlAdmin.listAllLeads();
       const normalized = (fresh as unknown as LeadItem[]).map(l => ({
@@ -67,9 +67,9 @@ export function useCrmCoreState(
       leadsRef.current = normalized;
       setLeads(normalized);
     } catch { /* silent */ }
-  };
+  }, []);
 
-  const reloadSubscribers = async () => {
+  const reloadSubscribers = useCallback(async () => {
     try {
       const fresh = await mysqlAdmin.listAllSubscribers();
       const normalized = (fresh as unknown as SubscriberItem[]).map(s => ({
@@ -79,7 +79,7 @@ export function useCrmCoreState(
       subscribersRef.current = normalized;
       setSubscribers(normalized);
     } catch { /* caller keeps current state on a transient refresh failure */ }
-  };
+  }, []);
 
   const recordSubscriberPayment = async (
     subscriberId: string,
@@ -103,7 +103,7 @@ export function useCrmCoreState(
   // mutates status/linked_transfer_id server-side, so the client refetches
   // rather than trying to hand-roll the same normalization as an optimistic
   // update for a moderately complex financial state change.
-  const reloadOrders = async () => {
+  const reloadOrders = useCallback(async () => {
     try {
       const fresh = await mysqlAdmin.listAllOrders();
       const normalized = (fresh as unknown as Record<string, unknown>[]).map(r => ({
@@ -126,7 +126,7 @@ export function useCrmCoreState(
       }));
       setOrders(normalized as unknown as OrderItem[]);
     } catch { /* caller keeps current state on a transient refresh failure */ }
-  };
+  }, []);
 
   const addSubscriber = async (item: SubscriberItem): Promise<boolean> => {
     const currentSubs = subscribersRef.current;
@@ -416,7 +416,7 @@ export function useCrmCoreState(
   // session had already bootstrapped just never showed up short of a full
   // page reload, which is what the owner's report of freshly-submitted
   // applications "not appearing" traced back to.
-  const reloadJoinUsApplications = async (): Promise<void> => {
+  const reloadJoinUsApplications = useCallback(async (): Promise<void> => {
     try {
       const fresh = await mysqlAdmin.listAllJoinUs();
       const normalized = normalizeApplicants(fresh);
@@ -424,7 +424,7 @@ export function useCrmCoreState(
     } catch {
       // Best-effort — the last successfully loaded state stays visible.
     }
-  };
+  }, []);
 
   const addJoinUsApplication = async (item: JoinUsApplication): Promise<boolean> => {
     try {
