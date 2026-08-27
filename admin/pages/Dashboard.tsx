@@ -13,7 +13,7 @@ import { DASHBOARD_MENU_GROUPS, type TabKey } from './dashboard/navigation';
 import { branchMatchesFilter, branchSlugToFilter } from './dashboard/branchWorkspaceFilters';
 import { aboutPageFields, homeOfferFields, policySections } from './dashboard/contentFields';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { StaffPermission, ExtraCertificateType, OrderItem } from '../types';
+import { StaffPermission, OrderItem } from '../types';
 import { mysqlAdmin } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import {
@@ -59,9 +59,6 @@ import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
-import { compressInstituteGalleryFiles } from './dashboard/dashboardGallery';
-
-// --- Video URL obfuscation (protects YouTube IDs from plain-text storage) ---
 
 import {
   TAB_PERMISSION_MAP,
@@ -69,7 +66,6 @@ import {
   _normClientPhone,
   _normalizeAr,
   _normalizeClientDate,
-  type CertPricingMap,
 } from './dashboard/dashboardShared';
 import { realCourseIds } from './dashboard/tabs/leads/leadCourseLabel';
 
@@ -407,15 +403,6 @@ const Dashboard: React.FC = () => {
   // Content-field definitions extracted to ./dashboard/contentFields.ts (Dashboard decomposition, stage 1)
 
   const filteredContent = Object.entries(content).filter(([key, value]) => `${key} ${value}`.toLowerCase().includes(searchText.toLowerCase()));
-  const instituteGalleryImages = useMemo(() => {
-    const raw = content['institute.gallery.images'] || '[]';
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
-    } catch {
-      return [];
-    }
-  }, [content]);
 
   const {
     staffSelf,
@@ -620,20 +607,8 @@ const Dashboard: React.FC = () => {
 
   const exportFilteredOrdersCsv = (rows: OrderItem[]) => exportOrdersCsv(rows);
 
-  const saveInstituteGalleryImages = (images: string[]) => {
-    setContentValue('institute.gallery.images', JSON.stringify(images, null, 2));
-  };
 
-  const certPricingMap = useMemo<CertPricingMap>(() => {
-    try {
-      const parsed = JSON.parse(content['extra_cert_pricing'] || '{}');
-      return typeof parsed === 'object' && parsed !== null ? parsed : {};
-    } catch { return {}; }
-  }, [content]);
 
-  const saveCertPricingMap = (map: CertPricingMap) => {
-    setContentValue('extra_cert_pricing', JSON.stringify(map));
-  };
 
   // -- Content Hub sub-tab ---------------------------------------------------
   const [contentHubSubTab, setContentHubSubTab] = useState<TabKey>('home_offer');
@@ -641,21 +616,7 @@ const Dashboard: React.FC = () => {
   // -- Staff Profile Modal ----------------------------------------------------
 
   // -- Cert Requests filter state --------------------------------------------
-  const [certSearch, setCertSearch] = useState('');
-  const [certTypeFilter, setCertTypeFilter] = useState('all');
-  const [certStatusFilter, setCertStatusFilter] = useState('all');
 
-  const handleInstituteGalleryUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    try {
-      // Compress to max 600px wide, 65% quality — keeps each image ~15-30KB in base64
-      const uploaded = await compressInstituteGalleryFiles(files);
-      saveInstituteGalleryImages(Array.from(new Set([...instituteGalleryImages, ...uploaded])));
-      notify('success', 'تم رفع صور المعرض بنجاح.');
-    } catch {
-      notify('error', 'حدث خطأ أثناء رفع صور المعهد.');
-    }
-  };
 
 
   const handleSubPayment = async (draft: PaymentDraft) => {
@@ -823,22 +784,11 @@ const Dashboard: React.FC = () => {
                   offerSelectedCourseId={offerSelectedCourseId}
                   setOfferSelectedCourseId={setOfferSelectedCourseId}
                   instituteGalleryUploadRef={instituteGalleryUploadRef}
-                  handleInstituteGalleryUpload={handleInstituteGalleryUpload}
                   instituteGalleryUrlInput={instituteGalleryUrlInput}
                   setInstituteGalleryUrlInput={setInstituteGalleryUrlInput}
-                  instituteGalleryImages={instituteGalleryImages}
-                  saveInstituteGalleryImages={saveInstituteGalleryImages}
                   instituteBranches={instituteBranches}
-                  certPricingMap={certPricingMap}
-                  saveCertPricingMap={saveCertPricingMap}
                   subscribers={subscribers}
                   reloadSubscribers={reloadSubscribers}
-                  certSearch={certSearch}
-                  setCertSearch={setCertSearch}
-                  certTypeFilter={certTypeFilter as ExtraCertificateType | 'all'}
-                  setCertTypeFilter={setCertTypeFilter as React.Dispatch<React.SetStateAction<ExtraCertificateType | 'all'>>}
-                  certStatusFilter={certStatusFilter}
-                  setCertStatusFilter={setCertStatusFilter}
                 />
               </Suspense>
             )}
@@ -853,7 +803,6 @@ const Dashboard: React.FC = () => {
                   setLectureCourseId={setLectureCourseId}
                   subscriberCourseFilter={subscriberCourseFilter}
                   setSubscriberCourseFilter={setSubscriberCourseFilter}
-                  instituteGalleryImages={instituteGalleryImages}
                   policyDrafts={policyDrafts}
                   setPolicyDrafts={setPolicyDrafts}
                 />

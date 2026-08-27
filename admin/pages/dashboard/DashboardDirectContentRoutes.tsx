@@ -1,6 +1,7 @@
-import React, { Suspense, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import React, { Suspense, useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 
 import type { Course, ExtraCertificateType, SubscriberItem } from '../../types';
+import { compressInstituteGalleryFiles } from './dashboardGallery';
 import { DashboardContentHubAdvancedPanel } from './DashboardContentHubAdvancedPanel';
 import { DashboardHomeOfferPanel } from './DashboardHomeOfferPanel';
 import { DashboardInstituteGalleryPanel } from './DashboardInstituteGalleryPanel';
@@ -54,22 +55,11 @@ interface DashboardDirectContentRoutesProps {
   offerSelectedCourseId: string;
   setOfferSelectedCourseId: Dispatch<SetStateAction<string>>;
   instituteGalleryUploadRef: RefObject<HTMLInputElement | null>;
-  handleInstituteGalleryUpload: (files: FileList | null) => void | Promise<void>;
   instituteGalleryUrlInput: string;
   setInstituteGalleryUrlInput: Dispatch<SetStateAction<string>>;
-  instituteGalleryImages: string[];
-  saveInstituteGalleryImages: (images: string[]) => void;
   instituteBranches: InstituteBranch[];
-  certPricingMap: CertPricingMap;
-  saveCertPricingMap: (map: CertPricingMap) => void;
   subscribers: SubscriberItem[];
   reloadSubscribers: () => Promise<void>;
-  certSearch: string;
-  setCertSearch: Dispatch<SetStateAction<string>>;
-  certTypeFilter: ExtraCertificateType | 'all';
-  setCertTypeFilter: Dispatch<SetStateAction<ExtraCertificateType | 'all'>>;
-  certStatusFilter: string;
-  setCertStatusFilter: Dispatch<SetStateAction<string>>;
 }
 
 export function DashboardDirectContentRoutes({
@@ -98,23 +88,56 @@ export function DashboardDirectContentRoutes({
   offerSelectedCourseId,
   setOfferSelectedCourseId,
   instituteGalleryUploadRef,
-  handleInstituteGalleryUpload,
   instituteGalleryUrlInput,
   setInstituteGalleryUrlInput,
-  instituteGalleryImages,
-  saveInstituteGalleryImages,
   instituteBranches,
-  certPricingMap,
-  saveCertPricingMap,
   subscribers,
   reloadSubscribers,
-  certSearch,
-  setCertSearch,
-  certTypeFilter,
-  setCertTypeFilter,
-  certStatusFilter,
-  setCertStatusFilter,
 }: DashboardDirectContentRoutesProps) {
+  // Derived from the content map and written back through it, rather than
+  // computed one level up and passed down: nothing outside these routes reads
+  // any of it, and both values are just JSON parked in a content key.
+  const instituteGalleryImages = useMemo(() => {
+    const raw = content['institute.gallery.images'] || '[]';
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+    } catch {
+      return [];
+    }
+  }, [content]);
+
+  const saveInstituteGalleryImages = (images: string[]) => {
+    setContentValue('institute.gallery.images', JSON.stringify(images, null, 2));
+  };
+
+  const handleInstituteGalleryUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    try {
+      // Compress to max 600px wide, 65% quality — keeps each image ~15-30KB in base64
+      const uploaded = await compressInstituteGalleryFiles(files);
+      saveInstituteGalleryImages(Array.from(new Set([...instituteGalleryImages, ...uploaded])));
+      notify('success', 'تم رفع صور المعرض بنجاح.');
+    } catch {
+      notify('error', 'حدث خطأ أثناء رفع صور المعهد.');
+    }
+  };
+
+  const certPricingMap = useMemo<CertPricingMap>(() => {
+    try {
+      const parsed = JSON.parse(content['extra_cert_pricing'] || '{}');
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch { return {}; }
+  }, [content]);
+
+  const saveCertPricingMap = (map: CertPricingMap) => {
+    setContentValue('extra_cert_pricing', JSON.stringify(map));
+  };
+
+  const [certSearch, setCertSearch] = useState('');
+  const [certTypeFilter, setCertTypeFilter] = useState('all');
+  const [certStatusFilter, setCertStatusFilter] = useState('all');
+
   return (
     <>
       {activeTab === 'content' && (

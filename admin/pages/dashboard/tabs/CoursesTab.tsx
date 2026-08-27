@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
@@ -55,7 +55,6 @@ interface Props {
   setLectureCourseId: (id: string) => void;
   subscriberCourseFilter: string;
   setSubscriberCourseFilter: (id: string) => void;
-  instituteGalleryImages: string[];
   policyDrafts: Record<string, string>;
   setPolicyDrafts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
@@ -64,7 +63,6 @@ export default function CoursesTab({
   notify, activeTab, setActiveTab,
   lectureCourseId, setLectureCourseId,
   subscriberCourseFilter: _scf, setSubscriberCourseFilter,
-  instituteGalleryImages,
   policyDrafts, setPolicyDrafts,
 }: Props) {
   void _scf;
@@ -76,8 +74,21 @@ export default function CoursesTab({
     
     subscribers,
     
+    content,
     isAdmin,
   } = useSiteData();
+
+  // The same content key Dashboard used to parse and hand down. Parsed where it
+  // is read instead, so the value has one owner per reader rather than a prop
+  // threaded through two screens.
+  const instituteGalleryImages = useMemo<string[]>(() => {
+    try {
+      const parsed = JSON.parse(content['institute.gallery.images'] || '[]');
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+    } catch {
+      return [];
+    }
+  }, [content]);
 
   // ── State ───────────────────────────────────────────────────────────────
   const [editingCourseId, setEditingCourseId] = useState('');
