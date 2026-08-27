@@ -1,4 +1,4 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { UserPlus, X } from 'lucide-react';
 import type { Bundle, Course, PaymentItemType } from '../../../../types';
 import { parsePaymentMethods } from '../../../../lib/paymentMethods';
@@ -19,6 +19,17 @@ export interface DaqqiNewClientDraft {
   bookingType: 'new_booking' | 'installment';
 }
 
+// One blank draft, next to the shape it fills. The parent used to spell this
+// out three times: the initial state, the reset after a save, and the reset on
+// open.
+export const blankNewClientDraft = (): DaqqiNewClientDraft => ({
+  name: '', phone: '', email: '', courseIds: [],
+  paymentType: 'course',
+  courseExpected: '', amount: '', currency: 'EGP',
+  paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '',
+  bookingType: 'new_booking',
+});
+
 export interface DaqqiNewClientReceipt {
   name: string;
   phone: string;
@@ -35,10 +46,9 @@ interface NewClientModalProps {
   content: Record<string, string>;
   courses: Course[];
   bundles: Bundle[];
-  draft: DaqqiNewClientDraft;
-  setDraft: React.Dispatch<React.SetStateAction<DaqqiNewClientDraft>>;
+
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (draft: DaqqiNewClientDraft) => void;
 }
 
 export function DaqqiNewClientModal({
@@ -46,14 +56,18 @@ export function DaqqiNewClientModal({
   content,
   courses,
   bundles,
-  draft,
-  setDraft,
+
   onClose,
   onSubmit,
 }: NewClientModalProps) {
   if (!open) return null;
 
   const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
+  const [draft, setDraft] = useState<DaqqiNewClientDraft>(blankNewClientDraft);
+
+  // A fresh form each time it opens; the old one used to reopen half-filled.
+  useEffect(() => { if (open) setDraft(blankNewClientDraft()); }, [open]);
+
   const hasPayment = !!draft.amount && Number(draft.amount) > 0;
 
   return (
@@ -239,7 +253,7 @@ export function DaqqiNewClientModal({
           )}
 
           <div className="flex gap-3 pb-2">
-            <button onClick={onSubmit}
+            <button onClick={() => onSubmit(draft)}
               disabled={!draft.name.trim() || !draft.phone.trim()}
               className="flex-1 py-3.5 bg-gradient-to-l from-red-700 to-red-500 text-white rounded-2xl text-sm font-extrabold hover:from-red-800 hover:to-red-600 disabled:opacity-40 transition-all shadow-sm flex items-center justify-center gap-2">
               <UserPlus size={16} /> إضافة العميل

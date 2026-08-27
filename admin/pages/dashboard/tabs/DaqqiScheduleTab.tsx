@@ -154,16 +154,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const [daqqiToskeenSubId, setDaqqiToskeenSubId] = useState<string | null>(null);
   const [daqqiToskeenTargetRoundId, setDaqqiToskeenTargetRoundId] = useState('');
   const [daqqiCommModal, setDaqqiCommModal] = useState<{ subscriberId: string; subscriberName: string; phone: string } | null>(null);
-  const [daqqiCommType, setDaqqiCommType] = useState<CommunicationRecord['type']>('call');
-  const [daqqiCommNote, setDaqqiCommNote] = useState('');
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
-  const [daqqiNewClientDraft, setDaqqiNewClientDraft] = useState<DaqqiNewClientDraft>({
-    name: '', phone: '', email: '', courseIds: [] as string[],
-    paymentType: 'course' as PaymentItemType,
-    courseExpected: '', amount: '', currency: 'EGP' as 'EGP' | 'SAR' | 'USD',
-    paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '',
-    bookingType: 'new_booking' as 'new_booking' | 'installment',
-  });
   const [daqqiNewClientPrintReceipt, setDaqqiNewClientPrintReceipt] = useState<DaqqiNewClientReceipt | null>(null);
 
   const daqqiBranchIds = parseDaqqiBranchIds(content);
@@ -503,37 +494,36 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
-  const handleDaqqiAddComm = async () => {
-    if (!daqqiCommModal || !daqqiCommNote.trim()) return;
+  const handleDaqqiAddComm = async (type: CommunicationRecord['type'], note: string) => {
+    if (!daqqiCommModal || !note.trim()) return;
     const sub = subscribers.find(s => s.id === daqqiCommModal.subscriberId);
     if (!sub) return;
     const rec: CommunicationRecord = {
-      id: `dq-comm-${Date.now()}`, type: daqqiCommType,
-      date: new Date().toISOString().slice(0, 10), notes: daqqiCommNote.trim(),
+      id: `dq-comm-${Date.now()}`, type,
+      date: new Date().toISOString().slice(0, 10), notes: note.trim(),
     };
     const saved = await updateSubscriber({ ...sub, communications: [...(sub.communications ?? []), rec] });
     if (!saved) {
       notify('error', 'فشل تسجيل التواصل. لم يتم اعتماد التغيير.');
       return;
     }
-    setDaqqiCommNote('');
     notify('success', 'تم تسجيل التواصل بنجاح.');
   };
 
-  const handleDaqqiAddNewClient = async () => {
-    if (!daqqiNewClientDraft.name.trim() || !daqqiNewClientDraft.phone.trim()) {
+  const handleDaqqiAddNewClient = async (draft: DaqqiNewClientDraft) => {
+    if (!draft.name.trim() || !draft.phone.trim()) {
       notify('error', 'الاسم والهاتف مطلوبان.');
       return;
     }
-    const amount = Number(daqqiNewClientDraft.amount);
-    const courseIds = daqqiNewClientDraft.courseIds;
+    const amount = Number(draft.amount);
+    const courseIds = draft.courseIds;
     const courseAccessMap: Record<string, { mode: 'full' }> = {};
     courseIds.forEach(cid => { courseAccessMap[cid] = { mode: 'full' }; });
     const newSub: any = {
       id: `daqqi-client-${Date.now()}`,
-      name: daqqiNewClientDraft.name.trim(),
-      phone: daqqiNewClientDraft.phone.trim(),
-      email: daqqiNewClientDraft.email.trim(),
+      name: draft.name.trim(),
+      phone: draft.phone.trim(),
+      email: draft.email.trim(),
       branch: 'daqqi',
       status: 'active' as const,
       enrolledCourseIds: courseIds,
@@ -546,13 +536,13 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       const entry: PaymentHistoryEntry = {
         id: `dq-pay-${Date.now()}`,
         amount,
-        currency: daqqiNewClientDraft.currency,
-        paymentType: daqqiNewClientDraft.paymentType,
-        isInstallment: daqqiNewClientDraft.bookingType === 'installment',
-        courseId: daqqiNewClientDraft.paymentType === 'course' ? (courseIds[0] || '') : '',
-        note: [daqqiNewClientDraft.note, daqqiNewClientDraft.transactionId].filter(Boolean).join(' | ') || undefined,
-        paymentMethod: daqqiNewClientDraft.paymentMethod || undefined,
-        at: daqqiNewClientDraft.date,
+        currency: draft.currency,
+        paymentType: draft.paymentType,
+        isInstallment: draft.bookingType === 'installment',
+        courseId: draft.paymentType === 'course' ? (courseIds[0] || '') : '',
+        note: [draft.note, draft.transactionId].filter(Boolean).join(' | ') || undefined,
+        paymentMethod: draft.paymentMethod || undefined,
+        at: draft.date,
       };
       newSub.paymentHistory = [entry];
     }
@@ -574,8 +564,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
     notify('success', 'تم إضافة العميل بنجاح.');
     // Show print receipt if payment was made
-    if (Number(daqqiNewClientDraft.amount) > 0) {
-      const courseLabels = daqqiNewClientDraft.courseIds.map(cid => {
+    if (Number(draft.amount) > 0) {
+      const courseLabels = draft.courseIds.map(cid => {
         if (cid.startsWith('bundle:')) {
           const b = bundles.find(bx => bx.id === cid.replace('bundle:', ''));
           return b?.title || cid;
@@ -584,24 +574,17 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         return c?.titleAr || c?.title || cid;
       });
       setDaqqiNewClientPrintReceipt({
-        name: daqqiNewClientDraft.name.trim(),
-        phone: daqqiNewClientDraft.phone.trim(),
+        name: draft.name.trim(),
+        phone: draft.phone.trim(),
         courses: courseLabels,
-        amount: Number(daqqiNewClientDraft.amount),
-        currency: daqqiNewClientDraft.currency,
-        method: daqqiNewClientDraft.paymentMethod || '—',
-        bookingType: daqqiNewClientDraft.bookingType,
-        date: daqqiNewClientDraft.date,
+        amount: Number(draft.amount),
+        currency: draft.currency,
+        method: draft.paymentMethod || '—',
+        bookingType: draft.bookingType,
+        date: draft.date,
       });
     }
     setDaqqiAddClientModal(false);
-    setDaqqiNewClientDraft({
-      name: '', phone: '', email: '', courseIds: [],
-      paymentType: 'course',
-      courseExpected: '', amount: '', currency: 'EGP',
-      paymentMethod: '', transactionId: '', date: new Date().toISOString().slice(0, 10), note: '',
-      bookingType: 'new_booking',
-    });
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -620,12 +603,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         }}
         onAddClient={() => {
           setDaqqiAddClientModal(true);
-          setDaqqiNewClientDraft({
-            name: '', phone: '', email: '', courseIds: [], paymentType: 'course',
-            courseExpected: '', amount: '', currency: 'EGP', paymentMethod: '',
-            transactionId: '', date: new Date().toISOString().slice(0, 10),
-            note: '', bookingType: 'new_booking',
-          });
         }}
       />
 
@@ -1213,8 +1190,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         content={content}
         courses={courses}
         bundles={bundles}
-        draft={daqqiNewClientDraft}
-        setDraft={setDaqqiNewClientDraft}
         onClose={() => setDaqqiAddClientModal(false)}
         onSubmit={handleDaqqiAddNewClient}
       />
@@ -1294,10 +1269,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       />
       <DaqqiCommunicationModal
         target={daqqiCommModal}
-        type={daqqiCommType}
-        note={daqqiCommNote}
-        setType={setDaqqiCommType}
-        setNote={setDaqqiCommNote}
         onClose={() => setDaqqiCommModal(null)}
         onSubmit={handleDaqqiAddComm}
       />

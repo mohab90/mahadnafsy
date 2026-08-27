@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { MessageCircle, Phone, X } from 'lucide-react';
 import type { CommunicationRecord } from '../../../../types';
 import { toDialable } from '../../../../lib/whatsappLink';
@@ -10,12 +11,8 @@ export interface DaqqiCommunicationTarget {
 
 interface Props {
   target: DaqqiCommunicationTarget | null;
-  type: CommunicationRecord['type'];
-  note: string;
-  setType: (type: CommunicationRecord['type']) => void;
-  setNote: (note: string) => void;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (type: CommunicationRecord['type'], note: string) => void;
 }
 
 const communicationTypes: Array<{ value: CommunicationRecord['type']; label: string }> = [
@@ -27,7 +24,14 @@ const communicationTypes: Array<{ value: CommunicationRecord['type']; label: str
   { value: 'payment_followup', label: '💰 متابعة دفع' },
 ];
 
-export function DaqqiCommunicationModal({ target, type, note, setType, setNote, onClose, onSubmit }: Props) {
+export function DaqqiCommunicationModal({ target, onClose, onSubmit }: Props) {
+  const [type, setType] = useState<CommunicationRecord['type']>('call');
+  const [note, setNote] = useState('');
+
+  // Reset when the modal points at a different client. Without this the next
+  // client opened with the previous one's half-typed note still in the box.
+  useEffect(() => { setType('call'); setNote(''); }, [target?.subscriberId]);
+
   if (!target) return null;
 
   return (
@@ -74,7 +78,7 @@ export function DaqqiCommunicationModal({ target, type, note, setType, setNote, 
           </div>
         </div>
         <div className="flex gap-3 mt-5">
-          <button onClick={onSubmit} disabled={!note.trim()}
+          <button onClick={() => onSubmit(type, note)} disabled={!note.trim()}
             className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 disabled:opacity-40 transition">
             تسجيل التواصل
           </button>
