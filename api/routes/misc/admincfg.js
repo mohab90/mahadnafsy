@@ -163,35 +163,49 @@ router.post('/api/admin/staff/:id/set-password', requireAuth, requireSuperAdmin,
 
 // POST /api/admin/staff/:id/toggle-active — enable/disable staff login
 router.post('/api/admin/staff/:id/toggle-active', requireAuth, requireSuperAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
   try {
-    const [[staff]] = await pool.query('SELECT id, is_active, email FROM staff WHERE id=? AND tenant_id=? LIMIT 1', [req.params.id, req.tenantId]);
-    if (!staff) return res.status(404).json({ error: 'Not found' });
+    await conn.beginTransaction();
+    // Locked while read: two clicks would otherwise both act on the same value.
+    const [[staff]] = await conn.query('SELECT id, is_active, email FROM staff WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE', [req.params.id, req.tenantId]);
+    if (!staff) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Not found' });
+    }
     const newActive = staff.is_active ? 0 : 1;
-    await pool.query('UPDATE staff SET is_active=? WHERE id=? AND tenant_id=?', [newActive, req.params.id, req.tenantId]);
-    // Also update users table
-    await pool.query(
+    await conn.query('UPDATE staff SET is_active=? WHERE id=? AND tenant_id=?', [newActive, req.params.id, req.tenantId]);
+    // This is the write that actually revokes access. It used to be able to
+    // fail on its own, leaving someone inactive in the directory and still
+    // able to sign in.
+    await conn.query(
       'UPDATE users SET is_active=?, session_version=session_version+1 WHERE tenant_id=? AND email=?',
       [newActive, req.tenantId, staff.email]
     );
-    invalidateIdentity(req.tenantId, '', staff.email);
-    // When deactivating: un-assign all leads and subscribers so they go to the pool
+    // Unassigning is part of the same decision, so it commits or rolls back
+    // with it. These used to swallow their errors and still answer ok, which
+    // left clients assigned to someone who no longer works here.
     if (!newActive) {
-      await pool.query(
+      await conn.query(
         'UPDATE leads SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE tenant_id=? AND assigned_sales_id=?',
         [req.tenantId, staff.id]
-      ).catch(() => {});
-      await pool.query(
+      );
+      await conn.query(
         'UPDATE subscribers SET assigned_sales_id=NULL, assigned_sales_name=NULL WHERE tenant_id=? AND assigned_sales_id=?',
         [req.tenantId, staff.id]
-      ).catch(() => {});
-      await pool.query(
+      );
+      await conn.query(
         'UPDATE subscribers SET assigned_cs_id=NULL, assigned_cs_name=NULL WHERE tenant_id=? AND assigned_cs_id=?',
         [req.tenantId, staff.id]
-      ).catch(() => {});
-      logger.info(`[staff] deactivated ${staff.id} — leads and subscribers unassigned`);
+      );
     }
+    await conn.commit();
+    invalidateIdentity(req.tenantId, '', staff.email);
+    if (!newActive) logger.info(`[staff] deactivated ${staff.id} — leads and subscribers unassigned`);
     res.json({ ok: true, is_active: !!newActive });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    res.status(500).json({ error: 'Internal server error' });
+  } finally { conn.release(); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

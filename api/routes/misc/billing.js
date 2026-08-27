@@ -149,14 +149,13 @@ router.post('/api/admin/subscriptions', requireAuth, requireAdmin, async (req, r
 // ═══════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/payments/:id/invoice-html  — returns a printable HTML invoice
-// Supports ?token=... query param for direct browser access
-router.get('/api/admin/payments/:id/invoice-html', async (req, res, next) => {
-  // Allow token via query param for direct browser link (invoice printing)
-  if (req.query.token && !req.headers.authorization) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  next();
-}, requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
+// The token is read from the Authorization header only. A ?token= query
+// parameter used to be copied into that header so a bare browser link would
+// print — but nothing ever built such a link, and a session token in a URL
+// ends up in browser history, proxy logs and the Referer of anything the page
+// loads.
+router.get('/api/admin/payments/:id/invoice-html',
+  requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const [[payment]] = await pool.query(
       `SELECT p.*, s.name AS client_name, s.phone AS client_phone, s.email AS client_email,
