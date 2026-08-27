@@ -149,10 +149,8 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     setDaqqiPayPrintData,
   } = useDaqqiPaymentState();
   const [daqqiTransferModal, setDaqqiTransferModal] = useState<{ subscriberId: string; fromRoundId: string } | null>(null);
-  const [daqqiTransferTargetId, setDaqqiTransferTargetId] = useState('');
   const [daqqiPostponeModal, setDaqqiPostponeModal] = useState<{ roundId: string; newDate: string } | null>(null);
   const [daqqiToskeenSubId, setDaqqiToskeenSubId] = useState<string | null>(null);
-  const [daqqiToskeenTargetRoundId, setDaqqiToskeenTargetRoundId] = useState('');
   const [daqqiCommModal, setDaqqiCommModal] = useState<{ subscriberId: string; subscriberName: string; phone: string } | null>(null);
   const [daqqiAddClientModal, setDaqqiAddClientModal] = useState(false);
   const [daqqiNewClientPrintReceipt, setDaqqiNewClientPrintReceipt] = useState<DaqqiNewClientReceipt | null>(null);
@@ -408,7 +406,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     notify('success', 'تم تعديل تاريخ بداية الروند.');
   };
 
-  const handleDaqqiToskeen = async () => {
+  const handleDaqqiToskeen = async (daqqiToskeenTargetRoundId: string) => {
     if (!daqqiToskeenSubId || !daqqiToskeenTargetRoundId) { notify('error', 'اختر العميل والروند أولاً.'); return; }
     const sub = subscribers.find(s => s.id === daqqiToskeenSubId);
     const round = daqqiRounds.find(r => r.id === daqqiToskeenTargetRoundId);
@@ -436,11 +434,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       return;
     }
     setDaqqiToskeenSubId(null);
-    setDaqqiToskeenTargetRoundId('');
     notify('success', 'تم تسكين العميل في الروند بنجاح.');
   };
 
-  const handleDaqqiTransfer = async () => {
+  const handleDaqqiTransfer = async (daqqiTransferTargetId: string) => {
     if (!daqqiTransferModal || !daqqiTransferTargetId) return;
     const fromRound = daqqiRounds.find(r => r.id === daqqiTransferModal.fromRoundId);
     const toRound = daqqiRounds.find(r => r.id === daqqiTransferTargetId);
@@ -455,7 +452,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       return;
     }
     setDaqqiTransferModal(null);
-    setDaqqiTransferTargetId('');
     notify('success', 'تم نقل العميل بنجاح.');
   };
 
@@ -836,7 +832,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                                                 <button onClick={e => { e.stopPropagation(); window.open(`https://wa.me/${toDialable(a.phone)}`, '_blank'); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-teal-50 hover:text-teal-600 flex items-center justify-center transition" title="واتساب"><MessageCircle size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); setDaqqiPayModal({ subscriberId: a.subscriberId, subscriberName: a.name, roundId: round.id, attendeeAmountPaid: a.amountPaid }); resetDaqqiPayDraft({ courseId: round.courseId || '' }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-green-50 hover:text-green-600 flex items-center justify-center transition" title="تسجيل دفعة"><CreditCard size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); const s = subscribers.find(x => x.id === a.subscriberId); navigate(`/client/${s?.clientCode || a.subscriberId}`); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="عرض الملف"><Eye size={12} /></button>
-                                                <button onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); setDaqqiTransferTargetId(''); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="نقل لروند أخرى"><ArrowLeftRight size={12} /></button>
+                                                <button onClick={e => { e.stopPropagation(); setDaqqiTransferModal({ subscriberId: a.subscriberId, fromRoundId: round.id }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="نقل لروند أخرى"><ArrowLeftRight size={12} /></button>
                                                 <button onClick={e => { e.stopPropagation(); handleRemoveAttendeeFromRound(round.id, a.subscriberId); }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف من الروند"><X size={12} /></button>
                                               </div>
                                             </td>
@@ -1237,23 +1233,19 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
 
       <DaqqiTransferRoundModal
         modal={daqqiTransferModal}
-        targetId={daqqiTransferTargetId}
-        setTargetId={setDaqqiTransferTargetId}
         rounds={daqqiRounds}
         subscribers={subscribers}
         courses={courses}
-        onClose={() => { setDaqqiTransferModal(null); setDaqqiTransferTargetId(''); }}
+        onClose={() => setDaqqiTransferModal(null)}
         onConfirm={handleDaqqiTransfer}
       />
 
       <DaqqiToskeenRoundModal
         subscriberId={daqqiToskeenSubId}
-        targetRoundId={daqqiToskeenTargetRoundId}
-        setTargetRoundId={setDaqqiToskeenTargetRoundId}
         rounds={daqqiRounds}
         subscribers={subscribers}
         courses={courses}
-        onClose={() => { setDaqqiToskeenSubId(null); setDaqqiToskeenTargetRoundId(''); }}
+        onClose={() => setDaqqiToskeenSubId(null)}
         onConfirm={handleDaqqiToskeen}
       />
 

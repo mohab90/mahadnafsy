@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import React from 'react';
 import { ArrowLeftRight, BookOpen, X } from 'lucide-react';
 
@@ -21,25 +22,26 @@ const courseTitle = (courses: Course[], courseId?: string) => {
 
 interface TransferModalProps {
   modal: DaqqiTransferModalState;
-  targetId: string;
-  setTargetId: (id: string) => void;
   rounds: DaqqiRound[];
   subscribers: SubscriberItem[];
   courses: Course[];
   onClose: () => void;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: (targetId: string) => void | Promise<void>;
 }
 
 export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
   modal,
-  targetId,
-  setTargetId,
   rounds,
   subscribers,
   courses,
   onClose,
   onConfirm,
 }) => {
+  const [targetId, setTargetId] = useState('');
+
+  // A fresh selection each time the modal opens on a different transfer.
+  useEffect(() => { setTargetId(''); }, [modal?.subscriberId, modal?.fromRoundId]);
+
   if (!modal) return null;
   const fromRound = rounds.find(r => r.id === modal.fromRoundId);
   const subscriber = subscribers.find(s => s.id === modal.subscriberId);
@@ -78,7 +80,7 @@ export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
         </div>
         <div className="flex gap-3">
           <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-          <button onClick={onConfirm} disabled={!targetId} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">تأكيد النقل</button>
+          <button onClick={() => onConfirm(targetId)} disabled={!targetId} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">تأكيد النقل</button>
         </div>
       </div>
     </div>
@@ -87,25 +89,26 @@ export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
 
 interface ToskeenModalProps {
   subscriberId: string | null;
-  targetRoundId: string;
-  setTargetRoundId: (id: string) => void;
   rounds: DaqqiRound[];
   subscribers: SubscriberItem[];
   courses: Course[];
   onClose: () => void;
-  onConfirm: () => void | Promise<void>;
+  onConfirm: (targetRoundId: string) => void | Promise<void>;
 }
 
 export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
   subscriberId,
-  targetRoundId,
-  setTargetRoundId,
   rounds,
   subscribers,
   courses,
   onClose,
   onConfirm,
 }) => {
+  const [targetRoundId, setTargetRoundId] = useState('');
+
+  // A fresh selection each time the modal opens on a different client.
+  useEffect(() => { setTargetRoundId(''); }, [subscriberId]);
+
   if (!subscriberId) return null;
   const subscriber = subscribers.find(s => s.id === subscriberId);
   const available = rounds.filter(r => !r.attendees.find(a => a.subscriberId === subscriberId));
@@ -174,7 +177,7 @@ export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
         </div>
         <div className="flex gap-3">
           <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
-          <button onClick={onConfirm} disabled={!targetRoundId} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">تأكيد التسكين</button>
+          <button onClick={() => onConfirm(targetRoundId)} disabled={!targetRoundId} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">تأكيد التسكين</button>
         </div>
       </div>
     </div>
