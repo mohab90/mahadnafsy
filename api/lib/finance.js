@@ -57,7 +57,14 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
     && !String(v).startsWith('0000-00-00')
     && !Number.isNaN(Date.parse(v));
 
-  const date = (entryDate instanceof Date ? entryDate.toISOString() : String(entryDate || '')).slice(0, 10);
+  // toISOString() renders in UTC, so a Date carrying a Cairo-local midnight
+  // came out as the previous day and the entry was filed 24 hours early. The
+  // server runs UTC and never saw it; a backfill run from a developer machine
+  // in June and July did, and put 179 of these one day before their payment.
+  // Reading the parts in Africa/Cairo is correct from either process timezone.
+  const date = entryDate instanceof Date
+    ? dateOnlyInTimeZone(entryDate)
+    : String(entryDate || '').slice(0, 10);
   const normalizedLines = Array.isArray(lines) ? lines.map(line => ({
     account_code: String(line?.account_code || '').trim(),
     account_name: String(line?.account_name || '').trim(),
