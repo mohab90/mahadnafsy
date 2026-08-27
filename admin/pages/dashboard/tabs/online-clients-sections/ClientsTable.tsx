@@ -13,6 +13,7 @@ import { createClientPaymentDraft } from '../../../../lib/clientActionDrafts';
 import { ClientCourseAccessPanel } from './ClientCourseAccessPanel';
 import { currencyForBranch } from '../../../../lib/branchCurrency';
 import { type SubscriberWithCustomPrices } from '../onlineClientsUtils';
+import ClientNameCell from './ClientNameCell';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type SubContactDraft = {
@@ -356,19 +357,7 @@ export function ClientsTable({
                   }} />
                 </td>
                 <td className="px-2 py-2 border border-gray-200">
-                  <div className="min-w-0">
-                    {(() => {
-                      const isEnglish = /^[a-zA-Z\s]+$/.test(row.name.trim());
-                      const displayName = isEnglish ? row.name.trim().split(/\s+/).slice(0,2).join(' ') : row.name;
-                      return <button onClick={()=>navigate(`/client/${clientCode}`)} className="font-bold text-gray-800 hover:text-primary-700 text-[11px] block truncate max-w-[110px]" dir={isEnglish?'ltr':'rtl'}>{displayName}</button>;
-                    })()}
-                    <a href={`tel:${row.phone}`} className="text-xs font-semibold text-blue-600">{row.phone}</a>
-                    {row.clientStatus && row.clientStatus !== 'active' && (() => {
-                      const csBadge: Record<string,string> = {finished:'bg-green-100 text-green-700',paused:'bg-amber-100 text-amber-700',refunded:'bg-red-100 text-red-700',refund_pending:'bg-orange-100 text-orange-700',leads:'bg-purple-100 text-purple-700'};
-                      const csLabel: Record<string,string> = {finished:'✅ منتهي',paused:'⏸ متوقف',refunded:'↩️ مسترد',refund_pending:'⏳ استرداد معلق',leads:'👥 محتمل'};
-                      return <span className={`inline-block mt-0.5 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${csBadge[row.clientStatus]||'bg-gray-100 text-gray-500'}`}>{csLabel[row.clientStatus]||row.clientStatus}</span>;
-                    })()}
-                  </div>
+                  <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                 </td>
                 {vc.createdAt  && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{(row.createdAt||'').slice(0,10)||'—'}</td>}
                 {vc.courses    && <td className="px-3 py-2 border border-gray-200 text-xs text-gray-400">لا يوجد</td>}
@@ -431,19 +420,7 @@ export function ClientsTable({
                   )}
                   {ci === 0 && (
                     <td rowSpan={rowSpan} className="px-2 py-2 border border-gray-200 align-top">
-                      <div className="min-w-0">
-                        {(() => {
-                          const isEnglish = /^[a-zA-Z\s]+$/.test(row.name.trim());
-                          const displayName = isEnglish ? row.name.trim().split(/\s+/).slice(0,2).join(' ') : row.name;
-                          return <button onClick={()=>navigate(`/client/${clientCode}`)} className="font-bold text-gray-800 hover:text-primary-700 text-[11px] block truncate max-w-[110px]" dir={isEnglish?'ltr':'rtl'}>{displayName}</button>;
-                        })()}
-                        <a href={`tel:${row.phone}`} className="text-xs font-semibold text-blue-600">{row.phone}</a>
-                        {row.clientStatus && row.clientStatus !== 'active' && (() => {
-                          const csBadge: Record<string,string> = {finished:'bg-green-100 text-green-700',paused:'bg-amber-100 text-amber-700',refunded:'bg-red-100 text-red-700',refund_pending:'bg-orange-100 text-orange-700',leads:'bg-purple-100 text-purple-700'};
-                          const csLabel: Record<string,string> = {finished:'✅ منتهي',paused:'⏸ متوقف',refunded:'↩️ مسترد',refund_pending:'⏳ استرداد معلق',leads:'👥 محتمل'};
-                          return <span className={`inline-block mt-0.5 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${csBadge[row.clientStatus]||'bg-gray-100 text-gray-500'}`}>{csLabel[row.clientStatus]||row.clientStatus}</span>;
-                        })()}
-                      </div>
+                      <ClientNameCell row={row} clientCode={clientCode} navigate={navigate} />
                     </td>
                   )}
                   {vc.createdAt && <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{crFirstPayDate||'—'}</td>}
