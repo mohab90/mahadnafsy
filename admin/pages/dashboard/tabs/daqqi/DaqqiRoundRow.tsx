@@ -19,6 +19,7 @@ type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export function DaqqiRoundRow({
   round,
+  isAdmin,
   resetDaqqiPayDraft,
   deleteDaqqiRound,
   navigate,
@@ -40,6 +41,7 @@ export function DaqqiRoundRow({
   doUpdateRound,
   notify,
 }: {
+  isAdmin: boolean;
   resetDaqqiPayDraft: (overrides?: Partial<DaqqiPayDraft>) => void;
   setDaqqiCommModal: (value: { subscriberId: string; subscriberName: string; phone: string } | null) => void;
   setDaqqiToskeenSubId: (id: string | null) => void;
@@ -135,11 +137,11 @@ export function DaqqiRoundRow({
                           </td>
                           <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
                             <div className="flex flex-col gap-0.5 min-w-[100px]">
-                              <div className="grid grid-cols-4 gap-0.5">
+                              <div className={`grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} gap-0.5`}>
                                 <button onClick={() => { setDaqqiAddClientsRoundId(round.id); setDaqqiAddClientsSel(new Set()); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center transition" title="+ عملاء"><UserPlus size={12} /></button>
                                 <button onClick={() => { setDaqqiEditRoundId(round.id); setDaqqiEditDraft({ courseId: round.courseId, instructorId: round.instructorId, receptionId: round.receptionId, roomId: round.room || round.roomName || round.roomId || '', dayOfWeek: round.dayOfWeek, startDate: round.startDate, timeSlot: round.timeSlot }); }} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-amber-50 hover:text-amber-600 flex items-center justify-center transition" title="تعديل"><Pencil size={12} /></button>
                                 <button onClick={() => setDaqqiPostponeModal({ roundId: round.id, newDate: round.startDate })} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition" title="تأجيل موعد"><CalendarDays size={12} /></button>
-                                <button onClick={async () => {
+                                {isAdmin && <button onClick={async () => {
                                   if (!confirm(`حذف روند ${course?.titleAr || round.code}؟`)) return;
                                   const deleted = await deleteDaqqiRound(round.id);
                                   // Only the success case is announced here. A refusal
@@ -147,7 +149,7 @@ export function DaqqiRoundRow({
                                   // reason, and saying "تعذر حذف الروند" next to it put two
                                   // toasts on screen, the vaguer one on top.
                                   if (deleted) notify('success', 'تم حذف الروند.');
-                                }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف الروند"><X size={12} /></button>
+                                }} className="h-7 rounded bg-gray-50 text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition" title="حذف الروند"><X size={12} /></button>}
                               </div>
                               {status === 'active' && (() => {
                                 const thisWeek = getCurrentWeekKey();

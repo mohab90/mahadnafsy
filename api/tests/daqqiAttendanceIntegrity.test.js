@@ -12,6 +12,7 @@ const route = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'ut
 const scheduleTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'), 'utf8');
 const ui = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx'), 'utf8');
 const roundsRoute = fs.readFileSync(path.join(root, 'api/routes/daqqi-rounds.js'), 'utf8');
+const scheduleRow = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/daqqi/DaqqiRoundRow.tsx'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'api/migrations/158_v25_daqqi_attendance_events.sql'), 'utf8');
 const attendanceTab = fs.readFileSync(path.join(root, 'admin/pages/dashboard/tabs/DaqqiAttendanceTab.tsx'), 'utf8');
 const privacyService = fs.readFileSync(path.join(root, 'api/lib/privacyService.js'), 'utf8');
@@ -167,4 +168,28 @@ test('a refused round save names the field that is missing', () => {
   assert.ok(roundsRoute.includes("missing.push('تاريخ البدء')"),
     'the start date must be named on its own');
   assert.doesNotMatch(roundsRoute, /Valid course, start date, lecture count and postponed weeks are required/);
+});
+
+
+test('a zero date cannot pass as a date', () => {
+  // MySQL takes '0000-00-00 00:00:00' into a NOT NULL datetime and hands it
+  // back as a non-empty string, so every `!value` check waved it through. Two
+  // clients on round 3003 have one in booked_at, three rounds have one in
+  // start_date.
+  assert.ok(roundsRoute.includes("if (v != null && String(v).startsWith('0000-00-00')) return null;"),
+    'the date converter must refuse a zero date');
+  assert.ok(roundsRoute.includes('function isRealDate(v)'),
+    'validation needs a date check that knows about zero dates');
+  assert.ok(roundsRoute.includes("if (!isRealDate(startDate)) missing.push('تاريخ البدء')"),
+    'the round start date must go through it');
+});
+
+test('deleting a round is admin-only, and history does not block it', () => {
+  // It used to refuse any round that had clients or had left NEW, so a round
+  // created by mistake was permanent the moment anyone was booked in.
+  assert.ok(roundsRoute.includes("router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireSuperAdmin"),
+    'round deletion is for the owner or a general manager only');
+  assert.doesNotMatch(roundsRoute, /Only an empty NEW round can be deleted/);
+  assert.ok(scheduleRow.includes('{isAdmin && <button'),
+    'the button is hidden from whoever the route would refuse');
 });

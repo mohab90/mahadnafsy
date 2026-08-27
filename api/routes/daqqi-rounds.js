@@ -5,7 +5,7 @@ const router = express.Router();
 const { uuidv4 } = require('../lib/id');
 
 const { pool } = require('../lib/db');
-const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireSuperAdmin } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { requireDaqqiAccess } = require('../lib/daqqiAccess');
 const { writeAuditEvent } = require('../lib/auditTrail');
@@ -60,7 +60,23 @@ function sendRouteError(res, err) {
 // why other rows show a raw GMT string — whatever shape went in came back out.
 //
 // Parse properly and emit a real MySQL datetime whatever the input shape is.
+// A date that is actually a date.
+//
+// MySQL accepts '0000-00-00 00:00:00' into a NOT NULL datetime, and it comes
+// back as a non-empty string, so every check of the form `!value` passed it
+// through. Two clients on round 3003 carry one, and three rounds carry one in
+// start_date.
+function isRealDate(v) {
+  if (!v) return false;
+  const text = String(v);
+  if (text.startsWith('0000-00-00')) return false;
+  return !Number.isNaN(Date.parse(text));
+}
+
 function toMysqlDt(v) {
+  // A zero date is not a date. Letting it through is how a NOT NULL column
+  // ends up holding nothing.
+  if (v != null && String(v).startsWith('0000-00-00')) return null;
   if (v == null || v === '') return null;
   const text = String(v).trim();
   // Already 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' — return as-is, so a date-only
@@ -176,7 +192,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
     // the desk to work out which one it meant.
     const missing = [];
     if (!courseId) missing.push('الكورس');
-    if (!startDate || Number.isNaN(Date.parse(startDate))) missing.push('تاريخ البدء');
+    if (!isRealDate(startDate)) missing.push('تاريخ البدء');
     if (!Number.isInteger(currentLecture) || currentLecture < 0 || currentLecture > 1000) missing.push('رقم المحاضرة الحالية');
     if (!Array.isArray(postponedWeeks) || postponedWeeks.length > 200) missing.push('أسابيع التأجيل');
     if (missing.length) {
@@ -405,7 +421,9 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
           WHERE s.id=? AND s.tenant_id=?${alreadyBooked ? '' : ' AND s.deleted_at IS NULL'}`,
           [
             id, req.tenantId,
-            toMysqlDt(a.bookedAt || a.booked_at || new Date().toISOString()),
+            // booked_at is NOT NULL and a booking without a date is not a booking, so an
+            // absent or zero value becomes the day it was actually booked.
+            toMysqlDt(a.bookedAt || a.booked_at) || toMysqlDt(new Date().toISOString()),
             courseId, courseId, attendedLectures,
             subId, req.tenantId,
           ]
@@ -657,7 +675,7 @@ router.delete('/api/admin/daqqi-rounds/:roundId/attendees/:subscriberId', requir
   } finally { conn.release(); }
 });
 
-router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_daqqi'), requireDaqqiAccess, async (req, res) => {
+router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireSuperAdmin, requireDaqqiAccess, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -672,10 +690,14 @@ router.delete('/api/admin/daqqi-rounds/:id', requireAuth, requireAdminOrStaff, r
       await conn.rollback();
       return res.status(404).json({ error: 'Round not found' });
     }
-    if (Number(round.attendee_count) > 0 || round.status !== 'NEW') {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Only an empty NEW round can be deleted; retain operational history' });
-    }
+    // A round can be deleted whatever state it is in — a round created by
+    // mistake used to be permanent the moment anyone was booked into it. The
+    // attendee rows go with it, and the deletion is written to the audit log
+    // below, so the history is kept where history belongs.
+    await conn.query(
+      'DELETE FROM daqqi_attendees WHERE tenant_id=? AND round_id=?',
+      [req.tenantId, req.params.id]
+    );
     const [result] = await conn.query(
       'DELETE FROM daqqi_rounds WHERE id=? AND tenant_id=?',
       [req.params.id, req.tenantId]

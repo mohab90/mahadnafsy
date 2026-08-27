@@ -67,7 +67,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment,
     daqqiRounds: ctxRounds, addDaqqiRound: ctxAddDaqqiRound, updateDaqqiRound: ctxUpdateDaqqiRound,
-    deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser,
+    deleteDaqqiRound, transferDaqqiAttendee, bulkSetDaqqiRounds, content, authUser, isAdmin,
   } = useSiteData();
 
   // Track IDs of subscribers that this staff member is allowed to see.
@@ -689,6 +689,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
                       <DaqqiRoundRow
                         key={round.id}
                         round={round}
+                        isAdmin={isAdmin}
                         resetDaqqiPayDraft={resetDaqqiPayDraft}
                         setDaqqiCommModal={setDaqqiCommModal}
                         setDaqqiToskeenSubId={setDaqqiToskeenSubId}
