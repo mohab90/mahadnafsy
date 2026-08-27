@@ -1740,7 +1740,7 @@ CREATE TABLE `daqqi_rounds` (
   `reception_id` varchar(36) DEFAULT NULL,
   `reception_name` varchar(255) NOT NULL,
   `day_of_week` varchar(20) NOT NULL,
-  `start_date` datetime DEFAULT NULL,
+  `start_date` datetime NOT NULL,
   `time_slot` enum('MORNING','NOON','EVENING') NOT NULL,
   `status` enum('NEW','ACTIVE','FINISHED') NOT NULL DEFAULT 'NEW',
   `current_lecture` int(11) NOT NULL DEFAULT 0,
