@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { UserPlus, RefreshCw, UserCheck, UserX, Trash2, Lock } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { RegistrationItem } from '../../../lib/mysqlapi';
 import { useBranches } from '../../../hooks/useBranches';
@@ -19,7 +18,6 @@ interface Props { notify: NotifyFn; }
 // so this reads as the same family of screen, not a bolted-on one-off.
 const RegistrationsTab: React.FC<Props> = ({ notify }) => {
   const branchOptions = useBranches();
-  const { courses, bundles } = useSiteData();
   const [rows, setRows] = useState<RegistrationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);

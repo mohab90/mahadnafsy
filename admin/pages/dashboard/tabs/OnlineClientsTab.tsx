@@ -63,6 +63,7 @@ interface Props {
   deleteSubscriber: (id: string) => Promise<boolean>;
   notify: NotifyFn;
   isDaqqiManager: boolean;
+  canDeleteSubscriber: boolean;
   isReceptionDaqqi: boolean;
   isAdmin: boolean;
   isOnlineManager: boolean;
@@ -88,7 +89,7 @@ export default function OnlineClientsTab({
   activeTab, subscribers, salesOwnSubscribers, setSalesOwnSubscribers,
   courses, bundles, staffMembers, content, salesOwnDaqqiRounds, setSalesOwnDaqqiRounds,
   salesOwnLeads, updateSubscriber, addSubscriber, reloadSubscribers, reloadLeads, deleteSubscriber, notify,
-  isDaqqiManager, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
+  isDaqqiManager, canDeleteSubscriber, isReceptionDaqqi, isAdmin, isOnlineManager, isNonAdminStaff, currentStaff,
   staffSelf, onlineTeamMembers, subCsDistributing, setSubCsDistributing,
   daqqiOldDistribPlan, setDaqqiOldDistribPlan, daqqiOldDistributing, setDaqqiOldDistributing,
   setSubPayRow, setSubPayDraft, setSubContactRow, setSubContactDraft,
@@ -517,6 +518,7 @@ export default function OnlineClientsTab({
                     setSalesOwnSubscribers={setSalesOwnSubscribers}
                   />
                   <ClientsTable
+                    canDeleteSubscriber={canDeleteSubscriber}
                     pageRows={pageRows}
                     vc={vc}
                     cw={cw}

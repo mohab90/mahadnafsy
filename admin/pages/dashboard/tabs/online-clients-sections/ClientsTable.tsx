@@ -37,6 +37,7 @@ interface Props {
   isAdmin: boolean;
   isOnlineManager: boolean;
   isDaqqiManager: boolean;
+  canDeleteSubscriber: boolean;
   shouldUseScopedSubscribers: boolean;
   updateSubscriber: (s: SubscriberItem) => Promise<boolean>;
   reloadSubscribers: () => Promise<void>;
@@ -66,10 +67,10 @@ interface Props {
 export function ClientsTable({
   pageRows, vc, cw, startColResize, isDaqqiClientsTab, collOnlineSelected, setCollOnlineSelected,
   housingMap, courses, bundles, staffMembers, onlineTeamMembers, isAdmin, isOnlineManager,
-  isDaqqiManager, shouldUseScopedSubscribers,
+  isDaqqiManager, canDeleteSubscriber, shouldUseScopedSubscribers,
   updateSubscriber, reloadSubscribers, setSalesOwnSubscribers, deleteSubscriber, setSubPayRow, setSubPayDraft,
   setSubContactRow, setSubContactDraft, setSubWaRow,
-  setDaqqiHousingModal, setDaqqiHousingRoundId, setCollDetailsDraft, setCollDetailsRow,
+  setDaqqiHousingModal, setDaqqiHousingRoundId,
   setConvertRow, setConvertType, setConvertAttendedLive, setConvertGotCert, setConvertPauseReason,
   setConvertRefundReason, setConvertRefundAmount, setConvertRefundMethod, filteredLength, notify,
 }: Props) {
@@ -332,10 +333,11 @@ export function ClientsTable({
                       className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition"><Receipt size={12}/></button>
                   )}
                   <button title="تحويل" onClick={()=>{setConvertRow(row);setConvertType('');setConvertAttendedLive(false);setConvertGotCert(false);setConvertPauseReason('');setConvertRefundReason('');setConvertRefundAmount('');setConvertRefundMethod('');}} className="h-7 rounded bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition"><RefreshCw size={12}/></button>
-                  {/* Was gated on "is the Daqqi tab open" instead of "can this role actually delete" —
-                      reception_daqqi could see and click this, but the backend (requireAdmin, i.e.
-                      admin/manager/online_manager/daqqi_manager only) silently rejected it. */}
-                  {(isAdmin||isOnlineManager||isDaqqiManager) && <button title="حذف العميل" onClick={async ()=>{
+                  {/* Gated on the permission the route checks, not on a role list:
+                      DELETE /api/admin/subscribers/:id requires delete_subscribers, which
+                      online_manager and daqqi_manager do not hold — both used to see this
+                      button and get refused. */}
+                  {canDeleteSubscriber && <button title="حذف العميل" onClick={async ()=>{
                     if (!confirm(`أرشفة "${row.name}"؟ سيظل السجل التاريخي محفوظًا.`)) return;
                     const ok = await deleteSubscriber(row.id);
                     if (ok && shouldUseScopedSubscribers) setSalesOwnSubscribers(prev=>prev.filter(s=>s.id!==row.id));

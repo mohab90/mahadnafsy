@@ -306,8 +306,8 @@ export default function OrdersTab({
               const daqqiOrdAllPay = daqqiSubs.flatMap(s => (s.paymentHistory||[]).map(p => ({
                 ...p, clientName: s.name, clientCode: s.clientCode||s.id, clientId: s.id,
               }))).filter(p => (p.currency==='EGP'||!p.currency) && p.status!=='failed').sort((a,b)=>((b.at||'')>(a.at||'')?1:-1));
-              const [daqqiOrdDateFrom2, setDaqqiOrdDateFrom2] = [daqqiAccDateFrom, setDaqqiAccDateFrom];
-              const [daqqiOrdDateTo2, setDaqqiOrdDateTo2] = [daqqiAccDateTo, setDaqqiAccDateTo];
+              const daqqiOrdDateFrom2 = daqqiAccDateFrom;
+              const daqqiOrdDateTo2 = daqqiAccDateTo;
               const filtered2 = daqqiOrdAllPay.filter(p => {
                 const d=(p.at||'').slice(0,10);
                 if(daqqiOrdDateFrom2&&d<daqqiOrdDateFrom2) return false;

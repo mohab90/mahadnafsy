@@ -306,7 +306,7 @@ test('subscriber profile and login credentials save in one transaction', () => {
 test('Dokki subscriber archival uses the canonical action and explicit permission', () => {
   const schedule = read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx');
   const clientsTable = read('admin/pages/dashboard/tabs/online-clients-sections/ClientsTable.tsx');
-  const growth = read('admin/pages/dashboard/DashboardGrowthOpsTabs.tsx');
+  const onlineTab = read('admin/pages/dashboard/tabs/OnlineClientsTab.tsx');
   const catalog = read('api/routes/core/catalog.js');
   // عملاء الدقي is a tab on OnlineClientsTab, not a panel on the schedule page.
   // DaqqiClientsPanel.tsx was an earlier build of the same list and had no
@@ -317,7 +317,14 @@ test('Dokki subscriber archival uses the canonical action and explicit permissio
   assert.match(schedule, /onAddClient=\{/);
   assert.match(clientsTable, /await deleteSubscriber\(row\.id\)/);
   assert.doesNotMatch(clientsTable, /mysqlAdmin\.deleteSubscriber/);
-  assert.match(growth, /canDeleteSubscriber=\{canDeleteSubscriber\}/);
+  // The gate on the button is the permission the route checks, not a role list.
+  // It used to be (isAdmin||isOnlineManager||isDaqqiManager), and neither manager
+  // holds delete_subscribers — both saw the button and were refused. The prop was
+  // being handed to DaqqiScheduleTab, which never read it.
+  assert.match(onlineTab, /canDeleteSubscriber=\{canDeleteSubscriber\}/);
+  assert.match(clientsTable, /\{canDeleteSubscriber && <button title="حذف العميل"/);
+  assert.doesNotMatch(clientsTable, /\(isAdmin\|\|isOnlineManager\|\|isDaqqiManager\) && <button title="حذف العميل"/);
+  assert.doesNotMatch(schedule, /canDeleteSubscriber/);
   assert.match(catalog, /subscribers\/:id'[\s\S]{0,160}requirePermission\('delete_subscribers'\)/);
 });
 

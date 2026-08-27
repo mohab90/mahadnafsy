@@ -62,9 +62,8 @@ interface Props {
   onRoundCreate?: (round: DaqqiRound) => boolean | void | Promise<boolean | void>;
   createRoundRef?: React.MutableRefObject<(() => void) | null>;
   branchFilter?: string;
-  canDeleteSubscriber?: boolean;
 }
-const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter, canDeleteSubscriber }) => {
+const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, roundsOverride, hideCreateRound, requirePaymentApproval, onRoundUpdate, onRoundCreate, createRoundRef, branchFilter }) => {
   const navigate = useNavigate();
   const {
     courses, bundles, therapists, staffMembers, subscribers: ctxSubscribers, updateSubscriber, addSubscriber, recordSubscriberPayment,

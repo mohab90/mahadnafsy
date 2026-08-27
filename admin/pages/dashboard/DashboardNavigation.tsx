@@ -140,8 +140,8 @@ export function DashboardNavigation(props: Props) {
   const {
     isSalesOnly, isCollectionRole, isReceptionDaqqi, isOnlineManager, isDaqqiManager,
     isSalesCollectionManager, isAdmin, visibleMenuGroups, activeTab, setActiveTab,
-    activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect, leads,
-    subscribers, notifRef,
+    activeDropdownGroup, setActiveDropdownGroup, dropdownRect, setDropdownRect,
+    notifRef,
     notifOpen, setNotifOpen, notifRows, setNotifRows, notifUnread, setNotifUnread,
     pendingProofsCount, inboxUnreadCount, currentStaff, salesDataLoading, staffNotifBadge,
     setSalesNotifOpen, onlineMgrAcademyOpen, setOnlineMgrAcademyOpen, setOnlineMgrFollowupOpen,

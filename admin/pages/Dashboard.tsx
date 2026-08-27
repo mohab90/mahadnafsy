@@ -125,7 +125,6 @@ const Dashboard: React.FC = () => {
     mergeContent,
     addContentKey,
     removeContentKey,
-    fbLeadAdsConfig,
     authUser,
     remoteReady,
     setStaffScopedSubscribers,
@@ -223,16 +222,7 @@ const Dashboard: React.FC = () => {
   const [lectureCourseId, setLectureCourseId] = useState('');
 
   const {
-    subscriberSubTab, 
     subscriberCourseFilter, setSubscriberCourseFilter,
-    subscriberSearch, 
-    subscriberSalesFilter, 
-    subscriberCsFilter, 
-    subscriberInstFilter, 
-    subscriberRemainingFilter, 
-    subscriberCertFilter, 
-    subscriberPayFilter, 
-    setSubscriberPage,
   } = useSubscriberFilters();
   // Reception Daqqi role — daqqi clients tab state
   const [daqqiSubSearch, setDaqqiSubSearch] = useState('');
@@ -255,8 +245,6 @@ const Dashboard: React.FC = () => {
     showMyLeaveFormProfile, setShowMyLeaveFormProfile,
     myLeaveFormProfile, setMyLeaveFormProfile,
     submittingMyLeaveProfile, setSubmittingMyLeaveProfile,
-    staffSearch, 
-    staffRoleFilter, 
     
     
     
@@ -314,12 +302,7 @@ const Dashboard: React.FC = () => {
   } = useLeadCrmTabState();
 
   const {
-    leadsSearch, 
-    leadsStatusFilter, 
-    leadsFollowupFilter, setLeadsFollowupFilter,
-    leadsBranchFilter, 
-    leadsSalesFilter, 
-    leadsCourseFilter,
+    setLeadsFollowupFilter,
   } = useLeadFilters();
   const navigate = useNavigate();
   const { tab: urlTab, param: urlParam } = useParams<{ tab: string; param?: string }>();
@@ -566,14 +549,8 @@ const Dashboard: React.FC = () => {
   }, [fetchSalesData]);
 
   // Effective arrays: for non-admin roles use own-data; for admin use context
-  const effectiveLeads = usesStaffScopedData ? salesOwnLeads : leads;
   const effectiveSubs = usesStaffScopedData ? salesOwnSubscribers : subscribers;
   const effectiveOrders = usesStaffScopedData ? salesOwnOrders : orders;
-  const branchFilteredEffectiveSubs = useMemo(() => branchQueryFilter
-    ? effectiveSubs.filter((row) => branchMatchesFilter(row.branch, branchQueryFilter))
-    : effectiveSubs,
-    [branchQueryFilter, effectiveSubs]
-  );
   const branchFilteredEffectiveOrders = useMemo(() => branchQueryFilter
     ? effectiveOrders.filter((row) => {
       const orderPhone = String((row as { customerPhone?: string }).customerPhone || '');
@@ -889,6 +866,7 @@ const Dashboard: React.FC = () => {
                   activeTab={activeTab}
                   canViewDaqqiClients={isDaqqiManager || isReceptionDaqqi || isAdmin}
                   onlineClientsProps={{
+                    canDeleteSubscriber: hasPermission('delete_subscribers'),
                     activeTab,
                     subscribers,
                     salesOwnSubscribers,
@@ -1127,7 +1105,6 @@ const Dashboard: React.FC = () => {
                   isNonAdminStaff={isNonAdminStaff}
                   salesOwnDaqqiRounds={salesOwnDaqqiRounds}
                   isReceptionDaqqi={isReceptionDaqqi}
-                  canDeleteSubscriber={hasPermission('delete_subscribers')}
                   leadsSalesTargets={leadsSalesTargets}
                   setStaffProfileModalId={setStaffProfileModalId}
                 />
