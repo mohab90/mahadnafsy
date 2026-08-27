@@ -525,7 +525,7 @@ test('Dokki round edits are server-first and attendee transfers are atomic', () 
 });
 
 test('staff password reset uses the privileged server-generated credential flow', () => {
-  const profile = read('admin/pages/StaffProfile.tsx');
+  const profile = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');
   const api = read('admin/lib/mysqlapi.ts');
   const auth = read('api/routes/auth.js');
 
@@ -614,7 +614,7 @@ test('orders and recruiting forms never report success before canonical persiste
 });
 
 test('staff account and consultation creation commit their cross-module writes atomically', () => {
-  const profile = read('admin/pages/StaffProfile.tsx');
+  const profile = read('admin/pages/staff-profile/StaffSettingsPanel.tsx');
   const auth = read('api/routes/auth.js');
   const catalog = read('api/routes/core/catalog.js');
 

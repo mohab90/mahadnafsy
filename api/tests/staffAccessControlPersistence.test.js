@@ -9,7 +9,7 @@ const employees = read('routes', 'hr', 'employees.js');
 const staffRoute = read('routes', 'staff.js');
 const authTenant = read('lib', 'authTenant.js');
 const leadAccess = read('lib', 'leadAccess.js');
-const staffProfileUi = read('..', 'admin', 'pages', 'StaffProfile.tsx');
+const staffProfileUi = read('..', 'admin', 'pages', 'staff-profile', 'StaffSettingsPanel.tsx');
 
 test('the employee editor can actually persist permissions and data scope', () => {
   // The admin panel has shown a full permission grid on the staff page for a

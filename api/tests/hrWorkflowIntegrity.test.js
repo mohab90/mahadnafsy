@@ -29,7 +29,7 @@ const instructorRateMigration = read('migrations', '152_v25_instructor_rate_appr
 const dashboard = read('..', 'admin', 'pages', 'Dashboard.tsx');
 const settings = read('..', 'admin', 'pages', 'dashboard', 'DashboardStaffSettingsPanel.tsx');
 const hrTab = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'HRTab.tsx');
-const staffProfile = read('..', 'admin', 'pages', 'StaffProfile.tsx');
+const staffProfile = read('..', 'admin', 'pages', 'staff-profile', 'StaffSettingsPanel.tsx');
 const hrLeavesPanel = read('..', 'admin', 'pages', 'dashboard', 'tabs', 'hr-sections', 'HrLeavesPanel.tsx');
 
 test('disabled users are rejected by every authenticated request and cache can be invalidated immediately', () => {
@@ -222,10 +222,10 @@ test('private employee fields are schema-owned and saved through the HR endpoint
   assert.match(privateFieldsMigration, /ALTER TABLE staff[\s\S]*national_id[\s\S]*address[\s\S]*hr_notes/);
   assert.match(employees, /national_id/);
   assert.match(employees, /hr_notes/);
-  // The editor users reach is StaffProfile.tsx, linked from the HR directory.
-  // This assertion used to name HRTab.tsx, which held an older unreachable copy
-  // of the same save; that copy is gone, and guarding it had left the live one
-  // unguarded — the opposite of the intent. Both files are checked for the
+  // The editor users reach is StaffSettingsPanel.tsx, the settings tab of the
+  // staff profile the HR directory links to. It used to name HRTab.tsx, which
+  // held an older unreachable copy of the same save; that copy is gone, and
+  // guarding it had left the live one unguarded. Both files are checked for the
   // generic endpoint, so neither can start routing private fields through it.
   assert.match(staffProfile, /mysqlAdmin\.updateHrEmployee/);
   assert.match(staffProfile, /national_id: payload\.nationalId/);
