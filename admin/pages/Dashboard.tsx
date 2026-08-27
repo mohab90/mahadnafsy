@@ -32,7 +32,6 @@ import { useStaffRoleRedirects } from './dashboard/hooks/useStaffRoleRedirects';
 import { useCurrentStaff } from './dashboard/hooks/useCurrentStaff';
 import { useOrdersDerived } from './dashboard/hooks/useOrdersDerived';
 import { useOverviewDerived } from './dashboard/hooks/useOverviewDerived';
-import { useCommunityDrafts } from './dashboard/hooks/useCommunityDrafts';
 import { useContentEditorDrafts } from './dashboard/hooks/useContentEditorDrafts';
 import { useLeadFilters } from './dashboard/useLeadFilters';
 import { useSubscriberFilters } from './dashboard/useSubscriberFilters';
@@ -341,20 +340,6 @@ const Dashboard: React.FC = () => {
   }, [navigate]);
   const activeTab = activeTabState;
 
-  const {
-    communityPostDraft, setCommunityPostDraft,
-    isCommunityPostFormOpen, setIsCommunityPostFormOpen,
-    communityLibraryDraft, setCommunityLibraryDraft,
-    isCommunityLibraryFormOpen, setIsCommunityLibraryFormOpen,
-    communityVideoDraft, setCommunityVideoDraft,
-    isCommunityVideoFormOpen, setIsCommunityVideoFormOpen,
-    communityEventDraft, setCommunityEventDraft,
-    isCommunityEventFormOpen, setIsCommunityEventFormOpen,
-    editingCommunityPostId, setEditingCommunityPostId,
-    editingCommunityLibraryId, setEditingCommunityLibraryId,
-    editingCommunityVideoId, setEditingCommunityVideoId,
-    editingCommunityEventId, setEditingCommunityEventId,
-  } = useCommunityDrafts();
 
   const {
     orderSearch, setOrderSearch,
@@ -990,36 +975,12 @@ const Dashboard: React.FC = () => {
                   updateCommunityPost={updateCommunityPost}
                   deleteCommunityPost={deleteCommunityPost}
                   addCommunityPost={addCommunityPost}
-                  communityPostDraft={communityPostDraft}
-                  setCommunityPostDraft={setCommunityPostDraft}
-                  isCommunityPostFormOpen={isCommunityPostFormOpen}
-                  setIsCommunityPostFormOpen={setIsCommunityPostFormOpen}
-                  editingCommunityPostId={editingCommunityPostId}
-                  setEditingCommunityPostId={setEditingCommunityPostId}
-                  communityLibraryDraft={communityLibraryDraft}
-                  setCommunityLibraryDraft={setCommunityLibraryDraft}
-                  isCommunityLibraryFormOpen={isCommunityLibraryFormOpen}
-                  setIsCommunityLibraryFormOpen={setIsCommunityLibraryFormOpen}
-                  editingCommunityLibraryId={editingCommunityLibraryId}
-                  setEditingCommunityLibraryId={setEditingCommunityLibraryId}
                   addCommunityLibraryItem={addCommunityLibraryItem}
                   updateCommunityLibraryItem={updateCommunityLibraryItem}
                   deleteCommunityLibraryItem={deleteCommunityLibraryItem}
-                  communityVideoDraft={communityVideoDraft}
-                  setCommunityVideoDraft={setCommunityVideoDraft}
-                  isCommunityVideoFormOpen={isCommunityVideoFormOpen}
-                  setIsCommunityVideoFormOpen={setIsCommunityVideoFormOpen}
-                  editingCommunityVideoId={editingCommunityVideoId}
-                  setEditingCommunityVideoId={setEditingCommunityVideoId}
                   addCommunityVideo={addCommunityVideo}
                   updateCommunityVideo={updateCommunityVideo}
                   deleteCommunityVideo={deleteCommunityVideo}
-                  communityEventDraft={communityEventDraft}
-                  setCommunityEventDraft={setCommunityEventDraft}
-                  isCommunityEventFormOpen={isCommunityEventFormOpen}
-                  setIsCommunityEventFormOpen={setIsCommunityEventFormOpen}
-                  editingCommunityEventId={editingCommunityEventId}
-                  setEditingCommunityEventId={setEditingCommunityEventId}
                   addCommunityEvent={addCommunityEvent}
                   updateCommunityEvent={updateCommunityEvent}
                   deleteCommunityEvent={deleteCommunityEvent}

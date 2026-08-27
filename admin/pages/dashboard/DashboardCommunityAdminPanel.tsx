@@ -1,6 +1,6 @@
-import React from 'react';
 import { DashboardCommunityShell } from './DashboardCommunityShell';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
+import { useCommunityDrafts } from './hooks/useCommunityDrafts';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
 type CommunityPostDraft = Pick<CommunityPostItem, 'title' | 'body' | 'tag' | 'authorName' | 'authorRole' | 'authorImage'> & { pinned: boolean };
@@ -19,36 +19,12 @@ interface Props {
   updateCommunityPost: (post: CommunityPostItem) => Promise<boolean>;
   deleteCommunityPost: (id: string) => Promise<boolean>;
   addCommunityPost: (post: CommunityPostItem) => Promise<boolean>;
-  communityPostDraft: CommunityPostDraft;
-  setCommunityPostDraft: React.Dispatch<React.SetStateAction<CommunityPostDraft>>;
-  isCommunityPostFormOpen: boolean;
-  setIsCommunityPostFormOpen: (open: boolean) => void;
-  editingCommunityPostId: string;
-  setEditingCommunityPostId: (id: string) => void;
-  communityLibraryDraft: CommunityLibraryDraft;
-  setCommunityLibraryDraft: React.Dispatch<React.SetStateAction<CommunityLibraryDraft>>;
-  isCommunityLibraryFormOpen: boolean;
-  setIsCommunityLibraryFormOpen: (open: boolean) => void;
-  editingCommunityLibraryId: string;
-  setEditingCommunityLibraryId: (id: string) => void;
   addCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
   updateCommunityLibraryItem: (item: CommunityLibraryItem) => Promise<boolean>;
   deleteCommunityLibraryItem: (id: string) => Promise<boolean>;
-  communityVideoDraft: CommunityVideoDraft;
-  setCommunityVideoDraft: React.Dispatch<React.SetStateAction<CommunityVideoDraft>>;
-  isCommunityVideoFormOpen: boolean;
-  setIsCommunityVideoFormOpen: (open: boolean) => void;
-  editingCommunityVideoId: string;
-  setEditingCommunityVideoId: (id: string) => void;
   addCommunityVideo: (video: CommunityVideoItem) => Promise<boolean>;
   updateCommunityVideo: (video: CommunityVideoItem) => Promise<boolean>;
   deleteCommunityVideo: (id: string) => Promise<boolean>;
-  communityEventDraft: CommunityEventDraft;
-  setCommunityEventDraft: React.Dispatch<React.SetStateAction<CommunityEventDraft>>;
-  isCommunityEventFormOpen: boolean;
-  setIsCommunityEventFormOpen: (open: boolean) => void;
-  editingCommunityEventId: string;
-  setEditingCommunityEventId: (id: string) => void;
   addCommunityEvent: (event: CommunityEventItem) => Promise<boolean>;
   updateCommunityEvent: (event: CommunityEventItem) => Promise<boolean>;
   deleteCommunityEvent: (id: string) => Promise<boolean>;
@@ -65,40 +41,45 @@ export function DashboardCommunityAdminPanel({
   updateCommunityPost,
   deleteCommunityPost,
   addCommunityPost,
-  communityPostDraft,
-  setCommunityPostDraft,
-  isCommunityPostFormOpen,
-  setIsCommunityPostFormOpen,
-  editingCommunityPostId,
-  setEditingCommunityPostId,
-  communityLibraryDraft,
-  setCommunityLibraryDraft,
-  isCommunityLibraryFormOpen,
-  setIsCommunityLibraryFormOpen,
-  editingCommunityLibraryId,
-  setEditingCommunityLibraryId,
   addCommunityLibraryItem,
   updateCommunityLibraryItem,
   deleteCommunityLibraryItem,
-  communityVideoDraft,
-  setCommunityVideoDraft,
-  isCommunityVideoFormOpen,
-  setIsCommunityVideoFormOpen,
-  editingCommunityVideoId,
-  setEditingCommunityVideoId,
   addCommunityVideo,
   updateCommunityVideo,
   deleteCommunityVideo,
-  communityEventDraft,
-  setCommunityEventDraft,
-  isCommunityEventFormOpen,
-  setIsCommunityEventFormOpen,
-  editingCommunityEventId,
-  setEditingCommunityEventId,
   addCommunityEvent,
   updateCommunityEvent,
   deleteCommunityEvent,
 }: Props) {
+  // The drafts hook holds nothing but this panel’s form state, so it is called
+  // here rather than on the dashboard and threaded back down.
+  const {
+    communityPostDraft,
+    setCommunityPostDraft,
+    isCommunityPostFormOpen,
+    setIsCommunityPostFormOpen,
+    communityLibraryDraft,
+    setCommunityLibraryDraft,
+    isCommunityLibraryFormOpen,
+    setIsCommunityLibraryFormOpen,
+    communityVideoDraft,
+    setCommunityVideoDraft,
+    isCommunityVideoFormOpen,
+    setIsCommunityVideoFormOpen,
+    communityEventDraft,
+    setCommunityEventDraft,
+    isCommunityEventFormOpen,
+    setIsCommunityEventFormOpen,
+    editingCommunityPostId,
+    setEditingCommunityPostId,
+    editingCommunityLibraryId,
+    setEditingCommunityLibraryId,
+    editingCommunityVideoId,
+    setEditingCommunityVideoId,
+    editingCommunityEventId,
+    setEditingCommunityEventId,
+  } = useCommunityDrafts();
+
   return (
 <DashboardCommunityShell
               active={activeTab === 'community'}
