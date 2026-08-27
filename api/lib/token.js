@@ -89,11 +89,18 @@ async function revokeToken(jti, expMs) {
   } catch (e) { logger.warn('[blacklist] DB write failed (token revoked in memory only):', e.message); }
 }
 
-// Purge expired entries every hour
+// Purge expired entries every hour.
+//
+// otp_codes rides along because it is the same thing: expired authentication
+// material with nothing to do. Nothing was deleting it, so it only grew — 847
+// spent password-reset and 2FA rows had collected by August 2026. The codes are
+// stored hashed, so this is housekeeping rather than an exposure, but an
+// append-only table on a login path is worth not having.
 setInterval(() => {
   const now = Date.now();
   for (const [k, exp] of tokenBlacklist) if (exp < now) tokenBlacklist.delete(k);
   pool.query('DELETE FROM token_blacklist WHERE expires_at < NOW()').catch(() => {});
+  pool.query('DELETE FROM otp_codes WHERE expires_at < NOW()').catch(() => {});
 }, 60 * 60 * 1000);
 
 // Load non-expired blacklist entries from DB into memory on startup

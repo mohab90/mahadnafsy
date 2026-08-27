@@ -297,4 +297,102 @@ router.post('/api/messaging/channels/:id/test', requireAuth, requireAdminOrStaff
   } catch (error) { fail(res, error, 'channel test failed'); }
 });
 
+// ── Admin: the outgoing queue ────────────────────────────────────────────────
+//
+// message_outbox had no admin route at all, which is how 4,939 dead messages
+// accumulated unnoticed between June and August 2026 — 1,287 of them the
+// "محاضرتك الأولى في انتظارك" note to a new student, and 105 payment
+// confirmations. There was no way to see the queue and no way to send them
+// again once the cause was fixed.
+
+router.get('/api/admin/messaging/outbox/summary', ...view, async (req, res) => {
+  try {
+    const [byChannel] = await pool.query(
+      `SELECT channel, status, COUNT(*) AS count,
+              MAX(CASE WHEN status='sent' THEN sent_at END) AS last_sent
+         FROM message_outbox WHERE tenant_id=?
+        GROUP BY channel, status`,
+      [req.tenantId]
+    );
+    const [topErrors] = await pool.query(
+      `SELECT last_error AS error, channel, COUNT(*) AS count
+         FROM message_outbox
+        WHERE tenant_id=? AND status='dead' AND last_error IS NOT NULL
+        GROUP BY last_error, channel ORDER BY count DESC LIMIT 10`,
+      [req.tenantId]
+    );
+    // Whether a channel is failing right now, which is the one thing worth
+    // knowing before asking for anything to be sent again.
+    const [recent] = await pool.query(
+      `SELECT channel,
+              SUM(status='dead') AS died,
+              SUM(status='sent') AS sent
+         FROM message_outbox
+        WHERE tenant_id=? AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        GROUP BY channel`,
+      [req.tenantId]
+    );
+    res.json({ byChannel, topErrors, last24h: recent });
+  } catch (error) { fail(res, error, 'outbox summary failed'); }
+});
+
+router.post('/api/admin/messaging/outbox/requeue', ...manage, bulkOperationLimiter, async (req, res) => {
+  try {
+    const channel = req.body?.channel ? String(req.body.channel).slice(0, 20) : null;
+    const errorLike = req.body?.errorLike ? String(req.body.errorLike).slice(0, 120) : null;
+    const limit = Math.min(2000, Math.max(1, Number.parseInt(req.body?.limit || '500', 10)));
+
+    // tenant_id stays literal in every statement below rather than hiding in a
+    // built string: the tenant-scope guard reads the SQL text, and a filter it
+    // cannot see is one nobody reviews either.
+    const extra = [];
+    const params = [req.tenantId];
+    if (channel) { extra.push('AND channel=?'); params.push(channel); }
+    if (errorLike) { extra.push('AND last_error LIKE ?'); params.push('%' + errorLike + '%'); }
+    const extraSql = extra.join(' ');
+
+    const [[{ eligible }]] = await pool.query(
+      `SELECT COUNT(*) AS eligible FROM message_outbox
+        WHERE tenant_id=? AND status='dead' ${extraSql}`, params
+    );
+
+    // Sending again into a channel that is still refusing just kills the same
+    // messages a second time and refills the notification feed. Report the
+    // channel's last 24 hours and make the caller say yes to it.
+    const [health] = await pool.query(
+      `SELECT channel, SUM(status='dead') AS died, SUM(status='sent') AS sent
+         FROM message_outbox
+        WHERE tenant_id=? AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+          ${channel ? 'AND channel=?' : ''}
+        GROUP BY channel`,
+      channel ? [req.tenantId, channel] : [req.tenantId]
+    );
+    const stillFailing = health.some(row => Number(row.died) > 0 && Number(row.sent) === 0);
+
+    if (!req.body?.confirm) {
+      return res.json({
+        ok: false, requeued: 0, eligible, health, stillFailing,
+        message: stillFailing
+          ? 'القناة لسه بتفشل — صلّح الإعدادات الأول، وبعدين ابعت confirm=true'
+          : 'أضف confirm=true لتنفيذ إعادة الإرسال',
+      });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE message_outbox
+          SET status='pending', attempts=0, last_error=NULL, next_attempt_at=NOW(),
+              locked_at=NULL, locked_by=NULL
+        WHERE tenant_id=? AND status='dead' ${extraSql}
+        ORDER BY created_at ASC
+        LIMIT ?`,
+      [...params, limit]
+    );
+    logger.info('[outbox-requeue]', {
+      actor: req.user?.email || null, channel, errorLike, requeued: result.affectedRows,
+    });
+    res.json({ ok: true, requeued: result.affectedRows, eligible, health, stillFailing });
+  } catch (error) { fail(res, error, 'outbox requeue failed'); }
+});
+
+
 module.exports = router;
