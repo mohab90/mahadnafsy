@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Phone, Mail, BarChart3, Activity, CreditCard, Settings, ChevronRight, Clock, Trash2, LayoutDashboard, MessageSquare, ListChecks, Trophy } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
 import { toDialable } from '../lib/whatsappLink';
@@ -59,7 +59,18 @@ const StaffProfile: React.FC = () => {
   const navigate = useNavigate();
   const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin } = useSiteData();
 
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?tab= decides which tab opens, so a link can point at one. Anything
+  // unrecognised falls back to the overview rather than a blank page.
+  const TABS: Tab[] = ['overview', 'reports', 'messages', 'tasks', 'attendance', 'activity', 'bookings', 'settings'];
+  const urlTab = searchParams.get('tab') as Tab | null;
+  const [activeTab, setActiveTabState] = useState<Tab>(
+    urlTab && TABS.includes(urlTab) ? urlTab : 'overview',
+  );
+  const setActiveTab = (tab: Tab) => {
+    setActiveTabState(tab);
+    setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
+  };
   const [deleting, setDeleting] = useState(false);
 
   // Server-computed profile (whole-employment series, today's counters, rank,

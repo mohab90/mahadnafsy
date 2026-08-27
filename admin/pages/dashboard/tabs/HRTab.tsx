@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus } from 'lucide-react';
+import { Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -238,7 +238,8 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               const tType = member.monthlyTargetType || 'egp';
               const tPct = performance?.target_pct || 0;
               return (
-                <button key={member.id} onClick={() => navigate(`/staff/${member.id}`)} className="bg-white border border-gray-200 rounded-2xl p-4 text-right hover:shadow-md hover:border-slate-400 transition-all group">
+                <div key={member.id} className="relative">
+                <button onClick={() => navigate(`/staff/${member.id}`)} className="bg-white border border-gray-200 rounded-2xl p-4 text-right hover:shadow-md hover:border-slate-400 transition-all group">
                   <div className="flex items-start gap-3 mb-3">
                     <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-black text-base shrink-0 ${member.status === 'active' ? 'bg-slate-600' : 'bg-gray-400'}`}>{member.name.charAt(0)}</div>
                     <div className="flex-1 min-w-0">
@@ -251,7 +252,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                     <ChevronRight size={14} className="text-gray-300 group-hover:text-slate-500 transition-colors shrink-0 mt-1"/>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-gray-50 rounded-lg py-1.5"><div className="text-xs font-bold text-gray-700">{getMonthsOfService(member.joinedAt || new Date().toISOString())}</div><div className="text-[10px] text-gray-400">مدة الخدمة</div></div>
+                    <div className="bg-gray-50 rounded-lg py-1.5"><div className="text-xs font-bold text-gray-700">{member.joinedAt ? getMonthsOfService(member.joinedAt) : <span className="text-amber-600">بدون تاريخ</span>}</div><div className="text-[10px] text-gray-400">مدة الخدمة</div></div>
                     <div className="bg-gray-50 rounded-lg py-1.5"><div className="text-xs font-bold text-gray-700">{myLeads}</div><div className="text-[10px] text-gray-400">ليدات</div></div>
                     <div className="bg-gray-50 rounded-lg py-1.5"><div className={`text-xs font-bold ${myRev > 0 ? 'text-green-700' : 'text-gray-400'}`}>{myRev > 0 ? `${Math.round(myRev / 1000)}k` : '—'}</div><div className="text-[10px] text-gray-400">مبيعات</div></div>
                   </div>
@@ -265,6 +266,14 @@ const HrTab: React.FC<Props> = ({ notify }) => {
                     </div>
                   )}
                 </button>
+                  <button
+                    onClick={() => navigate(`/staff/${member.id}?tab=settings`)}
+                    title="تعديل بيانات الموظف"
+                    className="absolute top-2 left-2 h-7 px-2 rounded-lg bg-slate-50 text-slate-600 text-[11px] font-bold
+                      hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1">
+                    <Pencil size={11}/> تعديل
+                  </button>
+                </div>
               );
             })}
           </div>
