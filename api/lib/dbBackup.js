@@ -11,7 +11,22 @@ const { pipeline } = require('stream/promises');
 const { createGzip } = require('zlib');
 const logger = require('./logger');
 
-const DIR = path.resolve(process.env.DB_BACKUP_DIR || path.join(process.cwd(), 'db-backups'));
+// Where a backup is written.
+//
+// This used to default to cwd/db-backups. On the server cwd is the deployment
+// directory, so a backup written there is replaced by the next release — the
+// four retired deployments on the box each hold an empty db-backups folder,
+// which is what that default produces. A backup that a deploy can delete is
+// not a backup.
+//
+// The default is now outside the deployment tree on Linux, and stays relative
+// on Windows where /var does not exist. DB_BACKUP_DIR still overrides both,
+// and the scheduled nightly dump run from system cron is unaffected either
+// way — it writes to /var/backups/mahad-db and is the copy actually relied on.
+const DEFAULT_DIR = process.platform === 'win32'
+  ? path.join(process.cwd(), 'db-backups')
+  : '/var/backups/mahad-db-app';
+const DIR = path.resolve(process.env.DB_BACKUP_DIR || DEFAULT_DIR);
 const KEEP = Math.max(1, Number(process.env.DB_BACKUP_KEEP || 14));
 const ENABLED = process.env.DB_BACKUP_ENABLED === '1';
 const today = () => new Date().toISOString().slice(0, 10);
