@@ -28,6 +28,52 @@ async function request(path, options = {}) {
   return { status: res.status, body };
 }
 
+// The localhost check above is not enough to make this script safe to run.
+//
+// api/.env points the API at 127.0.0.1:3306, which on a developer machine is an
+// SSH tunnel to the VPS — so an API served from localhost writes to production.
+// This script creates staff, leads, tickets and payments. Run that way it puts
+// all of them in production, and it has: rows dated April through July were
+// found there, including 48 journal entries whose payments were later deleted,
+// leaving 26,220 EGP of orphaned ledger entries behind.
+//
+// `npm run smoke` is safe — port 3101 is a fixture server that answers /api/health
+// with {fixture:true} and stores nothing. `npm run smoke:db` is the dangerous one:
+// port 3001 is the real API on the real connection. So ask the target what it is
+// rather than blocking by port, otherwise the safe path gets blocked too and the
+// override becomes a habit that defeats the guard.
+const PROD_DB_NAMES = new Set(['mahadnafsy_db', 'mahad_db']);
+if (process.env.SMOKE_ALLOW_PROD_DB !== '1') {
+  let isFixture = false;
+  try {
+    const probe = await request('/api/health');
+    isFixture = probe.body?.fixture === true;
+  } catch {
+    // Nothing answering yet. The checks below will report that themselves.
+  }
+  if (!isFixture) {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const envPath = join(dirname(dirname(fileURLToPath(import.meta.url))), 'api', '.env');
+    let dbName = '';
+    try {
+      const match = readFileSync(envPath, 'utf8').match(/^DB_NAME=(.*)$/m);
+      dbName = match ? match[1].trim() : '';
+    } catch {
+      // No .env to read means no evidence of a production target; let it run.
+    }
+    if (PROD_DB_NAMES.has(dbName)) {
+      throw new Error(
+        `Refusing to run against a live API while api/.env names the production ` +
+        `database '${dbName}'. This script creates staff, leads, tickets and ` +
+        `payments. Point DB_NAME at a test database, use 'npm run smoke' for the ` +
+        `fixture server, or set SMOKE_ALLOW_PROD_DB=1 if you really mean to.`
+      );
+    }
+  }
+}
+
 function assertStatus(name, actual, expected) {
   if (actual !== expected) {
     throw new Error(`${name}: expected HTTP ${expected}, got ${actual}`);
