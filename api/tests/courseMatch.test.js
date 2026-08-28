@@ -81,3 +81,59 @@ test('empty and unusable input returns null rather than guessing', () => {
   assert.strictEqual(matchCourseId('فن الكلام والتأثير', []), null);
   assert.strictEqual(matchCourseId('فن الكلام والتأثير', null), null);
 });
+
+// ── bundles ──────────────────────────────────────────────────────────────────
+// The sheets name learning paths as often as single courses. Searching only
+// courses left 208 leads with nothing recorded, for a path the catalogue had all
+// along — "دبلومة المعالج النفسي المحترف" is a bundle of four courses.
+
+const BUNDLES = [
+  'دبلومة علم النفس المتكامل',
+  'التشخيص الإكلينيكي والعلاج السلوكي المعرفي',
+  'المعالج النفسي المحترف',
+  'العلاج بالمخططات المعرفية " سكيما الدبلومة الكاملة',
+  'أخصائي التخاطب والتربية الخاصة',
+  'الكوتش الإيجابي المحترف ',
+  'دبلومة العلاج النفسي المتكامل " سنه دراسية "',
+].map((title, i) => ({ id: 'bundle-' + i, title }));
+
+const bundleTitleFor = (value) => {
+  if (!value || !String(value).startsWith('bundle:')) return null;
+  const id = String(value).slice(7);
+  return BUNDLES.find(b => b.id === id)?.title ?? null;
+};
+
+test('a learning path resolves to its bundle, not to nothing', () => {
+  assert.strictEqual(
+    bundleTitleFor(matchCourseId('دبلومة_المعالج_النفسي_المحترف', COURSES, BUNDLES)),
+    'المعالج النفسي المحترف');
+});
+
+test('bundles are returned with the bundle: prefix the column already stores', () => {
+  const result = matchCourseId('دبلومة علم النفس المتكامل', COURSES, BUNDLES);
+  assert.ok(String(result).startsWith('bundle:'), 'expected a bundle: prefix, got ' + result);
+});
+
+test('every bundle title matches itself', () => {
+  for (const bundle of BUNDLES) {
+    assert.strictEqual(matchCourseId(bundle.title, COURSES, BUNDLES), 'bundle:' + bundle.id,
+      `"${bundle.title}" should match itself`);
+  }
+});
+
+test('adding bundles does not disturb the course matches', () => {
+  // Every course still resolves to itself with bundles in play.
+  for (const course of COURSES) {
+    assert.strictEqual(matchCourseId(course.title, COURSES, BUNDLES), course.id,
+      `"${course.title}" should still match itself`);
+  }
+});
+
+test('a name matching neither stays null even with bundles searched', () => {
+  assert.strictEqual(matchCourseId('كورس الطبخ المتقدم', COURSES, BUNDLES), null);
+});
+
+test('omitting bundles keeps the previous behaviour', () => {
+  // The argument is optional; callers that pass only courses are unaffected.
+  assert.strictEqual(matchCourseId('دبلومة_المعالج_النفسي_المحترف', COURSES), null);
+});

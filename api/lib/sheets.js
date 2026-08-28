@@ -98,10 +98,14 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
         const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
         // Load courses for fuzzy matching (use is_published not is_active)
         const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1', [tenantId]);
+        // Bundles are searched too: the sheets name a learning path as readily as a
+        // single course, and a path is a perfectly good thing to want.
+        const [dbBundles] = await pool.execute(
+          'SELECT id, title FROM bundles WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [tenantId]);
         // Name-to-course matching lives in lib/courseMatch.js. It used to be
         // written out here and again, differently, in routes/gsheets.js, so the
         // automatic sync and the manual import disagreed about what a lead wanted.
-        const findCourseId = (raw) => matchCourseId(raw, dbCourses);
+        const findCourseId = (raw) => matchCourseId(raw, dbCourses, dbBundles);
         const [reps] = await pool.execute(
           `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
           [tenantId]

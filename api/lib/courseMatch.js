@@ -59,50 +59,71 @@ function identifyingWords(value) {
 }
 
 /**
- * @param {string} raw            the name as written in the sheet
- * @param {Array<{id: string, title: string}>} courses  the catalogue
- * @returns {string|null} the course id, or null when nothing matches well enough
+ * Free-text course name → a course id, a `bundle:<id>`, or null.
+ *
+ * Bundles are searched as well as courses. The sheets name learning paths as
+ * often as single ones — "دبلومة المعالج النفسي المحترف" is a bundle of four —
+ * and searching only courses left 208 leads with nothing recorded at all, for a
+ * path the catalogue already had. The `bundle:` prefix is the convention
+ * interested_course_ids_json already stores and the admin UI already reads.
+ *
+ * Courses win ties: a name that is both a course title and part of a bundle
+ * title is more likely to mean the course.
+ *
+ * @param {string} raw
+ * @param {Array<{id: string, title: string}>} courses
+ * @param {Array<{id: string, title: string}>} [bundles]
+ * @returns {string|null}
  */
-function matchCourseId(raw, courses) {
-  if (!raw || !Array.isArray(courses) || !courses.length) return null;
+function matchCourseId(raw, courses, bundles = []) {
+  const courseList = Array.isArray(courses) ? courses : [];
+  const bundleList = Array.isArray(bundles) ? bundles : [];
+  if (!raw || (!courseList.length && !bundleList.length)) return null;
   const query = normalizeCourseTitle(raw);
   if (!query) return null;
 
-  const exact = courses.find(course => normalizeCourseTitle(course.title) === query);
-  if (exact) return exact.id;
+  const asId = (entry) => (entry.kind === 'bundle' ? `bundle:${entry.item.id}` : entry.item.id);
+  const candidates = [
+    ...courseList.map(item => ({ item, kind: 'course' })),
+    ...bundleList.map(item => ({ item, kind: 'bundle' })),
+  ];
+
+  const exact = candidates.find(c => normalizeCourseTitle(c.item.title) === query);
+  if (exact) return asId(exact);
 
   // Containment, but only for titles long enough that containing one is a real
   // signal. A three-letter title inside a long sentence is a coincidence.
-  const contained = courses.find(course => {
-    const title = normalizeCourseTitle(course.title);
+  const contained = candidates.find(c => {
+    const title = normalizeCourseTitle(c.item.title);
     return title.length >= 6 && (title.includes(query) || query.includes(title));
   });
-  if (contained) return contained.id;
+  if (contained) return asId(contained);
 
   const queryWords = identifyingWords(raw);
   if (!queryWords.length) return null;
 
-  let bestId = null;
+  let best = null;
   let bestOverlap = 0;
   let bestTitleWords = 0;
-  for (const course of courses) {
-    const titleWords = identifyingWords(course.title);
+  for (const candidate of candidates) {
+    const titleWords = identifyingWords(candidate.item.title);
     if (!titleWords.length) continue;
     const overlap = queryWords.filter(
       word => titleWords.some(titleWord => titleWord.includes(word) || word.includes(titleWord))
     ).length;
     if (overlap > bestOverlap) {
       bestOverlap = overlap;
-      bestId = course.id;
+      best = candidate;
       bestTitleWords = titleWords.length;
     }
   }
+  if (!best) return null;
 
   // Both directions, so neither a long query nor a long title can swallow the
   // other on one shared word.
   const needFromQuery = Math.max(2, Math.ceil(queryWords.length * 0.5));
   const needFromTitle = Math.max(2, Math.ceil(bestTitleWords * 0.5));
-  return (bestOverlap >= needFromQuery && bestOverlap >= needFromTitle) ? bestId : null;
+  return (bestOverlap >= needFromQuery && bestOverlap >= needFromTitle) ? asId(best) : null;
 }
 
 module.exports = { matchCourseId, normalizeCourseTitle, identifyingWords, GENERIC_WORDS };

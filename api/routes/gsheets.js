@@ -76,10 +76,13 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
 
     // Load courses for name→id matching
     const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_active=1', [req.tenantId]);
+    // Bundles are searched too — see lib/courseMatch.js.
+    const [dbBundles] = await pool.execute(
+      'SELECT id, title FROM bundles WHERE tenant_id=? AND is_published=1 AND deleted_at IS NULL', [req.tenantId]);
     // Shared with the automatic sync — see lib/courseMatch.js. The copy that
     // stood here matched on lowercase substrings only, so it missed every name
     // the sheets write with underscores instead of spaces.
-    const findCourseId = (courseName) => matchCourseId(courseName, dbCourses);
+    const findCourseId = (courseName) => matchCourseId(courseName, dbCourses, dbBundles);
 
     // Get sales reps for auto-assign
     const [reps] = await pool.execute(
