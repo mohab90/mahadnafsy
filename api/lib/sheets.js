@@ -5,6 +5,7 @@ const { pool } = require('./db');
 const { appendLeadInteraction } = require('./leadInteractions');
 const { matchCourseId } = require('./courseMatch');
 const { toIdentity } = require('./phoneNumber');
+const { createBatchAssigner } = require('./leadAssignment');
 const { getNextClientCode } = require('./mappers');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
@@ -116,14 +117,11 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
         // written out here and again, differently, in routes/gsheets.js, so the
         // automatic sync and the manual import disagreed about what a lead wanted.
         const findCourseId = (raw) => matchCourseId(raw, dbCourses, dbBundles);
-        const [reps] = await pool.execute(
-          `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
-          [tenantId]
-        );
-        let rrRaw = 0;
-        if (autoAssign === 'rr' && reps.length > 0) {
-          rrRaw = parseInt(await getTenantSetting('crm_rr_index', { tenantId, fallback: 0 }), 10) || 0;
-        }
+        // One picker for the whole run. It loads the roster, the open-lead
+        // counts and each rep's intake for the current period once, then hands
+        // out in memory — the copy that used to live here re-queried the load
+        // for every single row, and honoured neither cap.
+        const assigner = await createBatchAssigner(tenantId, pool);
         // Pre-load existing phones AND names for fast dedup
         const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=? AND hidden=0', [tenantId]);
         // Compared as identities, not as text. The same person arrives as
@@ -164,17 +162,19 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           // labels around it. Only this belongs in the contact history.
           const humanNote = rawNotes ? String(rawNotes).trim() : null;
           let salesId = null, salesName = null;
-          if (reps.length > 0) {
-            if (autoAssign === 'rr') { const rep = reps[rrRaw % reps.length]; salesId = rep.id; salesName = rep.name; rrRaw++; }
-            else if (autoAssign === 'least') { const [counts] = await pool.execute(`SELECT assigned_sales_id, COUNT(*) as cnt FROM leads WHERE tenant_id=? AND hidden=0 AND assigned_sales_id IS NOT NULL GROUP BY assigned_sales_id`, [tenantId]); const cm = {}; for (const c of counts) cm[c.assigned_sales_id]=Number(c.cnt); const sorted=[...reps].sort((a,b)=>(cm[a.id]||0)-(cm[b.id]||0)); salesId=sorted[0].id; salesName=sorted[0].name; }
+          if (autoAssign !== 'none') {
+            // null means every rep is at a cap. The lead stays unassigned
+            // rather than pushing someone past a limit the owner set.
+            const rep = assigner.next();
+            if (rep) { salesId = rep.id; salesName = rep.name; }
           }
           let code = null;
           try { const conn2 = await pool.getConnection(); try { code = await getNextClientCode(conn2); } finally { conn2.release(); } } catch(_){}
           const crmJson = JSON.stringify({ assignedSalesId: salesId, assignedSalesName: salesName, interestedCourseIds: courseId ? [courseId] : [], rawBranch: rawBranch || null });
           const leadId = `lead-gs-${Date.now()}-${i}`;
           const [insertResult] = await pool.execute(
-            `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,?,0,NOW())`,
-            [leadId, tenantId, code, name, email||'', normPhone||phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, crmJson]
+            `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, assigned_at, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,CASE WHEN ? IS NULL THEN NULL ELSE NOW() END,?,0,NOW())`,
+            [leadId, tenantId, code, name, email||'', normPhone||phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, salesId, crmJson]
           );
           if (!insertResult.affectedRows) { totalSkipped++; continue; }
           // A timeline entry only when a person wrote something.
@@ -198,8 +198,15 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           }
           totalImported++;
         }
-        if (autoAssign === 'rr' && reps.length > 0) {
-          await setTenantSetting('crm_rr_index', rrRaw, { tenantId });
+        // Rotation lives on the policy rows now, not in a single shared index,
+        // so it survives a rep being added or removed mid-run.
+        await assigner.flush();
+        const shared = assigner.summary();
+        if (shared.length) {
+          logger.info('[gsheet-sync-all] assigned', {
+            sheet: sheet.name || sheet.sheetId,
+            distribution: shared.map(rep => `${rep.name}:${rep.given}`).join(', '),
+          });
         }
         } // end gidList loop
       } catch(sheetErr) { logger.error('[gsheet-sync-all] sheet error:', sheetErr.message); }

@@ -29,6 +29,9 @@ type AssignmentMember = {
   teamKey: string;
   weight: number;
   maxOpenLeads: number | null;
+  /** Leads this rep may RECEIVE per intakePeriod. null = no rate cap. */
+  intakeLimit: number | null;
+  intakePeriod: 'day' | 'fortnight' | 'month';
   isAvailable: boolean;
 };
 
@@ -97,7 +100,7 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
       const savedMembers = assignmentData.members as unknown as AssignmentMember[];
       setAssignmentMembers(savedMembers.length ? savedMembers : salesReps.map(rep => ({
         staffId: rep.id, staffName: rep.name, branchKey: '*', teamKey: 'sales',
-        weight: 1, maxOpenLeads: null, isAvailable: true,
+        weight: 1, maxOpenLeads: null, intakeLimit: null, intakePeriod: 'day', isAvailable: true,
       })));
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -250,9 +253,33 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
                       <label>الوزن
                         <input type="number" min="0.1" step="0.1" value={member.weight} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, weight: Number(e.target.value) } : row))} className="mt-1 w-full rounded-lg border p-1.5" />
                       </label>
-                      <label className="col-span-2">أقصى عدد Leads مفتوحة (فارغ = بلا حد)
+                      <label className="col-span-2">أقصى عدد Leads مفتوحة معه في نفس الوقت (فارغ = بلا حد)
                         <input type="number" min="0" value={member.maxOpenLeads ?? ''} onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, maxOpenLeads: e.target.value === '' ? null : Number(e.target.value) } : row))} className="mt-1 w-full rounded-lg border p-1.5" />
                       </label>
+                      <label>أقصى عدد يستلمه (فارغ = بلا حد)
+                        <input
+                          type="number"
+                          min="0"
+                          value={member.intakeLimit ?? ''}
+                          onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, intakeLimit: e.target.value === '' ? null : Number(e.target.value) } : row))}
+                          className="mt-1 w-full rounded-lg border p-1.5"
+                        />
+                      </label>
+                      <label>لكل
+                        <select
+                          value={member.intakePeriod}
+                          onChange={e => setAssignmentMembers(rows => rows.map((row, i) => i === index ? { ...row, intakePeriod: e.target.value as AssignmentMember['intakePeriod'] } : row))}
+                          className="mt-1 w-full rounded-lg border p-1.5"
+                        >
+                          <option value="day">يوم</option>
+                          <option value="fortnight">نصف شهر</option>
+                          <option value="month">شهر</option>
+                        </select>
+                      </label>
+                      <p className="col-span-2 text-[11px] text-gray-500">
+                        الحدّان بيشتغلوا مع بعض: الموظف بيتخطى لو وصل لأي واحد فيهم.
+                        لما كل الفريق يوصل لحده، العميل بيفضل من غير مندوب بدل ما حد يتعدى الحد.
+                      </p>
                     </div>
                   ))}
                 </div>

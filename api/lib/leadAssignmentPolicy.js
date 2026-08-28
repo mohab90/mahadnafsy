@@ -11,7 +11,8 @@ async function listAssignmentMembers(tenantId, db = pool) {
   const [rows] = await db.query(
     `SELECT p.id,p.staff_id AS staffId,s.name AS staffName,p.branch_key AS branchKey,
             p.team_key AS teamKey,p.weight,p.max_open_leads AS maxOpenLeads,
-            p.is_available AS isAvailable,p.last_assigned_at AS lastAssignedAt
+            p.is_available AS isAvailable,p.last_assigned_at AS lastAssignedAt,
+            p.intake_limit AS intakeLimit,p.intake_period AS intakePeriod
        FROM crm_assignment_members p
        JOIN staff s ON s.id=p.staff_id AND s.tenant_id=p.tenant_id
       WHERE p.tenant_id=? ORDER BY p.team_key,p.branch_key,s.name`,
@@ -21,6 +22,8 @@ async function listAssignmentMembers(tenantId, db = pool) {
     ...row,
     weight: Number(row.weight || 1),
     maxOpenLeads: row.maxOpenLeads == null ? null : Number(row.maxOpenLeads),
+    intakeLimit: row.intakeLimit == null ? null : Number(row.intakeLimit),
+    intakePeriod: row.intakePeriod || 'day',
     isAvailable: Boolean(row.isAvailable),
   }));
 }
@@ -74,14 +77,23 @@ async function saveAssignmentMembers(tenantId, members, db = pool) {
     const weight = Math.min(Math.max(Number(member.weight) || 1, 0.1), 100);
     const maxOpenLeads = member.maxOpenLeads === '' || member.maxOpenLeads == null
       ? null : Math.min(Math.max(Number(member.maxOpenLeads) || 0, 0), 100000);
+    // A cap on what arrives, beside the cap on what is held. Blank and zero
+    // both mean no rate cap: a zero would otherwise read as "assign nobody",
+    // which is what is_available already says more clearly.
+    const intakeLimit = member.intakeLimit === '' || member.intakeLimit == null
+      || Number(member.intakeLimit) <= 0
+      ? null : Math.min(Math.round(Number(member.intakeLimit)), 100000);
+    const intakePeriod = ['day', 'fortnight', 'month'].includes(member.intakePeriod)
+      ? member.intakePeriod : 'day';
     await db.query(
       `INSERT INTO crm_assignment_members
-       (id,tenant_id,staff_id,branch_key,team_key,weight,max_open_leads,is_available)
-       VALUES (?,?,?,?,?,?,?,?)
+       (id,tenant_id,staff_id,branch_key,team_key,weight,max_open_leads,is_available,intake_limit,intake_period)
+       VALUES (?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE weight=VALUES(weight),max_open_leads=VALUES(max_open_leads),
-         is_available=VALUES(is_available)`,
+         is_available=VALUES(is_available),intake_limit=VALUES(intake_limit),
+         intake_period=VALUES(intake_period)`,
       [member.id || uuidv4(), tenantId, staffId, branchKey, teamKey, weight, maxOpenLeads,
-        member.isAvailable === false ? 0 : 1]
+        member.isAvailable === false ? 0 : 1, intakeLimit, intakePeriod]
     );
   }
 
