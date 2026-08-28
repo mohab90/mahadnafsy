@@ -32,6 +32,12 @@ interface UseLeadRemindersDataArgs {
  * the panel shows the same leads.
  */
 
+/**
+ * How many untouched leads a rep is shown at once. A day's work, not a backlog:
+ * the full list is 11,257 and showing it is what made the old screen unusable.
+ */
+const UNTOUCHED_LIMIT = 50;
+
 export function useLeadRemindersData({
   leads,
   reminderStaffFilter,
@@ -68,6 +74,26 @@ export function useLeadRemindersData({
       .filter(lead => lead.nextFollowUpDate! > todayStr && lead.nextFollowUpDate! <= next7)
       .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || ''));
 
+    // The other half of a day's work: leads nobody has touched at all.
+    //
+    // The panel only ever showed leads that already had a follow-up date, and
+    // 22 leads out of 15,936 had one — so it rendered an almost empty screen
+    // while 11,257 leads sat untouched past thirty days. A queue that shows
+    // nothing is not a queue.
+    //
+    // Oldest first, because the lead that has waited longest is the one going
+    // cold. Capped, because a list of eleven thousand is the thing the rep is
+    // already ignoring; a day's work is what belongs on a day's screen.
+    const untouched: ReminderLead[] = leads
+      .filter(lead =>
+        !lead.hidden
+        && lead.status === 'new'
+        && !lead.nextFollowUpDate
+        && !(lead.communications || []).length)
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+      .slice(0, UNTOUCHED_LIMIT)
+      .map(lead => ({ ...lead, daysOverdue: 0, isToday: false, isUpcoming: false }));
+
     const filterByStaff = (items: ReminderLead[]) =>
       reminderStaffFilter ? items.filter(lead => lead.assignedSalesId === reminderStaffFilter) : items;
 
@@ -90,6 +116,8 @@ export function useLeadRemindersData({
       overdue,
       today,
       upcoming,
+      untouched,
+      untouchedFiltered: filterByStaff(untouched).filter(lead => !snoozeIds.has(lead.id)),
       overdueFiltered: filterByStaff(overdue).filter(lead => !snoozeIds.has(lead.id)),
       todayFiltered: filterByStaff(today).filter(lead => !snoozeIds.has(lead.id)),
       upcomingFiltered: filterByStaff(upcoming).filter(lead => !snoozeIds.has(lead.id)),

@@ -238,6 +238,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     overdue,
     today: reminderToday,
     upcoming,
+    untouchedFiltered,
     overdueFiltered,
     todayFiltered,
     upcomingFiltered,
@@ -482,6 +483,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             setSelectedLeadIds={setSelectedLeadIds}
             setSelectedId={setSelectedId}
             handleStatusChange={handleStatusChange}
+            onOutcomeRecorded={reloadLeads}
             openLeadBook={openLeadBook}
             onLogContact={openContactLog}
             instituteBranches={instituteBranches}
@@ -629,6 +631,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
             onClearSnoozes={() => setSnoozeIds(new Set())}
             dueTodayLoading={dueTodayLoading}
             onRefreshDueToday={refreshDueToday}
+            untouchedFiltered={untouchedFiltered}
             overdueFiltered={overdueFiltered}
             todayFiltered={todayFiltered}
             upcomingFiltered={upcomingFiltered}

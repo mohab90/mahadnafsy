@@ -21,6 +21,7 @@ type LeadPipelineBoardProps = {
   handleStatusChange: (lead: LeadItem, status: LeadStatus) => void;
   openLeadBook: (lead: LeadItem) => void;
   onLogContact: (lead: LeadItem) => void;
+  onOutcomeRecorded?: () => void;
   instituteBranches: { id: string; label: string }[];
   courses: Course[];
   bundles: Bundle[];
@@ -42,6 +43,7 @@ export function LeadPipelineBoard({
   handleStatusChange,
   openLeadBook,
   onLogContact,
+  onOutcomeRecorded,
   instituteBranches,
   courses,
   bundles,
@@ -121,6 +123,7 @@ export function LeadPipelineBoard({
                         onStatusChange={nextStatus => handleStatusChange(lead, nextStatus)}
                         onBook={canManageLeads ? openLeadBook : undefined}
                         onContact={canManageLeads ? onLogContact : undefined}
+                        onOutcomeRecorded={onOutcomeRecorded}
                         canManageLeads={canManageLeads}
                         instituteBranches={instituteBranches}
                         courses={courses}

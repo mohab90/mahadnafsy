@@ -68,6 +68,9 @@ function startBackgroundScheduler({ pool, logger, port }) {
   // Every 6h, offset well clear of the reminder sweeps so the two aren't
   // competing for connections on the same table.
   schedule('lead_score_refresh', 6 * 60 * 60 * 1000, 3 * 60 * 1000);
+  // Daily, and offset well past the score refresh so the two are not
+  // rewriting the same rows at once.
+  schedule('lead_auto_archive', 24 * 60 * 60 * 1000, 20 * 60 * 1000);
   schedule('subscription_billing', 24 * 60 * 60 * 1000, 5 * 60 * 1000, { tenantId: 'system' });
 
   const automation = () => require('./automationEngine')
@@ -108,6 +111,7 @@ function startBackgroundScheduler({ pool, logger, port }) {
     installment_reminder: scheduledJobs.installmentReminder,
     pending_payment_reminder: scheduledJobs.pendingPaymentReminder,
     lead_score_refresh: scheduledJobs.leadScoreRefresh,
+    lead_auto_archive: scheduledJobs.leadAutoArchive,
     subscription_billing: () => subscriptionBilling.runSubscriptionBilling(),
   };
   const worker = async () => {

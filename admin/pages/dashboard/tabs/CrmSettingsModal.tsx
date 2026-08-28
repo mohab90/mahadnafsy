@@ -11,6 +11,8 @@ export type GSheet = { id: string; name: string; sheetId: string; gid: string; a
 export type CrmSettings = {
   leadSources: string[];
   autoAssign: 'none' | 'rr' | 'least';
+  /** Archive a never-contacted lead after this many days. 0 = never. */
+  autoArchiveDays?: number;
   sheets: GSheet[];
 };
 export type CrmPipelineStage = {
@@ -42,6 +44,7 @@ const DEFAULT_SOURCES = [
 export const DEFAULT_CRM_SETTINGS: CrmSettings = {
   leadSources: DEFAULT_SOURCES,
   autoAssign: 'rr',
+  autoArchiveDays: 0,
   sheets: [
     { id: 'gs-default', name: 'الشيت الرئيسي', sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1545487801', autoSync: true },
     { id: 'gs-mentalhealth', name: 'الصحة النفسية', sheetId: '1llDstW3cyvlSTgaHLaKQYiIHZ0dui9QwuszMWLvqNgA', gid: '1083686129', autoSync: true, defaultCourse: 'الصحة النفسية' },
@@ -93,6 +96,7 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
         setSettings({
           leadSources: d.leadSources?.length ? d.leadSources : DEFAULT_SOURCES,
           autoAssign: d.autoAssign || 'rr',
+          autoArchiveDays: Number(d.autoArchiveDays) || 0,
           sheets,
         });
       }
@@ -230,6 +234,29 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
                     <div><p className="font-bold text-sm text-gray-900">{lbl}</p><p className="text-xs text-gray-500 mt-0.5">{desc}</p></div>
                   </button>
                 ))}
+              </div>
+              <div className="border-t border-gray-100 pt-4 space-y-2">
+                <p className="text-xs font-bold text-gray-700">أرشفة العملاء الباردين</p>
+                <p className="text-[11px] text-gray-500">
+                  العميل اللي محدش اتواصل معاه خالص ومعندوش متابعة مجدولة، بعد المدة دي
+                  بينزل من الطابور النشط للأرشيف. مبيتمسحش — بيرجع بتغيير الحالة.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={settings.autoArchiveDays ?? 0}
+                    onChange={e => setSettings(x => ({ ...x, autoArchiveDays: Number(e.target.value) || 0 }))}
+                    className="w-24 rounded-lg border p-1.5 text-sm"
+                  />
+                  <span className="text-xs text-gray-600">يوم — صفر يعني متشتغلش</span>
+                </div>
+                {(settings.autoArchiveDays ?? 0) > 0 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    أول تشغيل بعد التفعيل هو الكبير — فيه 11,257 عميل عدى عليهم 30 يوم بلا تواصل.
+                    ابدأ بمدة أطول لو عايز تشوف الأثر بالتدريج.
+                  </p>
+                )}
               </div>
               {salesReps.length === 0 && <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl p-3">⚠️ لا يوجد مندوبو مبيعات نشطون — أضف موظفين بدور Sales أولاً</p>}
               {assignmentMembers.length > 0 && (

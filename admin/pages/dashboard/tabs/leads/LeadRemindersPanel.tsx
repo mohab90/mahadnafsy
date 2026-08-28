@@ -24,6 +24,7 @@ interface LeadRemindersPanelProps {
   onClearSnoozes: () => void;
   dueTodayLoading: boolean;
   onRefreshDueToday: () => void;
+  untouchedFiltered: ReminderLead[];
   overdueFiltered: ReminderLead[];
   todayFiltered: ReminderLead[];
   upcomingFiltered: ReminderLead[];
@@ -57,6 +58,7 @@ export function LeadRemindersPanel({
   onClearSnoozes,
   dueTodayLoading,
   onRefreshDueToday,
+  untouchedFiltered,
   overdueFiltered,
   todayFiltered,
   upcomingFiltered,
@@ -97,6 +99,7 @@ export function LeadRemindersPanel({
 
       {reminderView === 'kanban' && (
         <LeadReminderKanban
+          untouchedFiltered={untouchedFiltered}
           overdueFiltered={overdueFiltered}
           todayFiltered={todayFiltered}
           upcomingFiltered={upcomingFiltered}

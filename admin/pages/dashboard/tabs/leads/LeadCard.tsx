@@ -19,15 +19,22 @@ import {
   getRottenLevel,
 } from '../leadUtils';
 import { ScoreBadge } from './LeadScoreAndTimeline';
+import LeadOutcomeButtons from './LeadOutcomeButtons';
 
 
-export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onContact, canManageLeads, instituteBranches, courses, bundles }: {
+// A lead in one of these is finished; offering "did they answer" on it would
+// be inviting a rep to reopen something that is closed.
+const CLOSED_FOR_OUTCOMES = new Set(['converted', 'lost', 'not_interested', 'not_interested_hidden', 'wrong_number', 'archived', 'disqualified', 'unqualified', 'won', 'closed']);
+
+export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onContact, onOutcomeRecorded, canManageLeads, instituteBranches, courses, bundles }: {
   lead: LeadItem;
   score: number;
   onSelect: () => void;
   onStatusChange: (status: LeadStatus) => void;
   onBook?: (lead: LeadItem) => void;
   onContact?: (lead: LeadItem) => void;
+  /** Refresh once a one-tap outcome has been recorded. */
+  onOutcomeRecorded?: () => void;
   canManageLeads: boolean;
   instituteBranches: { id: string; label: string }[];
   courses: Course[];
@@ -185,6 +192,9 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
               <option key={s} value={s}>{STATUS_CFG[s].label}</option>
             ))}
           </select>
+        )}
+        {canManageLeads && !CLOSED_FOR_OUTCOMES.has(lead.status) && (
+          <LeadOutcomeButtons lead={lead} onRecorded={onOutcomeRecorded} />
         )}
         <div className="grid grid-cols-4 gap-0.5">
           <WhatsAppLink

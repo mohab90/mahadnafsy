@@ -272,8 +272,28 @@ function createScheduledJobHandlers({ pool, logger }) {
     }
   }
 
+  // Leads nobody ever contacted, old enough that nobody is going to. They are
+  // not a work list — they are what makes the work list unreadable. Off unless
+  // crm_settings.autoArchiveDays says otherwise, because archiving thousands
+  // of leads is a decision about how the desk works, not a default.
+  async function leadAutoArchive() {
+    try {
+      const settings = await getTenantSetting('crm_settings', { fallback: {} });
+      const olderThanDays = Number(settings?.autoArchiveDays) || 0;
+      if (olderThanDays <= 0) return;
+      const { archiveColdLeads } = require('./leadAutoArchive');
+      const { eligible, archived } = await archiveColdLeads(pool, { olderThanDays });
+      if (archived) {
+        logger.info('[jobs] cold leads archived', { olderThanDays, eligible, archived });
+      }
+    } catch (error) {
+      logger.warn('[jobs] lead auto-archive failed:', error.message);
+    }
+  }
+
   return {
     leadScoreRefresh,
+    leadAutoArchive,
     installmentReminder,
     pendingPaymentReminder,
     refreshFxRates,
