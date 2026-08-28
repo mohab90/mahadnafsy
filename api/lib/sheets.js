@@ -158,6 +158,9 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           if (rawCourse || (isLikelyCourse && rawName)) noteParts.push(`الكورس: ${matchedCourseTitle || rawCourse || rawName}`);
           if (rawNotes)  noteParts.push(rawNotes);
           const notes = noteParts.join(' | ') || null;
+          // What a person actually wrote, as opposed to the branch and course
+          // labels around it. Only this belongs in the contact history.
+          const humanNote = rawNotes ? String(rawNotes).trim() : null;
           let salesId = null, salesName = null;
           if (reps.length > 0) {
             if (autoAssign === 'rr') { const rep = reps[rrRaw % reps.length]; salesId = rep.id; salesName = rep.name; rrRaw++; }
@@ -172,12 +175,22 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
             [leadId, tenantId, code, name, email||'', phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, crmJson]
           );
           if (!insertResult.affectedRows) { totalSkipped++; continue; }
-          // Insert notes as a communication record so it appears in the lead timeline
-          if (notes) {
+          // A timeline entry only when a person wrote something.
+          //
+          // This used to fire for every imported lead, because `notes` also
+          // carried the branch and course labels. That put a NOTE in the
+          // history of leads nobody had contacted — and since
+          // appendLeadInteraction also stamps last_follow_up and
+          // last_contact_note, it marked them as followed up on import day.
+          // One sync in August did that to 8,663 leads, which was 65% of
+          // every last-follow-up record in the CRM. The branch and course are
+          // already on the lead, in leads.branch, leads.notes and
+          // interested_course_ids_json; none of it was ever contact.
+          if (humanNote) {
             await appendLeadInteraction({
               tenantId,
               leadId,
-              interaction: { type: 'note', notes },
+              interaction: { type: 'note', notes: humanNote },
               actor: { name: 'google-sheets-sync' },
             });
           }
