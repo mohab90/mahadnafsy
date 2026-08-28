@@ -46,13 +46,16 @@ function dumpProcess() {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  let stderr = '';
-  child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+  // Buffered rather than decoded per chunk. mysqldump's diagnostics are
+  // usually ASCII, but a path or table name in them need not be, and a
+  // mangled error message is the one thing that must stay readable.
+  const stderrParts = [];
+  child.stderr.on('data', chunk => stderrParts.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
   const completed = new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('close', code => code === 0
       ? resolve()
-      : reject(new Error(`mysqldump exited ${code}: ${stderr.slice(-1000)}`)));
+      : reject(new Error(`mysqldump exited ${code}: ${Buffer.concat(stderrParts).toString('utf8').slice(-1000)}`)));
   });
   return { child, completed };
 }

@@ -38,9 +38,18 @@ function fetchCsvFollowRedirects(url, maxRedirects = 5) {
           res.resume();
           return attempt(new URL(res.headers.location, parsed).toString(), remaining - 1);
         }
-        let d = '';
-        res.on('data', c => d += c);
-        res.on('end', () => resolve(d));
+        // Collect the bytes and decode once at the end.
+        //
+        // This read `d += c`, which calls toString() on each chunk on its own.
+        // An Arabic letter is two bytes in UTF-8, so any letter that straddled a
+        // chunk boundary lost both halves to U+FFFD: names arrived as
+        // "دبلو��ة_المعالج" with the damage at a different position every run,
+        // because the boundary lands wherever the socket happened to split.
+        // Those rows then matched no course, and the corruption is still visible
+        // in leads imported before this.
+        const chunks = [];
+        res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
       }).on('error', reject).setTimeout(20000, function () { this.destroy(new Error('TIMEOUT')); });
     };
     attempt(url, maxRedirects);

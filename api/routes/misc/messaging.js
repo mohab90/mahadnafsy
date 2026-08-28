@@ -69,7 +69,22 @@ router.post('/api/admin/sms/send', requireAuth, requireAdmin, async (req, res) =
         const u = new URL(`https://api.infobip.com/sms/2/text/advanced`);
         const opts = { hostname: u.hostname, path: u.pathname, method: 'POST',
           headers: { 'Authorization': `App ${cfg.api_key}`, 'Content-Type': 'application/json', 'Accept': 'application/json' } };
-        const req2 = https.request(opts, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve(JSON.parse(d))); });
+        // Collect the bytes and decode once: `d += c` decodes each chunk on its
+        // own, so a multi-byte character split across a chunk boundary is lost.
+        // The parse is guarded because it runs inside an event handler, where a
+        // throw escapes the promise entirely rather than rejecting it.
+        const req2 = https.request(opts, r2 => {
+          const parts = [];
+          r2.on('data', c => parts.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+          r2.on('end', () => {
+            const text = Buffer.concat(parts).toString('utf8');
+            try {
+              resolve(JSON.parse(text));
+            } catch (parseError) {
+              resolve({ error: `invalid provider response: ${parseError.message}` });
+            }
+          });
+        });
         req2.on('error', e => resolve({ error: e.message }));
         req2.write(body); req2.end();
       });
