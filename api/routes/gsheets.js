@@ -9,6 +9,7 @@ const { getNextClientCode } = require('../lib/mappers');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
+const { matchCourseId } = require('../lib/courseMatch');
 
 const validSheetId = (value) => /^[A-Za-z0-9_-]{20,120}$/.test(String(value || ''));
 const validGid = (value) => value == null || value === '' || /^\d{1,20}$/.test(String(value));
@@ -75,14 +76,10 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
 
     // Load courses for name→id matching
     const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_active=1', [req.tenantId]);
-    const findCourseId = (courseName) => {
-      if (!courseName) return null;
-      const norm = courseName.trim().toLowerCase();
-      const exact = dbCourses.find(c => c.title.toLowerCase() === norm);
-      if (exact) return exact.id;
-      const fuzzy = dbCourses.find(c => c.title.toLowerCase().includes(norm) || norm.includes(c.title.toLowerCase().slice(0, 6)));
-      return fuzzy ? fuzzy.id : null;
-    };
+    // Shared with the automatic sync — see lib/courseMatch.js. The copy that
+    // stood here matched on lowercase substrings only, so it missed every name
+    // the sheets write with underscores instead of spaces.
+    const findCourseId = (courseName) => matchCourseId(courseName, dbCourses);
 
     // Get sales reps for auto-assign
     const [reps] = await pool.execute(

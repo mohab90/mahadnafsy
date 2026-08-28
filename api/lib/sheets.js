@@ -3,6 +3,7 @@ const logger = require('./logger');
 const https = require('https');
 const { pool } = require('./db');
 const { appendLeadInteraction } = require('./leadInteractions');
+const { matchCourseId } = require('./courseMatch');
 const { getNextClientCode } = require('./mappers');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
@@ -97,26 +98,10 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
         const normBranch = (v) => { if(!v)return null; const s=v.trim().toLowerCase().replace(/[\s_\-]/g,''); if(s.includes('دقي')||s.includes('daqqi')||s.includes('dokki'))return'DAQQI'; if(s.includes('تجمع')||s.includes('tagamoa')||s.includes('tagamo')||s.includes('قاهرةالجديدة')||s.includes('cairo')||s.includes('قاطميه')||s.includes('قاطميةs')||s.includes('qatat'))return'TAGAMOA'; if(s.includes('online')||s.includes('اونلاين')||s.includes('أونلاين')||s.includes('اونلاين')||s.includes('اون')){if(s.includes('سعودي')||s.includes('saudi'))return'ONLINE_SAUDI';if(s.includes('خارج')||s.includes('abroad'))return'ONLINE_ABROAD';return'ONLINE_EGYPT';} return s.length>=2?'OTHER':null; };
         // Load courses for fuzzy matching (use is_published not is_active)
         const [dbCourses] = await pool.execute('SELECT id, title FROM courses WHERE tenant_id=? AND is_published=1', [tenantId]);
-        const normStr = (s) => s.toLowerCase().replace(/[\u064B-\u065F]/g,'').replace(/\s+/g,' ').trim();
-        const findCourseId = (raw) => {
-          if(!raw) return null;
-          const n = normStr(raw);
-          if(!n) return null;
-          let found = dbCourses.find(c => normStr(c.title) === n);
-          if(found) return found.id;
-          found = dbCourses.find(c => { const ct=normStr(c.title); return ct.includes(n)||(n.length>=4&&n.includes(ct.substring(0,Math.min(ct.length,6)))); });
-          if(found) return found.id;
-          // Word-overlap fallback — require overlap across a MEANINGFUL FRACTION of the
-          // query's words, not just a fixed count of 2. A flat ">=2" let long, word-rich
-          // titles (e.g. "دبلومة اضطراب طيف التوحد والتدخل المبكر") absorb unrelated rows
-          // that only coincidentally shared 2 generic words like "دبلومة" — this was
-          // silently mis-tagging Google Sheets leads with the wrong course.
-          const qw = n.split(/\s+/).filter(w=>w.length>2);
-          let bestId=null,bestScore=0;
-          for(const c of dbCourses){ const ctw=normStr(c.title).split(/\s+/).filter(w=>w.length>2); const ov=qw.filter(w=>ctw.some(cw=>cw.includes(w)||w.includes(cw))).length; if(ov>bestScore){bestScore=ov;bestId=c.id;} }
-          const minOverlap = Math.max(2, Math.ceil(qw.length * 0.5));
-          return bestScore>=minOverlap?bestId:null;
-        };
+        // Name-to-course matching lives in lib/courseMatch.js. It used to be
+        // written out here and again, differently, in routes/gsheets.js, so the
+        // automatic sync and the manual import disagreed about what a lead wanted.
+        const findCourseId = (raw) => matchCourseId(raw, dbCourses);
         const [reps] = await pool.execute(
           `SELECT id, name FROM staff WHERE tenant_id=? AND role='SALES' AND is_active=1 AND deleted_at IS NULL ORDER BY name ASC`,
           [tenantId]
