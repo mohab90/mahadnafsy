@@ -10,6 +10,7 @@ const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { requireAuth, requireAdmin, requirePermission } = require('../middleware/auth');
 const { isHtmlResponse, fetchCsvFollowRedirects, syncAllConfiguredSheets } = require('../lib/sheets');
 const { matchCourseId } = require('../lib/courseMatch');
+const { toIdentity } = require('../lib/phoneNumber');
 
 const validSheetId = (value) => /^[A-Za-z0-9_-]{20,120}$/.test(String(value || ''));
 const validGid = (value) => value == null || value === '' || /^\d{1,20}$/.test(String(value));
@@ -110,9 +111,17 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       const courseId = findCourseId(courseNameRaw);
       if (!name && !phone) { skipped++; continue; }
 
+      // Normalised once: used both to find an existing lead and to store the
+      // number, so the unique index sees one spelling per person.
+      const identity = toIdentity(phone);
+
       // Skip if phone already exists in leads
       if (phone) {
-        const [dup] = await pool.execute('SELECT id FROM leads WHERE tenant_id=? AND phone=? AND hidden=0 LIMIT 1', [req.tenantId, phone]);
+        // Matched on identity: "p:+201227155562" and "1227155562" are one person,
+        // and comparing the text imported the same lead twice.
+        const [dup] = await pool.execute(
+          'SELECT id FROM leads WHERE tenant_id=? AND phone=? AND hidden=0 LIMIT 1',
+          [req.tenantId, identity || phone]);
         if (dup.length) { skipped++; continue; }
       }
 
@@ -151,7 +160,7 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       const [insertResult] = await pool.execute(
         `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, 0, NOW())`,
-        [leadId, req.tenantId, code, name || phone, email || '', phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
+        [leadId, req.tenantId, code, name || phone, email || '', identity || phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
       );
       if (insertResult.affectedRows) imported++; else skipped++;
     }

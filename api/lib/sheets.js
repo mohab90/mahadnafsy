@@ -4,6 +4,7 @@ const https = require('https');
 const { pool } = require('./db');
 const { appendLeadInteraction } = require('./leadInteractions');
 const { matchCourseId } = require('./courseMatch');
+const { toIdentity } = require('./phoneNumber');
 const { getNextClientCode } = require('./mappers');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { DEFAULT_TENANT } = require('../middleware/tenantContext');
@@ -125,7 +126,10 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
         }
         // Pre-load existing phones AND names for fast dedup
         const [existingPh] = await pool.execute('SELECT phone, name FROM leads WHERE tenant_id=? AND hidden=0', [tenantId]);
-        const phSet   = new Set(existingPh.map(r=>(r.phone||'').replace(/[\s-]/g,'')).filter(Boolean));
+        // Compared as identities, not as text. The same person arrives as
+        // "p:+201227155562" from Facebook and as "1227155562" from an older
+        // sheet; matching the strings treats them as two people.
+        const phSet   = new Set(existingPh.map(r=>toIdentity(r.phone)).filter(Boolean));
         const nameSet = new Set(existingPh.map(r=>(r.name||'').trim().toLowerCase()).filter(Boolean));
         const dataLines = lines.slice(1);
         for (let i = 0; i < dataLines.length; i++) {
@@ -142,7 +146,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           if (!rawName.trim() && !phone.trim()) { totalSkipped++; continue; }
           const isLikelyCourse = rawName.includes('_') && (/[\u0621-\u064a]/.test(rawName) || rawName.length > 30);
           const name = (!rawName || isLikelyCourse) ? (phone || rawName || `lead-${i}`) : rawName;
-          const normPhone = phone.replace(/[\s-]/g,'');
+          const normPhone = toIdentity(phone);
           if (normPhone && phSet.has(normPhone)) { totalSkipped++; continue; }
           // If no phone, dedup by exact name match (prevents re-importing on server restart)
           if (!normPhone && name && nameSet.has(name.toLowerCase())) { totalSkipped++; continue; }
@@ -170,7 +174,7 @@ async function syncAllConfiguredSheets(tenantId = DEFAULT_TENANT) {
           const leadId = `lead-gs-${Date.now()}-${i}`;
           const [insertResult] = await pool.execute(
             `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, branch, interested_course_ids_json, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at) VALUES (?,?,?,?,?,?,?,'new',?,?,?,?,?,?,0,NOW())`,
-            [leadId, tenantId, code, name, email||'', phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, crmJson]
+            [leadId, tenantId, code, name, email||'', normPhone||phone||'', source||'Facebook Lead Ads', notes, branch||null, courseId ? JSON.stringify([courseId]) : null, salesId, salesName, crmJson]
           );
           if (!insertResult.affectedRows) { totalSkipped++; continue; }
           // A timeline entry only when a person wrote something.
