@@ -105,14 +105,24 @@ function matchCourseId(raw, courses, bundles = []) {
   let best = null;
   let bestOverlap = 0;
   let bestTitleWords = 0;
+  // Characters matched, not just words. Two candidates can tie on word count
+  // while one of them agreed on the word that actually identifies the thing:
+  // "دبلومة اللايف كوتش الايجابي المحترف" overlaps the course "احتراف اللايف
+  // كوتشينج" and the bundle "الكوتش الإيجابي المحترف" on two words each, but
+  // the bundle is the one that matched الايجابي. Longer words carry more
+  // identity, so the tie goes to whichever agreed on more of them.
+  let bestChars = 0;
   for (const candidate of candidates) {
     const titleWords = identifyingWords(candidate.item.title);
     if (!titleWords.length) continue;
-    const overlap = queryWords.filter(
+    const matched = queryWords.filter(
       word => titleWords.some(titleWord => titleWord.includes(word) || word.includes(titleWord))
-    ).length;
-    if (overlap > bestOverlap) {
+    );
+    const overlap = matched.length;
+    const chars = matched.reduce((sum, word) => sum + word.length, 0);
+    if (overlap > bestOverlap || (overlap === bestOverlap && chars > bestChars)) {
       bestOverlap = overlap;
+      bestChars = chars;
       best = candidate;
       bestTitleWords = titleWords.length;
     }

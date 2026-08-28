@@ -137,3 +137,16 @@ test('omitting bundles keeps the previous behaviour', () => {
   // The argument is optional; callers that pass only courses are unaffected.
   assert.strictEqual(matchCourseId('دبلومة_المعالج_النفسي_المحترف', COURSES), null);
 });
+
+test('a tie is broken by which candidate agreed on the identifying word', () => {
+  // "دبلومة اللايف كوتش الايجابي المحترف" overlaps the course
+  // "احتراف اللايف كوتشينج" and the bundle "الكوتش الإيجابي المحترف" on two
+  // words each. The bundle is the one that matched الايجابي, which is the word
+  // that says which of the two the customer meant.
+  const courses = [{ id: 'c1', title: 'احتراف اللايف كوتشينج' }];
+  const bundles = [{ id: 'b1', title: 'الكوتش الإيجابي المحترف ' }];
+  assert.strictEqual(
+    matchCourseId('دبلومة_اللايف_كوتش_الايجابي_المحترف', courses, bundles), 'bundle:b1');
+  // and the plain course name still means the course
+  assert.strictEqual(matchCourseId('احتراف اللايف كوتشينج', courses, bundles), 'c1');
+});
