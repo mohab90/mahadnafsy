@@ -1,7 +1,8 @@
 import { ExternalLink } from 'lucide-react';
 import { calcLeadScore } from '../leadUtils';
-import { ScoreBadge, formatWaPhone } from './LeadSubcomponents';
+import { ScoreBadge } from './LeadSubcomponents';
 import type { ReminderLead } from './useLeadRemindersData';
+import WhatsAppLink from './WhatsAppLink';
 
 type LeadReminderCardProps = {
   lead: ReminderLead;
@@ -52,14 +53,13 @@ export function LeadReminderCard({
         </div>
       </div>
       <div className="flex gap-1.5 mt-2.5">
-        <a
-          href={`https://wa.me/${formatWaPhone(lead.phone)}`}
-          target="_blank"
-          rel="noreferrer"
+        <WhatsAppLink
+          leadId={lead.id}
+          phone={lead.phone}
           className="flex-1 py-1.5 text-center text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition"
         >
           💬 واتساب
-        </a>
+        </WhatsAppLink>
         <a
           href={`tel:${lead.phone}`}
           className="flex-1 py-1.5 text-center text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition"

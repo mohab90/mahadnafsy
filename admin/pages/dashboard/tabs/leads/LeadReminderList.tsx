@@ -1,8 +1,9 @@
 import { CheckCheck, Clock, MessageCircle } from 'lucide-react';
 import type { LeadStatus } from '../../../../types';
 import { DataTable, type Column } from '../../../../components/shared/DataTable';
-import { LEAD_STATUS_CFG, crmStatusLabels, formatWaPhone } from './LeadSubcomponents';
+import { LEAD_STATUS_CFG, crmStatusLabels } from './LeadSubcomponents';
 import type { ReminderLead } from './useLeadRemindersData';
+import WhatsAppLink from './WhatsAppLink';
 
 type LeadReminderListProps = {
   overdueFiltered: ReminderLead[];
@@ -84,14 +85,13 @@ export function LeadReminderList({
       header: 'إجراءات',
       render: (lead) => (
         <div className="flex gap-1">
-          <a
-            href={`https://wa.me/${formatWaPhone(lead.phone)}`}
-            target="_blank"
-            rel="noreferrer"
+          <WhatsAppLink
+            leadId={lead.id}
+            phone={lead.phone}
             className="flex h-7 items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100"
           >
             <MessageCircle size={12} /> WA
-          </a>
+          </WhatsAppLink>
           <button
             type="button"
             onClick={() => onSnooze(lead)}
