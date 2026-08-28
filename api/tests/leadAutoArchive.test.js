@@ -96,3 +96,37 @@ test('archiving does not move updated_at', async () => {
     + 'timestamp move would hide it from the reports that exist to surface neglect');
   assert.match(update.sql, /status='archived'/);
 });
+
+test('the update re-checks the status instead of trusting the earlier select', async () => {
+  // Two runs overlapped once and each narrated the same 4,000 leads, because the
+  // update filtered on id alone and so reported rows it had not transitioned.
+  const pool = stubPool([
+    [[{ eligible: 2 }]],
+    [[{ id: 'a' }, { id: 'b' }]],
+    [{ affectedRows: 2 }],
+    [[]],
+  ]);
+  await archiveColdLeads(pool, { olderThanDays: 30 });
+  const update = pool.calls.find(call => call.sql.startsWith('UPDATE leads'));
+  assert.match(update.sql, /AND status IN \(\?,\?,\?,\?\)/,
+    'the update must confirm the lead is still cold');
+  for (const status of COLD_STATUSES) {
+    assert.ok(update.params.includes(status), `${status} should be bound to the update`);
+  }
+});
+
+test('a batch another run took is not narrated twice', async () => {
+  // Update reports fewer rows than were selected: someone else archived part of
+  // the batch, so this run writes no note for any of it.
+  const pool = stubPool([
+    [[{ eligible: 2 }]],
+    [[{ id: 'a' }, { id: 'b' }]],
+    [{ affectedRows: 1 }],   // contended
+    [[]],                    // nothing left to select
+  ]);
+  const result = await archiveColdLeads(pool, { olderThanDays: 30 });
+  assert.strictEqual(result.archived, 1, 'counts only what it actually changed');
+  const wroteNote = pool.calls.some(call => /lead_timeline|INSERT/i.test(call.sql));
+  assert.strictEqual(wroteNote, false,
+    'a missing courtesy note is a smaller wrong than a duplicated one');
+});

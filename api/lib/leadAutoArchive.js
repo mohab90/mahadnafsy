@@ -72,11 +72,24 @@ async function archiveColdLeads(pool, { olderThanDays, tenantId = 'tenant-defaul
     // updated_at is pinned: a machine archiving a neglected lead is not someone
     // working it, and letting the timestamp move would hide it from the very
     // reports that exist to surface neglect.
+    //
+    // The status is re-checked inside the UPDATE rather than trusted from the
+    // SELECT above. Without it a second run overlapping this one reported rows
+    // it had not actually transitioned — which is how 4,000 leads ended up with
+    // the same archive note twice.
     const [result] = await pool.query(
       `UPDATE leads SET status='archived', updated_at=updated_at
-        WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')})`,
-      [tenantId, ...ids]);
+        WHERE tenant_id=? AND id IN (${ids.map(() => '?').join(',')})
+          AND status IN (${COLD_STATUSES.map(() => '?').join(',')})`,
+      [tenantId, ...ids, ...COLD_STATUSES]);
     archived += result.affectedRows;
+
+    // Only this run may narrate what only this run did. When another run took
+    // part of the batch the count comes back short, and the note is skipped for
+    // the whole batch rather than written for leads somebody else archived: a
+    // missing courtesy note is a smaller wrong than a duplicated one, and the
+    // status change itself is already recorded on the lead.
+    if (result.affectedRows !== ids.length) continue;
 
     for (const id of ids) {
       await logLeadEventStrict(
