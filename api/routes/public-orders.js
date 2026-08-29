@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const router = express.Router();
+const { resolveCatalogPrice, priceMatches } = require('../lib/catalogPrice');
 const logger = require('../lib/logger').child({ module: 'public-orders-route' });
 const { uuidv4 } = require('../lib/id');
 
@@ -232,8 +233,22 @@ router.post('/api/payments/paymob-init', paymobLimiter, async (req, res) => {
     const config = await getPaymentGatewaySettings(req.tenantId);
     if (!paymobReady(config)) return gatewayUnavailable(res, 'paymob_not_configured');
 
-    const { orderId, amount, currency = 'EGP', itemTitle } = req.body || {};
-    if (!orderId || !amount || Number(amount) <= 0) return res.status(400).json({ error: 'orderId and positive amount are required' });
+    const { orderId, currency: requestedCurrency = 'EGP', itemTitle } = req.body || {};
+    if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+
+    // Charged from the reserved order, never from the request. The body used to
+    // carry its own amount, so even with the catalogue enforced at reserve time
+    // a second call here could ask Paymob for a different figure — and the
+    // webhook would still credit the order in full.
+    const [[reserved]] = await pool.query(
+      'SELECT amount, currency FROM orders WHERE id=? AND tenant_id=? LIMIT 1',
+      [orderId, req.tenantId || DEFAULT_TENANT_ID]);
+    if (!reserved) return res.status(404).json({ error: 'الطلب مش موجود — احجز الأول' });
+    const amount = Number(reserved.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(409).json({ error: 'الطلب مالوش مبلغ صالح', code: 'INVALID_ORDER_AMOUNT' });
+    }
+    const currency = reserved.currency || requestedCurrency;
 
     const paymob = config.paymob || {};
 
@@ -334,6 +349,33 @@ router.post('/api/orders/reserve', publicLimiter, async (req, res) => {
       consultationData, extraCertRequestId, subscriberEmail, isInstallment, installmentLimit,
     } = req.body || {};
     if (!orderId || !type || !amount) return res.status(400).json({ error: 'Missing orderId, type, or amount' });
+
+    // The price comes from the catalogue, not from the caller. This endpoint is
+    // public — guests check out — and the amount used to be written straight
+    // into orders.amount, which the Paymob webhook later reads back to decide
+    // what the customer bought. A course could be ordered for any figure the
+    // request cared to name.
+    //
+    // Refused rather than silently corrected: a mismatch means the page is
+    // showing a price the catalogue no longer has, and quietly charging a
+    // different one is its own kind of wrong.
+    const orderTypeForPrice = normalizedOrderType(type);
+    const catalogPrice = await resolveCatalogPrice(pool, {
+      type: orderTypeForPrice,
+      itemId,
+      currency: currency || 'EGP',
+      tenantId: req.tenantId || DEFAULT_TENANT_ID,
+    });
+    if (catalogPrice !== null && !priceMatches(amount, catalogPrice)) {
+      logger.warn('[orders/reserve] price mismatch', {
+        orderId, itemId, submitted: Number(amount), expected: catalogPrice,
+      });
+      return res.status(409).json({
+        error: 'السعر اتغيّر — حدّث الصفحة وجرّب تاني',
+        code: 'PRICE_MISMATCH',
+        expected: catalogPrice,
+      });
+    }
     const extra = JSON.stringify({ bundleCourseIds, consultationData, extraCertRequestId, subscriberEmail, isInstallment, installmentLimit });
     const orderBranchId = branchIdForBranch(req.body?.branch || 'ONLINE_EGYPT');
     const orderType = normalizeOrderTypeForDb(type);
