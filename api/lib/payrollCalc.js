@@ -52,8 +52,24 @@ function computePayrollLine(emp = {}, ctx = {}) {
   const absentDays = (Number(attendance.absent_days) || 0) + unpaidLeaveDays;
   const lateMins   = parseInt(attendance.late_minutes) || 0;
 
-  const dailyRate  = baseSalary / workDaysPerMonth;
-  const minuteRate = baseSalary / (workDaysPerMonth * workdayMinutes);
+  // The divisors are guarded here rather than trusted from the caller.
+  //
+  // The route reads them as `Number(policy.work_days_per_month || 26)`, which
+  // looks like a fallback and is not one: work_days_per_month is DECIMAL, and
+  // mysql2 hands DECIMAL back as a string — so a stored zero arrives as "0.00",
+  // which is truthy, skips the `|| 26`, and becomes 0. The daily rate is then
+  // Infinity, and Infinity × 0 absent days is NaN, which passes through
+  // Math.max(0, NaN) as NaN. Every payslip in the run comes out NaN.
+  //
+  // The policy route does reject a zero on save, so this is not reachable
+  // today. It is guarded anyway because the arithmetic is where money is
+  // decided, and a guard that only works when the column type cooperates is
+  // not one worth relying on.
+  const safeWorkDays = Number(workDaysPerMonth) > 0 ? Number(workDaysPerMonth) : 26;
+  const safeWorkMinutes = Number(workdayMinutes) > 0 ? Number(workdayMinutes) : 480;
+
+  const dailyRate  = baseSalary / safeWorkDays;
+  const minuteRate = baseSalary / (safeWorkDays * safeWorkMinutes);
   const absenceDeduction = dailyRate * absentDays;
   const lateDeduction    = minuteRate * lateMins;
 

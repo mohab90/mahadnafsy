@@ -135,3 +135,39 @@ test('a payslip line never returns undefined for a detail field', () => {
   assert.equal(typeof line.totalSales, 'number');
   assert.equal(typeof line.unpaidLeaveDays, 'number');
 });
+
+test('a policy divisor of zero cannot turn a payslip into NaN', () => {
+  // work_days_per_month is DECIMAL, and mysql2 returns DECIMAL as a string. The
+  // route's `Number(policy.work_days_per_month || 26)` therefore never fires for
+  // a stored zero — "0.00" is truthy — and the daily rate became Infinity, which
+  // multiplied by zero absent days is NaN, which survives Math.max(0, NaN).
+  for (const workDaysPerMonth of [0, '0.00', -5, null, undefined, NaN, 'abc']) {
+    const line = computePayrollLine(EMP, { ...CTX, workDaysPerMonth, baseSalary: 10000 });
+    for (const [key, value] of Object.entries(line)) {
+      if (typeof value === 'number') {
+        assert.ok(Number.isFinite(value), `${key} must be finite for workDaysPerMonth=${workDaysPerMonth}`);
+      }
+    }
+    assert.ok(line.netSalary > 0, 'a valid salary must survive an invalid policy');
+  }
+});
+
+test('a zero workday length cannot break the per-minute rate', () => {
+  for (const workdayMinutes of [0, '0', -1, null, 'abc']) {
+    const line = computePayrollLine(EMP, {
+      ...CTX, workdayMinutes, baseSalary: 10000, attendance: { late_minutes: 30 },
+    });
+    assert.ok(Number.isFinite(line.minuteRate), `minuteRate must be finite for ${workdayMinutes}`);
+    assert.ok(Number.isFinite(line.netSalary));
+  }
+});
+
+test('a valid policy is still used as given, not replaced by the fallback', () => {
+  // The guard must not quietly override a real value: a 20-day month has to
+  // charge absence at a twentieth, not a twenty-sixth.
+  const line = computePayrollLine(EMP, {
+    ...CTX, workDaysPerMonth: 20, baseSalary: 10000, attendance: { absent_days: 1 },
+  });
+  assert.equal(line.dailyRate, 500);
+  assert.equal(line.absenceDeduction, 500);
+});

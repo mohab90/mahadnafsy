@@ -100,8 +100,13 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     const policy = await getEffectiveHrPolicy(
       conn, tenantId, `${y}-${String(m).padStart(2, '0')}-01`
     );
-    const workDaysPerMonth = Number(policy.work_days_per_month || 26);
-    const workdayMinutes = Number(policy.workday_minutes || 480);
+    // Passed through as read. The "|| 26" that used to stand here could not
+    // fire: work_days_per_month is DECIMAL and mysql2 returns DECIMAL as a
+    // string, so a stored zero arrives as the truthy "0.00". computePayrollLine
+    // guards the divisors itself, which is where the arithmetic happens and the
+    // guard cannot be defeated by a column type.
+    const workDaysPerMonth = Number(policy.work_days_per_month);
+    const workdayMinutes = Number(policy.workday_minutes);
 
     // Create-or-lock the scoped run without mutating an approved/paid run. The
     // unique (tenant,branch,month,year) key serializes concurrent calculations.
