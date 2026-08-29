@@ -10,8 +10,16 @@ async function resolveLectureAccess({ tenantId, subscriberId, lectureId }, db = 
        FROM course_lectures cl
        JOIN courses c ON c.id=cl.course_id AND c.tenant_id=? AND c.deleted_at IS NULL
        LEFT JOIN course_chapters cc ON cc.id=cl.chapter_id
+       -- The enrolment must belong to a customer who still exists. Deleting a
+       -- customer deactivates their login, so this was already unreachable in
+       -- practice — but login was the only thing standing between an archived
+       -- account and the lectures, and 38 archived customers still carry an
+       -- active enrolment. A second gate costs one join.
        LEFT JOIN enrollments e ON e.course_id=cl.course_id AND e.subscriber_id=?
          AND e.tenant_id=? AND e.status='active'
+         AND EXISTS (SELECT 1 FROM subscribers s
+                      WHERE s.id=e.subscriber_id AND s.tenant_id=e.tenant_id
+                        AND s.deleted_at IS NULL)
       WHERE cl.id=? AND cl.is_published=1 LIMIT 1`,
     [tenantId, subscriberId, tenantId, lectureId]
   );
