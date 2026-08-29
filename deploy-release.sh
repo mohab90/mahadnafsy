@@ -8,7 +8,12 @@
 #
 # Rolls back automatically if health does not come back.
 set -uo pipefail
-R=mahad-d22513af99b3
+# The release to deploy. Passing one as $1 wins; the value here is only the
+# fallback. It used to be this line alone, which meant the script accepted an
+# argument, ignored it, and deployed whatever was hardcoded — on 2026-08-27 that
+# silently rolled production back to an older build, dropping the staff edit
+# button and a finance fix until it was noticed and redeployed.
+R=${1:-mahad-2fe36419b325}
 TS=$(date +%Y%m%d-%H%M%S)
 
 h()  { curl -s --max-time 15 "http://127.0.0.1:$1/api/health" 2>/dev/null; }
@@ -75,4 +80,16 @@ echo -n "  service : "; systemctl is-active mahad-api
 echo -n "  health  : "; h 3001; echo
 echo -n "  restarts: "; systemctl show mahad-api -p NRestarts --value
 echo
+echo
+echo "=== prune old assets ==="
+# Each release writes new hashed files and leaves the previous ones behind.
+# Seven days is well past any cached index.html still asking for an older
+# chunk, and comfortably past the window a rollback would need.
+for web in /var/www/mahadnafsy.com/assets /var/www/admin.mahadnafsy.com/assets; do
+  [ -d "$web" ] || continue
+  before=$(find "$web" -type f | wc -l)
+  find "$web" -type f -mtime +7 -delete 2>/dev/null
+  after=$(find "$web" -type f | wc -l)
+  echo "  $(basename "$(dirname "$web")"): $before -> $after files"
+done
 echo "DONE - release $R live on staging and production."
