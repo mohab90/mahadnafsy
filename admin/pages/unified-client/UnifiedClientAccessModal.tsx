@@ -3,6 +3,7 @@ import { BookOpen, Shield, X } from 'lucide-react';
 
 import type { Course, CourseAccessSetting, SubscriberItem } from '../../types';
 import { normalizeAccess } from './constants';
+import { coursePaymentState } from './coursePaymentState';
 
 type AccessPreset = { p1: number; p2: number };
 type AccessMessage = { ok: boolean; text: string };
@@ -41,6 +42,7 @@ export function UnifiedClientAccessModal({
   applyAccessLevel,
   onClose,
 }: UnifiedClientAccessModalProps) {
+
   if (!open || !subscriber || !canManageCourseAccess) return null;
 
   return (
@@ -76,6 +78,8 @@ export function UnifiedClientAccessModal({
             const saving = accessSaving[courseId] ?? false;
             const message = accessMsg[courseId];
             const preset = getPreset(courseId);
+            const payment = coursePaymentState(subscriber.paymentHistory, courseId);
+            const courseTitle = course?.title || courseId;
             const currentManual = manualLimitDraft[courseId] ?? String(access.lectureLimit || preset.p1);
             const accessBadge = access.mode === 'full'
               ? { label: 'وصول كامل', cls: 'bg-green-100 text-green-700' }
@@ -86,9 +90,19 @@ export function UnifiedClientAccessModal({
             return (
               <div key={courseId} className="border border-gray-200 rounded-2xl p-4 bg-gray-50/50">
                 <div className="flex items-start justify-between gap-2 mb-3">
-                  <p className="font-bold text-gray-800 text-sm leading-tight flex-1">{course?.title || courseId}</p>
+                  <p className="font-bold text-gray-800 text-sm leading-tight flex-1">{courseTitle}</p>
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${accessBadge.cls}`}>{accessBadge.label}</span>
                 </div>
+
+                {payment.expected > 0 && (
+                  <div className={`mb-3 flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${
+                    payment.settled ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'
+                  }`}>
+                    <span>{payment.settled ? '✓ مدفوع بالكامل' : 'دفع جزئي'}</span>
+                    <span className="font-mono" dir="ltr">{payment.paid.toLocaleString('en-EG')} / {payment.expected.toLocaleString('en-EG')}</span>
+                    {payment.settled && <span className="font-normal opacity-80">— يستحق فتح كامل</span>}
+                  </div>
+                )}
 
                 {totalLectures > 0 && (
                   <div className="mb-3">

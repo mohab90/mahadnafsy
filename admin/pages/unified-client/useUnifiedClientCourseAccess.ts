@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { mysqlAdmin } from '../../lib/mysqlapi';
+import { coursePaymentState } from './coursePaymentState';
 import type { SubscriberItem } from '../../types';
 
 interface Params {
@@ -27,6 +28,17 @@ export function useUnifiedClientCourseAccess({ subscriber, content, reloadSubscr
     lectureLimit?: number,
   ) => {
     if (!subscriber) return;
+    // Two clients who had paid in full were put back on a video limit within a
+    // minute of paying, from these buttons. Downgrading a settled course is a
+    // decision an admin is allowed to make — but not one to make by accident.
+    if (mode === 'limited' && coursePaymentState(subscriber.paymentHistory, courseId).settled) {
+      const confirmed = window.confirm(
+        `الكورس ده مدفوع بالكامل.
+
+تحديد الصلاحية بـ${lectureLimit ?? 1} فيديو هيقفل باقي الكورس على العميل. متأكد؟`,
+      );
+      if (!confirmed) return;
+    }
     setAccessSaving(current => ({ ...current, [courseId]: true }));
     setAccessMsg(current => ({ ...current, [courseId]: { ok: true, text: '' } }));
     try {
