@@ -53,6 +53,7 @@ export const NotificationsAdminTab = lazy(() => import('./tabs/NotificationsAdmi
 export const OnlineTeamMgmtTab = lazy(() => import('./tabs/OnlineTeamMgmtTab'));
 export const OnlineTeamTab = lazy(() => import('./tabs/OnlineTeamTab'));
 export const OtpSettingsTab = lazy(() => import('./tabs/OtpSettingsTab'));
+export const EmailSettingsTab = lazy(() => import('./tabs/EmailSettingsTab'));
 export const PaymentSettingsTab = lazy(() => import('./tabs/PaymentSettingsTab'));
 export const PgMigrateTab = lazy(() => import('./tabs/PgMigrateTab'));
 export const QuizzesTab = lazy(() => import('./tabs/QuizzesTab'));

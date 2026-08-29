@@ -63,6 +63,7 @@ export const contentHubRouteTabs = new Set<string>([
   'payment_settings',
   'lead_sources_settings',
   'otp_settings',
+  'email_settings',
   'branch_workspaces',
   'sms_settings',
   'notif_inbox',

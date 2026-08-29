@@ -146,6 +146,7 @@ export type TabKey =
   | 'payment_settings'
   | 'lead_sources_settings'
   | 'otp_settings'
+  | 'email_settings'
   | 'branch_workspaces'
   | 'branches_settings'
   | 'webhooks'
@@ -345,6 +346,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'payment_settings', label: 'بوابات الدفع', icon: CreditCard },
       { key: 'lead_sources_settings', label: 'مصادر الليد والداتا', icon: UserPlus },
       { key: 'otp_settings', label: 'OTP والقنوات', icon: Shield },
+      { key: 'email_settings', label: 'البريد الإلكتروني', icon: Shield },
       { key: 'sms_settings', label: 'إعدادات SMS', icon: MessageSquareText },
       // The branch list itself — what appears in booking, payment and course
       // interest. Distinct from مساحات عمل الفروع, which arranges the dashboard

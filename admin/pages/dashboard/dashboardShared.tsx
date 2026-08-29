@@ -644,6 +644,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   payment_settings:   'manage_settings',
   lead_sources_settings: 'manage_settings',
   otp_settings:       'manage_security',
+  email_settings:     'manage_settings',
   branch_workspaces:  'manage_settings',
   server_monitor:     'view_security',
   webhooks:           'manage_settings',

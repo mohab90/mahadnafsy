@@ -51,7 +51,7 @@ const SCREENS = [
   'content_hub', 'courses', 'lectures', 'bundles', 'quizzes', 'course_waitlist',
   'live_streams', 'community',
   'settings_hub', 'system_settings', 'payment_settings', 'lead_sources_settings',
-  'otp_settings', 'sms_settings', 'branches_settings', 'branch_workspaces',
+  'otp_settings', 'email_settings', 'sms_settings', 'branches_settings', 'branch_workspaces',
   'automation', 'ip_whitelist', 'messaging_agent', 'admin_ai_settings',
   'server_monitor', 'webhooks', 'security_dashboard', 'pg_migrate',
 ];
