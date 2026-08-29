@@ -3,7 +3,7 @@
 // One authoritative daily backup path. It streams mysqldump through Node gzip,
 // never puts the password or database values in a shell command, writes
 // atomically and records a SHA-256 sidecar for later restore verification.
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -31,6 +31,32 @@ const KEEP = Math.max(1, Number(process.env.DB_BACKUP_KEEP || 14));
 const ENABLED = process.env.DB_BACKUP_ENABLED === '1';
 const today = () => new Date().toISOString().slice(0, 10);
 
+// Does this mysqldump understand --set-gtid-purged?
+//
+// It is a MySQL option. MariaDB's mysqldump does not merely ignore it, it
+// refuses to start: "unknown variable 'set-gtid-purged=OFF'", exit 7. This
+// server runs MariaDB, so every in-app backup has failed since the flag was
+// added — 96 times, into an empty directory, while the separate cron dump kept
+// working and hid it.
+//
+// Asking the binary what it supports is the one check that stays right when
+// the same code runs against either flavour.
+let gtidSupport = null;
+function supportsGtidPurged() {
+  if (gtidSupport !== null) return gtidSupport;
+  try {
+    const probe = spawnSync(process.env.MYSQLDUMP_PATH || 'mysqldump', ['--help'], {
+      encoding: 'utf8', timeout: 10000, windowsHide: true,
+    });
+    gtidSupport = /set-gtid-purged/.test(String(probe.stdout || '') + String(probe.stderr || ''));
+  } catch {
+    // Probe failed for an unrelated reason. Leave the flag off: its absence
+    // costs a GTID header on MySQL, its presence costs the whole backup here.
+    gtidSupport = false;
+  }
+  return gtidSupport;
+}
+
 function dumpProcess() {
   const {
     DB_HOST = '127.0.0.1', DB_PORT = '3306', DB_USER, DB_PASSWORD, DB_NAME,
@@ -39,7 +65,9 @@ function dumpProcess() {
   const args = [
     `--host=${DB_HOST}`, `--port=${DB_PORT}`, `--user=${DB_USER}`,
     '--single-transaction', '--quick', '--routines', '--triggers', '--events',
-    '--no-tablespaces', '--set-gtid-purged=OFF', DB_NAME,
+    '--no-tablespaces',
+    ...(supportsGtidPurged() ? ['--set-gtid-purged=OFF'] : []),
+    DB_NAME,
   ];
   const child = spawn(process.env.MYSQLDUMP_PATH || 'mysqldump', args, {
     env: { ...process.env, MYSQL_PWD: DB_PASSWORD || '' },

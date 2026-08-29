@@ -6,6 +6,7 @@ const logger = require('./logger');
 const { runReconcile } = require('./reconcileChecks');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const TITLE = 'تنبيه سلامة البيانات المالية';
 
 async function runOnce(pool) {
   let results;
@@ -23,9 +24,33 @@ async function runOnce(pool) {
   if (criticals.length > 0) {
     try {
       const { createNotification } = require('./notification');
-      const summary = criticals.map(c => `${c.name} (${c.n})`).join('؛ ');
-      await createNotification('system', 'تنبيه سلامة البيانات المالية',
-        `فحص المطابقة اكتشف خللاً حرجاً: ${summary}. راجع الآن.`, { checks: criticals.map(c => c.key) });
+      const keys = criticals.map(c => c.key).sort();
+      // One notification per finding per day, not per run.
+      //
+      // This job runs three minutes after every boot as well as daily, so each
+      // deploy or restart raised another identical alert: 732 of them, 633 of
+      // those unread, a sixth of every notification in the system. An alert
+      // that repeats unchanged is one people learn to scroll past, which costs
+      // exactly the attention it was built to buy.
+      // Compared as text, not with JSON_EXTRACT: `CAST(? AS JSON)` is a parse
+      // error on MariaDB, and a throw here lands in the catch below and loses
+      // the alert entirely — silence being the one outcome worse than repeats.
+      // The keys are sorted so the same findings always serialise the same way.
+      const payload = JSON.stringify({ checks: keys });
+      const [[dupe]] = await pool.query(
+        `SELECT id FROM notifications
+          WHERE title = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
+            AND data_json = ?
+          LIMIT 1`,
+        [TITLE, payload],
+      );
+      if (dupe) {
+        logger.info(`[reconcile-job] نفس ${keys.length} نتيجة اتبلّغت النهارده — مش هكررها`);
+      } else {
+        const summary = criticals.map(c => `${c.name} (${c.n})`).join('؛ ');
+        await createNotification('system', TITLE,
+          `فحص المطابقة اكتشف خللاً حرجاً: ${summary}. راجع الآن.`, { checks: keys });
+      }
     } catch (e) { logger.warn('[reconcile-job] notify failed:', e.message); }
   }
 }
