@@ -46,7 +46,9 @@ function signAccessToken({ uid, email, tenantId, sessionVersion, sessionId, mfaV
       stf: isStaff === true,
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRY }
+    // Named rather than left to the library's default, so the verify side has
+    // something to pin to.
+    { algorithm: 'HS256', expiresIn: JWT_EXPIRY }
   );
 }
 

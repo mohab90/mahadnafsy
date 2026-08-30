@@ -6,7 +6,7 @@ const { resolveSecret } = require('./secretResolver');
 function pendingTokenIdentity(token) {
   if (!token) return null;
   try {
-    const payload = jwt.verify(String(token), resolveSecret('JWT_SECRET'));
+    const payload = jwt.verify(String(token), resolveSecret('JWT_SECRET'), { algorithms: ['HS256'] });
     if (payload?.purpose !== 'totp_pending') return null;
     return payload.uid || payload.email || null;
   } catch {

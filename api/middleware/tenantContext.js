@@ -108,7 +108,7 @@ function extractSignedTenant(req) {
   const jwtSecret = resolveSecret('JWT_SECRET');
   if (!jwtSecret) return null;
   try {
-    const payload = jwt.verify(token, jwtSecret);
+    const payload = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
     const tenantId = payload.tid || payload.tenant_id;
     // A valid legacy token without tid belongs to the original/default
     // institute. Do not let an untrusted header move that session elsewhere.

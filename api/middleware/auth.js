@@ -5,6 +5,13 @@ const jwt  = require('jsonwebtoken');
 const { pool } = require('../lib/db');
 const { JWT_SECRET, tokenBlacklist } = require('../lib/token');
 const { writeAuditEvent } = require('../lib/auditTrail');
+
+// The algorithm is named on both sides rather than left to the library's
+// default. jsonwebtoken refuses `alg: none` when a secret is supplied — a probe
+// against production confirms it — so nothing is open today. It opens the day a
+// key pair is introduced for anything, because a token signed HS256 using that
+// public key as its secret then verifies as though it were RS256.
+const JWT_VERIFY_OPTIONS = { algorithms: ['HS256'] };
 const {
   listEnv,
   PLATFORM_ADMIN_EMAILS,
@@ -150,7 +157,7 @@ async function optionalAuth(req, res, next) {
   }
   if (token) {
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
+      const payload = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS);
       if (!payload.jti || !tokenBlacklist.has(payload.jti)) {
         const tenantId = getTrustedTenantId(req, tenantIdFromPayload(payload));
         if (!tenantId) return next();
@@ -185,7 +192,7 @@ async function requireAuth(req, res, next) {
   }
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS);
     if (payload.jti && tokenBlacklist.has(payload.jti)) {
       return res.status(401).json({ error: 'Token revoked' });
     }

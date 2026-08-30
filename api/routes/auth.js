@@ -1405,7 +1405,7 @@ router.post('/api/auth/reset-password', loginLimiter, async (req, res) => {
   if (!resetToken || !newPassword) return res.status(400).json({ error: 'البيانات مطلوبة' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' });
   try {
-    const payload = jwt.verify(resetToken, JWT_SECRET);
+    const payload = jwt.verify(resetToken, JWT_SECRET, { algorithms: ['HS256'] });
     if (payload.purpose !== 'reset') return res.status(400).json({ error: 'رمز غير صالح' });
     const hash = await bcrypt.hash(newPassword, 12);
     if (payload.tid !== req.tenantId) return res.status(400).json({ error: 'Tenant mismatch' });
@@ -1810,7 +1810,7 @@ router.post('/api/auth/2fa/verify', otpLimiter, async (req, res) => {
     // Decode the pending token (limited JWT issued before TOTP check)
     let payload;
     try {
-      payload = jwt.verify(pendingToken, JWT_SECRET);
+      payload = jwt.verify(pendingToken, JWT_SECRET, { algorithms: ['HS256'] });
     } catch (_) {
       return res.status(401).json({ error: 'رمز انتهت صلاحيته — أعد تسجيل الدخول' });
     }
