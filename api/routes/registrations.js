@@ -19,6 +19,7 @@ const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { getNextClientCode } = require('../lib/mappers');
 const { getNextSalesRep } = require('../lib/leadAssignment');
+const { findLeadByContact } = require('../lib/leadMatching');
 const { branchIdForBranch } = require('../lib/branches');
 const { toIdentity } = require('../lib/phoneNumber');
 
@@ -163,13 +164,18 @@ router.post('/api/admin/registrations/:userId/convert-lead', requireAuth, requir
       [userId, tenantId]
     );
     if (!user) { await conn.rollback(); return res.status(404).json({ error: 'Registration not found' }); }
-    const [[existing]] = await conn.query(
-      `SELECT id FROM leads WHERE tenant_id=? AND hidden=0 AND (
-         (? IS NOT NULL AND LOWER(TRIM(email))=LOWER(TRIM(?)))
-         OR (? IS NOT NULL AND REGEXP_REPLACE(phone,'[^0-9]','')=?)
-       ) LIMIT 1`,
-      [tenantId, user.email, user.email, user.phone, user.phone]
-    );
+    // The shared matcher, not a second attempt at the same comparison.
+    //
+    // This used to strip non-digits from the stored phone and compare it with
+    // the account's phone exactly as typed, so 01006627192 never met
+    // +201006627192 and the same person was written down twice: once by the
+    // campaign that found them, once by their own signup. Six live pairs — the
+    // marketing lead sitting at "new" beside a "converted" duplicate. Its
+    // NULL-guard on email also let one empty address match another, which is
+    // the bug already documented at routes/admin/subscribers.js:606.
+    const existing = await findLeadByContact(conn, {
+      tenantId, phone: user.phone, email: user.email,
+    });
     if (existing) { await conn.rollback(); return res.status(409).json({ error: 'Already a lead' }); }
     const leadId = uuidv4();
     const clientCode = await getNextClientCode(conn);
