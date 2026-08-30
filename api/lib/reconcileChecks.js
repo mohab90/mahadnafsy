@@ -181,6 +181,42 @@ const CHECKS = [
             )`,
     hint: 'A converted lead without subscriber ownership breaks payment, portal and LMS continuity.',
   },
+  {
+    key: 'full_access_below_price',
+    name: 'full course access is covered by what the customer paid',
+    // A warning, not a critical: granting access on a deposit may be exactly
+    // what the desk decided. What is wrong is that nothing said so. The
+    // collections view reads course_expected, which defaulted to the payment
+    // itself — so a customer who paid anything at all looked settled and
+    // dropped off every list that would have chased them.
+    severity: 'warning',
+    // Compared against the catalogue price rather than course_expected, which
+    // is the field that could not be trusted. Someone enrolled on a lower
+    // agreed price shows here too; that is the point — an agreed discount
+    // belongs in the discount column, where a report can see it, and none of
+    // these carry one.
+    // Only where a payment exists and falls short. An enrolment with no payment
+    // at all is a different question with a known answer: 1,783 of them came
+    // from the April migration of who-was-in-which-course, and those customers
+    // paid the old system. Counting them here would make this 2,109 on the day
+    // it shipped, and a check that is mostly noise is one people stop reading —
+    // which is the failure orphan_customer_users already demonstrated.
+    sql: `SELECT COUNT(*) AS n FROM enrollments e
+           JOIN courses c ON c.id=e.course_id AND c.tenant_id=e.tenant_id
+          WHERE e.access_type='full' AND e.status='active'
+            AND c.deleted_at IS NULL AND COALESCE(c.price_egp,0) > 0
+            AND COALESCE((
+              SELECT SUM(p.amount) FROM payments p
+               WHERE p.subscriber_id=e.subscriber_id AND p.deleted_at IS NULL
+                 AND p.status='paid' AND p.tenant_id=e.tenant_id
+                 AND (p.course_id=e.course_id
+                      OR (p.bundle_id IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM bundle_courses bc
+                         WHERE bc.bundle_id=p.bundle_id AND bc.course_id=e.course_id
+                           AND bc.tenant_id=e.tenant_id)))
+            ), 0) BETWEEN 0.01 AND c.price_egp - 0.01`,
+    hint: 'Full access granted for less than the course price, with no discount recorded to explain it.',
+  },
 ];
 
 // Runs every check against the pool; returns [{ key, name, severity, n, error }].

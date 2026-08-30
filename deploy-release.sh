@@ -32,6 +32,20 @@ deploy() { # <label> <apidir> <admindir> <clientdir> <service> <port>
   rm -rf "$apidir.prev"; cp -a "$apidir" "$apidir.prev"
   tar -xzf "/staging/$R-api.tgz" --strip-components=1 -C "$apidir"
   cp /tmp/env.$label "$apidir/.env"
+
+  # Stamp the build into its own environment.
+  #
+  # APP_RELEASE is what the error monitor and the readiness check use to say
+  # which build is running. It was never set, so a report from production named
+  # no version, and "is the fix live?" could only be answered by reading files
+  # on the box. The release id is already in hand here; the only reason it was
+  # missing is that nobody wrote it down.
+  #
+  # Rewritten rather than appended, because .env is carried across deploys and
+  # appending would stack one line per release.
+  sed -i '/^APP_RELEASE=/d' "$apidir/.env"
+  echo "APP_RELEASE=$R" >> "$apidir/.env"
+
   tar -xzf "/staging/$R-admin.tgz"  -C "$admindir"
   tar -xzf "/staging/$R-client.tgz" -C "$clientdir"
   echo -n "  admin entry: "; grep -oE 'index-[A-Za-z0-9_-]+\.js' "$admindir/index.html" | head -1
