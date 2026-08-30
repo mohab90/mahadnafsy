@@ -19,7 +19,7 @@ const { uuidv4 } = require('../lib/id');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { getNextClientCode } = require('../lib/mappers');
 const { getNextSalesRep } = require('../lib/leadAssignment');
-const { findLeadByContact } = require('../lib/leadMatching');
+const { findLeadByContact, phoneIdentityClause } = require('../lib/leadMatching');
 const { branchIdForBranch } = require('../lib/branches');
 const { toIdentity } = require('../lib/phoneNumber');
 
@@ -113,11 +113,20 @@ router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requ
       [userId, tenantId]
     );
     if (!user) { await conn.rollback(); return res.status(404).json({ error: 'Registration not found' }); }
+    // Same comparison as the lead side, for the same reason. This one was worse:
+    // `phone=?` compared the stored string with the account's string, so any
+    // difference in how the number was written — a country code, a space —
+    // meant an existing client was not found and a second record was created.
+    // The NULL-guard on email let one empty address match another besides.
+    const phoneClause = phoneIdentityClause(user.phone);
+    const cleanEmail = String(user.email || '').trim();
+    const terms = ['firebase_uid=?'];
+    const values = [userId];
+    if (cleanEmail) { terms.push('LOWER(TRIM(email))=LOWER(?)'); values.push(cleanEmail.toLowerCase()); }
+    if (phoneClause) { terms.push(phoneClause.sql); values.push(...phoneClause.params); }
     const [[existing]] = await conn.query(
-      `SELECT id FROM subscribers WHERE tenant_id=? AND (firebase_uid=?
-         OR (? IS NOT NULL AND LOWER(TRIM(email))=LOWER(TRIM(?)))
-         OR (? IS NOT NULL AND phone=?)) LIMIT 1`,
-      [tenantId, userId, user.email, user.email, user.phone, user.phone]
+      `SELECT id FROM subscribers WHERE tenant_id=? AND (${terms.join(' OR ')}) LIMIT 1`,
+      [tenantId, ...values]
     );
     if (existing) { await conn.rollback(); return res.status(409).json({ error: 'Already an online client' }); }
     const subscriberId = uuidv4();
