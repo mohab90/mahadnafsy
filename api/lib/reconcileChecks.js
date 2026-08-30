@@ -217,6 +217,33 @@ const CHECKS = [
             ), 0) BETWEEN 0.01 AND c.price_egp - 0.01`,
     hint: 'Full access granted for less than the course price, with no discount recorded to explain it.',
   },
+  {
+    key: 'paid_course_without_enrollment',
+    name: 'a paid course payment has an enrolment to go with it',
+    severity: 'critical',
+    // The other direction from full_access_below_price, and the one that hurts
+    // a customer rather than the books: they paid for a named course and have
+    // no enrolment in it, so nothing they bought will open. Three exist. One of
+    // them paid 1,000 in May and is enrolled in nothing at all; the other two
+    // paid for one course and hold enrolments in different ones.
+    //
+    // A bundle payment counts, because a bundle enrols its courses.
+    sql: `SELECT COUNT(*) AS n FROM payments p
+          WHERE p.deleted_at IS NULL AND p.status='paid'
+            AND p.course_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM enrollments e
+               WHERE e.subscriber_id=p.subscriber_id AND e.course_id=p.course_id
+                 AND e.tenant_id=p.tenant_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM payments b
+               JOIN bundle_courses bc ON bc.bundle_id=b.bundle_id AND bc.tenant_id=b.tenant_id
+               WHERE b.subscriber_id=p.subscriber_id AND b.deleted_at IS NULL
+                 AND b.status='paid' AND bc.course_id=p.course_id
+            )`,
+    hint: 'Someone paid for a course they were never enrolled in — they cannot open what they bought.',
+  },
 ];
 
 // Runs every check against the pool; returns [{ key, name, severity, n, error }].
