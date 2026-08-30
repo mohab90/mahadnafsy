@@ -1,4 +1,5 @@
 import type { Price, StaffMember, SubscriberItem } from '../../types';
+import { toEgp } from '../../lib/money';
 
 export type StaffWire = StaffMember & { is_active?: number | boolean };
 
@@ -23,12 +24,6 @@ export const translatePayMethod = (method: string | undefined): string => {
   return labels[method.toLowerCase()] || method;
 };
 
-const paymentAmountInEGP = (amount: number, currency: string): number => {
-  if (currency === 'SAR') return amount * 13;
-  if (currency === 'USD') return amount * 50;
-  return amount;
-};
-
 export const buildStaffSettingsMetrics = (
   subscribers: SubscriberItem[],
   monthlyTargetInput: string,
@@ -42,7 +37,7 @@ export const buildStaffSettingsMetrics = (
   const sumPayments = (items: SubscriberItem[], monthOnly: boolean) => items.reduce((total, subscriber) => {
     const paid = (subscriber.paymentHistory || [])
       .filter((payment) => !monthOnly || (payment.at || '').slice(0, 7) === currentMonth)
-      .reduce((sum, payment) => sum + paymentAmountInEGP(Number(payment.amount) || 0, payment.currency), 0);
+      .reduce((sum, payment) => sum + toEgp(payment.amount, payment.currency), 0);
     return total + paid;
   }, 0);
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { fxRates, toEgp } from '../../../lib/money';
 import type { ConsultationItem, Course, LeadItem, LeadStats, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 
 /**
@@ -21,10 +22,11 @@ export function useOverviewDerived(
   leadStats?: LeadStats | null,
 ) {
   const overviewStats = useMemo(() => {
-    const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-    const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
-    const toEGP = (o: { currency: string; amount: number }) =>
-      o.currency === 'EGP' ? o.amount : o.currency === 'SAR' ? o.amount * sarRate : o.amount * usdRate;
+    // Rates and fallbacks from lib/money, which mirrors the API's. This read
+    // the setting but fell back to 50 for USD where the API falls back to 48,
+    // and the two other copies of this conversion ignored the setting entirely.
+    const rates = fxRates(content);
+    const toEGP = (o: { currency: string; amount: number }) => toEgp(o.amount, o.currency, rates);
     const paidOrders = orders.filter(o => o.status === 'paid');
     const totalRevenue = paidOrders.reduce((sum, o) => sum + toEGP(o), 0)
       + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? []).filter(p => !p.isInstallment).reduce((ps, p) => ps + toEGP(p), 0), 0);

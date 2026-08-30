@@ -13,12 +13,11 @@ export type SubscriberWithCustomPrices = SubscriberItem & { customPrices?: Recor
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error || '');
 
-export const paymentAmountInEGP = (payment: { amount?: number | string; currency?: string }): number => {
-  const amount = Number(payment.amount) || 0;
-  if (payment.currency === 'SAR') return amount * 13;
-  if (payment.currency === 'USD') return amount * 50;
-  return amount;
-};
+import { paymentAmountInEGP } from '../../../lib/money';
+
+// Re-exported: seven modules import it from here, and the conversion itself
+// now lives in one place instead of three.
+export { paymentAmountInEGP };
 
 export const isInternationalSubscriber = (subscriber: SubscriberItem): boolean => {
   const branch = normBranchId(subscriber.branch);
