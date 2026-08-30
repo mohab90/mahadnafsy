@@ -26,8 +26,10 @@ test('rejects an unknown leave type with a 400', () => {
 
 test('every declared leave type is accepted by the type guard', () => {
   for (const t of LEAVE_TYPES) {
-    // PERMISSION short-circuits; the rest must at least not throw on a valid range
-    assert.doesNotThrow(() => calculateLeaveDays(THU, MON, t), t);
+    // PERMISSION is the one type a multi-day range is wrong for — see below —
+    // so it is exercised on a single day. The rest must not throw on a range.
+    const [from, to] = t === 'PERMISSION' ? [THU, THU] : [THU, MON];
+    assert.doesNotThrow(() => calculateLeaveDays(from, to, t), t);
   }
 });
 
@@ -36,9 +38,17 @@ test('rejects reversed or unparseable dates with a 400', () => {
   assert.equal(caught(() => calculateLeaveDays('not-a-date', MON, 'ANNUAL')).statusCode, 400);
 });
 
-test('PERMISSION is always half a day regardless of range', () => {
+test('PERMISSION is half of one day, and has to be one day', () => {
   assert.equal(calculateLeaveDays(THU, THU, 'PERMISSION'), 0.5);
-  assert.equal(calculateLeaveDays(THU, MON, 'PERMISSION'), 0.5);
+  // This used to return 0.5 for any range, which read as leniency and was a
+  // hole: approving the leave writes a HALF_DAY attendance row for every
+  // working day between the two dates, and payroll charges neither HALF_DAY nor
+  // a leave whose type is not UNPAID. A permission spanning a month was a month
+  // away on full pay, against half a day of a balance PERMISSION does not have.
+  // Half a day was always describing a single day; now the request has to agree.
+  const e = caught(() => calculateLeaveDays(THU, MON, 'PERMISSION'));
+  assert.equal(e.statusCode, 400);
+  assert.match(e.message, /يوم واحد/);
 });
 
 test('weekend days are excluded from the count', () => {

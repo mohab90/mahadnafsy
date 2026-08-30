@@ -41,7 +41,23 @@ function calculateLeaveDays(startDate, endDate, type, policy = DEFAULT_POLICY) {
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
     throw Object.assign(new Error('Invalid leave dates'), { statusCode: 400 });
   }
-  if (type === 'PERMISSION') return 0.5;
+  // An إذن is half of one day, so it has to be one day.
+  //
+  // This returned 0.5 for any range. Approving it then wrote a HALF_DAY
+  // attendance row for every working day between the two dates, and payroll
+  // charges neither HALF_DAY nor a leave whose type is not UNPAID — so a
+  // permission spanning a month was a month away on full pay, against half a
+  // day of a balance PERMISSION does not even have. The half-day figure was
+  // always describing a single day; nothing made the request agree with it.
+  if (type === 'PERMISSION') {
+    if (String(startDate) !== String(endDate)) {
+      throw Object.assign(
+        new Error('الإذن يكون ليوم واحد فقط — لأكثر من ذلك سجّل إجازة'),
+        { statusCode: 400 },
+      );
+    }
+    return 0.5;
+  }
   const weekend = new Set(parseWeekendDays(policy.weekend_days_json));
   let days = 0;
   for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
