@@ -34,8 +34,14 @@ async function enqueue({ channel, recipient, subject, payload, tenantId = DEFAUL
   // changed nothing. Anything else — including a driver or a test double that
   // does not report it — means the insert happened and `id` is the row.
   if (!dedupeKey || result?.affectedRows !== 0) return id;
+  // Scoped to the tenant, because the key is. The unique index is on
+  // (tenant_id, dedupe_key), so the row this insert collided with is this
+  // tenant's — but the lookup searched the key alone, and two tenants
+  // generating the same key (a date, a lead id, a template name) would hand
+  // this caller the other one's message id to hold on to.
   const [[existing]] = await conn.query(
-    'SELECT id FROM message_outbox WHERE dedupe_key=? LIMIT 1', [dedupeKey]
+    'SELECT id FROM message_outbox WHERE tenant_id=? AND dedupe_key=? LIMIT 1',
+    [tenantId, dedupeKey]
   );
   return existing?.id || null;
 }
