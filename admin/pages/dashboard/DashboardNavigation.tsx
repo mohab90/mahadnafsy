@@ -327,7 +327,7 @@ export function DashboardNavigation(props: Props) {
             {isCollectionRole && (
               <CompactRoleNav
                 tabs={[
-                  { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
+                  { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
@@ -416,7 +416,7 @@ export function DashboardNavigation(props: Props) {
               return (
                 <CompactRoleNav
                   tabs={[
-                    { key: 'online_clients', label: 'عملاء الاونلاين', icon: UserCheck },
+                    { key: 'online_clients', label: 'عملاء الأونلاين', icon: UserCheck },
                     { key: 'client', label: 'قاعدة العملاء', icon: UserSearch },
                     { key: 'registrations', label: 'التسجيلات', icon: UserPlus },
                     { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },

@@ -19,6 +19,7 @@ const { requireAuth, requireAdminOrStaff, requirePermission } = require('../midd
 const { safeDateOnly } = require('../lib/dates');
 const { branchIdForBranch } = require('../lib/branches');
 const { assertWritable } = require('../lib/periodLock');
+const { resolveCatalogPrice } = require('../lib/catalogPrice');
 const { hasPermission } = require('../constants/permissions');
 const { applyCertificatePayment } = require('../lib/certificatePayments');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
@@ -266,6 +267,35 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     if (courseExpected != null && (!Number.isFinite(courseExpected) || courseExpected <= 0 || courseExpected > 10000000)) {
       return res.status(400).json({ error: 'courseExpected must be a finite positive amount' });
     }
+    // What the customer owes for this course, when nobody said.
+    //
+    // This used to fall back to the payment itself: a non-instalment payment of
+    // any size wrote course_expected = that amount, so the row said "paid in
+    // full" whatever the course costs. Everything downstream believes it —
+    // entitlements grant full access on paid >= expected, the remaining-balance
+    // column reads zero, and the collections list never shows them. Sixty-five
+    // customers hold full access having paid less than their course's price,
+    // one of them 690 against 3,400.
+    //
+    // The catalogue price is the honest default. An agreed price below list —
+    // a discount, a partial enrolment — is exactly what supplying
+    // courseExpected is for, and that still wins. Only when the catalogue has
+    // no usable price does this fall back to the amount, because a course with
+    // no price cannot say the payment was short.
+    let resolvedExpected = courseExpected;
+    if (resolvedExpected == null && !payment.isInstallment) {
+      // Read through the pool: this runs before the transaction opens, and the
+      // catalogue price is not part of what this write must see consistently.
+      const catalogue = (courseId || bundleId)
+        ? await resolveCatalogPrice(pool, {
+          type: bundleId ? 'bundle' : 'course',
+          itemId: bundleId || courseId,
+          currency: paymentCurrency,
+          tenantId: paymentTenantId,
+        }).catch(() => null)
+        : null;
+      resolvedExpected = catalogue != null && catalogue > 0 ? catalogue : paymentAmount;
+    }
     if (courseId) {
       const [[course]] = await pool.query(
         'SELECT id FROM courses WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
@@ -499,7 +529,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         sanitize(payment.paymentMethod || payment.payment_method || '', 100) || null,
         sanitize(payment.transactionId || payment.transaction_id || '', 191) || null,
         payment.isInstallment ? 1 : 0,
-        courseExpected != null ? courseExpected : (payment.isInstallment ? null : paymentAmount),
+        resolvedExpected,
         resolvedDate,
         sanitize(payment.note || payment.notes || '', 2000) || null,
         storedStatus,
