@@ -36,6 +36,23 @@ async function resolveLectureAccess({ tenantId, subscriberId, lectureId }, db = 
     }
   }
 
+  // Only two access types open anything. Anything else is closed.
+  //
+  // This tested for 'limited' and let everything that was not 'limited' fall
+  // through to accessible — so 'preview' opened the whole course. In the admin
+  // it is labelled «غير مفعل», and normalizeAccess returns it for an enrolment
+  // with no access setting at all: it is the absence of a grant, not a grant.
+  // Nine active enrolments carry it, on courses priced 3,400 to 5,600, and
+  // between them they had paid 900 EGP. None had watched a lecture, so the
+  // door was open and nobody had walked through it.
+  //
+  // Written as an allow-list because the failure was the default direction: a
+  // new access type added later must be refused until it is handled here,
+  // rather than admitted because nothing named it.
+  if (lecture.access_type !== 'full' && lecture.access_type !== 'limited') {
+    return { accessible: false, reason: 'not_activated', lecture };
+  }
+
   if (lecture.access_type === 'limited') {
     const limit = Math.max(1, Math.floor(Number(lecture.lecture_limit) || 1));
     const [[positionRow]] = await db.query(
