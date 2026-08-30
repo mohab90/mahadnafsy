@@ -121,6 +121,33 @@ function htmlEmail(title, bodyHtml, cfg) {
 }
 
 // Sends a templated email using the configured sender/transport. Throws on failure.
+/**
+ * May an email of this category leave?
+ *
+ * Mirrors WHATSAPP_OUTBOUND_CATEGORIES, which production already sets to
+ * `otp,inbox_reply,channel_test` — so WhatsApp has had a way to stop a
+ * broadcast at the transport, before a number is resolved or a provider is
+ * touched, and email has had none.
+ *
+ *   EMAIL_OUTBOUND_CATEGORIES=all       everything (the default when unset)
+ *   EMAIL_OUTBOUND_CATEGORIES=otp,...   only those categories
+ *   EMAIL_OUTBOUND_CATEGORIES=          nothing at all
+ *
+ * Read per call, so a restart applies it without a deploy. Unset means 'all'
+ * because this control is being added to a system that was already sending;
+ * defaulting to silence would cut a live institute off the moment it shipped.
+ */
+function isEmailCategoryAllowed(category) {
+  const raw = process.env.EMAIL_OUTBOUND_CATEGORIES;
+  if (raw === undefined || String(raw).trim().toLowerCase() === 'all') return true;
+  const allowed = new Set(
+    String(raw).split(',').map(part => part.trim().toLowerCase()).filter(Boolean)
+  );
+  if (!allowed.size) return false;
+  const name = String(category || '').trim().toLowerCase();
+  return name ? allowed.has(name) : false;
+}
+
 async function sendEmail(to, subject, bodyHtml, options = {}) {
   if (to && typeof to === 'object') {
     options = { ...to };
@@ -129,6 +156,24 @@ async function sendEmail(to, subject, bodyHtml, options = {}) {
     to = to.to;
   }
   const tenantId = options.tenantId || DEFAULT_TENANT;
+
+  // The same gate WhatsApp already has, on the channel that had none.
+  //
+  // EMAIL_OUTBOUND_CATEGORIES lists what may leave: 'all' for everything, a
+  // comma-separated list to allow only those, empty to send nothing. It is read
+  // per call rather than at import, so turning it off takes a restart of the
+  // service and not a deploy.
+  //
+  // Unset means 'all', because this is a control being added to a system that
+  // was already sending — a default of "nothing" would silence a live
+  // institute the moment this shipped.
+  if (!isEmailCategoryAllowed(options.category)) {
+    logger.info('[email] suppressed by EMAIL_OUTBOUND_CATEGORIES', {
+      category: options.category || '(none)', to: '[EMAIL]',
+    });
+    return { suppressed: true, category: options.category || null };
+  }
+
   try {
     const c = await getEmailConfig(tenantId);
     const transport = await getTransport(tenantId);
