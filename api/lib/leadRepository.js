@@ -53,6 +53,38 @@ async function listLeadCommunications({ tenantId, leadIds, limitPerLead = 20, db
   return rows;
 }
 
+/**
+ * The same communications, keyed by lead and shaped the way the API returns them.
+ *
+ * Three routes — the follow-up reminders, the idle-lead redistribution list and
+ * the lead list itself — each built this map inline, twenty identical lines
+ * apiece: fetch, group by lead_id, rename next_follow_up to nextFollowUp and
+ * staff_id to staffId, lower-case the type. Three copies of a shape the client
+ * reads means three places to change it and two chances to miss one.
+ *
+ * `type` is lower-cased because it is written in mixed case — 'NOTE', 'note',
+ * 'Call' — and a filter comparing it against a lower-case constant silently
+ * matched nothing. That has already cost one wrong answer in this codebase.
+ */
+async function communicationsByLead({ tenantId, leadIds, limitPerLead = 20, db = pool }) {
+  const byLead = new Map();
+  const rows = await listLeadCommunications({ tenantId, leadIds, limitPerLead, db });
+  for (const communication of rows) {
+    const list = byLead.get(communication.lead_id) || [];
+    list.push({
+      id: communication.id,
+      type: String(communication.type || 'note').toLowerCase(),
+      date: communication.date,
+      notes: communication.notes,
+      outcome: communication.outcome,
+      nextFollowUp: communication.next_follow_up,
+      staffId: communication.staff_id,
+    });
+    byLead.set(communication.lead_id, list);
+  }
+  return byLead;
+}
+
 async function archiveLead({ tenantId, leadId, db = pool }) {
   const [result] = await db.query(
     `UPDATE leads SET hidden=1,updated_at=NOW()
@@ -64,6 +96,7 @@ async function archiveLead({ tenantId, leadId, db = pool }) {
 
 module.exports = {
   archiveLead,
+  communicationsByLead,
   findLeadById,
   findLeadByIdentity,
   listLeadCommunications,

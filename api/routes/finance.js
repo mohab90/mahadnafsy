@@ -14,7 +14,7 @@ const { createNotification } = require('../lib/notification');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
-const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange } = require('../lib/dates');
 const { logFinancialAudit } = require('../lib/finance');
 
@@ -918,18 +918,8 @@ router.get('/api/admin/payment-links', requireAuth, requireAdminOrStaff, require
       requestedBranch: req.query.branch || null,
       allowAssigned: true,
     });
-    let scopeSql = '';
-    const scopeParams = [];
-    if (scope.branchId) {
-      scopeSql = ' AND pl.branch_id=?';
-      scopeParams.push(scope.branchId);
-    } else if (scope.kind === 'assigned_cs') {
-      scopeSql = ' AND s.assigned_cs_id=?';
-      scopeParams.push(scope.staffId);
-    } else if (scope.kind === 'assigned_sales') {
-      scopeSql = ' AND s.assigned_sales_id=?';
-      scopeParams.push(scope.staffId);
-    }
+    const { sql: scopeSql, params: scopeParams } =
+      financialScopeClause(scope, { branchColumn: 'pl.branch_id' });
     const [rows] = await pool.query(`
       SELECT pl.*, s.name AS subscriber_name
       FROM payment_links pl
@@ -1338,18 +1328,8 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
       requestedBranch: req.query.branch || null,
       allowAssigned: true,
     });
-    let scopeSql = '';
-    const scopeParams = [];
-    if (scope.branchId) {
-      scopeSql = ' AND rr.branch_id=?';
-      scopeParams.push(scope.branchId);
-    } else if (scope.kind === 'assigned_cs') {
-      scopeSql = ' AND s.assigned_cs_id=?';
-      scopeParams.push(scope.staffId);
-    } else if (scope.kind === 'assigned_sales') {
-      scopeSql = ' AND s.assigned_sales_id=?';
-      scopeParams.push(scope.staffId);
-    }
+    const { sql: scopeSql, params: scopeParams } =
+      financialScopeClause(scope, { branchColumn: 'rr.branch_id' });
     // Everything the refunds screen shows, resolved here rather than by the
     // browser making a request per row: which course the refund is against and
     // what it cost, how much of it the customer has actually paid across all

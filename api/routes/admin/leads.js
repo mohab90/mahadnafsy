@@ -21,9 +21,9 @@ const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { leadScope, branchesFromScope } = require('../../lib/leadAccess');
 const {
   archiveLead,
+  communicationsByLead,
   findLeadById,
   findLeadByIdentity,
-  listLeadCommunications,
 } = require('../../lib/leadRepository');
 const {
   findLeadDuplicateGroups,
@@ -1307,9 +1307,12 @@ router.get('/api/admin/leads/scored', requireAuth, requireAdminOrStaff, requireP
     const sources = [...new Set(facetRows.map(r => String(r.source || '').toLowerCase()).filter(Boolean))].sort();
     const statuses = [...new Set(facetRows.map(r => String(r.status || '').toLowerCase()).filter(Boolean))].sort();
 
-    const communicationsByLead = new Map();
+    // Deliberately empty: this list is scored leads, and the client draws it
+    // without the conversation history. Named for what it is rather than
+    // shadowing the repository helper of the same name.
+    const noCommunications = new Map();
     const mapped = rows.map(r => ({
-      ...mapLeadRow(r, communicationsByLead),
+      ...mapLeadRow(r, noCommunications),
       score: Number(r.lead_score),
     }));
 
@@ -1388,27 +1391,11 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
       [req.tenantId, ...scopeParams, ...CLOSED],
     );
 
-    const communicationsByLead = new Map();
-    if (reminderRows.length) {
-      const communications = await listLeadCommunications({
-        tenantId: req.tenantId,
-        leadIds: reminderRows.map(row => row.id),
-      });
-      for (const communication of communications) {
-        const list = communicationsByLead.get(communication.lead_id) || [];
-        list.push({
-          id: communication.id,
-          type: String(communication.type || 'note').toLowerCase(),
-          date: communication.date,
-          notes: communication.notes,
-          outcome: communication.outcome,
-          nextFollowUp: communication.next_follow_up,
-          staffId: communication.staff_id,
-        });
-        communicationsByLead.set(communication.lead_id, list);
-      }
-    }
-    const reminders = reminderRows.map(r => mapLeadRow(r, communicationsByLead));
+    const commsByLead = await communicationsByLead({
+      tenantId: req.tenantId,
+      leadIds: reminderRows.map(row => row.id),
+    });
+    const reminders = reminderRows.map(r => mapLeadRow(r, commsByLead));
 
     // completionRate counts leads whose follow-up date has already passed —
     // including closed ones the list above excludes, matching what the browser
@@ -1582,26 +1569,10 @@ router.get('/api/admin/leads/crm-insights', requireAuth, requireAdminOrStaff, re
     const openLoadByRep = {};
     for (const r of loadRows) openLoadByRep[String(r.staff_id)] = Number(r.cnt);
 
-    const idleCommsByLead = new Map();
-    if (idleRows.length) {
-      const idleComms = await listLeadCommunications({
-        tenantId: req.tenantId,
-        leadIds: idleRows.map(row => row.id),
-      });
-      for (const communication of idleComms) {
-        const list = idleCommsByLead.get(communication.lead_id) || [];
-        list.push({
-          id: communication.id,
-          type: String(communication.type || 'note').toLowerCase(),
-          date: communication.date,
-          notes: communication.notes,
-          outcome: communication.outcome,
-          nextFollowUp: communication.next_follow_up,
-          staffId: communication.staff_id,
-        });
-        idleCommsByLead.set(communication.lead_id, list);
-      }
-    }
+    const idleCommsByLead = await communicationsByLead({
+      tenantId: req.tenantId,
+      leadIds: idleRows.map(row => row.id),
+    });
 
     const nowMs = Date.now();
     const redistCandidates = idleRows.map(r => {
@@ -1905,27 +1876,11 @@ router.get('/api/admin/leads', requireAuth, requireAdminOrStaff, requirePermissi
     }
     const [rows] = await pool.query(sql, params);
     if (nextCursorFn) { const nc = nextCursorFn(rows); if (nc) res.set('X-Next-Cursor', nc); }
-    const communicationsByLead = new Map();
-    if (rows.length) {
-      const communications = await listLeadCommunications({
-        tenantId: req.tenantId,
-        leadIds: rows.map(row => row.id),
-      });
-      for (const communication of communications) {
-        const list = communicationsByLead.get(communication.lead_id) || [];
-        list.push({
-          id: communication.id,
-          type: String(communication.type || 'note').toLowerCase(),
-          date: communication.date,
-          notes: communication.notes,
-          outcome: communication.outcome,
-          nextFollowUp: communication.next_follow_up,
-          staffId: communication.staff_id,
-        });
-        communicationsByLead.set(communication.lead_id, list);
-      }
-    }
-    res.json(rows.map(r => mapLeadRow(r, communicationsByLead)));
+    const commsByLead = await communicationsByLead({
+      tenantId: req.tenantId,
+      leadIds: rows.map(row => row.id),
+    });
+    res.json(rows.map(r => mapLeadRow(r, commsByLead)));
   } catch (e) { logger.error('[route]', e.message); sendRouteError(res, e); }
 });
 
