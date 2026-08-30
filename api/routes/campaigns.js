@@ -50,7 +50,14 @@ router.get('/api/public/marketing/unsubscribe', publicLimiter, async (req, res) 
   try {
     const consent = verifyUnsubscribeToken(req.query.token);
     if (consent.tenantId !== req.tenantId) return res.status(400).send('Invalid tenant');
-    const token = String(req.query.token || '');
+    // Escaped, though verifyUnsubscribeToken above has already refused anything
+    // it did not sign — so the value reaching here cannot hold a quote today.
+    // That is the signature's doing, not this line's, and it stops being true
+    // the moment somebody moves the verification or reuses this shape. An
+    // attribute built from a request value should say so itself.
+    const token = String(req.query.token || '').replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
     res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>إلغاء الرسائل التسويقية</title><body style="font-family:Arial;max-width:600px;margin:60px auto;padding:20px"><h2>إلغاء الرسائل التسويقية</h2><p>لن يؤثر ذلك على رسائل الدفع أو الحساب أو الدراسة.</p><form method="post" action="/api/public/marketing/unsubscribe"><input type="hidden" name="token" value="${token}"><button type="submit" style="padding:12px 24px">تأكيد إلغاء الاشتراك</button></form></body></html>`);
   } catch { res.status(400).send('Invalid or expired unsubscribe link'); }
 });
