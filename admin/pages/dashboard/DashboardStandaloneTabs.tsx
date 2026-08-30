@@ -3,7 +3,6 @@ import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
 import {
   ActivityTab,
-  CohortAnalysisTab,
   ConsultationsTab,
   DaqqiAttendanceTab,
   CourseWaitlistTab,

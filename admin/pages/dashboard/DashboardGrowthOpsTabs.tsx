@@ -5,7 +5,6 @@ import {
   DaqqiScheduleTab,
   LeadsTab,
   MarketingHubTab,
-  MessagingHubTab,
   OnlineTeamTab,
   SalesHubTab,
 } from './lazyTabs';

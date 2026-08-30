@@ -4,12 +4,8 @@ import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { StaffPermission } from '../../types';
 import type { TabKey } from './navigation';
 import {
-  AdminAiSettingsTab,
   AskAITab,
   AutomationTab,
-  MessagingAgentTab,
-  PgMigrateTab,
-  ServerMonitorTab,
 } from './lazyTabs';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
