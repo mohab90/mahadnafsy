@@ -87,11 +87,13 @@ function isSystemicFailure(message) {
 
 async function channelAlreadyAnnounced(tenantId, channel) {
   try {
+    // tenantId was taken as an argument and never used, so one tenant's outage
+    // notice silenced every other tenant's for the hour.
     const [[recent]] = await pool.query(
       `SELECT id FROM notifications
-        WHERE type=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        WHERE tenant_id=? AND type=? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
           AND data_json LIKE ? LIMIT 1`,
-      ['delivery_failed', `%"channelOutage":"${channel}"%`]
+      [tenantId, 'delivery_failed', `%"channelOutage":"${channel}"%`]
     );
     return !!recent;
   } catch (lookupError) {

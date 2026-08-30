@@ -4,6 +4,7 @@
 // notification on a CRITICAL one (cross-tenant money). Read-only; never mutates.
 const logger = require('./logger');
 const { runReconcile } = require('./reconcileChecks');
+const { DEFAULT_TENANT } = require('../middleware/tenantContext');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TITLE = 'تنبيه سلامة البيانات المالية';
@@ -37,19 +38,26 @@ async function runOnce(pool) {
       // the alert entirely — silence being the one outcome worse than repeats.
       // The keys are sorted so the same findings always serialise the same way.
       const payload = JSON.stringify({ checks: keys });
+      // Scoped to the tenant the notification is written under. The checks
+      // themselves are deliberately global — several exist to catch rows that
+      // crossed tenants — but the alert about them belongs to one, and a
+      // lookup on title alone would let the first tenant's alert silence the
+      // rest. Both sides say DEFAULT_TENANT rather than leaving the write
+      // implicit and the read unscoped.
       const [[dupe]] = await pool.query(
         `SELECT id FROM notifications
-          WHERE title = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
+          WHERE tenant_id = ? AND title = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
             AND data_json = ?
           LIMIT 1`,
-        [TITLE, payload],
+        [DEFAULT_TENANT, TITLE, payload],
       );
       if (dupe) {
         logger.info(`[reconcile-job] نفس ${keys.length} نتيجة اتبلّغت النهارده — مش هكررها`);
       } else {
         const summary = criticals.map(c => `${c.name} (${c.n})`).join('؛ ');
         await createNotification('system', TITLE,
-          `فحص المطابقة اكتشف خللاً حرجاً: ${summary}. راجع الآن.`, { checks: keys });
+          `فحص المطابقة اكتشف خللاً حرجاً: ${summary}. راجع الآن.`, { checks: keys },
+          DEFAULT_TENANT);
       }
     } catch (e) { logger.warn('[reconcile-job] notify failed:', e.message); }
   }
