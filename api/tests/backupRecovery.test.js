@@ -22,6 +22,26 @@ test('database backup has one shell-free atomic implementation with integrity ev
   assert.doesNotMatch(backup, /shell:\s*true|execSync|readFileSync\(partial\)/);
 });
 
+test('the MySQL-only dump flag is conditional, because MariaDB refuses to start with it', () => {
+  const backup = read('lib/dbBackup.js');
+  // --set-gtid-purged is a MySQL option. MariaDB does not ignore it, it exits 7
+  // with "unknown variable" — which it did 96 times into an empty directory
+  // while the assertions above stayed green, because they check the shape of
+  // the implementation and never that a dump comes out of the end of it.
+  // Assert where the flag is used, not merely that a helper exists somewhere in
+  // the file: an earlier version of this test checked for the helper's presence
+  // and passed while the flag sat unconditionally in the argument list.
+  const occurrences = backup.match(/--set-gtid-purged=OFF/g) || [];
+  assert.equal(occurrences.length, 1, 'the flag belongs only inside the capability check');
+  assert.match(
+    backup,
+    /\.\.\.\(\s*supportsGtidPurged\(\)\s*\?\s*\['--set-gtid-purged=OFF'\]\s*:\s*\[\]\s*\),/,
+    'the flag must reach the arguments only through supportsGtidPurged()',
+  );
+  // The capability is decided by asking the binary, not by guessing from env.
+  assert.match(backup, /spawnSync\([^)]*MYSQLDUMP_PATH[^)]*\|\| 'mysqldump', \['--help'\]/);
+});
+
 test('restore rehearsal is opt-in, uses a generated database and always drops it', () => {
   const rehearsal = read('tools/backup-restore-rehearsal.cjs');
   assert.match(rehearsal, /ALLOW_DB_RESTORE_REHEARSAL/);
