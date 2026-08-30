@@ -10,7 +10,7 @@ const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer, ymd } = require('../../lib/helpers');
+const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer, ymd, sendRouteError } = require('../../lib/helpers');
 const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent, logLeadEventStrict } = require('../../lib/crm');
@@ -40,13 +40,6 @@ const { branchIdForBranch } = require('../../lib/branches');
 const { postPaymentJournal } = require('../../lib/finance');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { assertWritable } = require('../../lib/periodLock');
-function sendRouteError(res, err) {
-  if (res.headersSent) return;
-  const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
-  const status = err && dbCodes.has(err.code) ? 503 : 500;
-  res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
-}
-
 function cleanLegacyLeadText(value) {
   if (typeof value !== 'string') return value;
   return value

@@ -60,14 +60,21 @@ export function DaqqiNewClientModal({
   onClose,
   onSubmit,
 }: NewClientModalProps) {
-  if (!open) return null;
-
-  const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
+  // Hooks first, then the early return.
+  //
+  // `if (!open) return null` used to sit above these, so a closed render called
+  // no hooks and an open one called two. React counts them per component and
+  // throws when that number changes between renders. It survived because the
+  // parent mounts this modal fresh rather than keeping a closed one around —
+  // the parent's habit, not something this component can rely on.
   const [draft, setDraft] = useState<DaqqiNewClientDraft>(blankNewClientDraft);
 
   // A fresh form each time it opens; the old one used to reopen half-filled.
   useEffect(() => { if (open) setDraft(blankNewClientDraft()); }, [open]);
 
+  if (!open) return null;
+
+  const paymentMethods: string[] = parsePaymentMethods(content['finance.payment_methods']);
   const hasPayment = !!draft.amount && Number(draft.amount) > 0;
 
   return (

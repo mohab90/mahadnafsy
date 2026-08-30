@@ -21,6 +21,13 @@ export const contentHubRouteTabs = new Set<string>([
   // this set. Missing from it, they changed the URL and drew nothing: no
   // content, no request, no error, and their chunk was never fetched. The nav
   // offered both to every admin and neither would open.
+  // The merged screens. Each holds several that used to be listed here
+  // individually; their keys redirect into the matching section.
+  'integrations',
+  'security_center',
+  'analytics_hub',
+  'campaigns',
+  'sales_planning',
   'archived_clients',
   'branches_settings',
   'content_hub',
@@ -28,7 +35,6 @@ export const contentHubRouteTabs = new Set<string>([
   'customer_inbox',
   'service_hub',
   'tasks_board',
-  'followup_reminders',
   'installment_plans',
   'tickets',
   'nps_dashboard',
@@ -36,40 +42,20 @@ export const contentHubRouteTabs = new Set<string>([
   'daqqi_accounting',
   'daqqi_stats',
   'financial_reports',
-  'balance_sheet',
-  'cash_flow',
   'recurring_expenses',
-  'budget_tracker',
-  'revenue_forecast',
   'hr',
   'staff_management',
-  'webhooks',
-  'security_dashboard',
   'staff_performance',
-  'retention',
-  'forecast',
   'sales_team',
   'sales_reports',
-  'sales_goals',
   'online_team',
   'subscriptions',
-  'lead_scoring',
   'consultation_calendar',
-  'expense_analytics',
-  'revenue_sources',
   'my_hr',
   'settings_hub',
-  'ip_whitelist',
-  'payment_settings',
   'lead_sources_settings',
-  'otp_settings',
-  'email_settings',
   'branch_workspaces',
-  'sms_settings',
   'notif_inbox',
-  'email_campaigns',
-  'sms_campaigns',
-  'drip_campaigns',
   'waitlist',
   'system_settings',
   'staff_applications',
@@ -98,17 +84,12 @@ export const growthOpsTabs = new Set<string>([
   // (renders MessagingHubTab), but this Set never listed it, so the mount
   // gate at Dashboard.tsx (`growthOpsTabs.has(activeTab)`) always skipped it —
   // clicking "الواتساب والماسنجر" rendered nothing. Confirmed live.
-  'messaging_hub',
   'online_hub',
 ]);
 
 export const saasOpsTabs = new Set<string>([
   'ask_ai',
   'automation',
-  'messaging_agent',
-  'admin_ai_settings',
-  'pg_migrate',
-  'server_monitor',
 ]);
 
 /**
@@ -200,7 +181,10 @@ export const fullSubscriberTabs = new Set<string>([
   // That genuinely needs the table — unlike the dashboard tile, a count would
   // not do. It was in no loading set at all, so it read the 500-row bootstrap
   // page and reported "500 إجمالي المشتركين" against 1,371.
-  'retention',
+  //
+  // Named as the tab rather than as 'retention', because retention is a section
+  // of تبويب التحليلات now and this set is keyed on what the URL says.
+  'analytics_hub',
 ]);
 
 /** Genuinely reads both tables. */
@@ -216,6 +200,9 @@ export const fullCrmDataTabs = new Set<string>([
   // answers to crm_settings.
   'daqqi_stats',        // renders AnalyticsTab, which filters both tables by date
   'marketing_hub',      // segmentation builds audiences from both tables
-  'drip_campaigns',     // enrolment picker lists real people, needs rows
+  // Was 'drip_campaigns', whose enrolment picker lists real people and needs
+  // the rows. That screen is a section of تبويب الحملات now, and this set is
+  // keyed on the tab the URL names, so it has to name the tab.
+  'campaigns',
   'ask_ai',
 ]);

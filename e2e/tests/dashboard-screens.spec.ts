@@ -37,23 +37,24 @@ const CONTENT_FLOOR = 400;
  * Tab keys reachable from the nav, from admin/pages/dashboard/navigation.tsx.
  * Group headers are excluded — they expand a submenu rather than draw a screen.
  */
+// Five entries here hold what used to be twenty-three separate screens. The
+// sections inside them are reached as /dashboard/<tab>/<section>, which is a
+// second axis this list does not walk — opening the tab draws its first
+// section, and the rest are one click away rather than one URL away.
 const SCREENS = [
-  'overview', 'kpi_dashboard', 'activity', 'tasks_board', 'retention',
-  'cohort_analysis', 'revenue_sources', 'expense_analytics', 'ask_ai',
-  'leads', 'sales_hub', 'followup_reminders', 'lead_scoring', 'forecast', 'sales_goals',
+  'overview', 'kpi_dashboard', 'activity', 'tasks_board', 'analytics_hub', 'ask_ai',
+  'leads', 'sales_hub', 'sales_planning',
   'online_clients', 'client', 'archived_clients', 'online_hub', 'installment_plans', 'subscriptions',
   'daqqi_schedule', 'daqqi_clients', 'daqqi_team', 'daqqi_accounting', 'daqqi_stats', 'waitlist',
   'customer_inbox', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
-  'financial', 'orders', 'financial_reports', 'balance_sheet', 'cash_flow',
-  'recurring_expenses', 'budget_tracker', 'revenue_forecast',
+  'financial', 'orders', 'financial_reports', 'recurring_expenses',
   'hr', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'interviews',
-  'marketing_hub', 'messaging_hub', 'email_campaigns', 'sms_campaigns', 'drip_campaigns', 'notif_inbox',
+  'marketing_hub', 'campaigns', 'notif_inbox',
   'content_hub', 'courses', 'lectures', 'bundles', 'quizzes', 'course_waitlist',
   'live_streams', 'community',
-  'settings_hub', 'system_settings', 'payment_settings', 'lead_sources_settings',
-  'otp_settings', 'email_settings', 'sms_settings', 'branches_settings', 'branch_workspaces',
-  'automation', 'ip_whitelist', 'messaging_agent', 'admin_ai_settings',
-  'server_monitor', 'webhooks', 'security_dashboard', 'pg_migrate',
+  'settings_hub', 'system_settings', 'integrations', 'lead_sources_settings',
+  'branches_settings', 'branch_workspaces',
+  'automation', 'security_center',
 ];
 
 test.describe('every dashboard screen renders', () => {

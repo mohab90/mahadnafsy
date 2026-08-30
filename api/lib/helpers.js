@@ -131,4 +131,23 @@ function ymd(v) {
 const parseLimit  = (v, def = 100, max = 1000) => Math.min(parseInt(v) || def, max);
 const parseOffset = (v)                          => parseInt(v) || 0;
 
-module.exports = { ymd, sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone };
+/**
+ * Answer a failed route, telling a lost database apart from anything else.
+ *
+ * A dropped connection is not the caller's fault and is worth retrying, so it
+ * gets 503; everything else gets 500. The headersSent guard matters where a
+ * response has already begun — writing a second one throws over the original
+ * error and loses it.
+ *
+ * This lived as a module-private function in routes/admin/leads.js, and a call
+ * to it had been copied into routes/admin/stafflists.js without the function.
+ * That line was a ReferenceError waiting for its own error path to run.
+ */
+function sendRouteError(res, err) {
+  if (res.headersSent) return;
+  const dbCodes = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'PROTOCOL_CONNECTION_LOST', 'ER_SERVER_LOST']);
+  const status = err && dbCodes.has(err.code) ? 503 : 500;
+  res.status(status).json({ error: status === 503 ? 'Database unavailable' : 'Internal server error' });
+}
+
+module.exports = { ymd, sanitize, validate, EMAIL_RE, PHONE_RE, calcLeadScoreServer, tryJson, parseCrm, parseLimit, parseOffset, normalizePhone, sendRouteError };
