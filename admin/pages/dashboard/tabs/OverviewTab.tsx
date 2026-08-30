@@ -11,6 +11,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { TabKey } from '../navigation';
+import { toEgp } from '../../../lib/money';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -109,7 +110,7 @@ export default function OverviewTab({
                 const myLost = myLeads.filter(l => ['lost','not_interested_hidden'].includes(l.status || '')).length;
                 const mySubs = salesOwnSubscribers;
                 const myRevenueSubs = mySubs.flatMap(s => s.paymentHistory || []).reduce((acc, p) => {
-                  const egp = p.currency === 'EGP' ? p.amount : p.currency === 'SAR' ? p.amount * 13 : p.amount * 50;
+                  const egp = toEgp(p.amount, p.currency);
                   const month = (p.at || '').slice(0, 7);
                   const thisMonth = new Date().toISOString().slice(0, 7);
                   if (month === thisMonth) acc.thisMonth += egp;

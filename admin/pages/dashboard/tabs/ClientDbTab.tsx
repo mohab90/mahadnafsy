@@ -11,6 +11,7 @@ import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 import { toDialable } from '../../../lib/whatsappLink';
 import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
+import { toEgp } from '../../../lib/money';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -189,7 +190,7 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       totalPaid: Math.round(
         (s.paymentHistory || []).reduce(
           (sum: number, p: { currency: string; amount: number }) =>
-            sum + (p.currency === 'SAR' ? p.amount * 13 : p.currency === 'USD' ? p.amount * 50 : p.amount),
+            sum + toEgp(p.amount, p.currency),
           0
         )
       ),

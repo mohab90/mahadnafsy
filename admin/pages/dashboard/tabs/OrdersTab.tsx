@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { Bundle, Course, OrderItem, StaffMember, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { toEgp } from '../../../lib/money';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -421,7 +422,7 @@ export default function OrdersTab({
               const todayStr     = new Date().toISOString().slice(0, 10);
               const thisMonthStr = new Date().toISOString().slice(0, 7);
               const toEGP = (r: { amount: number; currency?: string }) =>
-                r.currency === 'SAR' ? r.amount * 13 : r.currency === 'USD' ? r.amount * 50 : r.amount;
+                toEgp(r.amount, r.currency);
 
               const paidAll    = effectiveOrders.filter(r => r.status === 'paid');
               const pendingAll = effectiveOrders.filter(r => r.status === 'pending');

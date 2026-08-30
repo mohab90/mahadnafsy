@@ -19,10 +19,11 @@ import {
 import { ROLE_LABELS } from './staff-profile/staffProfileConstants';
 import StaffAttendancePanel from './staff-profile/StaffAttendancePanel';
 import StaffSettingsPanel from './staff-profile/StaffSettingsPanel';
+import { toEgp } from '../lib/money';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const toEGP = (amt: number, cur: string) =>
-  cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
+  toEgp(amt, cur);
 
 const fmt = (n: number) => n.toLocaleString('ar-EG-u-nu-latn');
 

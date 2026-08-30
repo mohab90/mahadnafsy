@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import type { LeadItem, LeadStats, SalesTarget, StaffMember, SubscriberItem } from '../../../../types';
 import { calcLeadScore } from '../leadUtils';
+import { toEgp } from '../../../../lib/money';
 
-function toEGP(amount: number, currency: string) {
-  if (currency === 'EGP') return amount;
-  if (currency === 'SAR') return amount * 13;
-  return amount * 50;
-}
+// These figures decide what a rep is shown to have sold, so a rate that does
+// not match the ledger's misstates their performance. It was 13 and 50 written
+// here; the API converts through exchange.sar_to_egp / exchange.usd_to_egp and
+// falls back to 48 for USD.
+const toEGP = (amount: number, currency: string) => toEgp(amount, currency);
 
 /**
  * Per-rep performance figures.

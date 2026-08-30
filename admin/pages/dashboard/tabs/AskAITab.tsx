@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { AlertCircle, Bot, RefreshCw, Send, Trash2, Users, Zap, Copy, Check, ChevronDown, ChevronUp, Sparkles, TrendingUp, DollarSign } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { toEgp } from '../../../lib/money';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
@@ -22,7 +23,7 @@ export default function AskAITab({ notify: _notify }: { notify: NotifyFn }) {
     daqqi: 'الدقي', tagamoa: 'التجمع', 'online-egypt': 'أون لاين - مصر',
     'online-saudi': 'أون لاين - السعودية', 'online-abroad': 'خارج مصر', other: 'أخرى',
   };
-  const _aiToEGP = (amt: number, cur: string) => cur === 'EGP' ? amt : cur === 'SAR' ? amt * 13 : amt * 50;
+  const _aiToEGP = (amt: number, cur: string) => toEgp(amt, cur);
 
   const _aiAllManual = useMemo(() =>
     subscribers.flatMap(s =>
