@@ -95,7 +95,11 @@ test('compensation changes are approval-owned and only approved values enter pay
   assert.match(payroll, /salary_structures ss[\s\S]*ss\.status='APPROVED'/);
   assert.match(feeMigration, /payroll_run_id/);
   assert.match(payroll, /included_in_payroll/);
-  assert.match(payroll, /UPDATE salary_advances a[\s\S]*a\.status='DEDUCTED'/);
+  // The alias is gone — settlement is now a read of what each salary recovered
+  // followed by an update of only the advances that were covered. The property
+  // is that paying a run is what marks an advance DEDUCTED, not the shape of
+  // the statement that does it.
+  assert.match(payroll, /UPDATE salary_advances[\s\S]*status\s*=\s*'DEDUCTED'/);
 });
 
 test('performance appraisals require evidence and a separate approver before staff visibility', () => {
@@ -197,8 +201,15 @@ test('salary advances are currency-safe, separation-of-duties controlled and pay
   assert.match(records, /action: `hr\.advance\.\$\{status\.toLowerCase\(\)\}`/);
   assert.match(payroll, /GROUP BY staff_id,currency/);
   assert.match(payroll, /fxRates\[currency\]/);
-  assert.match(payroll, /a\.status='DISBURSED'/);
-  assert.match(payroll, /a\.deducted_payroll_run_id=\?/);
+  // Written without pinning the alias or the spacing: the settlement moved from
+  // one multi-table UPDATE to a read-then-update, so an advance is closed only
+  // when the salary actually recovered it. What must hold is that only a
+  // DISBURSED advance is ever settled, and that settling stamps the run.
+  assert.match(payroll, /status\s*=\s*'DISBURSED'/);
+  assert.match(payroll, /deducted_payroll_run_id\s*=\s*\?/);
+  // And the property that repair added: the recovered figure decides, not the
+  // intended one, or a debt the salary could not cover is written off.
+  assert.match(payroll, /advanceApplied/);
 });
 
 test('disciplinary records require employee acknowledgement, support appeal and stay immutable', () => {
