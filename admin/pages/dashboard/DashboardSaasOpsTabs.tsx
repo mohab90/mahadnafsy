@@ -63,26 +63,10 @@ export function DashboardSaasOpsTabs({
     );
   }
 
-  // messaging_agent and admin_ai_settings render inside تبويب التكاملات now;
-  // their routes redirect there. See tabs/IntegrationsTab.tsx.
-
-  if (activeTab === 'pg_migrate' && (isAdmin || hasPermission('manage_staff'))) {
-    return (
-      <Suspense fallback={<LoadingText padded />}>
-        <PgMigrateTab />
-      </Suspense>
-    );
-  }
-
-  if (activeTab === 'server_monitor' && isAdmin) {
-    return (
-      <Suspense fallback={<LoadingText padded />}>
-        <TabErrorBoundary>
-          <ServerMonitorTab notify={notify} />
-        </TabErrorBoundary>
-      </Suspense>
-    );
-  }
+  // messaging_agent and admin_ai_settings render inside تبويب التكاملات, and
+  // pg_migrate and server_monitor inside الأمان والصيانة. Their routes redirect
+  // there, and each keeps the gate it had — server_monitor admin-only,
+  // pg_migrate on manage_staff. See tabs/SecurityCenterTab.tsx.
 
   return null;
 }

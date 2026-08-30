@@ -1,5 +1,6 @@
 import React, { Suspense } from 'react';
 import IntegrationsTab from './tabs/IntegrationsTab';
+import SecurityCenterTab from './tabs/SecurityCenterTab';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
@@ -112,7 +113,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'hr', Component: HrTab, spinner: 'primary' },
   { key: 'hr_analytics', Component: HrAnalyticsTab, spinner: 'primary' },
   { key: 'staff_management', Component: HrTab, spinner: 'primary' },
-  { key: 'security_dashboard', Component: SecurityDashboardTab, spinner: 'primary' },
   { key: 'staff_performance', Component: StaffPerformanceTab, spinner: 'indigo' },
   { key: 'retention', Component: RetentionTab, spinner: 'indigo' },
   { key: 'forecast', Component: ForecastTab, spinner: 'indigo' },
@@ -130,7 +130,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'enps_dashboard', Component: EnpsDashboardTab, spinner: 'indigo' },
   { key: 'offboarding', Component: OffboardingTab, spinner: 'indigo' },
   { key: 'settings_hub', Component: SettingsHubTab, spinner: 'indigo' },
-  { key: 'ip_whitelist', Component: IpWhitelistTab, spinner: 'indigo' },
   { key: 'lead_sources_settings', Component: LeadSourcesSettingsTab, spinner: 'blue' },
   { key: 'branch_workspaces', Component: BranchWorkspacesTab, spinner: 'amber' },
   { key: 'notif_inbox', Component: NotifInboxMgmtTab, spinner: 'indigo' },
@@ -140,6 +139,7 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'waitlist', Component: WaitlistTab, spinner: 'amber' },
   { key: 'system_settings', Component: SystemSettingsTab, spinner: 'indigo' },
   { key: 'integrations', Component: IntegrationsTab, spinner: 'indigo' },
+  { key: 'security_center', Component: SecurityCenterTab, spinner: 'indigo' },
 ];
 
 function LoadingSpinner({ tone = 'indigo' }: { tone?: NotifyTabEntry['spinner'] }) {

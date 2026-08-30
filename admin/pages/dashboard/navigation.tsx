@@ -90,8 +90,8 @@ export type TabKey =
   | 'ask_ai'
   | 'ai_dev'
   | 'automation'
-  | 'pg_migrate'
-  | 'server_monitor'
+  // لوحة الأمان، قائمة IP، مراقبة السيرفر، ترحيل القاعدة — أقسام داخله الآن.
+  | 'security_center'
   | 'quizzes'
   | 'course_waitlist'
   | 'live_streams'
@@ -147,8 +147,6 @@ export type TabKey =
   | 'lead_sources_settings'
   | 'branch_workspaces'
   | 'branches_settings'
-  | 'ip_whitelist'
-  | 'security_dashboard'
   | 'notif_inbox'
   | 'email_campaigns'
   | 'sms_campaigns'
@@ -352,10 +350,11 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'branches_settings', label: 'الفروع', icon: Building2 },
       { key: 'branch_workspaces', label: 'مساحات عمل الفروع', icon: FolderKanban },
       { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
-      { key: 'ip_whitelist', label: 'قائمة IP المسموحة', icon: Shield },
-      { key: 'server_monitor', label: 'مراقبة السيرفر', icon: Activity },
-      { key: 'security_dashboard', label: 'لوحة الأمان', icon: Shield },
-      { key: 'pg_migrate', label: 'ترحيل قاعدة البيانات', icon: Database },
+      // لوحة الأمان and قائمة IP المسموحة answer the same question from two
+      // sides — what happened, and who is allowed in — and مراقبة السيرفر with
+      // ترحيل قاعدة البيانات are that pairing for the machine underneath.
+      // Four entries, one place. See tabs/SecurityCenterTab.tsx.
+      { key: 'security_center', label: 'الأمان والصيانة', icon: Shield },
     ],
   },
 ];

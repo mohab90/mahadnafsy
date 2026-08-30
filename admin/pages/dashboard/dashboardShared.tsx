@@ -654,9 +654,10 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   settings_hub:       'view_settings',
   lead_sources_settings: 'manage_settings',
   branch_workspaces:  'manage_settings',
-  server_monitor:     'view_security',
-  security_dashboard: 'view_security',
-  ip_whitelist:       'manage_security',
+  // The security dashboard, the IP allowlist, the server monitor and the
+  // database migration in one entry — see SECURITY_SECTIONS for the gate each
+  // section keeps, which for the last two is stricter than this list.
+  security_center:    ['view_security', 'manage_security', 'manage_staff'],
   // Managing the notification inbox is a marketing/ops tool, not something every
   // employee who can receive notifications should see — manage_notifications is
   // held by sales reps and support, which would have put the whole التسويق group
@@ -666,7 +667,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   sms_campaigns:      'manage_channel_settings',
   drip_campaigns:     'manage_channel_settings',
   hub_advanced:       'manage_settings',
-  pg_migrate:         'manage_settings',
   // Staff personal portal — accessible by any authenticated staff
   staff_home:         'view_dashboard',
   staff_settings:     'view_dashboard',

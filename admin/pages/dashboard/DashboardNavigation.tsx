@@ -163,7 +163,7 @@ export function DashboardNavigation(props: Props) {
                 </div>
                 <div>
                   <h2 className="font-extrabold text-gray-900 text-xs leading-tight">لوحة الإدارة</h2>
-                  <button onClick={() => setActiveTab('server_monitor')} className="text-[9px] flex items-center gap-0.5 hover:underline cursor-pointer" title="مراقبة السيرفر">
+                  <button onClick={() => setActiveTab('security_center')} className="text-[9px] flex items-center gap-0.5 hover:underline cursor-pointer" title="مراقبة السيرفر">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-emerald-600 font-bold">متصل</span>
                   </button>

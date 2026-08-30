@@ -67,6 +67,7 @@ import {
 } from './dashboard/dashboardShared';
 import { realCourseIds } from './dashboard/tabs/leads/leadCourseLabel';
 import { RETIRED_INTEGRATION_TABS } from './dashboard/tabs/IntegrationsTab';
+import { RETIRED_SECURITY_TABS } from './dashboard/tabs/SecurityCenterTab';
 
 const _BUILD = '20260502';
 
@@ -308,8 +309,10 @@ const Dashboard: React.FC = () => {
     // screens became sections of one, so each of their keys now opens that
     // screen with its own section selected. Anyone holding a bookmark, or a
     // link written into a handover document, still lands where they meant to.
-    const section = RETIRED_INTEGRATION_TABS[urlTab as string];
-    if (section) { navigate(`/dashboard/integrations/${section}`, { replace: true }); return; }
+    const integration = RETIRED_INTEGRATION_TABS[urlTab as string];
+    if (integration) { navigate(`/dashboard/integrations/${integration}`, { replace: true }); return; }
+    const security = RETIRED_SECURITY_TABS[urlTab as string];
+    if (security) { navigate(`/dashboard/security_center/${security}`, { replace: true }); return; }
     const resolved = urlTab === 'subscribers' ? 'online_clients' : urlTab;
     if (resolved !== urlTab) { navigate(`/dashboard/online_clients`, { replace: true }); return; }
     if (resolved !== activeTabState) setActiveTabState(resolved as TabKey);
