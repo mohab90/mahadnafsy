@@ -22,9 +22,14 @@ export function DashboardTabContainer({
   children,
   placeholderTabs = [],
 }: DashboardTabContainerProps) {
+  // A tab names one permission or several; several means any one of them opens
+  // it. See the comment on TAB_PERMISSION_MAP for why.
   const requiredPermission = TAB_PERMISSION_MAP[activeTab];
+  const allowed = Array.isArray(requiredPermission)
+    ? requiredPermission.some(hasPermission)
+    : requiredPermission !== undefined && hasPermission(requiredPermission);
 
-  if (!isAdmin && (!requiredPermission || !hasPermission(requiredPermission))) {
+  if (!isAdmin && !allowed) {
     return <AccessDenied />;
   }
 

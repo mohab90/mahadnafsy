@@ -89,9 +89,7 @@ export type TabKey =
   | 'analytics'
   | 'ask_ai'
   | 'ai_dev'
-  | 'messaging_agent'
   | 'automation'
-  | 'admin_ai_settings'
   | 'pg_migrate'
   | 'server_monitor'
   | 'quizzes'
@@ -143,16 +141,14 @@ export type TabKey =
   | 'interviews'
   | 'settings_hub'
   | 'system_settings'
-  | 'payment_settings'
+  // One key for what were seven: payment gateways, OTP, email, SMS, the AI
+  // messaging agent, AI settings and webhooks are sections of it now.
+  | 'integrations'
   | 'lead_sources_settings'
-  | 'otp_settings'
-  | 'email_settings'
   | 'branch_workspaces'
   | 'branches_settings'
-  | 'webhooks'
   | 'ip_whitelist'
   | 'security_dashboard'
-  | 'sms_settings'
   | 'notif_inbox'
   | 'email_campaigns'
   | 'sms_campaigns'
@@ -343,11 +339,13 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'settings_hub', label: 'مركز الإعدادات', icon: Settings2 },
       { key: 'system_settings', label: 'إعدادات الإدارة', icon: Settings2 },
-      { key: 'payment_settings', label: 'بوابات الدفع', icon: CreditCard },
+      // Seven entries — payment gateways, OTP, email, SMS, the AI messaging
+      // agent, AI settings, webhooks — behind one, each still its own section.
+      // Setting the institute up meant visiting all seven, with no way to see
+      // which were configured without opening each in turn. The retired routes
+      // redirect to the matching section; see tabs/IntegrationsTab.tsx.
+      { key: 'integrations', label: 'التكاملات', icon: Zap },
       { key: 'lead_sources_settings', label: 'مصادر الليد والداتا', icon: UserPlus },
-      { key: 'otp_settings', label: 'OTP والقنوات', icon: Shield },
-      { key: 'email_settings', label: 'البريد الإلكتروني', icon: Shield },
-      { key: 'sms_settings', label: 'إعدادات SMS', icon: MessageSquareText },
       // The branch list itself — what appears in booking, payment and course
       // interest. Distinct from مساحات عمل الفروع, which arranges the dashboard
       // per branch rather than defining which branches exist.
@@ -355,10 +353,7 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'branch_workspaces', label: 'مساحات عمل الفروع', icon: FolderKanban },
       { key: 'automation', label: 'الأتمتة والقواعد', icon: Zap },
       { key: 'ip_whitelist', label: 'قائمة IP المسموحة', icon: Shield },
-      { key: 'messaging_agent', label: 'عميل المراسلة AI', icon: Bot },
-      { key: 'admin_ai_settings', label: 'إعدادات AI', icon: Settings2 },
       { key: 'server_monitor', label: 'مراقبة السيرفر', icon: Activity },
-      { key: 'webhooks', label: 'Webhooks', icon: Zap },
       { key: 'security_dashboard', label: 'لوحة الأمان', icon: Shield },
       { key: 'pg_migrate', label: 'ترحيل قاعدة البيانات', icon: Database },
     ],

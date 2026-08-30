@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import IntegrationsTab from './tabs/IntegrationsTab';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
@@ -37,9 +38,6 @@ import {
   NpsDashboardTab,
   NotifInboxMgmtTab,
   OnlineTeamMgmtTab,
-  OtpSettingsTab,
-  EmailSettingsTab,
-  PaymentSettingsTab,
   RecurringExpensesTab,
   RegistrationsTab,
   RetentionTab,
@@ -50,7 +48,6 @@ import {
   SalesTeamTab,
   SecurityDashboardTab,
   SmsCampaignsTab,
-  SmsSettingsTab,
   SettingsHubTab,
   StaffPerformanceTab,
   SubscriptionsTab,
@@ -58,7 +55,6 @@ import {
   TasksBoardTab,
   TicketsTab,
   WaitlistTab,
-  WebhooksTab,
 } from './lazyTabs';
 
 // Imported, not redeclared: the local copy omitted 'warning', so every tab
@@ -116,7 +112,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'hr', Component: HrTab, spinner: 'primary' },
   { key: 'hr_analytics', Component: HrAnalyticsTab, spinner: 'primary' },
   { key: 'staff_management', Component: HrTab, spinner: 'primary' },
-  { key: 'webhooks', Component: WebhooksTab, spinner: 'primary' },
   { key: 'security_dashboard', Component: SecurityDashboardTab, spinner: 'primary' },
   { key: 'staff_performance', Component: StaffPerformanceTab, spinner: 'indigo' },
   { key: 'retention', Component: RetentionTab, spinner: 'indigo' },
@@ -136,18 +131,15 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'offboarding', Component: OffboardingTab, spinner: 'indigo' },
   { key: 'settings_hub', Component: SettingsHubTab, spinner: 'indigo' },
   { key: 'ip_whitelist', Component: IpWhitelistTab, spinner: 'indigo' },
-  { key: 'payment_settings', Component: PaymentSettingsTab, spinner: 'emerald' },
   { key: 'lead_sources_settings', Component: LeadSourcesSettingsTab, spinner: 'blue' },
-  { key: 'otp_settings', Component: OtpSettingsTab, spinner: 'indigo' },
-  { key: 'email_settings', Component: EmailSettingsTab, spinner: 'indigo' },
   { key: 'branch_workspaces', Component: BranchWorkspacesTab, spinner: 'amber' },
-  { key: 'sms_settings', Component: SmsSettingsTab, spinner: 'indigo' },
   { key: 'notif_inbox', Component: NotifInboxMgmtTab, spinner: 'indigo' },
   { key: 'email_campaigns', Component: EmailCampaignsTab, spinner: 'indigo' },
   { key: 'sms_campaigns', Component: SmsCampaignsTab, spinner: 'indigo' },
   { key: 'drip_campaigns', Component: DripCampaignsTab, spinner: 'indigo' },
   { key: 'waitlist', Component: WaitlistTab, spinner: 'amber' },
   { key: 'system_settings', Component: SystemSettingsTab, spinner: 'indigo' },
+  { key: 'integrations', Component: IntegrationsTab, spinner: 'indigo' },
 ];
 
 function LoadingSpinner({ tone = 'indigo' }: { tone?: NotifyTabEntry['spinner'] }) {

@@ -63,21 +63,8 @@ export function DashboardSaasOpsTabs({
     );
   }
 
-  if (activeTab === 'messaging_agent') {
-    return (
-      <Suspense fallback={<Spinner tone="sky" />}>
-        <MessagingAgentTab notify={notify} />
-      </Suspense>
-    );
-  }
-
-  if (activeTab === 'admin_ai_settings') {
-    return (
-      <Suspense fallback={<LoadingText />}>
-        <AdminAiSettingsTab notify={notify} />
-      </Suspense>
-    );
-  }
+  // messaging_agent and admin_ai_settings render inside تبويب التكاملات now;
+  // their routes redirect there. See tabs/IntegrationsTab.tsx.
 
   if (activeTab === 'pg_migrate' && (isAdmin || hasPermission('manage_staff'))) {
     return (

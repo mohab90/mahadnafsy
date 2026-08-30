@@ -543,7 +543,17 @@ const _normalizeClientDate = (d: unknown): string => {
   return isNaN(p.getTime()) ? '' : p.toISOString();
 };
 
-const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
+/**
+ * A tab may require one permission or any one of several.
+ *
+ * The array form exists because merging screens must not merge who can open
+ * them. التكاملات holds seven that were each gated differently —
+ * manage_settings, manage_security, manage_channel_settings,
+ * manage_ai_settings — and picking one of the four would have taken access
+ * away from whoever held only another. It opens for anyone holding any of
+ * them, and the sections inside are gated one by one.
+ */
+const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermission[]>> = {
   // The company-wide overview, not a personal home page — every employee has
   // view_dashboard, so mapping it there put the whole الإدارة group in every
   // staff member's sidebar. Personal landing pages are staff_home / my_hr.
@@ -637,20 +647,16 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission>> = {
   lead_scoring:       'manage_leads',
   consultation_calendar: 'view_consultations',
   automation:         'manage_automation',
-  admin_ai_settings:  'manage_ai_settings',
-  messaging_agent:    'manage_channel_settings',
+  // Every permission the seven merged screens used, so nobody loses a screen
+  // they could reach before. INTEGRATION_SECTIONS gates each one inside.
+  integrations:       ['manage_settings', 'manage_security', 'manage_channel_settings', 'manage_ai_settings'],
   system_settings:    'manage_settings',
   settings_hub:       'view_settings',
-  payment_settings:   'manage_settings',
   lead_sources_settings: 'manage_settings',
-  otp_settings:       'manage_security',
-  email_settings:     'manage_settings',
   branch_workspaces:  'manage_settings',
   server_monitor:     'view_security',
-  webhooks:           'manage_settings',
   security_dashboard: 'view_security',
   ip_whitelist:       'manage_security',
-  sms_settings:       'manage_channel_settings',
   // Managing the notification inbox is a marketing/ops tool, not something every
   // employee who can receive notifications should see — manage_notifications is
   // held by sales reps and support, which would have put the whole التسويق group

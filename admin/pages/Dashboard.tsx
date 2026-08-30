@@ -66,6 +66,7 @@ import {
   _normalizeClientDate,
 } from './dashboard/dashboardShared';
 import { realCourseIds } from './dashboard/tabs/leads/leadCourseLabel';
+import { RETIRED_INTEGRATION_TABS } from './dashboard/tabs/IntegrationsTab';
 
 const _BUILD = '20260502';
 
@@ -301,7 +302,14 @@ const Dashboard: React.FC = () => {
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (!urlTab) return;
-    // Redirect legacy "subscribers" URL ? "online_clients"
+    // Retired routes keep working.
+    //
+    // "subscribers" was renamed to "online_clients"; the seven integration
+    // screens became sections of one, so each of their keys now opens that
+    // screen with its own section selected. Anyone holding a bookmark, or a
+    // link written into a handover document, still lands where they meant to.
+    const section = RETIRED_INTEGRATION_TABS[urlTab as string];
+    if (section) { navigate(`/dashboard/integrations/${section}`, { replace: true }); return; }
     const resolved = urlTab === 'subscribers' ? 'online_clients' : urlTab;
     if (resolved !== urlTab) { navigate(`/dashboard/online_clients`, { replace: true }); return; }
     if (resolved !== activeTabState) setActiveTabState(resolved as TabKey);
@@ -549,6 +557,9 @@ const Dashboard: React.FC = () => {
       items: group.items.filter(item => {
         const required = TAB_PERMISSION_MAP[item.key];
         // Unmapped tabs are hidden for non-admin staff (fail-secure default).
+        // An array means any one of the listed permissions opens the tab —
+        // التكاملات merged seven screens that were gated four different ways.
+        if (Array.isArray(required)) return required.some(hasPerm);
         return !!required && hasPerm(required);
       }),
     })).filter(group => group.items.length > 0);

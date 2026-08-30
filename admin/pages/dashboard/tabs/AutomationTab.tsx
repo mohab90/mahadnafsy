@@ -478,7 +478,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
       {/* Info box */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">
         <p className="font-bold mb-1 flex items-center gap-2"><AlertCircle size={15} /> ملاحظة هامة</p>
-        <p className="text-xs leading-relaxed">الوركفلو تُحفظ في MySQL ويشغّلها محرك الـBackend فقط؛ الواجهة لا تغيّر بيانات العملاء محليًا. بعض الأكشنات (مثل إرسال واتساب) تحتاج إلى ربط قنوات الرسائل من تبويب <button className="underline font-bold" onClick={() => setActiveTab('messaging_agent')}>وكيل المراسلة</button>.</p>
+        <p className="text-xs leading-relaxed">الوركفلو تُحفظ في MySQL ويشغّلها محرك الـBackend فقط؛ الواجهة لا تغيّر بيانات العملاء محليًا. بعض الأكشنات (مثل إرسال واتساب) تحتاج إلى ربط قنوات الرسائل من تبويب <button className="underline font-bold" onClick={() => setActiveTab('integrations')}>وكيل المراسلة</button>.</p>
       </div>
 
       {/* ── WhatsApp Config ──────────────────────────────────────────── */}
