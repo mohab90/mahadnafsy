@@ -87,9 +87,28 @@ function computePayrollLine(emp = {}, ctx = {}) {
   }
 
   const grossSalary = baseSalary + totalAllowances + commission + instructorEarnings + bonus;
-  const totalDeductions = dedSocial + dedTax + absenceDeduction + lateDeduction + advanceDeduction + deduction;
-  // Clamped at zero: deductions may exceed gross (a large advance against a month
-  // of absence), and a negative payslip would post a reversed journal entry.
+
+  // An advance is recovered only as far as the salary can carry it.
+  //
+  // Everything else here is owed whatever the month looked like: the statutory
+  // withholdings, the days not worked, the manual adjustment. The advance is
+  // different — it is money already handed over, and recovering it depends on
+  // there being a salary left to take it from.
+  //
+  // Net used to be floored at zero with the whole advance inside the total, so
+  // a large advance against a month of absence paid the employee nothing and
+  // recorded the advance as fully recovered. Both the journal — credit 1300,
+  // employee advances receivable — and the settlement that follows the run take
+  // that figure at face value, so the business wrote off a debt it had not
+  // collected. Splitting applied from carried leaves net identical in every
+  // case, since it was already floored at zero, and makes the recorded figure
+  // the one that actually happened.
+  const otherDeductions = dedSocial + dedTax + absenceDeduction + lateDeduction + deduction;
+  const roomForAdvance = Math.max(0, grossSalary - otherDeductions);
+  const advanceApplied = Math.min(advanceDeduction, roomForAdvance);
+  const advanceCarried = advanceDeduction - advanceApplied;
+
+  const totalDeductions = otherDeductions + advanceApplied;
   const netSalary = Math.max(0, grossSalary - totalDeductions);
 
   return {
@@ -97,7 +116,10 @@ function computePayrollLine(emp = {}, ctx = {}) {
     dedSocial, dedTax,
     absentDays, lateMins, dailyRate, minuteRate, absenceDeduction, lateDeduction,
     commission, commissionCount, commissionSource,
-    advanceDeduction, instructorEarnings, bonus, deduction,
+    // advanceDeduction is what was due this month; advanceApplied is what the
+    // salary could actually absorb, and is the figure the books must use.
+    advanceDeduction, advanceApplied, advanceCarried,
+    instructorEarnings, bonus, deduction,
     grossSalary, totalDeductions, netSalary,
     // Not used in the arithmetic above, but written into the payslip's
     // calculation_details so it reconciles. They were in scope when this lived

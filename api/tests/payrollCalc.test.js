@@ -83,7 +83,34 @@ test('net salary never goes negative', () => {
     ...CTX, advanceDeduction: 999999, attendance: { absent_days: 26 },
   });
   assert.equal(r.netSalary, 0);
-  assert.ok(r.totalDeductions > r.grossSalary);
+  // Deductions stop at gross rather than running past it: the advance is only
+  // recovered as far as the salary reaches. This used to assert
+  // totalDeductions > grossSalary, which described the arithmetic before the
+  // overshoot was separated out — the payslip pays the same either way.
+  assert.ok(r.totalDeductions <= r.grossSalary + 0.01);
+});
+
+test('an advance larger than the salary is carried, not written off', () => {
+  // Paying the run marks the advance DEDUCTED and credits 1300, employee
+  // advances receivable, from this figure. Recording the whole advance when the
+  // salary could not pay it back forgave a debt the employee still owed.
+  const r = computePayrollLine(EMP, {
+    ...CTX, advanceDeduction: 999999, attendance: { absent_days: 26 },
+  });
+  assert.equal(r.advanceDeduction, 999999, 'what was due is unchanged');
+  assert.ok(r.advanceApplied < 999999, 'only part of it could be taken');
+  assert.equal(
+    Number((r.advanceApplied + r.advanceCarried).toFixed(2)), 999999,
+    'applied plus carried must account for the whole advance',
+  );
+  assert.ok(r.advanceCarried > 0, 'the remainder stays owed');
+});
+
+test('an advance the salary covers is recovered in full', () => {
+  const r = computePayrollLine(EMP, { ...CTX, advanceDeduction: 800 });
+  assert.equal(r.advanceApplied, 800);
+  assert.equal(r.advanceCarried, 0);
+  assert.equal(r.netSalary, r.grossSalary - r.totalDeductions);
 });
 
 test('the FX factor scales fixed amounts but never the attendance rates', () => {

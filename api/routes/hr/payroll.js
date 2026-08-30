@@ -284,7 +284,8 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         housing, transport, food, otherFixed, totalAllowances,
         dedSocial, dedTax, absentDays, lateMins,
         absenceDeduction, lateDeduction, commission, commissionCount, commissionSource,
-        advanceDeduction, instructorEarnings, grossSalary, totalDeductions, netSalary,
+        advanceDeduction, advanceApplied, advanceCarried,
+        instructorEarnings, grossSalary, totalDeductions, netSalary,
         totalSales, unpaidLeaveDays,
       } = line;
       totalAmount += netSalary;
@@ -317,7 +318,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
           absent_days=VALUES(absent_days), late_minutes=VALUES(late_minutes),
           commission_count=VALUES(commission_count), calculation_details=VALUES(calculation_details)
       `, [runId, emp.staff_id, baseSalary, allowancesJson, totalAllowances,
-          commission, bonusTotal, lateDeduction, absenceDeduction, advanceDeduction,
+          commission, bonusTotal, lateDeduction, absenceDeduction, advanceApplied,
           dedSocial + dedTax + deductionTotal, netSalary, presentDays, absentDays, lateMins,
           commissionCount, calcDetails, tenantId, branchId]);
     }
@@ -507,13 +508,43 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
         "UPDATE instructor_fees SET status='paid',paid_by=?,paid_at=NOW() WHERE payroll_run_id=? AND tenant_id=? AND status='included_in_payroll'",
         [actorId, runId, tenantId]
       );
-      await conn.query(
-        `UPDATE salary_advances a
-          JOIN payroll_items pi ON pi.staff_id=a.staff_id AND pi.tenant_id=a.tenant_id AND pi.payroll_run_id=?
-           SET a.status='DEDUCTED',a.deducted_payroll_run_id=?
-         WHERE a.tenant_id=? AND a.status='DISBURSED' AND a.deduct_month=? AND a.deduct_year=?`,
-        [runId, runId, tenantId, prevRun.month, prevRun.year]
+      // Close only the advances the salary actually paid back.
+      //
+      // This used to mark every advance due this month DEDUCTED as soon as the
+      // run was paid, whatever the payslip could carry. An advance larger than
+      // the month's salary — the case a month of absence produces — was written
+      // off in full while the employee still owed it. computePayrollLine now
+      // records what it could absorb, so the comparison is possible: an advance
+      // set is closed when the recovered figure covers it, and otherwise stays
+      // DISBURSED and comes round again next month.
+      const [dueByStaff] = await conn.query(
+        `SELECT a.staff_id, SUM(a.amount) AS due, COALESCE(pi.advance_deductions, 0) AS recovered
+           FROM salary_advances a
+           LEFT JOIN payroll_items pi
+             ON pi.staff_id = a.staff_id AND pi.tenant_id = a.tenant_id AND pi.payroll_run_id = ?
+          WHERE a.tenant_id = ? AND a.status = 'DISBURSED'
+            AND a.deduct_month = ? AND a.deduct_year = ?
+          GROUP BY a.staff_id, pi.advance_deductions`,
+        [runId, tenantId, prevRun.month, prevRun.year]
       );
+      // A cent of tolerance, the same the rest of the money paths allow.
+      const settled = dueByStaff
+        .filter(r => Number(r.recovered) + 0.01 >= Number(r.due))
+        .map(r => r.staff_id);
+      if (settled.length) {
+        await conn.query(
+          `UPDATE salary_advances
+              SET status='DEDUCTED', deducted_payroll_run_id=?
+            WHERE tenant_id=? AND status='DISBURSED'
+              AND deduct_month=? AND deduct_year=?
+              AND staff_id IN (${settled.map(() => '?').join(',')})`,
+          [runId, tenantId, prevRun.month, prevRun.year, ...settled]
+        );
+      }
+      const carried = dueByStaff.length - settled.length;
+      if (carried > 0) {
+        logger.warn(`[payroll] ${carried} موظف لم تستوعب رواتبهم سلفهم كاملة — بقيت مستحقة`);
+      }
     }
     if (status === 'CANCELLED') {
       await conn.query(
