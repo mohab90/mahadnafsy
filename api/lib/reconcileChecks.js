@@ -131,16 +131,41 @@ const CHECKS = [
     key: 'orphan_customer_users',
     name: 'active customer users are linked to a lead or subscriber',
     severity: 'critical',
+    // Matched on email or phone, and on archived leads as well as live ones.
+    //
+    // Comparing only the email address, and only against leads with hidden=0,
+    // this counted 173 while the true figure was 53: 102 of them had a lead that
+    // had simply been archived, and 24 more were reachable by their phone number.
+    // A critical that is two-thirds false stops being read, which costs the
+    // alert exactly the attention it exists to buy. An archived lead is still a
+    // CRM projection — the person is known to the business, just not in the
+    // active queue — so it settles this check.
+    // The phone comparison costs about nine seconds: REGEXP_REPLACE on the
+    // stored column cannot use an index, so it scans. Splitting the OR into
+    // separate NOT EXISTS clauses, hoping the cheap email tests would filter
+    // first, measured the same — the optimiser reaches the regexp either way.
+    //
+    // Kept as it is. This runs once a day on a background timer against a
+    // server that idles at zero load, and the alternative is a check that is
+    // two-thirds wrong. If it ever needs to be fast, the shape that works is
+    // the one routes/registrations.js uses: load the identifiers once and
+    // match them in memory, which needs the runner to accept a function here
+    // rather than a SQL string.
     sql: `SELECT COUNT(*) AS n FROM users u
           WHERE LOWER(COALESCE(u.role,'user'))='user' AND u.is_active=1
             AND NOT EXISTS (
               SELECT 1 FROM subscribers s
-               WHERE s.tenant_id=u.tenant_id AND LOWER(TRIM(s.email))=LOWER(TRIM(u.email))
+               WHERE s.tenant_id=u.tenant_id
+                 AND (LOWER(TRIM(s.email))=LOWER(TRIM(u.email))
+                      OR (u.phone IS NOT NULL AND TRIM(u.phone)<>''
+                          AND REGEXP_REPLACE(s.phone,'[^0-9]','')=REGEXP_REPLACE(u.phone,'[^0-9]','')))
             )
             AND NOT EXISTS (
               SELECT 1 FROM leads l
-               WHERE l.tenant_id=u.tenant_id AND l.hidden=0
-                 AND LOWER(TRIM(l.email))=LOWER(TRIM(u.email))
+               WHERE l.tenant_id=u.tenant_id
+                 AND (LOWER(TRIM(l.email))=LOWER(TRIM(u.email))
+                      OR (u.phone IS NOT NULL AND TRIM(u.phone)<>''
+                          AND REGEXP_REPLACE(l.phone,'[^0-9]','')=REGEXP_REPLACE(u.phone,'[^0-9]','')))
             )`,
     hint: 'A login identity without a CRM/customer projection disappears from every operational team.',
   },
