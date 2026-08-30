@@ -1,6 +1,9 @@
 import React, { Suspense } from 'react';
 import IntegrationsTab from './tabs/IntegrationsTab';
 import SecurityCenterTab from './tabs/SecurityCenterTab';
+import AnalyticsHubTab from './tabs/AnalyticsHubTab';
+import CampaignsTab from './tabs/CampaignsTab';
+import SalesPlanningTab from './tabs/SalesPlanningTab';
 
 import { TabErrorBoundary } from '../../../shared/ui/TabErrorBoundary';
 import type { TabKey } from './navigation';
@@ -94,7 +97,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'customer_inbox', Component: CustomerInboxTab, spinner: 'primary' },
   { key: 'service_hub', Component: ServiceHubTab, spinner: 'primary' },
   { key: 'tasks_board', Component: TasksBoardTab, spinner: 'primary' },
-  { key: 'followup_reminders', Component: FollowupRemindersTab, spinner: 'primary' },
   { key: 'installment_plans', Component: InstallmentPlansTab, spinner: 'primary' },
   { key: 'interviews', Component: InterviewsTab, spinner: 'primary' },
   { key: 'registrations', Component: RegistrationsTab, spinner: 'primary' },
@@ -105,41 +107,31 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'daqqi_accounting', Component: FinancialTab, branchFilter: 'daqqi', spinner: 'emerald' },
   { key: 'daqqi_stats', Component: DaqqiStatsWithAttendance, spinner: 'blue' },
   { key: 'financial_reports', Component: FinancialReportsHub, spinner: 'amber' },
-  { key: 'balance_sheet', Component: BalanceSheetTab, spinner: 'primary' },
-  { key: 'cash_flow', Component: CashFlowTab, spinner: 'primary' },
   { key: 'recurring_expenses', Component: RecurringExpensesTab, spinner: 'primary' },
-  { key: 'budget_tracker', Component: BudgetTrackerTab, spinner: 'primary' },
-  { key: 'revenue_forecast', Component: RevenueForecastTab, spinner: 'primary' },
   { key: 'hr', Component: HrTab, spinner: 'primary' },
   { key: 'hr_analytics', Component: HrAnalyticsTab, spinner: 'primary' },
   { key: 'staff_management', Component: HrTab, spinner: 'primary' },
   { key: 'staff_performance', Component: StaffPerformanceTab, spinner: 'indigo' },
-  { key: 'retention', Component: RetentionTab, spinner: 'indigo' },
-  { key: 'forecast', Component: ForecastTab, spinner: 'indigo' },
   { key: 'sales_team', Component: SalesTeamTab, spinner: 'indigo' },
   { key: 'sales_reports', Component: SalesReportsTab, spinner: 'indigo' },
-  { key: 'sales_goals', Component: SalesGoalsTab, spinner: 'indigo' },
   { key: 'online_team', Component: OnlineTeamMgmtTab, spinner: 'indigo' },
   { key: 'subscriptions', Component: SubscriptionsTab, spinner: 'indigo' },
-  { key: 'lead_scoring', Component: LeadScoringTab, spinner: 'indigo' },
   { key: 'consultation_calendar', Component: ConsultationCalendarTab, spinner: 'indigo' },
   { key: 'branches_settings', Component: BranchesSettingsTab, spinner: 'indigo' },
   { key: 'archived_clients', Component: ArchivedClientsTab, spinner: 'indigo' },
-  { key: 'expense_analytics', Component: ExpenseAnalyticsTab, spinner: 'indigo' },
-  { key: 'revenue_sources', Component: RevenueSourcesTab, spinner: 'indigo' },
   { key: 'enps_dashboard', Component: EnpsDashboardTab, spinner: 'indigo' },
   { key: 'offboarding', Component: OffboardingTab, spinner: 'indigo' },
   { key: 'settings_hub', Component: SettingsHubTab, spinner: 'indigo' },
   { key: 'lead_sources_settings', Component: LeadSourcesSettingsTab, spinner: 'blue' },
   { key: 'branch_workspaces', Component: BranchWorkspacesTab, spinner: 'amber' },
   { key: 'notif_inbox', Component: NotifInboxMgmtTab, spinner: 'indigo' },
-  { key: 'email_campaigns', Component: EmailCampaignsTab, spinner: 'indigo' },
-  { key: 'sms_campaigns', Component: SmsCampaignsTab, spinner: 'indigo' },
-  { key: 'drip_campaigns', Component: DripCampaignsTab, spinner: 'indigo' },
   { key: 'waitlist', Component: WaitlistTab, spinner: 'amber' },
   { key: 'system_settings', Component: SystemSettingsTab, spinner: 'indigo' },
   { key: 'integrations', Component: IntegrationsTab, spinner: 'indigo' },
   { key: 'security_center', Component: SecurityCenterTab, spinner: 'indigo' },
+  { key: 'analytics_hub', Component: AnalyticsHubTab, spinner: 'indigo' },
+  { key: 'campaigns', Component: CampaignsTab, spinner: 'indigo' },
+  { key: 'sales_planning', Component: SalesPlanningTab, spinner: 'indigo' },
 ];
 
 function LoadingSpinner({ tone = 'indigo' }: { tone?: NotifyTabEntry['spinner'] }) {

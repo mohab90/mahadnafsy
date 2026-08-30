@@ -118,15 +118,8 @@ export function DashboardGrowthOpsTabs({
     );
   }
 
-  if (activeTab === 'messaging_hub') {
-    return (
-      <Suspense fallback={fallback('border-emerald-500')}>
-        <TabErrorBoundary>
-          <MessagingHubTab notify={notify} />
-        </TabErrorBoundary>
-      </Suspense>
-    );
-  }
+  // messaging_hub renders as a section of تبويب الحملات now, beside the email,
+  // SMS and drip campaigns it shares a channel with. Its route redirects there.
 
   if (activeTab === 'online_hub') {
     return (

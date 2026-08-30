@@ -68,6 +68,18 @@ import {
 import { realCourseIds } from './dashboard/tabs/leads/leadCourseLabel';
 import { RETIRED_INTEGRATION_TABS } from './dashboard/tabs/IntegrationsTab';
 import { RETIRED_SECURITY_TABS } from './dashboard/tabs/SecurityCenterTab';
+import { RETIRED_ANALYTICS_TABS } from './dashboard/tabs/AnalyticsHubTab';
+import { RETIRED_CAMPAIGN_TABS } from './dashboard/tabs/CampaignsTab';
+import { RETIRED_SALES_TABS } from './dashboard/tabs/SalesPlanningTab';
+
+/** Every merged tab's base path and the keys that now redirect into it. */
+const RETIRED_SECTION_TABS: ReadonlyArray<readonly [string, Record<string, string>]> = [
+  ['integrations', RETIRED_INTEGRATION_TABS],
+  ['security_center', RETIRED_SECURITY_TABS],
+  ['analytics_hub', RETIRED_ANALYTICS_TABS],
+  ['campaigns', RETIRED_CAMPAIGN_TABS],
+  ['sales_planning', RETIRED_SALES_TABS],
+];
 
 const _BUILD = '20260502';
 
@@ -309,10 +321,19 @@ const Dashboard: React.FC = () => {
     // screens became sections of one, so each of their keys now opens that
     // screen with its own section selected. Anyone holding a bookmark, or a
     // link written into a handover document, still lands where they meant to.
-    const integration = RETIRED_INTEGRATION_TABS[urlTab as string];
-    if (integration) { navigate(`/dashboard/integrations/${integration}`, { replace: true }); return; }
-    const security = RETIRED_SECURITY_TABS[urlTab as string];
-    if (security) { navigate(`/dashboard/security_center/${security}`, { replace: true }); return; }
+    for (const [base, map] of RETIRED_SECTION_TABS) {
+      const section = map[urlTab as string];
+      if (section) { navigate(`/dashboard/${base}/${section}`, { replace: true }); return; }
+    }
+    // توقعات الإيرادات and توقعات المبيعات were one-line re-exports of the same
+    // CrmForecastWorkspace — one screen listed twice. It lives under sales now.
+    if (urlTab === 'revenue_forecast') {
+      navigate('/dashboard/sales_planning/forecast', { replace: true }); return;
+    }
+    // The financial hub already contained these; the menu was repeating it.
+    if (['balance_sheet', 'cash_flow', 'budget_tracker', 'recurring_expenses'].includes(String(urlTab))) {
+      navigate('/dashboard/financial_reports', { replace: true }); return;
+    }
     const resolved = urlTab === 'subscribers' ? 'online_clients' : urlTab;
     if (resolved !== urlTab) { navigate(`/dashboard/online_clients`, { replace: true }); return; }
     if (resolved !== activeTabState) setActiveTabState(resolved as TabKey);

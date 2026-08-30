@@ -43,6 +43,11 @@ import {
 } from 'lucide-react';
 
 export type TabKey =
+  // Each of these holds several screens that were their own menu entries; the
+  // retired keys redirect into the matching section. See tabs/SectionedTab.tsx.
+  | 'analytics_hub'
+  | 'campaigns'
+  | 'sales_planning'
   | 'overview'
   | 'kpi_dashboard'
   | 'content'
@@ -104,33 +109,20 @@ export type TabKey =
   | 'daqqi_attendance'
   | 'sales_hub'
   | 'marketing_hub'
-  | 'messaging_hub'
   | 'online_hub'
   | 'staff_performance'
-  | 'retention'
-  | 'cohort_analysis'
-  | 'forecast'
   | 'tasks_board'
   | 'sales_team'
   | 'sales_reports'
-  | 'sales_goals'
-  | 'followup_reminders'
   | 'online_team'
   | 'subscriptions'
   | 'installment_plans'
   | 'tickets'
   | 'faq_manager'
-  | 'lead_scoring'
   | 'nps_dashboard'
   | 'consultation_calendar'
   | 'daqqi_team'
-  | 'balance_sheet'
-  | 'cash_flow'
   | 'recurring_expenses'
-  | 'budget_tracker'
-  | 'revenue_forecast'
-  | 'expense_analytics'
-  | 'revenue_sources'
   | 'hr'
   | 'hr_analytics'
   | 'my_hr'
@@ -148,9 +140,6 @@ export type TabKey =
   | 'branch_workspaces'
   | 'branches_settings'
   | 'notif_inbox'
-  | 'email_campaigns'
-  | 'sms_campaigns'
-  | 'drip_campaigns'
   | 'content_hub'
   | 'hub_advanced'
   | 'waitlist'
@@ -181,10 +170,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       { key: 'overview', label: 'نظرة عامة', icon: BarChart3 },
       { key: 'activity', label: 'سجل النشاط', icon: Activity },
       { key: 'tasks_board', label: 'لوحة المهام', icon: FileText },
-      { key: 'retention', label: 'تحليل الاستبقاء', icon: TrendingUp },
-      { key: 'cohort_analysis', label: 'تحليل Cohort', icon: Users },
-      { key: 'revenue_sources', label: 'مصادر الإيراد', icon: BarChart3 },
-      { key: 'expense_analytics', label: 'تحليل المصروفات', icon: BarChart3 },
+      // Four analyses of the same months, all on view_reports: retention,
+      // cohort, revenue sources, expenses. Reading one against another meant
+      // navigating between them. See tabs/AnalyticsHubTab.tsx.
+      { key: 'analytics_hub', label: 'التحليلات', icon: TrendingUp },
       // Sits under الإدارة by request. It previously had its own heading
       // because ask_ai is also granted to sales and support, so for those roles
       // an "الإدارة" heading now appears carrying this single item — the menu
@@ -200,15 +189,17 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
       { key: 'sales_hub', label: 'فريق المبيعات والتقارير', icon: Users },
-      { key: 'followup_reminders', label: 'تذكيرات المتابعة', icon: Bell },
-      // Built, wired to a renderer, and reachable from nothing — only by typing
-      // the URL. Surfaced here so the pages that exist can actually be opened.
-      { key: 'lead_scoring', label: 'تقييم وترتيب الليدز', icon: TrendingUp },
-      { key: 'forecast', label: 'توقعات المبيعات', icon: BarChart3 },
-      // Not dead code, despite being unreachable: the sales hub's own "الأهداف"
-      // sub-tab only *displays* targets, so this is the only screen in the panel
-      // that can set a rep's monthly target. Unreachable meant nobody could.
-      { key: 'sales_goals', label: 'تحديد أهداف المبيعات', icon: Target },
+      // Four entries around one pipeline: two about working it — follow-ups and
+      // scoring — and two about where it is heading. The rep checking today and
+      // the manager setting next month sat in different corners of the menu
+      // from the forecast that connects them.
+      //
+      // Two of them were only ever reachable by typing the URL until they were
+      // listed here, and sales_goals is the only screen that can set a rep's
+      // monthly target — the sales hub's "الأهداف" sub-tab merely displays it.
+      // They carry four different permissions, kept per section.
+      // See tabs/SalesPlanningTab.tsx.
+      { key: 'sales_planning', label: 'التخطيط والمتابعة', icon: Target },
     ],
   },
   {
@@ -272,12 +263,11 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       { key: 'financial', label: 'النظام المحاسبي', icon: BarChart3 },
       { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
-      { key: 'financial_reports', label: 'التقارير المالية المتقدمة', icon: BarChart3 },
-      { key: 'balance_sheet', label: 'الميزانية العمومية', icon: BarChart3 },
-      { key: 'cash_flow', label: 'التدفق النقدي', icon: TrendingUp },
-      { key: 'recurring_expenses', label: 'المصاريف المتكررة', icon: RotateCcw },
-      { key: 'budget_tracker', label: 'الميزانية مقابل الفعلي', icon: Target },
-      { key: 'revenue_forecast', label: 'توقعات الإيرادات', icon: TrendingUp },
+      // FinancialReportsHub already holds the balance sheet, cash flow,
+      // recurring expenses, budget tracker and revenue forecast — along with
+      // the chart of accounts and the journal, which were never listed here.
+      // The menu was repeating its contents as five more entries beside it.
+      { key: 'financial_reports', label: 'التقارير المالية', icon: BarChart3 },
     ],
   },
   {
@@ -306,10 +296,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     color: 'text-rose-600',
     items: [
       { key: 'marketing_hub', label: 'مركز التسويق الشامل', icon: Megaphone },
-      { key: 'messaging_hub', label: 'الواتساب والماسنجر', icon: MessageCircle },
-      { key: 'email_campaigns', label: 'حملات البريد', icon: Mail },
-      { key: 'sms_campaigns', label: 'حملات SMS', icon: MessageSquareText },
-      { key: 'drip_campaigns', label: 'حملات التنقيط (Drip)', icon: AlarmClock },
+      // The same job down four pipes — WhatsApp/Messenger, email, SMS, drip.
+      // Choosing a channel for a segment meant opening all four to see what
+      // each had sent. All on manage_channel_settings. See tabs/CampaignsTab.tsx.
+      { key: 'campaigns', label: 'الحملات', icon: Megaphone },
       { key: 'notif_inbox', label: 'إدارة صندوق الإشعارات', icon: Bell },
     ],
   },

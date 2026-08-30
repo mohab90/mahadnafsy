@@ -35,11 +35,8 @@ export function DashboardStandaloneTabs({ activeTab, isSalesOnly, notify }: Dash
         </Suspense>
       )}
 
-      {activeTab === 'cohort_analysis' && (
-        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-emerald-600" /></div>}>
-          <CohortAnalysisTab notify={notify} />
-        </Suspense>
-      )}
+      {/* cohort_analysis renders as a section of تبويب التحليلات now, beside
+          the three other analyses of the same months. Its route redirects. */}
 
       {activeTab === 'daqqi_attendance' && (
         <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-teal-600" /></div>}>

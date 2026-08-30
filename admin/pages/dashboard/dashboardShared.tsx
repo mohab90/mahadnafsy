@@ -577,14 +577,12 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   branches_settings: 'manage_settings',
   registrations:      'view_leads',
   leads:              'view_leads',
-  followup_reminders: 'view_leads',
   sales_hub:          'view_leads',
   // Both live under التسويق. marketing_hub on view_leads and messaging_hub on
   // view_dashboard meant every sales rep — and every employee at all — saw a
   // marketing section they have no business in. Campaign tooling and channel
   // configuration are the same job, so they share the same permission.
   marketing_hub:      'manage_channel_settings',
-  messaging_hub:      'manage_channel_settings',
   online_hub:         'manage_subscribers',
   installment_plans:  'view_financial',
   consultations:      'view_consultations',
@@ -608,15 +606,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   orders:             'view_orders',
   financial:          'view_financial',
   financial_reports:  'view_financial',
-  balance_sheet:      'view_financial',
-  cash_flow:          'view_financial',
   recurring_expenses: 'view_financial',
-  budget_tracker:     'view_financial',
-  revenue_forecast:   'view_financial',
-  retention:          'view_reports',
-  cohort_analysis:    'view_reports',
-  revenue_sources:    'view_reports',
-  expense_analytics:  'view_reports',
   hr:                 'view_hr',
   hr_analytics:       'view_hr',
   staff_applications: 'view_join_us',
@@ -636,15 +626,12 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   offboarding:         'manage_hr',
   activity:           'view_activity',
   staff_performance:  'view_reports',
-  forecast:           'view_reports',
   sales_team:         'view_staff',
   sales_reports:      'view_reports',
   // Writing targets is a manager action (see POST /api/admin/sales-targets):
   // matched to the API gate so a sales rep doesn't see a tab that 403s.
-  sales_goals:        'manage_sales_team',
   online_team:        'view_staff',
   subscriptions:     'view_financial',
-  lead_scoring:       'manage_leads',
   consultation_calendar: 'view_consultations',
   automation:         'manage_automation',
   // Every permission the seven merged screens used, so nobody loses a screen
@@ -658,14 +645,18 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // database migration in one entry — see SECURITY_SECTIONS for the gate each
   // section keeps, which for the last two is stricter than this list.
   security_center:    ['view_security', 'manage_security', 'manage_staff'],
+  // The four analyses and the four campaign channels were each uniform, so
+  // these keep the single permission every one of them already had.
+  analytics_hub:      'view_reports',
+  campaigns:          'manage_channel_settings',
+  // Sales planning is the mixed one: follow-ups on view_leads, scoring on
+  // manage_leads, the forecast on view_reports and targets on manage_sales_team.
+  sales_planning:     ['view_leads', 'manage_leads', 'view_reports', 'manage_sales_team'],
   // Managing the notification inbox is a marketing/ops tool, not something every
   // employee who can receive notifications should see — manage_notifications is
   // held by sales reps and support, which would have put the whole التسويق group
   // in their sidebar the moment this became a menu item.
   notif_inbox:        'manage_channel_settings',
-  email_campaigns:    'manage_channel_settings',
-  sms_campaigns:      'manage_channel_settings',
-  drip_campaigns:     'manage_channel_settings',
   hub_advanced:       'manage_settings',
   // Staff personal portal — accessible by any authenticated staff
   staff_home:         'view_dashboard',
