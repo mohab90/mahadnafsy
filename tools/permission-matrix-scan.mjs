@@ -45,13 +45,22 @@ export function scanPermissionMatrix() {
   const tabType = navigation.match(/export type TabKey =([\s\S]*?);/)?.[1] || '';
   const tabMap = dashboard.match(/const TAB_PERMISSION_MAP[\s\S]*?= \{([\s\S]*?)\n\};/)?.[1] || '';
   const tabKeys = [...tabType.matchAll(/'([^']+)'/g)].map(match => match[1]);
+  // A tab names one permission, or a list of them where any one opens it. The
+  // list form arrived with the merged screens: التكاملات holds seven that were
+  // gated four different ways. Reading only the single form counted both merged
+  // tabs as unmapped — which is the loudest way for this scan to be wrong, since
+  // it reports a permission hole exactly where the gate got broader, not weaker.
   const mappedTabs = new Map(
-    [...tabMap.matchAll(/^\s*([a-z_]+):\s*'([a-z_]+)'/gm)].map(match => [match[1], match[2]])
+    [...tabMap.matchAll(/^\s*([a-z_]+):\s*(\[[^\]]*\]|'[a-z_]+')/gm)].map(match => [
+      match[1],
+      [...match[2].matchAll(/'([a-z_]+)'/g)].map(inner => inner[1]),
+    ])
   );
   const unmappedTabs = tabKeys.filter(key => !mappedTabs.has(key));
   const unknownTabPermissions = [...mappedTabs]
-    .filter(([, permission]) => !validPermissions.has(permission))
-    .map(([tab, permission]) => `${tab}:${permission}`);
+    .flatMap(([tab, permissions]) => permissions
+      .filter(permission => !validPermissions.has(permission))
+      .map(permission => `${tab}:${permission}`));
 
   const frontendRegistry = frontendPermissions.match(/export const PERMISSIONS = \{([\s\S]*?)\} as const/)?.[1] || '';
   const frontendTokens = new Set([...frontendRegistry.matchAll(/:\s*'([a-z_]+)'/g)].map(match => match[1]));
