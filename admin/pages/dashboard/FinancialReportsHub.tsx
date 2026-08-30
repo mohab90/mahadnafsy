@@ -1,29 +1,34 @@
 import { Suspense, lazy, useState } from 'react';
-import { BarChart3, BookOpen, CreditCard, FileText, RotateCcw, Target, TrendingUp } from 'lucide-react';
+import { BarChart3, BookOpen, FileText, RotateCcw, Target, TrendingUp } from 'lucide-react';
 import type { NotifyFn } from '../../types';
 
 const BalanceSheetTab = lazy(() => import('./tabs/BalanceSheetTab'));
 const CashFlowTab = lazy(() => import('./tabs/CashFlowTab'));
-const RevenueForecastTab = lazy(() => import('./tabs/RevenueForecastTab'));
 const BudgetTrackerTab = lazy(() => import('./tabs/BudgetTrackerTab'));
 const RecurringExpensesTab = lazy(() => import('./tabs/RecurringExpensesTab'));
-const InstallmentPlansTab = lazy(() => import('./tabs/InstallmentPlansTab'));
 const ChartOfAccountsTab = lazy(() => import('./tabs/ChartOfAccountsTab'));
 const JournalEntriesTab = lazy(() => import('./tabs/JournalEntriesTab'));
 
+// Two of these used to sit here as well as somewhere else, so one page had two
+// doors and nothing said they were the same page:
+//
+//   توقعات الإيرادات is CrmForecastWorkspace, which also answers توقعات
+//   المبيعات. It forecasts the pipeline, so it belongs under المبيعات.
+//   خطط التقسيط is InstallmentPlansTab, also a menu entry under الأونلاين. An
+//   instalment plan belongs to a customer, not to a financial report.
+//
+// What is left is the books, and the statements read off them.
 const reports = [
-  { key: 'balance_sheet', label: 'الميزانية العمومية', icon: BarChart3, Component: BalanceSheetTab },
-  { key: 'cash_flow', label: 'التدفق النقدي', icon: TrendingUp, Component: CashFlowTab },
   { key: 'chart_of_accounts', label: 'دليل الحسابات', icon: BookOpen, Component: ChartOfAccountsTab },
   { key: 'journal_entries', label: 'قيود اليومية', icon: FileText, Component: JournalEntriesTab },
-  { key: 'revenue_forecast', label: 'توقعات الإيرادات', icon: TrendingUp, Component: RevenueForecastTab },
+  { key: 'balance_sheet', label: 'الميزانية العمومية', icon: BarChart3, Component: BalanceSheetTab },
+  { key: 'cash_flow', label: 'التدفق النقدي', icon: TrendingUp, Component: CashFlowTab },
   { key: 'budget_tracker', label: 'الميزانية مقابل الفعلي', icon: Target, Component: BudgetTrackerTab },
   { key: 'recurring_expenses', label: 'المصاريف المتكررة', icon: RotateCcw, Component: RecurringExpensesTab },
-  { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard, Component: InstallmentPlansTab },
 ] as const;
 
 export default function FinancialReportsHub({ notify, initial }: { notify: NotifyFn; initial?: string }) {
-  const [active, setActive] = useState<string>(reports.some((item) => item.key === initial) ? String(initial) : 'balance_sheet');
+  const [active, setActive] = useState<string>(reports.some((item) => item.key === initial) ? String(initial) : 'chart_of_accounts');
   const Current = reports.find((item) => item.key === active)?.Component;
 
   return (
