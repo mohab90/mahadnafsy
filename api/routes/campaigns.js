@@ -231,14 +231,29 @@ async function validateTaskReferences(req, task) {
 
 router.get('/api/admin/tasks', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
   try {
-    const mineOnly = req.query.mine === '1' || !taskManager(req);
+    // The caller asks for its own tasks as `my=true`; this read `mine === '1'`.
+    // Both halves missed, so the flag never took effect. A staff member was
+    // scoped to their own rows anyway by the `!taskManager` fallback, but a
+    // manager or admin — the people the flag exists for — got every task in the
+    // tenant on a panel headed "مهامي". Accept either spelling and any ordinary
+    // truthy spelling of the value.
+    // Both spellings are named outright rather than looked up through a
+    // computed key, so query-filter-drop-scan can see them. A parameter read
+    // via req.query[variable] is invisible to that scan, which would leave this
+    // route looking exactly like the bug it just had.
+    const truthy = value => ['1', 'true', 'yes'].includes(String(value ?? '').trim().toLowerCase());
+    const askedForMine = truthy(req.query.mine) || truthy(req.query.my);
+    const mineOnly = askedForMine || !taskManager(req);
+    // `limit` was sent and ignored: the home panel shows five and was being
+    // handed five hundred.
+    const limit = Math.min(500, Math.max(1, Number.parseInt(req.query.limit, 10) || 500));
     const [rows] = await pool.query(
       `SELECT id, title, description, assigned_to, assigned_name, related_sub_id, related_lead_id,
               priority, status, due_date, completed_at, created_by, created_at, updated_at
        FROM tasks
        WHERE tenant_id=? AND (?=0 OR assigned_to=?)
-       ORDER BY due_date ASC, created_at DESC LIMIT 500`,
-      [req.tenantId, mineOnly ? 1 : 0, taskActorId(req)]
+       ORDER BY due_date ASC, created_at DESC LIMIT ?`,
+      [req.tenantId, mineOnly ? 1 : 0, taskActorId(req), limit]
     );
     res.json(rows);
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

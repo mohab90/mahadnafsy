@@ -15,6 +15,7 @@ import { scanPermissionMatrix } from './permission-matrix-scan.mjs';
 import { scanSchemaSourceDrift } from './schema-source-drift.mjs';
 import { scanDashboardTabs, navLeafCount } from './dashboard-tab-audit.mjs';
 import { scanIndexDefeats } from './index-defeat-scan.mjs';
+import { scanQueryFilterDrops } from './query-filter-drop-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -328,9 +329,25 @@ const permissionViolations = [
   ...permissionMatrix.permissionRegistryDrift,
 ];
 if (!permissionViolations.length) {
-  pass(`permission matrix complete across ${permissionMatrix.routeFiles} route files and ${permissionMatrix.tabCount} dashboard tabs`);
+  pass(`permission matrix complete across ${permissionMatrix.routeFiles} route files, ${permissionMatrix.staffRoutesExamined} staff routes and ${permissionMatrix.tabCount} dashboard tabs`);
 } else {
   fail(`${permissionViolations.length} permission-matrix violation(s). Run: node tools/permission-matrix-scan.mjs --list`);
+}
+
+// ── Dropped query-filter guard ──────────────────────────────────────────────
+// A filter the route never reads is not a narrow list, it is the whole table.
+// The باي موب tab fetched ?source=paymob against a handler that never read
+// `source`, so it listed every payment in the database under a heading saying
+// it showed only online ones. The staff home panel asked for ?my=true against a
+// route reading `mine === '1'` and showed a manager every task in the tenant.
+// Both looked populated rather than broken, which is why neither was reported
+// as a bug for months.
+console.log('\nDropped query-filter guard');
+const queryFilterDrops = scanQueryFilterDrops();
+if (!queryFilterDrops.drops.length) {
+  pass(`every admin query filter is read, across ${queryFilterDrops.routesIndexed} GET routes`);
+} else {
+  fail(`${queryFilterDrops.drops.length} dropped query filter(s) — the screen is filtering nothing. Run: node tools/query-filter-drop-scan.mjs --list`);
 }
 
 // ── 15. Migration-schema drift guard ─────────────────────────────────────────

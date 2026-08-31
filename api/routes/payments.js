@@ -71,7 +71,15 @@ router.post('/api/admin/migrate-branches', requireAuth, requireAdmin, async (req
 
 router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
-    const { startDate, endDate, channel, paymentType } = req.query;
+    // `source` is read here, not just on /review.
+    //
+    // The باي موب screen asks for `?source=paymob` and this handler destructured
+    // four query keys, none of them source. An unread filter is not an empty
+    // filter: the condition never reached the WHERE clause, so the tab labelled
+    // "الدفع الإلكتروني — منفصل عن الدفعات اللي بيسجّلها الموظفين" was listing
+    // every payment in the database, hand-entered cash included, and adding them
+    // into its own "إجمالي المحصّل" heading.
+    const { startDate, endDate, channel, paymentType, source, status } = req.query;
     const limit = Math.min(5000, Math.max(1, Number.parseInt(req.query.limit, 10) || 2000));
     const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
     // Non-super-admin staff who are not managers/accountants can only see their own payments
@@ -86,6 +94,14 @@ router.get('/api/admin/payments', requireAuth, requireAdminOrStaff, requirePermi
     if (endDate)     { sql += ' AND p.date <= ?';           params.push(endDate); }
     if (channel)     { sql += ' AND p.payment_method = ?';  params.push(channel); }
     if (paymentType) { sql += ' AND p.payment_type = ?';    params.push(String(paymentType).toUpperCase()); }
+    if (source && source !== 'all')  { sql += ' AND p.source = ?'; params.push(String(source)); }
+    if (status && status !== 'all') {
+      // 'paid' has to cover the legacy NULL, the way /review does — those rows
+      // are collected money and a status filter that hides them would under-
+      // report the total rather than merely narrow the list.
+      if (status === 'paid') sql += " AND (p.status = 'paid' OR p.status IS NULL)";
+      else { sql += ' AND p.status = ?'; params.push(String(status)); }
+    }
     if (scope.branchId) {
       sql += ' AND p.branch_id = ?';
       params.push(scope.branchId);
