@@ -58,3 +58,8 @@ Claude.mobileconfig
 
 # Schema dump for audit:columns — pull a fresh one, never commit a stale shape
 schema.json
+
+# The root package.json declares scripts and no dependencies, so a lockfile
+# beside it is something npm leaves behind rather than anything to install
+# from. admin/, client/ and api/ each keep their own, and those are tracked.
+/package-lock.json
