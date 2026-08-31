@@ -22,6 +22,7 @@ const { verifyMessengerCredentials } = require('../lib/messenger');
 const { verifyWapilot, listWapilotInstances } = require('../lib/whatsappWapilot');
 const { toDialable } = require('../lib/phoneNumber');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { FULL_ACCESS_ROLES } = require('../constants/permissions');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 
 const manage = [requireAuth, requireAdminOrStaff, requirePermission('manage_settings')];
@@ -222,13 +223,23 @@ router.delete('/api/staff/me/whatsapp-channel', ...selfChannel, async (req, res)
  * up" endpoints differ between providers and lie about whether a *send* will be
  * accepted. Rate limited because it is a send.
  */
-router.post('/api/messaging/channels/:id/test', requireAuth, requireAdminOrStaff, bulkOperationLimiter, async (req, res) => {
+router.post('/api/messaging/channels/:id/test', ...selfChannel, bulkOperationLimiter, async (req, res) => {
   try {
     const channel = await channels.getChannelById(req.tenantId, req.params.id);
     if (!channel) return res.status(404).json({ error: 'القناة غير موجودة' });
 
     // A staff member may only test their own channel; an admin may test any.
-    const isAdmin = req.staffRecord?.role === 'ADMIN' || req.user?.role === 'admin';
+    //
+    // Both halves of the old check were dead. Roles are stored lowercase
+    // (constants/permissions.js ROLES.ADMIN === 'admin'), so `=== 'ADMIN'`
+    // never matched, and requireAuth never puts a `role` on req.user at all.
+    // isAdmin was therefore always false — and worse, an ADMIN_EMAILS admin
+    // gets no staffRecord from requireAdminOrStaff, so selfStaffId was null
+    // too and every owned channel answered 403. Nobody could connect a staff
+    // member's WhatsApp, which is what "an admin may test any" promised.
+    // req.isSuperAdmin is the signal the rest of the codebase actually sets.
+    const isAdmin = Boolean(req.isSuperAdmin)
+      || FULL_ACCESS_ROLES.includes(String(req.staffRecord?.role || '').toLowerCase());
     if (channel.owner_staff_id && channel.owner_staff_id !== selfStaffId(req) && !isAdmin) {
       return res.status(403).json({ error: 'غير مصرح باختبار قناة موظف آخر' });
     }
