@@ -124,6 +124,11 @@ router.get('/api/admin/reconcile-payments', requireAuth, requireAdmin, async (re
   }
 });
 
+// How many example rows each check carries back. Named because the count logic
+// below has to know it, and a literal repeated in sixteen SQL strings and one
+// comparison is how the two drift apart.
+const SAMPLE_LIMIT = 100;
+
 router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
     const tenantId = req.tenantId;
@@ -312,9 +317,43 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
                ORDER BY created_at DESC LIMIT 100`,
       },
     ].filter(check => !check.centralOnly || (!scope.branchId && scope.kind === 'all'));
+    // `count` is the number of rows that match, not the number this reply
+    // happens to carry.
+    //
+    // Every check ends `ORDER BY … LIMIT 100`, and count was rows.length — so a
+    // check with 165 hits reported 100, and a reader had no way to tell a
+    // hundred from a thousand. It cost real time here: converted_without_
+    // subscriber reported 44 while the true figure was 248, and the smaller
+    // number was acted on as though it were the whole problem.
+    //
+    // Dropping that tail turns the sample query into the population query. The
+    // extra COUNT only runs when the sample came back full, so the ordinary
+    // case — a check at zero — still costs one query. If a check's SQL ever
+    // stops ending that way the strip is a no-op, and rather than silently
+    // counting the capped set again the reply says countExact:false.
     const results = await Promise.all(checks.map(async check => {
-      const [rows] = await pool.query(check.sql, check.centralOnly ? [tenantId] : branchParams);
-      return { key: check.key, severity: check.severity, count: rows.length, rows };
+      const params = check.centralOnly ? [tenantId] : branchParams;
+      const [rows] = await pool.query(check.sql, params);
+      const population = check.sql.replace(/\s+ORDER BY[\s\S]*?LIMIT\s+\d+\s*$/i, '');
+      const strippable = population !== check.sql;
+      let count = rows.length;
+      let countExact = true;
+      if (rows.length >= SAMPLE_LIMIT) {
+        if (strippable) {
+          const [[total]] = await pool.query(
+            `SELECT COUNT(*) AS n FROM (${population}) AS reconcile_population`, params);
+          count = Number(total.n) || rows.length;
+        } else {
+          countExact = false;
+        }
+      }
+      return {
+        key: check.key, severity: check.severity,
+        count, countExact,
+        sampled: rows.length,
+        truncated: count > rows.length,
+        rows,
+      };
     }));
     const criticalCount = results.filter(result => result.severity === 'critical').reduce((sum, result) => sum + result.count, 0);
     res.json({
