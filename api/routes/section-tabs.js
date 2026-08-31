@@ -26,41 +26,10 @@ const router = express.Router();
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { sendRouteError } = require('../lib/helpers');
-
-const SECTION_KEYS = ['leads', 'online', 'daqqi'];
-const PANELS = ['import', 'distribute', 'data'];
-const MAX_TABS_PER_SECTION = 12;
-const MAX_LABEL = 40;
-
-/**
- * Whatever was stored, reduced to something the screens can render.
- *
- * This is read by three tabs on every load, so a malformed value must degrade to
- * "no custom tabs" rather than throw inside a render. Anything unrecognised is
- * dropped rather than passed through: the settings blob is admin-writable, and
- * a label going straight into the DOM is exactly the shape of bug the campaign
- * unsubscribe page had.
- */
-function sanitizeTabs(raw) {
-  const out = {};
-  for (const key of SECTION_KEYS) {
-    const list = Array.isArray(raw?.[key]) ? raw[key] : [];
-    out[key] = list.slice(0, MAX_TABS_PER_SECTION).map(tab => {
-      const sections = {};
-      for (const panel of PANELS) sections[panel] = tab?.sections?.[panel] !== false;
-      // A tab showing nothing is a menu entry that opens an empty page. Fall
-      // back to the data table, which is the one panel every batch wants.
-      if (!PANELS.some(panel => sections[panel])) sections.data = true;
-      return {
-        id: String(tab?.id || '').slice(0, 64) || `tab-${Math.random().toString(36).slice(2, 10)}`,
-        label: String(tab?.label || '').trim().slice(0, MAX_LABEL) || 'تاب بدون اسم',
-        source: tab?.source ? String(tab.source).trim().slice(0, 60) : null,
-        sections,
-      };
-    }).filter(tab => tab.label);
-  }
-  return out;
-}
+// Pure, and kept in lib/ so it can be tested without booting a connection pool.
+// It is the only thing between an admin-writable settings blob and three render
+// paths, and a guard nothing can exercise is not a guard.
+const { sanitizeTabs } = require('../lib/sectionTabs');
 
 router.get('/api/admin/section-tabs',
   requireAuth, requireAdminOrStaff, requirePermission('view_leads'), async (req, res) => {
