@@ -32,11 +32,9 @@ test('money rows freeze their EGP value and financial reports consume the snapsh
 // The snapshot only protects a total that actually reads it.
 //
 // The payment-review breakdown summed `p.amount` behind `AND p.currency='EGP'`
-// instead. That loses money in two directions at once: a foreign payment counts
-// as zero although amount_egp holds its converted value, and — because no
-// comparison against NULL is ever true — so does every domestic row that left
-// currency NULL, which is how they are normally stored. The figure sat beside a
-// correct total with nothing to say it was measuring something narrower.
+// instead, so a SAR or USD payment counted as zero although amount_egp holds
+// its converted value. The figure sat beside a correct total with nothing to
+// say it was measuring something narrower.
 //
 // Scoped to aggregates: filtering by currency in a WHERE clause is legitimate
 // (the FX audit does it deliberately). Doing it inside a SUM over money is the

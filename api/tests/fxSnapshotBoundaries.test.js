@@ -94,11 +94,14 @@ test('the currency allow-list is closed, not merely a rejection of known-bad nam
 });
 
 test('an absent currency means EGP, and that default is load-bearing', () => {
-  // payments.currency is nullable and most domestic rows leave it empty, so
-  // `String(currency || 'EGP')` is not defensive padding — it is the rule that
-  // lets those rows post at 1:1. toEgp and postPaymentJournal each repeat the
-  // same expression, so tightening this one to reject empty input would stop
-  // ordinary Egyptian payments while every foreign-currency test still passed.
+  // Not about the columns: payments, orders and expenses all declare currency
+  // as enum('EGP','SAR','USD') NOT NULL DEFAULT 'EGP', so no row arrives empty.
+  // This is about the argument. isFxSnapshotUsable, toEgp and postPaymentJournal
+  // each take a currency from a JS caller and each repeat `currency || 'EGP'`,
+  // and callers do hand them values off nullable sources — refund_requests
+  // declares currency as a plain nullable varchar. Tightening this one function
+  // to reject empty input would diverge it from the two that convert on the
+  // same value, and every foreign-currency test here would still pass.
   const stale = { source: 'static-fallback', rates: {}, updatedAt: null };
   for (const cur of [null, undefined, '']) {
     assert.equal(isFxSnapshotUsable(stale, cur, now), true, `${String(cur)} must fall back to EGP`);
