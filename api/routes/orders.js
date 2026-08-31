@@ -12,16 +12,19 @@ const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = re
 const { safeIsoString } = require('../lib/dates');
 const { assertWritable } = require('../lib/periodLock');
 const { confirmOrderPayment } = require('../lib/orderPaymentConfirmation');
-const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
+const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { normalizeJourneyState } = require('../lib/journeyStates');
 
+// The rule financialScopeClause holds, which this file had its own copy of.
+//
+// One behavioural difference, and it is the direction of failure: this returned
+// the query unchanged for a scope it did not recognise, which opens the table.
+// The shared clause answers ' AND 1=0' — no rows rather than every row, which
+// is what a scope nobody has taught it about has to mean.
 function appendScope(sql, params, scope, recordAlias, subscriberAlias = 's') {
-  if (scope.branchId) return [`${sql} AND ${recordAlias}.branch_id=?`, [...params, scope.branchId]];
-  if (scope.kind === 'assigned_cs' || scope.kind === 'assigned_sales') {
-    const column = scope.kind === 'assigned_cs' ? 'assigned_cs_id' : 'assigned_sales_id';
-    return [`${sql} AND ${subscriberAlias}.${column}=?`, [...params, scope.staffId]];
-  }
-  return [sql, params];
+  const { sql: clause, params: scopeParams } =
+    financialScopeClause(scope, { branchColumn: `${recordAlias}.branch_id`, subscriberAlias });
+  return [`${sql}${clause}`, [...params, ...scopeParams]];
 }
 
 // GET /api/admin/orders
