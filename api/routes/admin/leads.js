@@ -37,7 +37,7 @@ const { VALID_BRANCHES, VALID_PAY_TYPES, VALID_SOURCES } = require('../../consta
 const { safeIsoString, safeDateOnly } = require('../../lib/dates');
 const { keyset } = require('../../lib/pagination');
 const { branchIdForBranch } = require('../../lib/branches');
-const { postPaymentJournal } = require('../../lib/finance');
+const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { assertWritable } = require('../../lib/periodLock');
 function cleanLegacyLeadText(value) {
@@ -507,6 +507,11 @@ router.post('/api/admin/import/daqqi', requireAuth, requireAdminOrStaff, require
               date: payDate, actor: req.user?.email || 'daqqi-import', tenantId: subscriberTenantId,
             }, conn);
             if (!journalId) throw new Error(`Payment journal failed for imported subscriber ${subscriberId}`);
+            // Imported money gets a trail like any other. A CSV is the least
+            // traceable way a payment can enter the system, so it is the last
+            // place the audit row should be optional.
+            await logPaymentAudit(paymentId, 'create', null, 'paid', payAmount, subscriberId,
+              req.user?.email || 'daqqi-import', subscriberTenantId, conn, true);
           }
           stats.newPayments++;
           payStatus = 'ok';

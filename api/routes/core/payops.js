@@ -5,7 +5,7 @@ const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
-const { postPaymentJournal } = require('../../lib/finance');
+const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { assertWritable } = require('../../lib/periodLock');
 const { retryFinanceEvent } = require('../../lib/financeOutbox');
 const { resolveFinancialScope } = require('../../lib/financialScope');
@@ -73,6 +73,11 @@ router.post('/api/admin/backfill-payments', requireAuth, requireAdmin, async (re
           date, actor: req.user?.email || 'backfill', tenantId,
         }, conn);
         if (!journalId) throw new Error(`Journal failed for ${item.id}`);
+        // A backfilled payment is still a payment, and this route is the one
+        // that most needs a trail: it writes historical money in bulk, so
+        // "where did this row come from" has no other answer.
+        await logPaymentAudit(item.id, 'create', null, 'paid', amount, subscriber.id,
+          req.user?.email || 'backfill', tenantId, conn, true);
         inserted += 1;
       }
     }

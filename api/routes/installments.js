@@ -18,7 +18,7 @@ const router = express.Router();
 const { uuidv4 } = require('./../lib/id');
 const { pool } = require('../lib/db');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
-const { postPaymentJournal } = require('../lib/finance');
+const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { branchIdForBranch } = require('../lib/branches');
 const { applyInstallmentPayment, removeInstallmentEntry } = require('../lib/installmentMath');
@@ -148,6 +148,12 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
       payType, actor: req.user?.email || 'system', tenantId: req.tenantId,
     }, conn);
     if (!journalId) throw new Error('Installment payment journal posting failed');
+    // Every path that creates a paid payment writes the audit row. Six of the
+    // nine did not, which is why 165 of 296 paid payments on production have no
+    // provenance at all — including one taken today. strict + the transaction
+    // connection, so the payment and its audit row live or die together.
+    await logPaymentAudit(payId, 'create', null, 'paid', paidAmount, plan.subscriber_id,
+      req.user?.email || req.staffRecord?.name || 'system', req.tenantId, conn, true);
 
     await conn.query(
       `UPDATE installment_plans SET paid_dates=?, payment_ids=?, paid_amounts=?, paid_count=?, status=?

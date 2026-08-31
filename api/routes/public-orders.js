@@ -14,7 +14,7 @@ const { branchIdForBranch } = require('../lib/branches');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { awardPointsForPayment } = require('../lib/loyalty');
 const { DEFAULT_TENANT_ID } = require('../lib/tenantScope');
-const { postPaymentJournal } = require('../lib/finance');
+const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { transitionLead } = require('../lib/leadState');
 const { ensureSubscriberForOrder } = require('../lib/subscriberProvisioning');
@@ -557,6 +557,12 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       tenantId,
     }, conn);
     if (!journalId) throw new Error('Paymob payment journal posting failed');
+    // A card payment leaves the same trail as one entered by hand. This path
+    // wrote none, so the only online payment the institute has ever taken had
+    // no audit row against it — the actor is the provider rather than a person,
+    // which is exactly the case an audit trail exists to record.
+    await logPaymentAudit(payId, 'create', null, 'paid', order.amount, sub?.id || null,
+      'paymob', tenantId, conn, true);
 
     // 5. Close the linked lead in the CRM pipeline — atomically with the payment,
     // through the central transition service so the timeline stays consistent.

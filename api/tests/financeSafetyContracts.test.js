@@ -240,3 +240,37 @@ test('certificate lifecycle and receipt rendering fail closed', () => {
   assert.match(receiptTable, /escapeHtml\(row\.name\)/);
   assert.match(receiptClient, /escapeHtml\(clientName\)/);
 });
+
+// Every route that creates a payment writes its audit row.
+//
+// Production carries 165 paid payments out of 296 with no provenance at all —
+// 56%, including one taken the day this was found. The audit call had been added
+// to three of the nine paths that insert into payments and to none of the other
+// six, so whether a payment could be traced afterwards depended entirely on
+// which screen it came through. The online card payment, the CSV import and the
+// historical backfill — the three least traceable ways money can enter — were
+// all in the silent group.
+//
+// Counting calls is what makes this checkable: the file either reaches for
+// logPaymentAudit or it does not, and a new payment route added without one
+// fails here rather than being discovered a year later by a reconciliation
+// alert nobody can clear.
+test('every route that inserts a payment also writes a payment audit row', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const routes = path.join(__dirname, '..', 'routes');
+
+  const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const target = path.join(dir, entry.name);
+    return entry.isDirectory() ? walk(target) : [target];
+  }).filter(file => file.endsWith('.js'));
+
+  const silent = [];
+  for (const file of [...walk(routes), path.join(__dirname, '..', 'lib', 'orderPaymentConfirmation.js')]) {
+    const source = fs.readFileSync(file, 'utf8');
+    if (!/INSERT INTO payments/.test(source)) continue;
+    if (/logPaymentAudit/.test(source)) continue;
+    silent.push(path.relative(path.join(__dirname, '..'), file).split(path.sep).join('/'));
+  }
+  assert.deepEqual(silent, [], 'these create payments that can never be traced to who made them');
+});

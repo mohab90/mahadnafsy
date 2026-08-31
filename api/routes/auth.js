@@ -26,7 +26,7 @@ const {
 } = require('../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../middleware/validate');
-const { postPaymentJournal } = require('../lib/finance');
+const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
 const { logLoginAttempt } = require('../lib/loginAudit');
 const { hasPermission } = require('../constants/permissions');
@@ -539,6 +539,11 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
         }, conn);
         if (!journalId) throw new Error('First payment journal posting failed');
       }
+      // Logged whether it was approved or left pending: who took the money and
+      // which of the two states it landed in is precisely what someone asks
+      // later, and a pending row that nobody can trace is the worse of the two.
+      await logPaymentAudit(paymentId, 'create', null, firstPaymentStatus, amount, paySub.id,
+        req.user?.email || req.staffRecord?.name || 'create-account', tenantId, conn, true);
     }
 
     const [[responseSubscriber]] = await conn.execute(

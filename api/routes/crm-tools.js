@@ -9,6 +9,7 @@ const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { resolveFinancialScope } = require('../lib/financialScope');
+const { logPaymentAudit } = require('../lib/finance');
 
 async function loadOutstandingBalances(tenantId, subscriberIds = null, scope = null) {
   const params = [tenantId, tenantId];
@@ -113,14 +114,21 @@ router.post('/api/admin/payments/bulk-stub', requireAuth, requireAdminOrStaff, r
     try {
       await conn.beginTransaction();
       for (const row of rows) {
+        const stubId = uuidv4();
         await conn.query(
           `INSERT INTO payments
              (id, subscriber_id, course_id, bundle_id, amount, currency, payment_type,
               payment_method, date, note, status, source, tenant_id, branch_id, created_at)
            VALUES (?,?,?,?,0,'EGP','OTHER','historical',?,'تسجيل تاريخي بدون إثبات دفع','pending','reconciliation_stub',?,?,NOW())`,
-          [uuidv4(), row.subscriber_id, row.course_id || null, row.bundle_id || null,
+          [stubId, row.subscriber_id, row.course_id || null, row.bundle_id || null,
            row.enrolled_at, tenantId, row.branch_id || 'branch-other']
         );
+        // A zero-amount pending stub is outside paid_without_audit's scope, but
+        // the rule is every payments row leaves a trail, not every row the alert
+        // happens to look at. A stub that appears with no provenance is exactly
+        // the kind of row someone later has to guess about.
+        await logPaymentAudit(stubId, 'create', null, 'pending', 0, row.subscriber_id,
+          req.user?.email || 'reconciliation-stub', tenantId, conn, true);
       }
       await conn.commit();
     } catch (error) {
