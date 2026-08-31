@@ -16,17 +16,45 @@ function walk(dir) {
   }).filter(file => file.endsWith('.js'));
 }
 
+const GUARD_PATTERN = /requirePermission|requireAnyPermission|requireAdmin\b|requireSuperAdmin|requirePlatformAdmin|requireAdminOrOnlineManager/;
+
+// Guard lists are frequently hoisted into a shared array and spread into the
+// route (`const view = [requireAuth, requireAdminOrStaff, requirePermission(..)]`
+// … `router.get(path, ...view, handler)`). Read those back so a spread reads
+// the same as the inline form to everything below.
+function guardArrays(source) {
+  const arrays = new Map();
+  for (const match of source.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*\[([^\]]*?)\];/g)) {
+    if (/require(?:Auth|AdminOrStaff|Permission|AnyPermission)/.test(match[2])) arrays.set(match[1], match[2]);
+  }
+  return arrays;
+}
+
+function expandGuards(middleware, arrays) {
+  let expanded = middleware;
+  for (const [name, body] of arrays) expanded = expanded.split(`...${name}`).join(body);
+  return expanded;
+}
+
 export function scanPermissionMatrix() {
   const unguardedStaffRoutes = [];
   const unknownRoutePermissions = [];
+  let staffRoutesExamined = 0;
   for (const file of walk(join(ROOT, 'api/routes'))) {
     const source = readFileSync(file, 'utf8');
-    const routePattern = /router\.(get|post|put|patch|delete)\(\s*(['"`])(\/api\/(?:admin|staff)\/[^'"`]+)\2([\s\S]*?)async\s*\(/g;
+    const arrays = guardArrays(source);
+    // Every mounted route, not just /api/admin|staff. The old pattern anchored
+    // on those two prefixes, so POST /api/messaging/channels/:id/test — staff
+    // authenticated, no permission named — was never examined and the scan
+    // still reported a closed matrix. What makes a route in scope is the guard
+    // it carries, not the words in its path.
+    const routePattern = /router\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2([\s\S]*?)async\s*\(/g;
     let route;
     while ((route = routePattern.exec(source))) {
-      const middleware = route[4];
-      if (/requireAdminOrStaff/.test(middleware)
-        && !/requirePermission|requireAnyPermission|requireAdmin\b|requireSuperAdmin|requirePlatformAdmin|requireAdminOrOnlineManager/.test(middleware)) {
+      const middleware = expandGuards(route[4], arrays);
+      if (!/requireAdminOrStaff/.test(middleware)) continue;
+      staffRoutesExamined++;
+      if (!GUARD_PATTERN.test(middleware)) {
         unguardedStaffRoutes.push(`${relative(ROOT, file)}:${route[1].toUpperCase()} ${route[3]}`);
       }
     }
@@ -76,6 +104,10 @@ export function scanPermissionMatrix() {
     unknownTabPermissions,
     permissionRegistryDrift,
     routeFiles: walk(join(ROOT, 'api/routes')).length,
+    // Reported so "0 violations" can be read against how much was actually
+    // looked at. The previous scan examined 328 staff routes and called the
+    // matrix closed; 64 more existed that it never opened.
+    staffRoutesExamined,
     tabCount: tabKeys.length,
   };
 }
@@ -89,6 +121,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       values.forEach(value => console.log(`  ${value}`));
     }
   }
-  console.log(`Permission matrix: ${result.routeFiles} route files, ${result.tabCount} dashboard tabs, ${failures.reduce((sum, [, values]) => sum + values.length, 0)} violation(s)`);
+  console.log(`Permission matrix: ${result.routeFiles} route files, ${result.staffRoutesExamined} staff routes examined, ${result.tabCount} dashboard tabs, ${failures.reduce((sum, [, values]) => sum + values.length, 0)} violation(s)`);
   if (failures.length) process.exitCode = 1;
 }

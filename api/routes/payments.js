@@ -322,9 +322,21 @@ router.get('/api/admin/payments/review', requireAuth, requireAdminOrStaff, requi
     });
 
     // Summary by type (for accounting breakdown)
+    //
+    // Sums the frozen EGP snapshot, like every other revenue aggregate in the
+    // codebase (analytics/dashboard, analytics/financial, analytics/sales,
+    // crm-tools all use SUM(amount_egp)). This one summed p.amount behind
+    // `AND p.currency='EGP'`, which dropped money twice over:
+    //   • a foreign payment contributed 0 even though amount_egp holds its
+    //     converted value — the FX snapshot existed and was simply not read;
+    //   • `currency='EGP'` is never true when currency IS NULL, and NULL is
+    //     how ordinary domestic rows are stored — this same handler reads them
+    //     as `p.currency || 'EGP'` twenty lines above.
+    // So the accounting breakdown under-reported against the totals shown
+    // beside it, with no filter or label saying anything had been excluded.
     const [typeSummary] = await pool.query(
       `SELECT p.payment_type,
-              SUM(CASE WHEN (p.status='paid' OR p.status IS NULL) AND p.currency='EGP' THEN p.amount ELSE 0 END) AS total_egp,
+              SUM(CASE WHEN (p.status='paid' OR p.status IS NULL) THEN COALESCE(p.amount_egp, 0) ELSE 0 END) AS total_egp,
               COUNT(*) AS count,
               SUM(CASE WHEN p.status='pending' THEN 1 ELSE 0 END) AS pending_count
        FROM payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
