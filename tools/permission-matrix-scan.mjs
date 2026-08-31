@@ -70,7 +70,17 @@ export function scanPermissionMatrix() {
   const navigation = readFileSync(join(ROOT, 'admin/pages/dashboard/navigation.tsx'), 'utf8');
   const dashboard = readFileSync(join(ROOT, 'admin/pages/dashboard/dashboardShared.tsx'), 'utf8');
   const frontendPermissions = readFileSync(join(ROOT, 'admin/constants/permissions.ts'), 'utf8');
-  const tabType = navigation.match(/export type TabKey =([\s\S]*?);/)?.[1] || '';
+  // Comments come out before the union is read. The declaration ends at the
+  // first `;`, and the merged-menu refactor put a prose `;` in the comment
+  // directly beneath `export type TabKey =` — so the capture stopped inside the
+  // comment, matched no quoted keys, and the scan reported 0 tabs. unmappedTabs
+  // is `tabKeys.filter(...)`, so an empty list of keys yields an empty list of
+  // violations: the check that every dashboard tab names a permission was
+  // passing because it had nothing left to look at.
+  const stripComments = source => source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  const tabType = stripComments(navigation).match(/export type TabKey\s*=([\s\S]*?);/)?.[1] || '';
   const tabMap = dashboard.match(/const TAB_PERMISSION_MAP[\s\S]*?= \{([\s\S]*?)\n\};/)?.[1] || '';
   const tabKeys = [...tabType.matchAll(/'([^']+)'/g)].map(match => match[1]);
   // A tab names one permission, or a list of them where any one opens it. The
