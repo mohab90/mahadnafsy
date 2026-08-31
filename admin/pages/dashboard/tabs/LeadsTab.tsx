@@ -49,6 +49,7 @@ import { normBranchId } from './leads/leadBranchUtils';
 import { LeadsTabHeader } from './leads/LeadsTabHeader';
 import { LeadFilterBar } from './leads/LeadFilterBar';
 import { LeadSalesKpiStrip } from './leads/LeadSalesKpiStrip';
+import SectionCustomTabs from './SectionCustomTabs';
 import { LeadEmptyDiagnostics } from './leads/LeadEmptyDiagnostics';
 import { useLeadActions } from './leads/useLeadActions';
 import { useLeadCrmBootstrap } from './leads/useLeadCrmBootstrap';
@@ -419,6 +420,12 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         effectiveLeads={effectiveLeads}
         effectiveSubs={effectiveSubs}
       />
+
+      {/* Staff-built tabs. The gear beside them is the per-section one — the
+          existing إعدادات in the header opens CRM-wide settings (sources,
+          auto-assign, Sheets), which is a different scope and stays where it
+          is. */}
+      <SectionCustomTabs section="leads" notify={notify} onBook={openLeadBook} />
 
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />

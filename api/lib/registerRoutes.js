@@ -42,6 +42,7 @@ const routeModules = [
   ['/', '../routes/admin-operations'],
   ['/', '../routes/lead-capture-crm'],
   ['/', '../routes/registrations'],
+  ['/', '../routes/section-tabs'],
   ['/', '../routes/facebook-leads-webhook'],
   ['/', '../routes/whatsapp-webhook'],
   ['/', '../routes/messenger-webhook'],

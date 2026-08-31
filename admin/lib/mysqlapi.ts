@@ -82,6 +82,19 @@ async function apiFetchInner<T>(path: string, options: RequestInit = {}, auth = 
 
 type AR = Record<string, unknown>;
 
+/**
+ * Staff-built tabs, per section. Kept structural rather than importing the
+ * page's type: lib/ is below pages/ and must not depend upwards on it. The
+ * page normalises what comes back regardless, so the shape here only has to be
+ * honest about the transport.
+ */
+export type SectionTabsWire = Record<string, Array<{
+  id: string;
+  label: string;
+  source: string | null;
+  sections: Record<string, boolean>;
+}>>;
+
 // ── Public catalog ────────────────────────────────────────────────────────────
 export const mysqlCatalog = {
   listCourses: (limit = 500, offset = 0) => apiFetch<AR[]>(`/courses?limit=${limit}&offset=${offset}`),
@@ -854,6 +867,11 @@ export const mysqlAdmin = {
     apiFetch<{ ok: boolean; updated: number; unresolved: number; total: number }>(
       '/admin/leads/migrate-branches', { method: 'POST', body: '{}' }, A
     ),
+
+  // ── Staff-built tabs inside العملاء المحتملين / الأونلاين / الدقي ──
+  getSectionTabs: () => apiFetch<SectionTabsWire>('/admin/section-tabs', {}, A),
+  saveSectionTabs: (data: SectionTabsWire) =>
+    apiFetch<SectionTabsWire>('/admin/section-tabs', { method: 'PUT', body: JSON.stringify(data) }, A),
 
   // ── CRM Settings (sources, auto-assign, google sheets) ──
   getCrmSettings: () => apiFetch<Record<string, unknown>>('/admin/crm-settings', {}, A),

@@ -13,6 +13,7 @@ import type {
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { normBranchId } from '../dashboardShared';
 import { type PaymentDraft } from '../../../components/PaymentModal';
+import SectionCustomTabs from './SectionCustomTabs';
 
 // Kept beside the component so the URL parser and the tab strip agree on what
 // a valid view is; an unknown ?view= falls back to 'active' rather than
@@ -338,6 +339,14 @@ export default function OnlineClientsTab({
               };
               return (
                 <article className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm" dir="rtl">
+                  {/* One element serves both halves of this screen: the same
+                      component is mounted under 'daqqi' when the الدقي clients
+                      tab is open and 'online' otherwise, so each keeps its own
+                      set of staff-built tabs without a second implementation. */}
+                  <SectionCustomTabs
+                    section={isDaqqiClientsTab ? 'daqqi' : 'online'}
+                    notify={notify}
+                  />
                   <OnlineClientsKpiStrip
                     isDaqqiClientsTab={isDaqqiClientsTab}
                     allCombined={allCombined}

@@ -87,8 +87,22 @@ export interface ArchiveTabProps {
   defaultSource?: string;
   customFilter?: (lead: LeadItem) => boolean;
   hideImport?: boolean;
+  /**
+   * Which of the three panels this instance shows.
+   *
+   * The screen was already exactly the three things a staff-built tab can
+   * choose between — استيراد عملاء, توزيع, إظهار داتا — welded together and
+   * gated as one by canManageLeads. Splitting the gate is what lets a
+   * configured tab be this component rather than a new one: a tab that only
+   * distributes is this with `import: false, data: false`.
+   *
+   * Omitted means all three, so every existing caller is unchanged. The desk
+   * permission still applies on top: choosing to show a panel cannot hand it
+   * to someone who could not open it before.
+   */
+  panels?: { import?: boolean; distribute?: boolean; data?: boolean };
 }
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels }: ArchiveTabProps) {
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
@@ -110,6 +124,12 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   const ARCHIVE_PAGE_SIZE = 100;
   const mainSource = `${defaultSource} — موزّع`;
   const showDeskTools = canManageLeads && !isSalesOnly;
+  // Configuration narrows; it never widens. A tab asking for the distribute
+  // panel still gets it only if the viewer holds the desk permission, so the
+  // settings screen cannot be used to hand a rep tools they could not open.
+  const showImportPanel = showDeskTools && !hideImport && panels?.import !== false;
+  const showDistributePanel = showDeskTools && panels?.distribute !== false;
+  const showDataPanel = panels?.data !== false;
 
   const parseArchiveFile = (file: File) => {
     setArchiveParseErr('');
@@ -283,7 +303,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       {/* Sourcing and distributing data is a desk job, not a rep's. A rep holds
           `manage_leads` (they edit their own leads), so that permission alone was
           never the right gate here — it is why reps were seeing an import box. */}
-      {showDeskTools && !hideImport && (
+      {showImportPanel && (
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Upload size={14} className="text-indigo-500" /> استيراد ملف CSV / Excel
@@ -420,7 +440,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       )}
 
       {/* ── Section 2: Bulk Assign ── */}
-      {showDeskTools && <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+      {showDistributePanel && <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
           <Users size={14} className="text-emerald-500" /> تعيين جماعي لموظف
         </h3>
@@ -547,7 +567,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
       </div>}
 
       {/* ── Section 3: Lead Table ── */}
-      <LeadTable
+      {showDataPanel && <LeadTable
         rows={archiveLeads}
         showCourseCol={true}
         courses={courses}
@@ -566,7 +586,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
         branchOptions={branchOptions}
         sources={sources}
         onSalesClick={!isSalesOnly ? (staffId: string) => navigate(`/staff/${staffId}`) : undefined}
-      />
+      />}
     </div>
   );
 }
