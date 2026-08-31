@@ -19,10 +19,21 @@ async function safeCount(sql, params = []) {
   catch { return null; }
 }
 
+// Deleted payments are not money.
+//
+// This summed every paid row including the soft-deleted ones, while the journal
+// side it is compared against counts entries by ref — so the two halves of the
+// balance check were describing different sets of payments. On production that
+// is 23 rows worth 50,561 EGP that every other query in the codebase filters
+// out with `deleted_at IS NULL` and this one did not, which is enough to make
+// the resulting "diff" mean nothing in either direction.
+//
+// A balance check that cannot be trusted is worse than no balance check: it
+// reports the books as unbalanced every single day, and people learn to skip it.
 async function sumPaidPaymentsEgp(tenantId) {
   const [[row]] = await pool.query(
     `SELECT COALESCE(SUM(amount_egp),0) AS total
-     FROM payments WHERE tenant_id=? AND status='paid'`,
+     FROM payments WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL`,
     [tenantId]
   );
   return Number(row?.total || 0);
@@ -180,8 +191,19 @@ router.get('/api/admin/queue-dashboard', requireAuth, requireAdmin, async (req, 
 router.get('/api/admin/reconcile-ledger', requireAuth, requireAdmin, async (req, res) => {
   try {
     const tenantId = req.tenantId || 'tenant-default';
-    const [[pay]] = await pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='paid'", [tenantId]);
-    const [[jrnl]] = await pool.query("SELECT COALESCE(SUM(jel.debit),0) AS total FROM journal_entry_lines jel JOIN journal_entries je ON je.id=jel.entry_id WHERE je.tenant_id=? AND je.ref_type='payment' AND jel.account_code='1100'", [tenantId]);
+    const [[pay]] = await pool.query("SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='paid' AND deleted_at IS NULL", [tenantId]);
+    // Joined back to payments so the ledger side counts entries for exactly the
+    // payments the other side sums — same tenant, same status, same soft-delete
+    // rule. Without the join the query answers "every payment journal ever
+    // posted", which includes entries for rows that have since been deleted.
+    const [[jrnl]] = await pool.query(
+      `SELECT COALESCE(SUM(jel.debit),0) AS total
+         FROM journal_entry_lines jel
+         JOIN journal_entries je ON je.id=jel.entry_id
+         JOIN payments p ON p.id=je.ref_id AND p.tenant_id=je.tenant_id
+        WHERE je.tenant_id=? AND je.ref_type='payment' AND jel.account_code='1100'
+          AND p.status='paid' AND p.deleted_at IS NULL`,
+      [tenantId]);
     const paymentsTotal = await sumPaidPaymentsEgp(tenantId);
     const journalCashTotal = Number(jrnl.total) || 0;
     const diff = +(paymentsTotal - journalCashTotal).toFixed(2);
