@@ -13,7 +13,7 @@ const { enqueueFinanceEvent } = require('../../lib/financeOutbox');
 const { applyCertificatePayment } = require('../../lib/certificatePayments');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
-const { resolvePaymentAccess } = require('../../lib/paymentEntitlementAccess');
+const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../../lib/paymentEntitlementAccess');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 
 // This is the only manual status transition endpoint for an existing payment.
@@ -100,8 +100,9 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       }
       for (const courseId of [...new Set(courseIds)]) {
         let accessType = 'full';
+        let paidRatio = null;
         if (payment.is_installment && Number(payment.course_expected) > 0) {
-          accessType = await resolvePaymentAccess({
+          const resolved = await resolvePaymentAccess({
             db: conn,
             tenantId,
             subscriberId: payment.subscriber_id,
@@ -112,11 +113,18 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
             currency: payment.currency,
             expectedAmount: payment.course_expected,
           });
+          accessType = accessModeOf(resolved);
+          paidRatio = paidRatioOf(resolved);
         }
         await grantCourseEntitlement({
           tenantId, subscriberId: payment.subscriber_id, courseId,
           bundleId: payment.bundle_id || null, accessType,
-          lectureLimit: accessType === 'limited' ? 2 : null,
+          // Was a flat 2 lectures for anyone short of the full price, so 90%
+          // paid and 6% paid opened the same two. The ratio sizes it instead;
+          // lectureLimit stays null so grantCourseEntitlement derives it from
+          // the course's own published count.
+          lectureLimit: null,
+          paidRatio,
           branchId: payment.branch_id || 'branch-other',
           source: 'payment_status_review', actor,
         }, conn);

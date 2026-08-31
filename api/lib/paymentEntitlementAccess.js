@@ -43,7 +43,28 @@ async function resolvePaymentAccess({
   )) {
     throw financialConflict('Installment expected total changed', 'INSTALLMENT_EXPECTED_MISMATCH');
   }
-  return Number(prior?.total_paid || 0) + amount >= expected ? 'full' : 'limited';
+  const paid = Number(prior?.total_paid || 0) + amount;
+  if (paid >= expected) return 'full';
+  // How much of the price has been paid, for callers that can turn it into a
+  // proportional grant. Bounded below 1 because paid >= expected already
+  // returned 'full', and above 0 because a non-positive amount threw earlier.
+  return { mode: 'limited', paidRatio: Math.min(0.999, Math.max(0, paid / expected)) };
+}
+
+/**
+ * The two shapes resolvePaymentAccess answers in, as one.
+ *
+ * It returns the string 'full' when the course is covered and an object
+ * carrying the ratio when it is not — 'full' has no ratio worth reporting, and
+ * every existing caller compared against the string. Callers that only care
+ * whether access is full keep working; callers that want to size a partial
+ * grant read the ratio.
+ */
+function accessModeOf(result) {
+  return typeof result === 'string' ? result : result.mode;
+}
+function paidRatioOf(result) {
+  return typeof result === 'string' ? null : result.paidRatio;
 }
 
 function financialConflict(message, code) {
@@ -53,4 +74,4 @@ function financialConflict(message, code) {
   return error;
 }
 
-module.exports = { resolvePaymentAccess };
+module.exports = { resolvePaymentAccess, accessModeOf, paidRatioOf };

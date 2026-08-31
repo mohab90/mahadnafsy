@@ -27,7 +27,7 @@ const { grantCourseSelections } = require('../lib/entitlements');
 const { getNextClientCode } = require('../lib/mappers');
 const { leadScope } = require('../lib/leadAccess');
 const { VALID_BRANCHES } = require('../constants/permissions');
-const { resolvePaymentAccess } = require('../lib/paymentEntitlementAccess');
+const { resolvePaymentAccess, accessModeOf, paidRatioOf } = require('../lib/paymentEntitlementAccess');
 
 const TRANSIENT_TX_ERRORS = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
 const transactionBackoff = attempt => new Promise(resolve =>
@@ -551,8 +551,9 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
     // access_type = 'limited' (preview-only) for partial/installment payments until fully paid
     if (isPaid && (courseId || bundleId)) {
       let enrollAccessType = 'full';
+      let enrollPaidRatio = null;
       if (payment.isInstallment) {
-        enrollAccessType = await resolvePaymentAccess({
+        const resolved = await resolvePaymentAccess({
           db: conn,
           tenantId: paymentTenantId,
           subscriberId: subscriber_id,
@@ -563,13 +564,19 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
           currency: paymentCurrency,
           expectedAmount: courseExpected,
         });
+        enrollAccessType = accessModeOf(resolved);
+        enrollPaidRatio = paidRatioOf(resolved);
       }
       await grantCourseSelections({
         tenantId: paymentTenantId, subscriberId: subscriber_id,
         selections: [{
           courseId: bundleId ? `bundle:${bundleId}` : courseId,
           accessType: enrollAccessType,
-          lectureLimit: enrollAccessType === 'limited' ? 2 : null,
+          // Was a flat 2 lectures for every partial payer. The ratio sizes it
+          // against the course's own published count instead, so an instalment
+          // opens what it paid for rather than the same two either way.
+          lectureLimit: null,
+          paidRatio: enrollPaidRatio,
         }],
         branchId: paymentBranchId, source: 'manual_payment',
         actor: req.user?.email || 'staff',

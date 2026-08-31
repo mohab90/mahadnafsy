@@ -17,6 +17,31 @@ function accessPolicy(accessType, lectureLimit) {
   return { mode, lectureLimit: limit };
 }
 
+/**
+ * Lectures proportional to what has actually been paid.
+ *
+ * 'limited' was binary, and its floor is one lecture — so a client who had paid
+ * 90% of the price saw exactly as much as one who had paid 6%. Paying in
+ * instalments is not the exception here, it is how nearly every client buys:
+ * of the eight the reconciliation check flagged, every one had paid between 6%
+ * and 29%, and the desk was closing the gap by hand, course by course.
+ *
+ * Rounds up, so any payment at all opens at least the first lecture and the
+ * last instalment is not needed to reach the final one. Returns null when the
+ * course has no published lectures to divide, which leaves the previous
+ * behaviour — the caller's own floor of one — untouched.
+ */
+async function proportionalLectureLimit(conn, tenantId, courseId, paidRatio) {
+  const ratio = Number(paidRatio);
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  const [[row]] = await conn.query(
+    `SELECT COUNT(*) AS n FROM course_lectures
+      WHERE course_id=? AND is_published=1`, [courseId]);
+  const published = Number(row?.n || 0);
+  if (published <= 0) return null;
+  return Math.min(published, Math.max(1, Math.ceil(published * ratio)));
+}
+
 async function ownedSubject(conn, tenantId, subscriberId, courseId) {
   const [[row]] = await conn.query(
     `SELECT s.id AS subscriber_id,s.branch_id,c.id AS course_id
@@ -35,6 +60,12 @@ async function ownedSubject(conn, tenantId, subscriberId, courseId) {
 async function grantCourseEntitlement({
   tenantId, subscriberId, courseId, accessType = 'full', lectureLimit = null,
   branchId = null, bundleId = null, enrolledAt = null, source = 'admin', actor = null,
+  /**
+   * How much of the price is paid, 0..1, from resolvePaymentAccess. Only used
+   * when the grant is limited and no explicit lectureLimit was given, so an
+   * admin naming a number still wins over the arithmetic.
+   */
+  paidRatio = null,
 }, db = null) {
   const ownsConnection = !db;
   const conn = db || await pool.getConnection();
@@ -44,7 +75,10 @@ async function grantCourseEntitlement({
       tenantId, subscriberId, subjectType: 'course', subjectId: courseId,
     }, conn);
     const subject = await ownedSubject(conn, tenantId, subscriberId, courseId);
-    const policy = accessPolicy(accessType, lectureLimit);
+    const resolvedLimit = lectureLimit != null
+      ? lectureLimit
+      : await proportionalLectureLimit(conn, tenantId, courseId, paidRatio);
+    const policy = accessPolicy(accessType, resolvedLimit);
     // How long this course is sold for. NULL means unlimited, which is what
     // every course is until someone sets a duration, so nothing changes for
     // existing catalogue entries.
@@ -69,9 +103,23 @@ async function grantCourseEntitlement({
     //
     // Only payment-driven grants are held back. An admin setting someone to
     // limited is a decision, not a recomputation, and still applies.
-    const effective = PAYMENT_DRIVEN_SOURCES.has(source) && existing?.access_type === 'full' && policy.mode === 'limited'
+    const paymentDriven = PAYMENT_DRIVEN_SOURCES.has(source);
+    let effective = paymentDriven && existing?.access_type === 'full' && policy.mode === 'limited'
       ? accessPolicy('full', null)
       : policy;
+    // The same rule, one level down: a recomputation may raise a limited grant
+    // as instalments come in, and must never lower it. Without this the ratio
+    // could shrink a client's access — a later bookkeeping row against a bigger
+    // expected total, or a lecture published after they paid, both move the
+    // proportion down — and taking back lectures someone has already been
+    // given is the exact complaint the full-access guard above exists for.
+    //
+    // An admin setting a number is still a decision, not a recomputation, so it
+    // is left alone.
+    if (paymentDriven && effective.mode === 'limited' && existing?.access_type === 'limited') {
+      const held = Number(existing.lecture_limit || 0);
+      if (held > Number(effective.lectureLimit || 0)) effective = accessPolicy('limited', held);
+    }
     const changed = !existing || existing.status !== 'active' ||
       existing.access_type !== effective.mode || Number(existing.lecture_limit || 0) !== Number(effective.lectureLimit || 0);
     const enrollmentId = existing?.id || uuidv4();
@@ -207,15 +255,27 @@ async function grantCourseSelections({
         tenantId, subscriberId, subjectType: 'bundle', subjectId: id.slice(7),
       }, db);
     }
-    const policy = accessPolicy(item.accessType, item.videoCount ?? item.lectureLimit);
+    const explicitLimit = item.videoCount ?? item.lectureLimit ?? null;
+    const policy = accessPolicy(item.accessType, explicitLimit);
     const bundleId = id.startsWith('bundle:') ? id.slice(7) : null;
     const ids = bundleId ? (bundleCourses.get(bundleId) || []) : [id];
-    for (const courseId of ids) expanded.set(courseId, { courseId, bundleId, ...policy });
+    // The ratio travels per selection, and only where no explicit limit was
+    // named. A bundle spreads it across every course it contains, which is what
+    // "half paid" should mean for a diploma: half of each course, not all of
+    // the first half of them.
+    for (const courseId of ids) {
+      expanded.set(courseId, {
+        courseId, bundleId, ...policy,
+        explicitLimit, paidRatio: item.paidRatio ?? null,
+      });
+    }
   }
   for (const course of expanded.values()) {
     await grantCourseEntitlement({
       tenantId, subscriberId, courseId: course.courseId, accessType: course.mode,
-      lectureLimit: course.lectureLimit, branchId, bundleId: course.bundleId, source, actor,
+      lectureLimit: course.explicitLimit == null ? null : course.lectureLimit,
+      paidRatio: course.paidRatio,
+      branchId, bundleId: course.bundleId, source, actor,
     }, db);
   }
   return { granted: expanded.size, courseIds: [...expanded.keys()] };
