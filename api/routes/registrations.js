@@ -21,7 +21,29 @@ const { getNextClientCode } = require('../lib/mappers');
 const { getNextSalesRep } = require('../lib/leadAssignment');
 const { findLeadByContact, phoneIdentityClause } = require('../lib/leadMatching');
 const { branchIdForBranch } = require('../lib/branches');
+const { normalizeBranch, isBranch } = require('../constants/branches');
 const { toIdentity } = require('../lib/phoneNumber');
+
+/**
+ * The branch a registration is being converted into, validated against the enum.
+ *
+ * Both conversion routes took whatever string the body carried straight into the
+ * insert and into branchIdForBranch. subscribers.branch is an enum, so a typo
+ * either errored as an opaque 500 or landed empty — and an empty branch is
+ * invisible: العملاء الأونلاين and the الدقي round picker both select on branch,
+ * so the conversion would report success and the customer would appear on
+ * neither screen.
+ *
+ * It is also the field that decides which screen a converted client belongs to,
+ * which is what makes DAQQI a legitimate destination here and not only online.
+ * Returns null when the caller named a branch that does not exist, so the route
+ * can say so instead of writing it.
+ */
+function requestedBranch(body) {
+  if (body?.branch === undefined || body?.branch === null || body?.branch === '') return 'ONLINE_EGYPT';
+  const branch = normalizeBranch(body.branch);
+  return branch && isBranch(branch) ? branch : null;
+}
 
 const normEmail = (v) => (v || '').toString().trim().toLowerCase() || null;
 const normPhone = (v) => (v || '').toString().replace(/[^0-9]/g, '') || null;
@@ -106,7 +128,8 @@ router.post('/api/admin/registrations/:userId/convert-online', requireAuth, requ
   try {
     const tenantId = req.tenantId;
     const { userId } = req.params;
-    const branch = String(req.body?.branch || 'ONLINE_EGYPT');
+    const branch = requestedBranch(req.body);
+    if (!branch) return res.status(400).json({ error: 'فرع غير معروف' });
     await conn.beginTransaction();
     const [[user]] = await conn.query(
       'SELECT id, email, phone, name FROM users WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1 FOR UPDATE',
@@ -166,7 +189,8 @@ router.post('/api/admin/registrations/:userId/convert-lead', requireAuth, requir
   try {
     const tenantId = req.tenantId;
     const { userId } = req.params;
-    const branch = String(req.body?.branch || 'ONLINE_EGYPT');
+    const branch = requestedBranch(req.body);
+    if (!branch) return res.status(400).json({ error: 'فرع غير معروف' });
     await conn.beginTransaction();
     const [[user]] = await conn.query(
       'SELECT id, email, phone, name FROM users WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1 FOR UPDATE',

@@ -207,8 +207,26 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
   // people who all asked about the same diploma has one conversation to
   // prepare. Empty means every course, which is the previous behaviour.
   const [bulkCourseFilter, setBulkCourseFilter] = useState('');
+  // Already-distributed leads leave the pool.
+  //
+  // The pool was filtered on source and hidden alone, and the default
+  // destination is "اتركها مكانها" — so a batch handed to a rep kept its source
+  // and stayed on the list, indistinguishable from data nobody had touched. The
+  // next pass over the screen handed the same people to somebody else, and the
+  // only sign was the مبيعات column that had to be read row by row.
+  //
+  // Scoped to the role being assigned: a lead already with a sales rep may still
+  // be waiting for a collector, so distributing تحصيل must not treat it as done.
+  // Reassignment is a real need, so it stays available behind a switch rather
+  // than being removed — what changes is that it is now deliberate.
+  const [includeAssigned, setIncludeAssigned] = useState(false);
+  const assignedAlready = (lead: typeof archiveLeads[number]) => (bulkAssignRole === 'sales'
+    ? Boolean(lead.assignedSalesId)
+    : Boolean((lead as { assignedCollectionId?: string }).assignedCollectionId));
+  const undistributed = includeAssigned ? archiveLeads : archiveLeads.filter(lead => !assignedAlready(lead));
+  const alreadyCount = archiveLeads.length - archiveLeads.filter(lead => !assignedAlready(lead)).length;
   const filteredBulkLeads = bulkCourseFilter
-    ? archiveLeads.filter(lead => {
+    ? undistributed.filter(lead => {
       const title = String(courses.find(c => c.id === bulkCourseFilter)?.title || '').toLowerCase();
       // A lead records the course as an enrolment, as one of several declared
       // interests, or as free text in the notes when it arrived from an ad
@@ -217,7 +235,7 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
         || (lead.interestedCourseIds || []).includes(bulkCourseFilter)
         || (!!title && String(lead.notes || '').toLowerCase().includes(title));
     })
-    : archiveLeads;
+    : undistributed;
   const bulkPaginated = filteredBulkLeads.slice((archivePage - 1) * ARCHIVE_PAGE_SIZE, archivePage * ARCHIVE_PAGE_SIZE);
   const staffForAssign = staffMembers.filter(s => {
     const role = (s.role || '').toLowerCase();
@@ -447,7 +465,24 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
           </button>
         </div>
         <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-          <span className="text-xs text-gray-500">{filteredBulkLeads.length} عميل — محدد: {bulkSelectedLeadIds.size}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500">{filteredBulkLeads.length} عميل — محدد: {bulkSelectedLeadIds.size}</span>
+            {alreadyCount > 0 && (
+              <label
+                title="الموزّعون بيختفوا من القايمة عشان ما يتوزّعوش تاني على حد تاني بالغلط"
+                className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-bold transition ${
+                  includeAssigned ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-600'}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeAssigned}
+                  onChange={event => { setIncludeAssigned(event.target.checked); setBulkSelectedLeadIds(new Set()); }}
+                  className="h-3.5 w-3.5 accent-amber-600"
+                />
+                أظهر الموزّعين ({alreadyCount})
+              </label>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 items-center">
             {/* Quantity input */}
             <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-xl px-2 py-1">

@@ -64,8 +64,19 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
     }
   };
 
-  const openBooking = (row: RegistrationItem) => {
-    const branch = row.origin === 'دولي' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT';
+  // Both destinations open the same booking dialog.
+  //
+  // أونلاين had one and الدقي had none, so a walk-in who registered on the site
+  // could only be converted onto the online track — and converting them "to
+  // Daqqi" meant editing the branch by hand afterwards, with no booking and no
+  // payment recorded. The branch is the whole difference: العملاء الأونلاين and
+  // the الدقي round picker each select on it, so it decides which screen the
+  // client turns up on, and the round picker only offers subscribers already
+  // sitting on a Daqqi branch.
+  const openBooking = (row: RegistrationItem, target: 'online' | 'daqqi' = 'online') => {
+    const branch = target === 'daqqi'
+      ? 'DAQQI'
+      : row.origin === 'دولي' ? 'ONLINE_ABROAD' : 'ONLINE_EGYPT';
     setDraft(createClientPaymentDraft({
       branch, currency: currencyForBranch(branch), email: row.email || '',
     }));
@@ -90,7 +101,9 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
         note: paid.note || undefined,
         status: 'paid',
       });
-      notify('success', 'تم التحويل لعميل أونلاين وتسجيل الحجز');
+      notify('success', branch === 'DAQQI'
+        ? 'تم التحويل لعميل دقي وتسجيل الحجز — اختاره دلوقتي من حضور الروند في جدول الدقي'
+        : 'تم التحويل لعميل أونلاين وتسجيل الحجز');
       setRows(prev => prev.filter(r => r.id !== bookingRow.id));
       setBookingRow(null);
     } catch (err) {
@@ -174,6 +187,14 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
                         className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-40"
                       >
                         <UserCheck size={13} /> أونلاين
+                      </button>
+                      <button
+                        onClick={() => openBooking(r, 'daqqi')}
+                        disabled={busyId === r.id}
+                        title="حجز وتحويل لعميل دقي — بعدها يظهر في اختيار حضور الروند"
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition disabled:opacity-40"
+                      >
+                        <UserCheck size={13} /> دقي
                       </button>
                       <button
                         onClick={() => toLead(r)}

@@ -68,18 +68,42 @@ function normalizeStaffStatus(staff: StaffWire): StaffMember['status'] {
     : 'inactive';
 }
 
+/**
+ * Newest first, decided once here rather than per screen.
+ *
+ * The API already answers `ORDER BY created_at DESC` on both lists, so the
+ * order was usually right — but no screen asked for it. Every table downstream
+ * (the archive pool, العملاء الأونلاين, الدقي) renders whatever order the array
+ * happens to arrive in, so a route that paginates differently, a merge of two
+ * fetches, or a filter that rebuilds the array silently reorders the page with
+ * nothing to point at. Sorting where the rows enter the app makes it a property
+ * of the data instead of a coincidence of the fetch.
+ *
+ * Rows without a date sort last: an undated row is not new, and floating it to
+ * the top would put the least-known records in front of today's work.
+ */
+const newestFirst = <T extends { createdAt?: string | null }>(rows: T[]): T[] =>
+  [...rows].sort((a, b) => {
+    const left = String(a.createdAt || '');
+    const right = String(b.createdAt || '');
+    if (!left && !right) return 0;
+    if (!left) return 1;
+    if (!right) return -1;
+    return right.localeCompare(left);
+  });
+
 function normalizeLeads(rows: unknown): LeadItem[] {
-  return (rows as LeadItem[]).map(lead => ({
+  return newestFirst((rows as LeadItem[]).map(lead => ({
     ...lead,
     status: (lead.status || 'new').toLowerCase() as LeadStatus,
-  }));
+  })));
 }
 
 function normalizeSubscribers(rows: unknown): SubscriberItem[] {
-  return (rows as SubscriberItem[]).map(subscriber => ({
+  return newestFirst((rows as SubscriberItem[]).map(subscriber => ({
     ...subscriber,
     enrolledCourseIds: Array.isArray(subscriber.enrolledCourseIds) ? subscriber.enrolledCourseIds : [],
-  }));
+  })));
 }
 
 function normalizeOrders(rows: unknown): OrderItem[] {
