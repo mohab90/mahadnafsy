@@ -189,3 +189,61 @@ test('lead merges are tenant-scoped and reversible for new audit snapshots', () 
   assert.match(merge, /hidden=0,merged_into_lead_id=NULL/);
   assert.match(migration, /reverted_at[\s\S]*reverted_by/);
 });
+
+// "converted" has to mean a customer exists.
+//
+// Production carries 34 real leads at status 'converted' with no subscriber
+// behind them — Sheet imports with no email, all stamped within a second of
+// each other. Converted leads are excluded from the pipeline, so each of those
+// people left the sales list without arriving anywhere: nobody is chasing them
+// and no customer record answers for them. Invisible in exactly the way that
+// keeps anyone from noticing.
+//
+// The routes cannot write leads.status directly (pinned above), so this service
+// is the single door. It was not checking. All nine callers that convert a lead
+// already hold a subscriber and already name it, so the check costs them
+// nothing — what it stops is the tenth caller reopening the hole.
+test('a lead cannot be marked converted without a customer behind it', () => {
+  const state = read('lib/leadState.js');
+
+  // The guard exists and is specific to this status.
+  assert.match(state, /status === 'converted'/,
+    'the converted status must be checked, not every transition');
+  assert.match(state, /FROM subscribers[\s\S]{0,120}lead_id=\?/,
+    'it has to look for the customer, not merely comment about one');
+  assert.match(state, /statusCode = 409/,
+    'a refusal is a conflict, not a 500');
+
+  // It runs before the write, or it is not a guard.
+  assert.ok(
+    state.indexOf("status === 'converted'") < state.indexOf('UPDATE leads SET status=?'),
+    'the check must come before the UPDATE it is protecting',
+  );
+
+  // The caller's own claim is accepted too. The payment-proof path converts on
+  // proof.lead_id while the subscriber it activates may have been linked by
+  // identity rather than by that column, so requiring only the link would
+  // reject a confirmed payment.
+  assert.match(state, /metadata\?\.subscriberId/,
+    'the caller-supplied subscriber id must be honoured, or approved proofs start failing');
+});
+
+test('every caller that converts a lead names the customer it converted into', () => {
+  // The guard above accepts metadata.subscriberId, which is only worth
+  // accepting if the callers actually send it. A caller that stops sending it
+  // still passes today — the lead_id link usually covers it — and then fails
+  // the day it converts on a lead whose subscriber was matched by identity.
+  const callers = [
+    'routes/admin/leads.js', 'routes/admin/subscribers.js', 'routes/payment-proofs.js',
+    'routes/subscriber-payments.js', 'routes/public-orders.js', 'routes/core/financepay.js',
+    'lib/orderPaymentConfirmation.js',
+  ];
+  for (const file of callers) {
+    const source = read(file);
+    for (const call of source.matchAll(/transitionLead\(\{[\s\S]{0,700}?\}\)/g)) {
+      if (!/toStatus:\s*'converted'/.test(call[0])) continue;
+      assert.match(call[0], /subscriberId/,
+        `${file}: a conversion that does not name its subscriber cannot be checked`);
+    }
+  }
+});

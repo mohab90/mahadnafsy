@@ -45,6 +45,42 @@ async function transitionLead({
       return { changed: false, fromStatus, toStatus: status };
     }
     if (!force) await validateTransition(tenantId, fromStatus, status, conn);
+
+    // 'converted' has to mean a customer exists.
+    //
+    // Production carries 34 real leads sitting at converted with no subscriber
+    // behind them — Google Sheet imports with no email, mostly, all stamped
+    // within a second of each other on 2026-08-06. Converted leads are excluded
+    // from the pipeline, so each of those people left the sales list without
+    // arriving anywhere: nobody is chasing them and no customer record answers
+    // for them. They are invisible in exactly the way that stops anyone
+    // noticing.
+    //
+    // The routes cannot write leads.status directly — crmLeadIntegrity pins
+    // that — so this service is the one door, and it was not checking. Every one
+    // of the nine callers that converts a lead already has a subscriber and
+    // already names it in metadata.subscriberId, so the check costs them
+    // nothing; what it stops is the tenth caller, and the bulk status edit,
+    // from reopening the same hole.
+    //
+    // Accepts either the link (subscribers.lead_id) or the caller's own claim,
+    // because they are not always the same: the payment-proof path converts on
+    // proof.lead_id while the subscriber it activates may have been linked by
+    // identity rather than by that column.
+    if (status === 'converted') {
+      const claimed = metadata?.subscriberId ? String(metadata.subscriberId) : null;
+      const [[customer]] = await conn.query(
+        `SELECT id FROM subscribers
+          WHERE tenant_id=? AND (lead_id=?${claimed ? ' OR id=?' : ''}) LIMIT 1`,
+        claimed ? [tenantId, leadId, claimed] : [tenantId, leadId]
+      );
+      if (!customer) {
+        const error = new Error('لا يمكن تعليم الليد كمحوَّل قبل إنشاء العميل — استخدم مسار التحويل');
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
     await conn.query(
       'UPDATE leads SET status=?, updated_at=NOW() WHERE id=? AND tenant_id=?',
       [status, leadId, tenantId]
