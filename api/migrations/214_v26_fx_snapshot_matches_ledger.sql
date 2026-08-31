@@ -25,15 +25,19 @@
 -- Scoped tightly on purpose: foreign currency only (EGP cannot drift at rate 1),
 -- only rows the backfill itself wrote, only where a balanced payment journal
 -- exists, and only where the two actually disagree by at least a piastre.
+-- Scoped by tenant as well as by payment id. The id is a UUID primary key, so
+-- joining on it alone would almost certainly be correct — but "almost certainly"
+-- is not the standard the rest of this schema is held to, and a cross-tenant
+-- join that rewrites a money column is not the place to start making exceptions.
 UPDATE payments p
 JOIN (
-  SELECT je.ref_id AS payment_id, SUM(jel.debit) AS posted_egp
+  SELECT je.tenant_id, je.ref_id AS payment_id, SUM(jel.debit) AS posted_egp
     FROM journal_entries je
     JOIN journal_entry_lines jel ON jel.entry_id = je.id AND jel.account_code = '1100'
    WHERE je.ref_type = 'payment'
-   GROUP BY je.ref_id
+   GROUP BY je.tenant_id, je.ref_id
   HAVING SUM(jel.debit) > 0
-) j ON j.payment_id = p.id
+) j ON j.payment_id = p.id AND j.tenant_id = p.tenant_id
 SET p.amount_egp     = ROUND(j.posted_egp, 2),
     p.fx_rate_to_egp = ROUND(j.posted_egp / NULLIF(p.amount, 0), 8),
     p.fx_source      = 'ledger-derived'
