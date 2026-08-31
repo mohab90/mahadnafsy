@@ -547,6 +547,11 @@ export interface JoinUsApplication {
   // off this so they are not offered for an applicant nobody has spoken to.
   contactedAt?: string;
   contactedBy?: string;
+  /** Who made the call, by name — contactedBy is a staff id and unreadable. */
+  contactedByName?: string;
+  /** What was written on the call, from the latest note of kind 'contact'. */
+  contactNote?: string;
+  contactNoteAt?: string;
   interviewAt?: string;
   convertedApplicantId?: string;
   applicantStage?: 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';

@@ -642,7 +642,8 @@ export const mysqlAdmin = {
   updateHrApplicant: (id: string, o: AR) => put(`/admin/hr/applicants/${encodeURIComponent(id)}`, o),
   hireHrApplicant:  (id: string, o: AR = {}) => post(`/admin/hr/applicants/${encodeURIComponent(id)}/hire`, o),
   deleteHrApplicant: (id: string) => del(`/admin/hr/applicants/${encodeURIComponent(id)}`),
-  moveJoinUsToInterview: (id: string) => post(`/admin/hr/join-us/${encodeURIComponent(id)}/to-interview`, {}),
+  moveJoinUsToInterview: (id: string, interviewAt?: string) =>
+    post(`/admin/hr/join-us/${encodeURIComponent(id)}/to-interview`, interviewAt ? { interviewAt } : {}),
   contactJoinUs: (id: string, body?: string) =>
     apiFetch<{ ok: boolean; contactedBy: string }>(
       `/admin/join-us/${encodeURIComponent(id)}/contact`,

@@ -10,7 +10,7 @@ const JobPostingsPanel = React.lazy(() => import('./JobPostingsPanel'));
 import type { JoinUsApplication } from '../../../types';
 import PromptModal from '../../../components/shared/PromptModal';
 import {
-  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, matchesMinExperience, yearsLabel,
+  EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
 
 type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
@@ -251,11 +251,44 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
   };
 
   const [justMoved, setJustMoved] = useState<Set<string>>(new Set());
-  const moveToInterview = async (app: JoinUsApplication) => {
+
+  // Ask for the time before moving anybody.
+  //
+  // The button used to convert the candidate and stop. The interviews screen
+  // sorts by interview_at and parks a row without one at the end under
+  // "بدون موعد", so pressing it appeared to do nothing — the candidate did
+  // move, into a list where nothing distinguished them. The date is what makes
+  // the move visible, which is why it is asked for here rather than left to be
+  // filled in on the other screen afterwards.
+  const openMoveToInterview = (app: JoinUsApplication) => setPrompt({
+    title: `تحديد موعد المقابلة — ${app.name}`,
+    label: 'موعد المقابلة',
+    hint: 'الصيغة: YYYY-MM-DD HH:MM — مثال 2026-09-01 11:30. هينتقل لصفحة الانترفيوهات تحت «القادم».',
+    placeholder: '2026-09-01 11:30',
+    initialValue: app.interviewAt ? String(app.interviewAt).replace('T', ' ').slice(0, 16) : '',
+    confirmLabel: 'تحديد ونقل للانترفيو',
+    required: true,
+    // Validated here so a bad date never leaves the dialog. The route checks the
+    // same shape — a string it cannot parse would store NULL and put the
+    // candidate right back in the undated pile this exists to avoid.
+    validate: value => (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(value.trim())
+      ? null : 'الصيغة لازم تكون YYYY-MM-DD HH:MM'),
+    run: value => moveToInterview(app, value.trim()),
+  });
+
+  const moveToInterview = async (app: JoinUsApplication, interviewAt?: string) => {
     setMovingId(app.id);
     try {
-      await mysqlAdmin.moveJoinUsToInterview(app.id);
+      await mysqlAdmin.moveJoinUsToInterview(app.id, interviewAt);
       setJustMoved(prev => new Set(prev).add(app.id));
+      setPrompt(null);
+      setToast({
+        type: 'success',
+        text: interviewAt
+          ? `${app.name} اتنقل للانترفيوهات — الموعد ${interviewAt}`
+          : `${app.name} اتنقل للانترفيوهات بدون موعد`,
+      });
+      await reloadJoinUsApplications();
       // The conversion happens through a dedicated pipeline endpoint, not the
       // generic join-us update this tab otherwise uses — updateJoinUsApplication
       // would try to PUT server-controlled fields (convertedApplicantId) back
@@ -263,8 +296,13 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
       // confirm success inline; the full "داخل HR: مقابلة" badge picks up
       // the real state next time this page's data source refreshes.
     } catch (error) {
+      // Said out loud as well as dispatched. A rejected date comes back from the
+      // route with the reason, and the custom event alone left the dialog open
+      // over a page that gave no indication anything had gone wrong.
+      const reason = error instanceof Error ? error.message : '';
+      setToast({ type: 'error', text: `تعذّر نقل ${app.name} للانترفيو${reason ? ` — ${reason}` : ''}` });
       window.dispatchEvent(new CustomEvent('site-persist-error', {
-        detail: { field: 'join-us-to-interview', name: error instanceof Error ? error.message : app.id },
+        detail: { field: 'join-us-to-interview', name: reason || app.id },
       }));
     } finally {
       setMovingId(null);
@@ -464,6 +502,29 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     )}
                     {app.message && <p title={app.message} className="mt-1.5 line-clamp-2 whitespace-pre-line rounded-lg bg-gray-50 px-2 py-1 text-[11px] text-gray-600">{app.message}</p>}
                     {app.adminNote && <p title={app.adminNote} className="mt-1 line-clamp-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">ملاحظة HR: {app.adminNote}</p>}
+                    {/* The call, written down where it can be read. All of this
+                        was already being stored on every «تواصل» — the date, the
+                        staff member and the note — and none of it was shown. */}
+                    {app.contactedAt && (
+                      <div className="mt-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] text-sky-900">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-bold">
+                          <span className="flex items-center gap-1"><Phone size={11} /> تم التواصل</span>
+                          <span className="font-mono text-[10px] font-normal text-sky-700" dir="ltr">{fmtDateTime(app.contactedAt)}</span>
+                          {app.contactedByName && <span className="font-normal text-sky-700">بواسطة {app.contactedByName}</span>}
+                        </div>
+                        {app.contactNote && (
+                          <p title={app.contactNote} className="mt-1 whitespace-pre-line border-t border-sky-200/70 pt-1 font-normal text-sky-800">
+                            {app.contactNote}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {app.interviewAt && (
+                      <p className="mt-1 flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800">
+                        <CalendarCheck size={11} /> موعد المقابلة:
+                        <span className="font-mono text-[10px]" dir="ltr">{fmtDateTime(app.interviewAt)}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-row flex-wrap gap-1.5 sm:flex-col sm:w-40">
                     <select value={appStatus} onChange={event => changeStatus(app, event.target.value as Status)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-bold">
@@ -472,7 +533,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                     <button
                       disabled={busyId === app.id}
                       onClick={() => openContact(app)}
-                      title={app.contactedAt ? `آخر تواصل: ${app.contactedAt}` : 'تسجيل أنه تم الاتصال بالمتقدم'}
+                      title={app.contactedAt ? `آخر تواصل: ${fmtDateTime(app.contactedAt) || app.contactedAt}` : 'تسجيل أنه تم الاتصال بالمتقدم'}
                       className="flex items-center justify-center gap-1 rounded-xl bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 disabled:opacity-40"
                     >
                       <Phone size={13} /> {app.contactedAt ? 'تواصل مرة أخرى' : 'تواصل'}
@@ -502,9 +563,11 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
                       const moved = Boolean(app.convertedApplicantId) || justMoved.has(app.id);
                       return (
                         <button
-                          disabled={movingId === app.id || moved}
-                          onClick={() => moveToInterview(app)}
-                          title={moved ? 'المرشح موجود بالفعل في صفحة الانترفيوهات' : 'ينقله لصفحة الانترفيوهات لتقييم المقابلة'}
+                          disabled={movingId === app.id}
+                          onClick={() => openMoveToInterview(app)}
+                          title={moved
+                            ? 'المرشح في صفحة الانترفيوهات — اضغط لتعديل الموعد'
+                            : 'يحدد موعد المقابلة وينقله لصفحة الانترفيوهات'}
                           className={`flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold ${
                             moved ? 'bg-violet-100 text-violet-700 cursor-default' : 'bg-violet-50 text-violet-700 hover:bg-violet-100'}`}
                         >

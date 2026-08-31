@@ -269,17 +269,37 @@ router.get('/api/admin/join-us', requireAuth, requireAdminOrStaff, requirePermis
       where += ' AND j.type = ?';
       params.push(String(req.query.type).toUpperCase());
     }
+    // contacted_at, contacted_by and interview_at are selected because the
+    // screen needs them and this query never returned them. POST
+    // /api/admin/join-us/:id/contact writes all three of the things being looked
+    // for — the timestamp, the staff member, and a note row — and then the list
+    // the user lands back on returned none of it. app.contactedAt was therefore
+    // always undefined, which does more than hide a date: the whole
+    // "التقييم بعد التواصل" block renders behind that field, so recording a call
+    // left the page looking as though nothing had happened.
+    //
+    // The note comes back with it. Storing what was said on the call and showing
+    // no trace of it is the same bug wearing a different hat, and it is the half
+    // that was actually asked about — "مش بيظهر اللي كتبته".
     const [rows] = await pool.query(
       `SELECT j.id, j.name, j.email, j.phone, j.specialty, j.experience, j.type,
               j.linkedin, j.message, j.status, j.admin_note, j.created_at,
               j.converted_applicant_id, j.reviewed_at, j.assigned_to,
-              a.stage applicant_stage, a.hired_staff_id,
+              j.contacted_at, j.contacted_by, j.interview_at,
+              cn.body contact_note, cn.author_name contacted_by_name,
+              cn.created_at contact_note_at,
+              a.stage applicant_stage, a.hired_staff_id, a.interview_at applicant_interview_at,
               a.branch applicant_branch, a.education, a.experience_years, a.experience_places,
               a.job_id, jp.title job_title
          FROM join_us_applications j
          LEFT JOIN job_applicants a
            ON a.id=j.converted_applicant_id AND a.tenant_id=j.tenant_id
          LEFT JOIN job_postings jp ON jp.id=a.job_id AND jp.tenant_id=a.tenant_id
+         LEFT JOIN recruitment_notes cn ON cn.id = (
+           SELECT n.id FROM recruitment_notes n
+            WHERE n.tenant_id=j.tenant_id AND n.ref_type='join_us'
+              AND n.ref_id=j.id AND n.kind='contact'
+            ORDER BY n.created_at DESC LIMIT 1)
          ${where}
         ORDER BY j.created_at DESC LIMIT 500`,
       params);

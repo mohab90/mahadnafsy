@@ -7,10 +7,10 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import PromptModal from '../../../components/shared/PromptModal';
 import HireModal from './interviews-sections/HireModal';
 import {
-  PHONE_RESULTS, branchLabel, matchesMinExperience, yearsLabel,
+  PHONE_RESULTS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
 import InterviewFilters, {
-  InterviewFilterState, emptyInterviewFilters, interviewFiltersActive,
+  InterviewFilterState, emptyInterviewFilters, interviewFiltersActive, isPastInterview,
 } from './interviews-sections/InterviewFilters';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -77,13 +77,6 @@ interface JobOption { id: string; title: string; status: string; }
 // shows up correctly under the experience and branch filters.
 const emptyForm = () => ({ jobId: '', name: '', email: '', phone: '', specialty: '',
   education: '', experienceYears: '', experiencePlaces: '', branch: '', notes: '' });
-
-const fmtDateTime = (value: string | null) => {
-  if (!value) return null;
-  const d = new Date(value.replace(' ', 'T'));
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
-};
 
 /** Sort key: soonest scheduled interview first, undated candidates after. */
 const scheduleKey = (row: JobApplicant): number => {
@@ -255,11 +248,24 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Counted against the open tab, so "في المقابلات ٣" describes the three rows
+  // actually on screen rather than three that may all be in the other list.
+  const inTimeline = useMemo(
+    () => rows.filter(r => isPastInterview(r.interview_at) === (filters.timeline === 'past')),
+    [rows, filters.timeline]);
+
   const counts = useMemo(() => ({
-    all: rows.length,
-    interview: rows.filter(r => r.stage === 'interview').length,
-    offer: rows.filter(r => r.stage === 'offer').length,
-  }), [rows]);
+    all: inTimeline.length,
+    interview: inTimeline.filter(r => r.stage === 'interview').length,
+    offer: inTimeline.filter(r => r.stage === 'offer').length,
+  }), [inTimeline]);
+
+  // The tab tallies are counted over everything, never over the open tab —
+  // otherwise the tab you are not looking at would always read 0.
+  const timelineCounts = useMemo(() => {
+    const past = rows.filter(r => isPastInterview(r.interview_at)).length;
+    return { upcoming: rows.length - past, past };
+  }, [rows]);
 
   // The pickers only offer values that exist in the list, with their tallies.
   // A filter that can be set to something matching nobody is a filter that
@@ -289,7 +295,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   const visible = useMemo(() => {
     const needle = filters.query.trim().toLowerCase();
     const min = filters.minExperience;
-    return rows
+    return inTimeline
       .filter(r => {
         if (filters.view !== 'all' && r.stage !== filters.view) return false;
         if (filters.jobId && r.job_id !== filters.jobId) return false;
@@ -304,8 +310,13 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           && r.interview_grade !== gradeFilter && r.second_interview_grade !== gradeFilter) return false;
         return true;
       })
-      .sort((a, b) => scheduleKey(a) - scheduleKey(b));
-  }, [rows, filters, gradeFilter]);
+      // Upcoming reads soonest-first; past reads most-recent-first, because the
+      // interview you want after the fact is the one you just finished, not the
+      // oldest one on file.
+      .sort((a, b) => (filters.timeline === 'past'
+        ? scheduleKey(b) - scheduleKey(a)
+        : scheduleKey(a) - scheduleKey(b)));
+  }, [inTimeline, filters, gradeFilter]);
 
   const openGrade = (row: JobApplicant, grade: Grade, round: 1 | 2) => setGradeFor({ row, grade, round });
 
@@ -501,6 +512,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
           jobs={jobOptions}
           branches={branchOptions}
           counts={counts}
+          timelineCounts={timelineCounts}
           shown={visible.length}
           extra={(
             <div className="flex flex-wrap items-center gap-1">

@@ -182,6 +182,35 @@ router.post('/api/admin/hr/join-us/:id/to-interview', requireAuth, requireAdminO
       [req.params.id, req.tenantId]
     );
     if (!j) { await conn.rollback(); return res.status(404).json({ error: 'Not found' }); }
+
+    // A date, because "انترفيو" without one produced nothing anybody could see.
+    //
+    // This moved the applicant to stage='interview' and stopped. But the
+    // interviews screen sorts by interview_at and calls a row with none
+    // "undated" — the schema says as much on the column itself: "Set = it
+    // belongs to the interviews screen". So the button did move the candidate,
+    // to the bottom of a list, with no time against their name, which is
+    // indistinguishable from having done nothing. Pressing it again just said
+    // they were already there.
+    //
+    // Optional rather than required: a candidate can legitimately be moved into
+    // the stage before a time is agreed, and that path already exists through
+    // "مقبول بدون موعد". Given one, it must be a real datetime — a string that
+    // silently fails to parse would store NULL and reproduce the same bug.
+    const rawInterviewAt = String(req.body?.interviewAt || '').trim();
+    let interviewAt = null;
+    if (rawInterviewAt) {
+      if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(rawInterviewAt)) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'صيغة الموعد لازم تكون YYYY-MM-DD HH:MM' });
+      }
+      interviewAt = rawInterviewAt.replace('T', ' ');
+      if (Number.isNaN(new Date(interviewAt.replace(' ', 'T')).getTime())) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'الموعد غير صالح' });
+      }
+    }
+
     const appId = await convertJoinUs(j, { jobId: req.body.job_id, actorId: req.staffRecord?.id, db: conn });
     const [[applicant]] = await conn.query(
       'SELECT stage FROM job_applicants WHERE id=? AND tenant_id=? LIMIT 1 FOR UPDATE',
@@ -198,6 +227,20 @@ router.post('/api/admin/hr/join-us/:id/to-interview', requireAuth, requireAdminO
       await conn.query(
         "UPDATE job_applicants SET stage='interview', updated_by=? WHERE id=? AND tenant_id=?",
         [req.staffRecord?.id || null, appId, req.tenantId]
+      );
+    }
+    // Written to both rows: job_applicants.interview_at is what the interviews
+    // screen reads, join_us_applications.interview_at is what the recruitment
+    // list shows beside the candidate it was scheduled from. The column existed
+    // on both tables and was being set on neither by this route.
+    if (interviewAt) {
+      await conn.query(
+        'UPDATE job_applicants SET interview_at=?, updated_by=? WHERE id=? AND tenant_id=?',
+        [interviewAt, req.staffRecord?.id || null, appId, req.tenantId]
+      );
+      await conn.query(
+        'UPDATE join_us_applications SET interview_at=? WHERE id=? AND tenant_id=?',
+        [interviewAt, req.params.id, req.tenantId]
       );
     }
     await writeAuditEvent({

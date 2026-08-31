@@ -79,3 +79,22 @@ export const matchesMinExperience = (
 
 export const branchLabel = (value: string | null | undefined): string =>
   (value && BRANCH_LABELS[value]) || value || '';
+
+/**
+ * A stored datetime as a person reads it.
+ *
+ * Recruitment timestamps arrive as MySQL DATETIME ("2026-09-01 11:30:00"),
+ * which Safari refuses to parse without the T. Lived in InterviewsTab only;
+ * both recruitment screens show the same kinds of date, and a candidate's
+ * interview time must not render one way on the list they were scheduled from
+ * and another on the list they were scheduled into.
+ *
+ * Returns null rather than "Invalid Date" so callers can decide what an absent
+ * date looks like.
+ */
+export const fmtDateTime = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const parsed = new Date(String(value).replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+};
