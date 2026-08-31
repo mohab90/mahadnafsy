@@ -734,3 +734,33 @@ test('identical in-flight GETs are shared, not repeated', () => {
       `${relativePath}: writes must never be shared`);
   }
 });
+
+// Every accounting screen is still reachable from the strip that opens it.
+//
+// The twenty sub-tabs were collapsed to ten headings. A merge like that orphans
+// a screen the moment a leaf is left out of the new grouping: the render block
+// in FinancialTab still exists, still matches on its FinancialSubTab value, and
+// nothing can ever set that value — so the screen simply stops existing with no
+// error anywhere. That has already happened once on this codebase, to five tabs
+// at a time, and was caught by a gate rather than by anyone opening the page.
+//
+// The union is the source of truth for what exists; the strip is the source of
+// truth for what can be opened. They have to be the same set.
+test('every financial sub-tab in the union is reachable from the sub-tab strip', () => {
+  const utils = read('admin/pages/dashboard/tabs/financial/financialTabUtils.ts');
+  const strip = read('admin/pages/dashboard/tabs/financial/FinancialSubTabs.tsx');
+
+  const union = utils.match(/export type FinancialSubTab =([\s\S]*?);/)?.[1] || '';
+  const declared = [...union.matchAll(/'([a-z_]+)'/g)].map(m => m[1]);
+  assert.ok(declared.length >= 20, `only ${declared.length} sub-tabs parsed from the union`);
+
+  // A leaf is the first element of a [key, label, Icon] tuple in the strip.
+  const reachable = new Set([...strip.matchAll(/\[\s*'([a-z_]+)'\s*,\s*'/g)].map(m => m[1]));
+  const orphaned = declared.filter(key => !reachable.has(key));
+  assert.deepEqual(orphaned, [], 'these screens still render but nothing can open them');
+
+  // And nothing points at a screen that does not exist, which renders a blank
+  // tab rather than an error.
+  const unknown = [...reachable].filter(key => !declared.includes(key));
+  assert.deepEqual(unknown, [], 'the strip offers screens the union does not declare');
+});
