@@ -30,6 +30,45 @@ const { phoneIdentityClause } = require('../../lib/leadMatching');
 // Schema for core/catalog tables is owned by numbered migrations.
 
 
+// Archiving a customer disables their sign-in account, and restoring re-enables
+// it. Both need the same rule for "which account is this customer's", and
+// getting it wrong in either direction is a live fault:
+//
+//   - Matching on email alone left every customer who signed up with a
+//     WhatsApp number holding an active account after being archived.
+//   - Matching on role='user' alone missed the 17 customer accounts stored as
+//     role='client'.
+//   - Matching too widely would disable a colleague: 4 accounts linked to a
+//     subscriber record are staff, and archiving someone's customer record
+//     must never take away their staff sign-in.
+//
+// So: the account this subscriber is actually linked to (by uid, or by email
+// when there is one), carrying a customer role, and never one that also exists
+// in the staff table.
+const CUSTOMER_ROLES = ['user', 'client', 'student'];
+
+function customerAccountMatch(sub) {
+  const email = sub.email ? String(sub.email).toLowerCase().trim() : null;
+  const arms = [];
+  const params = [];
+  if (email) { arms.push('LOWER(TRIM(u.email))=?'); params.push(email); }
+  if (sub.firebase_uid) { arms.push('u.id=?'); params.push(sub.firebase_uid); }
+  if (!arms.length) return null;
+  // The tenant predicate is deliberately left to the caller and written out in
+  // each query, so `u.tenant_id=?` appears in the statement itself. Folded in
+  // here it was invisible to the tenant-scope scanner, which then read both
+  // UPDATEs as unscoped writes to `users`.
+  return {
+    sql: `u.role IN (${CUSTOMER_ROLES.map(() => '?').join(',')})
+            AND (${arms.join(' OR ')})
+            AND NOT EXISTS (
+              SELECT 1 FROM staff st
+               WHERE st.tenant_id=u.tenant_id
+                 AND (st.firebase_uid=u.id OR LOWER(TRIM(st.email))=LOWER(TRIM(u.email))))`,
+    params: (tenantId) => [tenantId, ...CUSTOMER_ROLES, ...params],
+  };
+}
+
 // ── DELETE endpoints for basic entities ───────────────────────────────────────
 router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, requirePermission('delete_subscribers'), async (req, res) => {
   const conn = await pool.getConnection();
@@ -51,17 +90,11 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
       [req.params.id, req.tenantId]
     );
 
-    // The account is matched by uid as well as by email. Keyed on email alone,
-    // a customer who signed up with a WhatsApp number — who has no email at
-    // all — kept a live account after being archived here.
-    const normEmail = sub.email ? sub.email.toLowerCase().trim() : null;
-    if (normEmail || sub.firebase_uid) {
+    const account = customerAccountMatch(sub);
+    if (account) {
       await conn.query(
-        `UPDATE users SET is_active=0
-          WHERE tenant_id=? AND role='user'
-            AND (${[normEmail ? "LOWER(TRIM(email))=?" : null,
-                    sub.firebase_uid ? 'id=?' : null].filter(Boolean).join(' OR ')})`,
-        [req.tenantId, ...[normEmail, sub.firebase_uid].filter(Boolean)]
+        `UPDATE users u SET u.is_active=0 WHERE u.tenant_id=? AND ${account.sql}`,
+        account.params(req.tenantId)
       );
     }
 
@@ -121,16 +154,13 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
     );
     // Archiving also disabled their sign-in, so restoring has to give it back
     // or the customer is listed as active and still cannot log in.
-    // Matched the same way the archive matched it, or a WhatsApp-only customer
-    // is restored in the list and still cannot sign in.
-    const normEmail = sub.email ? String(sub.email).toLowerCase().trim() : null;
-    if (normEmail || sub.firebase_uid) {
+    // Exactly the rule the archive used, or the customer is restored to the
+    // list and still cannot sign in.
+    const account = customerAccountMatch(sub);
+    if (account) {
       await conn.query(
-        `UPDATE users SET is_active=1
-          WHERE tenant_id=? AND role='user'
-            AND (${[normEmail ? "LOWER(TRIM(email))=?" : null,
-                    sub.firebase_uid ? 'id=?' : null].filter(Boolean).join(' OR ')})`,
-        [req.tenantId, ...[normEmail, sub.firebase_uid].filter(Boolean)]
+        `UPDATE users u SET u.is_active=1 WHERE u.tenant_id=? AND ${account.sql}`,
+        account.params(req.tenantId)
       );
     }
     await conn.commit();

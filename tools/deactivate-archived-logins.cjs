@@ -1,12 +1,15 @@
 // Bring the data in line with the archive fix.
 //
 // Archiving a customer disables their sign-in account. It matched on email
-// alone, so customers with no email kept a live account; this deactivates the
-// ones that slipped through. It is exactly what archiving them was meant to
-// do, and the restore endpoint reverses it.
+// alone, so customers with no email kept a live account; and it matched on
+// role='user' alone, so the 17 accounts stored as role='client' were missed
+// too. This deactivates the ones that slipped through. It is exactly what
+// archiving them was meant to do, and the restore endpoint reverses it.
 //
-// Only accounts belonging to an already-archived subscriber are touched, and
-// only role='user'. A staff or admin account cannot be reached from here.
+// Only accounts belonging to an already-archived subscriber are touched, they
+// must carry a customer role, and any account that also exists in the staff
+// table is excluded — archiving someone's customer record must never take away
+// a colleague's staff sign-in. Three subscribers on the live data are staff.
 //
 //   node tools/deactivate-archived-logins.cjs          # dry run
 //   node tools/deactivate-archived-logins.cjs --apply
@@ -15,6 +18,12 @@ const fs = require('fs');
 const mysql = require('mysql2/promise');
 
 const APPLY = process.argv.includes('--apply');
+const CUSTOMER_ROLES = ['user', 'client', 'student'];
+
+const NOT_STAFF = `NOT EXISTS (
+  SELECT 1 FROM staff st
+   WHERE st.tenant_id = u.tenant_id
+     AND (st.firebase_uid = u.id OR LOWER(TRIM(st.email)) = LOWER(TRIM(u.email))))`;
 
 (async () => {
   const db = await mysql.createConnection({
@@ -22,12 +31,16 @@ const APPLY = process.argv.includes('--apply');
     password: process.env.DB_PASSWORD, database: process.env.DB_NAME,
   });
 
+  const roleList = CUSTOMER_ROLES.map(() => '?').join(',');
   const [targets] = await db.query(`
     SELECT u.id AS user_id, u.email AS user_email, u.role,
            s.id AS subscriber_id, s.client_code, s.name, s.deleted_at
       FROM subscribers s
       JOIN users u ON u.id = s.firebase_uid AND u.tenant_id = s.tenant_id
-     WHERE s.deleted_at IS NOT NULL AND u.is_active = 1 AND u.role = 'user'`);
+     WHERE s.deleted_at IS NOT NULL
+       AND u.is_active = 1
+       AND u.role IN (${roleList})
+       AND ${NOT_STAFF}`, CUSTOMER_ROLES);
 
   console.log(`accounts belonging to archived customers, still active: ${targets.length}`);
   console.table(targets.map(t => ({
@@ -35,7 +48,7 @@ const APPLY = process.argv.includes('--apply');
     archived: String(t.deleted_at).slice(0, 10), role: t.role,
   })));
 
-  const wrongRole = targets.filter(t => t.role !== 'user');
+  const wrongRole = targets.filter(t => !CUSTOMER_ROLES.includes(t.role));
   if (wrongRole.length) {
     console.error('ABORT: a non-customer account was matched.', wrongRole);
     process.exitCode = 1;
@@ -56,7 +69,8 @@ const APPLY = process.argv.includes('--apply');
 
   const ids = targets.map(t => t.user_id);
   const [result] = await db.query(
-    "UPDATE users SET is_active=0 WHERE role='user' AND id IN (?)", [ids]);
+    `UPDATE users SET is_active = 0 WHERE role IN (${roleList}) AND id IN (?)`,
+    [...CUSTOMER_ROLES, ids]);
   console.log(`accounts deactivated: ${result.affectedRows}`);
 
   const [[left]] = await db.query(`
@@ -64,6 +78,17 @@ const APPLY = process.argv.includes('--apply');
       JOIN users u ON u.id = s.firebase_uid AND u.tenant_id = s.tenant_id
      WHERE s.deleted_at IS NOT NULL AND u.is_active = 1`);
   console.log(`archived customers still holding a live account: ${left.n}`);
+
+  // Anything left here is a staff member who also has a customer record, which
+  // this deliberately does not touch. Named, so "1 remaining" is not mistaken
+  // for a failure.
+  if (left.n) {
+    const [remaining] = await db.query(`
+      SELECT s.client_code, s.name, u.role FROM subscribers s
+        JOIN users u ON u.id = s.firebase_uid AND u.tenant_id = s.tenant_id
+       WHERE s.deleted_at IS NOT NULL AND u.is_active = 1`);
+    console.table(remaining);
+  }
 
   await db.end();
 })().catch(error => { console.error('ERR', error.message); process.exit(1); });

@@ -32,18 +32,35 @@ const restoreBlock = catalog.slice(
 test('archiving a customer disables the sign-in account by uid, not only by email', () => {
   assert.ok(archiveBlock.length > 200, 'the archive handler was not located');
   assert.match(archiveBlock, /SELECT id, email, phone, firebase_uid FROM subscribers/);
-  assert.match(archiveBlock, /UPDATE users SET is_active=0/);
-  assert.match(archiveBlock, /sub\.firebase_uid \? 'id=\?' : null/);
-  // Guarded, so an absent email cannot become `LOWER(TRIM(email))=''`.
-  assert.match(archiveBlock, /normEmail \? "LOWER\(TRIM\(email\)\)=\?" : null/);
+  assert.match(archiveBlock, /UPDATE users u SET u\.is_active=0/);
+  assert.match(archiveBlock, /customerAccountMatch\(sub\)/);
 });
 
 test('restoring gives back exactly what archiving took', () => {
   assert.ok(restoreBlock.length > 200, 'the restore handler was not located');
   assert.match(restoreBlock, /SELECT id, name, email, firebase_uid FROM subscribers/);
-  assert.match(restoreBlock, /UPDATE users SET is_active=1/);
-  assert.match(restoreBlock, /sub\.firebase_uid \? 'id=\?' : null/);
-  assert.match(restoreBlock, /normEmail \? "LOWER\(TRIM\(email\)\)=\?" : null/);
+  assert.match(restoreBlock, /UPDATE users u SET u\.is_active=1/);
+  // The same predicate, not a second copy of it: the two drifted apart once
+  // already, and a restore that matches less than the archive leaves the
+  // customer active in the list and unable to sign in.
+  assert.match(restoreBlock, /customerAccountMatch\(sub\)/);
+});
+
+test('the account predicate covers every customer role and excludes staff', () => {
+  // role='user' alone missed the 17 customer accounts stored as role='client'
+  // — archiving one of those left their sign-in live.
+  assert.match(catalog, /const CUSTOMER_ROLES = \['user', 'client', 'student'\]/);
+
+  // And it must never reach a colleague: 4 accounts linked to a subscriber
+  // record are staff, and archiving someone's customer record must not take
+  // away their staff sign-in.
+  assert.match(catalog, /NOT EXISTS \(\s*SELECT 1 FROM staff st/);
+  assert.match(catalog, /st\.firebase_uid=u\.id OR LOWER\(TRIM\(st\.email\)\)=LOWER\(TRIM\(u\.email\)\)/);
+
+  // An absent email must drop its arm rather than become `=''`, which matches
+  // every account with a blank email instead of none.
+  assert.match(catalog, /if \(email\) \{ arms\.push\('LOWER\(TRIM\(u\.email\)\)=\?'\)/);
+  assert.match(catalog, /if \(!arms\.length\) return null;/);
 });
 
 test('an archived customer cannot be resolved as the signed-in client', () => {
