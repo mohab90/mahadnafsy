@@ -34,7 +34,11 @@ test('lead bulk operations, timeline and dedup are tenant and ownership scoped',
 test('lead conversion is tenant-owned, transactional and releases once', () => {
   const route = read('routes/admin/leads.js');
   assert.match(route, /FROM leads WHERE id=\? AND tenant_id=\? AND hidden=0/);
-  assert.match(route, /SELECT id FROM subscribers[\s\S]*WHERE tenant_id=\? AND \(lead_id=\?/);
+  // Tenant-scoped, and it must not match a deleted customer: reusing one
+  // points the converted lead at a record the app treats as gone, so the
+  // conversion reports success and the customer never appears anywhere.
+  assert.match(route, /SELECT id FROM subscribers[\s\S]{0,120}WHERE tenant_id=\?[\s\S]{0,80}lead_id=\?/);
+  assert.match(route, /SELECT id FROM subscribers[\s\S]{0,80}deleted_at IS NULL/);
   assert.match(route, /let transactionStarted = false/);
   assert.match(route, /finally \{ conn\.release\(\); \}/);
 });

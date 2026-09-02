@@ -28,8 +28,22 @@ test('community public/admin reads and mutations use the resolved tenant', () =>
 
 test('community cache and subscriber identity are tenant-bound', () => {
   assert.match(community, /community:\$\{req\.tenantId/);
-  assert.match(community, /FROM subscribers[\s\S]*?WHERE tenant_id=\?/);
+  // The identity lookup moved into lib/subscriberIdentity, so there is no
+  // longer a `FROM subscribers` in this file to match. It moved because its
+  // own query resolved every account with a blank email onto one subscriber
+  // and never excluded deleted customers — and the id it returns is what
+  // decides whose posts the caller may edit and delete.
+  assert.match(community, /resolveSubscriberRow\(req, \['id', 'name'\]\)/);
+  assert.doesNotMatch(community, /FROM subscribers/);
   assert.doesNotMatch(community, /const subId = .*req\.user/);
+
+  const resolver = fs.readFileSync(path.join(root, 'lib', 'subscriberIdentity.js'), 'utf8');
+  const lookups = resolver.match(/FROM subscribers s\b[\s\S]*?LIMIT 1/g) || [];
+  assert.ok(lookups.length >= 3, `only ${lookups.length} lookups found in the resolver`);
+  for (const lookup of lookups) {
+    assert.match(lookup, /s\.tenant_id=\?/);
+    assert.match(lookup, /s\.deleted_at IS NULL/);
+  }
 });
 
 test('forum detail, upvote and moderation are tenant-bound and transactional', () => {

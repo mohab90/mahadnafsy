@@ -818,11 +818,22 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       }
     }
 
+    // Deleted customers must not match here. Reusing one would point the
+    // converted lead at a customer record the app treats as gone: the
+    // conversion reports success and the customer never appears. This is the
+    // same "does this lead already have a customer" question the reconcile
+    // checks ask, and they exclude deleted rows too.
+    //
+    // The empty-string defaults below are why the blank arms matter: a lead
+    // with no email would otherwise match any subscriber whose email is blank.
     const [[existingSub]] = await conn.query(
       `SELECT id FROM subscribers
-       WHERE tenant_id=? AND (lead_id=? OR LOWER(TRIM(email))=LOWER(?) OR phone=?)
+       WHERE tenant_id=? AND deleted_at IS NULL
+         AND (lead_id=?
+              OR (?<>'' AND LOWER(TRIM(email))=LOWER(?))
+              OR (?<>'' AND phone=?))
        LIMIT 1 FOR UPDATE`,
-      [tenantId, leadId, lead.email || '', lead.phone || '']
+      [tenantId, leadId, lead.email || '', lead.email || '', lead.phone || '', lead.phone || '']
     );
     if (existingSub) {
       await conn.query(

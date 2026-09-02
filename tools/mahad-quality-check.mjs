@@ -512,24 +512,90 @@ console.log('\n23. Client-identity guard (subscriber lookup by email alone)');
     'api/routes/support.js',
     'api/routes/client-maintenance.js',
   ]);
-  const offenders = [];
+  // Read whole SQL statements, not lines: the query that prompted the second
+  // rule below spanned three of them, so a line-at-a-time scan saw only
+  // fragments and matched none of them.
+  // Walked rather than matched with a regex: a pattern pairing quote
+  // characters cannot tell a string delimiter from the apostrophe in
+  // `status='approved'`, and pairs across the code between two statements.
+  const sqlLiterals = (src) => {
+    const found = [];
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i === -1) break; continue; }
+      if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i); if (i === -1) break; i++; continue; }
+      if (c !== '`' && c !== "'" && c !== '"') continue;
+      const quote = c;
+      let body = '';
+      let j = i + 1;
+      for (; j < src.length; j++) {
+        if (src[j] === '\\') { body += src[j + 1] || ''; j++; continue; }
+        if (src[j] === quote) break;
+        if (quote !== '`' && src[j] === '\n') break; // unterminated: not a string
+        body += src[j];
+      }
+      i = j;
+      if (/FROM\s+subscribers/i.test(body)) found.push(body.replace(/\s+/g, ' ').trim());
+    }
+    return found;
+  };
+
+  const emailOnly = [];
+  const undeleted = [];
+  let examined = 0;
+  // The population, not the subset that looks like caller identity. The floor
+  // was set on `examined` at first, and routing two routes through the shared
+  // resolver -- the fix this check exists to encourage -- pushed it under its
+  // own floor and failed the build. A denominator that shrinks when the code
+  // improves is measuring the wrong thing.
+  let subscriberQueries = 0;
+
   for (const file of walk(join(ROOT, 'api', 'routes'), '.js')) {
     const rel = file.replace(/\\/g, '/').replace(ROOT.replace(/\\/g, '/'), '').replace(/^\//, '');
     if (IDENTITY_EXEMPT.has(rel)) continue;
     const src = readText(file);
     if (!src) continue;
-    for (const line of src.split(/\r?\n/)) {
-      if (!/FROM subscribers/i.test(line)) continue;
-      if (!/LOWER\(TRIM\(email\)\)/i.test(line)) continue;
-      // firebase_uid in the same predicate means it is at least not email-only.
-      if (/firebase_uid/.test(line)) continue;
-      offenders.push(`${rel}: ${line.trim().slice(0, 90)}`);
+    for (const sql of sqlLiterals(src)) {
+      subscriberQueries++;
+      const byEmail = /LOWER\(TRIM\(email\)\)/i.test(sql);
+      const byUid = /firebase_uid\s*=/i.test(sql);
+      if (!byEmail && !byUid) continue;
+      examined++;
+
+      // Email alone resolves to nothing for a client who signed in with a
+      // WhatsApp number and has no email. leads.js is matching the email
+      // stored on a lead record, not the caller's, so the WhatsApp case does
+      // not arise there.
+      if (byEmail && !byUid && rel !== 'api/routes/admin/leads.js') {
+        emailOnly.push(`${rel}: ${sql.slice(0, 90)}`);
+      }
+
+      // A lookup keyed on who is calling must exclude deleted customers, or a
+      // deleted customer keeps whatever the id unlocks. community.js resolved
+      // post ownership this way and student-ai.js loaded course context.
+      //
+      // registrations.js is the exception that proves the rule: its result
+      // *refuses* an action rather than granting one, so matching a deleted
+      // subscriber there fails safe, and excluding them would let a claimed
+      // registration be deleted.
+      if (!/deleted_at\s+IS\s+NULL/i.test(sql) && rel !== 'api/routes/registrations.js') {
+        undeleted.push(`${rel}: ${sql.slice(0, 90)}`);
+      }
     }
   }
-  if (offenders.length === 0) {
-    pass('client-identity guard: no route resolves the signed-in client by email alone');
+
+  // An empty result has to mean the scan ran, not that it found nothing to read.
+  if (subscriberQueries < 20) {
+    fail(`client-identity guard: only ${subscriberQueries} subscriber queries found across api/routes — the scan is not reading the routes`);
+  } else if (emailOnly.length === 0 && undeleted.length === 0) {
+    pass(`client-identity guard: ${examined} caller-identity lookups of ${subscriberQueries} subscriber queries, all uid-aware and all excluding deleted customers`);
   } else {
-    fail(`client-identity guard: ${offenders.length} email-only subscriber lookup(s) — WhatsApp-only clients resolve to nothing there. Use lib/subscriberIdentity.js: ${offenders.join(' | ')}`);
+    if (emailOnly.length) {
+      fail(`client-identity guard: ${emailOnly.length} email-only subscriber lookup(s) — WhatsApp-only clients resolve to nothing there. Use lib/subscriberIdentity.js: ${emailOnly.join(' | ')}`);
+    }
+    if (undeleted.length) {
+      fail(`client-identity guard: ${undeleted.length} caller-identity lookup(s) with no deleted_at filter — a deleted customer still resolves: ${undeleted.join(' | ')}`);
+    }
   }
 }
 

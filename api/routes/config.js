@@ -426,12 +426,16 @@ router.put('/api/admin/discounts', requireAuth, requireAdmin, async (req, res) =
 async function customerNotificationViewer(req) {
   const email = String(req.user?.email || '').trim().toLowerCase();
   const uid = String(req.user?.uid || '').trim();
+  // The email arm is dropped when the account carries no email. Left in, it
+  // compares `LOWER(TRIM(email))=''`, which matches every subscriber stored
+  // with a blank email rather than none of them — and this id decides whose
+  // notifications the caller is shown.
   const [[subscriber]] = await pool.query(
     `SELECT id FROM subscribers
       WHERE tenant_id=? AND deleted_at IS NULL
-        AND (firebase_uid=? OR LOWER(TRIM(email))=?)
+        AND (firebase_uid=?${email ? ' OR LOWER(TRIM(email))=?' : ''})
       LIMIT 1`,
-    [req.tenantId, uid, email]
+    email ? [req.tenantId, uid, email] : [req.tenantId, uid]
   );
   if (!subscriber) throw Object.assign(new Error('Subscriber account not found'), { status: 404 });
   return `subscriber:${subscriber.id}`;

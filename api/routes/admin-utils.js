@@ -503,9 +503,16 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
     // users-table id, not the subscriber's firebase_uid/id, so uid-only lookup
     // failed for real customers (refund request returned "Subscriber not found").
     const email = (req.user?.email || '').toLowerCase().trim();
+    // Deleted customers are excluded, and the email arm is dropped when the
+    // account has no email: `LOWER(TRIM(email))=''` matches every subscriber
+    // stored with a blank email, and this is the identity a refund is
+    // requested under.
     const [[sub]] = await pool.query(
-      'SELECT id, name, email FROM subscribers WHERE tenant_id=? AND (firebase_uid=? OR id=? OR LOWER(TRIM(email))=?) LIMIT 1',
-      [tenantId, uid, uid, email]);
+      `SELECT id, name, email FROM subscribers
+        WHERE tenant_id=? AND deleted_at IS NULL
+          AND (firebase_uid=? OR id=?${email ? ' OR LOWER(TRIM(email))=?' : ''})
+        LIMIT 1`,
+      email ? [tenantId, uid, uid, email] : [tenantId, uid, uid]);
     if (!sub) return res.status(404).json({ error: 'Subscriber not found' });
     const { payment_id, amount, currency = 'EGP', reason } = req.body;
     const requestedAmount = Number(amount);

@@ -7,13 +7,20 @@ const { uuidv4 } = require('../lib/id');
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { communityPostLimiter, publicLimiter } = require('../middleware/rateLimits');
 
-const findOwnSubscriber = (req) => pool.query(
-  `SELECT id, name FROM subscribers
-   WHERE tenant_id=? AND (firebase_uid=? OR LOWER(TRIM(email))=LOWER(TRIM(?))) LIMIT 1`,
-  [req.tenantId, req.user?.uid || '', req.user?.email || '']
-).then(([[row]]) => row);
+// The id this returns is the ownership key for editing and deleting posts, so
+// resolving the wrong subscriber hands one member another member's posts.
+//
+// This used its own query until it was found to have both faults the shared
+// resolver exists to prevent: it never excluded deleted customers, and its
+// email arm compared `LOWER(TRIM(email))=LOWER(TRIM(''))` whenever the account
+// carried no email — a wildcard matching every subscriber stored with a blank
+// one. There were 24 such accounts and 24 such subscribers, so all 24 members
+// resolved to whichever row came back first and shared ownership of each
+// other's posts.
+const findOwnSubscriber = (req) => resolveSubscriberRow(req, ['id', 'name']);
 
 const cacheKey = (req, resource) => `community:${req.tenantId || 'tenant-default'}:${resource}:public`;
 const invalidate = (req, resource) => cacheInvalidate(`community:${req.tenantId || 'tenant-default'}:${resource}`);

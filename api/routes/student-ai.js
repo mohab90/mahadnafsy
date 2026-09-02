@@ -5,6 +5,7 @@ const { pool } = require('../lib/db');
 const logger = require('../lib/logger').child({ module: 'student-ai-route' });
 const { requireAuth } = require('../middleware/auth');
 const { aiLimiter } = require('../middleware/rateLimits');
+const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 
 const router = express.Router();
 
@@ -70,15 +71,14 @@ function courseListText(courses = []) {
   return `الكورسات المرتبطة بحسابك حاليا: ${titles.join('، ')}.`;
 }
 
-async function loadSubscriberContext(email, tenantId) {
-  if (!email || !tenantId) return null;
-  const [[subscriber]] = await pool.query(
-    `SELECT id, name, email, enrolled_courses
-     FROM subscribers
-     WHERE tenant_id=? AND LOWER(TRIM(email)) = LOWER(TRIM(?))
-     LIMIT 1`,
-    [tenantId, email],
-  );
+// Keyed on the caller's email alone until it was noticed that a client who
+// signed in with a WhatsApp number has no email: the lookup returned nothing,
+// the catch below logged a warning nobody reads, and the assistant answered
+// without knowing which courses the student is taking. The shared resolver
+// tries uid, then email, then the phone.
+async function loadSubscriberContext(req) {
+  if (!req?.tenantId) return null;
+  const subscriber = await resolveSubscriberRow(req, ['id', 'name', 'email', 'enrolled_courses']);
   if (!subscriber) return null;
 
   let enrolledIds = [];
@@ -95,7 +95,7 @@ async function loadSubscriberContext(email, tenantId) {
     const placeholders = enrolledIds.slice(0, 20).map(() => '?').join(',');
     const [rows] = await pool.query(
       `SELECT id, title FROM courses WHERE tenant_id=? AND id IN (${placeholders}) LIMIT 20`,
-      [tenantId, ...enrolledIds.slice(0, 20)],
+      [req.tenantId, ...enrolledIds.slice(0, 20)],
     );
     courses = rows;
   }
@@ -136,7 +136,7 @@ router.post('/chat', requireAuth, aiLimiter, async (req, res) => {
     const message = normalizeMessage(req.body?.message);
     if (!message) return res.status(400).json({ error: 'الرسالة مطلوبة.' });
 
-    const context = await loadSubscriberContext(req.user?.email, req.tenantId).catch((error) => {
+    const context = await loadSubscriberContext(req).catch((error) => {
       logger.warn('failed to load subscriber context', { email: req.user?.email, error: error.message });
       return null;
     });

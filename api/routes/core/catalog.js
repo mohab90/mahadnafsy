@@ -36,7 +36,7 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
   try {
     await conn.beginTransaction();
     const [[sub]] = await conn.query(
-      'SELECT id, email, phone FROM subscribers WHERE id=? AND tenant_id=? FOR UPDATE',
+      'SELECT id, email, phone, firebase_uid FROM subscribers WHERE id=? AND tenant_id=? FOR UPDATE',
       [req.params.id, req.tenantId]
     );
     if (!sub) {
@@ -51,11 +51,17 @@ router.delete('/api/admin/subscribers/:id', requireAuth, requireAdminOrStaff, re
       [req.params.id, req.tenantId]
     );
 
-    if (sub.email) {
-      const normEmail = sub.email.toLowerCase().trim();
+    // The account is matched by uid as well as by email. Keyed on email alone,
+    // a customer who signed up with a WhatsApp number — who has no email at
+    // all — kept a live account after being archived here.
+    const normEmail = sub.email ? sub.email.toLowerCase().trim() : null;
+    if (normEmail || sub.firebase_uid) {
       await conn.query(
-        "UPDATE users SET is_active=0 WHERE tenant_id=? AND LOWER(TRIM(email))=? AND role='user'",
-        [req.tenantId, normEmail]
+        `UPDATE users SET is_active=0
+          WHERE tenant_id=? AND role='user'
+            AND (${[normEmail ? "LOWER(TRIM(email))=?" : null,
+                    sub.firebase_uid ? 'id=?' : null].filter(Boolean).join(' OR ')})`,
+        [req.tenantId, ...[normEmail, sub.firebase_uid].filter(Boolean)]
       );
     }
 
@@ -104,7 +110,7 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
   try {
     await conn.beginTransaction();
     const [[sub]] = await conn.query(
-      'SELECT id, name, email FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NOT NULL FOR UPDATE',
+      'SELECT id, name, email, firebase_uid FROM subscribers WHERE id=? AND tenant_id=? AND deleted_at IS NOT NULL FOR UPDATE',
       [req.params.id, req.tenantId]
     );
     if (!sub) { await conn.rollback(); return res.status(404).json({ error: 'العميل غير موجود في الأرشيف' }); }
@@ -115,10 +121,16 @@ router.post('/api/admin/subscribers/:id/restore', requireAuth, requireAdminOrSta
     );
     // Archiving also disabled their sign-in, so restoring has to give it back
     // or the customer is listed as active and still cannot log in.
-    if (sub.email) {
+    // Matched the same way the archive matched it, or a WhatsApp-only customer
+    // is restored in the list and still cannot sign in.
+    const normEmail = sub.email ? String(sub.email).toLowerCase().trim() : null;
+    if (normEmail || sub.firebase_uid) {
       await conn.query(
-        "UPDATE users SET is_active=1 WHERE tenant_id=? AND LOWER(TRIM(email))=? AND role='user'",
-        [req.tenantId, String(sub.email).toLowerCase().trim()]
+        `UPDATE users SET is_active=1
+          WHERE tenant_id=? AND role='user'
+            AND (${[normEmail ? "LOWER(TRIM(email))=?" : null,
+                    sub.firebase_uid ? 'id=?' : null].filter(Boolean).join(' OR ')})`,
+        [req.tenantId, ...[normEmail, sub.firebase_uid].filter(Boolean)]
       );
     }
     await conn.commit();
