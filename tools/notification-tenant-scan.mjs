@@ -83,9 +83,14 @@ function lineOf(src, offset) {
   return src.slice(0, offset).split('\n').length;
 }
 
-export function scanNotificationTenantViolations() {
+// Reports the call count as well as the failures. Zero violations out of zero
+// calls means the extractor stopped finding them, not that every notification
+// is tenant-scoped — and this codebase has shipped that exact false negative
+// twice in the permission matrix.
+export function scanNotificationTenantDetail() {
   const files = [...walk(join(ROOT, 'api/routes'), '.js'), ...walk(join(ROOT, 'api/lib'), '.js')];
   const violations = [];
+  let examined = 0;
   for (const f of files) {
     const rel = f.slice(ROOT.length).replace(/^[\\/]?api[\\/]/, '').replace(/\\/g, '/');
     if (ALLOWLIST.has(rel)) continue;
@@ -94,20 +99,25 @@ export function scanNotificationTenantViolations() {
       // Skip the function's own definition (async function createNotification(...)).
       const before = src.slice(Math.max(0, call.offset - 30), call.offset).trimEnd();
       if (/\bfunction$/.test(before)) continue;
+      examined += 1;
       const args = splitTopLevelArgs(call.text);
       if (args.length < 5) {
         violations.push({ file: rel, line: lineOf(src, call.offset), args: args.length, snippet: call.text.slice(0, 80).replace(/\s+/g, ' ') });
       }
     }
   }
-  return violations;
+  return { examined, violations };
+}
+
+export function scanNotificationTenantViolations() {
+  return scanNotificationTenantDetail().violations;
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').replace(/^([A-Z]):/i, ''));
 if (isMain) {
-  const violations = scanNotificationTenantViolations();
+  const { examined, violations } = scanNotificationTenantDetail();
   if (process.argv.includes('--list')) {
     for (const v of violations) console.log(`${v.file}:${v.line} (${v.args} args) — ${v.snippet}...`);
   }
-  console.log(`notification-tenant-scan: ${violations.length} createNotification() call(s) missing tenantId`);
+  console.log(`notification-tenant-scan: ${violations.length} of ${examined} createNotification() call(s) missing tenantId`);
 }

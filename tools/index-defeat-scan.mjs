@@ -59,10 +59,17 @@ function walk(dir, out = []) {
   return out;
 }
 
-export function scanIndexDefeats() {
+// filesScanned travels with the hits. This one reports a count of findings
+// against no stated corpus, so "0" reads the same whether it walked both source
+// trees or neither — and a walk() that starts throwing, or an EXEMPT_FILE that
+// grows too broad, both produce a permanently green scan that is measuring
+// nothing.
+export function scanIndexDefeatDetail() {
   const hits = [];
+  let filesScanned = 0;
   for (const file of [...walk(join(ROOT, 'api/routes')), ...walk(join(ROOT, 'api/lib'))]) {
     if (EXEMPT_FILE.test(file)) continue;
+    filesScanned += 1;
     const src = readFileSync(file, 'utf8');
     const lines = src.split('\n');
     for (const { name, re } of PATTERNS) {
@@ -99,16 +106,20 @@ export function scanIndexDefeats() {
       });
     }
   }
-  return hits;
+  return { filesScanned, hits };
+}
+
+export function scanIndexDefeats() {
+  return scanIndexDefeatDetail().hits;
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].split('\\').join('/').replace(/^([A-Z]):/i, ''));
 if (isMain) {
-  const hits = scanIndexDefeats();
+  const { filesScanned, hits } = scanIndexDefeatDetail();
   if (process.argv.includes('--list')) {
     for (const h of hits) console.log(`${h.file}:${h.line}  [${h.pattern}]  ${h.snippet}`);
     console.log('');
   }
-  console.log(`Index-defeating function wraps on indexed columns: ${hits.length}`);
+  console.log(`Index-defeating function wraps on indexed columns: ${hits.length} across ${filesScanned} files`);
   process.exit(hits.length ? 1 : 0);
 }

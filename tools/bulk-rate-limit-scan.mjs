@@ -38,9 +38,14 @@ function walk(dir, ext, results = []) {
 
 const ROUTE_RE = /router\.(get|post|put|patch|delete)\(\s*(['"`])(\/api\/[^'"`]+)\2/;
 
-export function scanBulkRateLimitViolations() {
+// Reports what it examined as well as what failed. "0 violations" alone reads
+// identically whether the scan looked at every bulk route or found none to look
+// at — and this codebase has already shipped two scans whose subject count had
+// silently fallen to a fraction, or to zero, while they kept printing zero.
+export function scanBulkRateLimitDetail() {
   const files = walk(join(ROOT, 'api/routes'), '.js');
   const violations = [];
+  let examined = 0;
   for (const f of files) {
     const rel = f.slice(ROOT.length).replace(/^[\\/]?api[\\/]/, '').replace(/\\/g, '/');
     const src = readFileSync(f, 'utf8');
@@ -50,18 +55,23 @@ export function scanBulkRateLimitViolations() {
       if (!m) return;
       const routePath = m[3];
       if (!/bulk|export/i.test(routePath)) return;
+      examined += 1;
       if (/Limiter\b/.test(line)) return;
       violations.push({ file: rel, line: idx + 1, path: routePath });
     });
   }
-  return violations;
+  return { examined, violations };
+}
+
+export function scanBulkRateLimitViolations() {
+  return scanBulkRateLimitDetail().violations;
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').replace(/^([A-Z]):/i, ''));
 if (isMain) {
-  const violations = scanBulkRateLimitViolations();
+  const { examined, violations } = scanBulkRateLimitDetail();
   if (process.argv.includes('--list')) {
     for (const v of violations) console.log(`${v.file}:${v.line} — ${v.path}`);
   }
-  console.log(`bulk-rate-limit-scan: ${violations.length} bulk/export route(s) missing a dedicated rate limiter`);
+  console.log(`bulk-rate-limit-scan: ${violations.length} of ${examined} bulk/export route(s) missing a dedicated rate limiter`);
 }

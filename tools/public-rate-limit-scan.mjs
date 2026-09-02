@@ -40,9 +40,17 @@ function walk(dir, ext, results = []) {
 
 const ROUTE_RE = /router\.(get|post|put|patch|delete)\(\s*(['"`])(\/api\/[^'"`]+)\2/;
 
-export function scanPublicRateLimitViolations() {
+// How many public routes were actually looked at, alongside how many failed.
+//
+// This printed "0 violations" and nothing else, which reads the same whether it
+// examined four hundred routes or none. That is not hypothetical here: the
+// permission matrix reported a closed matrix twice while its own subject count
+// had quietly fallen — once to 84% of the routes, once to zero tabs. A scan
+// that cannot say what it measured cannot be trusted when it says zero.
+export function scanPublicRateLimitDetail() {
   const files = walk(join(ROOT, 'api/routes'), '.js');
   const violations = [];
+  let examined = 0;
   for (const f of files) {
     const rel = f.slice(ROOT.length).replace(/^[\\/]?api[\\/]/, '').replace(/\\/g, '/');
     const src = readFileSync(f, 'utf8');
@@ -54,18 +62,25 @@ export function scanPublicRateLimitViolations() {
       if (/^\/api\/(admin|staff)(\/|$)/.test(routePath)) return;
       if (routePath === '/api/health') return; // reviewed: uptime monitors poll this frequently by design
       if (/\brequireAuth\b|\brequireAdmin\b/.test(line)) return;
+      // Counted here: everything past this point is a public route in scope,
+      // whether or not it turns out to carry a limiter.
+      examined += 1;
       if (/Limiter\b/.test(line)) return;
       violations.push({ file: rel, line: idx + 1, path: routePath, method: m[1] });
     });
   }
-  return violations;
+  return { examined, violations };
+}
+
+export function scanPublicRateLimitViolations() {
+  return scanPublicRateLimitDetail().violations;
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').replace(/^([A-Z]):/i, ''));
 if (isMain) {
-  const violations = scanPublicRateLimitViolations();
+  const { examined, violations } = scanPublicRateLimitDetail();
   if (process.argv.includes('--list')) {
     for (const v of violations) console.log(`${v.file}:${v.line} — ${v.method.toUpperCase()} ${v.path}`);
   }
-  console.log(`public-rate-limit-scan: ${violations.length} public/optionalAuth route(s) missing a dedicated rate limiter`);
+  console.log(`public-rate-limit-scan: ${violations.length} of ${examined} public/optionalAuth route(s) missing a dedicated rate limiter`);
 }
