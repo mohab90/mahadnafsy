@@ -160,7 +160,15 @@ router.post('/api/admin/leads/gsheet-sync', requireAuth, requireAdmin, requirePe
       const [insertResult] = await pool.execute(
         `INSERT IGNORE INTO leads (id, tenant_id, client_code, name, email, phone, source, status, notes, assigned_sales_id, assigned_sales_name, crm_json, hidden, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, 0, NOW())`,
-        [leadId, req.tenantId, code, name || phone, email || '', identity || phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
+        // A blank name stays blank rather than becoming the phone number.
+        //
+        // `name || phone` put the number in the name column, and it reaches the
+        // screen as the customer's name: production carries rows literally
+        // called "1096203090". The phone is already stored in its own column
+        // one argument along, so this was never adding information — it was
+        // only making a missing name look like a filled-in one, which is worse,
+        // because nobody goes looking for a name that appears to be there.
+        [leadId, req.tenantId, code, name || null, email || '', identity || phone || '', source || 'Google Sheet', notes || null, salesId, salesName, crmJson]
       );
       if (insertResult.affectedRows) imported++; else skipped++;
     }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Archive, RotateCcw, Search, AlertCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useConfirm } from '../../../components/shared/useConfirm';
 
 // Deleting a customer archives them — payments, orders and enrolments are all
 // kept — and the screen says "تمت أرشفة العميل". But every list in the system
@@ -30,6 +31,7 @@ export default function ArchivedClientsTab({ notify }: { notify: Notify }) {
   const [busy, setBusy] = useState('');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
+  const [confirm, confirmDialog] = useConfirm();
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
@@ -46,7 +48,15 @@ export default function ArchivedClientsTab({ notify }: { notify: Notify }) {
   useEffect(() => { load(query); }, [load, query]);
 
   const restore = async (row: ArchivedClient) => {
-    if (!window.confirm(`استعادة ${row.name || 'هذا العميل'} إلى قائمة العملاء النشطين؟\nسيُعاد تفعيل حسابه ودخوله للموقع.`)) return;
+    if (!await confirm({
+      title: 'استعادة العميل',
+      message: [
+        `${row.name || 'هذا العميل'} هيرجع لقائمة العملاء النشطين.`,
+        'هيتعاد تفعيل حسابه ودخوله للموقع.',
+      ],
+      confirmLabel: 'استعادة',
+      tone: 'normal',
+    })) return;
     setBusy(row.id);
     try {
       const result = await mysqlAdmin.adminPost<{ ok: boolean; message?: string }>(
@@ -61,6 +71,7 @@ export default function ArchivedClientsTab({ notify }: { notify: Notify }) {
 
   return (
     <div className="space-y-5" dir="rtl">
+      {confirmDialog}
       <div className="rounded-2xl bg-gradient-to-l from-slate-700 to-slate-500 p-5 text-white">
         <h2 className="flex items-center gap-2 text-xl font-black"><Archive size={22} /> أرشيف العملاء</h2>
         <p className="mt-1 text-sm text-slate-200">

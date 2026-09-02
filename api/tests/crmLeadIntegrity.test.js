@@ -278,3 +278,29 @@ test('the converted-lead check is defined once and used by both readers', async 
   assert.match(payops, /require\('\.\.\/\.\.\/lib\/reconcileChecks'\)/,
     'the dashboard has to import the definition to share it');
 });
+
+// A missing name stays missing.
+//
+// The Google Sheet import wrote `name || phone`, so a row with no name arrived
+// carrying its own phone number in the name column — production has leads
+// literally called "1096203090". The phone is stored in its own column one
+// argument along, so this never added information; it only made an absent name
+// look like a present one, which is worse, because nobody goes looking for a
+// name that appears to be there.
+//
+// 34 leads and 155 subscribers carry a contact detail where a name belongs. The
+// legacy ones cannot be repaired without inventing names; what this stops is
+// the pile growing.
+test('imports never put a phone or email in the name column', () => {
+  // Comments out first. The comment explaining this fix necessarily quotes the
+  // expression it replaced, and an assertion a comment can satisfy — or defeat —
+  // is not an assertion about the code. Caught by this test failing on its own
+  // explanation.
+  const gsheets = read('routes/gsheets.js')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ');
+  assert.doesNotMatch(gsheets, /name \|\| phone/,
+    'a blank name must stay blank, not become the phone number');
+  assert.match(gsheets, /name \|\| null/,
+    'the import should write NULL for a missing name');
+});
