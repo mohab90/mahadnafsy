@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { BookOpen, Plus, X, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -37,7 +38,7 @@ export default function FaqManagerTab({ notify }: { notify: NotifyFn }) {
     } catch { notify('error', 'تعذر الحفظ'); }
   };
   const remove = async (id: string) => {
-    if (!window.confirm('حذف هذا السؤال؟')) return;
+    if (!await confirmDialog('حذف هذا السؤال؟')) return;
     try { await mysqlAdmin.adminDelete(`/admin/faq/${id}`); load(); } catch { notify('error', 'تعذر الحذف'); }
   };
   const togglePublish = async (f: Faq) => {

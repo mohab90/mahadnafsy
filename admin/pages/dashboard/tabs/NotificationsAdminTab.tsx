@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NotificationBroadcast } from '../../../types';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 const NotificationsAdminTab: React.FC = () => {
   const { notifications, addNotification, updateNotification, deleteNotification } = useSiteData();
@@ -131,7 +132,7 @@ const NotificationsAdminTab: React.FC = () => {
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${n.active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
                     {n.active ? 'وقف' : 'تفعيل'}
                   </button>
-                  <button disabled={saving} onClick={() => { if (window.confirm('حذف هذا الإشعار؟')) void mutateNotification(() => deleteNotification(n.id)); }}
+                  <button disabled={saving} onClick={async () => { if (await confirmDialog('حذف هذا الإشعار؟')) void mutateNotification(() => deleteNotification(n.id)); }}
                     className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition">حذف</button>
                 </div>
               </div>

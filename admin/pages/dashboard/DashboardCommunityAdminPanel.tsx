@@ -1,6 +1,7 @@
 import { DashboardCommunityShell } from './DashboardCommunityShell';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
+import { confirmDialog } from '../../components/shared/confirmDialog';
 
 type CommunityAdminTab = 'pending' | 'posts' | 'library' | 'videos' | 'events' | 'comments';
 type CommunityPostDraft = Pick<CommunityPostItem, 'title' | 'body' | 'tag' | 'authorName' | 'authorRole' | 'authorImage'> & { pinned: boolean };
@@ -121,7 +122,7 @@ export function DashboardCommunityAdminPanel({
                                 className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">موافقة</button>
                               <button onClick={() => updateCommunityPost({ ...post, status: 'rejected' })}
                                 className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100">رفض</button>
-                              <button onClick={() => { if (window.confirm('حذف هذا المنشور؟')) deleteCommunityPost(post.id); }}
+                              <button onClick={async () => { if (await confirmDialog('حذف هذا المنشور؟')) deleteCommunityPost(post.id); }}
                                 className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200">حذف</button>
                             </div>
                           </div>
@@ -161,7 +162,7 @@ export function DashboardCommunityAdminPanel({
                                 className="px-2.5 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-xs font-bold hover:bg-teal-100">{post.pinned ? 'فك التثبيت' : 'تثبيت'}</button>
                               <button onClick={() => { setEditingCommunityPostId(post.id); setCommunityPostDraft({ title: post.title, body: post.body, tag: post.tag, authorName: post.authorName, authorRole: post.authorRole, authorImage: post.authorImage, pinned: post.pinned ?? false }); setIsCommunityPostFormOpen(true); }}
                                 className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100">تعديل</button>
-                              <button onClick={() => { if (window.confirm('حذف هذا المنشور؟')) deleteCommunityPost(post.id); }}
+                              <button onClick={async () => { if (await confirmDialog('حذف هذا المنشور؟')) deleteCommunityPost(post.id); }}
                                 className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100">حذف</button>
                             </div>
                           </div>
@@ -225,7 +226,7 @@ export function DashboardCommunityAdminPanel({
                           <div className="flex gap-1.5 flex-shrink-0">
                             <button onClick={() => { setEditingCommunityLibraryId(item.id); setCommunityLibraryDraft({ title: item.title, description: item.description, fileType: item.fileType, fileSize: item.fileSize, downloadUrl: item.downloadUrl }); setIsCommunityLibraryFormOpen(true); }}
                               className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold">تعديل</button>
-                            <button onClick={() => { if (window.confirm('حذف هذا الملف؟')) deleteCommunityLibraryItem(item.id); }}
+                            <button onClick={async () => { if (await confirmDialog('حذف هذا الملف؟')) deleteCommunityLibraryItem(item.id); }}
                               className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold">حذف</button>
                           </div>
                         </div>
@@ -280,7 +281,7 @@ export function DashboardCommunityAdminPanel({
                           <div className="flex gap-1.5 flex-shrink-0">
                             <button onClick={() => { setEditingCommunityVideoId(v.id); setCommunityVideoDraft({ title: v.title, duration: v.duration, viewsLabel: v.viewsLabel, thumbnail: v.thumbnail, videoUrl: v.videoUrl || '', description: v.description || '' }); setIsCommunityVideoFormOpen(true); }}
                               className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold">تعديل</button>
-                            <button onClick={() => { if (window.confirm('حذف هذا الفيديو؟')) deleteCommunityVideo(v.id); }}
+                            <button onClick={async () => { if (await confirmDialog('حذف هذا الفيديو؟')) deleteCommunityVideo(v.id); }}
                               className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold">حذف</button>
                           </div>
                         </div>
@@ -339,7 +340,7 @@ export function DashboardCommunityAdminPanel({
                           <div className="flex gap-2 flex-shrink-0">
                             <button onClick={() => { setEditingCommunityEventId(ev.id); setCommunityEventDraft({ dateLabel: ev.dateLabel, title: ev.title, eventType: ev.eventType, speaker: ev.speaker, platform: ev.platform, eventDate: ev.eventDate || '', description: ev.description || '' }); setIsCommunityEventFormOpen(true); }}
                               className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold">تعديل</button>
-                            <button onClick={() => { if (window.confirm('حذف هذه الفعالية؟')) deleteCommunityEvent(ev.id); }}
+                            <button onClick={async () => { if (await confirmDialog('حذف هذه الفعالية؟')) deleteCommunityEvent(ev.id); }}
                               className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold">حذف</button>
                           </div>
                         </div>

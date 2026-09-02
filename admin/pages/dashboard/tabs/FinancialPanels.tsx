@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, CheckCircle2, Eye, FileText, Plus, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -23,7 +25,7 @@ export function BulkStubPanel({ notify }: { notify: NotifyFn }) {
 
   const runReal = async () => {
     if (!preview || preview.count === 0) return;
-    if (!window.confirm(`سيتم إنشاء ${preview.count} سجل دفع تاريخي بقيمة صفر. هل تريد المتابعة؟`)) return;
+    if (!await confirmDialog(`سيتم إنشاء ${preview.count} سجل دفع تاريخي بقيمة صفر. هل تريد المتابعة؟`)) return;
     setRunning(true);
     try {
       const r = await mysqlAdmin.adminPost<{ created: number }>(
@@ -122,7 +124,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
 
   const createPeriod = async () => {
     const label = new Date().toISOString().slice(0, 7);
-    if (!window.confirm(`إنشاء فترة محاسبية جديدة للشهر ${label}؟`)) return;
+    if (!await confirmDialog(`إنشاء فترة محاسبية جديدة للشهر ${label}؟`)) return;
     setActionLoading('create');
     try {
       await mysqlAdmin.adminPost('/admin/accounting-periods', { label });
@@ -133,7 +135,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   };
 
   const closePeriod = async (id: string, label: string) => {
-    if (!window.confirm(`إقفال الفترة المحاسبية ${label}؟ لن يمكن التراجع إلا بصلاحية المدير.`)) return;
+    if (!await confirmDialog(`إقفال الفترة المحاسبية ${label}؟ لن يمكن التراجع إلا بصلاحية المدير.`)) return;
     setActionLoading(id + '_close');
     try {
       await mysqlAdmin.adminPost(`/admin/accounting-periods/${id}/close`, {});
@@ -144,7 +146,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   };
 
   const requestClose = async (id: string, label: string) => {
-    const note = window.prompt(`ملاحظة طلب إقفال الفترة ${label}:`)?.trim() || '';
+    const note = (await promptDialog(`ملاحظة طلب إقفال الفترة ${label}:`))?.trim() || '';
     setActionLoading(id + '_request');
     try {
       await mysqlAdmin.adminPost(`/admin/accounting-periods/${id}/close-request`, { note });
@@ -155,7 +157,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   };
 
   const reviewClose = async (periodId: string, requestId: string, decision: 'approve' | 'reject') => {
-    const note = window.prompt(decision === 'approve' ? 'ملاحظة الاعتماد:' : 'سبب الرفض:')?.trim() || '';
+    const note = (await promptDialog(decision === 'approve' ? 'ملاحظة الاعتماد:' : 'سبب الرفض:'))?.trim() || '';
     setActionLoading(requestId + '_review');
     try {
       await mysqlAdmin.adminPost(`/admin/accounting-periods/${periodId}/close-request/${requestId}/review`, { decision, note });
@@ -166,7 +168,7 @@ export function PeriodClosingPanel({ notify }: { notify: NotifyFn }) {
   };
 
   const reopenPeriod = async (id: string, label: string) => {
-    const reason = window.prompt(`اكتب سبب إعادة فتح الفترة ${label}:`)?.trim();
+    const reason = (await promptDialog(`اكتب سبب إعادة فتح الفترة ${label}:`))?.trim();
     if (!reason) {
       notify('info', 'تم إلغاء إعادة الفتح: السبب إلزامي لأغراض المراجعة.');
       return;

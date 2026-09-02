@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Search, Star, Trash2, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { Course, SubscriberItem } from '../../../types';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -85,7 +86,7 @@ export default function CertRequestsTab({
               };
 
               const deleteCertReq = async (req: CertReqRow) => {
-                if (!window.confirm(`حذف طلب الشهادة لـ "${req.subscriberName}"؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
+                if (!await confirmDialog(`حذف طلب الشهادة لـ "${req.subscriberName}"؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
                 if (busyRequestId) return;
                 setBusyRequestId(req.id);
                 try {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Loader2, Plus, Trash2 } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../../components/shared/promptDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type Template = { id: string; name: string; role?: string; description?: string; task_count: number };
@@ -58,7 +60,7 @@ export default function OnboardingPanel({ notify }: { notify: Notify }) {
     setItems(await request<Item[]>(`/api/admin/hr/onboarding/${id}/items`));
   };
   const createTemplate = async () => {
-    const name = window.prompt('اسم قالب التهيئة الوظيفية:')?.trim();
+    const name = (await promptDialog('اسم قالب التهيئة الوظيفية:'))?.trim();
     if (!name) return;
     try {
       const created = await request<Template>('/api/admin/hr/onboarding/templates', { method: 'POST', body: JSON.stringify({ name }) });
@@ -67,7 +69,7 @@ export default function OnboardingPanel({ notify }: { notify: Notify }) {
   };
   const addTask = async () => {
     if (!templateId) return;
-    const title = window.prompt('مهمة التهيئة الجديدة:')?.trim();
+    const title = (await promptDialog('مهمة التهيئة الجديدة:'))?.trim();
     if (!title) return;
     try {
       await request(`/api/admin/hr/onboarding/templates/${templateId}/tasks`, {
@@ -77,7 +79,7 @@ export default function OnboardingPanel({ notify }: { notify: Notify }) {
     } catch (error) { notify('error', error instanceof Error ? error.message : 'فشل إضافة المهمة'); }
   };
   const deleteTask = async (id: string) => {
-    if (!window.confirm('حذف المهمة من القالب؟')) return;
+    if (!await confirmDialog('حذف المهمة من القالب؟')) return;
     try {
       await request(`/api/admin/hr/onboarding/tasks/${id}`, { method: 'DELETE' });
       await selectTemplate(templateId); await load();

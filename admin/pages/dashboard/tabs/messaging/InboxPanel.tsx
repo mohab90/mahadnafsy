@@ -5,6 +5,7 @@ import {
 import {
   mysqlAdmin, type InboxConversation, type InboxMessage,
 } from '../../../../lib/mysqlapi';
+import { promptDialog } from '../../../../components/shared/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -110,7 +111,7 @@ export function InboxPanel({ notify }: { notify: NotifyFn }) {
    */
   const linkMessenger = async () => {
     if (!selected?.psid) return;
-    const leadId = window.prompt('الصق كود العميل (Lead ID) اللي المحادثة دي بتاعته:');
+    const leadId = await promptDialog('الصق كود العميل (Lead ID) اللي المحادثة دي بتاعته:');
     if (!leadId?.trim()) return;
     try {
       const result = await mysqlAdmin.linkMessengerToLead(leadId.trim(), selected.psid);

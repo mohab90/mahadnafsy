@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Building2, CheckCircle2, Download, FileText, Landmark, Plus, RefreshCw, TrendingUp, WalletCards, XCircle } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
+import { promptDialog } from '../../../../components/shared/promptDialog';
 
 type Notify = (message: string, type?: 'success' | 'error') => void;
 type Currency = 'EGP' | 'SAR' | 'USD';
@@ -111,21 +112,21 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
     setInvoiceDraft(current => ({ ...current, invoice_number: '', subtotal: 0, tax_amount: 0 }));
   }, 'تم تسجيل فاتورة المورد كمسودة');
 
-  const payableAction = (payable: Payable, action: 'approve' | 'void' | 'pay') => {
+  const payableAction = async (payable: Payable, action: 'approve' | 'void' | 'pay') => {
     if (action === 'approve') {
       return run(payable.id, () => mysqlAdmin.adminPost(`/admin/finance/payables/${payable.id}/approve`, {
         branch: branch ? branchValue(branch) : undefined,
       }), 'تم اعتماد الفاتورة وترحيل قيد الاستحقاق');
     }
     if (action === 'void') {
-      const reason = window.prompt('سبب إلغاء مسودة الفاتورة:')?.trim();
+      const reason = (await promptDialog('سبب إلغاء مسودة الفاتورة:'))?.trim();
       if (!reason) return;
       return run(payable.id, () => mysqlAdmin.adminPost(`/admin/finance/payables/${payable.id}/void`, {
         reason, branch: branch ? branchValue(branch) : undefined,
       }), 'تم إلغاء المسودة مع حفظ الأثر');
     }
-    const amount = Number(window.prompt(`قيمة السداد (المتبقي ${payable.remaining_amount} ${payable.currency}):`, String(payable.remaining_amount)));
-    const reference = window.prompt('مرجع التحويل/السداد:')?.trim();
+    const amount = Number(await promptDialog(`قيمة السداد (المتبقي ${payable.remaining_amount} ${payable.currency}):`, String(payable.remaining_amount)));
+    const reference = (await promptDialog('مرجع التحويل/السداد:'))?.trim();
     if (!amount || !reference) return;
     return run(payable.id, () => mysqlAdmin.adminPost(`/admin/finance/payables/${payable.id}/payments`, {
       amount, reference, payment_date: today(), bank_account_code: '1100',
@@ -152,9 +153,9 @@ export default function FinanceOperationsPanel({ notify, branch }: { notify: Not
     setForecastDraft(current => ({ ...current, label: '', amount: 0 }));
   }, 'تم حفظ افتراض التدفق مع لقطة سعر الصرف');
 
-  const addAdjustment = (row: Reconciliation) => {
-    const amount = Number(window.prompt('قيمة بند التسوية بإشارته (+/-):'));
-    const description = window.prompt('وصف بند التسوية:')?.trim();
+  const addAdjustment = async (row: Reconciliation) => {
+    const amount = Number(await promptDialog('قيمة بند التسوية بإشارته (+/-):'));
+    const description = (await promptDialog('وصف بند التسوية:'))?.trim();
     if (!amount || !description) return;
     void run(row.id, () => mysqlAdmin.adminPost(`/admin/finance/bank-reconciliations/${row.id}/items`, {
       item_date: today(), amount, description, item_type: 'other',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Building2, Plus, EyeOff, Eye, Save } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 // Branches drive the pickers on booking, payment, lead capture and course
 // interest, and until now they could only be changed in the database: the API
@@ -74,8 +75,8 @@ export default function BranchesSettingsTab({ notify }: { notify: Notify }) {
     } finally { setBusy(''); }
   };
 
-  const rename = (row: Branch) => {
-    const label = window.prompt('اسم الفرع كما يظهر للعملاء:', row.label);
+  const rename = async (row: Branch) => {
+    const label = await promptDialog('اسم الفرع كما يظهر للعملاء:', row.label);
     if (label === null || !label.trim() || label.trim() === row.label) return;
     void patch(row, { label: label.trim() }, 'تم تغيير اسم الفرع');
   };

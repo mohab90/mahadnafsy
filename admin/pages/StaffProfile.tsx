@@ -20,6 +20,7 @@ import { ROLE_LABELS } from './staff-profile/staffProfileConstants';
 import StaffAttendancePanel from './staff-profile/StaffAttendancePanel';
 import StaffSettingsPanel from './staff-profile/StaffSettingsPanel';
 import { toEgp } from '../lib/money';
+import { confirmDialog } from '../components/shared/confirmDialog';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const toEGP = (amt: number, cur: string) =>
@@ -186,7 +187,7 @@ const StaffProfile: React.FC = () => {
   // EmployeeProfileModal used (api/routes/staff.js DELETE /api/admin/staff/:id).
   const handleDelete = async () => {
     if (currentStaff?.id === staff.id) { setSaveMsg('❌ لا يمكنك حذف حسابك الخاص'); return; }
-    if (!window.confirm(`حذف ${staff.name} نهائيًا من قائمة الموظفين النشطين؟ سجله وتاريخه المالي يبقى محفوظًا، ويمكن إعادة تفعيله لاحقًا.`)) return;
+    if (!await confirmDialog(`حذف ${staff.name} نهائيًا من قائمة الموظفين النشطين؟ سجله وتاريخه المالي يبقى محفوظًا، ويمكن إعادة تفعيله لاحقًا.`)) return;
     setDeleting(true);
     try {
       const ok = await deleteStaffMember(staff.id);

@@ -110,7 +110,20 @@ test('financial statements and payroll money transitions use ledger and finance 
     assert.match(periods, new RegExp(check));
   }
   assert.match(periods, /Object\.entries\(integrity\)\.filter/);
-  assert.match(periodUi, /window\.prompt\([\s\S]{0,300}adminPost\([\s\S]{0,100}\{ reason \}/);
+  // Reopening a closed accounting period must capture a reason and send it.
+  //
+  // This named window.prompt, which was the mechanism rather than the control —
+  // and that mechanism was the problem: a browser may suppress the dialog, and
+  // prompt() then returns null, so reopening would silently refuse itself with
+  // the message "السبب إلزامي" and no way to proceed. Asserted on the property
+  // now: a reason is collected, its absence blocks the call, and it travels
+  // with the request.
+  assert.match(periodUi, /reopenPeriod[\s\S]{0,200}promptDialog\([\s\S]{0,200}reason/,
+    'a reason must still be asked for');
+  assert.match(periodUi, /if \(!reason\)[\s\S]{0,200}return;/,
+    'no reason must stop the reopen');
+  assert.match(periodUi, /adminPost\([\s\S]{0,120}\/reopen[\s\S]{0,60}\{ reason \}/,
+    'the reason must reach the server');
 });
 
 test('recurring expenses preserve branch, category and accounting audit history', () => {

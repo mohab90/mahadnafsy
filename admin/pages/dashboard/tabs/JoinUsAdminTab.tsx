@@ -12,6 +12,7 @@ import PromptModal from '../../../components/shared/PromptModal';
 import {
   EXPERIENCE_ORDER, EXPERIENCE_YEARS, branchLabel, fmtDateTime, matchesMinExperience, yearsLabel,
 } from './hr-sections/applicantLabels';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type Status = 'new' | 'reviewed' | 'accepted' | 'rejected';
 type Kind = 'instructor' | 'consultant' | 'staff';
@@ -229,7 +230,7 @@ export default function JoinUsAdminTab({ initialType = 'all' }: { initialType?: 
 
   const remove = async (app: JoinUsApplication) => {
     const linked = Boolean(app.convertedApplicantId);
-    if (!window.confirm(linked
+    if (!await confirmDialog(linked
       ? 'الطلب ده مرتبط بمسار التوظيف. هنحاول نحذفه والسيرفر هو اللي هيقرر — تكمل؟'
       : 'حذف الطلب نهائيًا؟')) return;
     setBusyId(app.id);

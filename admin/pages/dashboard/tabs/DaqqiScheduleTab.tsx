@@ -44,6 +44,7 @@ import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { DaqqiNewRoundModal } from './daqqi/DaqqiNewRoundModal';
 import { DaqqiAddClientsModal } from './daqqi/DaqqiAddClientsModal';
 import { DaqqiRoundRow } from './daqqi/DaqqiRoundRow';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 const DaqqiPayModal = React.lazy(() => import('./daqqi/DaqqiPayModal').then(module => ({ default: module.DaqqiPayModal })));
 const DaqqiPaymentReceiptModal = React.lazy(() => import('./daqqi/DaqqiPaymentReceiptModal').then(module => ({ default: module.DaqqiPaymentReceiptModal })));
 const DaqqiPostponeRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiPostponeRoundModal })));
@@ -429,7 +430,7 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       r.id !== round.id && r.courseId === round.courseId && r.status !== 'finished' &&
       r.attendees.some(a => a.subscriberId === daqqiToskeenSubId)
     );
-    if (otherRound && !window.confirm(`${sub.name} مُسكَّن بالفعل في روند ${otherRound.code} لنفس الكورس. تسكينه في روند إضافي (${round.code})؟`)) {
+    if (otherRound && !await confirmDialog(`${sub.name} مُسكَّن بالفعل في روند ${otherRound.code} لنفس الكورس. تسكينه في روند إضافي (${round.code})؟`)) {
       return;
     }
     const paid = (sub.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);

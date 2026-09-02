@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DoorOpen, Check, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { promptDialog } from '../../../../components/shared/promptDialog';
 
 // Staff can file a resignation and the API stores and lists it — but nothing
 // in the admin app ever read /admin/hr/resignations, so a submitted request sat
@@ -47,7 +48,7 @@ export default function HrResignationsPanel({ notify }: { notify: Notify }) {
   useEffect(() => { load(); }, [load]);
 
   const decide = async (row: Resignation, status: 'accepted' | 'declined') => {
-    const hrNote = window.prompt(
+    const hrNote = await promptDialog(
       status === 'accepted'
         ? `قبول استقالة ${row.staff_name || ''} — ملاحظة للسجل (اختياري):`
         : `رفض استقالة ${row.staff_name || ''} — اذكر السبب:`

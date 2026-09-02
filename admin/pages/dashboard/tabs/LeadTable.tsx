@@ -7,6 +7,7 @@ import { BRANCH_ENUM_LABELS, ROTTEN_CFG, STATUS_CFG, getRottenLevel } from './le
 import { crmStatusLabels } from '../dashboardShared';
 import { toDialable } from '../../../lib/whatsappLink';
 import { courseBadgeLabel, isRawCourse } from './leads/leadCourseLabel';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 const LEAD_STATUS_CFG = STATUS_CFG;
 
@@ -652,7 +653,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({ rows, showCourseCol, cours
                             <span className="text-[11px] text-gray-400">{c.date.slice(0, 16)}</span>
                             {canManageLeads && <button
                               onClick={async () => {
-                                if (!window.confirm('حذف سجل التواصل؟ سيظل حدث الحذف ظاهرًا في سجل التدقيق.')) return;
+                                if (!await confirmDialog('حذف سجل التواصل؟ سيظل حدث الحذف ظاهرًا في سجل التدقيق.')) return;
                                 try {
                                   await mysqlAdmin.deleteLeadInteraction(liveHistoryRow.id, c.id);
                                   await reloadLeads();

@@ -6,6 +6,7 @@ import { useBranches } from '../../../hooks/useBranches';
 import PaymentModal, { type PaymentDraft } from '../../../components/PaymentModal';
 import { createClientPaymentDraft } from '../../../lib/clientActionDrafts';
 import { currencyForBranch } from '../../../lib/branchCurrency';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -51,7 +52,7 @@ const RegistrationsTab: React.FC<Props> = ({ notify }) => {
   };
 
   const remove = async (row: RegistrationItem) => {
-    if (!window.confirm(`حذف تسجيل "${row.name || row.phone || row.email}" نهائيًا؟`)) return;
+    if (!await confirmDialog(`حذف تسجيل "${row.name || row.phone || row.email}" نهائيًا؟`)) return;
     setBusyId(row.id);
     try {
       await mysqlAdmin.deleteRegistration(row.id);

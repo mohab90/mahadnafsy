@@ -3,6 +3,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -257,7 +259,7 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
 
   const updateStatusApi = async (id: string, status: TicketStatus) => {
     try {
-      const closedReason = status === 'closed' ? window.prompt('اكتب سبب إغلاق التذكرة:')?.trim() : undefined;
+      const closedReason = status === 'closed' ? (await promptDialog('اكتب سبب إغلاق التذكرة:'))?.trim() : undefined;
       if (status === 'closed' && !closedReason) return;
       await mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, {
         status: statusToApi(status),
@@ -322,8 +324,8 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
     notify(ok === ids.length ? 'success' : 'error', `${label}: ${ok}/${ids.length} تذكرة`);
   };
 
-  const bulkSetStatus = (status: TicketStatus) => {
-    const closedReason = status === 'closed' ? window.prompt('اكتب سبب إغلاق التذاكر المحددة:')?.trim() : undefined;
+  const bulkSetStatus = async (status: TicketStatus) => {
+    const closedReason = status === 'closed' ? (await promptDialog('اكتب سبب إغلاق التذاكر المحددة:'))?.trim() : undefined;
     if (status === 'closed' && !closedReason) return;
     return runBulk('تحديث الحالة', id =>
       mysqlAdmin.adminPut(`/admin/tickets/${id}/status`, {
@@ -342,8 +344,8 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
   const bulkSetPriority = (priority: TicketPriority) => runBulk('تغيير الأولوية', id =>
     mysqlAdmin.adminPut(`/admin/tickets/${id}/priority`, { priority })
       .then(() => setTickets(prev => prev.map(t => t.id === id ? { ...t, priority, updatedAt: new Date().toISOString() } : t))));
-  const bulkEscalate = () => {
-    if (!window.confirm(`تصعيد ${selectedIds.size} تذكرة إلى الإدارة؟ سيتم تحويلها وإعادة تعيينها.`)) return;
+  const bulkEscalate = async () => {
+    if (!await confirmDialog(`تصعيد ${selectedIds.size} تذكرة إلى الإدارة؟ سيتم تحويلها وإعادة تعيينها.`)) return;
     return runBulk('التصعيد', async id => { await escalateTicketApi(id, true); });
   };
 

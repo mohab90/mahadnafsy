@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { DiscountRule } from '../../../../types';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type PromoCode = { id: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: number; min_order_amount: number; max_uses: number | null; used_count: number; expires_at: string | null; active: number };
@@ -255,7 +256,7 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
                               className={`px-3 py-1 rounded-lg text-xs font-bold transition ${d.active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
                               {d.active ? 'وقف' : 'تفعيل'}
                             </button>
-                            <button disabled={discountSaving} onClick={() => { if (window.confirm('حذف هذا الكوبون؟')) void mutateDiscount(() => deleteDiscount(d.id)); }}
+                            <button disabled={discountSaving} onClick={async () => { if (await confirmDialog('حذف هذا الكوبون؟')) void mutateDiscount(() => deleteDiscount(d.id)); }}
                               className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition">حذف</button>
                           </div>
                         </td>
@@ -403,7 +404,7 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
                             </button>
                             <button
                               onClick={async () => {
-                                if (!window.confirm(`حذف الكوبون ${pc.code}؟`)) return;
+                                if (!await confirmDialog(`حذف الكوبون ${pc.code}؟`)) return;
                                 try {
                                   await mysqlAdmin.deletePromoCode(pc.id);
                                   notify('success', 'تم حذف الكوبون');

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Briefcase, Plus, Trash2, Pencil, X, Loader2, ExternalLink, Users } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { JobApplicantsPanel } from './JobApplicantsPanel';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Job { id: string; title: string; branch: string | null; employment_type: string; description: string | null; requirements: string | null; salary_min: number | null; salary_max: number | null; status: string; applicant_count?: number; created_at?: string; }
@@ -81,7 +82,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
     } catch (error) { notify('error', error instanceof Error ? error.message : 'فشل الحفظ'); } finally { setBusy(false); }
   };
   const del = async (id: string) => {
-    if (!window.confirm('حذف هذه الوظيفة؟')) return;
+    if (!await confirmDialog('حذف هذه الوظيفة؟')) return;
     try {
       const r = await fetch(`/api/admin/hr/jobs/${id}`, { method: 'DELETE', credentials: 'include', headers: adminAuthHeaders() });
       if (!r.ok) {
@@ -89,7 +90,7 @@ export default function JobPostingsPanel({ notify }: { notify: Notify }) {
         // A job with applicants is refused on purpose. Offer the thing the
         // refusal actually recommends instead of reporting a dead end.
         if (body?.code === 'JOB_HAS_APPLICANTS') {
-          if (window.confirm(`${body.error}
+          if (await confirmDialog(`${body.error}
 
 تقفلها دلوقتي؟`)) {
             const closed = await fetch(`/api/admin/hr/jobs/${id}`, {

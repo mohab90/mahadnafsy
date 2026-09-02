@@ -7,6 +7,7 @@ import {
 } from '../../constants/permissions';
 import type { TabKey } from './navigation';
 import { toDialable } from '../../lib/whatsappLink';
+import { confirmDialog } from '../../components/shared/confirmDialog';
 
 const PERMISSION_LABELS: Record<StaffPermission, string> = {
   // Dashboard overview
@@ -149,7 +150,7 @@ const SUB_STATUS_CFG: Record<SubStatus, { label: string; cls: string }> = {
   refunded:       { label: 'مسترد',              cls: 'bg-red-100 text-red-700' },
   refund_pending:  { label: 'استرداد معلق',      cls: 'bg-orange-100 text-orange-700' },
 };
-const subStatusBadge = (s?: string) => {
+const subStatusBadge = async (s?: string) => {
   const cfg = SUB_STATUS_CFG[(s || 'active') as SubStatus] || SUB_STATUS_CFG.active;
   return <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${cfg.cls}`}>{cfg.label}</span>;
 };
@@ -301,8 +302,8 @@ function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
     setNewLabel('');
   };
 
-  const deleteCertType = (key: string) => {
-    if (!window.confirm('حذف هذا النوع من الشهادات نهائياً؟')) return;
+  const deleteCertType = async (key: string) => {
+    if (!await confirmDialog('حذف هذا النوع من الشهادات نهائياً؟')) return;
     const newTypes = certTypes.filter(t => t.key !== key);
     setCertTypes(newTypes);
     setLocalMap(prev => { const n = { ...prev }; delete n[key]; return n; });

@@ -3,6 +3,8 @@ import { Activity, Database, Download, Search, Trash2 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { DataTable, type Column } from '../../../components/shared/DataTable';
 import type { ActivityLogItem } from '../../../types';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 interface Props {
   isSalesOnly: boolean;
@@ -187,9 +189,9 @@ const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
           {!isSalesOnly && (
             <button
               type="button"
-              onClick={() => {
-                if (!window.confirm('سيتم مسح جميع البيانات المحلية. هل أنت متأكد؟')) return;
-                if (window.prompt('اكتب كلمة حذف للتأكيد:')?.trim() !== 'حذف') return;
+              onClick={async () => {
+                if (!await confirmDialog('سيتم مسح جميع البيانات المحلية. هل أنت متأكد؟')) return;
+                if ((await promptDialog('اكتب كلمة حذف للتأكيد:'))?.trim() !== 'حذف') return;
                 clearAllData();
               }}
               className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"

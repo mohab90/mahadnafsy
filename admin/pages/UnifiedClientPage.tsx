@@ -14,7 +14,7 @@ import {
   CreditCard, 
 } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
-import { useConfirm } from '../components/shared/useConfirm';
+import { confirmDialog } from '../components/shared/confirmDialog';
 import { useUnifiedClientActiveTab, type UnifiedClientTab } from './unified-client/useUnifiedClientActiveTab';
 import { buildUnifiedClientTabs, UnifiedClientTabs } from './unified-client/UnifiedClientTabs';
 import { useUnifiedClientPaymentProofs } from './unified-client/useUnifiedClientPaymentProofs';
@@ -66,7 +66,6 @@ interface UnifiedClientPageProps {
 
 const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber }) => {
   const navigate = useNavigate();
-  const [confirm, confirmDialog] = useConfirm();
   // Same list every other screen shows — see hooks/useBranches.
   const branchOptions = useBranches();
   const {
@@ -220,7 +219,6 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
-      {confirmDialog}
 
       <UnifiedClientHeroHeader
         lead={lead}
@@ -262,9 +260,11 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
           // In-app: window.confirm can be suppressed by the browser, and a
           // suppressed dialog answers "no" without ever reaching the person —
           // the button then does nothing at all and says nothing about why.
-          if (!await confirm({
+          if (!await confirmDialog({
             title: 'حذف العميل',
-            message: [clientName, 'الحذف أرشفة — المدفوعات والسجل يفضلوا محفوظين.'],
+            message: [
+        clientName, 'الحذف أرشفة — المدفوعات والسجل يفضلوا محفوظين.',
+      ].join('\n'),
           })) return;
           if (subscriber && await deleteSubscriber(subscriber.id)) navigate('/dashboard/subscribers');
           else if (lead && await deleteLead(lead.id)) navigate('/dashboard');

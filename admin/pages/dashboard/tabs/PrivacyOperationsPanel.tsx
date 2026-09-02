@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, RefreshCw, Save, ShieldAlert, XCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: Notify; }
@@ -51,10 +53,10 @@ const PrivacyOperationsPanel: React.FC<Props> = ({ notify }) => {
 
   const decide = async (request: PrivacyRequest, decision: 'approve' | 'reject' | 'block') => {
     const note = decision === 'approve'
-      ? window.prompt('ملاحظة الاعتماد (اختياري):', '') ?? ''
-      : window.prompt(decision === 'block' ? 'سبب الحجز القانوني أو التشغيلي:' : 'سبب الرفض:');
+      ? (await promptDialog('ملاحظة الاعتماد (اختياري):', '')) ?? ''
+      : await promptDialog(decision === 'block' ? 'سبب الحجز القانوني أو التشغيلي:' : 'سبب الرفض:');
     if (note === null || (decision !== 'approve' && !note.trim())) return;
-    if (decision === 'approve' && !window.confirm('سيتم تعطيل الحساب ومحو البيانات الشخصية بعد فحص الالتزامات المفتوحة. تأكيد؟')) return;
+    if (decision === 'approve' && !await confirmDialog('سيتم تعطيل الحساب ومحو البيانات الشخصية بعد فحص الالتزامات المفتوحة. تأكيد؟')) return;
     setBusy(request.id);
     try {
       const result = await fetch(`/api/admin/privacy/requests/${request.id}/decision`, {

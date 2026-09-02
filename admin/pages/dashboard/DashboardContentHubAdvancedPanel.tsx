@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { ExternalLink, Plus, Save, Trash2, X } from 'lucide-react';
 import { contentEditorFor, type ContentEditorHome } from './contentFields';
 import type { TabKey } from './navigation';
+import { confirmDialog } from '../../components/shared/confirmDialog';
 
 type ContentMap = Record<string, string>;
 type NotifyFn = (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
@@ -236,7 +237,7 @@ export function DashboardContentHubAdvancedPanel({
                           <X size={11} /> تراجع
                         </button>
                       )}
-                      <button onClick={() => { if (window.confirm('حذف هذا المفتاح نهائياً؟')) removeContentKey(key); }} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={15} /></button>
+                      <button onClick={async () => { if (await confirmDialog('حذف هذا المفتاح نهائياً؟')) removeContentKey(key); }} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"><Trash2 size={15} /></button>
                     </div>
                   </td>
                 </tr>

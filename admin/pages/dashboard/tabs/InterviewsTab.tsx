@@ -12,6 +12,7 @@ import {
 import InterviewFilters, {
   InterviewFilterState, emptyInterviewFilters, interviewFiltersActive, isPastInterview,
 } from './interviews-sections/InterviewFilters';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -403,7 +404,7 @@ const InterviewsTab: React.FC<Props> = ({ notify }) => {
   };
 
   const removeApplicant = async (row: JobApplicant) => {
-    if (!window.confirm(`حذف ${row.name} من الانترفيوهات نهائيًا؟`)) return;
+    if (!await confirmDialog(`حذف ${row.name} من الانترفيوهات نهائيًا؟`)) return;
     setBusyId(row.id);
     try {
       await mysqlAdmin.deleteHrApplicant(row.id);

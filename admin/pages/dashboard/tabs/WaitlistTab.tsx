@@ -3,6 +3,7 @@ import { CheckCircle2, Phone, Mail, Users, RefreshCw, XCircle, Loader2, Filter, 
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
 import type { LeadItem } from '../../../types';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -75,7 +76,7 @@ export default function WaitlistTab({ notify }: { notify: NotifyFn }) {
   };
 
   const convertToLead = async (entry: WaitlistEntry) => {
-    if (!window.confirm(`تحويل "${entry.name}" إلى Lead؟`)) return;
+    if (!await confirmDialog(`تحويل "${entry.name}" إلى Lead؟`)) return;
     setConvertingId(entry.id);
     try {
       const clientCode = await issueClientCodeAsync();

@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { LoginHistoryPanel } from './client-db/LoginHistoryPanel';
 import { LoginAccountsPanel } from './client-db/LoginAccountsPanel';
 import { toDialable } from '../../../lib/whatsappLink';
-import { useConfirm } from '../../../components/shared/useConfirm';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 import { isRawCourse, rawCourseText } from './leads/leadCourseLabel';
 import { toEgp } from '../../../lib/money';
 
@@ -97,9 +97,6 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   const effectiveLeads = staffScopedLeads.length > 0 ? staffScopedLeads : leads;
   const branches = useBranches();
   const navigate = useNavigate();
-  // Destructive actions here ask in-app rather than through window.confirm,
-  // which the browser is allowed to switch off permanently.
-  const [confirm, confirmDialog] = useConfirm();
 
   // Registrations are their own pool server-side (they are neither leads nor
   // subscribers), so they need their own fetch to appear in this combined view.
@@ -132,12 +129,12 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
   // Converting is also what issues their client code, so this is the moment the
   // code appears — a registration has none because it is not a client yet.
   const convertThenBook = async (row: ClientRow) => {
-    if (!await confirm({
+    if (!await confirmDialog({
       title: 'تحويل لعميل أونلاين',
       message: [
         `${row.name || 'هذا المسجَّل'} لسه تسجيل موقع.`,
         'هيتحوّل لعميل أونلاين ويتصدر له كود عميل، وبعدها تسجّل الدفعة.',
-      ],
+      ].join('\n'),
       confirmLabel: 'تحويل',
       tone: 'normal',
     })) return;
@@ -160,12 +157,12 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
     // one, and from then on confirm() returns false instantly — the click made
     // no request, showed no error and said nothing, which is what
     // "مش بيقبل ابدا" was. The delete itself was never broken.
-    if (!await confirm({
+    if (!await confirmDialog({
       title: `حذف ${label}`,
       message: [
         `${row.name || 'بدون اسم'}`,
         'الحذف أرشفة — البيانات والمدفوعات تفضل محفوظة ويمكن استعادتها من «أرشيف العملاء».',
-      ],
+      ].join('\n'),
     })) return;
     setRegBusy(row.id);
     try {
@@ -417,7 +414,6 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
 
   return (
     <div className="space-y-4 animate-fade-in" dir="rtl">
-      {confirmDialog}
       {/* Header */}
       <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-5 text-white">
         <h2 className="text-xl font-extrabold flex items-center gap-2">

@@ -3,6 +3,7 @@ import { CalendarDays, Check, Link2, Phone, Search, Trash2, X } from 'lucide-rea
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { ConsultationItem } from '../../../../types';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -88,7 +89,7 @@ export function ConsultationBookingsTab({ notify }: { notify: NotifyFn }) {
   };
 
   const remove = async (item: ConsultationItem) => {
-    if (!window.confirm(`حذف حجز «${item.clientName || item.name || ''}»؟`)) return;
+    if (!await confirmDialog(`حذف حجز «${item.clientName || item.name || ''}»؟`)) return;
     setBusyId(item.id);
     try {
       await mysqlAdmin.deleteConsultation(item.id);

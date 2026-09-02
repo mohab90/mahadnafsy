@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCcw, Plus, Trash2, Edit2, Save, Calendar } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 interface Props { notify: NotifyFn; }
@@ -102,7 +103,7 @@ const RecurringExpensesTab: React.FC<Props> = ({ notify }) => {
   };
 
   const deleteItem = async (id: string) => {
-    if (!window.confirm('حذف هذا المصروف المتكرر؟')) return;
+    if (!await confirmDialog('حذف هذا المصروف المتكرر؟')) return;
     try {
       await mysqlAdmin.adminDelete(`/admin/recurring-expenses/${id}`);
       notify('success', 'تم الحذف');

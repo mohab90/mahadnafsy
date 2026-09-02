@@ -18,6 +18,7 @@ import {
 } from '../leadUtils';
 import { TagInput } from './LeadInputs';
 import { ScoreBadge, getScoreBreakdown, LeadJourneyTimeline } from './LeadScoreAndTimeline';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
 
 
 export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify, instituteBranches }: {
@@ -36,7 +37,7 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
 
   const handleDeactivateUser = async () => {
     if (!lead.email) return notify('error', 'لا يوجد بريد إلكتروني لهذا العميل');
-    if (!window.confirm(`هل أنت متأكد أنك تريد تعطيل حساب "${lead.name}"؟\nلن يتمكن من تسجيل الدخول بعد ذلك.`)) return;
+    if (!await confirmDialog(`هل أنت متأكد أنك تريد تعطيل حساب "${lead.name}"؟\nلن يتمكن من تسجيل الدخول بعد ذلك.`)) return;
     setDeactivating(true);
     try {
       // Resolve the sign-in account from the lead's email — the server matches a

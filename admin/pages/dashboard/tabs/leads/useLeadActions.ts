@@ -13,6 +13,8 @@ import type { NotifyFn } from '../CrmSettingsModal';
 import type { ConvertLeadModalState } from './ConvertLeadModal';
 import { buildCsv } from './leadCsvUtils';
 import type { TabKey } from '../../navigation';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../../components/shared/promptDialog';
 
 type AsyncReload = () => Promise<void>;
 type StatusTimer = ReturnType<typeof setTimeout>;
@@ -112,7 +114,7 @@ export function useLeadActions(params: LeadActionsParams) {
     // A ceiling per rep per day, so a big import does not land two hundred
     // names on one person who then works none of them. Blank keeps the old
     // behaviour of distributing everything in one go.
-    const capAnswer = window.prompt(
+    const capAnswer = await promptDialog(
       `أقصى عدد عملاء لكل مندوب في اليوم؟\nاترك الخانة فارغة للتوزيع بدون حد أقصى.\n(عدد المندوبين: ${salesReps.length})`,
       '',
     );
@@ -253,7 +255,7 @@ export function useLeadActions(params: LeadActionsParams) {
   };
 
   const handleCleanupJunkLeads = async () => {
-    if (!window.confirm('سيتم إخفاء العملاء المحتملين بدون اسم ولا هاتف. تأكيد؟')) return;
+    if (!await confirmDialog('سيتم إخفاء العملاء المحتملين بدون اسم ولا هاتف. تأكيد؟')) return;
     try {
       const result = await mysqlAdmin.adminPost<Record<string, unknown>>('/admin/cleanup-junk-leads', {});
       notify('success', `تم إخفاء ${Number(result.hidden) || 0} سجل جنك`);

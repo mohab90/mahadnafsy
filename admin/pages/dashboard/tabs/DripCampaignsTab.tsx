@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 type EnrollmentStatus = 'active' | 'paused' | 'completed' | 'unenrolled' | 'failed' | 'unsubscribed';
@@ -139,7 +140,7 @@ export default function DripCampaignsTab({ notify }: { notify: Notify }) {
     mutate(() => mysqlAdmin.adminPatch(`/admin/crm/sequences/${id}`, body), success);
 
   const archiveSequence = async (sequence: Sequence) => {
-    if (!window.confirm(`أرشفة "${sequence.name}" وإيقاف تسجيلاته النشطة؟ سيظل التاريخ محفوظًا.`)) return;
+    if (!await confirmDialog(`أرشفة "${sequence.name}" وإيقاف تسجيلاته النشطة؟ سيظل التاريخ محفوظًا.`)) return;
     await mutate(() => mysqlAdmin.adminDelete(`/admin/crm/sequences/${sequence.id}`), 'تمت أرشفة التسلسل');
   };
 

@@ -3,6 +3,7 @@ import { Megaphone, Send, Users, Building2, UserRound, Check } from 'lucide-reac
 import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { StaffMember } from '../../types';
 import { fmtNum } from './types';
+import { confirmDialog } from '../../components/shared/confirmDialog';
 
 type Audiences = {
   total: number;
@@ -69,7 +70,7 @@ export default function StaffBroadcastPanel({
     if (!text) { notify('error', 'اكتب نص الرسالة'); return; }
     if (mode === 'staff' && picked.length === 0) { notify('error', 'اختر موظفًا واحدًا على الأقل'); return; }
     if (recipientCount === 0) { notify('error', 'لا يوجد مستلمون لهذا الاختيار'); return; }
-    if (!window.confirm(`إرسال الرسالة إلى ${recipientCount} موظف؟`)) return;
+    if (!await confirmDialog(`إرسال الرسالة إلى ${recipientCount} موظف؟`)) return;
     setSending(true);
     try {
       const payload: Record<string, unknown> = { target: mode, body: text };

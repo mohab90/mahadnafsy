@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { Card, Field, Input, NotifyFn, SaveBar, SectionHeader, Toggle, setNested } from './saasConnectorUi';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 type OtpConfig = Record<string, any>;
 
@@ -76,7 +77,7 @@ export default function OtpSettingsTab({ notify }: { notify: NotifyFn }) {
   const CHANNEL_LABEL_AR: Record<string, string> = { email: 'البريد الإلكتروني', whatsapp: 'واتساب', sms: 'الرسائل النصية' };
   const testChannel = async (channel: 'email' | 'whatsapp' | 'sms') => {
     const label = channel === 'email' ? 'البريد الإلكتروني' : 'رقم الهاتف';
-    const to = window.prompt(`اختبار OTP عبر ${CHANNEL_LABEL_AR[channel]} - أدخل ${label}، أو اتركه فارغاً للتجربة بدون إرسال فعلي`) || '';
+    const to = await promptDialog(`اختبار OTP عبر ${CHANNEL_LABEL_AR[channel]} - أدخل ${label}، أو اتركه فارغاً للتجربة بدون إرسال فعلي`) || '';
     setTestingChannel(channel);
     try {
       const res = await fetch('/api/admin/otp-provider/test', {

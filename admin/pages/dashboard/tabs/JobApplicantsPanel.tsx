@@ -6,6 +6,7 @@ import {
 
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { EXPERIENCE_YEARS as YEARS, BRANCH_LABELS as BRANCHES, STAGE_LABELS as STAGES } from "./hr-sections/applicantLabels";
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -168,8 +169,8 @@ export const JobApplicantsPanel: React.FC<{
               <Check size={11} />مقبول
             </button>
             <button disabled={busy}
-              onClick={() => {
-                const why = window.prompt('سبب الرفض (اختياري):') ?? undefined;
+              onClick={async () => {
+                const why = (await promptDialog('سبب الرفض (اختياري):')) ?? undefined;
                 if (why === undefined) return;
                 patch(row, { stage: 'rejected', ...(why ? { stage_notes: why } : {}) }, 'اترفض المتقدم');
               }}

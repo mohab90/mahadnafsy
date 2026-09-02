@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { GitMerge, RefreshCw, RotateCcw } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { NotifyFn } from '../CrmSettingsModal';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
 
 interface DuplicateLead {
   id: string;
@@ -79,7 +80,7 @@ export function LeadDuplicateReviewPanel({
     const targetId = targets[index] || group.targetId;
     const sourceIds = group.leads.map(lead => lead.id).filter(id => id !== targetId);
     const target = group.leads.find(lead => lead.id === targetId);
-    if (!sourceIds.length || !window.confirm(
+    if (!sourceIds.length || !await confirmDialog(
       `سيتم دمج ${sourceIds.length} سجل داخل "${target?.name || targetId}". يمكن فك الدمج لاحقًا. هل تؤكد؟`
     )) return;
     setBusyId(`merge-${index}`);
@@ -103,7 +104,7 @@ export function LeadDuplicateReviewPanel({
   const mergeAll = async () => {
     const total = groups.reduce((sum, g, i) => sum + (g.leads.length - (targets[i] || g.targetId ? 1 : 0)), 0);
     if (!groups.length) return;
-    if (!window.confirm(`سيتم دمج كل المجموعات الـ${groups.length} دفعة واحدة (${total} سجل تقريبًا داخل سجلاتها الرئيسية). العملية قابلة للتراجع لكل مجموعة على حدة لاحقًا. متأكد؟`)) return;
+    if (!await confirmDialog(`سيتم دمج كل المجموعات الـ${groups.length} دفعة واحدة (${total} سجل تقريبًا داخل سجلاتها الرئيسية). العملية قابلة للتراجع لكل مجموعة على حدة لاحقًا. متأكد؟`)) return;
     setBusyId('merge-all');
     let mergedGroups = 0;
     let mergedRecords = 0;
@@ -124,7 +125,7 @@ export function LeadDuplicateReviewPanel({
   };
 
   const unmerge = async (row: MergeHistory) => {
-    if (!window.confirm(`فك دمج "${row.sourceName || row.sourceId}" وإعادته كسجل مستقل؟`)) return;
+    if (!await confirmDialog(`فك دمج "${row.sourceName || row.sourceId}" وإعادته كسجل مستقل؟`)) return;
     setBusyId(`unmerge-${row.id}`);
     try {
       await mysqlAdmin.unmergeLead(row.sourceId);

@@ -4,6 +4,7 @@ import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { ActivityLogItem, AuthUser, StaffMember } from '../../../types';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type MyHrSection = 'overview' | 'activity' | 'performance' | 'leaves' | 'messages';
@@ -208,7 +209,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
   const sendMyMessage = async () => {
     const body = messageDraft.trim();
     if (!body) return;
-    if (messageScope === 'team' && !window.confirm('إرسال هذه الرسالة لكل أعضاء فريقك؟')) return;
+    if (messageScope === 'team' && !await confirmDialog('إرسال هذه الرسالة لكل أعضاء فريقك؟')) return;
     setSendingMessage(true);
     try {
       const result = await mysqlAdmin.sendMyStaffMessage(body, messageScope) as unknown as { recipients?: number; label?: string };

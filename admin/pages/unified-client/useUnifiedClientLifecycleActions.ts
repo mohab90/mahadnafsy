@@ -4,6 +4,7 @@ import { currencyForBranch } from '../../lib/branchCurrency';
 import type { LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
 import { generatePromoCode } from './constants';
 import { useUnifiedClientCertificateState } from './useUnifiedClientCertificateState';
+import { alertDialog, promptDialog } from '../../components/shared/promptDialog';
 
 interface Params {
   lead?: LeadItem;
@@ -96,7 +97,7 @@ export function useUnifiedClientLifecycleActions(params: Params) {
     certificateId: string,
     action: 'revoke' | 'reissue',
   ) => {
-    const reason = window.prompt(
+    const reason = await promptDialog(
       action === 'revoke' ? 'سبب إلغاء الشهادة:' : 'سبب إعادة إصدار الشهادة:',
     );
     if (!reason?.trim()) return;
@@ -113,7 +114,7 @@ export function useUnifiedClientLifecycleActions(params: Params) {
       } : certificate));
       await reloadSubscribers();
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'تعذر تحديث حالة الشهادة');
+      await alertDialog(error instanceof Error ? error.message : 'تعذر تحديث حالة الشهادة');
     }
   };
 

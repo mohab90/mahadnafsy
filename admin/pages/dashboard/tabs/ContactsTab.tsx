@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 const ContactsTab: React.FC = () => {
   const { contactMessages, updateContactMessage, deleteContactMessage } = useSiteData();
@@ -80,7 +81,7 @@ const ContactsTab: React.FC = () => {
                   placeholder="أضف ملاحظة داخلية..."
                   className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none" />
               </div>
-              <button onClick={() => { if (window.confirm('حذف هذه الرسالة؟')) deleteContactMessage(msg.id); }}
+              <button onClick={async () => { if (await confirmDialog('حذف هذه الرسالة؟')) deleteContactMessage(msg.id); }}
                 className="w-full py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm font-bold transition">حذف الرسالة</button>
             </div>
           ))}

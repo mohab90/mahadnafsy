@@ -6,6 +6,8 @@ import {
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { AddRefundModal } from './AddRefundModal';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../../components/shared/promptDialog';
 
 // A refund is a money decision with a story: which course, at which branch, how
 // much of it the customer had actually paid, how much they asked back, when
@@ -108,13 +110,13 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
     } finally { setBusy(''); }
   };
 
-  const decide = (row: RefundRow, status: 'APPROVED' | 'REJECTED' | 'HANDLING') => {
+  const decide = async (row: RefundRow, status: 'APPROVED' | 'REJECTED' | 'HANDLING') => {
     const requested = num(row.amount);
     let refundedAmount: number | undefined;
     let decisionNote = '';
 
     if (status === 'APPROVED') {
-      const answer = window.prompt(`الموافقة على استرداد ${row.subscriber_name || ''}.\nطلب ${requested}. اكتب المبلغ الذي سيُرد فعلياً:`, String(requested));
+      const answer = await promptDialog(`الموافقة على استرداد ${row.subscriber_name || ''}.\nطلب ${requested}. اكتب المبلغ الذي سيُرد فعلياً:`, String(requested));
       if (answer === null) return;
       refundedAmount = Number(answer);
       if (!Number.isFinite(refundedAmount) || refundedAmount <= 0 || refundedAmount > requested) {
@@ -123,7 +125,7 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
       }
     } else {
       const label = status === 'REJECTED' ? 'اكتب سبب الرفض كاملاً:' : 'اكتب ما تم عمله في الطلب:';
-      const answer = window.prompt(label);
+      const answer = await promptDialog(label);
       if (answer === null) return;
       decisionNote = answer.trim();
       if (!decisionNote) { notify(status === 'REJECTED' ? 'سبب الرفض مطلوب' : 'اكتب ما تم عمله', 'error'); return; }
@@ -135,18 +137,18 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
     }, 'تم تسجيل القرار', row.id);
   };
 
-  const escalate = (row: RefundRow) => {
-    const note = window.prompt('رفع الطلب للإدارة العليا — اكتب سبب الرفع:');
+  const escalate = async (row: RefundRow) => {
+    const note = await promptDialog('رفع الطلب للإدارة العليا — اكتب سبب الرفع:');
     if (note === null) return;
     void call(`/api/admin/finance/refunds/${encodeURIComponent(row.id)}/escalate`, {
       method: 'POST', body: JSON.stringify({ note }),
     }, 'تم رفع الطلب', row.id);
   };
 
-  const blame = (row: RefundRow) => {
+  const blame = async (row: RefundRow) => {
     const names = staffMembers.filter(s => s.status === 'active');
     const list = names.map((s, i) => `${i + 1}. ${s.name}`).join('\n');
-    const answer = window.prompt(`تحديد الموظف المسؤول عن سبب الاسترداد.\nاكتب رقم الموظف، أو 0 لإلغاء التحديد:\n\n${list}`);
+    const answer = await promptDialog(`تحديد الموظف المسؤول عن سبب الاسترداد.\nاكتب رقم الموظف، أو 0 لإلغاء التحديد:\n\n${list}`);
     if (answer === null) return;
     const index = Number(answer);
     if (index === 0) {
@@ -157,20 +159,20 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
     }
     const picked = names[index - 1];
     if (!picked) { notify('رقم غير صحيح', 'error'); return; }
-    const note = window.prompt(`ما الخطأ الذي حدث من ${picked.name}؟`) || '';
+    const note = await promptDialog(`ما الخطأ الذي حدث من ${picked.name}؟`) || '';
     void call(`/api/admin/finance/refunds/${encodeURIComponent(row.id)}/blame`, {
       method: 'POST', body: JSON.stringify({ staff_id: picked.id, note }),
     }, 'تم تسجيل المسؤولية', row.id);
   };
 
-  const markRefunded = (row: RefundRow) => {
-    if (!window.confirm(`تأكيد أن المبلغ ${money(row.refunded_amount ?? row.amount, row.currency)} وصل للعميل فعلاً؟`)) return;
+  const markRefunded = async (row: RefundRow) => {
+    if (!await confirmDialog(`تأكيد أن المبلغ ${money(row.refunded_amount ?? row.amount, row.currency)} وصل للعميل فعلاً؟`)) return;
     void call(`/api/admin/finance/refunds/${encodeURIComponent(row.id)}/mark-refunded`, { method: 'POST' },
       'تم تأكيد رد المبلغ', row.id);
   };
 
-  const remove = (row: RefundRow) => {
-    if (!window.confirm(`حذف طلب استرداد ${row.subscriber_name || ''}؟\nالحذف أرشفة — الطلب يفضل في السجل.`)) return;
+  const remove = async (row: RefundRow) => {
+    if (!await confirmDialog(`حذف طلب استرداد ${row.subscriber_name || ''}؟\nالحذف أرشفة — الطلب يفضل في السجل.`)) return;
     void call(`/api/admin/finance/refunds/${encodeURIComponent(row.id)}`, { method: 'DELETE' },
       'تم حذف الطلب', row.id);
   };

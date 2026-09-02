@@ -3,6 +3,7 @@ import { Plus, Wallet } from 'lucide-react';
 import type { ExpenseItem } from '../../../../types';
 import { ExpenseForm } from './ExpenseForm';
 import { ExpenseTable } from './ExpenseTable';
+import { confirmDialog } from '../../../../components/shared/confirmDialog';
 
 type ExpenseDraft = Omit<ExpenseItem, 'id' | 'createdAt'>;
 
@@ -73,7 +74,7 @@ export function FinancialExpensesPanel({
     }
   };
   const removeExpense = async (id: string) => {
-    if (deletingId || !window.confirm('هل تؤكد حذف المصروف وعكس قيده المحاسبي؟')) return;
+    if (deletingId || !await confirmDialog('هل تؤكد حذف المصروف وعكس قيده المحاسبي؟')) return;
     setDeletingId(id);
     try {
       await deleteExpense(id);

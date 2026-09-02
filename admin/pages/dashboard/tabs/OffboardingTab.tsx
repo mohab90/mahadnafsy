@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { UserMinus, Plus, X, Check, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -60,13 +61,13 @@ export default function OffboardingTab({ notify }: { notify: NotifyFn }) {
     catch { notify('error', 'تعذر التحديث'); }
   };
 
-  const toggleItem = (o: Offboarding, idx: number) => {
+  const toggleItem = async (o: Offboarding, idx: number) => {
     const checklist = o.checklist.map((it, i) => i === idx ? { ...it, done: !it.done } : it);
     patch(o, { checklist });
   };
 
-  const complete = (o: Offboarding) => {
-    if (!window.confirm('إتمام إنهاء الخدمة سيوقف حساب الموظف ويلغي صلاحياته. متابعة؟')) return;
+  const complete = async (o: Offboarding) => {
+    if (!await confirmDialog('إتمام إنهاء الخدمة سيوقف حساب الموظف ويلغي صلاحياته. متابعة؟')) return;
     patch(o, { status: 'completed', reassign_to: successorByCase[o.id] || null });
     notify('info', 'سيتم إيقاف حساب الموظف عند الاكتمال');
   };

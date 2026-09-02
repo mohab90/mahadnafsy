@@ -25,6 +25,8 @@ import {
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
+import { confirmDialog } from '../../../components/shared/confirmDialog';
+import { promptDialog } from '../../../components/shared/promptDialog';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type InboxSource = 'ticket' | 'contact' | 'refund' | 'join_instructor' | 'join_consultant' | 'join_staff';
@@ -286,7 +288,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   }, [linkedEntity, navigate, notify]);
 
   const deleteTicketApi = useCallback(async (item: InboxItem) => {
-    if (!window.confirm('أرشفة هذه التذكرة؟ ستختفي من قوائم العمل مع الاحتفاظ بسجلها للمراجعة.')) return;
+    if (!await confirmDialog('أرشفة هذه التذكرة؟ ستختفي من قوائم العمل مع الاحتفاظ بسجلها للمراجعة.')) return;
     setActionBusy(true);
     try {
       await mysqlAdmin.adminDelete(`/admin/tickets/${encodeURIComponent(item.id)}`);
@@ -307,7 +309,7 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
         // Real route is /status; accepts open|in_progress|resolved|closed.
         originalStatus = target === 'done' ? 'resolved' : target === 'closed' ? 'closed' : 'in_progress';
         const closedReason = originalStatus === 'closed'
-          ? window.prompt('سبب إغلاق التذكرة (إلزامي):')?.trim()
+          ? (await promptDialog('سبب إغلاق التذكرة (إلزامي):'))?.trim()
           : '';
         if (originalStatus === 'closed' && !closedReason) return;
         await mysqlAdmin.adminPut(`/admin/tickets/${encodeURIComponent(item.id)}/status`, {
