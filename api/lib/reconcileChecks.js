@@ -3,6 +3,27 @@
 // can't enforce. Used by both the `npm run reconcile` CLI and the periodic
 // boot-time monitor (lib/reconcileJob). Every query is read-only.
 
+/**
+ * "This lead has a live customer behind it", written once.
+ *
+ * There were two copies of this rule and they disagreed in both directions.
+ * The nightly job matched on lead_id alone and ignored whether the subscriber
+ * was deleted, so it over-reported customers who exist under a different link
+ * and under-reported leads whose customer had been removed. The dashboard
+ * matched on lead_id, email or phone and required the subscriber to be live.
+ * Two numbers for the same question, and the smaller one was believed.
+ *
+ * `l` is the leads alias the caller must use.
+ */
+const LIVE_SUBSCRIBER_FOR_LEAD = `
+  EXISTS (
+    SELECT 1 FROM subscribers s
+     WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL
+       AND (s.lead_id=l.id
+         OR (l.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(l.email)))
+         OR (l.phone<>'' AND s.phone=l.phone))
+  )`;
+
 const CHECKS = [
   {
     key: 'payment_tenant_match',
@@ -175,10 +196,7 @@ const CHECKS = [
     severity: 'critical',
     sql: `SELECT COUNT(*) AS n FROM leads l
           WHERE l.status='converted' AND l.hidden=0
-            AND NOT EXISTS (
-              SELECT 1 FROM subscribers s
-               WHERE s.tenant_id=l.tenant_id AND s.lead_id=l.id
-            )`,
+            AND NOT ${LIVE_SUBSCRIBER_FOR_LEAD}`,
     hint: 'A converted lead without subscriber ownership breaks payment, portal and LMS continuity.',
   },
   {
@@ -260,4 +278,4 @@ async function runReconcile(pool) {
   return out;
 }
 
-module.exports = { CHECKS, runReconcile };
+module.exports = { CHECKS, runReconcile, LIVE_SUBSCRIBER_FOR_LEAD };

@@ -6,6 +6,7 @@ const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
+const { LIVE_SUBSCRIBER_FOR_LEAD } = require('../../lib/reconcileChecks');
 const { assertWritable } = require('../../lib/periodLock');
 const { retryFinanceEvent } = require('../../lib/financeOutbox');
 const { resolveFinancialScope } = require('../../lib/financialScope');
@@ -229,13 +230,15 @@ router.get('/api/admin/reconciliation-dashboard', requireAuth, requireAdminOrSta
       },
       {
         key: 'converted_without_subscriber', severity: 'critical',
+        // One definition, shared with the nightly job. The two used to be
+        // written out separately and had drifted apart in both directions: the
+        // job matched on lead_id alone and did not care whether the subscriber
+        // was deleted, so it counted a different set from this screen and the
+        // smaller number was the one people saw.
         sql: `SELECT l.id,l.name,l.email,l.phone,l.updated_at
                 FROM leads l
                WHERE l.tenant_id=? AND l.hidden=0 AND l.status='converted'${leadBranchSql}
-                 AND NOT EXISTS (
-                    SELECT 1 FROM subscribers s WHERE s.tenant_id=l.tenant_id AND s.deleted_at IS NULL
-                     AND (s.lead_id=l.id OR (l.email<>'' AND LOWER(TRIM(s.email))=LOWER(TRIM(l.email))) OR (l.phone<>'' AND s.phone=l.phone))
-                 )
+                 AND NOT ${LIVE_SUBSCRIBER_FOR_LEAD}
                ORDER BY l.updated_at DESC LIMIT 100`,
       },
       {

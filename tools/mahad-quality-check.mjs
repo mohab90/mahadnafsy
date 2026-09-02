@@ -16,6 +16,7 @@ import { scanSchemaSourceDrift } from './schema-source-drift.mjs';
 import { scanDashboardTabs, navLeafCount } from './dashboard-tab-audit.mjs';
 import { scanIndexDefeats } from './index-defeat-scan.mjs';
 import { scanQueryFilterDrops } from './query-filter-drop-scan.mjs';
+import { scanSoftDeleteMixes } from './soft-delete-scan.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -348,6 +349,19 @@ if (!queryFilterDrops.drops.length) {
   pass(`every admin query filter is read, across ${queryFilterDrops.routesIndexed} GET routes`);
 } else {
   fail(`${queryFilterDrops.drops.length} dropped query filter(s) — the screen is filtering nothing. Run: node tools/query-filter-drop-scan.mjs --list`);
+}
+
+// ── Soft-delete consistency guard ───────────────────────────────────────────
+// Three conventions live side by side — payments.deleted_at,
+// subscribers.deleted_at, leads.hidden — and mixing them within one statement
+// is what made the ledger balance check compare two different populations and
+// report the books unbalanced by 1,022.95 EGP every day for weeks.
+console.log('\nSoft-delete consistency guard');
+const softDelete = scanSoftDeleteMixes();
+if (!softDelete.mixes.length) {
+  pass(`deleted rows are filtered consistently, across ${softDelete.statementsExamined} multi-table statements`);
+} else {
+  fail(`${softDelete.mixes.length} statement(s) filter one table's deleted rows and not another's. Run: node tools/soft-delete-scan.mjs --list`);
 }
 
 // ── 15. Migration-schema drift guard ─────────────────────────────────────────

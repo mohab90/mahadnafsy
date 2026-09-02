@@ -87,3 +87,42 @@ test('remote smoke workflow is staging-only and requires HTTPS', () => {
   assert.doesNotMatch(workflow, /production DB|SSH-tunnel|self-hosted/);
   assert.match(smoke, /must use HTTPS unless it targets localhost/);
 });
+
+// The release argument has to actually be used.
+//
+// deploy-release.sh accepted a release id, ignored it, and deployed whatever
+// was hardcoded on line 16. On 2026-08-27 that silently rolled production back
+// to an older build — the staff edit button and a finance fix disappeared and
+// nobody could see why, because the deploy reported success against the release
+// it had been asked for.
+//
+// It was found again a second time in a worse form: the fix lived in the repo
+// while the server kept running its own stale copy, so a green test here would
+// still have deployed the wrong thing. The hash comparison is an operator step
+// and cannot be asserted from a unit test; what can be asserted is that the
+// script in this repository has never quietly lost the fallback again.
+test('the deploy script uses the release it was given', () => {
+  const script = readRepo('deploy-release.sh');
+
+  // `R=${1:-…}`: the argument wins, the literal is only a default.
+  assert.match(script, /^R=\$\{1:-[a-z0-9-]+\}$/m,
+    'the release must come from $1 with the hardcoded id as a fallback, never the other way round');
+  assert.doesNotMatch(script, /^R=[a-z0-9-]+$/m,
+    'a bare R=<release> ignores the argument and deploys a fixed build');
+
+  // Staging is proved healthy before production is touched, and a production
+  // failure rolls back rather than leaving a half-deployed box.
+  assert.match(script, /deploy staging[\s\S]*STAGING FAILED - production untouched/,
+    'staging must gate production');
+  assert.ok(
+    script.indexOf('deploy staging') < script.indexOf('deploy production'),
+    'staging has to be deployed first to be a gate at all',
+  );
+  assert.match(script, /PRODUCTION FAILED - rolled back/);
+
+  // The release id is stamped into the environment it deploys, so a report
+  // from production can name its own build. Without it "is the fix live?" can
+  // only be answered by reading files on the box, which is how the rollback
+  // went unnoticed for as long as it did.
+  assert.match(script, /APP_RELEASE=\$R/);
+});

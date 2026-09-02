@@ -247,3 +247,34 @@ test('every caller that converts a lead names the customer it converted into', (
     }
   }
 });
+
+// The nightly job and the dashboard answer the same question the same way.
+//
+// They were two hand-written copies of "does this converted lead have a
+// customer", and they had drifted in both directions: the job matched on
+// lead_id alone and ignored whether the subscriber was deleted, so it
+// over-reported people who exist under a different link and under-reported
+// leads whose customer had been removed. Two numbers for one question, and the
+// smaller one was the one acted on — it cost real time in this engagement.
+test('the converted-lead check is defined once and used by both readers', async () => {
+  const { LIVE_SUBSCRIBER_FOR_LEAD } = require('../lib/reconcileChecks');
+
+  // The definition covers all three ways a lead is tied to a customer, and only
+  // counts a customer that still exists.
+  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.deleted_at IS NULL/,
+    'a deleted customer is not a customer');
+  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.lead_id=l\.id/);
+  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /LOWER\(TRIM\(s\.email\)\)=LOWER\(TRIM\(l\.email\)\)/,
+    'matching by email is what stops it flagging customers linked another way');
+  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.phone=l\.phone/);
+
+  // And both readers use it rather than spelling it out again.
+  const payops = read('routes/core/payops.js');
+  const checks = read('lib/reconcileChecks.js');
+  for (const [name, source] of [['payops', payops], ['reconcileChecks', checks]]) {
+    assert.match(source, /NOT \$\{LIVE_SUBSCRIBER_FOR_LEAD\}/,
+      `${name} must interpolate the shared predicate, not restate it`);
+  }
+  assert.match(payops, /require\('\.\.\/\.\.\/lib\/reconcileChecks'\)/,
+    'the dashboard has to import the definition to share it');
+});

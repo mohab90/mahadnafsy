@@ -70,7 +70,16 @@ test('reconciliation dashboard connects payments, journals, enrollments, CRM and
   assert.match(route, /reconciliation-dashboard'[\s\S]*requirePermission\('view_financial'\)/);
   assert.match(route, /paid_without_journal[\s\S]*je\.tenant_id=p\.tenant_id/);
   assert.match(route, /paid_without_enrollment[\s\S]*e\.tenant_id=p\.tenant_id/);
-  assert.match(route, /converted_without_subscriber[\s\S]*s\.tenant_id=l\.tenant_id/);
+  // The converted-lead subquery moved into lib/reconcileChecks so the nightly
+  // job and this dashboard stop drifting apart. The property being asserted is
+  // unchanged — the subscriber lookup is scoped to the lead's tenant — it just
+  // has one home now, so the assertion follows it there rather than requiring
+  // the SQL to stay inlined here.
+  assert.match(route, /converted_without_subscriber[\s\S]{0,900}NOT \$\{LIVE_SUBSCRIBER_FOR_LEAD\}/);
+  assert.match(route, /require\('\.\.\/\.\.\/lib\/reconcileChecks'\)/);
+  const { LIVE_SUBSCRIBER_FOR_LEAD } = require('../lib/reconcileChecks');
+  assert.match(LIVE_SUBSCRIBER_FOR_LEAD, /s\.tenant_id=l\.tenant_id/,
+    'the shared predicate must still scope the subscriber lookup to the lead tenant');
   assert.match(route, /paid_order_without_payment[\s\S]*p\.tenant_id=o\.tenant_id/);
   assert.match(route, /failed_finance_events[\s\S]*FROM finance_outbox[\s\S]*WHERE tenant_id=\?/);
   assert.match(ui, /mysqlAdmin\.adminGet<ReconciliationData>\(`\/admin\/reconciliation-dashboard/);
