@@ -51,10 +51,53 @@ router.delete(
 // ── FEATURE: Auto DB Backup status ────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Where the cron script actually writes. It defaults to the same path the
+// script does, so the screen reports the real backups without needing an env
+// var nobody set: BACKUP_DIR was unset in production and the old default,
+// /tmp/mahad_backups, did not exist — so this screen showed nothing while 23
+// healthy dumps sat on disk. A backup screen that looks identical whether
+// backups work or not is worse than no screen.
+const BACKUP_DIR = process.env.BACKUP_DIR || process.env.MAHAD_BACKUP_DIR || '/var/backups/mahad-db';
+const MIN_CREDIBLE_BYTES = Number(process.env.MAHAD_BACKUP_MIN_BYTES || 1_000_000);
+
+function readBackupFiles() {
+  const fs = require('fs');
+  const path = require('path');
+  let names = [];
+  try { names = fs.readdirSync(BACKUP_DIR); } catch { return { dir: BACKUP_DIR, readable: false, files: [] }; }
+  const files = names
+    .filter(name => name.endsWith('.sql.gz'))
+    .map(name => {
+      try {
+        const stat = fs.statSync(path.join(BACKUP_DIR, name));
+        return { name, bytes: stat.size, at: stat.mtime.toISOString(), credible: stat.size >= MIN_CREDIBLE_BYTES };
+      } catch { return null; }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.at.localeCompare(a.at));
+  return { dir: BACKUP_DIR, readable: true, files };
+}
+
 router.get('/api/admin/backup-status', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [[row]] = await pool.query("SELECT value FROM site_config WHERE `key`='last_backup_at' LIMIT 1");
-    res.json({ lastBackupAt: row?.value || null });
+    // Reported from the files themselves. It used to read a site_config value
+    // that only the "backup now" button writes, so it showed the last time a
+    // human clicked rather than the last time a backup was taken — and it kept
+    // showing that date however long the real backups had been failing.
+    const { dir, readable, files } = readBackupFiles();
+    const newest = files.find(file => file.credible) || null;
+    const ageHours = newest ? (Date.now() - Date.parse(newest.at)) / 3.6e6 : null;
+    res.json({
+      lastBackupAt: newest?.at || null,
+      lastBackupBytes: newest?.bytes || null,
+      backupDir: dir,
+      directoryReadable: readable,
+      totalBackups: files.length,
+      staleOrMissing: !newest || ageHours > 48,
+      // A file too small to be a real dump is a failure that looks like a
+      // success, which is exactly what the empty .partial archives were.
+      undersizedFiles: files.filter(file => !file.credible).length,
+    });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -83,14 +126,21 @@ router.get('/api/admin/backups', requireAuth, requireAdmin, async (req, res) => 
     ).catch(() => [[]]);
 
     const fs = require('fs');
-    const BACKUP_DIR = process.env.BACKUP_DIR || '/tmp/mahad_backups';
-
     const withSize = logs.map(row => ({
       ...row,
       fileExists: row.filename ? fs.existsSync(require('path').join(BACKUP_DIR, row.filename)) : false,
     }));
 
-    res.json({ backups: withSize, backupDir: BACKUP_DIR });
+    // The dumps on disk are listed alongside the log rows. backup_logs is
+    // written by whatever last recorded a run; the cron script writes files.
+    // Showing only the table made a working backup look like no backup at all.
+    const onDisk = readBackupFiles();
+    res.json({
+      backups: withSize,
+      backupDir: BACKUP_DIR,
+      files: onDisk.files.slice(0, 30),
+      directoryReadable: onDisk.readable,
+    });
   } catch (e) { logger.error('[backups-list]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -98,13 +148,23 @@ router.get('/api/admin/backups', requireAuth, requireAdmin, async (req, res) => 
 router.get('/api/admin/backups/download/:filename', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { filename } = req.params;
-    // Security: only allow safe filenames (no path traversal)
-    if (!filename || !/^mahad_backup_[\w.-]+\.sql(\.gz)?$/.test(filename)) {
-      return res.status(400).json({ error: 'Invalid filename' });
-    }
     const path = require('path');
     const fs   = require('fs');
-    const BACKUP_DIR = process.env.BACKUP_DIR || '/tmp/mahad_backups';
+
+    // The name has to be one the directory actually contains. The previous
+    // guard was a pattern, `mahad_backup_*.sql.gz`, and the backups are named
+    // `mahadnafsy_db_<stamp>.sql.gz` — so every real backup was rejected as an
+    // invalid filename and none of them could be downloaded. Matching against
+    // the listing fixes that and rules out traversal by construction rather
+    // than by getting a regular expression right.
+    //
+    // This also used to re-declare BACKUP_DIR with the old /tmp default,
+    // shadowing the module-level one, so it looked in a directory that does
+    // not exist.
+    const available = readBackupFiles();
+    if (!filename || !available.files.some(file => file.name === filename)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
     const filePath = path.join(BACKUP_DIR, filename);
 
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
