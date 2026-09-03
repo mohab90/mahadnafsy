@@ -98,21 +98,38 @@ const checks = [
       assertStatus('api db health', result.status, 200);
     },
   },
+  // These three asserted 503 — that online payments were switched off. They
+  // have been switched back on, nothing in the code can return 503 here any
+  // more, and a real Paymob payment landed on 18 August. So the assertions
+  // failed on every run, which is worse than not existing: a smoke suite with
+  // three permanent failures is one nobody reads.
+  //
+  // They now assert what these endpoints are actually for. Note the direction:
+  // a 503 would now be a failure, because it would mean checkout is down.
   {
-    name: 'paymob init suspended',
-    run: async () => assertStatus('paymob init suspended', (await request('/api/payments/paymob-init', { method: 'POST', body: '{}' })).status, 503),
+    name: 'paymob init rejects a request naming no order',
+    run: async () => assertStatus('paymob init validates', (await request('/api/payments/paymob-init', { method: 'POST', body: '{}' })).status, 400),
   },
   {
-    name: 'paymob verify suspended',
-    run: async () => assertStatus('paymob verify suspended', (await request('/api/paymob/verify', { method: 'POST', body: '{}' })).status, 503),
+    // The property worth pinning, and the old assertion never reached it: an
+    // unsigned callback must not be treated as a completed payment.
+    name: 'paymob verify refuses an unsigned callback',
+    run: async () => {
+      const result = await request('/api/paymob/verify', { method: 'POST', body: '{}' });
+      assertStatus('paymob verify rejects', result.status, 400);
+      if (result.body?.paid !== false || result.body?.verified !== false) {
+        throw new Error(`unsigned callback was not refused outright: ${JSON.stringify(result.body)}`);
+      }
+    },
   },
   {
-    name: 'paymob webhook suspended ack',
-    run: async () => assertStatus('paymob webhook suspended ack', (await request('/api/webhooks/paymob', { method: 'POST', body: '{}' })).status, 200),
+    // A webhook must acknowledge rather than retry-storm, whatever it is sent.
+    name: 'paymob webhook acknowledges without acting',
+    run: async () => assertStatus('paymob webhook ack', (await request('/api/webhooks/paymob', { method: 'POST', body: '{}' })).status, 200),
   },
   {
-    name: 'order reserve suspended without mutation',
-    run: async () => assertStatus('order reserve suspended', (await request('/api/orders/reserve', { method: 'POST', body: '{}' })).status, 503),
+    name: 'order reserve rejects a request naming no order',
+    run: async () => assertStatus('order reserve validates', (await request('/api/orders/reserve', { method: 'POST', body: '{}' })).status, 400),
   },
   {
     name: 'facebook webhook verification rejects bad token',
