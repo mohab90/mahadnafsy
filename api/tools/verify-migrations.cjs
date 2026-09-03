@@ -21,6 +21,20 @@ function checksum(file) {
     .digest('hex').slice(0, 16);
 }
 
+// The value the runner would have recorded *before* it normalised line endings.
+//
+// All 35 versions this tool checks were stamped then, so every run reported 35
+// failures — and a verification that always fails is one that gets skipped,
+// which is worse than not having it. A mismatch is excused only when the file's
+// raw bytes hash to the recorded value, i.e. the file is provably identical to
+// what was applied and only the hashing rule moved underneath it. A file that
+// was actually edited matches neither and still fails.
+function legacyChecksum(file) {
+  return crypto.createHash('sha256')
+    .update(fs.readFileSync(file, 'utf8'))
+    .digest('hex').slice(0, 16);
+}
+
 (async () => {
   try {
     const [rows] = await pool.query(
@@ -32,13 +46,23 @@ function checksum(file) {
     );
     const byPrefix = new Map(rows.map(row => [String(row.version).slice(0, 3), row]));
     let failed = 0;
+    let legacyStamped = 0;
     for (const version of requested) {
       const row = byPrefix.get(version);
       const fileName = fs.readdirSync(migrationDir).find(name => name.startsWith(`${version}_`));
-      const fileChecksum = fileName ? checksum(path.join(migrationDir, fileName)) : null;
-      const ok = Boolean(row && fileName && row.status === 'applied' && row.checksum === fileChecksum);
-      console.log(`${ok ? 'PASS' : 'FAIL'} migration-${version}: status=${row?.status || 'missing'} checksum=${row?.checksum === fileChecksum ? 'match' : 'mismatch'}`);
+      const filePath = fileName ? path.join(migrationDir, fileName) : null;
+      const fileChecksum = filePath ? checksum(filePath) : null;
+      const matches = Boolean(row) && row.checksum === fileChecksum;
+      const preNormalisation = Boolean(row) && !matches && filePath
+        && row.checksum === legacyChecksum(filePath);
+
+      const ok = Boolean(row && fileName && row.status === 'applied' && (matches || preNormalisation));
+      const detail = matches ? 'match'
+        : preNormalisation ? 'match (recorded before line-ending normalisation; file unchanged)'
+          : 'MISMATCH — the file changed after it was applied';
+      console.log(`${ok ? 'PASS' : 'FAIL'} migration-${version}: status=${row?.status || 'missing'} checksum=${detail}`);
       if (!ok) failed++;
+      if (preNormalisation) legacyStamped++;
     }
     const requiredObjects = [
       ['support_tickets', 'idx_support_tickets_tenant_active', 'INDEX'],
@@ -154,6 +178,12 @@ function checksum(file) {
     const otpRowsOk = Number(unsafeOtp?.count || 0) === 0;
     console.log(`${otpRowsOk ? 'PASS' : 'FAIL'} data-otp_codes.active-hmac-only: unsafe=${Number(unsafeOtp?.count || 0)}`);
     if (!otpRowsOk) failed++;
+    if (legacyStamped) {
+      console.log('');
+      console.log(`NOTE ${legacyStamped} migration(s) were stamped before the checksum normalised line endings.`);
+      console.log('     Their files hash byte-for-byte to the recorded value, so nothing was edited.');
+      console.log('     Re-stamping them on the next migrate run would clear the note.');
+    }
     process.exitCode = failed ? 1 : 0;
   } catch (error) {
     console.error(`FAIL migration-verification: ${error.message}`);
