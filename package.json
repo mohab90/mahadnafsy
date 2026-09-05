@@ -33,7 +33,8 @@
     "audit:routes": "node tools/route-integrity-scan.mjs",
     "audit:paymob": "node tools/paymob-reconcile.cjs",
     "verify:backup-restores": "node tools/verify-backup-restores.cjs",
-    "audit:orphan-modules": "node tools/orphan-module-scan.mjs"
+    "audit:orphan-modules": "node tools/orphan-module-scan.mjs",
+    "audit:content-keys": "node tools/content-key-scan.mjs"
   },
   "keywords": [
     "mahad",
