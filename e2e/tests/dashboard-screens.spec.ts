@@ -33,6 +33,10 @@ const PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 // with room to spare while still catching a screen that draws only a header.
 const CONTENT_FLOOR = 400;
 
+// Screens whose correct output depends on whether the signed-in account has a
+// staff record. See the branch in the test body.
+const WORKSPACE_TABS = new Set(['staff_home', 'staff_settings', 'my_hr']);
+
 /**
  * Tab keys reachable from the nav, from admin/pages/dashboard/navigation.tsx.
  * Group headers are excluded — they expand a submenu rather than draw a screen.
@@ -85,12 +89,35 @@ test.describe('every dashboard screen renders', () => {
       page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 200)); });
 
       await page.goto(`${ADMIN}/dashboard/${key}`);
-      // Polled on content rather than a fixed delay: a screen may take its
-      // time, but it has to arrive.
-      await expect
-        .poll(async () => (await page.locator('body').innerText()).replace(/\s+/g, ' ').length,
-              { timeout: 15_000, message: `${key} never rendered any content` })
-        .toBeGreaterThan(CONTENT_FLOOR);
+
+      // The workspace tabs have two correct outcomes, and which one appears
+      // depends on the account the suite signs in as. With a staff record they
+      // draw a full profile; without one — the owner account has no staff row —
+      // they draw a short explanation of why. That explanation is ~319
+      // characters of body text, under the floor, so holding these three to it
+      // would fail a screen that is behaving exactly as intended.
+      //
+      // They are held to the thing that actually matters instead: never
+      // silently blank. Before this was fixed they rendered nothing at all —
+      // no message, no spinner, no error — and that is the regression worth
+      // catching.
+      if (WORKSPACE_TABS.has(key)) {
+        await expect
+          .poll(async () => (await page.locator('body').innerText()).replace(/\s+/g, ' '),
+                { timeout: 15_000, message: `${key} never rendered anything` })
+          // Both alternatives are phrases only these screens produce. Bare
+          // «الرئيسية» and «ملفي» were in here first and had to go: they are
+          // short enough to appear in a nav bar, and an assertion the chrome
+          // can satisfy would pass on the blank page it exists to catch.
+          .toMatch(/مساحة الموظف غير متاحة لحسابك|ملفي الشخصي|ملفي الوظيفي/);
+      } else {
+        // Polled on content rather than a fixed delay: a screen may take its
+        // time, but it has to arrive.
+        await expect
+          .poll(async () => (await page.locator('body').innerText()).replace(/\s+/g, ' ').length,
+                { timeout: 15_000, message: `${key} never rendered any content` })
+          .toBeGreaterThan(CONTENT_FLOOR);
+      }
 
       expect(errors, `${key} logged console errors`).toEqual([]);
     });
