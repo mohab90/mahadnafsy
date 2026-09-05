@@ -57,6 +57,7 @@ import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
 import { useDashboardDerived } from './dashboard/useDashboardDerived';
+import { useBranches } from '../hooks/useBranches';
 
 import {
   TAB_PERMISSION_MAP,
@@ -141,7 +142,8 @@ const Dashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
   const branchQueryFilter = branchSlugToFilter(searchParams.get('branch'));
 
-  const { inboxUnreadCount, instituteBranches, branchLabelMap } = useDashboardDerived(content, notifications);
+  const branchesFromTable = useBranches();
+  const { inboxUnreadCount, instituteBranches, branchLabelMap } = useDashboardDerived(content, notifications, branchesFromTable);
 
   // -- Pre-memoized ask_ai computations (must be inside Dashboard after useSiteData) ----------------------
 
