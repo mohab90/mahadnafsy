@@ -59,7 +59,9 @@ test('the reconcile check this borrows its definition from still holds it', () =
   // Scoped to this check's own sql, not a fixed number of characters after its
   // name — a window that long runs into the next check in the array, whose
   // hidden=0 is legitimate and is what failed this assertion first time.
-  const start = reconcile.indexOf('active customer users are linked');
+  // Anchored on the key, not the display name: the name changed once already
+  // when the check went from critical to a queue depth, and that broke this.
+  const start = reconcile.indexOf("key: 'orphan_customer_users'");
   assert.ok(start > 0, 'the unlinked-users check was not located');
   const sqlStart = reconcile.indexOf('sql:', start);
   const sqlEnd = reconcile.indexOf('`,', sqlStart);

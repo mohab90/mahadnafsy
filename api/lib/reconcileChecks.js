@@ -150,8 +150,19 @@ const CHECKS = [
   },
   {
     key: 'orphan_customer_users',
-    name: 'active customer users are linked to a lead or subscriber',
-    severity: 'critical',
+    name: 'self-registered accounts still waiting to be triaged',
+    // Was critical, on the stated grounds that such an account "disappears
+    // from every operational team". That stopped being true when registration
+    // stopped auto-creating a lead and the التسجيلات bucket was introduced —
+    // every one of these accounts is listed there with its conversion actions,
+    // which is the whole point of that screen. What the number measures now is
+    // the depth of a work queue, and a queue with items in it is not a broken
+    // invariant.
+    //
+    // Left critical, it meant the reconcile report showed four failures every
+    // run when three were real, and the reader had to know which one to
+    // discount. That is how the three real ones stop being read.
+    severity: 'info',
     // Matched on email or phone, and on archived leads as well as live ones.
     //
     // Comparing only the email address, and only against leads with hidden=0,
@@ -188,7 +199,7 @@ const CHECKS = [
                       OR (u.phone IS NOT NULL AND TRIM(u.phone)<>''
                           AND REGEXP_REPLACE(l.phone,'[^0-9]','')=REGEXP_REPLACE(u.phone,'[^0-9]','')))
             )`,
-    hint: 'A login identity without a CRM/customer projection disappears from every operational team.',
+    hint: 'Accounts that signed themselves up and are neither a lead nor an online client yet. They are listed under التسجيلات with promote/convert actions — this is the size of that queue, not a fault.',
   },
   {
     key: 'converted_leads_without_subscriber',
