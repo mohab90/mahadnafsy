@@ -39,15 +39,27 @@ for (const f of walk(D).concat([path.join(ROOT, 'admin/pages/Dashboard.tsx')])) 
 }
 
 // menu-reachable keys
+//
+// navigation.tsx is not the whole menu. DashboardNavigation.tsx carries the
+// sales and collection bars and the التسجيلات entry, and its items are rendered
+// from an array — so there is no literal setActiveTab('registrations') for the
+// scan below to find, and this reported a screen as unreachable that staff use
+// every day. A list of "dead" screens that names a live one is a list nobody
+// can safely act on.
 const nav = fs.readFileSync(path.join(D, 'navigation.tsx'), 'utf8');
+const nav2 = fs.readFileSync(path.join(D, 'DashboardNavigation.tsx'), 'utf8');
 const hub = fs.readFileSync(path.join(D, 'contentHubConfig.ts'), 'utf8');
 const reachable = new Set();
-for (const s of [nav.slice(nav.indexOf('DASHBOARD_MENU_GROUPS')), hub]) {
+for (const s of [nav.slice(nav.indexOf('DASHBOARD_MENU_GROUPS')), nav2, hub]) {
   for (const m of s.matchAll(/key:\s*'([a-z_0-9]+)'/g)) reachable.add(m[1]);
 }
 for (const f of walk(path.join(ROOT, 'admin'))) {
   const src = fs.readFileSync(f, 'utf8');
   for (const m of src.matchAll(/setActiveTab\(\s*'([a-z_0-9]+)'/g)) reachable.add(m[1]);
+  // A screen can also be a section inside another screen — service_hub draws
+  // the FAQ manager on `subTab === 'faq'`. Those are reached by clicking, not
+  // by a tab key, so the component is live even though no menu names it.
+  for (const m of src.matchAll(/subTab\s*===\s*'([a-z_0-9]+)'/g)) reachable.add(m[1]);
 }
 for (const k of ['staff_home', 'staff_settings', 'my_hr']) reachable.add(k);
 
