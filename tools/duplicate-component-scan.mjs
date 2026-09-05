@@ -82,7 +82,20 @@ console.log(`\n── (أ) نفس المكوّن متركّب تحت أكتر م
 for (const [comp, keys] of twice) console.log(`  ${comp}  →  ${[...keys].join(', ')}`);
 
 const orphans = [...mounts].filter(([k]) => !reachable.has(k));
-console.log(`\n── (ب) صفحة ليها مكوّن ومفيش أي مدخل أو انتقال يوصلها: ${orphans.length}`);
+// The wording matters more than it looks. This list says "no MENU ENTRY names
+// this key" — it does not say the feature is unreachable, and the difference
+// cost a wrong report: every one of the fourteen turned out to be covered by a
+// screen that is in the menu. sales_team is «الفريق» inside sales_hub,
+// staff_performance is «الأداء والتارجت» inside hr, online_team is «فريق
+// الأونلاين» inside online_hub, cert_pricing is cert_requests opened on its
+// pricing tab, and daqqi_attendance data is on daqqi_stats. They are legacy
+// standalone keys left behind when those screens were merged into hubs.
+//
+// So treat this as "keys with no menu entry" — a tidiness list, and a place to
+// look for duplicate implementations. It is not a list of dead files, and
+// deleting from it without checking the hub first removes working features.
+console.log(`\n── (ب) مفتاح ليه مكوّن ومفيش مدخل في القائمة باسمه: ${orphans.length}`);
+console.log('     (مش معناه إن الميزة مش موصولة — غالبًا محتواها جوّه شاشة مدمَجة موجودة في القائمة)');
 for (const [k, comps] of orphans.sort()) {
   console.log(`  ${k.padEnd(24)} ${[...comps.keys()].join(', ')}   [${[...comps.values()][0]}]`);
 }
