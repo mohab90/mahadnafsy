@@ -578,15 +578,28 @@ export default SystemSettingsTab;
 // ─── Backup Management Section ────────────────────────────────────────────
 const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
   const [backups, setBackups] = useState<any[]>([]);
+  // The archives actually on disk. This panel used to render only `backups` —
+  // rows from the backup_logs table — and that table held three failed runs
+  // from July and nothing since. So the screen that answers "are we backed up?"
+  // showed three red FAILED lines while 23 healthy daily dumps sat on the
+  // server, the newest of them from that morning. It said the opposite of the
+  // truth, which is worse than saying nothing.
+  const [files, setFiles] = useState<any[]>([]);
+  const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/admin/backups', { credentials: 'include', headers: adminHeaders() });
-      const d = await r.json();
+      const [listRes, statusRes] = await Promise.all([
+        fetch('/api/admin/backups', { credentials: 'include', headers: adminHeaders() }),
+        fetch('/api/admin/backup-status', { credentials: 'include', headers: adminHeaders() }),
+      ]);
+      const d = await listRes.json();
       setBackups(d.backups || []);
+      setFiles(d.files || []);
+      setStatus(await statusRes.json().catch(() => null));
     } catch { notify('error', 'خطأ في تحميل النسخ'); }
     finally { setLoading(false); }
   }, [notify]);
@@ -645,9 +658,66 @@ const BackupSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
         </div>
       </div>
 
+      {/* What is actually on disk, answered before any log table. */}
+      {status && (
+        <div className={`rounded-2xl border p-4 ${status.staleOrMissing ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
+          <p className={`text-sm font-bold ${status.staleOrMissing ? 'text-red-700' : 'text-green-700'}`}>
+            {status.staleOrMissing
+              ? '⚠️ لا توجد نسخة احتياطية حديثة'
+              : `✅ آخر نسخة: ${new Date(status.lastBackupAt).toLocaleString('ar-EG')}`}
+          </p>
+          <p className="mt-1 text-xs text-gray-600">
+            {status.totalBackups} نسخة محفوظة في {status.backupDir}
+            {status.lastBackupBytes ? ` · حجم الأخيرة ${fmtSize(status.lastBackupBytes)}` : ''}
+            {status.undersizedFiles ? ` · ${status.undersizedFiles} ملف أصغر من أن يكون نسخة حقيقية` : ''}
+          </p>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
         <div className="p-4 border-b border-gray-100">
-          <h4 className="font-bold text-gray-700">سجل النسخ الاحتياطية</h4>
+          <h4 className="font-bold text-gray-700">الملفات المحفوظة {files.length ? `(${files.length})` : ''}</h4>
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-gray-400"><Loader2 size={24} className="animate-spin mx-auto" /></div>
+        ) : files.length === 0 ? (
+          <div className="p-8 text-center text-gray-400">لا توجد ملفات نسخ احتياطية على السيرفر</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-right text-xs font-bold text-gray-500">اسم الملف</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-gray-500">الحجم</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-gray-500">التاريخ</th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500">تنزيل</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {files.map((f: any) => (
+                <tr key={f.name} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{f.name}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {fmtSize(f.bytes)}
+                    {!f.credible && <span className="mr-1 text-red-600">صغير جدًا</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{new Date(f.at).toLocaleString('ar-EG')}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => download(f.name)}
+                      className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">تنزيل</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-gray-100">
+          {/* Kept, but below the files and named for what it is: a log of runs
+              that recorded themselves, which is not the same as the backups
+              that exist. */}
+          <h4 className="font-bold text-gray-700">سجل عمليات النسخ</h4>
         </div>
         {loading ? (
           <div className="p-8 text-center text-gray-400"><Loader2 size={24} className="animate-spin mx-auto" /></div>

@@ -93,6 +93,16 @@ export const COLOR: Record<string, { bg: string; text: string; border: string }>
   violet:  { bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200'  },
   rose:    { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200'    },
   yellow:  { bg: 'bg-yellow-50',  text: 'text-yellow-700',  border: 'border-yellow-200'  },
+  // The backups section asked for slate and the palette did not have it, so
+  // COLOR['slate'] was undefined and reading .bg off it threw the moment
+  // «النسخ الاحتياطية» was clicked — the settings screen went blank on the one
+  // tab that reports whether the database is being backed up.
+  //
+  // The compiler could not see it: COLOR is a Record<string, …>, so indexing it
+  // with any string is typed as present. SECTIONS is `as const`, so the colours
+  // are literals and the mismatch is checkable — systemSettingsPalette.test.js
+  // now checks it.
+  slate:   { bg: 'bg-slate-50',   text: 'text-slate-700',   border: 'border-slate-200'   },
 };
 
 export function parseContentSections(raw: Record<string, string>): Partial<Record<SectionKey, SectionData>> {
