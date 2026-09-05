@@ -444,7 +444,14 @@ const SYS_DEFAULTS = {
     { key: 'visa',          label: 'فيزا / بطاقة',     icon: '💳', is_active: true },
     { key: 'instapay',      label: 'إنستاباي',         icon: '📱', is_active: true },
     { key: 'bank_transfer', label: 'تحويل بنكي',       icon: '🏦', is_active: true },
-    { key: 'paymob',        label: 'PayMob',            icon: '🔌', is_active: false },
+    // Live. sys_payment_gateway — the stored setting the payment flow actually
+    // reads — has active_provider 'paymob' in mode 'live', and card payments
+    // are arriving. This list said the opposite, and it is the one served
+    // publicly at /api/admin/sys-config/public, so the catalogue the public
+    // pages read disagreed with the gateway that takes the money. Nothing gates
+    // payment on this flag, which is why the contradiction went unnoticed
+    // rather than breaking checkout.
+    { key: 'paymob',        label: 'PayMob',            icon: '🔌', is_active: true },
     { key: 'vodafone_cash', label: 'فودافون كاش',      icon: '📲', is_active: true },
     { key: 'other',         label: 'أخرى',             icon: '📦', is_active: true },
   ],
