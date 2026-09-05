@@ -19,8 +19,13 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
 
   // ── Mini footer (2 lines) — shown in dashboard / payment pages ─────────
   if (mini) {
+    // pb-24 on phones: the WhatsApp and «استفسر الآن» buttons are fixed at
+    // bottom-6 and 56px tall, so they own the bottom 80px of the viewport.
+    // With the old py-3 the copyright line sat 48px underneath them and was
+    // unreadable on every page. Restored to the tight spacing from sm up,
+    // where the buttons no longer sit over the content column.
     return (
-      <footer className="bg-gray-900 border-t border-gray-800 py-3 text-xs text-gray-500 text-center" dir="rtl">
+      <footer className="bg-gray-900 border-t border-gray-800 pt-3 pb-24 sm:pb-3 text-xs text-gray-500 text-center" dir="rtl">
         <p>&copy; {new Date().getFullYear()} معهد الدراسات النفسية — جميع الحقوق محفوظة.</p>
         <p className="mt-1 flex items-center justify-center gap-3 flex-wrap">
           <Link to="/policies" className="hover:text-gray-300 transition">سياسات المعهد</Link>
@@ -38,8 +43,10 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
   }
 
   // ── Full footer ────────────────────────────────────────────────────────
+  // Same clearance as the mini footer: the two fixed action buttons cover the
+  // bottom 80px on a phone, and pb-8 left the copyright line under them.
   return (
-    <footer className="bg-gray-900 text-gray-300 pt-16 pb-8 border-t border-gray-800">
+    <footer className="bg-gray-900 text-gray-300 pt-16 pb-28 sm:pb-8 border-t border-gray-800">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div>

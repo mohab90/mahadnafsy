@@ -674,7 +674,13 @@ const Dashboard: React.FC = () => {
 
   return (
     <>
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 py-6 md:py-8">
+    {/* pb-28 on phones: the «حجز / دفعة» button is fixed at bottom-6 and 44px
+        tall, so it owns the bottom 68px of the viewport. With py-6 alone it sat
+        over the last row of every screen — on العملاء المحتملين it covered the
+        pagination, so «السابق» and the page numbers could not be tapped at all.
+        Restored to the original padding from md up, where the button clears the
+        content column. */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 via-white to-primary-50/30 py-6 pb-28 md:py-8 md:pb-8">
       <div className="container mx-auto px-4">
         <DashboardNavigation
           isSalesOnly={isSalesOnly}

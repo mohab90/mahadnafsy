@@ -6,6 +6,18 @@
   body {
     @apply font-sans antialiased text-gray-900 bg-gray-50 selection:bg-primary-500 selection:text-white scroll-smooth;
   }
+
+  /* The decorative blurred circles are positioned past the right edge and
+     clipped by an overflow-hidden parent, but their sub-pixel rounding still
+     reached the document: at 768px the page measured 763 against a 760
+     viewport and really did scroll — 0.67px of horizontal drift on every
+     tablet-width view of the home, courses and course-detail pages.
+     Clamped here rather than chasing each decoration, since any future one
+     has the same effect. Vertical scrolling is untouched. */
+  html,
+  body {
+    @apply overflow-x-hidden;
+  }
 }
 
 @layer components {

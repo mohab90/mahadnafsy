@@ -1,0 +1,22 @@
+{
+  "name": "لوحة إدارة معهد الدراسات النفسية",
+  "short_name": "إدارة المعهد",
+  "description": "لوحة تشغيل المعهد — العملاء، المبيعات، الحسابات، والموارد البشرية",
+  "start_url": "/dashboard/overview",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "lang": "ar",
+  "dir": "rtl",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"]
+}
