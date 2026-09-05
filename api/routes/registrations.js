@@ -88,8 +88,17 @@ router.get('/api/admin/registrations', requireAuth, requireAdminOrStaff, require
         `SELECT firebase_uid, email, phone FROM subscribers WHERE tenant_id=?`,
         [tenantId]
       ),
+      // Archived leads count as known too. Matching only hidden=0 put every
+      // registration whose lead had been archived back at the top of this
+      // queue as if it were new: 202 rows where 94 needed action, so 108 were
+      // dismissed work reappearing, and converting one would have created a
+      // second lead for someone a colleague had deliberately archived.
+      //
+      // lib/reconcileChecks.js settled this question already — its own comment
+      // records the same hidden=0 comparison inflating its count from 53 to
+      // 173 — and this is the same question, so it gets the same answer.
       pool.query(
-        `SELECT email, phone FROM leads WHERE tenant_id=? AND hidden=0`,
+        `SELECT email, phone FROM leads WHERE tenant_id=?`,
         [tenantId]
       ),
     ]);
@@ -252,12 +261,15 @@ router.delete('/api/admin/registrations/:userId', requireAuth, requireAdminOrSta
          (SELECT 1 FROM subscribers s WHERE s.tenant_id=? AND (s.firebase_uid=?
             OR (? IS NOT NULL AND LOWER(TRIM(s.email))=LOWER(TRIM(?)))
             OR (? IS NOT NULL AND s.phone=?)) LIMIT 1) AS has_subscriber,
-         (SELECT 1 FROM leads l WHERE l.tenant_id=? AND l.hidden=0
+         (SELECT 1 FROM leads l WHERE l.tenant_id=?
             AND ((? IS NOT NULL AND LOWER(TRIM(l.email))=LOWER(TRIM(?)))
               OR (? IS NOT NULL AND REGEXP_REPLACE(l.phone,'[^0-9]','')=?)) LIMIT 1) AS has_lead`,
       [tenantId, userId, user.email, user.email, user.phone, user.phone,
        tenantId, user.email, user.email, user.phone, user.phone]
     );
+    // An archived lead counts as claimed here too: the person is known, and a
+    // login belonging to someone a colleague already triaged is not this
+    // route's to delete. The listing above uses the same definition.
     if (claimed.has_subscriber || claimed.has_lead) {
       return res.status(409).json({ error: 'الحساب ده اتحوّل بالفعل، مينفعش يتحذف من هنا' });
     }
