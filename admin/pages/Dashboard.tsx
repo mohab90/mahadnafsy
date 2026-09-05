@@ -1123,6 +1123,20 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
+            {/* The workspace needs a staff record, and the owner account has a
+                users row without one — so «مساحتي» rendered nothing at all:
+                no message, no spinner, an empty page. Three tabs behaved that
+                way. A screen that cannot draw has to say why. */}
+            {isWorkspaceTab(activeTab) && !currentStaff && (
+              <div className="mx-auto max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center">
+                <h3 className="mb-2 text-base font-bold text-gray-900">مساحة الموظف غير متاحة لحسابك</h3>
+                <p className="text-sm leading-relaxed text-gray-500">
+                  الصفحات دي بتعرض ملفك الوظيفي وبياناتك كموظف، وحسابك الحالي مش مربوط بسجل موظف.
+                  لو المفروض يكون مربوط، أضف السجل من الموارد البشرية ← الموظفين بنفس البريد.
+                </p>
+              </div>
+            )}
+
             </DashboardTabContainer>
           </section>
         </div>

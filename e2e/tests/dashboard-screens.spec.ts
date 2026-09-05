@@ -55,6 +55,14 @@ const SCREENS = [
   'settings_hub', 'system_settings', 'integrations', 'lead_sources_settings',
   'branches_settings', 'branch_workspaces',
   'automation', 'security_center',
+  // These four sit outside navigation.tsx — registrations in
+  // DashboardNavigation.tsx, the three workspace tabs in
+  // DashboardMyWorkspace.tsx — so the tab audit could not see them and this
+  // list never carried them. staff_home was the cost: it renders an empty page
+  // for any account with no staff record, which is what the owner account is,
+  // and nothing was watching the screen that self-service registrations land
+  // on either.
+  'registrations', 'staff_home', 'staff_settings', 'my_hr',
 ];
 
 test.describe('every dashboard screen renders', () => {
