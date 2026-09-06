@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Plus, Tag, UserPlus, X } from 'lucide-react';
 import type { LeadItem, LeadStatus, CommunicationRecord, Course, Bundle } from '../../../../types';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
+import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
 import { courseBadgeLabel, isRawCourse } from './leadCourseLabel';
 import {
   BRANCH_ENUM_LABELS,
@@ -27,6 +28,9 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
   onClose: () => void;
   onSave: (draft: typeof EMPTY_LEAD_DRAFT & { interestedCourseIds: string[] }) => Promise<void>;
 }) {
+  // Escape closes, and focus starts on the first field instead of behind the
+  // overlay on <body>.
+  const panelRef = useModalKeyboard(onClose);
   const [draft, setDraft] = useState({ ...EMPTY_LEAD_DRAFT });
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -66,7 +70,7 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-l from-primary-50 to-white">
           <div className="flex items-center gap-2">
