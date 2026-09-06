@@ -441,10 +441,23 @@ async function customerNotificationViewer(req) {
   return `subscriber:${subscriber.id}`;
 }
 
+// The only types a customer may be shown. Everything else this blob can hold is
+// an internal notice raised for staff, and routes/notifications.js gates each of
+// those behind a permission before an employee sees it. This blob is gated by
+// nothing, so an internal notice that lands here is served to every signed-in
+// customer. It held 100 of them: other customers' names as they joined, and
+// which salesperson each lead had been handed to. The screen that wrote them
+// there was rewired to the real table (NOT-01); this closes the door behind it.
+// An allowlist rather than a blocklist, so a type nobody has classified yet is
+// withheld instead of leaked.
+const CUSTOMER_BROADCAST_TYPES = new Set(['info', 'offer', 'update']);
+
 function activeBroadcasts(items) {
   const now = Date.now();
   return (Array.isArray(items) ? items : []).filter(item => (
-    item?.active !== false && (!item?.expiresAt || Date.parse(item.expiresAt) >= now)
+    CUSTOMER_BROADCAST_TYPES.has(String(item?.type || '').toLowerCase())
+    && item?.active !== false
+    && (!item?.expiresAt || Date.parse(item.expiresAt) >= now)
   ));
 }
 
@@ -520,7 +533,16 @@ router.get('/api/admin/notification-settings', requireAuth, requireAdmin, async 
 
 router.put('/api/admin/notification-settings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await setTenantSetting('notifications', req.body || [], { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
+    // Whatever the admin screen believes it is sending, only a customer
+    // broadcast is stored: this list is read by customers. The 100 internal
+    // notices found here arrived as a whole feed saved back over the list, so
+    // the read filter alone would leave the data sitting in the row.
+    const incoming = Array.isArray(req.body) ? req.body : [];
+    const broadcasts = incoming.filter(item => CUSTOMER_BROADCAST_TYPES.has(String(item?.type || '').toLowerCase()));
+    if (broadcasts.length !== incoming.length) {
+      logger.warn(`[notifications] dropped ${incoming.length - broadcasts.length} non-broadcast item(s) from the customer notification list`);
+    }
+    await setTenantSetting('notifications', broadcasts, { tenantId: req.tenantId, actorId: req.user?.uid || req.user?.email });
     res.json({ ok: true });
   } catch (e) {
     logger.error('[route]', e.message);
