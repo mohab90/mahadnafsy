@@ -156,14 +156,30 @@ const PrintReceiptModal: React.FC<{ data: PrintData; onClose: () => void }> = ({
         </div>
       </div>
     </div>
+    {/* Hidden by visibility, not display.
+      *
+      * This rule was `body > *:not(#payModalPrintReceipt) { display: none }`,
+      * and the receipt is not a child of body — the modal renders inside the
+      * React tree, so it sits under div#root. The rule therefore matched
+      * #root, set it to display:none, and took the receipt down with it: every
+      * printed receipt was a blank page. Nothing on screen showed it, because
+      * the rule only applies to print.
+      *
+      * display:none on an ancestor cannot be undone by a descendant.
+      * visibility:hidden can, which is why this shape survives being nested at
+      * any depth. Kept out of the template literal so the explanation stays in
+      * the source instead of shipping to every browser. */}
     <style>{`
       @media print {
-        body > *:not(#payModalPrintReceipt) { display: none !important; }
+        body * { visibility: hidden !important; }
+        #payModalPrintReceipt, #payModalPrintReceipt * { visibility: visible !important; }
         #payModalPrintReceipt {
+          position: absolute !important; top: 0 !important; right: 0 !important; left: auto !important;
           display: block !important; width: 80mm !important; max-width: 80mm !important;
           margin: 0 !important; padding: 3mm !important; font-size: 10px !important;
           font-family: monospace !important; line-height: 1.4 !important; color: #000 !important;
         }
+        @page { margin: 0; }
       }
     `}</style>
   </div>

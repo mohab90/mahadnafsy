@@ -321,10 +321,21 @@ export function DaqqiNewClientReceiptModal({ receipt, onClose }: ReceiptModalPro
           </div>
         </div>
       </div>
+      {/* Same fault and same fix as components/PaymentModal.tsx: the rule was
+        * `body > *:not(#daqqiPrintReceipt) { display: none }`, which matched
+        * div#root — where this modal actually renders — so the receipt was
+        * hidden along with its own ancestor and every printout came out blank.
+        * display:none on an ancestor cannot be undone from below; visibility
+        * can. Kept out of the template literal so it does not ship. */}
       <style>{`
         @media print {
-          body > *:not(#daqqiPrintReceipt) { display: none !important; }
+          body * { visibility: hidden !important; }
+          #daqqiPrintReceipt, #daqqiPrintReceipt * { visibility: visible !important; }
           #daqqiPrintReceipt {
+            position: absolute !important;
+            top: 0 !important;
+            right: 0 !important;
+            left: auto !important;
             display: block !important;
             width: 80mm !important;
             max-width: 80mm !important;
