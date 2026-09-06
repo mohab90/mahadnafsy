@@ -75,12 +75,19 @@ async function api(path, { method = 'GET', token, body, expected = [200], header
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  // The JWT now arrives as an httpOnly cookie rather than in the body, so the
+  // caller is given a way to reach it. Everything downstream still
+  // authenticates with Bearer, which the API continues to accept.
+  const setCookie = typeof res.headers.getSetCookie === 'function'
+    ? res.headers.getSetCookie().join('; ')
+    : (res.headers.get('set-cookie') || '');
+  const authToken = (setCookie.match(/(?:^|[;\s])authToken=([^;]+)/) || [])[1] || null;
   const statuses = Array.isArray(expected) ? expected : [expected];
   if (!statuses.includes(res.status)) {
     const snippet = typeof data === 'string' ? data.slice(0, 400) : JSON.stringify(data).slice(0, 400);
     throw new Error(`${method} ${path} -> ${res.status}; expected ${statuses.join('/')}; ${snippet}`);
   }
-  return { status: res.status, data };
+  return { status: res.status, data, authToken };
 }
 
 async function hashPassword() {
@@ -180,19 +187,19 @@ async function seedAccounts() {
 }
 
 async function loginAccount(account, headers = {}) {
-  const { data } = await api('/api/auth/login', {
+  const { data, authToken } = await api('/api/auth/login', {
     method: 'POST',
     headers,
     body: { email: account.email, password: PASSWORD },
   });
-  if (!data?.totpRequired) return data;
+  if (!data?.totpRequired) return { ...data, token: data?.token || authToken };
   if (!MFA_ENABLED) throw new Error(`unexpected MFA challenge for ${account.email}`);
   const verified = await api('/api/auth/2fa/verify', {
     method: 'POST',
     headers,
     body: { pendingToken: data.pendingToken, token: await generate({ secret: TOTP_SECRET }) },
   });
-  return verified.data;
+  return { ...verified.data, token: verified.data?.token || verified.authToken };
 }
 
 async function loginAll() {
