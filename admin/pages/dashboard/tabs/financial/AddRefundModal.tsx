@@ -3,6 +3,7 @@ import { Loader2, RotateCcw, Search, X } from 'lucide-react';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { SubscriberItem } from '../../../../types';
+import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -21,6 +22,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
   notify: NotifyFn;
 }) {
   const { subscribers } = useSiteData();
+  const panelRef = useModalKeyboard(onClose);
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');
   const [subscriberId, setSubscriberId] = useState('');
@@ -73,7 +75,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={event => event.stopPropagation()}>
+      <div ref={panelRef} className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-l from-rose-50 to-white">
           <h3 className="font-bold text-gray-900 flex items-center gap-2"><RotateCcw size={17} className="text-rose-600" />إضافة استرداد</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1"><X size={18} /></button>

@@ -5,6 +5,7 @@ import {
   type PermissionKey, type RoleKey,
 } from '../../../../constants/permissions';
 import { useBranches } from '../../../../hooks/useBranches';
+import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -55,6 +56,7 @@ export default function StaffOnboardModal({
   notify: Notify;
 }) {
   const branches = useBranches();
+  const panelRef = useModalKeyboard(onClose);
   const blankForm = useCallback((): OnboardResult => ({
     name: initial?.name || '', email: initial?.email || '', phone: initial?.phone || '',
     password: '', role: initial?.role || 'SALES', position: initial?.position || '',
@@ -105,7 +107,7 @@ export default function StaffOnboardModal({
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4" dir="rtl"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div ref={panelRef} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-indigo-50 px-5 py-4">
           <h3 className="flex items-center gap-2 font-extrabold text-gray-900">
             <ShieldCheck size={17} className="text-indigo-600" /> {title}

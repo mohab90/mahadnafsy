@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Course, PaymentItemType, SubscriberItem } from '../../../../types';
 import { paymentTypeLabels, type IncomeDraft } from './financialTabUtils';
+import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
 
 interface IncomeModalProps {
   incomeDraft: IncomeDraft;
@@ -21,9 +22,10 @@ export function IncomeModal({
   onSave,
   onClose,
 }: IncomeModalProps) {
+  const panelRef = useModalKeyboard(onClose);
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" dir="rtl" onClick={(event) => event.stopPropagation()}>
+      <div ref={panelRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" dir="rtl" onClick={(event) => event.stopPropagation()}>
         <h3 className="text-lg font-bold text-gray-900 mb-1">إضافة دخل يدوي</h3>
         <p className="text-sm text-gray-500 mb-4">يُضاف للمشترك المحدد في سجل المدفوعات</p>
         <div className="space-y-3">

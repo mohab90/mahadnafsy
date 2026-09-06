@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw, Settings, Wifi, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useModalKeyboard } from '../../../components/shared/useModalKeyboard';
 
 export type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 export type GSheet = { id: string; name: string; sheetId: string; gid: string; autoSync: boolean; defaultCourse?: string };
@@ -67,6 +68,7 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
   onSynced: () => void;
 }) {
   const [tab, setTab] = useState<'sources' | 'assign' | 'pipeline' | 'gsheet'>('sources');
+  const panelRef = useModalKeyboard(onClose);
   const [settings, setSettings] = useState<CrmSettings>(DEFAULT_CRM_SETTINGS);
   const [pipeline, setPipeline] = useState<CrmPipelineStage[]>([]);
   const [assignmentMembers, setAssignmentMembers] = useState<AssignmentMember[]>([]);
@@ -175,7 +177,7 @@ export function CrmSettingsModal({ onClose, notify, salesReps, branchOptions = [
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-l from-indigo-50 to-white">
           <div className="flex items-center gap-2">

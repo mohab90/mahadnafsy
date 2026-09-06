@@ -1,6 +1,7 @@
 import { CreditCard, X } from 'lucide-react';
 import type { PaymentItemType, SubscriberItem, Bundle, Course } from '../../../../types';
 import { parsePaymentMethods } from '../../../../lib/paymentMethods';
+import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
 
 export type DaqqiPayDraft = {
   bookingType: 'new_booking' | 'installment';
@@ -42,6 +43,9 @@ const certTypeLabels: Record<string, string> = {
 };
 
 export function DaqqiPayModal({ modal, draft, setDraft, onClose, onSubmit, subscribers, courses, bundles, content }: Props) {
+  // Called before the early return, and told whether it is live — a hook after
+  // `if (!modal) return null` would run on some renders and not others.
+  const panelRef = useModalKeyboard(onClose, !!modal);
   if (!modal) return null;
 
   const payModalSub = subscribers.find(s => s.id === modal.subscriberId);
@@ -82,7 +86,7 @@ export function DaqqiPayModal({ modal, draft, setDraft, onClose, onSubmit, subsc
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-auto" dir="rtl" onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-auto" dir="rtl" onClick={e => e.stopPropagation()}>
         {/* ── Header ── */}
         <div className="bg-gradient-to-l from-red-700 to-red-500 px-5 py-4 rounded-t-3xl sm:rounded-t-2xl">
           <div className="flex items-center justify-between">

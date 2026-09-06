@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserCheck, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { ROLE_LABELS } from '../../../../constants/permissions';
+import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
 
 /**
  * The hire form.
@@ -28,6 +29,7 @@ interface Props {
 
 const HireModal: React.FC<Props> = ({ applicant, notify, onClose, onHired }) => {
   const [email, setEmail] = useState(applicant.email || '');
+  const panelRef = useModalKeyboard<HTMLFormElement>(onClose);
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('SUPPORT');
   const [saving, setSaving] = useState(false);
@@ -67,6 +69,7 @@ const HireModal: React.FC<Props> = ({ applicant, notify, onClose, onHired }) => 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <form
+        ref={panelRef}
         onClick={event => event.stopPropagation()}
         onSubmit={submit}
         className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-2xl"
