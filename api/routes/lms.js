@@ -1053,74 +1053,13 @@ router.patch('/api/admin/referrals/:id/earnings', requireAuth, requireAdmin, asy
 // Public to authenticated clients — list posts (top-level only by default)
 // (removed dead duplicate GET /api/community/posts — live in an earlier-mounted router)
 
-// GET /api/community/posts/:id — single post with replies
-router.get('/api/community/posts/:id', requireAuth, async (req, res) => {
-  try {
-    const [[post]] = await pool.query(
-      `SELECT id, author_id, author_name, course_id, parent_id, title, body, upvotes, is_pinned, is_hidden, created_at, updated_at
-       FROM forum_posts WHERE tenant_id=? AND id=? AND is_hidden=0`, [req.tenantId, req.params.id]
-    );
-    if (!post) return res.status(404).json({ error: 'Post not found' });
-    const [replies] = await pool.query(
-      `SELECT id, author_id, author_name, course_id, parent_id, title, body, upvotes, is_pinned, is_hidden, created_at, updated_at
-       FROM forum_posts WHERE tenant_id=? AND parent_id=? AND is_hidden=0 ORDER BY created_at ASC`,
-      [req.tenantId, req.params.id]
-    );
-    res.json({ post, replies });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// NOTE: POST /api/community/posts (forum_posts) was here too but collided with
-// community.js (which mounts first) and no frontend calls forum_posts — removed
-// to end the route collision. The distinct /:id/upvote route stays below.
-
-// POST /api/community/posts/:id/upvote — toggle upvote
-router.post('/api/community/posts/:id/upvote', requireAuth, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const sub = await resolveSubscriberRow(req, ['id'], conn);
-    if (!sub) return res.status(403).json({ error: 'Subscriber required' });
-    await conn.beginTransaction();
-    const [[post]] = await conn.query('SELECT id FROM forum_posts WHERE tenant_id=? AND id=? AND is_hidden=0 FOR UPDATE', [req.tenantId, req.params.id]);
-    if (!post) {
-      await conn.rollback();
-      return res.status(404).json({ error: 'Post not found' });
-    }
-
-    const [[existing]] = await conn.query('SELECT 1 FROM forum_upvotes WHERE tenant_id=? AND post_id=? AND subscriber_id=?',
-      [req.tenantId, req.params.id, sub.id]);
-
-    if (existing) {
-      await conn.query('DELETE FROM forum_upvotes WHERE tenant_id=? AND post_id=? AND subscriber_id=?', [req.tenantId, req.params.id, sub.id]);
-      await conn.query('UPDATE forum_posts SET upvotes=GREATEST(0, upvotes-1) WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
-      await conn.commit();
-      res.json({ upvoted: false });
-    } else {
-      await conn.query('INSERT INTO forum_upvotes (tenant_id, post_id, subscriber_id) VALUES (?,?,?)', [req.tenantId, req.params.id, sub.id]);
-      await conn.query('UPDATE forum_posts SET upvotes=upvotes+1 WHERE tenant_id=? AND id=?', [req.tenantId, req.params.id]);
-      await conn.commit();
-      res.json({ upvoted: true });
-    }
-  } catch (e) {
-    await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
-  } finally { conn.release(); }
-});
-
-// PATCH /api/admin/community/posts/:id — admin: pin/hide post
-router.patch('/api/admin/community/posts/:id', requireAuth, requireAdminOrStaff, requirePermission('manage_community'), async (req, res) => {
-  try {
-    const { is_pinned, is_hidden } = req.body;
-    const fields = []; const params = [];
-    if (is_pinned !== undefined) { fields.push('is_pinned = ?'); params.push(is_pinned ? 1 : 0); }
-    if (is_hidden !== undefined) { fields.push('is_hidden = ?'); params.push(is_hidden ? 1 : 0); }
-    if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
-    params.push(req.tenantId, req.params.id);
-    const [result] = await pool.query(`UPDATE forum_posts SET ${fields.join(', ')} WHERE tenant_id=? AND id=?`, params);
-    if (!result.affectedRows) return res.status(404).json({ error: 'Post not found' });
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// The forum lived here: GET /api/community/posts/:id, its upvote toggle and an
+// admin pin/hide, all three against forum_posts and forum_upvotes. Nothing in
+// either app ever called any of them — the community screens use
+// community_posts through community.js, which mounts first and owns the PATCH
+// and DELETE on this same path. The detail route was reading the wrong table
+// entirely, so it would have answered 404 for every real post had anyone wired
+// it up. Removed with the tables left in place, since they still hold rows.
 
 // DELETE /api/admin/community/posts/:id — admin delete
 // (removed dead duplicate DELETE /api/admin/community/posts/:id — live in an earlier-mounted router)

@@ -46,13 +46,20 @@ test('community cache and subscriber identity are tenant-bound', () => {
   }
 });
 
-test('forum detail, upvote and moderation are tenant-bound and transactional', () => {
-  const forumWindow = lms.slice(lms.indexOf("router.get('/api/community/posts/:id'"), lms.indexOf('module.exports = router'));
-  assert.match(forumWindow, /forum_posts WHERE tenant_id=\?/);
-  assert.match(forumWindow, /forum_upvotes WHERE tenant_id=\?/);
-  assert.match(forumWindow, /beginTransaction\(\)/);
-  assert.match(forumWindow, /commit\(\)/);
-  assert.match(forumWindow, /rollback\(\)/);
+test('the forum routes are gone, not merely unused', () => {
+  // This used to assert that the forum detail, upvote and moderation routes
+  // were tenant-bound — three routes on forum_posts that nothing in either app
+  // had ever called. The detail one read the wrong table and would have
+  // answered 404 for every real community post. A test that guards code no
+  // caller reaches keeps it alive and makes it look maintained.
+  // Matched against the code with comments stripped: the note left in place of
+  // the routes names the tables it removed, and an assertion that the file no
+  // longer mentions them would be answered by that sentence.
+  const code = lms.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  assert.doesNotMatch(code, /router\.get\('\/api\/community\/posts\/:id'/);
+  assert.doesNotMatch(code, /router\.post\('\/api\/community\/posts\/:id\/upvote'/);
+  assert.doesNotMatch(code, /router\.patch\('\/api\/admin\/community\/posts\/:id'/);
+  assert.doesNotMatch(code, /forum_upvotes|forum_posts/);
 });
 
 test('customer post creation is rate limited (MKT-16)', () => {
