@@ -209,24 +209,11 @@ router.delete('/api/admin/lms/cohorts/:id/members/:subscriberId', requireAuth, r
   }
 });
 
-router.get('/api/me/cohorts', requireAuth, async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      `SELECT ch.id,ch.title,ch.course_id AS courseId,c.title AS courseTitle,
-              ch.starts_at AS startsAt,ch.ends_at AS endsAt,ch.status
-         FROM cohort_members cm
-         JOIN subscribers s ON s.id=cm.subscriber_id AND s.tenant_id=cm.tenant_id
-         JOIN course_cohorts ch ON ch.id=cm.cohort_id AND ch.tenant_id=cm.tenant_id
-         JOIN courses c ON c.id=ch.course_id AND c.tenant_id=ch.tenant_id
-        WHERE cm.tenant_id=? AND LOWER(TRIM(s.email))=? AND cm.status='active'
-        ORDER BY ch.starts_at DESC`,
-      [req.tenantId, String(req.user.email || '').toLowerCase().trim()]
-    );
-    res.json(rows);
-  } catch {
-    res.status(500).json({ error: 'Unable to load cohorts' });
-  }
-});
+// GET /api/me/cohorts is gone: nothing in either app, the e2e suite or the
+// tools ever called it. It also identified the caller by email alone, which is
+// the lookup this codebase has been removing everywhere else — a customer with
+// no email matched nobody, and two sharing one matched each other. The cohorts
+// feature itself stays; only the unreachable endpoint went.
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── FEATURE v23: Progress Tracking ───────────────────────────────────────────
@@ -450,25 +437,10 @@ router.patch('/api/admin/live-sessions/:id', requireAuth, requireAdmin, async (r
   } catch (e) { res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' }); }
 });
 
-// GET /api/me/live-sessions — get upcoming live sessions for enrolled courses
-router.get('/api/me/live-sessions', requireAuth, async (req, res) => {
-  try {
-    const subscriberId = await resolveSubscriberId(req);
-    if (!subscriberId) return res.json([]);
-    const [rows] = await pool.query(`
-      SELECT ls.id, ls.course_id, ls.title, ls.platform, ls.meeting_url,
-             ls.meeting_id, ls.meeting_pass, ls.starts_at, ls.duration_min,
-             ls.status, ls.recording_url, ls.notes, c.title AS course_title
-      FROM live_sessions ls
-       JOIN courses c ON c.id=ls.course_id AND c.tenant_id=ls.tenant_id
-       JOIN enrollments e ON e.course_id=ls.course_id AND e.subscriber_id=? AND e.tenant_id=ls.tenant_id
-       WHERE ls.tenant_id=? AND e.status='active' AND ls.starts_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
-        AND ls.status IN ('scheduled','live')
-      ORDER BY ls.starts_at ASC
-    `, [subscriberId, req.tenantId]);
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
-});
+// GET /api/me/live-sessions is gone for the same reason: no caller anywhere.
+// The customer's live sessions come from /api/live-streams, a separate feature
+// with its own table — this one handed out meeting_url, meeting_id and
+// meeting_pass from live_sessions to a screen that never asked for them.
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── FEATURE v23: Email Sequences ─────────────────────────────────────────────

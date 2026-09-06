@@ -847,7 +847,29 @@ router.get('/api/live-streams', requireAuth, async (req, res) => {
       const targetIds = tryJson(row.target_course_ids_json, []);
       return Array.isArray(targetIds) && targetIds.some(id => enrolledCourseIds.has(id));
     });
-    res.json(visible);
+    // Mapped for the same reason the consultations list is: these went out raw,
+    // and the screen reads scheduledAt, streamUrl, instructorName and
+    // durationMinutes off a row carrying scheduled_at, stream_url,
+    // instructor_name and duration_minutes. The client casts the response
+    // straight to its own type, so nothing failed loudly — the session list drew
+    // with no presenter, no time and no way to join, and «مباشر الآن» never lit
+    // because the enum is upper case and the screen compares it in lower.
+    res.json(visible.map(row => ({
+      id: row.id,
+      title: row.title,
+      instructorId: row.instructor_id || undefined,
+      instructorName: row.instructor_name || '',
+      scheduledAt: row.scheduled_at,
+      durationMinutes: row.duration_minutes != null ? Number(row.duration_minutes) : undefined,
+      streamUrl: row.stream_url || '',
+      platform: String(row.platform || '').toLowerCase() || undefined,
+      visibility: String(row.visibility || '').toLowerCase(),
+      targetCourseIds: tryJson(row.target_course_ids_json, []),
+      status: String(row.status || '').toLowerCase(),
+      recordingUrl: row.recording_url || undefined,
+      description: row.description || undefined,
+      createdAt: row.created_at,
+    })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -1016,7 +1038,26 @@ router.get('/api/me/consultations', requireAuth, async (req, res) => {
        LEFT JOIN therapists t ON t.id = c.therapist_id
        WHERE (${clauses.join(' OR ')}) AND c.tenant_id=?
        ORDER BY c.session_date DESC LIMIT 100`, [...params, req.tenantId]);
-    res.json(rows);
+    // The rows went out raw, and the screen reads camelCase: therapistName,
+    // sessionDate, sessionType and meetingLink were all undefined against a row
+    // carrying t_name, session_date, session_type and meeting_link. A customer's
+    // confirmed consultation drew as «استشارة» with no therapist, no date and no
+    // way in — the join button is gated on the link and on the status, and the
+    // status arrives from an uppercase enum the screen compares in lower case.
+    res.json(rows.map(row => ({
+      id: row.id,
+      therapistName: row.t_name || null,
+      therapistSpecialty: row.t_specialty || null,
+      therapistImage: row.t_image || null,
+      status: String(row.status || '').toLowerCase(),
+      sessionDate: row.session_date || null,
+      sessionType: String(row.session_type || '').toLowerCase(),
+      durationMinutes: row.session_duration_minutes != null ? Number(row.session_duration_minutes) : null,
+      timezone: row.timezone || null,
+      amount: row.amount != null ? Number(row.amount) : undefined,
+      currency: row.currency || null,
+      meetingLink: row.meeting_link || null,
+    })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

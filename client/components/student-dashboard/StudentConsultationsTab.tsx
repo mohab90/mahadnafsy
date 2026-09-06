@@ -3,14 +3,29 @@ import { Calendar, ChevronRight, Clock, MessageSquare, Phone, User, Video } from
 
 type Consultation = {
   id: string;
-  therapistName?: string;
+  therapistName?: string | null;
   status?: string;
-  sessionDate?: string;
-  slotLabel?: string;
+  sessionDate?: string | null;
   sessionType?: string;
+  durationMinutes?: number | null;
   amount?: number;
-  currency?: string;
-  meetingLink?: string;
+  currency?: string | null;
+  meetingLink?: string | null;
+};
+
+// The row carries a datetime; printing it raw put an ISO string on the card.
+//
+// Read as wall-clock text rather than converted through a timezone. The server
+// runs in UTC and the connection sets none, so the stored value is whatever the
+// desk typed — and the admin shows it the same way, by slicing the string. Any
+// conversion here would show the customer a different hour from the one the
+// person who booked them is looking at.
+const formatSession = (value?: string | null) => {
+  const text = String(value || '');
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, y, m, d, hh, mm] = match;
+  return { date: `${d}/${m}/${y}`, time: `${hh}:${mm}` };
 };
 
 type StudentConsultationsTabProps = {
@@ -58,7 +73,9 @@ export function StudentConsultationsTab({ consultations }: StudentConsultationsT
 
   return (
     <div className="max-w-3xl space-y-4">
-      {consultations.map((consultation) => (
+      {consultations.map((consultation) => {
+        const session = formatSession(consultation.sessionDate);
+        return (
         <div
           key={consultation.id}
           className="glass-card-premium flex flex-col gap-4 rounded-2xl border border-white/50 bg-white/70 p-5 shadow-xl shadow-gray-200/50 backdrop-blur-xl transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl hover:shadow-primary-500/20 sm:flex-row"
@@ -74,11 +91,14 @@ export function StudentConsultationsTab({ consultations }: StudentConsultationsT
               </span>
             </div>
             <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-              {consultation.sessionDate && (
-                <span className="flex items-center gap-1"><Calendar size={11} /> {consultation.sessionDate}</span>
+              {session && (
+                <span className="flex items-center gap-1"><Calendar size={11} /> {session.date}</span>
               )}
-              {consultation.slotLabel && (
-                <span className="flex items-center gap-1"><Clock size={11} /> {consultation.slotLabel}</span>
+              {session && (
+                <span className="flex items-center gap-1">
+                  <Clock size={11} /> {session.time}
+                  {consultation.durationMinutes ? ` · ${consultation.durationMinutes} دقيقة` : ''}
+                </span>
               )}
               {consultation.sessionType && (
                 <span className="flex items-center gap-1">
@@ -104,7 +124,8 @@ export function StudentConsultationsTab({ consultations }: StudentConsultationsT
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
       <div className="pt-2">
         <Link to="/consultations" className="inline-flex items-center gap-2 text-sm font-bold text-primary-600 hover:text-primary-700">
           <Phone size={15} /> احجز استشارة جديدة <ChevronRight size={14} className="rtl:rotate-180" />
