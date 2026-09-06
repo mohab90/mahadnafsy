@@ -87,7 +87,11 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
       const journalId = await postPaymentJournal({
         paymentId: id, amount: rawAmount, currency: payment.currency, payType: payment.payment_type,
-        date: String(payment.date || new Date().toISOString()).slice(0, 10), actor, tenantId,
+        // Passed as it came out of the row. payments.date is DATETIME, so this
+        // is a Date, and slicing its string form gave «Wed Jul 15» — which the
+        // journal rejected, making every approval answer 500. postPaymentJournal
+        // normalises whichever form it is handed.
+        date: payment.date || new Date(), actor, tenantId,
       }, conn);
       if (!journalId) throw new Error('Payment journal posting failed');
     }

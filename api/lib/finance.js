@@ -144,6 +144,25 @@ async function postJournalEntry(refType, refId, entryDate, description, lines, p
 }
 
 // Returns [accountCode, accountName] for a given payment type.
+/**
+ * The entry date, from whichever form the caller happens to be holding.
+ *
+ * payments.date and expenses.date are DATETIME, and the pool sets dateStrings
+ * for DATE only — so a row read back from MySQL carries a Date object, not a
+ * string. Callers that had one wrote `String(row.date).slice(0, 10)`, which is
+ * not a date but the first ten characters of "Wed Jul 15 2026 00:00:00 GMT…":
+ * «Wed Jul 15». postJournalEntry rejects that as invalid, returns null, and the
+ * caller reports a failure it cannot explain — approving a pending payment from
+ * the finance review queue answered 500 every time, for every payment.
+ *
+ * Normalising here rather than at each call site, because the next caller to
+ * hold a row will make the same reasonable-looking mistake.
+ */
+function journalDate(value) {
+  if (value instanceof Date) return dateOnlyInTimeZone(value);
+  return String(value || '').slice(0, 10);
+}
+
 function _paymentAccountCode(paymentType) {
   const map = {
     COURSE:       ['4100', 'إيرادات كورسات'],
@@ -263,7 +282,8 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
       branch = branch || paymentScope?.branch || null;
       branchId = branchId || paymentScope?.branch_id || null;
     }
-    const journalId = await postJournalEntry('payment', paymentId, date || dateOnlyInTimeZone(),
+    const entryDate = journalDate(date) || dateOnlyInTimeZone();
+    const journalId = await postJournalEntry('payment', paymentId, entryDate,
       `دفعة ${amount} ${currency || 'EGP'} (= ${amtEgp} EGP) — ${payType || 'OTHER'}`,
       [
         { account_code: '1100', account_name: 'نقدية وبنوك', debit: amtEgp, credit: 0 },
@@ -282,7 +302,7 @@ async function postPaymentJournal({ paymentId, amount, currency, payType, date, 
       branch_id: branchId,
       amount,
       currency: normalizedCurrency,
-      date: date || dateOnlyInTimeZone(),
+      date: entryDate,
     }, actor || 'system');
     return journalId;
   } catch (e) { logger.warn('[finance] postPaymentJournal error:', e.message); return null; }
@@ -308,7 +328,7 @@ async function postExpenseJournal(expense, sign, actor, db = pool, tenantId = ex
       : parseFloat(((Number(expense.amount) || 0) * appliedRate).toFixed(2));
     if (!amt) return null;
     const [accCode, accName] = _expenseAccountCode(expense.category);
-    const dateStr = String(expense.date || new Date().toISOString()).slice(0, 10);
+    const dateStr = journalDate(expense.date) || dateOnlyInTimeZone();
     const label = sign > 0
       ? `مصروف ${expense.amount} ${expense.currency || 'EGP'} (= ${amt} EGP) — ${expense.description || accName}`
       : `عكس مصروف ${expense.amount} ${expense.currency || 'EGP'} (= ${amt} EGP) — ${expense.description || accName}`;
