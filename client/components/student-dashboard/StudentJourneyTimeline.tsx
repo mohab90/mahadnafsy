@@ -21,18 +21,43 @@ const categoryMeta = {
   order: { icon: ShoppingBag, color: 'bg-slate-100 text-slate-700' },
 };
 
+// Matched case-insensitively. event_type is built server-side as
+// CONCAT('order_', o.status) and orders store PENDING/PAID in upper case, so
+// 'order_paid' never matched anything — every order fell through to the branch
+// below and was drawn as the item's own title next to a green amount. To a
+// customer who had only sent a transfer screenshot, their page said
+// "تدريب المدربين — 2,805 EGP" and read as a completed payment.
+const LABELS: Record<string, string> = {
+  entitlement_granted: 'تم تفعيل الاشتراك',
+  entitlement_revoked: 'تم إلغاء الاشتراك',
+  certificate_issued: 'تم إصدار الشهادة',
+  certificate_revoked: 'تم إلغاء الشهادة',
+  certificate_reissued: 'تمت إعادة إصدار الشهادة',
+  payment_paid: 'تم تأكيد الدفع',
+  payment_pending: 'في انتظار تأكيد الحسابات',
+  payment_refunded: 'تم رد الدفعة',
+  order_paid: 'تم سداد الطلب',
+  order_pending: 'في انتظار تأكيد الحسابات',
+  order_cancelled: 'تم إلغاء الطلب',
+  order_failed: 'لم يكتمل الطلب',
+};
+
+/** Nothing here is money the institute has confirmed receiving. */
+const isConfirmed = (event: TimelineEvent) => {
+  const type = (event.event_type || '').toLowerCase();
+  if (type.startsWith('order_') || type.startsWith('payment_')) {
+    return type.endsWith('_paid') || type.endsWith('_refunded');
+  }
+  return true;
+};
+
 const eventLabel = (event: TimelineEvent) => {
-  const labels: Record<string, string> = {
-    entitlement_granted: 'تم تفعيل الاشتراك',
-    entitlement_revoked: 'تم إلغاء الاشتراك',
-    certificate_issued: 'تم إصدار الشهادة',
-    certificate_revoked: 'تم إلغاء الشهادة',
-    certificate_reissued: 'تمت إعادة إصدار الشهادة',
-    payment_paid: 'تم تأكيد الدفع',
-    payment_refunded: 'تم رد الدفعة',
-    order_paid: 'تم سداد الطلب',
-  };
-  return labels[event.event_type] || event.title || event.status;
+  const label = LABELS[(event.event_type || '').toLowerCase()];
+  if (label) return label;
+  // An unrecognised money state must not borrow the item's title and look
+  // settled — say plainly that it is still with the accounts team.
+  if (!isConfirmed(event)) return 'في انتظار تأكيد الحسابات';
+  return event.title || event.status;
 };
 
 export function StudentJourneyTimeline() {
@@ -62,8 +87,20 @@ export function StudentJourneyTimeline() {
                   <div>
                     <p className="text-sm font-bold text-gray-800">{eventLabel(event)}</p>
                     <p className="text-xs text-gray-500 truncate">{event.title}</p>
+                    {!isConfirmed(event) && (
+                      <span className="mt-1 inline-block rounded-lg bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                        لم يتم تأكيد الدفع بعد
+                      </span>
+                    )}
                   </div>
-                  {event.amount != null && <span className="text-xs font-bold text-emerald-700">{Number(event.amount).toLocaleString()} {event.currency}</span>}
+                  {/* Amber, not emerald: green is the colour of money received,
+                      and an unconfirmed amount shown in it is the whole reason
+                      a submitted screenshot looked like a completed payment. */}
+                  {event.amount != null && (
+                    <span className={`text-xs font-bold ${isConfirmed(event) ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {Number(event.amount).toLocaleString()} {event.currency}
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-gray-400 mt-1">{new Date(event.occurred_at).toLocaleString('ar-EG-u-nu-latn')}</p>
               </div>

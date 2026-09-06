@@ -434,7 +434,11 @@ const Checkout: React.FC = () => {
                       {proofError && <p className="text-red-600 text-xs mb-2">{proofError}</p>}
                       <button onClick={submitProof} disabled={proofSubmitting || !proofImage}
                         className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition text-sm mb-3">
-                        {proofSubmitting ? <><Loader2 size={16} className="animate-spin" /> جارٍ الإرسال...</> : 'إرسال الإيصال وتفعيل الوصول'}
+                        {/* The button used to say "وتفعيل الوصول". Sending a
+                            receipt does not activate anything — it creates a
+                            PENDING payment proof for the accounts team, which
+                            is what the confirmation below correctly says. */}
+                        {proofSubmitting ? <><Loader2 size={16} className="animate-spin" /> جارٍ الإرسال...</> : 'إرسال الإيصال للمراجعة'}
                       </button>
 
                       {whatsapp && (
