@@ -68,6 +68,20 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
     }
 
     const becomingPaid = status === 'paid';
+    // Approving is the other way a payment reaches paid, and it is the moment
+    // the accounts team says the money arrived — so it is where the method has
+    // to be known. Recording one already refuses to settle without it; without
+    // the same rule here a pending row with no method would simply be approved
+    // into the same unreconcilable state (see subscriber-payments.js).
+    //
+    // Nothing can edit a stored method, so an approver who finds one missing is
+    // asked for it here rather than being left with a row they cannot approve.
+    const suppliedMethod = String(req.body.paymentMethod || req.body.payment_method || '').trim().slice(0, 100);
+    const settledMethod = String(payment.payment_method || '').trim() || suppliedMethod;
+    if (becomingPaid && !settledMethod) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(400).json({ error: 'لازم تحدد طريقة الدفع قبل ما تأكد السداد. من غيرها مش هيبقى معروف الفلوس وصلت إزاي.' });
+    }
     if (becomingPaid) {
       const rawAmount = Number(payment.amount) || 0;
       if (rawAmount <= 0) throw new Error('Paid payment must have a positive amount');
@@ -80,10 +94,11 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
 
     await conn.query(
       `UPDATE payments
-       SET status=?, note=CASE WHEN ?='' THEN note
+       SET status=?, payment_method=?, note=CASE WHEN ?='' THEN note
          ELSE CONCAT(COALESCE(note,''),IF(COALESCE(note,'')='','',' | '),'Review: ',?) END
        WHERE id=? AND tenant_id=? AND deleted_at IS NULL`,
-      [status, String(reviewNote || ''), String(reviewNote || ''), id, tenantId]
+      [status, settledMethod || payment.payment_method || null,
+        String(reviewNote || ''), String(reviewNote || ''), id, tenantId]
     );
 
     if (becomingPaid && payment.subscriber_id) {

@@ -120,6 +120,11 @@ export default function OrdersTab({
   updateOrderStatus, addOrder, deleteOrder, reloadOrders, reloadSubscribers, exportFilteredOrdersCsv,
 }: Props) {
   const navigate = useNavigate();
+  // Approving is when the accounts team says the money arrived, so it is when
+  // the method has to be known — and older rows reached the review queue
+  // without one. Nothing else can edit a stored method, so it is asked for
+  // here rather than leaving a payment that can never be approved.
+  const [approveMethod, setApproveMethod] = React.useState<Record<string, string>>({});
 
   const handleConfirmOrder = async (row: OrderItem) => {
     if (!canManageFinancial) {
@@ -245,6 +250,7 @@ export default function OrdersTab({
                             const payCur = (p as {currency?:string}).currency||'EGP';
                             const currSymbol = payCur==='SAR'?'ر.س':payCur==='USD'?'$':'ج';
                             const payId = (p as {id?:string}).id||`${i}`;
+                            const storedMethod = ((p as {paymentMethod?:string}).paymentMethod||'').trim();
                             return (
                               <tr key={payId} className={`hover:bg-emerald-50/20 ${isPending?'bg-amber-50/40':''}`}>
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] font-mono text-gray-400">#{payId.slice(-6)}</td>
@@ -268,15 +274,26 @@ export default function OrdersTab({
                                 {omOrdReviewTab==='review' && canManageFinancial && (
                                   <td className="px-2 py-2 border border-gray-200 text-center">
                                     <div className="flex items-center justify-center gap-1">
-                                       <button onClick={async()=>{
+                                       {!storedMethod && (
+                                         <select
+                                           aria-label="طريقة الدفع"
+                                           value={approveMethod[payId] || ''}
+                                           onChange={e=>setApproveMethod(prev=>({ ...prev, [payId]: e.target.value }))}
+                                           className={`text-[10px] rounded-lg px-1 py-1 border-2 font-bold ${approveMethod[payId] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
+                                         >
+                                           <option value="">طريقة الدفع…</option>
+                                           {parsePaymentMethods(content['finance.payment_methods']).map((m: string) => <option key={m} value={m}>{m}</option>)}
+                                         </select>
+                                       )}
+                                       <button disabled={!storedMethod && !approveMethod[payId]} onClick={async()=>{
                                          try {
-                                           await mysqlAdmin.updatePaymentStatus(payId, 'paid');
+                                           await mysqlAdmin.updatePaymentStatus(payId, 'paid', undefined, approveMethod[payId] || undefined);
                                            await Promise.all([reloadSubscribers(), reloadOrders()]);
                                            notify('success', 'تم اعتماد الدفعة وإنشاء القيد المحاسبي ✅');
                                          } catch (error) {
                                            notify('error', error instanceof Error ? error.message : 'تعذر اعتماد الدفعة');
                                          }
-                                       }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg font-bold">قبول</button>
+                                       }} className="text-xs bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-2 py-1 rounded-lg font-bold">قبول</button>
                                        <button onClick={async()=>{
                                          try {
                                            await mysqlAdmin.updatePaymentStatus(payId, 'failed');

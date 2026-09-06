@@ -245,6 +245,22 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
       return res.status(400).json({ error: 'Invalid payment date' });
     }
     const isPaid = storedStatus === 'paid';
+    // A settled payment has to say how the money arrived.
+    //
+    // 192 paid rows on production carry no method, and one of them is why a
+    // customer was shown «تم تأكيد الدفع 2800 جنيه» for a transfer nobody could
+    // find: the row said paid, named no method, and appeared in no provider
+    // report, so there was nothing to reconcile it against and no way to tell
+    // whether the money had arrived. The modal draws the field as required and
+    // will not submit without it, but an empty string arriving here became NULL
+    // and was stored as paid regardless.
+    //
+    // Only a settled payment is held to it. A pending one is still being sorted
+    // out, and that is exactly when the method may not be known yet.
+    const resolvedMethod = sanitize(payment.paymentMethod || payment.payment_method || '', 100) || null;
+    if (isPaid && !resolvedMethod) {
+      return res.status(400).json({ error: 'لازم تحدد طريقة الدفع قبل ما تأكد السداد. من غيرها مش هيبقى معروف الفلوس وصلت إزاي.' });
+    }
     const courseId = payment.courseId || payment.course_id || null;
     const bundleId = payment.bundleId || payment.bundle_id || null;
     if (courseId && bundleId) return res.status(400).json({ error: 'Payment cannot target a course and bundle together' });
@@ -526,7 +542,7 @@ router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, 
         paymentAmount,
         paymentCurrency,
         safeType,
-        sanitize(payment.paymentMethod || payment.payment_method || '', 100) || null,
+        resolvedMethod,
         sanitize(payment.transactionId || payment.transaction_id || '', 191) || null,
         payment.isInstallment ? 1 : 0,
         resolvedExpected,

@@ -720,10 +720,13 @@ export const mysqlAdmin = {
       { method: 'POST', body: JSON.stringify({ lead_id, payment, subscriber }) },
       A,
     ),
-  updatePaymentStatus: (id: string, status: 'paid' | 'failed' | 'pending', reviewNote?: string) =>
+  // paymentMethod is only needed when settling a payment that was stored
+  // without one — the API refuses to mark money received without saying how it
+  // arrived, and nothing else can edit a stored method.
+  updatePaymentStatus: (id: string, status: 'paid' | 'failed' | 'pending', reviewNote?: string, paymentMethod?: string) =>
     apiFetch<{ ok: boolean; id: string; status: string }>(
       `/admin/payments/${encodeURIComponent(id)}/status`,
-      { method: 'PATCH', body: JSON.stringify({ status, reviewNote }) },
+      { method: 'PATCH', body: JSON.stringify({ status, reviewNote, paymentMethod }) },
       A,
     ),
   backfillPayments:      () => post('/admin/backfill-payments', {}),
