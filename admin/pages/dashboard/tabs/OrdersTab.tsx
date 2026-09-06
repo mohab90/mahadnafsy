@@ -1,5 +1,6 @@
 import React from 'react';
 import { parsePaymentMethods } from '../../../lib/paymentMethods';
+import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../lib/paymentOrigin';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight, CheckCircle, Clock, CreditCard, Download,
@@ -234,6 +235,7 @@ export default function OrdersTab({
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">الكورس</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">المبلغ</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">وسيلة الدفع</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">المصدر</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الموظف</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">التاريخ</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الحالة</th>
@@ -251,6 +253,7 @@ export default function OrdersTab({
                             const currSymbol = payCur==='SAR'?'ر.س':payCur==='USD'?'$':'ج';
                             const payId = (p as {id?:string}).id||`${i}`;
                             const storedMethod = ((p as {paymentMethod?:string}).paymentMethod||'').trim();
+                            const origin = paymentOrigin(p as { source?: string | null; paymentMethod?: string | null });
                             return (
                               <tr key={payId} className={`hover:bg-emerald-50/20 ${isPending?'bg-amber-50/40':''}`}>
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] font-mono text-gray-400">#{payId.slice(-6)}</td>
@@ -261,6 +264,11 @@ export default function OrdersTab({
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-600 max-w-[140px] truncate" title={courseTitle}>{courseTitle}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{payAmt.toLocaleString()} {currSymbol}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-600">{(p as {paymentMethod?:string}).paymentMethod||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center">
+                                  <span title={PAYMENT_ORIGIN[origin].hint} className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 whitespace-nowrap ${PAYMENT_ORIGIN_CLASS[origin]}`}>
+                                    {PAYMENT_ORIGIN[origin].label}
+                                  </span>
+                                </td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{(p as {staffName?:string}).staffName||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{((p as {at?:string}).at||'').slice(0,10)||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center">
@@ -309,7 +317,7 @@ export default function OrdersTab({
                               </tr>
                             );
                           })}
-                          {tabRowsOm.length===0&&<tr><td colSpan={10} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
+                          {tabRowsOm.length===0&&<tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -395,6 +403,7 @@ export default function OrdersTab({
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-right">الكورس</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">المبلغ</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">وسيلة الدفع</th>
+                            <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">المصدر</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الموظف</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">التاريخ</th>
                             <th className="px-3 py-2.5 font-bold border border-gray-200 text-center">الحالة</th>
@@ -414,6 +423,11 @@ export default function OrdersTab({
                                 <td className="px-2 py-2 border border-gray-200 text-[10px] text-gray-600 max-w-[120px] truncate" title={courseTitle}>{courseTitle}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center font-extrabold text-emerald-700">{Number(p.amount).toLocaleString()} ج.م</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-600">{p.paymentMethod||'—'}</td>
+                                <td className="px-2 py-2 border border-gray-200 text-center">
+                                  <span title={PAYMENT_ORIGIN[paymentOrigin(p)].hint} className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 whitespace-nowrap ${PAYMENT_ORIGIN_CLASS[paymentOrigin(p)]}`}>
+                                    {PAYMENT_ORIGIN[paymentOrigin(p)].label}
+                                  </span>
+                                </td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500">{p.staffName||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center text-[10px] text-gray-500 whitespace-nowrap">{(p.at||'').slice(0,10)||'—'}</td>
                                 <td className="px-2 py-2 border border-gray-200 text-center">
@@ -425,7 +439,7 @@ export default function OrdersTab({
                               </tr>
                             );
                           })}
-                          {filtered2.length===0&&<tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
+                          {filtered2.length===0&&<tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">لا توجد مدفوعات مطابقة.</td></tr>}
                         </tbody>
                       </table>
                     </div>

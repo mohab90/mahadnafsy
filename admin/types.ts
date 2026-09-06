@@ -425,7 +425,11 @@ export interface PaymentHistoryEntry {
   certId?: string;              // Certificate request ID (if paymentType=certificate)
   certType?: string;            // Certificate type name (e.g. شهادة حضور، شهادة معتمدة)
   itemTitle?: string;           // Human-readable item name (course title / cert name / etc.)
-  source?: 'web' | 'staff' | 'reception' | 'daqqi' | 'paymob' | 'system'; // Where payment originated
+  // Where the payment originated. 'paymob'/'web' came through the gateway,
+  // 'manual_transfer' is an approved customer receipt, and the rest were typed
+  // in by staff. Read it through paymentOrigin() rather than comparing here —
+  // 105 rows on production predate the column and carry nothing at all.
+  source?: 'web' | 'staff' | 'reception' | 'daqqi' | 'paymob' | 'system' | 'manual_transfer' | 'lead_conversion';
   at: string;
   staffId?: string;             // Staff who recorded this payment
   staffName?: string;           // Display name of staff who recorded it

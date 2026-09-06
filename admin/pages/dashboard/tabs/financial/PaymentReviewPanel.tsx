@@ -4,6 +4,9 @@ import {
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } from '../../../../types';
+import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
+import { useSiteData } from '../../../../context/SiteDataContext';
+import { parsePaymentMethods } from '../../../../lib/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -42,6 +45,10 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
   const [serverReviewRows, setServerReviewRows] = useState<ReviewPayment[]>([]);
   const [reviewTotal, setReviewTotal] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
+  // Method chosen at the moment of confirming, for rows stored without one.
+  const [approveMethod, setApproveMethod] = useState<Record<string, string>>({});
+  const { content } = useSiteData();
+  const paymentMethodsRaw = content['finance.payment_methods'];
 
   useEffect(() => {
     let cancelled = false;
@@ -129,7 +136,12 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
   const handleAction = async (p: ReviewPayment, newStatus: 'paid' | 'failed') => {
     setReviewActionLoading(p.id);
     try {
-      await mysqlAdmin.adminPatch(`/admin/payments/${encodeURIComponent(p.id)}/status`, { status: newStatus, actor: actorEmail || 'admin' });
+      await mysqlAdmin.adminPatch(`/admin/payments/${encodeURIComponent(p.id)}/status`, {
+        status: newStatus,
+        actor: actorEmail || 'admin',
+        // Only sent when the row has none; the API keeps the stored one otherwise.
+        ...(newStatus === 'paid' && approveMethod[p.id] ? { paymentMethod: approveMethod[p.id] } : {}),
+      });
       await reloadSubscribers();
       setServerReviewRows(rows => rows.map(row => row.id === p.id ? { ...row, status: newStatus } : row));
       notify('success', newStatus === 'paid' ? 'تم تأكيد الدفعة ✅' : 'تم وضع علامة فشل على الدفعة');
@@ -137,18 +149,22 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
     finally { setReviewActionLoading(''); }
   };
 
-  const sourceBadgeEl = (src?: string) => {
-    if (!src) return null;
-    const m: Record<string, [string, string]> = {
-      web: ['موقع', 'bg-blue-100 text-blue-700'],
-      staff: ['موظف', 'bg-violet-100 text-violet-700'],
-      daqqi: ['دقيقي', 'bg-amber-100 text-amber-700'],
-      paymob: ['باي موب', 'bg-emerald-100 text-emerald-700'],
-      reception: ['استقبال', 'bg-cyan-100 text-cyan-700'],
-      system: ['نظام', 'bg-gray-100 text-gray-500'],
-    };
-    const b = m[src];
-    return b ? <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[11px] font-bold ${b[1]}`}>{b[0]}</span> : null;
+  // This used to name the raw source — «موظف», «باي موب» — from a map of its
+  // own, and drew nothing at all when the source was missing. The 105 rows on
+  // production that predate the column therefore reviewed as a blank cell, and
+  // an approved customer receipt did too, since manual_transfer was not in the
+  // map. The question a reviewer is actually asking is whether anyone watched
+  // the money arrive, so the shared reading answers that instead.
+  const sourceBadgeEl = (src?: string, method?: string) => {
+    const origin = paymentOrigin({ source: src, paymentMethod: method });
+    return (
+      <span
+        title={PAYMENT_ORIGIN[origin].hint}
+        className={`inline-flex px-1.5 py-0.5 rounded-full border text-[11px] font-bold whitespace-nowrap ${PAYMENT_ORIGIN_CLASS[origin]}`}
+      >
+        {PAYMENT_ORIGIN[origin].label}
+      </span>
+    );
   };
 
   const statusBadgeEl = (st?: string) => {
@@ -264,14 +280,29 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                     {p.fromAccountNumber && <div className="text-[11px] text-gray-400 font-mono">{p.fromAccountNumber}</div>}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{p.staffName || '—'}</td>
-                  <td className="px-4 py-3">{sourceBadgeEl(p.source)}</td>
+                  <td className="px-4 py-3">{sourceBadgeEl(p.source, p.paymentMethod)}</td>
                   <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{(p.at || '').slice(0, 10)}</td>
                   <td className="px-4 py-3">{statusBadgeEl(p.status)}</td>
                   <td className="px-4 py-3">
                     {(!p.status || p.status === 'pending') && (
-                      <div className="flex gap-1.5">
-                        <button onClick={() => handleAction(p, 'paid')} disabled={reviewActionLoading === p.id}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition disabled:opacity-50">
+                      <div className="flex items-center gap-1.5">
+                        {/* Confirming is the moment the desk says the money arrived, and
+                            the API will not settle one that cannot say how. Nothing can
+                            edit a stored method, so it is asked for right here. */}
+                        {!String(p.paymentMethod || '').trim() && (
+                          <select
+                            aria-label="طريقة الدفع"
+                            value={approveMethod[p.id] || ''}
+                            onChange={e => setApproveMethod(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            className={`text-[11px] rounded-lg px-1 py-1 border-2 font-bold ${approveMethod[p.id] ? 'border-gray-200 bg-white' : 'border-amber-400 bg-amber-50 text-amber-800'}`}
+                          >
+                            <option value="">طريقة الدفع…</option>
+                            {parsePaymentMethods(paymentMethodsRaw).map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        )}
+                        <button onClick={() => handleAction(p, 'paid')}
+                          disabled={reviewActionLoading === p.id || (!String(p.paymentMethod || '').trim() && !approveMethod[p.id])}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition disabled:opacity-50 disabled:cursor-not-allowed">
                           {reviewActionLoading === p.id ? <span className="w-3 h-3 border-2 border-emerald-400/40 border-t-emerald-600 rounded-full animate-spin" /> : <CheckCircle size={12} />}
                           قبول
                         </button>
