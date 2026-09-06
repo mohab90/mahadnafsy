@@ -27,16 +27,22 @@ async function request(path, { token, method = 'GET', body, expected = [200] } =
   if (!expected.includes(response.status)) {
     throw new Error(`${method} ${path} expected ${expected.join('/')} got ${response.status}: ${text.slice(0, 500)}`);
   }
-  return { status: response.status, data };
+  // Sign-in moved to an httpOnly cookie: the body carries {ok, user} and no
+  // token at all, so every caller reading data.token got undefined and this
+  // suite died at its first login. The Bearer header still works, so the
+  // token is lifted out of the cookie and used as one.
+  const authToken = ((response.headers.get('set-cookie') || '').match(/(?:^|[;\s])authToken=([^;]+)/) || [])[1] || null;
+  return { status: response.status, data, authToken };
 }
 
 async function login(email) {
-  const { data } = await request('/api/auth/login', {
+  const { data, authToken } = await request('/api/auth/login', {
     method: 'POST',
     body: { email, password: PASSWORD },
   });
-  if (!data?.token) throw new Error(`No token returned for ${email}`);
-  return data.token;
+  const token = data?.token || authToken;
+  if (!token) throw new Error(`No token returned for ${email}`);
+  return token;
 }
 
 (async () => {

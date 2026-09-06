@@ -33,7 +33,12 @@ async function api(path, { method = 'GET', token, body, ip, country } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const payload = await response.json().catch(() => ({}));
-  return { status: response.status, payload };
+  // Registering and signing in both moved to an httpOnly cookie: the body is
+  // {ok, user} and carries no token, so payload.token was undefined and this
+  // suite asserted its way out at the first account it created. The Bearer
+  // header still works, so the cookie's token is used as one.
+  const authToken = ((response.headers.get('set-cookie') || '').match(/(?:^|[;\s])authToken=([^;]+)/) || [])[1] || null;
+  return { status: response.status, payload, authToken };
 }
 
 async function main() {
@@ -75,8 +80,8 @@ async function main() {
         body: { email, password, name: `Geo ${item.country}`, phone: `2010${String(Date.now()).slice(-7)}${cases.indexOf(item)}` },
       });
       assert.equal(registration.status, 200, JSON.stringify(registration.payload));
-      const token = registration.payload.token;
-      assert.ok(token);
+      const token = registration.payload.token || registration.authToken;
+      assert.ok(token, 'registration returned no token, in the body or the cookie');
       const [[lead]] = await db.query(
         'SELECT branch FROM leads WHERE tenant_id=? AND LOWER(TRIM(email))=? ORDER BY created_at DESC LIMIT 1',
         ['tenant-default', email]
@@ -94,8 +99,9 @@ async function main() {
     });
     assert.equal(relogin.status, 200, JSON.stringify(relogin.payload));
     assert.equal((await api('/api/auth/me', { token: egypt.token, ip: egypt.ip })).status, 401);
-    assert.equal((await api('/api/auth/me', { token: relogin.payload.token, ip: '203.0.113.11' })).status, 200);
-    egypt.token = relogin.payload.token;
+    const reloginToken = relogin.payload.token || relogin.authToken;
+    assert.equal((await api('/api/auth/me', { token: reloginToken, ip: '203.0.113.11' })).status, 200);
+    egypt.token = reloginToken;
     egypt.ip = '203.0.113.11';
 
     for (const item of accounts) {

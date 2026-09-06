@@ -51,6 +51,8 @@ async function timed(name, fn) {
   }
 }
 
+let lastAuthToken = null;
+
 async function api(path, { method = 'GET', token, body, expected = [200] } = {}) {
   const res = await fetch(`${API}${path}`, {
     method,
@@ -63,6 +65,12 @@ async function api(path, { method = 'GET', token, body, expected = [200] } = {})
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  // Sign-in moved to an httpOnly cookie, so the login body is {ok, user} with
+  // no token in it and login() below read undefined. The Bearer header still
+  // works; the token is taken from the cookie and used as one. Kept here rather
+  // than changing what api() returns, because every caller expects the body.
+  const cookie = (res.headers.get('set-cookie') || '').match(/(?:^|[;\s])authToken=([^;]+)/);
+  if (cookie) lastAuthToken = cookie[1];
   const statuses = Array.isArray(expected) ? expected : [expected];
   if (!statuses.includes(res.status)) {
     const snippet = typeof data === 'string' ? data.slice(0, 250) : JSON.stringify(data).slice(0, 250);
@@ -86,8 +94,9 @@ async function login(email) {
       body: { pendingToken: first.pendingToken, token: await generate({ secret }) },
     });
   });
-  if (!data?.token) throw new Error(`No token for ${email}`);
-  return data.token;
+  const token = data?.token || lastAuthToken;
+  if (!token) throw new Error(`No token for ${email}`);
+  return token;
 }
 
 async function runPool(items, worker) {
@@ -131,6 +140,14 @@ function percentile(values, p) {
       .map(row => row?.id).filter(Boolean);
   if (!subscriberIds.length) subscriberIds.push('uat-student-client');
 
+  // A COURSE payment has to name what was bought — the API refuses one that
+  // does not, so the payload below (COURSE with no course) was rejected 400
+  // every run. It went unnoticed because this suite had been dying at login
+  // since sign-in moved to a cookie, and a suite that cannot start cannot fail.
+  const courseRows = await api('/api/admin/courses?limit=1', { token: adminToken });
+  const loadCourseId = (Array.isArray(courseRows) ? courseRows : courseRows?.items || courseRows?.rows || [])
+    .map(row => row?.id).filter(Boolean)[0] || null;
+
   // One account cannot complete two MFA challenges concurrently: the first
   // successful login deliberately rotates its single active session. Run
   // accounts concurrently, while keeping attempts for each account serial.
@@ -154,7 +171,10 @@ function percentile(values, p) {
           id: `load-pay-${Date.now().toString(36)}-${i}`,
           amount: 1,
           currency: 'EGP',
-          paymentType: 'COURSE',
+          // Falls back to OTHER when the tenant has no course to point at:
+          // OTHER is the type that exists for a payment naming nothing.
+          paymentType: loadCourseId ? 'COURSE' : 'other',
+          ...(loadCourseId ? { courseId: loadCourseId } : {}),
           paymentMethod: 'cash',
           transactionId: `LOAD-TXN-${Date.now()}-${i}`,
           status: 'paid',
