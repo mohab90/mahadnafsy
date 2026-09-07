@@ -1136,16 +1136,35 @@ router.get('/api/admin/finance/cockpit', requireAuth, requireAdminOrStaff, requi
       `SELECT COUNT(*) AS n FROM payments WHERE tenant_id=? AND status='pending'${paymentScopeSql}`,
       scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]
     );
-    const [[overdueInst]] = await pool.query(`
-      SELECT COUNT(*) AS n
+    // Any unpaid instalment whose date has passed — not the one at index
+    // paid_count.
+    //
+    // paid_count is a count, and the pay route accepts any index, so
+    // instalments can be settled out of order. A plan due 1 July and 1 December
+    // whose customer prepaid December read due_dates[1] — December, not yet due
+    // — and the July entry, months overdue, was never counted. The AR-aging
+    // screen walks every entry and did list it, so the cockpit alert and that
+    // screen disagreed. This is that same walk: an entry counts as unpaid when
+    // neither its paid date nor its payment id is set.
+    const [overduePlans] = await pool.query(`
+      SELECT ip.due_dates, ip.paid_dates, ip.payment_ids
         FROM installment_plans ip
         JOIN subscribers s ON s.id=ip.subscriber_id AND s.tenant_id=ip.tenant_id
        WHERE ip.tenant_id=? AND ip.status IN ('active','overdue')
-         AND CAST(JSON_UNQUOTE(JSON_EXTRACT(
-               ip.due_dates,CONCAT('$[',COALESCE(ip.paid_count,0),']')
-             )) AS DATE)<CURDATE()
          ${scope.branchId ? 'AND s.branch_id=?' : ''}
     `, scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]);
+    const todayIso = dateOnlyInTimeZone();
+    const parseList = value => { try { const v = JSON.parse(value || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+    const overdueInst = {
+      n: overduePlans.filter(plan => {
+        const dueDates = parseList(plan.due_dates);
+        const paidDates = parseList(plan.paid_dates);
+        const paymentIds = parseList(plan.payment_ids);
+        return dueDates.some((dueDate, index) => dueDate
+          && !paidDates[index] && !paymentIds[index]
+          && String(dueDate).slice(0, 10) < todayIso);
+      }).length,
+    };
     const [[openTickets]] = await pool.query(
       `SELECT COUNT(*) AS n FROM support_tickets WHERE tenant_id=? AND status='open'${paymentScopeSql}`,
       scope.branchId ? [req.tenantId, scope.branchId] : [req.tenantId]

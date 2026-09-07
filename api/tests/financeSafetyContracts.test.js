@@ -149,8 +149,15 @@ test('payment links fail closed without configuration, redeem once, and installm
   assert.doesNotMatch(finance, /mahadnafsy\.com\/#\/pay/);
   assert.match(checkout, /used_at=NOW\(\),used_by_order_id=\?/);
   assert.match(checkout, /used_at IS NULL AND expires_at>NOW\(\)/);
+  // The overdue count comes from the schedule itself, never from a stored
+  // next_due_date that can go stale. It used to read the array in SQL at index
+  // paid_count — a count, not an index, so a plan whose instalments were
+  // settled out of order pointed at the wrong entry and missed the overdue one.
+  // It now selects the arrays and walks every entry, which is what the AR-aging
+  // screen already did; the guarantee here is the source, not the mechanism.
   assert.doesNotMatch(finance, /installment_plans[\s\S]{0,160}next_due_date/);
-  assert.match(finance, /JSON_EXTRACT\([\s\S]{0,180}ip\.due_dates/);
+  assert.match(finance, /ip\.due_dates, ip\.paid_dates, ip\.payment_ids/);
+  assert.match(finance, /!paidDates\[index\] && !paymentIds\[index\]/);
   assert.match(installments, /requireScopedSubscriber/);
   assert.match(installments, /resolveFinancialScope\(req,\s*\{\s*allowAssigned:\s*true\s*\}\)/);
   assert.match(installments, /financialRecordMatches/);
