@@ -118,7 +118,10 @@ async function sendOtp({ email, phone, code, subject, html, tenantId = 'tenant-d
   }
 
   if (!settings.email || settings.email.enabled !== false) {
-    await sendEmail(email, subject, html, { tenantId });
+    // Categorised, so EMAIL_OUTBOUND_CATEGORIES can silence marketing without
+    // silencing the code somebody needs to sign in. A send with no category is
+    // refused the moment that variable is set to anything at all.
+    await sendEmail(email, subject, html, { tenantId, category: 'otp' });
     return { ok: true, channel: 'email' };
   }
 

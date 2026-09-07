@@ -207,7 +207,11 @@ router.post('/api/admin/settings/email/test', requireAuth, requireAdmin, async (
     const to = req.body?.to;
     if (!to) return res.status(400).json({ error: 'البريد المُستلِم مطلوب' });
     const { sendEmail: sendEmailBase } = require('../lib/email');
-    const sendEmail = (toAddress, subject, html) => sendEmailBase(toAddress, subject, html, { tenantId: req.tenantId });
+    // 'channel_test': the button that proves the mail settings work. It has to
+    // keep working while everything else is silenced, or there is no way to
+    // check the channel before turning it back on.
+    const sendEmail = (toAddress, subject, html) =>
+      sendEmailBase(toAddress, subject, html, { tenantId: req.tenantId, category: 'channel_test' });
     await sendEmail(to, 'اختبار البريد — معهد الدراسات النفسية', '<p>لو وصلتك الرسالة دي يبقى إعدادات البريد شغّالة ✅</p>');
     res.json({ ok: true });
   } catch (e) { res.status(502).json({ error: 'فشل الإرسال: ' + e.message }); }

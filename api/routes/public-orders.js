@@ -722,7 +722,7 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
         <p>يمكنك البدء في التعلم الآن من خلال <a href="https://mahadnafsy.com/my-account" style="color:#7c3aed">لوحة التحكم</a>.</p>
         <p style="color:#9ca3af;font-size:12px">معهد الدراسات النفسية — mahadnafsy.com</p>
       </div>`,
-      { tenantId }
+      { tenantId, category: 'payment' }
     ).catch(e => logger.warn('[email] payment confirmation failed:', e.message));
   }
 

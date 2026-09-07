@@ -35,7 +35,9 @@ const transactionBackoff = attempt => new Promise(resolve =>
 );
 
 router.post('/api/admin/subscriber-payments', requireAuth, requireAdminOrStaff, requirePermission('manage_payments'), async (req, res) => {
-  const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId: req.tenantId });
+  // 'payment': this route emails the customer their receipt.
+  const sendEmail = (to, subject, html) =>
+    sendEmailBase(to, subject, html, { tenantId: req.tenantId, category: 'payment' });
   let conn;
   try {
     let { subscriber_id } = req.body;

@@ -1132,7 +1132,12 @@ router.post('/api/auth/whatsapp/verify-otp', otpLimiter, async (req, res) => {
 });
 
 router.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
-  const sendEmail = (to, subject, html) => sendEmailBase(to, subject, html, { tenantId: req.tenantId });
+  // 'otp': this route sends the password-reset code. Without a category the
+  // send is refused as soon as EMAIL_OUTBOUND_CATEGORIES is set to anything,
+  // which would lock every customer out of their own account the moment
+  // somebody used that variable to stop marketing mail.
+  const sendEmail = (to, subject, html) =>
+    sendEmailBase(to, subject, html, { tenantId: req.tenantId, category: 'otp' });
   const { email: rawIdentifier } = req.body || {};
   if (!rawIdentifier) return res.status(400).json({ error: 'البريد الإلكتروني أو رقم الهاتف مطلوب' });
   const identifierIsEmail = isEmail(rawIdentifier);

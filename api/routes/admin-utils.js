@@ -394,7 +394,8 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
           <p style="color:#718096;font-size:13px;margin-top:16px">يرجى تسجيل الدخول إلى النظام وإجراء المتابعات اللازمة.</p>
         </div>`;
       try {
-        await sendEmail(email, `تذكير: ${leads.length} متابعة متأخرة — معهد الدراسات النفسية`, html);
+        await sendEmail(email, `تذكير: ${leads.length} متابعة متأخرة — معهد الدراسات النفسية`, html,
+          { category: 'staff_alert' });
         emailsSent++;
       } catch (_) {}
     }
@@ -527,7 +528,8 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
       await sendEmail(
         process.env.SMTP_USER || 'info@mahadnafsy.com',
         `تقرير أقساط متأخرة — ${overdueList.length} قسط — ${today}`,
-        adminHtml
+        adminHtml,
+        { category: 'staff_alert' }
       );
     } catch (_) {}
 
@@ -613,7 +615,7 @@ router.post('/api/me/refund-request', requireAuth, async (req, res) => {
         <p><strong>السبب:</strong> ${reason}</p>
         <p style="color:#718096;font-size:13px">تسجيل الدخول للنظام لمراجعة الطلب</p>
       </div>`,
-      { tenantId }
+      { tenantId, category: 'staff_alert' }
     ).catch(() => {});
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
@@ -827,7 +829,7 @@ if (ROUTE_LOCAL_CRONS_ENABLED) setInterval(async () => {
       </div>`;
 
     for (const email of adminEmails) {
-      await sendEmail({ to: email, subject, html }).catch(e =>
+      await sendEmail({ to: email, subject, html, category: 'staff_alert' }).catch(e =>
         logger.warn('[WeeklyEmail] send error:', e.message)
       );
     }
