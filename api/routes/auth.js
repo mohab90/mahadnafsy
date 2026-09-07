@@ -410,6 +410,28 @@ router.post('/api/admin/create-account', requireAuth, requireAdminOrOnlineManage
   const conn = await pool.getConnection();
   try {
     const tenantId = req.tenantId;
+    // A staff address cannot be given a login here.
+    //
+    // /api/auth/register and /api/user/signup have refused this since the
+    // identity work; this route was written without it, and it is reachable by
+    // an online manager — a role requireSuperAdmin deliberately excludes so it
+    // cannot escalate. Six staff rows on production are active with no login
+    // row of their own, among them a MANAGER, and every privileged check
+    // resolves staff BY EMAIL ALONE. So: read the staff list (online managers
+    // hold view_staff), create an account on a manager's address with a chosen
+    // password, sign in, and findActiveStaff hands back that manager's row and
+    // with it isSuperAdmin. Full takeover, no MFA in the way — the policy is
+    // off by default and does not cover this role in any case.
+    const [[protectedStaff]] = await conn.execute(
+      'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+      [tenantId, normEmail]
+    );
+    if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === normEmail)) {
+      return res.status(403).json({
+        error: 'لا يمكن إنشاء حساب على بريد موظف — استخدم شاشة حسابات الموظفين',
+        code: 'STAFF_INVITATION_REQUIRED',
+      });
+    }
     const [[existing]] = await conn.execute('SELECT id, name, is_active FROM users WHERE tenant_id=? AND LOWER(TRIM(email)) = ? LIMIT 1', [tenantId, normEmail]);
     if (existing && existing.is_active) return res.status(409).json({ error: 'حساب فعّال موجود بالفعل بهذا البريد' });
 
@@ -1571,6 +1593,25 @@ router.put('/api/admin/subscribers/:id/credentials', requireAuth, requireAdminOr
     // Validate new email not already taken by another user
     const newEmailKey = newEmail ? newEmail.toLowerCase().trim() : null;
     if (newEmailKey && newEmailKey !== String(account?.email || '').toLowerCase().trim()) {
+      // The same door as create-account, reached from the other side.
+      //
+      // This route sets a customer's email and password together, and only
+      // checked the users table for a collision. Pointing a subscriber at a
+      // manager's address — one of the six active staff with no login row —
+      // and choosing the password made that manager's identity available to
+      // whoever asked, because every privileged check resolves staff by email
+      // alone. Closing create-account without closing this would have left the
+      // takeover one route to the left.
+      const [[protectedStaff]] = await conn.execute(
+        'SELECT id FROM staff WHERE tenant_id=? AND LOWER(TRIM(email)) COLLATE utf8mb4_unicode_ci = ? AND is_active = 1 LIMIT 1',
+        [req.tenantId, newEmailKey]
+      );
+      if (protectedStaff || ADMIN_EMAILS.some(e => e.toLowerCase() === newEmailKey)) {
+        return res.status(403).json({
+          error: 'لا يمكن تحويل حساب عميل إلى بريد موظف',
+          code: 'STAFF_INVITATION_REQUIRED',
+        });
+      }
       const [[existing]] = await conn.execute(
         'SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, newEmailKey]);
       if (existing && existing.id !== account?.id) {
