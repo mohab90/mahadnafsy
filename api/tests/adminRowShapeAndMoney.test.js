@@ -93,3 +93,60 @@ test('an instalment is dated in Cairo, not in the server timezone', () => {
 test('the timezone helper still defaults to Cairo', () => {
   assert.match(read('lib/dates.js'), /timeZone = 'Africa\/Cairo'/);
 });
+
+// ── the refund approver's two numbers ──────────────────────────────────────
+test('the refunds screen counts only money actually received', () => {
+  // «المدفوع» and «إجمالي الكورس» sit side by side for whoever approves the
+  // refund. The paid figure summed every row in the table — pending payments
+  // awaiting review, failed ones and the soft-deleted duplicates from the
+  // de-dupe cleanup — in raw currency. A customer who had paid 3,400 once
+  // could read 8,800 against a 3,400 course.
+  const source = codeOnly(read('routes/finance.js'));
+  const at = source.indexOf('AS paid_total');
+  assert.ok(at > 0, 'paid_total not found');
+  const subquery = source.slice(source.lastIndexOf('(SELECT', at), at);
+  assert.match(subquery, /SUM\(px\.amount_egp\)/, 'must sum the EGP column, not the raw amount');
+  assert.match(subquery, /px\.status = 'paid'/);
+  assert.match(subquery, /px\.deleted_at IS NULL/);
+});
+
+test('and its course total is converted rather than mixed', () => {
+  // course_expected is in the payment's own currency; price_egp is EGP.
+  const source = codeOnly(read('routes/finance.js'));
+  assert.match(source, /COALESCE\(p\.course_expected \* COALESCE\(p\.fx_rate_to_egp, 1\), c\.price_egp\) AS course_total/);
+});
+
+// ── the cash-flow forecast ─────────────────────────────────────────────────
+test('a monthly charge on the 1st appears in the forecast', () => {
+  // The old test compared day-of-month numbers across the week's ends. A week
+  // crossing a month boundary runs 28 → 4, so `from.day <= d && to.day >= d`
+  // is unsatisfiable for every d — and a charge on the 1st, which always sits
+  // just after a boundary, never appeared at all. Rent simply did not exist in
+  // the projection.
+  const source = codeOnly(read('routes/finance-planning.js'));
+  assert.match(source, /const monthlyChargeDay = \(week, dayOfMonth\)/);
+  assert.doesNotMatch(source, /getUTCDate\(\) <= Number\(item\.day_of_month/,
+    'the day-number comparison must be gone');
+
+  // Replay the shipped helper over the 13 weeks the route builds.
+  const body = source.slice(source.indexOf('const monthlyChargeDay'));
+  const fn = body.slice(0, body.indexOf('\n    };') + 7);
+  // eslint-disable-next-line no-new-func
+  const monthlyChargeDay = new Function(`${fn}\nreturn monthlyChargeDay;`)();
+
+  const addDays = (iso, n) => {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const weeks = Array.from({ length: 13 }, (_, i) => ({
+    from: addDays('2026-09-07', i * 7), to: addDays('2026-09-07', i * 7 + 6),
+  }));
+  const occurrences = day => weeks.map(w => monthlyChargeDay(w, day)).filter(Boolean);
+
+  assert.deepEqual(occurrences(1), ['2026-10-01', '2026-11-01', '2026-12-01']);
+  assert.equal(occurrences(15).length, 3, 'a mid-month charge was already right and must stay right');
+  assert.equal(occurrences(28).length, 3);
+  // The 31st does not exist in September or November; it charges on the last day.
+  assert.deepEqual(occurrences(31), ['2026-09-30', '2026-10-31', '2026-11-30']);
+});

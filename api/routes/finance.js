@@ -1347,9 +1347,22 @@ router.get('/api/admin/finance/refunds', requireAuth, requireAdminOrStaff, requi
              blame.name AS blamed_staff_name,
              p.course_id, p.created_at AS booking_date,
              c.title AS course_title,
-             COALESCE(p.course_expected, c.price_egp) AS course_total,
-             (SELECT COALESCE(SUM(px.amount),0) FROM payments px
+             -- Both figures are shown side by side to whoever approves the
+             -- refund, so both have to mean the same thing.
+             --
+             -- course_total mixed units: course_expected is in the payment's
+             -- own currency while price_egp is EGP, so a SAR payment printed
+             -- its riyal figure next to Egyptian pounds. It is converted with
+             -- the rate stored on the payment itself.
+             COALESCE(p.course_expected * COALESCE(p.fx_rate_to_egp, 1), c.price_egp) AS course_total,
+             -- paid_total counted every row in the table: pending payments
+             -- awaiting review, failed ones, and the soft-deleted duplicates
+             -- from the de-dupe cleanup — all in their raw currency. A
+             -- customer who had paid 3,400 once could show 8,800 "paid"
+             -- against a 3,400 course, and the refund was judged on that.
+             (SELECT COALESCE(SUM(px.amount_egp),0) FROM payments px
                WHERE px.subscriber_id = rr.subscriber_id AND px.tenant_id = rr.tenant_id
+                 AND px.status = 'paid' AND px.deleted_at IS NULL
                  AND (p.course_id IS NULL OR px.course_id = p.course_id)) AS paid_total,
              -- Online course progress. Daqqi attendance is a different thing
              -- entirely (daqqi_attendees.attended_lectures, per round) and is

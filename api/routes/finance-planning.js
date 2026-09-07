@@ -176,12 +176,33 @@ router.get('/api/admin/finance/cash-flow-forecast', ...view, async (req, res) =>
       weeks[index].sources.push({ ...source, direction, amount: Number(amount.toFixed(2)) });
     };
     for (const payable of payables) add(safeDateOnly(payable.due_date), 'outflow', Number(payable.outstanding_egp), { type: 'accounts_payable', id: payable.id });
+    // Which day inside this week the monthly charge actually falls on.
+    //
+    // This used to compare day-of-month numbers: `from.getUTCDate() <= day &&
+    // to.getUTCDate() >= day`. Any week crossing a month boundary runs 28 → 4,
+    // so that test is unsatisfiable for every day, and a charge dated the 1st —
+    // which always sits just after a boundary — never appeared in the forecast
+    // at all. Rent of 50,000 a month simply did not exist in the projection.
+    //
+    // Walking the week's days answers it directly. A day past the end of a
+    // short month (a charge on the 31st in April) falls on that month's last
+    // day rather than being skipped.
+    const monthlyChargeDay = (week, dayOfMonth) => {
+      const from = new Date(`${week.from}T00:00:00Z`);
+      const to = new Date(`${week.to}T00:00:00Z`);
+      for (let day = new Date(from); day <= to; day.setUTCDate(day.getUTCDate() + 1)) {
+        const lastOfMonth = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 0)).getUTCDate();
+        const charged = Math.min(dayOfMonth, lastOfMonth);
+        if (day.getUTCDate() === charged) return day.toISOString().slice(0, 10);
+      }
+      return null;
+    };
     for (const item of recurring) {
       for (let index = 0; index < weeks.length; index++) {
-        const shouldAdd = item.frequency === 'weekly'
-          || (item.frequency === 'monthly' && new Date(`${weeks[index].from}T00:00:00Z`).getUTCDate() <= Number(item.day_of_month || 1)
-            && new Date(`${weeks[index].to}T00:00:00Z`).getUTCDate() >= Number(item.day_of_month || 1));
-        if (shouldAdd) add(weeks[index].from, 'outflow', Number(item.amount_egp), { type: 'recurring_expense', id: item.id, label: item.title });
+        const on = item.frequency === 'weekly'
+          ? weeks[index].from
+          : (item.frequency === 'monthly' ? monthlyChargeDay(weeks[index], Number(item.day_of_month || 1)) : null);
+        if (on) add(on, 'outflow', Number(item.amount_egp), { type: 'recurring_expense', id: item.id, label: item.title });
       }
     }
     for (const assumption of assumptions) {
