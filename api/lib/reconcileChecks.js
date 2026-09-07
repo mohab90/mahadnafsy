@@ -247,16 +247,48 @@ const CHECKS = [
     hint: 'Full access granted for less than the course price, with no discount recorded to explain it.',
   },
   {
-    key: 'paid_course_without_enrollment',
-    name: 'a paid course payment has an enrolment to go with it',
+    key: 'paid_course_no_access_at_all',
+    name: 'a paid course payment leaves the customer able to open something',
     severity: 'critical',
-    // The other direction from full_access_below_price, and the one that hurts
-    // a customer rather than the books: they paid for a named course and have
-    // no enrolment in it, so nothing they bought will open. Three exist. One of
-    // them paid 1,000 in May and is enrolled in nothing at all; the other two
-    // paid for one course and hold enrolments in different ones.
+    // Split out of one check that used to count both of these together and
+    // describe them all as "they cannot open what they bought". Every row it
+    // was reporting turned out to hold enrolments — in different courses — so
+    // acting on that sentence meant granting a second course to someone who had
+    // already been moved to the one they wanted.
+    //
+    // This half is the one that is actually a customer emergency: paid, and
+    // enrolled in nothing whatsoever.
     //
     // A bundle payment counts, because a bundle enrols its courses.
+    sql: `SELECT COUNT(*) AS n FROM payments p
+          WHERE p.deleted_at IS NULL AND p.status='paid'
+            AND p.course_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM enrollments e
+               WHERE e.subscriber_id=p.subscriber_id AND e.tenant_id=p.tenant_id
+                 AND e.status='active'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM payments b
+               JOIN bundle_courses bc ON bc.bundle_id=b.bundle_id AND bc.tenant_id=b.tenant_id
+               WHERE b.subscriber_id=p.subscriber_id AND b.deleted_at IS NULL
+                 AND b.status='paid' AND bc.course_id=p.course_id
+            )`,
+    hint: 'Paid for a course and enrolled in nothing at all — this customer can open none of what they bought.',
+  },
+  {
+    key: 'payment_course_differs_from_enrollment',
+    name: 'a paid course payment names the course the customer is actually in',
+    // A warning, not a critical, and deliberately so: every instance found was
+    // a customer moved from the course they paid for to a different one. They
+    // have access; what is wrong is that nothing re-pointed the payment, so the
+    // books still say they bought the first course.
+    //
+    // There is no transfer action in the admin — staff revoke one enrolment and
+    // grant another — which is why this keeps happening. Until there is one,
+    // the honest reading is "the payment needs re-pointing", not "grant them
+    // the course as well".
+    severity: 'warning',
     sql: `SELECT COUNT(*) AS n FROM payments p
           WHERE p.deleted_at IS NULL AND p.status='paid'
             AND p.course_id IS NOT NULL
@@ -265,13 +297,18 @@ const CHECKS = [
                WHERE e.subscriber_id=p.subscriber_id AND e.course_id=p.course_id
                  AND e.tenant_id=p.tenant_id
             )
+            AND EXISTS (
+              SELECT 1 FROM enrollments e
+               WHERE e.subscriber_id=p.subscriber_id AND e.tenant_id=p.tenant_id
+                 AND e.status='active'
+            )
             AND NOT EXISTS (
               SELECT 1 FROM payments b
                JOIN bundle_courses bc ON bc.bundle_id=b.bundle_id AND bc.tenant_id=b.tenant_id
                WHERE b.subscriber_id=p.subscriber_id AND b.deleted_at IS NULL
                  AND b.status='paid' AND bc.course_id=p.course_id
             )`,
-    hint: 'Someone paid for a course they were never enrolled in — they cannot open what they bought.',
+    hint: 'Paid for one course and enrolled in another — almost always a transfer nobody re-pointed the payment for.',
   },
 ];
 
