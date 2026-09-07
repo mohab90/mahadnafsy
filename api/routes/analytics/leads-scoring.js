@@ -4,6 +4,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { pool } = require('../../lib/db');
+const { isInterestedLeadStatus } = require('../../lib/leadStatuses');
 const { getTenantSetting, setTenantSetting } = require('../../lib/tenantSettings');
 const { leadScope } = require('../../lib/leadAccess');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
@@ -21,7 +22,11 @@ function scoreLead(lead, weights = DEFAULT_WEIGHTS) {
   if (lead.phone) score += Number(W.has_phone) || 0;
   if (lead.email) score += Number(W.has_email) || 0;
   const status = String(lead.status || '').toLowerCase();
-  if (status === 'interested') score += Number(W.status_interested) || 0;
+  // Any shade of interested, not only the plain word. The desk records
+  // interested_booking and interested_followup, and testing for 'interested'
+  // alone gave both of them nothing here — so a lead about to book scored lower
+  // on this component than one merely described as interested.
+  if (isInterestedLeadStatus(status)) score += Number(W.status_interested) || 0;
   else if (status === 'follow_up' || status === 'contacted') score += Number(W.status_follow_up) || 0;
   if (lead.follow_up_date && new Date(lead.follow_up_date) > new Date()) score += Number(W.future_followup) || 0;
   if (Number(lead.comm_count) > 0) score += Number(W.has_comms) || 0;

@@ -8,6 +8,7 @@ const { uuidv4 } = require('../../lib/id');
 const { generateTemporaryPassword } = require('../../lib/secureCredentials');
 
 const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
+const { LEAD_STATUSES, isOpenLeadStatus } = require('../../lib/leadStatuses');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer, ymd, sendRouteError } = require('../../lib/helpers');
@@ -560,7 +561,15 @@ router.post('/api/admin/leads/bulk-assign', requireAuth, requireAdminOrStaff, re
     }
 
     // Get unassigned leads (excluding converted/lost/hidden)
-    const statusIn = statusFilter ? [statusFilter] : ['new', 'interested', 'NEW', 'INTERESTED'];
+    //
+    // That is what this always meant, and it now says so. The list used to be
+    // ['new','interested'] and their upper-case twins, so a lead the desk had
+    // marked interested_booking, interested_followup, contacted or no_answer_wa
+    // was silently left out of every distribution — the interested_booking ones
+    // being the closest to buying of anything in the table.
+    const statusIn = statusFilter
+      ? [statusFilter]
+      : [...LEAD_STATUSES].filter(isOpenLeadStatus);
     const placeholders = statusIn.map(() => '?').join(',');
     const accessScope = leadScope(req, 'l');
     if (accessScope.none) {

@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { isInterestedLeadStatus } = require('./leadStatuses');
 
 const CATEGORY_PROBABILITY = Object.freeze({
   pipeline: 25,
@@ -25,10 +26,14 @@ function forecastCategory(lead) {
   const explicit = String(lead.forecast_category || '').toLowerCase();
   if (CATEGORIES.has(explicit)) return { value: explicit, derived: false };
   const status = String(lead.status || '').toLowerCase();
-  if (status === 'interested') return { value: 'best_case', derived: true };
+  // interested_booking is nearest to closing, so it commits. The other shades
+  // of interested sit together in best_case — interested_followup used to fall
+  // past both branches into pipeline, forecasting a warm lead as coldly as an
+  // untouched one.
   if (['interested_booking', 'qualified', 'negotiation'].includes(status)) {
     return { value: 'commit', derived: true };
   }
+  if (isInterestedLeadStatus(status)) return { value: 'best_case', derived: true };
   return { value: 'pipeline', derived: true };
 }
 
