@@ -116,13 +116,21 @@ export default function FinancialRefundsPanel({ notify, branch }: { notify: Noti
     let decisionNote = '';
 
     if (status === 'APPROVED') {
-      const answer = await promptDialog(`الموافقة على استرداد ${row.subscriber_name || ''}.\nطلب ${requested}. اكتب المبلغ الذي سيُرد فعلياً:`, String(requested));
-      if (answer === null) return;
-      refundedAmount = Number(answer);
-      if (!Number.isFinite(refundedAmount) || refundedAmount <= 0 || refundedAmount > requested) {
-        notify(`المبلغ المسترد لازم يكون بين 1 و ${requested}`, 'error');
-        return;
-      }
+      // Confirmed, not typed.
+      //
+      // This used to ask for «المبلغ الذي سيُرد فعلياً» and accept anything from
+      // 1 up to the request. Partial refunds are not enabled anywhere: both
+      // routes that open a request refuse an amount that differs from the
+      // payment, and the reversal refuses it again. So every number other than
+      // the default came back a 409 after the desk had already filled the
+      // dialog in. Asking for a figure that can only have one value is the bug.
+      const agreed = await confirmDialog({
+        title: 'اعتماد الاسترداد',
+        message: `استرداد ${requested} ${row.currency || ''} إلى ${row.subscriber_name || 'العميل'} بالكامل.\nالاسترداد الجزئي غير مُفعّل.`,
+        confirmLabel: 'اعتماد',
+      });
+      if (!agreed) return;
+      refundedAmount = requested;
     } else {
       const label = status === 'REJECTED' ? 'اكتب سبب الرفض كاملاً:' : 'اكتب ما تم عمله في الطلب:';
       const answer = await promptDialog(label);

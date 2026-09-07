@@ -6,6 +6,7 @@ const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp } = require('../../lib/finance');
 const { computePayrollLine } = require('../../lib/payrollCalc');
+const { dateOnlyInTimeZone } = require('../../lib/dates');
 
 function parseCsvRow(line) {
   const fields = [];
@@ -493,7 +494,11 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
         if (statutoryTotal > 0) {
           journalLines.push({ account_code: '2200', account_name: 'استقطاعات رواتب مستحقة', debit: 0, credit: statutoryTotal });
         }
-        const journalId = await postJournalEntry('payroll', runId, new Date().toISOString().slice(0, 10),
+        // Cairo, for the reason lib/finance.js records against 179 entries
+        // already filed a day early: the server runs in UTC, so a payroll run
+        // approved late at night landed in the previous day — and at a month
+        // boundary, in the previous month.
+        const journalId = await postJournalEntry('payroll', runId, dateOnlyInTimeZone(),
           `رواتب شهر ${prevRun.month}/${prevRun.year} (= ${earnedExpense} EGP تكلفة)`,
           journalLines,
           req.user?.email || 'system', conn, tenantId
@@ -623,10 +628,33 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdminOrSta
       parseFloat(item.late_deductions) - parseFloat(item.absence_deductions) -
       parseFloat(item.advance_deductions) - od
     );
+    // Bring the statutory breakdown in line with the deduction just set.
+    //
+    // The PAID journal takes net_salary from the row but dedSocial and dedTax
+    // out of calculation_details, and this route rewrote the first and left the
+    // second. Overriding other_deductions from 1,500 to 0 produced: cash paid
+    // 10,000, statutory withheld 1,500, salary expense 11,500 — the company
+    // handed over the whole salary while the ledger recorded a payable to the
+    // tax authority that will never be settled. The entry balances, so the
+    // unbalanced-journal check cannot see it.
+    //
+    // The statutory part cannot exceed the deduction actually taken, so it is
+    // capped at `od`, keeping the original split between the two when it fits.
+    const originalSocial = parseFloat(calcDet.dedSocial) || 0;
+    const originalTax = parseFloat(calcDet.dedTax) || 0;
+    const originalStatutory = originalSocial + originalTax;
+    const nextDetails = { ...calcDet };
+    if (originalStatutory > od) {
+      const share = originalStatutory > 0 ? od / originalStatutory : 0;
+      nextDetails.dedSocial = Number((originalSocial * share).toFixed(2));
+      nextDetails.dedTax = Number((originalTax * share).toFixed(2));
+      nextDetails.statutoryCappedByOverride = true;
+    }
     await conn.query(`
       UPDATE payroll_items SET bonus=?, bonus_note=?, other_deductions=?, deductions_note=?,
-        net_salary=?, is_manual_override=1, override_by=? WHERE id=? AND tenant_id=?
-    `, [b, bonus_note || null, od, deductions_note || null, net, req.staffRecord?.id || null, itemId, req.tenantId]);
+        net_salary=?, calculation_details=?, is_manual_override=1, override_by=? WHERE id=? AND tenant_id=?
+    `, [b, bonus_note || null, od, deductions_note || null, net, JSON.stringify(nextDetails),
+      req.staffRecord?.id || null, itemId, req.tenantId]);
     // Recalculate run total
     const [[{ total }]] = await conn.query(
       'SELECT SUM(net_salary) AS total FROM payroll_items WHERE payroll_run_id=? AND tenant_id=?',

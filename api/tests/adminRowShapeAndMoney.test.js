@@ -172,3 +172,43 @@ test('the rule it now calls is the one that reads commission_rules', () => {
   assert.match(helper, /FROM commission_rules/);
   assert.match(helper, /const period = paymentPeriod\(payment\.date\)/);
 });
+
+// ── payroll ────────────────────────────────────────────────────────────────
+test('overriding a deduction brings the statutory split with it', () => {
+  // The PAID journal takes net_salary from the row and dedSocial/dedTax out of
+  // calculation_details. This route rewrote the first and left the second, so
+  // overriding a 1,500 deduction to 0 produced: cash 10,000, statutory 1,500,
+  // salary expense 11,500 — the whole salary handed over while the ledger
+  // recorded a payable to the tax authority that will never be settled. The
+  // entry balances, so the unbalanced-journal check cannot catch it.
+  const source = codeOnly(read('routes/hr/payroll.js'));
+  assert.match(source, /const originalStatutory = originalSocial \+ originalTax/);
+  assert.match(source, /if \(originalStatutory > od\)/);
+  assert.match(source, /calculation_details=\?/, 'the override must write the details back');
+});
+
+test('the payroll journal is dated in Cairo', () => {
+  const source = codeOnly(read('routes/hr/payroll.js'));
+  assert.match(source, /postJournalEntry\('payroll', runId, dateOnlyInTimeZone\(\)/);
+  assert.doesNotMatch(source, /postJournalEntry\('payroll', runId, new Date\(\)/);
+});
+
+// ── refunds: the screen matches what the system can do ─────────────────────
+test('approving a refund confirms the full amount instead of asking for one', () => {
+  // Both routes that open a refund request refuse an amount differing from the
+  // payment, and the reversal refuses it again — partial refunds are not
+  // enabled anywhere. The dialog nonetheless accepted anything from 1 up to the
+  // request, so every entry but the default came back a 409 after the desk had
+  // filled it in.
+  const panel = codeOnly(read('../admin/pages/dashboard/tabs/financial/FinancialRefundsPanel.tsx'));
+  assert.match(panel, /الاسترداد الجزئي غير مُفعّل/);
+  assert.match(panel, /refundedAmount = requested/);
+  assert.doesNotMatch(panel, /اكتب المبلغ الذي سيُرد فعلياً/);
+});
+
+test('and both creation routes still refuse a partial one, which is why', () => {
+  // If this ever changes, the dialog above has to change with it.
+  const source = codeOnly(read('routes/admin-utils.js'));
+  assert.equal((source.match(/Partial refunds are not enabled/g) || []).length, 2,
+    'both the customer and the admin route must enforce it');
+});
