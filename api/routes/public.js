@@ -1097,7 +1097,24 @@ router.get('/api/me/quiz-attempts', requireAuth, async (req, res) => {
        FROM quiz_attempts WHERE subscriber_id = ? AND tenant_id=? ORDER BY taken_at DESC LIMIT 200`,
       [subscriber.id, req.tenantId]
     );
-    res.json(rows);
+    // The student's own results, in the shape their screen reads.
+    //
+    // These went out raw, and StudentQuizTab pairs an attempt to a quiz with
+    // `attempt.quizId === quiz.id && attempt.subscriberId === subscriber.id`.
+    // Against a row spelling those quiz_id and subscriber_id, both sides were
+    // undefined, so the filter matched nothing and every quiz showed as never
+    // attempted — however many times it had been passed. The sort by takenAt
+    // was comparing two empty strings for the same reason.
+    res.json(rows.map(row => ({
+      id: row.id,
+      subscriberId: row.subscriber_id,
+      quizId: row.quiz_id,
+      courseId: row.course_id,
+      score: Number(row.score) || 0,
+      passed: !!row.passed,
+      answers: tryJson(row.answers_json, []),
+      takenAt: row.taken_at,
+    })));
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
 });
 

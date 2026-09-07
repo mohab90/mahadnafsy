@@ -104,3 +104,34 @@ test('the two unreachable endpoints are gone', () => {
   assert.doesNotMatch(lms, /router\.get\('\/api\/me\/cohorts'/);
   assert.doesNotMatch(lms, /router\.get\('\/api\/me\/live-sessions'/);
 });
+
+test('a student sees the quiz they already passed', () => {
+  // StudentQuizTab pairs an attempt to a quiz with
+  // `attempt.quizId === quiz.id && attempt.subscriberId === subscriber.id`.
+  // The route sent quiz_id and subscriber_id, so both sides of that test were
+  // undefined: the filter matched nothing and every quiz drew as never
+  // attempted, however many times it had been passed. The sort by takenAt was
+  // comparing two empty strings for the same reason.
+  // Each pair is asserted whole. Checking only that the name appears passes
+  // against `quizId: row.quizId`, which is the bug written the other way round.
+  const handler = handlerFor('/api/me/quiz-attempts');
+  for (const [field, column] of [
+    ['subscriberId', 'subscriber_id'], ['quizId', 'quiz_id'],
+    ['courseId', 'course_id'], ['takenAt', 'taken_at'],
+  ]) {
+    assert.match(handler, new RegExp(field + ': row\\.' + column + '\\b'),
+      `${field} must be mapped from ${column}`);
+  }
+  assert.match(handler, /answers: tryJson\(row\.answers_json, \[\]\)/);
+  assert.doesNotMatch(handler, /res\.json\(rows\)/, 'the raw rows must not go out');
+
+  const tab = codeOnly(read('client/components/student-dashboard/StudentQuizTab.tsx'));
+  assert.match(tab, /attempt\.quizId === quiz\.id && attempt\.subscriberId === subscriber\.id/);
+});
+
+test('the completions list is read snake_case on purpose and stays that way', () => {
+  // Checked rather than assumed: this route also hands over a raw row, but the
+  // screen reads c.course_id to match. Mapping it would break the pairing.
+  const tab = codeOnly(read('client/components/student-dashboard/StudentCertificatesTab.tsx'));
+  assert.match(tab, /completions\.find\(c => c\.course_id === String\(course\.id\)\)/);
+});
