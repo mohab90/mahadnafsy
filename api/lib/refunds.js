@@ -80,6 +80,21 @@ async function applyRefundReversal({ paymentId, subscriberId, refundAmount, refu
       WHERE payment_id=? AND tenant_id=? AND status IN ('PENDING','INCLUDED_IN_PAYROLL')`,
     [pay.id, tenantId]
   );
+  // The instructor's share goes with the salesperson's, for the same reason.
+  //
+  // Only the commission was being cancelled. A payment whose instructor fee had
+  // been approved stayed approved through the refund, and payroll pays approved
+  // fees — so the institute returned the customer's money and paid the
+  // instructor for that same enrolment out of the next run. There is no
+  // 'cancelled' in this enum; 'rejected' is its terminal state.
+  //
+  // A fee already 'paid' is left alone: the money has gone, and reversing it is
+  // a payroll correction rather than a status change.
+  await conn.query(
+    `UPDATE instructor_fees SET status='rejected'
+      WHERE source_payment_id=? AND tenant_id=? AND status IN ('pending','approved','included_in_payroll')`,
+    [pay.id, tenantId]
+  );
 
   if (pay.course_id || pay.bundle_id) {
     let courseIds = pay.course_id ? [pay.course_id] : [];

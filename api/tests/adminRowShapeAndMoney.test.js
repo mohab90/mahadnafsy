@@ -212,3 +212,54 @@ test('and both creation routes still refuse a partial one, which is why', () => 
   assert.equal((source.match(/Partial refunds are not enabled/g) || []).length, 2,
     'both the customer and the admin route must enforce it');
 });
+
+// ── payroll and the exchange rate ──────────────────────────────────────────
+test('payroll refuses a stale exchange rate instead of guessing one', () => {
+  // getFxToEgp hands over the rates without asking whether the snapshot is
+  // usable, unlike toEgp — which every inbound money path uses and which
+  // refuses a stale or fallback snapshot outright. So on a day when a 5,000 SAR
+  // payment would be rejected, a 5,000 SAR salary still posted to the ledger at
+  // the hardcoded fallback of 13. No foreign salary exists today, which is
+  // exactly when the trap is cheap to close.
+  const source = codeOnly(read('routes/hr/payroll.js'));
+  assert.match(source, /const currenciesInPlay = new Set\(/);
+  assert.match(source, /if \(!isFxSnapshotUsable\(fxSnapshot, currency\)\)/);
+  assert.match(source, /FX_SNAPSHOT_UNAVAILABLE/);
+});
+
+test('an all-EGP payroll never consults the exchange rate', () => {
+  // The guard walks only the currencies actually present, and EGP is usable by
+  // definition — so the ordinary run is untouched. If this stops holding, every
+  // payroll in the institute stops with it.
+  const finance = read('lib/finance.js');
+  const fn = finance.slice(finance.indexOf('function isFxSnapshotUsable'));
+  const body = fn.slice(0, fn.indexOf('\n}') + 2);
+  // eslint-disable-next-line no-new-func
+  const isFxSnapshotUsable = new Function(`${body}\nreturn isFxSnapshotUsable;`)();
+  assert.equal(isFxSnapshotUsable({ source: 'static-fallback' }, 'EGP'), true);
+  assert.equal(isFxSnapshotUsable({ source: 'static-fallback' }, 'SAR'), false,
+    'the hardcoded fallback must never be treated as a real rate');
+});
+
+// ── a refund takes both shares with it ─────────────────────────────────────
+test('refunding a payment cancels the instructor fee as well as the commission', () => {
+  // Only the salesperson's commission was cancelled. A payment whose instructor
+  // fee had been approved stayed approved through the refund, and payroll pays
+  // approved fees — so the money went back to the customer and out to the
+  // instructor for the same enrolment. There is no 'cancelled' in that enum;
+  // 'rejected' is its terminal state.
+  const source = codeOnly(read('lib/refunds.js'));
+  assert.match(source, /UPDATE crm_commissions SET status='CANCELLED'/);
+  assert.match(source, /UPDATE instructor_fees SET status='rejected'/);
+  assert.match(source, /source_payment_id=\? AND tenant_id=\?/);
+  // A fee already paid is left alone — reversing it is a payroll correction.
+  assert.match(source, /status IN \('pending','approved','included_in_payroll'\)/);
+});
+
+test('and payroll really does pay the status this now clears', () => {
+  // The two halves only matter together: if payroll stops consuming approved
+  // fees, this cancellation should be re-thought rather than kept by habit.
+  const payroll = codeOnly(read('routes/hr/payroll.js'));
+  assert.match(payroll, /instructor_fees/);
+  assert.match(payroll, /approved_instructor_fees/);
+});

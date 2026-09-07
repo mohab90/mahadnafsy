@@ -4,7 +4,7 @@ const router = Router();
 const { requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
-const { getFxToEgp } = require('../../lib/finance');
+const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/finance');
 const { computePayrollLine } = require('../../lib/payrollCalc');
 const { dateOnlyInTimeZone } = require('../../lib/dates');
 
@@ -235,7 +235,33 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
         GROUP BY staff_id,currency`,
       [tenantId, empIds, m, y]
     ) : [[]];
+    // Payroll converts foreign salaries, advances, bonuses and instructor fees
+    // through these rates, and getFxToEgp hands them over without asking
+    // whether the snapshot is usable — unlike toEgp, which every inbound money
+    // path goes through and which refuses a stale or fallback snapshot outright.
+    // So on a day when a 5,000 SAR *payment* would be rejected, a 5,000 SAR
+    // salary would still post to the ledger at the hardcoded fallback of 13.
+    //
+    // No non-EGP salary exists today, so this is a trap rather than a live
+    // fault — which is exactly when it is cheap to close. Only the currencies
+    // actually in play are checked, so an all-EGP payroll never consults FX.
     const fxRates = await getFxToEgp(tenantId);
+    const fxSnapshot = await getFxSnapshot(tenantId);
+    const currenciesInPlay = new Set([
+      ...employees.map(e => String(e.salary_currency || 'EGP').toUpperCase()),
+      ...advBatch.map(r => String(r.currency || 'EGP').toUpperCase()),
+      ...bonusBatch.map(r => String(r.currency || 'EGP').toUpperCase()),
+      ...feeBatch.map(r => String(r.currency || 'EGP').toUpperCase()),
+    ]);
+    for (const currency of currenciesInPlay) {
+      if (!isFxSnapshotUsable(fxSnapshot, currency)) {
+        await conn.rollback(); transactionStarted = false;
+        return res.status(409).json({
+          error: `سعر صرف ${currency} غير محدث — لا يمكن احتساب المرتبات بسعر تقديري`,
+          code: 'FX_SNAPSHOT_UNAVAILABLE',
+        });
+      }
+    }
     const advMap = {};
     for (const row of advBatch) {
       const currency = String(row.currency || 'EGP').toUpperCase();
