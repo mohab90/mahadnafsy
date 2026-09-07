@@ -16,6 +16,7 @@
     "reconcile": "node tools/reconcile.cjs",
     "backfill:payment-journals": "node tools/backfill-payment-journals.cjs",
     "purge:internal-broadcasts": "node tools/purge-internal-broadcasts.cjs",
+    "repair:enroll-paid": "node tools/enroll-paid-without-access.cjs",
     "smoke:live-db": "node tools/smoke-live-db.cjs",
     "smoke:customer-auth-geo": "node tools/customer-auth-geo-smoke.cjs",
     "smoke:forgot-password": "node tools/forgot-password-smoke.cjs",
