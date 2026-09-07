@@ -3,10 +3,10 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../../lib/logger');
-const { uuidv4 } = require('../../lib/id');
 const { pool } = require('../../lib/db');
 const { sendWhatsApp } = require('../../lib/whatsapp');
-const { logPaymentAudit, postPaymentJournal, toEgp } = require('../../lib/finance');
+const { logPaymentAudit, postPaymentJournal } = require('../../lib/finance');
+const { recordPaymentCompensation } = require('../../lib/paymentCompensation');
 const { assertWritable } = require('../../lib/periodLock');
 const { transitionLead } = require('../../lib/leadState');
 const { enqueueFinanceEvent } = require('../../lib/financeOutbox');
@@ -161,30 +161,24 @@ router.patch('/api/admin/payments/:id/status', requireAuth, requireAdminOrStaff,
         'SELECT assigned_sales_id, lead_id FROM subscribers WHERE id=? AND tenant_id=? LIMIT 1',
         [payment.subscriber_id, tenantId]
       );
-      const finalStaffId = payment.staff_id || subscriber?.assigned_sales_id || null;
-      if (finalStaffId) {
-        const [[staff]] = await conn.query(
-          'SELECT id, commission_rate FROM staff WHERE id=? AND tenant_id=? AND is_active=1 LIMIT 1',
-          [finalStaffId, tenantId]
-        );
-        const commissionRate = Number(staff?.commission_rate) || 0;
-        if (commissionRate > 0) {
-          const amountEgp = await toEgp(Number(payment.amount), payment.currency, tenantId);
-          const commissionAmount = Number((amountEgp * commissionRate / 100).toFixed(2));
-          const now = new Date();
-          await conn.query(
-            `INSERT INTO crm_commissions
-               (id, staff_id, payment_id, client_id, client_type, payment_amount,
-                commission_amount, calc_details, month, year, status, tenant_id, branch_id, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,'PENDING',?,?,NOW())
-             ON DUPLICATE KEY UPDATE commission_amount=VALUES(commission_amount),
-               tenant_id=VALUES(tenant_id), branch_id=VALUES(branch_id)`,
-            [uuidv4(), finalStaffId, id, payment.subscriber_id, 'subscriber', amountEgp,
-              commissionAmount, JSON.stringify({ rate: commissionRate, source: 'payment_status' }),
-              now.getMonth() + 1, now.getFullYear(), tenantId, payment.branch_id || 'branch-other']
-          );
-        }
-      }
+      // The same commission the other path pays.
+      //
+      // Approving a pending payment used to compute its own: it read
+      // staff.commission_rate directly and never consulted commission_rules,
+      // so a role on a 5% rule whose staff row said 10 earned double here than
+      // it would have on a payment recorded as paid outright. It also filed the
+      // row under the server clock's month rather than the payment's own date,
+      // so a payment dated 30 September approved on 1 October landed in
+      // October and missed the September payroll run that pays it. And it never
+      // wrote the instructor's share at all.
+      //
+      // recordPaymentCompensation is that rule, and it is now the only copy.
+      await recordPaymentCompensation({
+        paymentId: id,
+        tenantId,
+        commissionStaffId: payment.staff_id || subscriber?.assigned_sales_id || null,
+        actor,
+      }, conn);
       if (subscriber?.lead_id) {
         await transitionLead({
           tenantId,

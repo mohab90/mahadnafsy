@@ -150,3 +150,25 @@ test('a monthly charge on the 1st appears in the forecast', () => {
   // The 31st does not exist in September or November; it charges on the last day.
   assert.deepEqual(occurrences(31), ['2026-09-30', '2026-10-31', '2026-11-30']);
 });
+
+// ── one commission rule, not two ───────────────────────────────────────────
+test('approving a payment pays the same commission as recording one', () => {
+  // The approval path computed its own: staff.commission_rate read directly,
+  // commission_rules never consulted. A role on a 5% rule whose staff row said
+  // 10 earned double depending only on which path the payment took. It also
+  // stamped the row with the server clock's month, so a payment dated
+  // 30 September approved on 1 October landed in October and missed the
+  // September payroll run. And it wrote no instructor share at all.
+  const source = codeOnly(read('routes/core/financepay.js'));
+  assert.match(source, /await recordPaymentCompensation\(\{/);
+  assert.doesNotMatch(source, /INSERT INTO crm_commissions/,
+    'the second copy of the rule must be gone');
+  assert.doesNotMatch(source, /now\.getMonth\(\) \+ 1/,
+    'the period must come from the payment date, not the server clock');
+});
+
+test('the rule it now calls is the one that reads commission_rules', () => {
+  const helper = codeOnly(read('lib/paymentCompensation.js'));
+  assert.match(helper, /FROM commission_rules/);
+  assert.match(helper, /const period = paymentPeriod\(payment\.date\)/);
+});
