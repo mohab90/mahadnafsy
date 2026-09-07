@@ -120,7 +120,12 @@ test('only the codes are tagged otp — nothing else rides the exemption', () =>
   for (const file of senderFiles()) {
     if (/category:\s*'otp'/.test(read(file))) otpBearing.push(file);
   }
-  assert.deepEqual(otpBearing.sort(), ['lib/whatsappOtp.js', 'routes/auth.js'],
+  // lib/otpProvider.js joined the list when the email channel was given the
+  // same categories WhatsApp already had. It is the third code-sender, not a
+  // fourth kind of message: it delivers the sign-in code over email when that
+  // is the channel configured for the tenant. The rule this guards is unchanged
+  // — otp is the exemption, and only a code may carry it.
+  assert.deepEqual(otpBearing.sort(), ['lib/otpProvider.js', 'lib/whatsappOtp.js', 'routes/auth.js'],
     'otp is the one category that sends while everything else is stopped; '
     + 'only the sign-in code and the password-reset code may carry it');
 });
