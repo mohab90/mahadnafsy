@@ -441,15 +441,36 @@ router.get('/api/admin/contact-messages', requireAuth, requireAdmin, async (req,
        WHERE tenant_id=? AND (? IS NULL OR status=?)
        ORDER BY created_at DESC LIMIT 500`,
       [scopedTenantId(req), status, status]);
-    res.json(rows);
+    // The screen reads createdAt and adminNote and compares the status in
+    // lower case; the row carries created_at, admin_note and an upper-case
+    // enum. So every date under a sender's name was blank, «ملاحظة الإدارة»
+    // was always empty, and all three filter tabs counted zero.
+    res.json(rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      subject: row.subject,
+      message: row.message,
+      status: String(row.status || 'NEW').toLowerCase(),
+      adminNote: row.admin_note || undefined,
+      createdAt: row.created_at,
+    })));
   } catch (e) { routeError(res, e); }
 });
 
 router.patch('/api/admin/contact-messages/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    // The note is saved as well as the status. The desk has always been able to
+    // type one — the client sends adminNote — but this only ever wrote status,
+    // so the note was accepted by the screen and dropped on the way past.
+    const note = req.body.adminNote ?? req.body.admin_note;
+    const sets = ['status=?'];
+    const params = [String(req.body.status || 'new').toUpperCase()];
+    if (note !== undefined) { sets.push('admin_note=?'); params.push(String(note).slice(0, 5000) || null); }
     await pool.query(
-      'UPDATE contact_messages SET status=? WHERE id=? AND tenant_id=?',
-      [req.body.status || 'new', req.params.id, scopedTenantId(req)]
+      `UPDATE contact_messages SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`,
+      [...params, req.params.id, scopedTenantId(req)]
     );
     res.json({ ok: true });
   } catch (e) { routeError(res, e); }

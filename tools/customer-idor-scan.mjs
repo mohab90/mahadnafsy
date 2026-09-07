@@ -45,7 +45,9 @@ const unscoped = [];
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
-  const routeRe = /router\.(get|post|put|patch|delete)\(\s*'([^']+)'\s*,([^\n]*)/g;
+  // `\s*` before the paren: some routes are written `router.get  (`, and a
+  // pattern without it skips them silently.
+  const routeRe = /router\.(get|post|put|patch|delete)\s*\(\s*'([^']+)'\s*,([^\n]*)/g;
   const bounds = [];
   let match;
   while ((match = routeRe.exec(src))) {

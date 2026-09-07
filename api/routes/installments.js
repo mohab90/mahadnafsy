@@ -17,6 +17,7 @@ const express = require('express');
 const router = express.Router();
 const { uuidv4 } = require('./../lib/id');
 const { pool } = require('../lib/db');
+const { dateOnlyInTimeZone } = require('../lib/dates');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { postPaymentJournal, logPaymentAudit } = require('../lib/finance');
 const { assertWritable } = require('../lib/periodLock');
@@ -102,7 +103,12 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
     const index = parseInt(req.params.index, 10);
     const { amount, paidDate } = req.body || {};
     const paidAmount = Number(amount);
-    const effectiveDate = paidDate || new Date().toISOString().slice(0, 10);
+    // Cairo, not UTC. toISOString() takes the server's clock, and the server
+    // runs in UTC — so an instalment confirmed at 01:30 Cairo was dated to the
+    // previous day, filing the payment and its journal entry in the wrong
+    // month. lib/finance.js records 179 entries already filed a day early this
+    // way; this is the same default in another route.
+    const effectiveDate = paidDate || dateOnlyInTimeZone();
 
     await conn.beginTransaction();
     const [[plan]] = await conn.query(
@@ -138,7 +144,17 @@ router.post('/api/admin/installment-plans/:planId/entries/:index/pay', requireAu
        VALUES (?,?,?,?,?,?,?,?,1,?,?,?,'paid','installment',?,?,?,?,?,NOW())`,
       [payId, plan.subscriber_id, plan.course_id || null, plan.bundle_id || null, paidAmount, plan.currency || 'EGP',
        payType, 'installment',
-       update.scheduledAmount, `قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
+       // The plan's total, not this instalment's amount.
+       //
+       // course_expected is what the customer owes for the course, and the
+       // collections query reads MAX(course_expected) per course to decide who
+       // still owes money. Writing 3,000 here for one instalment of a 9,000
+       // plan made expected equal paid the moment that instalment cleared, so
+       // a customer owing 6,000 dropped off /admin/payments/outstanding and
+       // was never chased again. MAX over the plan total is stable across
+       // every instalment row, which is why recording it on each is correct
+       // rather than double-counting.
+       plan.total_amount, `قسط رقم ${index + 1} من ${update.installmentAmounts.length} — خطة ${plan.title || planId}`,
        effectiveDate,
        plan.title || null, branch, plan.branch_id || branchIdForBranch(branch),
        req.tenantId, req.user?.email || req.staffRecord?.name || 'system']

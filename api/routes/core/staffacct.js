@@ -68,7 +68,36 @@ router.get('/api/admin/consultations', requireAuth, requireAdmin, async (req, re
         ORDER BY c.session_date DESC LIMIT ?`,
       [req.tenantId, limit]
     );
-    res.json(rows);
+    // Mapped, like the therapist portal already does with this same table.
+    //
+    // These rows went out raw while every consultations screen in the admin
+    // reads camelCase, so client, doctor and type all drew «—», the date read
+    // «بدون تاريخ», the calendar was empty in every month, and «تأكيد» never
+    // appeared. The status and session type are lower-cased for the same
+    // reason: both enums are stored upper case and every screen compares them
+    // in lower, so the counts on «القادمة» and its filters all read zero.
+    res.json(rows.map(row => ({
+      id: row.id,
+      clientName: row.client_name,
+      clientEmail: row.client_email || undefined,
+      clientPhone: row.client_phone || undefined,
+      therapistId: row.therapist_id,
+      therapistName: row.t_name || undefined,
+      therapistSpecialty: row.t_specialty || undefined,
+      sessionType: String(row.session_type || 'INDIVIDUAL').toLowerCase(),
+      sessionDate: row.session_date,
+      slotId: row.slot_id || undefined,
+      timezone: row.timezone || undefined,
+      status: String(row.status || 'PENDING').toLowerCase(),
+      notes: row.notes || '',
+      amount: row.amount === null ? undefined : Number(row.amount),
+      currency: row.currency || undefined,
+      sessionDurationMinutes: row.session_duration_minutes || undefined,
+      meetingLink: row.meeting_link || undefined,
+      subscriberId: row.subscriber_id || undefined,
+      branchId: row.branch_id || undefined,
+      createdAt: row.created_at,
+    })));
   } catch (error) {
     logger.error('[admin-consultations]', error.message);
     res.status(500).json({ error: 'Internal server error' });

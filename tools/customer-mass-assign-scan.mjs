@@ -39,7 +39,9 @@ const hits = [];
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
-  const routeRe = /router\.(post|put|patch|delete)\(\s*'([^']+)'\s*,([^\n]*)/g;
+  // `\s*` before the paren: some routes are written `router.post  (`, and a
+  // pattern without it skips them silently.
+  const routeRe = /router\.(post|put|patch|delete)\s*\(\s*'([^']+)'\s*,([^\n]*)/g;
   const bounds = [];
   let match;
   while ((match = routeRe.exec(src))) {

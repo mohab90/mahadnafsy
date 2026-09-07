@@ -46,7 +46,11 @@ for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
 
-  const routeRe = /router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g;
+  // The space before the paren matters: six routes are written `router.get  (`
+  // and a pattern without it skipped them AND folded their bodies into the
+  // previous route, which is how this scan once reported one route's columns
+  // under another route's name.
+  const routeRe = /router\.(get|post|put|patch|delete)\s*\(\s*'([^']+)'/g;
   const bounds = [];
   let match;
   while ((match = routeRe.exec(src))) {
