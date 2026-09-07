@@ -235,7 +235,11 @@ const CHECKS = [
           WHERE e.access_type='full' AND e.status='active'
             AND c.deleted_at IS NULL AND COALESCE(c.price_egp,0) > 0
             AND COALESCE((
-              SELECT SUM(p.amount) FROM payments p
+              -- In EGP, because the price it is compared against is. Summing
+              -- the raw amount read a customer's riyals against an Egyptian
+              -- price and called them short when they had overpaid. One of the
+              -- rows this reports was only ever that.
+              SELECT SUM(COALESCE(p.amount_egp, p.amount)) FROM payments p
                WHERE p.subscriber_id=e.subscriber_id AND p.deleted_at IS NULL
                  AND p.status='paid' AND p.tenant_id=e.tenant_id
                  AND (p.course_id=e.course_id
