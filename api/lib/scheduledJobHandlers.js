@@ -7,6 +7,7 @@ const { createNotification } = require('./notification');
 const { getTenantSetting, setTenantSetting } = require('./tenantSettings');
 const { invalidateFxCache } = require('./finance');
 const { cacheInvalidate } = require('./db');
+const { notifyWaitlistForFreedSeats } = require('./courseWaitlist');
 
 function createScheduledJobHandlers({ pool, logger }) {
   const installmentSentToday = new Set();
@@ -228,31 +229,41 @@ function createScheduledJobHandlers({ pool, logger }) {
     }
   }
 
+  // The sweep calls the rule instead of carrying its own copy of it.
+  //
+  // It used to query cw.notify_sent and c.capacity. Neither column exists —
+  // course_waitlist tracks status and notified_at, and a course's size is
+  // max_students. So every run since this was written threw 1054 on its first
+  // query, the catch below logged it as a warning, and nobody on any waiting
+  // list has ever been told a seat opened. It runs seven minutes after boot and
+  // every thirty minutes after that.
+  //
+  // lib/courseWaitlist.js has the correct implementation and always did — it
+  // fires on revokeCourseEntitlement. This was a second copy that had drifted
+  // off the schema, so it is now the same one function, called per course that
+  // has anyone waiting.
   async function waitlistNotify() {
     try {
-      const [rows] = await pool.query(
-        `SELECT cw.id,cw.tenant_id,cw.subscriber_id,cw.course_id,cw.position,
-                s.name,s.phone,c.title course_title
+      const [pending] = await pool.query(
+        `SELECT DISTINCT cw.tenant_id, cw.course_id
            FROM course_waitlist cw
-           JOIN subscribers s ON s.id=cw.subscriber_id AND s.tenant_id=cw.tenant_id
            JOIN courses c ON c.id=cw.course_id AND c.tenant_id=cw.tenant_id
-          WHERE cw.notify_sent=0 AND cw.status='waiting' AND c.capacity IS NOT NULL
-            AND (SELECT COUNT(*) FROM enrollments e
-                  WHERE e.course_id=cw.course_id AND e.tenant_id=cw.tenant_id)<c.capacity
-          ORDER BY cw.position ASC LIMIT 20`
+          WHERE cw.status='waiting' AND c.max_students IS NOT NULL
+            AND c.deleted_at IS NULL
+          LIMIT 100`
       );
-      for (const row of rows) {
-        if (!row.phone) continue;
-        const message = `أهلاً ${row.name} 🎉\nيسعدنا إبلاغك بأن مقعداً أصبح متاحاً في كورس:\n📚 ${row.course_title}\n\nيرجى التواصل معنا خلال 48 ساعة لتأكيد حجزك قبل انتقاله للتالي في القائمة ⏳\n— معهد الدراسات النفسية 💚`;
-        const result = await sendWhatsApp(row.phone, message, { tenantId: row.tenant_id, category: 'reminder' })
-          .catch(() => ({ ok: false }));
-        if (!result.ok) continue;
-        await pool.query(
-          'UPDATE course_waitlist SET notify_sent=1,notified_at=NOW() WHERE id=? AND tenant_id=?',
-          [row.id, row.tenant_id]
-        );
+      let notified = 0;
+      for (const row of pending) {
+        const conn = await pool.getConnection();
+        try {
+          notified += await notifyWaitlistForFreedSeats(row.tenant_id, row.course_id, conn);
+        } catch (error) {
+          logger.warn('[jobs] waitlist notify failed for course', row.course_id, error.message);
+        } finally {
+          conn.release();
+        }
       }
-      if (rows.length) logger.info(`[jobs] waitlist notifications eligible=${rows.length}`);
+      if (notified) logger.info(`[jobs] waitlist notifications sent=${notified} across ${pending.length} course(s)`);
     } catch (error) {
       logger.warn('[jobs] waitlist notification failed:', error.message);
     }

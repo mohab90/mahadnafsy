@@ -83,15 +83,27 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'subscription_expiring_soon') {
         isSubscriberTrigger = true;
         const days = parseInt(actionCfg.days || '7');
+        // Rewritten onto the tables that exist.
+        //
+        // This asked subscriber_role_history for expires_at, and subscribers
+        // for status and course_title. There is no such table, and neither
+        // column exists — not in the schema and not in any migration. The query
+        // threw 1054 on every run, the per-workflow catch swallowed it, and the
+        // workflow went on showing "enabled" in the admin with a trigger count
+        // that never moved. Access expiry lives on enrollments.expiry_date, the
+        // course name on courses.title, and a live customer is is_active=1.
         const [rows] = await pool.query(`
-          SELECT s.id, s.name, s.email, s.phone, s.course_title,
-            srh.expires_at
+          SELECT s.id, s.name, s.email, s.phone,
+            MIN(c.title) AS course_title,
+            MIN(e.expiry_date) AS expires_at
           FROM subscribers s
-          LEFT JOIN subscriber_role_history srh ON srh.subscriber_id = s.id
-          WHERE s.tenant_id=? AND s.status = 'active'
-            AND srh.expires_at IS NOT NULL
-            AND DATEDIFF(srh.expires_at, NOW()) BETWEEN 0 AND ?
-          GROUP BY s.id
+          JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id = s.tenant_id
+            AND e.status = 'active'
+          LEFT JOIN courses c ON c.id = e.course_id AND c.tenant_id = e.tenant_id
+          WHERE s.tenant_id=? AND s.is_active = 1 AND s.deleted_at IS NULL
+            AND e.expiry_date IS NOT NULL
+            AND DATEDIFF(e.expiry_date, NOW()) BETWEEN 0 AND ?
+          GROUP BY s.id, s.name, s.email, s.phone
         `, [tid, days]);
         matchedLeads = rows;
       }
@@ -138,8 +150,8 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
             MAX(lp.completed_at) AS last_progress
           FROM subscribers s
           LEFT JOIN lecture_completions lp ON lp.subscriber_id = s.id AND lp.tenant_id = s.tenant_id
-          WHERE s.tenant_id=? AND s.status = 'active'
-          GROUP BY s.id
+          WHERE s.tenant_id=? AND s.is_active = 1 AND s.deleted_at IS NULL
+          GROUP BY s.id, s.name, s.email, s.phone
           HAVING last_progress IS NULL OR DATEDIFF(NOW(), last_progress) >= ?
         `, [tid, days]);
         matchedLeads = rows;
@@ -148,10 +160,21 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'new_subscriber') {
         isSubscriberTrigger = true;
         const sinceDays = parseInt(actionCfg.days || '1');
+        // subscribers has no course_title. The course a new customer joined on
+        // comes through their enrolment; a customer with none simply has NULL
+        // here rather than failing the whole query, which is what the LEFT JOINs
+        // are for. This is the trigger the admin's "new workflow" button
+        // defaults to, so every workflow ever created from that default has
+        // been inert since the day it was saved.
         const [rows] = await pool.query(`
-          SELECT id, name, phone, email, course_title
-          FROM subscribers
-          WHERE tenant_id=? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+          SELECT s.id, s.name, s.phone, s.email, MIN(c.title) AS course_title
+          FROM subscribers s
+          LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id = s.tenant_id
+            AND e.status = 'active'
+          LEFT JOIN courses c ON c.id = e.course_id AND c.tenant_id = e.tenant_id
+          WHERE s.tenant_id=? AND s.deleted_at IS NULL
+            AND s.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+          GROUP BY s.id, s.name, s.phone, s.email
         `, [tid, sinceDays]);
         matchedLeads = rows;
       }
@@ -159,11 +182,15 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'subscriber_course_completed') {
         isSubscriberTrigger = true;
         const sinceHours = parseInt(actionCfg.hours || '24');
+        // The completion row already names the course, so this one does not
+        // need the enrolment at all — it was reaching for a subscribers column
+        // that has never existed.
         const [rows] = await pool.query(`
-          SELECT DISTINCT s.id, s.name, s.phone, s.email, s.course_title
+          SELECT DISTINCT s.id, s.name, s.phone, s.email, c.title AS course_title
           FROM course_completions lp
           INNER JOIN subscribers s ON s.id = lp.subscriber_id AND s.tenant_id = lp.tenant_id
-          WHERE lp.tenant_id=?
+          LEFT JOIN courses c ON c.id = lp.course_id AND c.tenant_id = lp.tenant_id
+          WHERE lp.tenant_id=? AND s.deleted_at IS NULL
             AND lp.completed_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)
         `, [tid, sinceHours]);
         matchedLeads = rows;
@@ -210,8 +237,8 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'new_consultation') {
         const sinceDays = parseInt(actionCfg.days || '1');
         const [rows] = await pool.query(`
-          SELECT c.id, c.client_name AS name, c.phone, c.email,
-            t.display_name AS therapist_name
+          SELECT c.id, c.client_name AS name, c.client_phone AS phone, c.client_email AS email,
+            t.name AS therapist_name
           FROM consultations c
           LEFT JOIN therapists t ON t.id = c.therapist_id AND t.tenant_id=c.tenant_id
           WHERE c.tenant_id=? AND c.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
@@ -222,7 +249,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'consultation_cancelled') {
         const sinceDays = parseInt(actionCfg.days || '1');
         const [rows] = await pool.query(`
-          SELECT c.id, c.client_name AS name, c.phone, c.email
+          SELECT c.id, c.client_name AS name, c.client_phone AS phone, c.client_email AS email
           FROM consultations c
           WHERE c.tenant_id=? AND c.status IN ('cancelled','canceled')
             AND c.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
@@ -233,8 +260,8 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'consultation_confirmed') {
         const sinceDays = parseInt(actionCfg.days || '1');
         const [rows] = await pool.query(`
-          SELECT c.id, c.client_name AS name, c.phone, c.email,
-            t.display_name AS therapist_name
+          SELECT c.id, c.client_name AS name, c.client_phone AS phone, c.client_email AS email,
+            t.name AS therapist_name
           FROM consultations c
           LEFT JOIN therapists t ON t.id = c.therapist_id AND t.tenant_id=c.tenant_id
           WHERE c.tenant_id=? AND c.status = 'confirmed'
@@ -246,7 +273,7 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
       else if (wf.trigger === 'consultation_completed') {
         const sinceDays = parseInt(actionCfg.days || '1');
         const [rows] = await pool.query(`
-          SELECT c.id, c.client_name AS name, c.phone, c.email
+          SELECT c.id, c.client_name AS name, c.client_phone AS phone, c.client_email AS email
           FROM consultations c
           WHERE c.tenant_id=? AND c.status = 'completed'
             AND c.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
@@ -259,10 +286,13 @@ async function runAutomationWorkflows({ tenantId = null, actor = 'automation' } 
         isSubscriberTrigger = true;
         const sinceDays = parseInt(actionCfg.days || '1');
         const [rows] = await pool.query(`
-          SELECT DISTINCT s.id, s.name, s.phone, s.email, s.course_title
+          SELECT DISTINCT s.id, s.name, s.phone, s.email,
+            COALESCE(p.item_title, c.title) AS course_title
           FROM payments p
           INNER JOIN subscribers s ON s.id = p.subscriber_id AND s.tenant_id=p.tenant_id
+          LEFT JOIN courses c ON c.id = p.course_id AND c.tenant_id = p.tenant_id
           WHERE p.tenant_id=? AND (p.status = 'paid' OR p.status IS NULL)
+            AND p.deleted_at IS NULL AND s.deleted_at IS NULL
             AND p.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
         `, [tid, sinceDays]);
         matchedLeads = rows;
