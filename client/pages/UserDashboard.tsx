@@ -55,7 +55,7 @@ type AccountSection = 'payments' | 'notifications' | 'loyalty' | 'referral' | 's
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 const UserDashboard: React.FC = () => {
   useEffect(() => { document.title = 'حسابي | معهد الدراسات النفسية'; }, []);
-  const { courses, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
+  const { courses, subscribers, notifications, notificationReadIds: dismissedNotifIds, markBroadcastNotificationRead, markAllBroadcastNotificationsRead, communityPosts, consultations, getCourseLectures, authUser, remoteReady, mySubscriberLoaded, mySubscriberId, isAdmin, content, courseQuizzes, quizAttempts, submitQuizAttempt, liveStreams, logout, refreshMySubscriber } = useSiteData();
   const onlinePayEnabled = usePaymentAvailability();
   const navigate = useNavigate();
 
@@ -215,11 +215,21 @@ const UserDashboard: React.FC = () => {
     navigate('/');
   };
 
-  const subscriber = authUser?.email
-    ? subscribers.find(
-        s => s.email.toLowerCase().trim() === (authUser.email || '').toLowerCase().trim()
-      )
-    : undefined;
+  // The server's own answer first, the email only as a fallback.
+  //
+  // This used to match on the email alone, and 19 customer accounts on
+  // production have none: everyone who signed up through WhatsApp, and anyone
+  // who left the optional email blank. For them `subscriber` was undefined and
+  // the whole page fell through to «لم تنضم بعد إلى أي كورس» — no courses, no
+  // certificates, no payments, no quizzes, no consultations — while they were
+  // paid up the entire time. mySubscriberId is resolved server-side for exactly
+  // this reason, and Checkout, CourseDetails and the video player have all been
+  // using it; this screen was the one left behind.
+  const myEmail = (authUser?.email || '').toLowerCase().trim();
+  const subscriber = subscribers.find(s => s.id === mySubscriberId)
+    ?? (myEmail
+      ? subscribers.find(s => (s.email || '').toLowerCase().trim() === myEmail)
+      : undefined);
 
   /* ── Loading ── */
   if (authUser === undefined || !remoteReady) {
@@ -338,9 +348,17 @@ const UserDashboard: React.FC = () => {
     ? courses.filter(c => subscriber.enrolledCourseIds.includes(String(c.id)))
     : [];
 
-  const userConsultations = consultations.filter(
-    c => c.clientEmail?.toLowerCase() === authUser.email?.toLowerCase()
-  );
+  // /api/me/consultations already returns only this customer's, so there is
+  // nothing left to filter here.
+  //
+  // This filtered on c.clientEmail, which that route has never sent — and does
+  // not need to, having scoped by the caller server-side. `undefined ===
+  // "a@b.com"` is false for every row, so the list was always empty: the tab
+  // said «لا توجد استشارات مسجلة», and the sidebar stat, the overview card and
+  // the tab badge all read zero, for customers with confirmed bookings. The tab
+  // component itself was fixed earlier; the data was being thrown away one
+  // level above it.
+  const userConsultations = consultations;
 
   // Per-course payment info (for installed subscriber)
   const subPayHistory = subscriber?.paymentHistory ?? [];

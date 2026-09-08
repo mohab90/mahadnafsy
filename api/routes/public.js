@@ -1057,6 +1057,9 @@ router.get('/api/me/consultations', requireAuth, async (req, res) => {
       amount: row.amount != null ? Number(row.amount) : undefined,
       currency: row.currency || null,
       meetingLink: row.meeting_link || null,
+      // The client sorts the list on this. Left out of the first mapping, so
+      // the sort was comparing two empty strings and doing nothing.
+      createdAt: row.created_at,
     })));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

@@ -135,3 +135,30 @@ test('the completions list is read snake_case on purpose and stays that way', ()
   const tab = codeOnly(read('client/components/student-dashboard/StudentCertificatesTab.tsx'));
   assert.match(tab, /completions\.find\(c => c\.course_id === String\(course\.id\)\)/);
 });
+
+test('the dashboard finds a customer who has no email address', () => {
+  // It resolved the subscriber by matching authUser.email against the list.
+  // 19 customer accounts on production have no email — everyone who signed up
+  // through WhatsApp, and anyone who left the optional field blank — so for
+  // them the match failed and the whole page fell through to «لم تنضم بعد إلى
+  // أي كورس»: no courses, certificates, payments, quizzes or consultations,
+  // while they were paid up the entire time. mySubscriberId is resolved
+  // server-side for exactly this, and the other screens already used it.
+  const dashboard = codeOnly(read('client/pages/UserDashboard.tsx'));
+  assert.match(dashboard, /subscribers\.find\(s => s\.id === mySubscriberId\)/);
+  assert.match(dashboard, /mySubscriberId, isAdmin/, 'it has to be pulled off the context');
+  assert.doesNotMatch(dashboard, /const subscriber = authUser\?\.email/,
+    'the email-only resolution must be gone');
+});
+
+test('the consultations list is not filtered again on the client', () => {
+  // /api/me/consultations is scoped to the caller server-side and has never
+  // sent clientEmail. Filtering on it discarded every row, so the tab, the
+  // sidebar stat, the overview card and the badge all read zero.
+  const dashboard = codeOnly(read('client/pages/UserDashboard.tsx'));
+  assert.match(dashboard, /const userConsultations = consultations;/);
+  assert.doesNotMatch(dashboard, /c\.clientEmail\?\.toLowerCase\(\)/);
+
+  // And the route must keep sending what the client sorts on.
+  assert.match(handlerFor('/api/me/consultations'), /createdAt: row\.created_at/);
+});
