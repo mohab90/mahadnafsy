@@ -12,7 +12,7 @@ import {
   BRANCH_ENUM_LABELS,
   COMM_ICON,
   COMM_LABEL,
-  IL_LABEL,
+  interestLevelLabel,
   ROTTEN_CFG,
   STATUS_CFG,
   getLeadBranchRaw,
@@ -99,7 +99,7 @@ export function LeadCard({ lead, score, onSelect, onStatusChange, onBook, onCont
           </span>
         )}
         {lead.interestLevel && (
-          <span className="text-[10px] text-gray-500">{IL_LABEL[lead.interestLevel]}</span>
+          <span className="text-[10px] text-gray-500">{interestLevelLabel(lead.interestLevel)}</span>
         )}
       </div>
 

@@ -5,6 +5,7 @@ import {
   Download, RefreshCw, HardDrive, Globe, Copy, Trash2,
 } from 'lucide-react';
 import { mysqlAuth } from '../../../lib/mysqlapi';
+import { FX_FALLBACK } from '../../../lib/money';
 import {
   buildContentPatch,
   CERT_TYPES,
@@ -358,7 +359,7 @@ const TenantDomainSection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
 
 // ─── Exchange Rates ───────────────────────────────────────────────────────
 const ExchangeRatesSection: React.FC<{ data: ExchangeRates; mutateField: (f: string, v: any) => void }> = ({ data, mutateField }) => {
-  const er = data || { sar_to_egp: 13, usd_to_egp: 50 };
+  const er = data || { sar_to_egp: FX_FALLBACK.SAR, usd_to_egp: FX_FALLBACK.USD };
   return (
     <div className="space-y-4">
       <Card title="أسعار تحويل العملات إلى الجنيه المصري" hint="تُستخدم في احتساب الإيرادات وتقارير الحسابات عبر العملات المختلفة">

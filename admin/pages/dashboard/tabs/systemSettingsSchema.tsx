@@ -1,3 +1,4 @@
+import { FX_FALLBACK } from '../../../lib/money';
 import {
   ArrowLeftRight,
   Award,
@@ -130,8 +131,8 @@ export function parseContentSections(raw: Record<string, string>): Partial<Recor
   }));
 
   const exchange_rates: ExchangeRates = {
-    sar_to_egp: parseFloat(raw['exchange.sar_to_egp'] || '13') || 13,
-    usd_to_egp: parseFloat(raw['exchange.usd_to_egp'] || '50') || 50,
+    sar_to_egp: parseFloat(raw['exchange.sar_to_egp'] || String(FX_FALLBACK.SAR)) || FX_FALLBACK.SAR,
+    usd_to_egp: parseFloat(raw['exchange.usd_to_egp'] || String(FX_FALLBACK.USD)) || FX_FALLBACK.USD,
   };
 
   return { branches, payment_methods, cert_pricing, exchange_rates };

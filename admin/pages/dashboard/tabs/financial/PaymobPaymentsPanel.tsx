@@ -55,7 +55,13 @@ export const PaymobPaymentsPanel: React.FC<{ notify: NotifyFn }> = ({ notify }) 
   // together. The route merges in orders with no matching payment — abandoned
   // checkouts and refused attempts — so the split happens here.
   const collected = useMemo(() => rows.filter(row => row.status === 'paid'), [rows]);
-  const uncollected = useMemo(() => rows.filter(row => row.status !== 'paid'), [rows]);
+  const refunded = useMemo(() => rows.filter(row => row.status === 'refunded'), [rows]);
+  // "Uncollected" means the money never arrived. A refund arrived and went back,
+  // so it belongs in neither table's total and gets its own line.
+  const uncollected = useMemo(
+    () => rows.filter(row => row.status !== 'paid' && row.status !== 'refunded'), [rows]);
+  const refundedTotal = useMemo(
+    () => refunded.reduce((sum, row) => sum + Number(row.amount || 0), 0), [refunded]);
   const total = useMemo(
     () => collected.reduce((sum, row) => sum + Number(row.amount || 0), 0), [collected]);
   const uncollectedTotal = useMemo(

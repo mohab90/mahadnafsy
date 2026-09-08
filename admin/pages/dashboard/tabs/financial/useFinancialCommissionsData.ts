@@ -18,7 +18,8 @@ export function useFinancialCommissionsData(
         const repSubs = subscribers.filter((subscriber) => subscriber.assignedSalesId === rep.id);
         const revenue = repSubs
           .flatMap((subscriber) => subscriber.paymentHistory || [])
-          .filter((payment) => payment.at.startsWith(commissionMonth))
+          .filter((payment) => payment.at.startsWith(commissionMonth)
+            && (!payment.status || payment.status === 'paid'))
           .reduce((sum, payment) => sum + toEGP(payment.amount, payment.currency), 0);
         const commission = Math.round(revenue * (rep.commissionRate || 0) / 100);
         return { rep, revenue, commission };

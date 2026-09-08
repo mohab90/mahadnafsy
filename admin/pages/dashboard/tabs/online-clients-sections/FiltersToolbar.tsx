@@ -97,11 +97,10 @@ export function FiltersToolbar({
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
           <option value="">كل الحالات</option>
           <option value="active">نشط</option>
-          <option value="active_new">نشط جديد</option>
-          <option value="active_paid">مكتمل الدفع</option>
-          <option value="active_late">متأخر</option>
           <option value="paused">موقوف</option>
-          <option value="blocked">محظور</option>
+          <option value="finished">منتهي</option>
+          <option value="refund_pending">استرداد قيد التنفيذ</option>
+          <option value="refunded">مسترد</option>
         </select>
         <select value={collOnlineRemainingFilter} onChange={e=>{setCollOnlineRemainingFilter(e.target.value as 'all'|'has_remaining'|'paid');setCollOnlinePage(1);}}
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">

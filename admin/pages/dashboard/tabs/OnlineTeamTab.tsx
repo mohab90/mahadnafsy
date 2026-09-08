@@ -160,7 +160,10 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
   }, [staffMembers, notify]);
   useEffect(() => {
     const start = timeRange === 'all' ? undefined : getRangeStart(timeRange);
-    mysqlAdmin.getPayments(start, today()).then(rows => {
+    // No upper bound: it is applied as `date <= ?` against a datetime, so
+    // passing today's date excluded everything recorded after midnight — which
+    // is every payment taken today. There is nothing later than now to exclude.
+    mysqlAdmin.getPayments(start, undefined).then(rows => {
       setPayments(rows.map(row => ({
         subscriberId: row.subscriberId ? String(row.subscriberId) : row.subscriber_id ? String(row.subscriber_id) : null,
         amount: Number(row.amount || 0),

@@ -274,7 +274,14 @@ export default function OnlineClientsTab({
                   if (!(s.name||'').toLowerCase().includes(q) && !phoneMatch &&
                       !(s.email||'').toLowerCase().includes(q) && !(s.nationalId||'').includes(collOnlineSearch)) return false;
                 }
-                if (collOnlineStatusFilter && s.status !== collOnlineStatusFilter) return false;
+                if (collOnlineStatusFilter) {
+                  const lifecycle = s.clientStatus || '';
+                  const terminal = ['finished', 'paused', 'refunded', 'refund_pending'];
+                  const matches = collOnlineStatusFilter === 'active'
+                    ? s.isActive !== false && !terminal.includes(lifecycle)
+                    : lifecycle === collOnlineStatusFilter;
+                  if (!matches) return false;
+                }
                 if (collOnlineDateFrom && (s.createdAt||'').slice(0,10) < collOnlineDateFrom) return false;
                 if (collOnlineDateTo   && (s.createdAt||'').slice(0,10) > collOnlineDateTo)   return false;
                 if (collOnlineCourseFilter && !(s.enrolledCourseIds||[]).includes(collOnlineCourseFilter)) return false;

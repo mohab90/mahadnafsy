@@ -4,6 +4,7 @@ import type { BranchType, CommunicationRecord, Course, ExtraCertificateRequest, 
 import type { SettlementCurrency } from '../../lib/branchCurrency';
 import { branchLabels, EXTRA_TYPE_LABELS, normBranchKey, statusLabels } from './constants';
 import { toDialable } from '../../lib/whatsappLink';
+import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
 
 type ProfileCardProps = {
   isSub: boolean;
@@ -79,8 +80,8 @@ export function UnifiedClientSidebarProfileCard({
           {!isSub && lead?.interestLevel && (
             <div className="flex items-center justify-between py-1.5">
               <span className="text-gray-400">⭐ الاهتمام</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.interestLevel === 'high' ? 'bg-green-100 text-green-700' : lead.interestLevel === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                {lead.interestLevel === 'high' ? 'مرتفع' : lead.interestLevel === 'medium' ? 'متوسط' : 'منخفض'}
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${normalizeInterestLevel(lead.interestLevel) === 'high' ? 'bg-green-100 text-green-700' : normalizeInterestLevel(lead.interestLevel) === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                {normalizeInterestLevel(lead.interestLevel) === 'high' ? 'مرتفع' : normalizeInterestLevel(lead.interestLevel) === 'medium' ? 'متوسط' : 'منخفض'}
               </span>
             </div>
           )}

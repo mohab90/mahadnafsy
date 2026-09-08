@@ -13,7 +13,7 @@ export type SubscriberWithCustomPrices = SubscriberItem & { customPrices?: Recor
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error || '');
 
-import { paymentAmountInEGP } from '../../../lib/money';
+import { isCollected, paymentAmountInEGP } from '../../../lib/money';
 
 // Re-exported: seven modules import it from here, and the conversion itself
 // now lives in one place instead of three.
@@ -41,6 +41,9 @@ export const calcSubscribersPaidEGP = (
 ): number => subscribers
   .flatMap(subscriber => subscriber.paymentHistory || [])
   .reduce((sum, payment) => {
+    // «تحصيل اليوم / الأسبوع / الشهر» counted refunded money as collected: a
+    // refund flips the same row to 'refunded' and keeps its amount.
+    if (!isCollected(payment)) return sum;
     const paymentDate = (payment.at || '').slice(0, 10);
     if (fromDate && paymentDate < fromDate) return sum;
     if (toDate && paymentDate > toDate) return sum;
@@ -55,7 +58,9 @@ export const subscriberRemainingEGP = (subscriber: SubscriberItem): number => {
     }
   });
   const expected = Object.values(coursePrices).reduce((sum, value) => sum + value, 0);
-  const paid = (subscriber.paymentHistory || []).reduce((sum, payment) => sum + paymentAmountInEGP(payment), 0);
+  // A refunded payment must not reduce what the client still owes.
+  const paid = (subscriber.paymentHistory || [])
+    .reduce((sum, payment) => (isCollected(payment) ? sum + paymentAmountInEGP(payment) : sum), 0);
   return expected > 0 ? Math.max(0, expected - paid) : 0;
 };
 

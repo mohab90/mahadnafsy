@@ -43,6 +43,28 @@ export function toEgp(
   return rate > 0 ? value * rate : value;
 }
 
+/**
+ * Whether this payment is money the institute actually holds.
+ *
+ * payments.status is enum('pending','paid','failed','refunded'), and a refund
+ * flips the SAME row to 'refunded' while keeping its positive amount — see
+ * api/lib/refunds.js. A pending row is a receipt still waiting for approval in
+ * PaymentReviewPanel. Neither has been collected.
+ *
+ * A missing status means 'paid': rows that predate the column carry none, and
+ * the subscriber routes default it that way on the wire.
+ *
+ * This predicate was written out by hand in eight places and forgotten in five
+ * more, which is how «تحصيل الشهر» came to include refunded money and a sales
+ * commission came to be paid on it.
+ */
+export function isCollected(
+  payment: { status?: string | null } | null | undefined,
+): boolean {
+  const status = payment?.status;
+  return !status || status === 'paid';
+}
+
 /** The same, for the payment-shaped objects most callers already hold. */
 export function paymentAmountInEGP(
   payment: { amount?: number | string | null; currency?: string | null } | null | undefined,

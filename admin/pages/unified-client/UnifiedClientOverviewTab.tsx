@@ -5,6 +5,7 @@ import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { Bundle, CommunicationRecord, Course, CustomerTimelineEvent, InstallmentPlan, LeadItem, SubscriberCertificate, SubscriberItem } from '../../types';
 import { commTypeMeta } from './constants';
 import type { SettlementCurrency } from '../../lib/branchCurrency';
+import { normalizeInterestLevel } from '../dashboard/tabs/leadUtils';
 
 type BookingMapEntry = {
   expectedEGP?: number;
@@ -127,14 +128,14 @@ export function UnifiedClientOverviewTab({
                               </div>    
                             ) : (    
                               <div className={`rounded-2xl p-4 text-center border ${    
-                                lead?.interestLevel === 'high' ? 'bg-green-50 border-green-200' :    
-                                lead?.interestLevel === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'    
+                                normalizeInterestLevel(lead?.interestLevel) === 'high' ? 'bg-green-50 border-green-200' :    
+                                normalizeInterestLevel(lead?.interestLevel) === 'medium' ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'    
                               }`}>    
                                 <p className={`font-extrabold text-2xl leading-none ${    
-                                  lead?.interestLevel === 'high' ? 'text-green-600' :    
-                                  lead?.interestLevel === 'medium' ? 'text-amber-600' : 'text-gray-400'    
-                                }`}>{lead?.interestLevel === 'high' ? '🔥' : lead?.interestLevel === 'medium' ? '〽️' : lead?.interestLevel ? '▽' : '—'}</p>    
-                                <p className="text-[11px] text-gray-400 mt-1 font-semibold">{lead?.interestLevel === 'high' ? 'اهتمام مرتفع' : lead?.interestLevel === 'medium' ? 'اهتمام متوسط' : 'مستوى الاهتمام'}</p>    
+                                  normalizeInterestLevel(lead?.interestLevel) === 'high' ? 'text-green-600' :    
+                                  normalizeInterestLevel(lead?.interestLevel) === 'medium' ? 'text-amber-600' : 'text-gray-400'    
+                                }`}>{normalizeInterestLevel(lead?.interestLevel) === 'high' ? '🔥' : normalizeInterestLevel(lead?.interestLevel) === 'medium' ? '〽️' : lead?.interestLevel ? '▽' : '—'}</p>    
+                                <p className="text-[11px] text-gray-400 mt-1 font-semibold">{normalizeInterestLevel(lead?.interestLevel) === 'high' ? 'اهتمام مرتفع' : normalizeInterestLevel(lead?.interestLevel) === 'medium' ? 'اهتمام متوسط' : 'مستوى الاهتمام'}</p>    
                               </div>    
                             )}    
                             {/* Overdue (sub) | payments count (lead) */}    
@@ -227,11 +228,11 @@ export function UnifiedClientOverviewTab({
                               <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">    
                                 <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">مستوى الاهتمام</p>    
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${    
-                                  lead.interestLevel === 'high' ? 'bg-green-100 text-green-700' :    
-                                  lead.interestLevel === 'medium' ? 'bg-amber-100 text-amber-700' :    
+                                  normalizeInterestLevel(lead.interestLevel) === 'high' ? 'bg-green-100 text-green-700' :    
+                                  normalizeInterestLevel(lead.interestLevel) === 'medium' ? 'bg-amber-100 text-amber-700' :    
                                   'bg-gray-100 text-gray-600'    
                                 }`}>    
-                                  {lead.interestLevel === 'high' ? '⭐ مرتفع' : lead.interestLevel === 'medium' ? '〽️ متوسط' : '▽ منخفض'}    
+                                  {normalizeInterestLevel(lead.interestLevel) === 'high' ? '⭐ مرتفع' : normalizeInterestLevel(lead.interestLevel) === 'medium' ? '〽️ متوسط' : '▽ منخفض'}    
                                 </span>    
                               </div>    
                             )}    

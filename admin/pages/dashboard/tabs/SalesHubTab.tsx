@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { fxRates, toEgp } from '../../../lib/money';
 import type { SalesTarget, StaffLeadPerformance } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -73,7 +74,10 @@ interface MotivPost {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile }) => {
-  const { staffMembers, leads, orders } = useSiteData();
+  const { staffMembers, leads, orders, content } = useSiteData();
+  // Orders carry their own currency; the leaderboard prints ج. Without this a
+  // 1,200 SAR order counted as 1,200 EGP.
+  const rates = useMemo(() => fxRates(content), [content]);
 
   // Only sales-role staff
   const salesTeam = useMemo(() =>
@@ -140,7 +144,7 @@ const SalesHubTab: React.FC<Props> = ({ notify, salesTargets, onOpenStaffProfile
         o.staffId === s.id &&
         inRange(o.paidAt || o.createdAt, timeRange)
       );
-      const revenue = myOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+      const revenue = myOrders.reduce((sum, o) => sum + toEgp(o.amount, o.currency, rates), 0);
 
       // Monthly target
       const target = salesTargets.find(t => t.staffId === s.id && t.month === MONTH);

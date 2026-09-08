@@ -14,6 +14,7 @@ import {
   COMM_ICON,
   COMM_LABEL,
   IL_LABEL,
+  normalizeInterestLevel,
   PRESET_TAGS,
   ROTTEN_CFG,
   STATUS_CFG,
@@ -29,7 +30,7 @@ export function getScoreBreakdown(lead: LeadItem) {
   const statusScore: Partial<Record<LeadStatus, number>> = {
     new: 5, contacted: 15, interested: 35, no_answer: 8, not_interested: 0, closed: 50, converted: 100, lost: 0,
   };
-  const ilScore = lead.interestLevel === 'high' ? 30 : lead.interestLevel === 'medium' ? 15 : 5;
+  const ilScore = normalizeInterestLevel(lead.interestLevel) === 'high' ? 30 : normalizeInterestLevel(lead.interestLevel) === 'medium' ? 15 : 5;
   const commScore = Math.min((lead.communicationCount ?? lead.communications?.length ?? 0) * 5, 25);
   return [
     { label: 'حالة الليد',       pts: statusScore[lead.status] ?? 0, max: 50 },

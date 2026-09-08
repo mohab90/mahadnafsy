@@ -202,7 +202,13 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     if (!daqqiPendingRound) return;
     const selSubs = daqqiSubs.filter(s => daqqiSelectedAttendees.has(s.id));
     const attendees = selSubs.map(s => {
-      const paid = (s.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+      // A refunded payment keeps its row and its positive amount, and a pending
+      // one is a receipt nobody has approved yet. Counting either as collected
+      // told reception «متبقي 0» for a client who has paid nothing. Same
+      // predicate as useOverviewDerived, ClientDbTab and FinancialTab.
+      const paid = (s.paymentHistory || []).reduce((sum, p) => (
+        p.currency === 'EGP' && (!p.status || p.status === 'paid') ? sum + Number(p.amount) : sum
+      ), 0);
       return { subscriberId: s.id, name: s.name, phone: s.phone, bookedAt: s.createdAt, amountPaid: paid };
     });
     const round = { ...daqqiPendingRound, attendees };
@@ -227,7 +233,9 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       ...round.attendees,
       ...newSubs.map(s => {
         const chosenCourseId = daqqiAddClientsCourseSel[s.id] || round.courseId;
-        const paid = (s.paymentHistory || []).filter(p => p.currency === 'EGP' && (!p.courseId || p.courseId === chosenCourseId)).reduce((sum, p) => sum + Number(p.amount), 0);
+        const paid = (s.paymentHistory || [])
+          .filter(p => p.currency === 'EGP' && (!p.status || p.status === 'paid') && (!p.courseId || p.courseId === chosenCourseId))
+          .reduce((sum, p) => sum + Number(p.amount), 0);
         return { subscriberId: s.id, name: s.name, phone: s.phone, bookedAt: s.createdAt || new Date().toISOString().slice(0,10), amountPaid: paid };
       }),
     ];
@@ -368,7 +376,9 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         return (c as Course | undefined)?.titleAr || (c as Course | undefined)?.title || cid;
       })();
       // Compute paid before this payment (for remaining calculation)
-      const _prevPaid = (sub.paymentHistory || []).filter(p => p.currency === daqqiPayDraft.currency && (!p.courseId || p.courseId === daqqiPayDraft.courseId)).reduce((s, p) => s + Number(p.amount), 0);
+      const _prevPaid = (sub.paymentHistory || [])
+        .filter(p => p.currency === daqqiPayDraft.currency && (!p.status || p.status === 'paid') && (!p.courseId || p.courseId === daqqiPayDraft.courseId))
+        .reduce((s, p) => s + Number(p.amount), 0);
       const _newTotal = _prevPaid + amount + _extraTotalPrint;
       const _remaining = Math.max(0, _courseExpected - _newTotal);
       const _staffNamePrint = authUser?.displayName || authUser?.email?.split('@')[0] || 'الاستقبال';
@@ -433,7 +443,9 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     if (otherRound && !await confirmDialog(`${sub.name} مُسكَّن بالفعل في روند ${otherRound.code} لنفس الكورس. تسكينه في روند إضافي (${round.code})؟`)) {
       return;
     }
-    const paid = (sub.paymentHistory || []).reduce((sum, p) => p.currency === 'EGP' ? sum + Number(p.amount) : sum, 0);
+    const paid = (sub.paymentHistory || []).reduce((sum, p) => (
+      p.currency === 'EGP' && (!p.status || p.status === 'paid') ? sum + Number(p.amount) : sum
+    ), 0);
     const newAttendee = { subscriberId: sub.id, name: sub.name, phone: sub.phone, bookedAt: new Date().toISOString().slice(0, 10), amountPaid: paid };
     if (!await doUpdateRound({ ...round, attendees: [...round.attendees, newAttendee] })) {
       notify('error', 'تعذر تسكين العميل في الروند.');

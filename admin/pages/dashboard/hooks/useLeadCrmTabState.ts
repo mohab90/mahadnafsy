@@ -17,7 +17,11 @@ export function useLeadCrmTabState() {
   useEffect(() => {
     const period = new Date().toISOString().slice(0, 7);
     void mysqlAdmin.listSalesTargets(period)
-      .then(rows => setLeadsSalesTargets(rows as unknown as SalesTarget[]))
+      .then(rows => setLeadsSalesTargets(rows.map(row => ({
+        staffId: String(row.staffId || ''),
+        month: String(row.period || period),
+        targetEGP: Number(row.revenueTarget) || 0,
+      })).filter(row => row.staffId && row.staffId !== '__collection__')))
       .catch(() => setLeadsSalesTargets([]));
   }, []);
 

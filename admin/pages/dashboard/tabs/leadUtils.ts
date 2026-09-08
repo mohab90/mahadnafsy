@@ -33,8 +33,9 @@ export function calcLeadScore(lead: LeadItem): number {
     closed: 50, converted: 100, lost: 0, other: 2,
   };
   score += statusScore[lead.status] ?? 0;
-  if (lead.interestLevel === 'high') score += 30;
-  else if (lead.interestLevel === 'medium') score += 15;
+  const interest = normalizeInterestLevel(lead.interestLevel);
+  if (interest === 'high') score += 30;
+  else if (interest === 'medium') score += 15;
   else score += 5;
   score += Math.min((lead.communications?.length || 0) * 5, 25);
   if (lead.nextFollowUpDate) score += 5;
@@ -94,6 +95,18 @@ export const IL_LABEL: Record<string, string> = {
   low: 'منخفض',
 };
 
+/**
+ * leads.interest_level is enum('LOW','MEDIUM','HIGH') and reaches the browser
+ * as the enum spells it, while crm_json's copy is lowercase. Both mean the same
+ * thing, so both resolve here.
+ */
+export const normalizeInterestLevel = (value?: string | null): string =>
+  String(value || '').trim().toLowerCase();
+
+/** The Arabic label for either spelling; empty for an unset level. */
+export const interestLevelLabel = (value?: string | null): string =>
+  IL_LABEL[normalizeInterestLevel(value)] || '';
+
 export const BRANCH_ENUM_LABELS: Record<string, string> = {
   DAQQI: 'الدقي',
   TAGAMOA: 'التجمع',
@@ -111,7 +124,7 @@ export function getScoreBreakdown(lead: LeadItem) {
   const statusScore: Partial<Record<LeadStatus, number>> = {
     new: 5, contacted: 15, interested: 35, no_answer: 8, not_interested: 0, closed: 50, converted: 100, lost: 0,
   };
-  const ilScore = lead.interestLevel === 'high' ? 30 : lead.interestLevel === 'medium' ? 15 : 5;
+  const ilScore = normalizeInterestLevel(lead.interestLevel) === 'high' ? 30 : normalizeInterestLevel(lead.interestLevel) === 'medium' ? 15 : 5;
   const commScore = Math.min((lead.communications?.length || 0) * 5, 25);
   return [
     { label: 'حالة الليد', pts: statusScore[lead.status] ?? 0, max: 50 },
