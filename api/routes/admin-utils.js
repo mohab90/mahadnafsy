@@ -185,6 +185,7 @@ router.get('/api/admin/forecast', requireAuth, requireAdmin, async (req, res) =>
     const [monthly] = await pool.query(`
       SELECT DATE_FORMAT(date, '%Y-%m') AS month, SUM(amount_egp) AS revenue, COUNT(*) AS count
       FROM payments WHERE tenant_id=? AND date >= DATE_SUB(NOW(), INTERVAL 12 MONTH) AND amount_egp > 0
+        AND status='paid' AND deleted_at IS NULL
       GROUP BY month ORDER BY month ASC
     `, [req.tenantId]);
     // Simple linear regression on last 6 months to forecast next 3
@@ -233,11 +234,15 @@ router.get('/api/admin/export/subscribers', requireAuth, requireAdmin, bulkOpera
   try {
     const [rows] = await pool.query(
       `SELECT s.id, s.name, s.email, s.phone, s.is_active, s.source, s.created_at,
+              IF(s.is_active=1,'نشط','موقوف') AS status,
               COUNT(DISTINCT e.course_id) AS courses_count,
-              COALESCE(SUM(p.amount_egp),0) AS total_paid
+              COALESCE((
+                SELECT SUM(p.amount_egp) FROM payments p
+                 WHERE p.subscriber_id=s.id AND p.tenant_id=s.tenant_id
+                   AND p.status='paid' AND p.deleted_at IS NULL
+              ),0) AS total_paid
        FROM subscribers s
        LEFT JOIN enrollments e ON e.subscriber_id = s.id AND e.tenant_id=s.tenant_id AND e.status='active'
-       LEFT JOIN payments p ON p.subscriber_id = s.id AND p.tenant_id=s.tenant_id AND p.status='paid'
        WHERE s.tenant_id=?
        GROUP BY s.id ORDER BY s.created_at DESC LIMIT 10000`, [req.tenantId]
     );

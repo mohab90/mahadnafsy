@@ -7,6 +7,19 @@ const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/finance');
 const { computePayrollLine } = require('../../lib/payrollCalc');
 const { dateOnlyInTimeZone } = require('../../lib/dates');
+const { toNumbers } = require('../../lib/mappers');
+
+// Every money column on a payslip, including the aliases this file's SELECTs
+// add. The panel adds four deductions together and totals the column; against
+// mysql2's DECIMAL strings that is concatenation, so a real 650 EGP deduction
+// rendered as «—» and the run total printed as "09500.008000.00".
+const PAYROLL_ITEM_MONEY = [
+  'base_salary', 'total_allowances', 'commission', 'bonus', 'net_salary',
+  'late_deductions', 'absence_deductions', 'advance_deductions', 'other_deductions',
+  'allowances_total', 'late_deduction', 'absence_deduction', 'advance_deduction',
+  'other_deduction', 'bonus_amount', 'instructor_earnings',
+];
+const PAYROLL_RUN_MONEY = ['total_amount'];
 
 function parseCsvRow(line) {
   const fields = [];
@@ -392,7 +405,10 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
 
     await conn.commit();
     transactionStarted = false;
-    res.json({ run: updatedRun, items });
+    res.json({
+      run: toNumbers(updatedRun, PAYROLL_RUN_MONEY),
+      items: items.map(item => toNumbers(item, PAYROLL_ITEM_MONEY)),
+    });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' });
@@ -424,7 +440,7 @@ router.get('/api/admin/hr/payroll/:runId', requireAuth, requireAdminOrStaff, req
        WHERE pi.payroll_run_id=? AND pi.tenant_id=?
       ORDER BY s.name
     `, [runId, req.tenantId]);
-    res.json({ run, items });
+    res.json({ run: toNumbers(run, PAYROLL_RUN_MONEY), items: items.map(item => toNumbers(item, PAYROLL_ITEM_MONEY)) });
   } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

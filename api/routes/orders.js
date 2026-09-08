@@ -87,6 +87,8 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         id: p.id,
         subscriber_id: p.subscriber_id,
         item_id: p.course_id || p.bundle_id || '',
+        course_id: p.course_id || null,
+        bundle_id: p.bundle_id || null,
         item_title: p.note ? `${(p.payment_type || '').toLowerCase()} — ${p.note}`.slice(0, 80) : (p.payment_type || 'دفعة يدوية'),
         type: (p.payment_type || 'course').toLowerCase(),
         status: p.status || 'paid',
@@ -106,7 +108,21 @@ router.get('/api/admin/orders', requireAuth, requireAdminOrStaff, requirePermiss
         source: 'crm',
       }));
 
-    res.json([...rows, ...crmOrders]);
+    // orders.status and orders.type are ENUMs whose members are UPPERCASE, and
+    // every reader on the dashboard compares lowercase. Migration 096 tried to
+    // fix this with UPDATE ... SET status='pending' WHERE status='PENDING', which
+    // an ENUM coerces straight back — so on production all twenty orders still
+    // read PENDING/PAID and COURSE/BUNDLE/CONSULTATION, and the Orders screen
+    // could see none of them: the «قيد المراجعة» tab counted zero, the modal for
+    // linking a bank transfer to a pending payment listed nothing, the revenue
+    // tiles excluded every order, and filtering by type emptied the table. The
+    // same fault in contact_messages was fixed exactly here, in the route.
+    const normalized = rows.map(row => ({
+      ...row,
+      status: String(row.status || 'paid').toLowerCase(),
+      type: String(row.type || 'course').toLowerCase(),
+    }));
+    res.json([...normalized, ...crmOrders]);
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });

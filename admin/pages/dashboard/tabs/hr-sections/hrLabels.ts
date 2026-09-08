@@ -15,6 +15,10 @@ export const ROLE_LABELS: Record<string, string> = {
   manager: 'مدير', admin: 'مسؤول', support: 'دعم فني', reception_daqqi: 'استقبال دقي',
   daqqi_manager: 'مدير دقي', collection: 'تحصيل', accountant: 'محاسب',
   consultant: 'مستشار', other: 'أخرى',
+  // staff.role has sixteen members; these three had no label, so the online
+  // manager — a role the dashboard branches on all over — showed as an empty
+  // pill on the performance table and as raw English in the directory.
+  online_manager: 'مدير أونلاين', sales_collection_manager: 'مدير مبيعات وتحصيل', hr: 'موارد بشرية',
 };
 export const ROLE_COLORS: Record<string, string> = {
   manager: 'bg-purple-100 text-purple-700', admin: 'bg-gray-100 text-gray-700',
@@ -23,6 +27,8 @@ export const ROLE_COLORS: Record<string, string> = {
   collection: 'bg-orange-100 text-orange-700', accountant: 'bg-amber-100 text-amber-700',
   reception_daqqi: 'bg-cyan-100 text-cyan-700', daqqi_manager: 'bg-cyan-100 text-cyan-700',
   consultant: 'bg-rose-100 text-rose-700', expert: 'bg-pink-100 text-pink-700',
+  online_manager: 'bg-violet-100 text-violet-700',
+  sales_collection_manager: 'bg-sky-100 text-sky-700', hr: 'bg-lime-100 text-lime-700',
   other: 'bg-gray-100 text-gray-700',
 };
 export const LEAVE_TYPE_LABELS: Record<string, string> = {

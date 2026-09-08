@@ -3,15 +3,18 @@ import { FileText, TrendingUp, Users, DollarSign, Tag, BarChart3, PieChart as Pi
 import { useSiteData } from '../../../context/SiteDataContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
+import { STATUS_CFG } from './leadUtils';
 
 type Range = 'week' | 'month' | '3months' | 'all';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316'];
 
-const LEAD_STATUS_LABEL: Record<string, string> = {
-  new: 'جديد', contacted: 'تم التواصل', interested: 'مهتم', interested_booking: 'مهتم (حجز)',
-  converted: 'تم التحويل', not_interested: 'غير مهتم', no_answer: 'لا يرد', follow_up: 'متابعة',
-};
+// The complete Arabic map is STATUS_CFG, one directory over. This file kept a
+// partial copy of eight — including 'follow_up', which is not a lead status at
+// all — so a desk working no_answer_wa and interested_followup saw raw English
+// in the legend of an Arabic pie chart.
+const leadStatusLabel = (status: string) =>
+  STATUS_CFG[status as keyof typeof STATUS_CFG]?.label || status;
 
 function getRangeStart(range: Range): string {
   const d = new Date();
@@ -39,7 +42,7 @@ export default function SalesReportsTab() {
   const byStatus = useMemo(() => {
     const map: Record<string, number> = {};
     filteredLeads.forEach(l => { const s = l.status || 'new'; map[s] = (map[s] || 0) + 1; });
-    return Object.entries(map).map(([k, v]) => ({ name: LEAD_STATUS_LABEL[k] || k, value: v }))
+    return Object.entries(map).map(([k, v]) => ({ name: leadStatusLabel(k), value: v }))
       .sort((a, b) => b.value - a.value);
   }, [filteredLeads]);
 

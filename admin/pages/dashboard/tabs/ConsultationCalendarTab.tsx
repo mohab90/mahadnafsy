@@ -3,16 +3,23 @@ import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 
 
+// consultations.status is enum('PENDING','CONFIRMED','COMPLETED','CANCELLED'),
+// lower-cased by the route. 'scheduled' and 'no_show' are not statuses this
+// system has: a confirmed booking matched no label, no tile and no filter.
 const STATUS_LABEL: Record<string, string> = {
-  scheduled: 'مجدولة', completed: 'مكتملة', cancelled: 'ملغاة', pending: 'معلقة', no_show: 'لم يحضر',
+  pending: 'معلقة', confirmed: 'مؤكدة', completed: 'مكتملة', cancelled: 'ملغاة',
 };
 const STATUS_COLOR: Record<string, string> = {
-  scheduled: 'bg-blue-100 text-blue-700',
+  pending: 'bg-amber-100 text-amber-700',
+  confirmed: 'bg-blue-100 text-blue-700',
   completed: 'bg-emerald-100 text-emerald-700',
   cancelled: 'bg-red-100 text-red-700',
-  pending: 'bg-amber-100 text-amber-700',
-  no_show: 'bg-gray-100 text-gray-600',
 };
+
+// The day this booking belongs to. sessionDate is what the API sends; the other
+// two are kept because older records and the bookings tab both carry them.
+const consultDay = (item: { sessionDate?: string; scheduledAt?: string; date?: string }) =>
+  String(item.sessionDate || item.scheduledAt || item.date || '');
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -35,7 +42,7 @@ export default function ConsultationCalendarTab() {
   const consultsByDay = useMemo(() => {
     const map: Record<string, typeof consultations> = {};
     consultations.forEach(c => {
-      const day = (c.scheduledAt || c.date || '').slice(0, 10);
+      const day = consultDay(c).slice(0, 10);
       if (!day) return;
       if (!map[day]) map[day] = [];
       map[day].push(c);
@@ -48,7 +55,7 @@ export default function ConsultationCalendarTab() {
       const dayConsults = consultsByDay[selectedDate] || [];
       return statusFilter === 'all' ? dayConsults : dayConsults.filter(c => c.status === statusFilter);
     }
-    const monthConsults = consultations.filter(c => (c.scheduledAt || c.date || '').slice(0, 7) === monthStr);
+    const monthConsults = consultations.filter(c => consultDay(c).slice(0, 7) === monthStr);
     return statusFilter === 'all' ? monthConsults : monthConsults.filter(c => c.status === statusFilter);
   }, [consultations, consultsByDay, selectedDate, monthStr, statusFilter]);
 
@@ -71,11 +78,11 @@ export default function ConsultationCalendarTab() {
   const todayStr = today.toISOString().slice(0, 10);
 
   // Summary for current month
-  const monthConsults = consultations.filter(c => (c.scheduledAt || c.date || '').slice(0, 7) === monthStr);
+  const monthConsults = consultations.filter(c => consultDay(c).slice(0, 7) === monthStr);
   const monthStats = {
     total: monthConsults.length,
     completed: monthConsults.filter(c => c.status === 'completed').length,
-    scheduled: monthConsults.filter(c => c.status === 'scheduled' || c.status === 'pending').length,
+    scheduled: monthConsults.filter(c => c.status === 'confirmed' || c.status === 'pending').length,
     cancelled: monthConsults.filter(c => c.status === 'cancelled').length,
   };
 
@@ -168,9 +175,9 @@ export default function ConsultationCalendarTab() {
                         <div className="text-sm font-semibold text-gray-800 truncate">{c.clientName || c.name || '—'}</div>
                         {c.phone && <div className="text-xs text-gray-400 font-mono">{c.phone}</div>}
                         {staff && <div className="text-xs text-purple-600">{staff.name}</div>}
-                        {(c.scheduledAt || c.date) && (
+                        {consultDay(c) && (
                           <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                            <Clock size={10} />{(c.scheduledAt || c.date || '').slice(0, 16).replace('T', ' ')}
+                            <Clock size={10} />{consultDay(c).slice(0, 16).replace('T', ' ')}
                           </div>
                         )}
                         {c.notes && <div className="text-xs text-gray-500 mt-1 truncate">{c.notes}</div>}

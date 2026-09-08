@@ -5,6 +5,7 @@ const router  = express.Router();
 
 const { pool, cached } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── FEATURE: Admin Dashboard KPI Snapshot ────────────────────────────────
@@ -199,14 +200,24 @@ router.get('/api/admin/analytics/cohorts', requireAuth, requireAdmin, async (req
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/api/admin/kpi/summary', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const now     = new Date();
-    const today   = now.toISOString().slice(0, 10);
-    const weekAgo = new Date(+now - 7  * 86400000).toISOString().slice(0, 10);
-    const monAgo  = new Date(+now - 30 * 86400000).toISOString().slice(0, 10);
+    // The server runs UTC and the institute runs in Cairo, so between midnight
+    // and 02:00 the UTC date is still yesterday: «إيراد اليوم» showed the
+    // previous day's takings and a payment entered at 01:20 counted for nothing.
+    const today   = dateOnlyInTimeZone();
+    const weekAgo = addDaysToDateOnly(today, -7);
+    const monAgo  = addDaysToDateOnly(today, -30);
     const monthStart = `${today.slice(0, 7)}-01`;
+    // setMonth(-1) keeps the day of the month, so on the 31st of a month whose
+    // predecessor is shorter JS rolls forward into the current month before
+    // setDate(1) runs: prevMonthStart came out equal to monthStart and the
+    // comparison query asked for date >= X AND date < X. On five days a year
+    // — 31 March, May, July, October, December — the month-over-month line
+    // vanished from the dashboard entirely.
     const prevMonthStart = (() => {
-      const d = new Date(now); d.setMonth(d.getMonth() - 1); d.setDate(1);
-      return d.toISOString().slice(0, 10);
+      const [year, month] = today.split('-').map(Number);
+      const prevYear = month === 1 ? year - 1 : year;
+      const prevMonth = month === 1 ? 12 : month - 1;
+      return `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
     })();
 
     const [[todayRev]]  = await pool.query(`SELECT COALESCE(SUM(amount_egp),0) AS v FROM payments WHERE tenant_id=? AND date >= ? AND date < DATE_ADD(?, INTERVAL 1 DAY) AND status='paid'`, [req.tenantId, today, today]);
@@ -274,7 +285,7 @@ router.get('/api/admin/kpi/summary', requireAuth, requireAdmin, async (req, res)
       })),
       revenueByDay:  revenueByDay.map(r => ({ day: r.day?.toISOString?.()?.slice(0,10) || r.day, revenue: Number(r.revenue) })),
       leadsByDay:    leadsByDay.map(r => ({ day: r.day?.toISOString?.()?.slice(0,10) || r.day, count: Number(r.count) })),
-      generatedAt: now.toISOString(),
+      generatedAt: new Date().toISOString(),
     });
   } catch (e) { logger.error('[kpi/summary]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

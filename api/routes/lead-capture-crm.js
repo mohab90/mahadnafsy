@@ -10,6 +10,7 @@ const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getNextClientCode } = require('../lib/mappers');
 const { normalizePhone } = require('../lib/helpers');
+const { LEAD_STATUSES, isOpenLeadStatus } = require('../lib/leadStatuses');
 const { branchIdForBranch, normalizeBranch } = require('../lib/branches');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
@@ -207,12 +208,21 @@ router.post('/api/admin/leads/distribute', requireAuth, requireAdmin, async (req
     if (Number(lock?.acquired) !== 1) return res.status(409).json({ error: 'Lead distribution is already running' });
     await conn.beginTransaction();
     transactionStarted = true;
+    // Ten statuses are terminal; this excluded two of them. The auto-archiver
+    // flips untouched unassigned leads to 'archived' while leaving hidden=0 and
+    // assigned_sales_id NULL, and 'archived' is not in ('converted','lost') — so
+    // every run of «توزيع الليدز» handed those dead leads back out, and with a
+    // daily cap set they consumed each rep's ceiling before a real new lead
+    // could reach them. Same for wrong_number, not_interested, unqualified and
+    // the rest. leadStatuses.js is where that set is decided.
+    const openStatuses = [...LEAD_STATUSES].filter(isOpenLeadStatus);
+    const openPlaceholders = openStatuses.map(() => '?').join(',');
     const whereClause = mode === 'all'
-      ? `WHERE hidden=0 AND tenant_id=? AND status NOT IN ('converted','lost')`
-      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status NOT IN ('converted','lost')`;
+      ? `WHERE hidden=0 AND tenant_id=? AND status IN (${openPlaceholders})`
+      : `WHERE hidden=0 AND tenant_id=? AND assigned_sales_id IS NULL AND status IN (${openPlaceholders})`;
     const [targets] = await conn.execute(
       `SELECT id FROM leads ${whereClause} ORDER BY created_at ASC FOR UPDATE`,
-      [tenantId]
+      [tenantId, ...openStatuses]
     );
     const [reps] = await conn.execute(
       `SELECT id, name FROM staff WHERE tenant_id=? AND role IN ('SALES','MANAGER') AND is_active=1 ORDER BY name ASC`,

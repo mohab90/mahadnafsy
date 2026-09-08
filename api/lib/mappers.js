@@ -300,4 +300,18 @@ function mapQuiz(r, { includeAnswers = false } = {}) {
   };
 }
 
-module.exports = { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz };
+// mysql2 returns DECIMAL as a string — the pool leaves decimalNumbers unset on
+// purpose, since flipping it would change the wire type of every money value in
+// the system at once. The consequence is local and sharp: a screen that adds two
+// of them gets "0.00" + "150.00" = "0.00150.00", which is NaN the moment anything
+// compares it, so a real deduction renders as «—» and a run total prints as
+// "09500.008000.00". Routes that hand money rows to a screen convert here.
+function toNumbers(row, fields) {
+  const out = { ...row };
+  for (const field of fields) {
+    if (out[field] !== undefined && out[field] !== null) out[field] = Number(out[field]);
+  }
+  return out;
+}
+
+module.exports = { toNumbers, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz };

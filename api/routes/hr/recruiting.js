@@ -187,10 +187,23 @@ router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requir
     const fields = ['title','department_id','branch','employment_type','description','requirements','salary_min','salary_max','status'];
     const sets = []; const vals = [];
     for (const f of fields) { if (req.body[f] !== undefined) { sets.push(`${f}=?`); vals.push(req.body[f]); } }
-    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    // Every other early return in this handler rolls back; these two did not,
+    // and the finally only releases. mysql2 sends no COM_RESET_CONNECTION on
+    // release, so the connection went back into the pool still holding the
+    // X-lock this handler's SELECT ... FOR UPDATE took, and still inside its
+    // read snapshot. A PUT with an empty body left a colleague's edit of the
+    // same job blocking for the full lock timeout, and served stale rows to
+    // whatever unrelated query landed on that connection next.
+    if (!sets.length) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(400).json({ error: 'nothing to update' });
+    }
     vals.push(jobId, req.tenantId);
     const [updated] = await conn.query(`UPDATE job_postings SET ${sets.join(',')} WHERE id=? AND tenant_id=?`, vals);
-    if (!updated.affectedRows) return res.status(404).json({ error: 'Job not found' });
+    if (!updated.affectedRows) {
+      await conn.rollback(); transactionStarted = false;
+      return res.status(404).json({ error: 'Job not found' });
+    }
     await writeAuditEvent({
       action: 'hr.job.updated', entityType: 'job_posting', entityId: jobId,
       metadata: { changed_fields: fields.filter(field => req.body[field] !== undefined), old_status: current.status },

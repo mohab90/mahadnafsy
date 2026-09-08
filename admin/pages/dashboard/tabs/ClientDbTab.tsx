@@ -207,10 +207,14 @@ export default function ClientDbTab({ notify, onBook }: { notify: NotifyFn; onBo
       status: 'مشترك',
       branch: s.branch || '',
       createdAt: s.createdAt || '',
+      // paymentHistory carries every non-deleted row with its status, and
+      // payments really do become 'refunded' and 'pending'. Unfiltered, a fully
+      // refunded client still read as having paid, exported that way, and ranked
+      // among the top payers. Same predicate the finance screens already use.
       totalPaid: Math.round(
         (s.paymentHistory || []).reduce(
-          (sum: number, p: { currency: string; amount: number }) =>
-            sum + toEgp(p.amount, p.currency),
+          (sum: number, p: { currency: string; amount: number; status?: string }) =>
+            (!p.status || p.status === 'paid' ? sum + toEgp(p.amount, p.currency) : sum),
           0
         )
       ),

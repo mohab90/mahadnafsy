@@ -5,6 +5,7 @@ import {
   GraduationCap, Mail, FolderKanban,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { fxRates } from '../../../lib/money';
 
 type Section   = 'all' | 'sales' | 'consultations' | 'courses' | 'bundles';
 type TimeRange = 'all' | 'today' | 'yesterday' | '7d' | '30d';
@@ -22,10 +23,11 @@ const AnalyticsTab: React.FC<Props> = () => {
   } = useSiteData();
 
   // ── Exchange rates ────────────────────────────────────────────
-  const sarRate = parseFloat(content['exchange.sar_to_egp'] || '13') || 13;
-  const usdRate = parseFloat(content['exchange.usd_to_egp'] || '50') || 50;
-  const toEGP   = (amt: number, cur: string) =>
-    cur === 'EGP' ? amt : cur === 'SAR' ? amt * sarRate : amt * usdRate;
+  // This screen carried its own fallbacks and its USD one was 50, where the
+  // shared table, the Overview and the API's own ledger all use 48. With no
+  // configured rate a $1,000 order read 50,000 here and 48,000 everywhere else.
+  const rates = fxRates(content);
+  const toEGP = (amt: number, cur: string) => amt * (rates[cur as keyof typeof rates] ?? 1);
 
   // ── Date helpers ──────────────────────────────────────────────
   const now          = new Date();
@@ -74,7 +76,7 @@ const AnalyticsTab: React.FC<Props> = () => {
     }
     return rows;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, sarRate, usdRate]);
+  }, [orders, rates]);
   const maxMonthRev = Math.max(...monthlyRevenue.map(m => m.rev), 1);
 
   // ── Lead funnel (filtered) ────────────────────────────────────

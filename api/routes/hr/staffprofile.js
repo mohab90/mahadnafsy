@@ -17,6 +17,7 @@ const {
   createNotification, _resolveStaffByUser,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
 
 const MAX_BODY = 4000;
 
@@ -48,7 +49,7 @@ const PERIODS = {
 function periodRange(key) {
   const spec = PERIODS[key] || PERIODS.month;
   const dayMs = 86400000;
-  const startOfToday = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z').getTime();
+  const startOfToday = new Date(dateOnlyInTimeZone() + 'T00:00:00.000Z').getTime();
   if (key === 'yesterday') {
     return {
       from: new Date(startOfToday - dayMs).toISOString().slice(0, 10),
@@ -100,8 +101,8 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
     );
     if (!staff) return res.status(404).json({ error: 'Employee not found' });
 
-    const today = new Date().toISOString().slice(0, 10);
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const today = dateOnlyInTimeZone();
+    const tomorrow = addDaysToDateOnly(today, 1);
     const since = toIsoDate(staff.joined_at) || toIsoDate(staff.created_at) || today;
 
     const [

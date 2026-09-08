@@ -170,7 +170,14 @@ test('expense UI waits for the server ledger and the API preserves category, bra
   const runtime = read('admin/context/site-data-hooks/useAdminDataRuntime.ts');
   assert.match(route, /expenses'.*requireAdminOrStaff, requirePermission\('view_financial'\)/);
   assert.match(route, /expenses'.*requireAdminOrStaff, requirePermission\('manage_financial'\)/);
-  assert.match(route, /EXPENSE_CATEGORY_DB/);
+  // The category map moved to lib/expenseCategories.js so the budget route can
+  // reach it too: budgets are keyed by the Arabic label and expenses by the
+  // English code, and with the map locked inside this route the two could never
+  // be joined — «الفعلي» read 0 for every category.
+  const categories = read('api/lib/expenseCategories.js');
+  assert.ok(route.includes("require('../lib/expenseCategories')"));
+  assert.match(categories, /EXPENSE_CATEGORY_DB/);
+  assert.ok(read('api/routes/finance.js').includes('EXPENSE_CATEGORY_LABEL[s.category]'));
   assert.match(route, /deleted_at IS NULL/);
   assert.match(route, /financialRecordMatches\(sourceScope, oldExp\)/);
   assert.match(route, /SET description=\?, amount=\?, currency=\?, category=\?, date=\?, receipt_url=\?, note=\?, branch_id=\?/);

@@ -13,8 +13,18 @@ const { postExpenseJournal } = require('../lib/finance');
 const { financialRecordMatches, resolveFinancialScope } = require('../lib/financialScope');
 const { assertWritable } = require('../lib/periodLock');
 const { writeAuditEvent } = require('../lib/auditTrail');
+const { toNumbers } = require('../lib/mappers');
+const { safeDateOnly } = require('../lib/dates');
+const { EXPENSE_CATEGORY_LABEL, expenseCategory } = require('../lib/expenseCategories');
 const { convertJoinUs } = require('./hr/talent');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+
+// expenses.amount and friends are DECIMAL, which mysql2 hands back as strings,
+// and expenses.date is a DATETIME, which it hands back as a Date. The finance
+// screen adds the amounts (so «المجموع» printed "025000.008000.00", and a second
+// row in one category made the share NaN%) and renders the date as it arrives
+// (so the التاريخ column showed a raw ISO timestamp).
+const EXPENSE_MONEY = ['amount', 'amount_egp', 'fx_rate_to_egp', 'vat_rate', 'vat_amount', 'amount_before_vat'];
 
 function routeError(res, error, message = 'admin operations route failed') {
   logger.error(message, error);
@@ -35,23 +45,7 @@ function appendTenantScope(sql, alias, tenantId, params) {
   return `${sql} AND ${col} = ?`;
 }
 
-const EXPENSE_CATEGORY_DB = Object.freeze({
-  'رواتب': 'SALARIES',
-  'تسويق': 'MARKETING',
-  'إيجار': 'RENT',
-  'برمجيات': 'SOFTWARE',
-  'معدات': 'EQUIPMENT',
-  'أخرى': 'OTHER',
-});
-const EXPENSE_CATEGORY_LABEL = Object.freeze(
-  Object.fromEntries(Object.entries(EXPENSE_CATEGORY_DB).map(([label, code]) => [code, label]))
-);
 const VALID_EXPENSE_CURRENCIES = new Set(['EGP', 'SAR', 'USD']);
-function expenseCategory(value) {
-  const key = String(value || 'OTHER').trim();
-  const code = EXPENSE_CATEGORY_DB[key] || key.toUpperCase();
-  return EXPENSE_CATEGORY_LABEL[code] ? code : 'OTHER';
-}
 function expenseDate(value) {
   const date = String(value || new Date().toISOString().slice(0, 10)).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())
@@ -72,8 +66,9 @@ router.get('/api/admin/expenses', requireAuth, requireAdminOrStaff, requirePermi
        ORDER BY date DESC LIMIT 500`,
       params);
     res.json(rows.map(row => ({
-      ...row,
+      ...toNumbers(row, EXPENSE_MONEY),
       category: EXPENSE_CATEGORY_LABEL[row.category] || 'أخرى',
+      date: safeDateOnly(row.date),
       receiptUrl: row.receipt_url || '',
       branchType: branchForId(row.branch_id),
       createdAt: row.created_at,

@@ -16,6 +16,7 @@ const { publicLimiter } = require('../middleware/rateLimits');
 const { branchIdForBranch, defaultDigitalBranch } = require('../lib/branches');
 const { financialRecordMatches, financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { addDaysToDateOnly, dateOnlyInTimeZone, isValidDateOnly, monthRange } = require('../lib/dates');
+const { EXPENSE_CATEGORY_LABEL } = require('../lib/expenseCategories');
 const { logFinancialAudit } = require('../lib/finance');
 
 const validDateRange = (from, to) => isValidDateOnly(from) && isValidDateOnly(to) && from <= to;
@@ -1260,8 +1261,16 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
         ? [req.tenantId, monthStart, monthEnd, scope.branchId]
         : [req.tenantId, monthStart, monthEnd]
     );
+    // expenses.category holds the English code; budgets.category holds whatever
+    // the screen that created the budget wrote, and every one of them writes the
+    // Arabic label. Keyed by the code alone, no budget row ever found its spend.
     const spendMap = {};
-    for (const s of spending) spendMap[s.category] = parseFloat(s.spent) || 0;
+    for (const s of spending) {
+      const spent = parseFloat(s.spent) || 0;
+      spendMap[s.category] = spent;
+      const label = EXPENSE_CATEGORY_LABEL[s.category];
+      if (label) spendMap[label] = spent;
+    }
 
     res.json(rows.map(r => ({
       id: r.id,

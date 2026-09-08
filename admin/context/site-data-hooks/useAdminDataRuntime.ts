@@ -110,7 +110,7 @@ function normalizeOrders(rows: unknown): OrderItem[] {
   return (rows as Record<string, unknown>[]).map(row => ({
     id: row.id as string,
     subscriberId: (row.subscriberId ?? row.subscriber_id ?? undefined) as string | undefined,
-    type: (row.type as string || 'course') as OrderItem['type'],
+    type: String(row.type || 'course').toLowerCase() as OrderItem['type'],
     itemId: (row.itemId ?? row.item_id ?? '') as string,
     itemTitle: (row.itemTitle ?? row.item_title ?? '') as string,
     amount: Number(row.amount) || 0,
@@ -118,8 +118,13 @@ function normalizeOrders(rows: unknown): OrderItem[] {
     paymentMethod: (row.paymentMethod ?? row.payment_method ?? 'wallet') as OrderItem['paymentMethod'],
     customerName: (row.customerName ?? row.customer_name ?? '') as string,
     customerEmail: (row.customerEmail ?? row.customer_email ?? '') as string,
-    status: (row.status || 'paid') as OrderItem['status'],
+    status: String(row.status || 'paid').toLowerCase() as OrderItem['status'],
     createdAt: (row.createdAt ?? row.created_at ?? '') as string,
+    // Selected by the route and dropped here, so revenue-by-course collapsed
+    // into a single «غير محدد» row and revenue-by-type into «أخرى».
+    courseId: (row.courseId ?? row.course_id ?? undefined) as string | undefined,
+    bundleId: (row.bundleId ?? row.bundle_id ?? undefined) as string | undefined,
+    paidAt: (row.paidAt ?? row.paid_at ?? undefined) as string | undefined,
     transactionId: (row.transactionId ?? row.transaction_id) as string | undefined,
     staffId: (row.staffId ?? row.staff_id ?? undefined) as string | undefined,
     staffName: (row.staffName ?? row.staff_name ?? undefined) as string | undefined,

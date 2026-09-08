@@ -513,9 +513,12 @@ router.delete('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdminOrSt
 router.get('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
     const { staff_id } = req.query;
+    // The DELETE route soft-deletes into deleted_at and both sibling readers
+    // filter it; this one did not, so the two views disagreed permanently — the
+    // employee's own list dropped the document and the admin's kept it.
     let sql = `SELECT d.*, u.name AS uploaded_by_name
       FROM employee_documents d LEFT JOIN staff u ON u.id=d.uploaded_by AND u.tenant_id=d.tenant_id
-      WHERE d.tenant_id=?`;
+      WHERE d.tenant_id=? AND d.deleted_at IS NULL`;
     const params = [req.tenantId];
     if (staff_id) { sql += ' AND d.staff_id=?'; params.push(staff_id); }
     sql += ' ORDER BY d.created_at DESC';

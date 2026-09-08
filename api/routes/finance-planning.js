@@ -22,6 +22,18 @@ const addDays = (date, days) => {
   next.setUTCDate(next.getUTCDate() + days);
   return next.toISOString().slice(0, 10);
 };
+// N calendar months from the anchor date, clamped to the end of a short month.
+// Counted from the anchor rather than stepped one at a time, so a charge on the
+// 31st that gets clamped to 28 February returns to the 31st in March instead of
+// dragging the whole schedule back with it.
+const addMonths = (anchor, months) => {
+  const [year, month, day] = anchor.split('-').map(Number);
+  const total = (month - 1) + months;
+  const targetYear = year + Math.floor(total / 12);
+  const targetMonth = (total % 12) + 1;
+  const lastOfTarget = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(Math.min(day, lastOfTarget)).padStart(2, '0')}`;
+};
 const daysBetween = (left, right) => Math.floor(
   (new Date(`${left}T00:00:00Z`) - new Date(`${right}T00:00:00Z`)) / 86400000
 );
@@ -207,12 +219,22 @@ router.get('/api/admin/finance/cash-flow-forecast', ...view, async (req, res) =>
     }
     for (const assumption of assumptions) {
       const confidenceAmount = Number(assumption.amount_egp) * Number(assumption.confidence_pct) / 100;
-      let occurrence = safeDateOnly(assumption.start_date);
+      const anchor = safeDateOnly(assumption.start_date);
       const assumptionEnd = safeDateOnly(assumption.end_date);
+      // A month is not 30 days. Stepping by 30 made rent starting 31 January
+      // fall on 2 March, 1 April, 1 May — February got no rent at all, and
+      // because the closing balance carries forward, every week from then on
+      // showed 50,000 more cash than the institute had. The recurring-expense
+      // side above already walks real calendar months.
+      let step = 0;
+      let occurrence = anchor;
       while (occurrence && occurrence <= end && (!assumptionEnd || occurrence <= assumptionEnd)) {
         add(occurrence, assumption.direction, confidenceAmount, { type: 'assumption', id: assumption.id, label: assumption.label });
         if (assumption.cadence === 'one_time') break;
-        occurrence = addDays(occurrence, assumption.cadence === 'weekly' ? 7 : 30);
+        step += 1;
+        occurrence = assumption.cadence === 'weekly'
+          ? addDays(anchor, step * 7)
+          : addMonths(anchor, step);
       }
     }
     let closing = Number(cash.balance) || 0;
