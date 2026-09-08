@@ -348,7 +348,24 @@ router.get('/api/community/library', publicLimiter, async (req, res) => {
          FROM community_library WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
         [req.tenantId]
       );
-      return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
+      // Mapped, unlike the posts beside it which have always gone through
+      // mapPost. The page reads item.fileType and calls .toLowerCase() on it,
+      // so a raw row threw — and the ErrorBoundary wraps the whole layout, so
+      // opening «المكتبة الرقمية» took down the entire page, nav included, and
+      // printed the raw English error underneath. item.downloadUrl was
+      // undefined for the same reason, so nothing was downloadable either.
+      return rows.map(r => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        description: r.description,
+        downloadUrl: r.file_url,
+        thumbnail: r.thumbnail,
+        fileType: r.file_type || '',
+        fileSize: r.file_size,
+        tags: tryJson(r.tags, []),
+        createdAt: r.created_at,
+      }));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -406,7 +423,22 @@ router.get('/api/community/videos', publicLimiter, async (req, res) => {
          FROM community_videos WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
         [req.tenantId]
       );
-      return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
+      // video.videoUrl decides whether a video is playable at all: without it
+      // every one carried a «قريباً» badge, the «مشاهدة» button never rendered
+      // and clicking did nothing. The admin write route already accepted both
+      // spellings; only this read was left raw.
+      return rows.map(r => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        description: r.description,
+        videoUrl: r.video_url,
+        thumbnail: r.thumbnail,
+        duration: r.duration,
+        viewsLabel: r.views_label,
+        tags: tryJson(r.tags, []),
+        createdAt: r.created_at,
+      }));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -462,7 +494,28 @@ router.get('/api/community/events', publicLimiter, async (req, res) => {
          FROM community_events WHERE tenant_id=? ORDER BY created_at DESC LIMIT 200`,
         [req.tenantId]
       );
-      return rows.map(r => ({ ...r, tags: tryJson(r.tags, []) }));
+      // eventDate drives the whole calendar: the grid matched on it, the month
+      // filter fell through to "show everything" because it was always
+      // undefined, the month arrows therefore did nothing, and the reminder
+      // bell was disabled on every event with «لم يُحدد تاريخ لهذه الفعالية بعد»
+      // — for events that all had dates.
+      return rows.map(r => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        description: r.description,
+        imageUrl: r.image_url,
+        eventDate: r.event_date,
+        dateLabel: r.date_label,
+        locationName: r.location_name,
+        registrationUrl: r.registration_url,
+        isOnline: !!r.is_online,
+        speaker: r.speaker,
+        eventType: r.event_type,
+        platform: r.platform,
+        tags: tryJson(r.tags, []),
+        createdAt: r.created_at,
+      }));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
