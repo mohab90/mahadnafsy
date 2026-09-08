@@ -12,6 +12,7 @@ import {
 import { SegmentationTab } from './marketing-hub-sections/SegmentationTab';
 import { AbTestSection } from './marketing-hub-sections/AbTestSection';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { isContactedStatus, isInterestedStatus } from './leadUtils';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type TimeRange = 'today' | '7d' | '30d' | 'month' | 'all';
@@ -200,8 +201,8 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
   // ── Funnel ─────────────────────────────────────────────────────────────
   const funnel = useMemo(() => {
     const total = filteredLeads.length;
-    const contacted = filteredLeads.filter(l => ['contacted','interested','converted','lost'].includes(l.status||'')).length;
-    const interested = filteredLeads.filter(l => ['interested','converted'].includes(l.status||'')).length;
+    const contacted = filteredLeads.filter(l => isContactedStatus(l.status)).length;
+    const interested = filteredLeads.filter(l => isInterestedStatus(l.status)).length;
     const converted = filteredLeads.filter(l => l.status === 'converted').length;
     return [
       { label: 'الليدات الواردة', value: total, color: 'bg-rose-500', w: 100 },
@@ -552,8 +553,8 @@ const MarketingHubTab: React.FC<Props> = ({ notify }) => {
                     <tr><td colSpan={7} className="p-8 text-center text-gray-400">لا ليدات في هذه الفترة</td></tr>
                   ) : sourceBreakdown.map(src => {
                     const myLeads = filteredLeads.filter(l => (l.source || 'Other') === src.source);
-                    const contacted = myLeads.filter(l => ['contacted','interested','converted','lost'].includes(l.status||'')).length;
-                    const interested = myLeads.filter(l => ['interested','converted'].includes(l.status||'')).length;
+                    const contacted = myLeads.filter(l => isContactedStatus(l.status)).length;
+                    const interested = myLeads.filter(l => isInterestedStatus(l.status)).length;
                     return (
                       <tr key={src.source} className="hover:bg-gray-50 transition-colors">
                         <td className="p-3">

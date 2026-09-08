@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Star, MessageSquare, Send, X, Zap } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
+import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { useScoredLeads } from '../hooks/useScoredLeads';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { toDialable } from '../../../lib/whatsappLink';
@@ -133,7 +135,23 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
 }
 
 export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
-  const { leads, leadStats } = useSiteData();
+  const { leads, leadStats, staffMembers, authUser, isAdmin } = useSiteData();
+  // The section gate here is manage_leads; POST /api/admin/leads/bulk-whatsapp
+  // is behind bulk_whatsapp. reception_daqqi holds the first and not the
+  // second, so it selected fifty leads, wrote a message, and got the raw
+  // English "Permission denied: bulk_whatsapp" in an Arabic screen. LeadsTab
+  // gates the identical action; this copy did not.
+  const currentStaff = useMemo(
+    () => staffMembers.find(member => member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
+    [staffMembers, authUser?.email],
+  );
+  const canBulkWhatsApp = isAdmin || hasStaffPermission(
+    currentStaff ? {
+      role: currentStaff.role as RoleKey,
+      permissions: currentStaff.permissions as PermissionKey[] | undefined,
+    } : null,
+    'bulk_whatsapp',
+  );
   const [minScore, setMinScore] = useState(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -285,10 +303,12 @@ export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
       {selectedIds.size > 0 && (
         <div className="bg-green-50 border border-green-300 rounded-2xl p-4 flex flex-wrap items-center gap-3">
           <span className="text-sm font-bold text-green-800">✅ {selectedIds.size} ليد محدد</span>
-          <button onClick={() => setShowBulkModal(true)}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-xl">
-            <MessageSquare size={15} />إرسال واتساب جماعي
-          </button>
+          {canBulkWhatsApp && (
+            <button onClick={() => setShowBulkModal(true)}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-xl">
+              <MessageSquare size={15} />إرسال واتساب جماعي
+            </button>
+          )}
           <button onClick={() => setSelectedIds(new Set())}
             className="text-xs text-gray-500 hover:text-gray-700 border border-gray-300 px-3 py-2 rounded-xl">
             إلغاء التحديد

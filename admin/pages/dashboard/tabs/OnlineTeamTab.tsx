@@ -6,6 +6,8 @@ import {
   Award, Headphones,
 } from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission as hasStaffPermission } from '../../../constants/permissions';
+import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -132,7 +134,23 @@ const MiniBarChart: React.FC<{
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, subscribers } = useSiteData();
+  const { staffMembers, subscribers, authUser, isAdmin } = useSiteData();
+  // POST /api/admin/sales-targets is behind manage_sales_team; this tab's gate
+  // is manage_subscribers. support, collection and reception_daqqi all hold the
+  // second without the first — and a collection officer is this tab's core
+  // audience, so the person most likely to press تعديل الأهداف was the one
+  // guaranteed to have every save rejected.
+  const currentStaff = useMemo(
+    () => staffMembers.find(member => member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
+    [staffMembers, authUser?.email],
+  );
+  const canManageTargets = isAdmin || hasStaffPermission(
+    currentStaff ? {
+      role: currentStaff.role as RoleKey,
+      permissions: currentStaff.permissions as PermissionKey[] | undefined,
+    } : null,
+    'manage_sales_team',
+  );
   const onlineSubscribers = useMemo(() => subscribers.filter(subscriber => isOnlineBranch(subscriber.branch)), [subscribers]);
   const [payments, setPayments] = useState<OnlinePayment[]>([]);
 
@@ -759,7 +777,7 @@ const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
                 <Target size={18} className="text-teal-600" /> الأهداف الشهرية — {month()}
               </h3>
-              {!editMode ? (
+              {!canManageTargets ? null : !editMode ? (
                 <button onClick={startEdit}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 transition-colors">
                   <Edit2 size={13} /> تعديل الأهداف

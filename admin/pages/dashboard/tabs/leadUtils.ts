@@ -103,6 +103,36 @@ export const IL_LABEL: Record<string, string> = {
 export const normalizeInterestLevel = (value?: string | null): string =>
   String(value || '').trim().toLowerCase();
 
+/**
+ * The statuses that mean someone showed real interest. Mirrors
+ * INTERESTED_LEAD_STATUSES in api/lib/leadStatuses.js.
+ *
+ * The marketing funnel used to ask for ['interested','converted'] and the
+ * contact step for ['contacted','interested','converted','lost'] — four of the
+ * seventeen statuses this desk actually records. A lead at interested_booking,
+ * about to buy, counted in neither step, so the funnel showed a contact-rate
+ * collapse that was an artifact of the array literal.
+ */
+export const INTERESTED_STATUSES = new Set([
+  'interested', 'interested_booking', 'interested_followup',
+]);
+
+/** Interested, or already bought. */
+export const isInterestedStatus = (status?: string | null): boolean => {
+  const value = String(status || '').toLowerCase();
+  return INTERESTED_STATUSES.has(value) || value === 'converted';
+};
+
+/**
+ * Whether anyone has actually reached this lead. Everything except a lead
+ * nobody has touched — which is the honest reading of a status that has moved
+ * off 'new', whatever it moved to.
+ */
+export const isContactedStatus = (status?: string | null): boolean => {
+  const value = String(status || '').toLowerCase();
+  return Boolean(value) && value !== 'new';
+};
+
 /** The Arabic label for either spelling; empty for an unset level. */
 export const interestLevelLabel = (value?: string | null): string =>
   IL_LABEL[normalizeInterestLevel(value)] || '';

@@ -5,6 +5,7 @@ const router = express.Router();
 const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
+const { isValidDateOnly } = require('../../lib/dates');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { LIVE_SUBSCRIBER_FOR_LEAD } = require('../../lib/reconcileChecks');
 const { assertWritable } = require('../../lib/periodLock');
@@ -424,6 +425,16 @@ router.get('/api/admin/payment-audit', requireAuth, requireAdmin, async (req, re
     let filters = '';
     if (req.query.paymentId) { filters += ' AND a.payment_id=?'; params.push(req.query.paymentId); }
     if (req.query.action) { filters += ' AND a.action=?'; params.push(req.query.action); }
+    // Half-open on the upper bound: created_at is a datetime, so `<= '2026-09-08'`
+    // would coerce to midnight and drop everything logged during that day.
+    if (isValidDateOnly(req.query.dateFrom)) {
+      filters += ' AND a.created_at >= ?';
+      params.push(`${req.query.dateFrom} 00:00:00`);
+    }
+    if (isValidDateOnly(req.query.dateTo)) {
+      filters += ' AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)';
+      params.push(req.query.dateTo);
+    }
     const [[count]] = await pool.query(
       `SELECT COUNT(*) AS total FROM payment_audit_log a
         JOIN payments p ON p.id=a.payment_id AND p.tenant_id=? AND a.tenant_id=p.tenant_id

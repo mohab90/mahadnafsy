@@ -1277,7 +1277,7 @@ router.get('/api/admin/finance/budgets', requireAuth, requireAdminOrStaff, requi
       category: r.category,
       limit: parseFloat(r.limit_amount) || 0,
       spent: spendMap[r.category] || 0,
-      remaining: Math.max(0, (parseFloat(r.limit_amount) || 0) - (spendMap[r.category] || 0)),
+      remaining: (parseFloat(r.limit_amount) || 0) - (spendMap[r.category] || 0),
       utilizationPct: parseFloat(r.limit_amount) > 0 ? Math.round(((spendMap[r.category] || 0) / parseFloat(r.limit_amount)) * 100) : 0,
       notes: r.notes || '',
     })));

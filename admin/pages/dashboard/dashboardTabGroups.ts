@@ -184,6 +184,13 @@ export const fullSubscriberTabs = new Set<string>([
   // Named as the tab rather than as 'retention', because retention is a section
   // of تبويب التحليلات now and this set is keyed on what the URL says.
   'analytics_hub',
+  // فريق الأونلاين builds each collection officer's overdue-instalment list by
+  // filtering the subscribers array, and the أقساط متأخرة KPI from the same
+  // filter. It was in no loading set, so it worked from the 500-row bootstrap
+  // page — and that page is ordered newest first, so the rows it omitted were
+  // the oldest clients, who are precisely the ones carrying arrears. A
+  // collection officer was working a list missing the debts it exists to chase.
+  'online_hub',
 ]);
 
 /** Genuinely reads both tables. */
