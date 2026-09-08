@@ -1,6 +1,9 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil } from 'lucide-react';
+import {
+  Users, Briefcase, Search, BarChart3, ChevronRight, UserPlus, Pencil,
+  CalendarCheck, CalendarOff, Wallet, UserCheck, UserX, Layers,
+} from 'lucide-react';
 import { useSiteData } from '../../../context/SiteDataContext';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -171,40 +174,66 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
   return (
     <div className="space-y-5" dir="rtl">
-      <div className="bg-gradient-to-l from-slate-700 to-gray-600 rounded-2xl p-5 text-white">
-        <h2 className="text-xl font-bold flex items-center gap-2"><Briefcase size={22}/> إدارة الموارد البشرية</h2>
-        <p className="text-slate-300 text-sm mt-0.5">ملفات الموظفين · الرواتب · التارجت · الغياب</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+      <div className="overflow-hidden rounded-2xl bg-gradient-to-bl from-slate-800 via-slate-700 to-indigo-900 text-white shadow-lg shadow-slate-900/10">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-5 pb-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+              <Briefcase size={20} />
+            </span>
+            <div>
+              <h2 className="text-xl font-bold leading-tight">إدارة الموارد البشرية</h2>
+              <p className="mt-0.5 text-sm text-slate-300">ملفات الموظفين · الرواتب · التارجت · الحضور</p>
+            </div>
+          </div>
+          {canAddStaff && (
+            <button type="button" onClick={() => setShowAddStaff(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-100">
+              <UserPlus size={15} /> إضافة موظف جديد
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-px border-t border-white/10 bg-white/10 sm:grid-cols-4">
           {[
-            { label: 'إجمالي الموظفين', v: stats.total, bg: 'bg-white/15' },
-            { label: 'نشطون', v: stats.active, bg: 'bg-emerald-500/20' },
-            { label: 'غير نشطين', v: stats.inactive, bg: stats.inactive > 0 ? 'bg-red-500/20' : 'bg-white/10' },
-            { label: 'أدوار مختلفة', v: Object.keys(stats.byRole).length, bg: 'bg-blue-400/20' },
-          ].map(s => (
-            <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
-              <div className="text-2xl font-black">{s.v}</div>
-              <div className="text-xs text-slate-300 mt-0.5">{s.label}</div>
+            { label: 'إجمالي الموظفين', v: stats.total, Icon: Users, tone: 'text-slate-200' },
+            { label: 'نشطون', v: stats.active, Icon: UserCheck, tone: 'text-emerald-300' },
+            { label: 'غير نشطين', v: stats.inactive, Icon: UserX, tone: stats.inactive > 0 ? 'text-amber-300' : 'text-slate-400' },
+            { label: 'أدوار مختلفة', v: Object.keys(stats.byRole).length, Icon: Layers, tone: 'text-sky-300' },
+          ].map(({ label, v, Icon, tone }) => (
+            <div key={label} className="bg-slate-800/80 px-4 py-3.5">
+              <div className="flex items-center gap-1.5">
+                <Icon size={13} className={tone} />
+                <span className="text-[11px] text-slate-300">{label}</span>
+              </div>
+              <div className={`mt-1 text-2xl font-black tabular-nums ${tone}`}>{v}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5">
         {([
-          ['directory', 'دليل الموظفين'],
-          ['performance', 'الأداء والتارجت'],
-          ['attendance', 'الحضور والغياب'],
-          ['leaves', 'الإجازات'],
-          ['payroll', 'كشف الرواتب'],
-          ['recruitment', 'التوظيف'],
-        ] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setSubTab(k)} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${subTab === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-gray-600 border-gray-200 hover:border-slate-400'}`}>{l}</button>
+          ['directory', 'دليل الموظفين', Users],
+          ['performance', 'الأداء والتارجت', BarChart3],
+          ['attendance', 'الحضور والغياب', CalendarCheck],
+          ['leaves', 'الإجازات', CalendarOff],
+          ['payroll', 'كشف الرواتب', Wallet],
+          ['recruitment', 'التوظيف', Briefcase],
+        ] as const).map(([key, label, Icon]) => (
+          <button key={key} type="button" onClick={() => setSubTab(key)}
+            aria-current={subTab === key ? 'page' : undefined}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-bold transition-colors ${
+              subTab === key
+                ? 'bg-slate-800 text-white shadow-sm'
+                : 'text-gray-500 hover:bg-slate-50 hover:text-slate-700'
+            }`}>
+            <Icon size={15} /> {label}
+          </button>
         ))}
       </div>
 
       {subTab === 'directory' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-gray-200 bg-white p-3">
             <div className="relative flex-1 min-w-[180px]">
               <Search size={14} className="absolute right-3 top-2.5 text-gray-400"/>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث بالاسم أو الإيميل..." className="w-full pr-8 pl-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"/>
@@ -218,19 +247,21 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               <option value="active">نشط</option>
               <option value="inactive">غير نشط</option>
             </select>
-            <span className="text-sm text-gray-400 self-center">{filtered.length} موظف</span>
-            {/* HR had no way at all to add an employee — the only door into the
-                staff table was the interview→hire flow. */}
-            {canAddStaff && (
-              <button type="button" onClick={() => setShowAddStaff(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800">
-                <UserPlus size={15} /> إضافة موظف جديد
-              </button>
-            )}
+            <span className="self-center rounded-full bg-slate-100 px-3 py-1 text-xs font-bold tabular-nums text-slate-600">
+              {filtered.length} من {stats.total}
+            </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.length === 0 ? (
-              <div className="col-span-3 text-center py-16 text-gray-400"><Users size={40} className="mx-auto mb-3 opacity-20"/><p>لا نتائج</p></div>
+              <div className="col-span-full rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 py-16 text-center">
+                <Users size={38} className="mx-auto mb-3 text-gray-300" />
+                <p className="text-sm font-bold text-gray-500">
+                  {safeStaff.length === 0 ? 'لا يوجد موظفون بعد' : 'لا يوجد موظف بهذه المواصفات'}
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  {safeStaff.length === 0 ? 'ابدأ بإضافة أول موظف من الزر أعلى الصفحة' : 'جرّب تغيير البحث أو الفلاتر'}
+                </p>
+              </div>
             ) : filtered.map(member => {
               const performance = perfByStaff.get(member.id);
               const myRev = performance?.revenue || 0;
@@ -238,41 +269,76 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               const tType = member.monthlyTargetType || 'egp';
               const tPct = performance?.target_pct || 0;
               return (
-                <div key={member.id} className="relative">
-                <button onClick={() => navigate(`/staff/${member.id}`)} className="bg-white border border-gray-200 rounded-2xl p-4 text-right hover:shadow-md hover:border-slate-400 transition-all group">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-black text-base shrink-0 ${member.status === 'active' ? 'bg-slate-600' : 'bg-gray-400'}`}>{member.name.charAt(0)}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-800 truncate group-hover:text-slate-700">{member.name}</p>
-                      <div className="flex flex-wrap gap-1 mt-0.5">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-600'}`}>{ROLE_LABELS[member.role] || member.role}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{member.status === 'active' ? '● نشط' : '● غير نشط'}</span>
+                <div key={member.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60">
+                  <div className="flex items-start gap-3 p-4 pb-3">
+                    {member.image ? (
+                      <img src={member.image} alt=""
+                        className={`h-11 w-11 shrink-0 rounded-full object-cover ring-2 ${member.status === 'active' ? 'ring-emerald-200' : 'ring-gray-200 grayscale'}`} />
+                    ) : (
+                      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-black text-white ring-2 ${
+                        member.status === 'active' ? 'bg-slate-600 ring-emerald-200' : 'bg-gray-400 ring-gray-200'
+                      }`}>{member.name.charAt(0)}</span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <button type="button" onClick={() => navigate(`/staff/${member.id}`)}
+                        className="flex w-full items-center gap-1 text-right">
+                        <span className="truncate font-bold text-gray-800 transition-colors group-hover:text-slate-900">{member.name}</span>
+                        <ChevronRight size={14} className="shrink-0 text-gray-300 transition-colors group-hover:text-slate-500" />
+                      </button>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-600'}`}>
+                          {ROLE_LABELS[member.role] || member.role}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          member.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${member.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                          {member.status === 'active' ? 'نشط' : 'غير نشط'}
+                        </span>
                       </div>
                     </div>
-                    <ChevronRight size={14} className="text-gray-300 group-hover:text-slate-500 transition-colors shrink-0 mt-1"/>
+                    <button type="button" onClick={() => navigate(`/staff/${member.id}?tab=settings`)}
+                      title="تعديل بيانات الموظف" aria-label={`تعديل بيانات ${member.name}`}
+                      className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+                      <Pencil size={13} />
+                    </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-gray-50 rounded-lg py-1.5"><div className="text-xs font-bold text-gray-700">{member.joinedAt ? getMonthsOfService(member.joinedAt) : <span className="text-amber-600">بدون تاريخ</span>}</div><div className="text-[10px] text-gray-400">مدة الخدمة</div></div>
-                    <div className="bg-gray-50 rounded-lg py-1.5"><div className="text-xs font-bold text-gray-700">{myLeads}</div><div className="text-[10px] text-gray-400">ليدات</div></div>
-                    <div className="bg-gray-50 rounded-lg py-1.5"><div className={`text-xs font-bold ${myRev > 0 ? 'text-green-700' : 'text-gray-400'}`}>{myRev > 0 ? `${Math.round(myRev / 1000)}k` : '—'}</div><div className="text-[10px] text-gray-400">مبيعات</div></div>
-                  </div>
+
                   {(member.monthlyTarget || 0) > 0 && (
-                    <div className="mt-2">
-                      <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
-                        <span>التارجت</span>
-                        <span>{tType === 'clients' ? `${member.monthlyTarget} عميل` : fmtMoney(member.monthlyTarget!)}</span>
+                    <div className="px-4 pb-3">
+                      <div className="mb-1 flex items-baseline justify-between text-[10px]">
+                        <span className="text-gray-400">التارجت</span>
+                        <span className="font-bold tabular-nums text-gray-600">
+                          {tType === 'clients' ? `${member.monthlyTarget} عميل` : fmtMoney(member.monthlyTarget!)}
+                          <span className={`mr-1 ${tPct >= 100 ? 'text-emerald-600' : 'text-gray-400'}`}>· {Math.round(tPct)}%</span>
+                        </span>
                       </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${tPct >= 100 ? 'bg-emerald-500' : 'bg-slate-500'}`} style={{ width: `${tPct}%` }}/></div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                        <div className={`h-full rounded-full transition-all ${tPct >= 100 ? 'bg-emerald-500' : 'bg-slate-500'}`}
+                          style={{ width: `${Math.min(tPct, 100)}%` }} />
+                      </div>
                     </div>
                   )}
-                </button>
-                  <button
-                    onClick={() => navigate(`/staff/${member.id}?tab=settings`)}
-                    title="تعديل بيانات الموظف"
-                    className="absolute top-2 left-2 h-7 px-2 rounded-lg bg-slate-50 text-slate-600 text-[11px] font-bold
-                      hover:bg-slate-700 hover:text-white transition-colors flex items-center gap-1">
-                    <Pencil size={11}/> تعديل
-                  </button>
+
+                  <div className="mt-auto grid grid-cols-3 divide-x divide-x-reverse divide-gray-100 border-t border-gray-100 bg-gray-50/70 text-center">
+                    <div className="px-2 py-2.5">
+                      <div className="text-xs font-bold text-gray-700">
+                        {member.joinedAt ? getMonthsOfService(member.joinedAt) : <span className="text-amber-600">بدون تاريخ</span>}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-gray-400">مدة الخدمة</div>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <div className="text-xs font-bold tabular-nums text-gray-700">{myLeads}</div>
+                      <div className="mt-0.5 text-[10px] text-gray-400">ليدات</div>
+                    </div>
+                    <div className="px-2 py-2.5">
+                      <div className={`text-xs font-bold tabular-nums ${myRev > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
+                        {myRev > 0 ? `${Math.round(myRev / 1000)}k` : '—'}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-gray-400">مبيعات</div>
+                    </div>
+                  </div>
                 </div>
               );
             })}
