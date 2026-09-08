@@ -162,3 +162,22 @@ test('the consultations list is not filtered again on the client', () => {
   // And the route must keep sending what the client sorts on.
   assert.match(handlerFor('/api/me/consultations'), /createdAt: row\.created_at/);
 });
+
+test('a consultation is booked at the hour the customer picked', () => {
+  // Both booking pages have always put the chosen slot in the URL. Checkout
+  // never read it, so only the bare YYYY-MM-DD reached the server — and
+  // consultations.session_date is a DATETIME, so every booking landed at 00:00.
+  // The customer picked «الأحد • 18:00 - 19:00», their card read 00:00, and the
+  // desk had no record of the hour agreed.
+  const checkout = codeOnly(read('client/pages/Checkout.tsx'));
+  assert.match(checkout, /slotId: searchParams\.get\('slotId'\) \|\| ''/);
+  for (const page of ['client/pages/Consultations.tsx', 'client/pages/InstructorDetails.tsx']) {
+    assert.match(codeOnly(read(page)), /slotId=\$\{selectedSlot\}/,
+      `${page} must keep putting the slot in the URL`);
+  }
+
+  const proofs = codeOnly(read('api/routes/payment-proofs.js'));
+  assert.match(proofs, /SELECT id, start_time, timezone, meeting_link FROM therapist_slots/);
+  assert.match(proofs, /\$\{extra\.sessionDate\} \$\{String\(bookedSlot\.start_time\)\.slice\(0, 5\)\}:00/);
+  assert.match(proofs, /slot_id, timezone, meeting_link/, 'the slot must be recorded, not just used');
+});

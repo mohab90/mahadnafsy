@@ -467,14 +467,34 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
             WHERE id=? AND tenant_id=? AND deleted_at IS NULL AND status IN ('PENDING','CONFIRMED')`,
           [proof.amount, proof.currency || 'EGP', proof.subscriber_id, proof.item_id, tenantId]
         );
+        // The hour the customer actually chose.
+        //
+        // session_date is a DATETIME and only the bare YYYY-MM-DD was arriving,
+        // so every booking was stored at 00:00 — the customer picked
+        // «الأحد • 18:00 - 19:00», their card read 00:00, and the desk had no
+        // record of the time they had agreed. The slot carries it; the booking
+        // pages have always put its id in the URL.
+        let bookedSlot = null;
+        if (extra.slotId) {
+          [[bookedSlot]] = await conn.query(
+            'SELECT id, start_time, timezone, meeting_link FROM therapist_slots WHERE id=? LIMIT 1',
+            [extra.slotId]
+          );
+        }
+        const sessionDateTime = extra.sessionDate && bookedSlot?.start_time
+          ? `${extra.sessionDate} ${String(bookedSlot.start_time).slice(0, 5)}:00`
+          : (extra.sessionDate || '');
         if (!updatedConsultation.affectedRows) await conn.query(
           `INSERT INTO consultations
              (id, client_name, client_email, client_phone, therapist_id, session_type, session_date,
+              slot_id, timezone, meeting_link,
               status, notes, amount, currency, subscriber_id, tenant_id, branch_id, created_at)
-           VALUES (?,?,?,?,?,?,COALESCE(NULLIF(?,''),NOW()),'PENDING',?,?,?,?,?,?,NOW())`,
+           VALUES (?,?,?,?,?,?,COALESCE(NULLIF(?,''),NOW()),?,?,?,'PENDING',?,?,?,?,?,?,NOW())`,
           [uuidv4(), proof.customer_name, proof.customer_email, proof.customer_phone,
            extra.therapistId || null, String(extra.sessionType || 'INDIVIDUAL').toUpperCase(),
-           extra.sessionDate || '', `Manual order ${proof.order_id}`, proof.amount, proof.currency || 'EGP',
+           sessionDateTime,
+           bookedSlot?.id || null, bookedSlot?.timezone || null, bookedSlot?.meeting_link || null,
+           `Manual order ${proof.order_id}`, proof.amount, proof.currency || 'EGP',
            proof.subscriber_id, tenantId, proof.branch_id || 'branch-other']
         );
       } else if (paymentType === 'CERTIFICATE') {

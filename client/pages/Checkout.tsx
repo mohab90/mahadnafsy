@@ -223,6 +223,12 @@ const Checkout: React.FC = () => {
           ...(type === 'consultation' ? {
             therapistId: searchParams.get('therapistId') || '',
             sessionDate: searchParams.get('date') || '',
+            // Both booking pages put the chosen slot in the URL and this never
+            // read it, so only the bare date was sent. consultations.session_date
+            // is a DATETIME, so every booking landed at 00:00: a customer who
+            // picked «الأحد • 18:00 - 19:00» got a card reading 00:00 and the
+            // desk had no record of the hour they had agreed to.
+            slotId: searchParams.get('slotId') || '',
             sessionType: searchParams.get('sessionType') || 'individual',
             subtype: subtype || 'regular',
           } : {}),
