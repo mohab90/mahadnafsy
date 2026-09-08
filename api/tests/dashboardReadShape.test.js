@@ -164,3 +164,26 @@ test('deleted rows and unpaid money stay out of the admin reads that ignored the
   assert.ok(!query.includes('LEFT JOIN payments p'),
     'summing across the enrolments join multiplied every total by the enrolment count');
 });
+
+test('one payment is one payment, however many lists it appears in', () => {
+  // /api/admin/orders synthesises an order from every payments row, keeping the
+  // payment's id, and paymentHistory is built from those same rows.
+  const paidOrders = [{ id: 'PAY-1', amount: 4000, currency: 'EGP', status: 'paid' }];
+  const subscribers = [{
+    paymentHistory: [
+      { id: 'PAY-1', amount: 4000, currency: 'EGP', status: 'paid' },
+      { id: 'PAY-2', amount: 1000, currency: 'EGP', status: 'refunded' },
+      { id: 'PAY-3', amount: 500, currency: 'EGP', status: 'paid' },
+    ],
+  }];
+  const countedOrderIds = new Set(paidOrders.map(o => o.id));
+  const total = paidOrders.reduce((sum, o) => sum + o.amount, 0)
+    + subscribers.reduce((s, sub) => s + sub.paymentHistory
+      .filter(p => !p.isInstallment && (!p.status || p.status === 'paid') && !countedOrderIds.has(p.id))
+      .reduce((ps, p) => ps + p.amount, 0), 0);
+  assert.equal(total, 4500, 'the shared payment counts once and the refund not at all');
+
+  const overview = codeOnly(read('admin/pages/dashboard/hooks/useOverviewDerived.ts'));
+  assert.ok(overview.includes('!countedOrderIds.has(p.id)'));
+  assert.ok(overview.includes("(!p.status || p.status === 'paid')"));
+});

@@ -28,8 +28,18 @@ export function useOverviewDerived(
     const rates = fxRates(content);
     const toEGP = (o: { currency: string; amount: number }) => toEgp(o.amount, o.currency, rates);
     const paidOrders = orders.filter(o => o.status === 'paid');
+    // «الإيراد التقريبي» added two lists that overlap. /api/admin/orders is not
+    // just the orders table: it synthesises an entry from every payments row and
+    // appends it, keeping the payment's own id — and subscribers[].paymentHistory
+    // is built from those same rows. So one 4,000 EGP cash payment recorded at
+    // reception was counted twice, and متوسط قيمة الطلب was doubled with it. The
+    // ids are the same on both sides, which is what makes them subtractable. The
+    // second term also had no status filter, so a refunded payment counted too.
+    const countedOrderIds = new Set(paidOrders.map(o => o.id));
     const totalRevenue = paidOrders.reduce((sum, o) => sum + toEGP(o), 0)
-      + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? []).filter(p => !p.isInstallment).reduce((ps, p) => ps + toEGP(p), 0), 0);
+      + subscribers.reduce((s, sub) => s + (sub.paymentHistory ?? [])
+        .filter(p => !p.isInstallment && (!p.status || p.status === 'paid') && !countedOrderIds.has(p.id))
+        .reduce((ps, p) => ps + toEGP(p), 0), 0);
     const leadsBySource: [string, number][] = (Object.entries(
       leads.reduce((acc: Record<string, number>, l) => { const src = l.source || 'غير محدد'; acc[src] = (acc[src] || 0) + 1; return acc; }, {})
     ) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 6);
