@@ -12,25 +12,7 @@ const { writeAuditEvent } = require('../lib/auditTrail');
 const { getDaqqiAttendees } = require('../lib/daqqiAttendees');
 const { ymd } = require('../lib/helpers');
 
-// Arabic weekday name → MySQL DAYOFWEEK (1 = Sunday … 7 = Saturday).
-//
-// daqqi_rounds.day_of_week is a recurring weekday written in Arabic;
-// classroom_bookings holds absolute start_time/end_time. Comparing the two
-// needs this one translation, and there is nowhere else in the codebase that
-// already does it.
-//
-// Both spellings of Monday are listed because both appear in Arabic UIs and
-// neither is wrong.
-const ARABIC_WEEKDAY_TO_MYSQL = Object.freeze({
-  '\u0627\u0644\u0623\u062d\u062f': 1,
-  '\u0627\u0644\u0625\u062b\u0646\u064a\u0646': 2,
-  '\u0627\u0644\u0627\u062b\u0646\u064a\u0646': 2,
-  '\u0627\u0644\u062b\u0644\u0627\u062b\u0627\u0621': 3,
-  '\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621': 4,
-  '\u0627\u0644\u062e\u0645\u064a\u0633': 5,
-  '\u0627\u0644\u062c\u0645\u0639\u0629': 6,
-  '\u0627\u0644\u0633\u0628\u062a': 7,
-});
+const { mysqlWeekdayFromArabic } = require('../lib/daqqiSchedule');
 
 function sendRouteError(res, err) {
   if (res.headersSent) return;
@@ -237,7 +219,7 @@ router.post('/api/admin/daqqi-rounds', requireAuth, requireAdminOrStaff, require
       // room is free text here and an entity there. A round naming something
       // that is not a defined classroom clashes with nothing, which is the rule
       // the check above already applies.
-      const bookingDay = ARABIC_WEEKDAY_TO_MYSQL[String(dayOfWeek || '').trim()];
+      const bookingDay = mysqlWeekdayFromArabic(dayOfWeek);
       if (bookingDay) {
         const [[roomBooking]] = await conn.query(
           `SELECT cb.id, cb.start_time

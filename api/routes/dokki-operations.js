@@ -12,6 +12,7 @@ const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { requireDaqqiAccess, requireDaqqiManager } = require('../lib/daqqiAccess');
 const { verifyAttendanceQr } = require('../lib/attendanceQr');
+const { arabicWeekdaysForDate } = require('../lib/daqqiSchedule');
 
 function scopedTenantId(req) {
   return req.tenantId || resolveTenantId(req) || DEFAULT_TENANT_ID;
@@ -103,7 +104,7 @@ router.post('/api/admin/dokki/classrooms/book', requireAuth, requireAdminOrStaff
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [[classroom]] = await conn.query(
-      'SELECT id FROM physical_classrooms WHERE id=? AND tenant_id=? AND is_active=1 FOR UPDATE',
+      'SELECT id, name FROM physical_classrooms WHERE id=? AND tenant_id=? AND is_active=1 FOR UPDATE',
       [classroom_id, tenantId]
     );
     if (!classroom) {
@@ -142,6 +143,37 @@ router.post('/api/admin/dokki/classrooms/book', requireAuth, requireAdminOrStaff
     if (conflicts.length) {
       await conn.rollback();
       return res.status(409).json({ error: 'Classroom is already booked for this time slot' });
+    }
+
+    // The other booking system.
+    //
+    // daqqi_rounds books the same physical halls by free-text name plus a
+    // recurring Arabic weekday. routes/daqqi-rounds.js already refuses a round
+    // whose hall is taken by a classroom_bookings row; this side never looked
+    // the other way, so a hall could be taken from both screens with each one
+    // satisfied. Symmetry matters here for its own sake: without it, A then B
+    // succeeds while B then A is refused, and which desk gets the room depends
+    // on who happened to click first.
+    //
+    // Weekday granularity, matching the check on the round side — a round has
+    // no absolute times to compare against, only a day and a coarse slot.
+    // FINISHED rounds have released the hall, exactly as the round-to-round
+    // check treats them.
+    const roundDays = arabicWeekdaysForDate(start_time);
+    if (classroom.name && roundDays.length) {
+      const [[roundClash]] = await conn.query(
+        `SELECT id, code FROM daqqi_rounds
+          WHERE tenant_id=? AND room=? AND status <> 'FINISHED'
+            AND day_of_week IN (${roundDays.map(() => '?').join(',')})
+          LIMIT 1`,
+        [tenantId, classroom.name, ...roundDays]
+      );
+      if (roundClash) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: `القاعة ${classroom.name} محجوزة لروند ${roundClash.code || roundClash.id} في نفس اليوم`,
+        });
+      }
     }
 
     const id = uuidv4();

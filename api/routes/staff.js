@@ -112,7 +112,13 @@ router.patch('/api/staff/therapist-portal/consultations/:id', requireAuth, requi
 // permission now opens the door, and the two ways it could be abused are
 // closed below — nobody may mint a role above their own, or grant a
 // permission they do not themselves hold.
-router.post('/api/admin/staff', requireAuth, requirePermission('manage_staff'), requireTenantQuota('staff'), async (req, res) => {
+// requirePermission reads req.staffRecord and req.isSuperAdmin, and requireAuth
+// sets neither — only the requireAdmin* family does. This route went straight
+// from requireAuth to requirePermission, so it answered 403 "Staff record not
+// found" to every caller including the owner, in about five milliseconds: adding
+// an employee from the HR screen had never once worked. It was the only route of
+// the 362 guarded this way that was missing it.
+router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermission('manage_staff'), requireTenantQuota('staff'), async (req, res) => {
   try {
     const s = req.body;
     const id = s.id || uuidv4();

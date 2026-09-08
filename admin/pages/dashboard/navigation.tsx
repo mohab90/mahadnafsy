@@ -50,7 +50,6 @@ export type TabKey =
   | 'sales_planning'
   | 'overview'
   | 'kpi_dashboard'
-  | 'content'
   | 'staff_management'
   | 'policies'
   | 'about_page'

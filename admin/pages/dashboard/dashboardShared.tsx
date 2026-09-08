@@ -680,7 +680,6 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   institute_gallery:  'manage_content',
   cert_pricing:       'manage_certificates',
   cert_requests:      'manage_certificates',
-  content:            'manage_content',
   content_hub:        'manage_content',
 };
 // ──────────────────────────────────────────────────────────────────────────

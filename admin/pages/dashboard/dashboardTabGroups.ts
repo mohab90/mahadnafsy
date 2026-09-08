@@ -1,5 +1,4 @@
 export const directContentTabs = new Set<string>([
-  'content',
   'policies',
   'about_page',
   'home_offer',

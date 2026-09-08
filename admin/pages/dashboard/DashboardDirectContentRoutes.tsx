@@ -140,30 +140,6 @@ export function DashboardDirectContentRoutes({
 
   return (
     <>
-      {activeTab === 'content' && (
-        <DashboardContentHubAdvancedPanel
-          content={content}
-          policyDrafts={policyDrafts}
-          setPolicyDrafts={setPolicyDrafts}
-          setContentValue={setContentValue}
-          setContentValues={setContentValues}
-          setActiveTab={setActiveTab}
-          setContentHubSubTab={setContentHubSubTab}
-          notify={notify}
-          contentEdits={contentEdits}
-          setContentEdits={setContentEdits}
-          newContentKey={newContentKey}
-          setNewContentKey={setNewContentKey}
-          newContentValue={newContentValue}
-          setNewContentValue={setNewContentValue}
-          addContentKey={addContentKey}
-          searchText={searchText}
-          setSearchText={setSearchText}
-          filteredContent={filteredContent}
-          removeContentKey={removeContentKey}
-        />
-      )}
-
       {activeTab === 'policies' && (
         <ContentHubPoliciesEditor
           sections={policySections}

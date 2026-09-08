@@ -107,8 +107,13 @@ const CHECKS = [
     key: 'unlinkable_paid_orders',
     name: 'paid course/bundle orders have payment, journal, subscriber and enrollment',
     severity: 'critical',
+    // orders.deleted_at exists and nine other checks in this file honour their
+    // table's, but this one audited retired rows forever: a test checkout that
+    // had been struck off went on being reported CRITICAL every day, which is
+    // how a daily alert stops being read.
     sql: `SELECT COUNT(*) AS n FROM orders o
           WHERE o.status='paid' AND o.type IN ('course','bundle')
+            AND o.deleted_at IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM payments p
                WHERE p.tenant_id=o.tenant_id AND p.status='paid'
