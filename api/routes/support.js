@@ -962,7 +962,7 @@ router.get('/api/me/tickets', requireAuth, async (req, res) => {
     const email = normalizedEmail(subscriber?.email || req.user.email);
     const [rows] = await pool.query(
       `SELECT t.id, t.subject, t.status, t.category, t.priority, t.created_at,
-              (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id=t.id AND tr.tenant_id=t.tenant_id) AS reply_count
+              (SELECT COUNT(*) FROM ticket_replies tr WHERE tr.ticket_id=t.id AND tr.tenant_id=t.tenant_id AND tr.is_internal=0) AS reply_count
          FROM support_tickets t
         WHERE t.tenant_id=? AND t.deleted_at IS NULL
           AND ((?<>'' AND t.subscriber_id=?) OR (?<>'' AND LOWER(TRIM(t.subscriber_email))=?))
@@ -982,7 +982,7 @@ router.get('/api/me/tickets/:id', requireAuth, async (req, res) => {
       [req.params.id, req.tenantId]);
     if (!ownsTicket(t, subscriber, email)) return res.status(404).json({ error: 'Not found' });
     const [replies] = await pool.query(
-      'SELECT author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? AND tenant_id=? ORDER BY created_at ASC', [req.params.id, req.tenantId]);
+      'SELECT author_type, author_name, body, created_at FROM ticket_replies WHERE ticket_id=? AND tenant_id=? AND is_internal=0 ORDER BY created_at ASC', [req.params.id, req.tenantId]);
     res.json({ id: t.id, subject: t.subject, body: t.body, status: t.status, category: t.category, priority: t.priority, created_at: t.created_at, replies });
   } catch (e) { logger.error('[me/ticket detail]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1010,7 +1010,7 @@ router.post('/api/me/tickets/:id/reply', requireAuth, async (req, res) => {
     createNotification('ticket', 'رد جديد من العميل', `${t.subscriber_name || email}: ${t.subject}`, { ticketId: req.params.id }, req.tenantId, t.assigned_to || null).catch(() => {});
     res.json({
       ok: true,
-      reply: { id: replyId, body, author_type: 'subscriber', author_name: authorName, created_at: new Date().toISOString() },
+      reply: { id: replyId, body, author_type: 'CLIENT', author_name: authorName, created_at: new Date().toISOString() },
     });
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } logger.error('[me/ticket reply]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
