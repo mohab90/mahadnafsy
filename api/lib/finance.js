@@ -318,12 +318,30 @@ async function postExpenseJournal(expense, sign, actor, db = pool, tenantId = ex
     const fx = await getFxSnapshot(tenantId);
     const rates = fx.rates;
     const normalizedCurrency = String(expense.currency || 'EGP').toUpperCase();
-    const appliedRate = rates[normalizedCurrency] || 1;
     // A reversal must use the exact EGP snapshot from the original posting.
     // Revaluing it with today's FX rate would leave an artificial balance in
-    // the ledger after editing or deleting a foreign-currency expense.
+    // the ledger after editing or deleting a foreign-currency expense — and it
+    // is also why the freshness gate below is skipped here: a stale snapshot
+    // must never be able to trap an expense that has to come back out.
     const snapshottedEgp = Number(expense.amount_egp);
-    const amt = sign < 0 && Number.isFinite(snapshottedEgp) && snapshottedEgp > 0
+    const useSnapshot = sign < 0 && Number.isFinite(snapshottedEgp) && snapshottedEgp > 0;
+    let appliedRate = 1;
+    if (!useSnapshot) {
+      // The payment side refuses a currency it cannot price. This side used to
+      // fall back to a rate of 1, so a 100 USD expense posted as 100 EGP and the
+      // ledger silently understated it by a factor of about fifty.
+      if (!['EGP', 'SAR', 'USD'].includes(normalizedCurrency)) {
+        throw new Error(`Unsupported expense currency: ${normalizedCurrency}`);
+      }
+      if (!isFxSnapshotUsable(fx, normalizedCurrency)) {
+        throw new Error(`Fresh FX snapshot unavailable for ${normalizedCurrency}`);
+      }
+      appliedRate = normalizedCurrency === 'EGP' ? 1 : Number(rates[normalizedCurrency]);
+      if (!Number.isFinite(appliedRate) || appliedRate <= 0) {
+        throw new Error(`FX rate unavailable for ${normalizedCurrency}`);
+      }
+    }
+    const amt = useSnapshot
       ? snapshottedEgp
       : parseFloat(((Number(expense.amount) || 0) * appliedRate).toFixed(2));
     if (!amt) return null;

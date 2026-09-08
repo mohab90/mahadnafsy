@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { toDialable } = require('./phoneNumber');
 const { sendEmail } = require('./email');
 const { getOtpProviderSettings } = require('./saasSettings');
 const logger = require('./logger').child({ lib: 'otpProvider' });
@@ -22,8 +23,9 @@ async function findPhoneByEmail(email, tenantId = 'tenant-default') {
 
 async function sendGreenApiWhatsApp({ phone, message, instanceId, apiToken }) {
   if (!phone || !instanceId || !apiToken) return { ok: false, reason: 'not_configured' };
-  const normalized = String(phone).replace(/\D/g, '').replace(/^0+/, '');
-  const chatId = normalized.includes('@') ? normalized : `${normalized}@c.us`;
+  const dialable = toDialable(phone);
+  if (!dialable) return { ok: false, reason: 'undialable_phone' };
+  const chatId = `${dialable}@c.us`;
   const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/sendMessage/${apiToken}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -38,13 +40,15 @@ async function sendSmsOtp({ phone, message, settings }) {
   const provider = String(cfg.provider || '').toLowerCase().trim();
   if (!cfg.enabled) return { ok: false, reason: 'sms_disabled' };
   if (!phone) return { ok: false, reason: 'missing_phone' };
+  const dialable = toDialable(phone);
+  if (!dialable) return { ok: false, reason: 'undialable_phone' };
 
   if (provider === 'vonage' || provider === 'nexmo') {
     if (!cfg.api_key || !cfg.api_secret) return { ok: false, reason: 'missing_vonage_credentials' };
     const body = new URLSearchParams({
       api_key: String(cfg.api_key),
       api_secret: String(cfg.api_secret),
-      to: String(phone).replace(/\D/g, ''),
+      to: dialable,
       from: String(cfg.sender_id || 'MAHAD').slice(0, 11),
       text: message,
     });
@@ -56,7 +60,7 @@ async function sendSmsOtp({ phone, message, settings }) {
 
   if (provider === 'twilio') {
     if (!cfg.account_sid || !cfg.auth_token || !cfg.from_number) return { ok: false, reason: 'missing_twilio_credentials' };
-    const body = new URLSearchParams({ To: String(phone), From: String(cfg.from_number), Body: message });
+    const body = new URLSearchParams({ To: `+${dialable}`, From: String(cfg.from_number), Body: message });
     const auth = Buffer.from(`${cfg.account_sid}:${cfg.auth_token}`).toString('base64');
     const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(cfg.account_sid)}/Messages.json`, {
       method: 'POST',
@@ -75,7 +79,7 @@ async function sendSmsOtp({ phone, message, settings }) {
         'Content-Type': 'application/json',
         ...(cfg.api_key ? { Authorization: `Bearer ${cfg.api_key}` } : {}),
       },
-      body: JSON.stringify({ to: phone, from: cfg.sender_id || 'MAHAD', text: message }),
+      body: JSON.stringify({ to: `+${dialable}`, from: cfg.sender_id || 'MAHAD', text: message }),
     });
     const data = await response.json().catch(() => ({}));
     return response.ok ? { ok: true, provider: 'webhook', response: data } : { ok: false, provider: 'webhook', reason: data };

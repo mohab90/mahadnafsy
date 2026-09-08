@@ -6,7 +6,7 @@ const { uuidv4 } = require('../lib/id');
 
 const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
-const { requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { optionalAuth, requireAuth, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
 const { resolveSubscriberRow } = require('../lib/subscriberIdentity');
 const { communityPostLimiter, publicLimiter } = require('../middleware/rateLimits');
 
@@ -86,7 +86,12 @@ router.get('/api/admin/community/posts', requireAuth, requireAdminOrStaff, requi
 });
 
 // Public feed — only APPROVED posts are visible to everyone.
-router.get('/api/community/posts', publicLimiter, async (req, res) => {
+// optionalAuth, not requireAuth: the feed stays public, but a signed-in
+// member has to be recognised. The server already refuses to edit or delete a
+// post that is not yours — it just never told the page which ones were, so the
+// author's own controls never rendered and a post still awaiting moderation
+// disappeared from its own author's view the moment they reloaded.
+router.get('/api/community/posts', publicLimiter, optionalAuth, async (req, res) => {
   try {
     const data = await cached(cacheKey(req, 'posts'), 5 * 60 * 1000, async () => {
       const [rows] = await pool.query(
@@ -98,8 +103,31 @@ router.get('/api/community/posts', publicLimiter, async (req, res) => {
       );
       return attachComments(rows, req.tenantId);
     });
-    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
-    res.json(data);
+
+    // Ownership is per viewer, so it is resolved after the shared cache and
+    // never written into it — the cached rows are copied, not marked in place.
+    const viewer = req.user ? await findOwnSubscriber(req).catch(() => null) : null;
+    if (!viewer) {
+      res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+      return res.json(data);
+    }
+    const [ownRows] = await pool.query(
+      `SELECT id, title, category, body, author, author_role, image_url, tags, featured, pinned, likes, status, created_at,
+                (SELECT COUNT(*) FROM community_post_comments c
+                 WHERE c.tenant_id=p.tenant_id AND c.post_id=p.id) AS comments
+         FROM community_posts p WHERE tenant_id=? AND subscriber_id=? ORDER BY created_at DESC LIMIT 100`,
+      [req.tenantId, viewer.id]
+    );
+    const ownIds = new Set(ownRows.map(row => row.id));
+    const pendingOwn = await attachComments(
+      ownRows.filter(row => row.status !== 'approved'), req.tenantId);
+    const feed = [
+      ...pendingOwn.map(post => ({ ...post, isOwner: true })),
+      ...data.map(post => (ownIds.has(post.id) ? { ...post, isOwner: true } : post)),
+    ];
+    // A personalised body must not sit in a shared cache.
+    res.set('Cache-Control', 'private, no-store');
+    res.json(feed);
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(500).json({ error: 'Internal server error' });

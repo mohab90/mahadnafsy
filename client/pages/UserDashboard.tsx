@@ -15,6 +15,7 @@ import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJ
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
 import { toDialable } from '../lib/whatsappLink';
+import { isCertificateEarned } from '../lib/certificateStatus';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -495,6 +496,11 @@ const UserDashboard: React.FC = () => {
     if (ls.status === 'ended') return false;
     if (ls.visibility === 'all_subscribers' && subscriber) return true;
     if (ls.visibility === 'community_and_subscribers' && subscriber) return true;
+    // COMMUNITY_ALL means every member of the community, and the endpoint
+    // already refuses anyone who is not a subscriber. Missing from this list, a
+    // stream published that way was fetched and then dropped by the page, so it
+    // was invisible to every single customer.
+    if (ls.visibility === 'community_all' && subscriber) return true;
     if (ls.visibility === 'course_subscribers' && subscriber) {
       return ls.targetCourseIds.some(id => subscriber.enrolledCourseIds.includes(id));
     }
@@ -626,7 +632,7 @@ const UserDashboard: React.FC = () => {
                 {[
                   { label: 'كورساتي',  val: enrolledCourses.length,     icon: <BookOpen size={12} />,      color: 'bg-sky-50 text-sky-600' },
                   { label: 'استشارات', val: userConsultations.length,   icon: <MessageSquare size={12} />, color: 'bg-violet-50 text-violet-600' },
-                  { label: 'شهادات',   val: (subscriber?.extraCertificateRequests?.filter(r => r.status === 'issued').length || 0) + completions.length, icon: <Award size={12} />, color: 'bg-amber-50 text-amber-600' },
+                  { label: 'شهادات',   val: (subscriber?.extraCertificateRequests?.filter(r => isCertificateEarned(r.status)).length || 0) + completions.length, icon: <Award size={12} />, color: 'bg-amber-50 text-amber-600' },
                   { label: 'إشعارات', val: unreadNotifications.length,  icon: <Bell size={12} />,          color: 'bg-rose-50 text-rose-600' },
                 ].map((s, i) => (
                   <div key={i} className="bg-gray-50 rounded-xl p-2.5 flex items-center gap-2">
@@ -684,7 +690,7 @@ const UserDashboard: React.FC = () => {
             const totalPaidEGP = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'EGP').reduce((s, p) => s + p.amount, 0);
             const totalPaidSAR = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'SAR').reduce((s, p) => s + p.amount, 0);
             const totalPaidUSD = (subscriber?.paymentHistory ?? []).filter(p => p.currency === 'USD').reduce((s, p) => s + p.amount, 0);
-            const earnedCertsCount = (subscriber?.extraCertificateRequests?.filter(r => r.status === 'issued').length || 0)
+            const earnedCertsCount = (subscriber?.extraCertificateRequests?.filter(r => isCertificateEarned(r.status)).length || 0)
               + completions.length;
             return (
               <div className="space-y-6">
@@ -809,7 +815,7 @@ const UserDashboard: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {(subscriber?.paymentHistory ?? []).slice(-5).reverse().map(p => (
+                          {(subscriber?.paymentHistory ?? []).slice(0, 5).map(p => (
                             <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                               <td className="px-4 py-2.5 font-bold text-primary-700">{p.amount.toLocaleString()} {p.currency === 'EGP' ? 'ج.م' : p.currency === 'SAR' ? 'ر.س' : '$'}</td>
                               <td className="px-4 py-2.5 text-gray-500 text-xs">{p.paymentMethod || '—'}</td>

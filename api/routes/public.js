@@ -966,7 +966,7 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
     const sub = await resolveSubscriberRow(req, [
       'id', 'firebase_uid', 'client_code', 'lead_id', 'name', 'email', 'phone', 'branch',
       'is_active', 'notes', 'assigned_sales_id', 'assigned_sales_name',
-      'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'created_at', 'updated_at',
+      'assigned_cs_id', 'assigned_cs_name', 'crm_json', 'created_at', 'updated_at', 'name_en',
     ]);
     if (!sub) return res.json(null);
 
@@ -1002,7 +1002,16 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       for (const c of completions) lectureProgressMap[c.lecture_id] = Number(c.progress_pct) || 0;
     } catch (_) { /* table may not exist on older schema — fall back to crm_json */ }
 
-    let mapped = mapSubscriber({ ...sub, enrollments, payments, certRequests });
+    const [installmentPlans] = await pool.query(
+      `SELECT ip.id, ip.course_id, ip.title, ip.total_amount, ip.currency, ip.installments_count,
+              ip.installment_amounts, ip.due_dates, ip.paid_dates, ip.paid_amounts, ip.notes,
+              ip.created_at, c.title AS course_title
+         FROM installment_plans ip
+         LEFT JOIN courses c ON c.id = ip.course_id AND c.tenant_id = ip.tenant_id
+        WHERE ip.subscriber_id = ? AND ip.tenant_id = ? ORDER BY ip.created_at DESC`,
+      [sub.id, req.tenantId]
+    );
+    let mapped = mapSubscriber({ ...sub, enrollments, payments, certRequests, installmentPlans });
     // Merge DB completions over any crm_json values (DB table is the source of truth).
     mapped = { ...mapped, lectureProgress: { ...(mapped.lectureProgress || {}), ...lectureProgressMap } };
     // Fetch full course objects for all enrolled courses (incl. unpublished) so

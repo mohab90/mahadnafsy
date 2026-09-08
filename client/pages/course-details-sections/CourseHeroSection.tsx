@@ -34,6 +34,12 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
   // sheet is the right thing on the phones most of this traffic comes from;
   // desktop browsers without it fall back to the clipboard, and a browser that
   // blocks that too still gets a visible URL to copy by hand.
+  // Strike only a price the customer is actually saving against, and badge a
+  // discount only when one exists. Rendered unconditionally, this struck out
+  // «السعر الرسمي: 0» above the real price and stamped «خصم لفترة محدودة» on
+  // courses that were never discounted.
+  const strikePrice = discountedPrice !== null ? currentPrice : oldPrice;
+  const payPrice = discountedPrice !== null ? discountedPrice : currentPrice;
   const [shareState, setShareState] = React.useState<'idle' | 'copied'>('idle');
   const shareCourse = async () => {
     const url = window.location.href;
@@ -100,17 +106,19 @@ export const CourseHeroSection: React.FC<CourseHeroSectionProps> = ({
                 <div className="mb-6 text-center border-b pb-4 border-gray-100">
                   {currentPrice > 0 ? (
                   <>
-                  <p className="text-gray-400 text-sm line-through mb-1">{content['courseDetails.price.originalLabel'] || 'السعر الرسمي:'} {discountedPrice !== null ? currentPrice : oldPrice} {currencySymbol}</p>
+                  {strikePrice > payPrice && (
+                    <p className="text-gray-400 text-sm line-through mb-1">{content['courseDetails.price.originalLabel'] || 'السعر الرسمي:'} {strikePrice} {currencySymbol}</p>
+                  )}
                   <div className="flex justify-center items-center gap-3">
-                      <span className="text-4xl font-extrabold text-primary-600">{discountedPrice !== null ? discountedPrice : currentPrice} <span className="text-xl">{currencySymbol}</span></span>
+                      <span className="text-4xl font-extrabold text-primary-600">{payPrice} <span className="text-xl">{currencySymbol}</span></span>
                   </div>
                   {applicableDiscount ? (
                     <span className="bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block">
                       خصم {applicableDiscount.discountPercent}%{applicableDiscount.label ? ` — ${applicableDiscount.label}` : ''}
                     </span>
-                  ) : (
+                  ) : strikePrice > payPrice ? (
                     <span className="bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full mt-2 inline-block">{content['courseDetails.price.discountBadge'] || 'خصم لفترة محدودة'}</span>
-                  )}
+                  ) : null}
                   </>
                   ) : (
                     <p className="font-bold text-amber-700">السعر غير متاح في دولتك حاليًا</p>

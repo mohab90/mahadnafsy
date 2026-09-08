@@ -9,6 +9,45 @@ function tryJsonArr(value) {
   try { const v = JSON.parse(value); return Array.isArray(v) ? v : []; } catch { return []; }
 }
 
+// installment_plans stores one plan as parallel JSON arrays. Everything that
+// reads a plan has to walk them in step; this is that walk, in the shape both
+// dashboards declare. Kept here so the customer's view of a plan and the
+// admin's are computed from one place.
+function planEntries(plan) {
+  const amounts = tryJsonArr(plan.installment_amounts);
+  const dueDates = tryJsonArr(plan.due_dates);
+  const paidDates = tryJsonArr(plan.paid_dates);
+  const paidAmounts = tryJsonArr(plan.paid_amounts);
+  const count = Number(plan.installments_count) || dueDates.length;
+  const fallback = count > 0 ? (Number(plan.total_amount) || 0) / count : 0;
+  const entries = [];
+  for (let i = 0; i < count; i++) {
+    if (!dueDates[i]) continue;
+    entries.push({
+      id: `${plan.id}-${i + 1}`,
+      amount: Number(amounts[i] ?? fallback) || 0,
+      currency: plan.currency || 'EGP',
+      dueDate: String(dueDates[i]).slice(0, 10),
+      paidAt: paidDates[i] ? String(paidDates[i]).slice(0, 10) : undefined,
+      paidAmount: paidDates[i] && paidAmounts[i] != null ? Number(paidAmounts[i]) : undefined,
+    });
+  }
+  return entries;
+}
+
+function mapInstallmentPlan(plan) {
+  return {
+    id: plan.id,
+    courseId: plan.course_id || undefined,
+    courseTitle: plan.course_title || plan.title || undefined,
+    totalAmount: Number(plan.total_amount) || 0,
+    currency: plan.currency || 'EGP',
+    entries: planEntries(plan),
+    notes: plan.notes || undefined,
+    createdAt: plan.created_at,
+  };
+}
+
 // Throws a { statusCode } error for invalid input, otherwise returns the new
 // column values to persist plus a summary of what happened.
 function applyInstallmentPayment(plan, { index, paidAmount, paidDate, paymentId }) {
@@ -77,4 +116,4 @@ function removeInstallmentEntry(plan, { index }) {
   };
 }
 
-module.exports = { applyInstallmentPayment, removeInstallmentEntry, tryJsonArr };
+module.exports = { applyInstallmentPayment, removeInstallmentEntry, tryJsonArr, planEntries, mapInstallmentPlan };

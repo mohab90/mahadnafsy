@@ -3,6 +3,7 @@
 const { pool } = require('./db');
 const outbox = require('./outbox');
 const logger = require('./logger').child({ lib: 'crmSla' });
+const { dateOnlyInTimeZone } = require('./dates');
 
 async function enqueueOverdueLeadAlerts(limit = 200) {
   const [rows] = await pool.query(
@@ -15,7 +16,7 @@ async function enqueueOverdueLeadAlerts(limit = 200) {
       ORDER BY l.next_follow_up_date ASC LIMIT ?`,
     [Math.min(Math.max(Number(limit) || 200, 1), 500)]
   );
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateOnlyInTimeZone();
   let queued = 0;
   for (const row of rows) {
     const days = Math.max(1, Math.floor((Date.now() - new Date(row.next_follow_up_date).getTime()) / 86400000));

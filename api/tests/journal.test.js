@@ -201,3 +201,38 @@ test('payment journal persists branch scope on its header', async () => {
   assert.equal(header.params[2], 'DAQQI');
   assert.equal(header.params[3], 'branch-daqqi');
 });
+
+// The expense side used to convert with `rates[currency] || 1`, with none of the
+// guards the payment side has. Two ways that went wrong: a snapshot the payment
+// side refuses as stale was accepted here, and a currency with no rate at all
+// posted one-to-one — a 100 USD expense booked as 100 EGP.
+test('a foreign-currency expense will not post on a snapshot the payment side refuses', async () => {
+  const db = recordingDb();
+  const journalId = await postExpenseJournal({
+    id: 'EXP-USD-1', tenant_id: 'tenant-a', amount: 100, currency: 'USD',
+    category: 'OTHER', date: '2026-06-01',
+  }, +1, 'tester', db, 'tenant-a');
+  assert.equal(journalId, null, 'no usable FX snapshot means no posting');
+  assert.equal(db.inserts.length, 0, 'and nothing reaches the ledger');
+});
+
+test('an expense in a currency the ledger cannot price is refused, not booked one-to-one', async () => {
+  const db = recordingDb();
+  const journalId = await postExpenseJournal({
+    id: 'EXP-AED-1', tenant_id: 'tenant-a', amount: 100, currency: 'AED',
+    category: 'OTHER', date: '2026-06-01',
+  }, +1, 'tester', db, 'tenant-a');
+  assert.equal(journalId, null);
+  assert.equal(db.inserts.length, 0);
+});
+
+test('reversing a foreign-currency expense still works when the FX snapshot is unusable', async () => {
+  const db = recordingDb();
+  const journalId = await postExpenseJournal({
+    id: 'EXP-USD-2', tenant_id: 'tenant-a', amount: 100, currency: 'USD',
+    amount_egp: 4850, category: 'OTHER', date: '2026-06-01',
+  }, -1, 'tester', db, 'tenant-a');
+  assert.ok(journalId, 'the escape hatch must never be closed by a stale rate');
+  const header = db.inserts.find(i => i.sql.includes('INSERT INTO journal_entries'));
+  assert.equal(header.params[8], 4850);
+});

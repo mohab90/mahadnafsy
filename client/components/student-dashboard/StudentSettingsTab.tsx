@@ -123,11 +123,15 @@ export const StudentSettingsTab: React.FC<StudentSettingsTabProps> = ({
         <input value={authUser?.email || ''} readOnly className="w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500" />
       </div>
 
+      {/* This used to advertise a permanent personal link, and it led nowhere
+          twice over: the app is not hash-routed, and /client/:code is
+          registered as a redirect to the home page. What support actually
+          asks for is the code itself, so that is what is shown. */}
       {subscriber?.clientCode && (
         <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
-          <p className="mb-1 text-xs font-bold text-indigo-700">رابطك الشخصي الدائم</p>
-          <p className="break-all font-mono text-[11px] text-indigo-600">{window.location.origin}/#/client/{subscriber.clientCode}</p>
-          <p className="mt-1 text-[10px] text-indigo-400">هذا الرابط ثابت ويمكنك مشاركته مع فريق الدعم</p>
+          <p className="mb-1 text-xs font-bold text-indigo-700">رقم عميلك الدائم</p>
+          <p className="break-all font-mono text-base font-bold text-indigo-700">{subscriber.clientCode}</p>
+          <p className="mt-1 text-[10px] text-indigo-400">اذكر هذا الرقم عند التواصل مع فريق الدعم لتسريع خدمتك</p>
         </div>
       )}
     </div>

@@ -11,6 +11,7 @@ const TicketRating: React.FC = () => {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
 
   const id = new URLSearchParams(window.location.search).get('id') || '';
   const token = new URLSearchParams(window.location.search).get('token') || '';
@@ -28,13 +29,18 @@ const TicketRating: React.FC = () => {
   const submit = async () => {
     if (score < 1) return;
     setSubmitting(true);
+    setError('');
     try {
       const r = await fetch(`/api/ticket-csat/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ score, comment }),
       });
+      // A failed submit used to do nothing at all: the spinner stopped, the
+      // page stayed as it was, and the rating the customer just gave was
+      // gone with no way to tell.
       if (r.ok) setDone(true);
-    } catch { /* ignore */ }
+      else setError('تعذّر إرسال التقييم. حاول مرة أخرى.');
+    } catch { setError('تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مرة أخرى.'); }
     finally { setSubmitting(false); }
   };
 
@@ -69,6 +75,7 @@ const TicketRating: React.FC = () => {
       <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
         placeholder="ملاحظة (اختياري)..."
         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none mb-4" />
+      {error && <p className="text-sm font-bold text-red-600 mb-3">{error}</p>}
       <button onClick={submit} disabled={score < 1 || submitting}
         className="w-full bg-primary-600 text-white py-2.5 rounded-xl font-semibold hover:bg-primary-700 disabled:opacity-40 transition">
         {submitting ? 'جارٍ الإرسال...' : 'إرسال التقييم'}

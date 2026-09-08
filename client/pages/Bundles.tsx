@@ -5,7 +5,7 @@ import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
 
 const Bundles: React.FC = () => {
-    const { bundles, content, currency } = useSiteData();
+    const { bundles, content, currency, remoteReady } = useSiteData();
   const navigate = useNavigate();
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
@@ -69,11 +69,21 @@ const Bundles: React.FC = () => {
         </div>
 
         {/* List */}
+        {/* An empty list is not the same thing as a list that has not arrived.
+            Keyed on length alone, the spinner never stopped for an institute
+            with no bundles published: the page said "loading" forever. */}
         {bundles.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-            <p className="text-gray-400 text-sm">جاري تحميل المسارات...</p>
-          </div>
+          remoteReady ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
+              <p className="text-gray-500 font-bold">لا توجد مسارات متاحة حالياً</p>
+              <p className="text-gray-400 text-sm">تابعنا — يتم إضافة مسارات جديدة باستمرار.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+              <p className="text-gray-400 text-sm">جاري تحميل المسارات...</p>
+            </div>
+          )
         )}
         <div className="space-y-12">
             {bundles.filter(b => b.courses && b.courses.length > 0).map(bundle => (

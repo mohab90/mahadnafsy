@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { toEgp } = require('./finance');
 const { uuidv4 } = require('./id');
 const logger = require('./logger').child({ lib: 'loyalty' });
 
@@ -165,9 +166,9 @@ async function listLedger(tenantId, subscriberId, limit = 100) {
   return rows;
 }
 
-function pointsForAmount(amount) {
+function pointsForAmount(amountEgp) {
   const egpPerPoint = Math.max(parseInt(process.env.LOYALTY_EGP_PER_POINT || '100', 10) || 100, 1);
-  return Math.floor((Number(amount) || 0) / egpPerPoint);
+  return Math.floor((Number(amountEgp) || 0) / egpPerPoint);
 }
 
 async function awardPointsForPayment(payment) {
@@ -175,9 +176,6 @@ async function awardPointsForPayment(payment) {
   const subscriberId = payment.subscriberId || payment.subscriber_id;
   const referenceId = payment.paymentId || payment.id;
   if (!referenceId) return { skipped: true, reason: 'missing payment id' };
-
-  const points = pointsForAmount(payment.amount);
-  if (points <= 0) return { skipped: true, reason: 'amount below threshold' };
 
   try {
     let tenantId = payment.tenantId || payment.tenant_id || null;
@@ -190,6 +188,15 @@ async function awardPointsForPayment(payment) {
       );
       tenantId = subscriber?.tenant_id || null;
     }
+    // The rate is one point per LOYALTY_EGP_PER_POINT, so a payment in another
+    // currency has to be converted before it is divided. Counted raw, a 500 SAR
+    // order earned five points where the same purchase in Egypt (~6,500 EGP)
+    // earned sixty-five. toEgp fails closed on a stale snapshot, which loses the
+    // points rather than awarding a thirteenth of them.
+    const amountEgp = payment.amountEgp ?? payment.amount_egp
+      ?? await toEgp(payment.amount, payment.currency, tenantId || undefined);
+    const points = pointsForAmount(amountEgp);
+    if (points <= 0) return { skipped: true, reason: 'amount below threshold' };
     return await awardPoints(tenantId, subscriberId, points, {
       reason: payment.reason || 'paid_payment',
       referenceType: 'payment',

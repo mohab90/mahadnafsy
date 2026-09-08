@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { mysqlClient } from '../../lib/mysqlapi';
 import type { ExtraCertificateType, ExtraCertificateRequest } from '../../types';
 import { useSiteData } from '../../context/SiteDataContext';
+import { CERT_STATUS_META, type CertRequestStatus } from '../../lib/certificateStatus';
 
 interface CourseCompletionRow {
   course_id: string;
@@ -148,10 +149,9 @@ export const CertificatesTab: React.FC<CertificatesTabProps> = ({
   };
 
   const statusBadge = (s: string) => {
-    if (s === 'issued') return <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">✅ صدرت</span>;
-    if (s === 'paid') return <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">💳 مدفوعة</span>;
-    if (s === 'priced') return <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full">💰 تم التسعير</span>;
-    return <span className="text-[10px] bg-gray-100 text-gray-600 font-bold px-2 py-0.5 rounded-full">⏳ قيد المراجعة</span>;
+    const meta = CERT_STATUS_META[String(s || '').toLowerCase() as CertRequestStatus]
+      ?? CERT_STATUS_META.pending;
+    return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.badge}`}>{meta.label}</span>;
   };
 
   return (

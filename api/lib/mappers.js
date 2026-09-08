@@ -3,6 +3,7 @@
 const { tryJson, parseCrm } = require('./helpers');
 const { pool } = require('./db');
 const { safeDateOnly } = require('./dates');
+const { mapInstallmentPlan } = require('./installmentMath');
 
 // ── Column lists for hot-path queries ────────────────────────────────────────
 const COURSE_COLS = `id, course_code, slug, title, title_en, title_ar, description,
@@ -207,7 +208,18 @@ function mapSubscriber(r) {
     enrolledCourseIds,
     courseAccess: dbCourseAccess,
     lectureProgress: {},
+    // The customer types an English name for their certificate and it is saved,
+    // but nothing ever handed it back: the settings field reset itself on every
+    // visit, the certificate request went out without it, and the preview
+    // printed the Arabic name. Read from the column and from the CRM blob the
+    // profile route writes into, so a name saved either way surfaces.
+    nameEn: r.name_en || crm.nameEn || null,
     clientCode: r.client_code || crm.clientCode || null,
+    // The plan the customer is actually paying was admin-only. Their payments
+    // tab declares a section for it and their dashboard computes upcoming due
+    // dates from it; both read an array that was never sent, so a customer on a
+    // four-instalment plan saw no plan, no schedule and no next due date.
+    installmentPlans: (r.installmentPlans || []).map(mapInstallmentPlan),
     enrollments: activeEnrollments.map(e => ({
       id: e.id,
       courseId: e.course_id || e.c_id,

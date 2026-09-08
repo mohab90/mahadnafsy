@@ -590,6 +590,8 @@ async function _finalisePaymobOrderInner(merchantOrderId, transactionId) {
       id: payId,
       subscriberId: sub?.id || null,
       amount: order.amount,
+      currency: order.currency || 'EGP',
+      tenantId,
       createdBy: 'paymob',
     }).catch(error => logger.warn('[paymob] loyalty award failed', { paymentId: payId, error: error.message }));
     logger.info(`[paymob] Transaction committed: order ${merchantOrderId}, payment ${payId}`);

@@ -46,3 +46,59 @@ test('self-service subscriber query loads expected amount and branch from paymen
   );
   assert.match(route, /fd\.document_number/);
 });
+
+// Two things the customer's own dashboard declares and the server never sent.
+test('the customer gets back the English name they saved', () => {
+  const fromColumn = mapSubscriber({ id: 's1', name: 'عميل', name_en: 'Ahmed Ali', enrollments: [], payments: [] });
+  assert.equal(fromColumn.nameEn, 'Ahmed Ali');
+  // PUT /api/auth/update-profile writes it into crm_json, so that spelling has
+  // to resolve too or the settings field keeps blanking itself.
+  const fromCrm = mapSubscriber({
+    id: 's1', name: 'عميل', crm_json: JSON.stringify({ nameEn: 'Ahmed Ali' }),
+    enrollments: [], payments: [],
+  });
+  assert.equal(fromCrm.nameEn, 'Ahmed Ali');
+});
+
+test('the customer sees the installment plan they are paying, entry by entry', () => {
+  const mapped = mapSubscriber({
+    id: 's1', name: 'عميل', enrollments: [], payments: [],
+    installmentPlans: [{
+      id: 'PLAN-1', course_id: 'course-1', course_title: 'دبلوم الإرشاد',
+      total_amount: '4000.00', currency: 'EGP', installments_count: 4,
+      installment_amounts: JSON.stringify([1000, 1000, 1000, 1000]),
+      due_dates: JSON.stringify(['2026-09-01', '2026-10-01', '2026-11-01', '2026-12-01']),
+      paid_dates: JSON.stringify(['2026-09-01', null, null, null]),
+      paid_amounts: JSON.stringify([1050, null, null, null]),
+      created_at: '2026-08-20',
+    }],
+  });
+  assert.equal(mapped.installmentPlans.length, 1);
+  const plan = mapped.installmentPlans[0];
+  assert.equal(plan.totalAmount, 4000);
+  assert.equal(plan.courseTitle, 'دبلوم الإرشاد');
+  assert.equal(plan.entries.length, 4, 'every scheduled entry, not just the paid ones');
+  assert.equal(plan.entries[0].paidAt, '2026-09-01');
+  assert.equal(plan.entries[0].paidAmount, 1050, 'what was actually collected, not what was scheduled');
+  assert.equal(plan.entries[1].paidAt, undefined);
+  assert.equal(plan.entries[3].dueDate, '2026-12-01');
+});
+
+test('a plan with no explicit per-entry amounts still schedules the whole total', () => {
+  const mapped = mapSubscriber({
+    id: 's1', name: 'عميل', enrollments: [], payments: [],
+    installmentPlans: [{
+      id: 'PLAN-2', total_amount: '900.00', currency: 'EGP', installments_count: 3,
+      due_dates: JSON.stringify(['2026-09-01', '2026-10-01', '2026-11-01']),
+      created_at: '2026-08-20',
+    }],
+  });
+  const entries = mapped.installmentPlans[0].entries;
+  assert.equal(entries.length, 3);
+  assert.equal(entries.reduce((sum, e) => sum + e.amount, 0), 900);
+});
+
+test('a subscriber with no plans still reports an empty list rather than undefined', () => {
+  const mapped = mapSubscriber({ id: 's1', name: 'عميل', enrollments: [], payments: [] });
+  assert.deepEqual(mapped.installmentPlans, []);
+});

@@ -46,6 +46,9 @@ const BundleDetails: React.FC = () => {
 
   // Match by id OR slug
   const bundle = bundles.find(b => b.id === id || b.slug === id);
+  // A bundle priced in EGP only rendered a bold "0" to a visitor browsing in
+  // USD, with a live checkout button under it.
+  const priceAvailable = (bundle?.price?.[currency] ?? 0) > 0;
   useEffect(() => { document.title = (bundle?.title ? `${bundle.title} — مسار` : 'المسارات والباقات') + ' | معهد الدراسات النفسية'; }, [bundle?.title]);
   if (!bundle) return <div className="text-center py-20 text-gray-500">{globalContent['bundleDetails.notFound'] || 'المسار غير موجود'}</div>;
 
@@ -428,28 +431,38 @@ const BundleDetails: React.FC = () => {
             <div className="bg-white border-2 border-primary-100 rounded-2xl shadow-lg p-6 sticky top-24">
               <h3 className="text-base font-bold text-gray-700 mb-4 text-center">{content['bundleDetails.sidebar.title'] || 'استثمارك في هذا المسار'}</h3>
               <div className="text-center mb-5">
-                {oldPrice > currentPrice && (
-                  <div className="text-gray-400 line-through text-sm mb-1">{oldPrice.toLocaleString()} {currencySymbol}</div>
-                )}
-                <div className="text-4xl font-extrabold text-primary-600">{currentPrice.toLocaleString()}</div>
-                <div className="text-gray-500 text-base">{currencySymbol}</div>
-                {Number(savePct) > 0 && (
-                  <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full inline-block mt-2">توفر {savePct}%</span>
+                {priceAvailable ? (
+                  <>
+                    {oldPrice > currentPrice && (
+                      <div className="text-gray-400 line-through text-sm mb-1">{oldPrice.toLocaleString()} {currencySymbol}</div>
+                    )}
+                    <div className="text-4xl font-extrabold text-primary-600">{currentPrice.toLocaleString()}</div>
+                    <div className="text-gray-500 text-base">{currencySymbol}</div>
+                    {Number(savePct) > 0 && (
+                      <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full inline-block mt-2">توفر {savePct}%</span>
+                    )}
+                  </>
+                ) : (
+                  <p className="font-bold text-amber-700">السعر غير متاح في دولتك حالياً</p>
                 )}
               </div>
 
-              <button
-                onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
-                className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl mb-2 transition shadow-lg shadow-primary-500/20"
-              >
-                {content['bundleDetails.sidebar.cta'] || 'احجز الآن'}
-              </button>
-              <a
-                href={`/enroll?bundle=${bundle.id}`}
-                className="w-full flex items-center justify-center gap-2 border-2 border-primary-500 text-primary-700 hover:bg-primary-50 font-bold py-2.5 rounded-xl mb-3 transition text-sm"
-              >
-                💳 ادفع أونلاين مباشرة (كاش أو قسط)
-              </a>
+              {priceAvailable && (
+                <>
+                  <button
+                    onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
+                    className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl mb-2 transition shadow-lg shadow-primary-500/20"
+                  >
+                    {content['bundleDetails.sidebar.cta'] || 'احجز الآن'}
+                  </button>
+                  <a
+                    href={`/enroll?bundle=${bundle.id}`}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-primary-500 text-primary-700 hover:bg-primary-50 font-bold py-2.5 rounded-xl mb-3 transition text-sm"
+                  >
+                    💳 ادفع أونلاين مباشرة (كاش أو قسط)
+                  </a>
+                </>
+              )}
               <button
                 onClick={() => document.getElementById('register-form')?.scrollIntoView({ behavior: 'smooth' })}
                 className="w-full border-2 border-primary-600 text-primary-700 hover:bg-primary-50 font-bold py-3 rounded-xl mb-5 transition"

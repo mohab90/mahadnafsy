@@ -194,7 +194,7 @@ export interface ExtraCertificateRequest {
   nameEn?: string;
   nationality?: 'egyptian' | 'non_egyptian_egypt' | 'saudi_resident' | 'international';
   idNumber?: string;
-  status: 'pending' | 'priced' | 'paid' | 'in_progress' | 'not_sent' | 'issued' | 'at_branch' | 'delivered';
+  status: 'pending' | 'priced' | 'paid' | 'in_progress' | 'not_sent' | 'issued' | 'shipped' | 'at_branch' | 'delivered';
   price?: number;
   paidAmount?: number;
   currency?: 'EGP' | 'SAR' | 'USD';
