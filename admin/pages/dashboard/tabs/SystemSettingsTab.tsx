@@ -58,6 +58,9 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
   const [dirty, setDirty]         = useState<Set<SectionKey>>(new Set());
   const [saving, setSaving]       = useState<Set<SectionKey>>(new Set());
   const [globalLoading, setGlobalLoading] = useState(true);
+  // Owned by إعدادات الدفع, edited here because وسائل الدفع is one screen: the
+  // institute's cash boxes and the channels a customer may pick.
+  const [gateway, setGateway] = useState<GatewayConfig | undefined>(undefined);
 
   // Load both sys-config and content on mount
   useEffect(() => {
@@ -71,6 +74,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         const rawContent = contentRes.ok ? await contentRes.json() : {};
         const contentSections = parseContentSections(rawContent);
         setData({ ...cfg, ...contentSections });
+        setGateway(cfg.payment_gateway as GatewayConfig | undefined);
       } catch {
         notify('error', 'فشل تحميل الإعدادات');
       } finally {
@@ -101,6 +105,29 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
           body: JSON.stringify(patch),
         });
         if (!res.ok) throw new Error(await res.text());
+
+        // وسائل الدفع covers the cash boxes (content) and the customer's
+        // channels (the gateway section), so both go in one press.
+        if (key === 'payment_methods' && gateway) {
+          const currentRes = await fetch('/api/admin/sys-config?section=payment_gateway', {
+            credentials: 'include', headers: adminHeaders(),
+          });
+          const current = currentRes.ok ? await currentRes.json() as GatewayConfig : gateway;
+          const merged: GatewayConfig = {
+            ...current,
+            manual: {
+              ...(current?.manual || {}),
+              supported_methods: gateway.manual?.supported_methods || [],
+            },
+          };
+          const gatewayRes = await fetch('/api/admin/sys-config/payment_gateway', {
+            method: 'PUT', credentials: 'include',
+            headers: adminHeaders(true),
+            body: JSON.stringify(merged),
+          });
+          if (!gatewayRes.ok) throw new Error(await gatewayRes.text());
+          setGateway(merged);
+        }
       } else {
         const res = await fetch(`/api/admin/sys-config/${key}`, {
           method: 'PUT', credentials: 'include',
@@ -238,10 +265,69 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         {active === 'growth'             && <GrowthOpsSection    notify={notify} />}
         {active === 'backups'             && <BackupSection       notify={notify} />}
         {!['general','financial','exchange_rates','currencies','countries','security','growth','backups'].includes(active) && (
-          <ListSection data={data[active] as ListItem[]} mutate={v => mutate(active, v)} c={c} sectionKey={active}/>
+          <>
+            <ListSection data={data[active] as ListItem[]} mutate={v => mutate(active, v)} c={c} sectionKey={active}/>
+            {active === 'payment_methods' && (
+              <CustomerPaymentChannels
+                gateway={gateway}
+                onChange={next => {
+                  setGateway(next);
+                  setDirty(d => new Set([...d, 'payment_methods' as SectionKey]));
+                }}
+              />
+            )}
+          </>
         )}
       </main>
     </div>
+  );
+};
+
+/** The four rails the manual-payment integration understands. */
+const CUSTOMER_CHANNELS = ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'] as const;
+const CHANNEL_LABEL_AR: Record<string, string> = {
+  cash: 'نقدي', instapay: 'إنستاباي', bank_transfer: 'تحويل بنكي', vodafone_cash: 'فودافون كاش',
+};
+
+export type GatewayConfig = {
+  manual?: { enabled?: boolean; require_proof_review?: boolean; supported_methods?: string[] };
+  [key: string]: unknown;
+};
+
+/**
+ * What a customer may pick when paying manually on the site.
+ *
+ * A fixed set of codes, not free text: the integration branches on them. That is
+ * why this cannot merge into the cash-box list above it, and why both belong on
+ * one screen rather than one value — an admin looking for وسائل الدفع should not
+ * have to know which of the two they meant before they can find it.
+ */
+const CustomerPaymentChannels: React.FC<{
+  gateway?: GatewayConfig;
+  onChange: (next: GatewayConfig) => void;
+}> = ({ gateway, onChange }) => {
+  const selected = gateway?.manual?.supported_methods || [];
+  const toggle = (channel: string) => {
+    const next = selected.includes(channel)
+      ? selected.filter(item => item !== channel)
+      : [...selected, channel];
+    onChange({ ...(gateway || {}), manual: { ...(gateway?.manual || {}), supported_methods: next } });
+  };
+  return (
+    <section className="mt-6 rounded-2xl border border-gray-200 p-4">
+      <h3 className="text-sm font-bold text-gray-900">طرق الدفع اليدوي المتاحة للعميل</h3>
+      <p className="mt-0.5 mb-3 text-xs text-gray-500">
+        ما يظهر للعميل عند الدفع اليدوي من الموقع. القائمة أعلاه هي خزائن المعهد التي يختار منها الموظف عند تسجيل دفعة.
+      </p>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        {CUSTOMER_CHANNELS.map(channel => (
+          <label key={channel} className="flex items-center gap-2 rounded-xl border border-gray-200 p-3 text-sm">
+            <input type="checkbox" checked={selected.includes(channel)} onChange={() => toggle(channel)} />
+            {CHANNEL_LABEL_AR[channel] || channel}
+          </label>
+        ))}
+      </div>
+    </section>
   );
 };
 

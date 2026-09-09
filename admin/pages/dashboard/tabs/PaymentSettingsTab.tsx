@@ -89,28 +89,9 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
         </div>
       </Card>
 
-      <Card
-        title="طرق الدفع اليدوي المتاحة للعميل"
-        hint="ما يستطيع العميل اختياره عند الدفع اليدوي من الموقع. خزائن المعهد التي يختار منها الموظف عند تسجيل دفعة تُضبط من الإعدادات ← وسائل الدفع."
-      >
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {methodOptions.map(method => (
-            <label key={method} className="flex items-center gap-2 rounded-xl border border-gray-200 p-3 text-sm">
-              <input
-                type="checkbox"
-                checked={config.manual.supported_methods.includes(method)}
-                onChange={event => {
-                  const next = event.target.checked
-                    ? [...config.manual.supported_methods, method]
-                    : config.manual.supported_methods.filter(item => item !== method);
-                  update('manual.supported_methods', next);
-                }}
-              />
-              {METHOD_LABEL_AR[method] || method}
-            </label>
-          ))}
-        </div>
-      </Card>
+      {/* طرق الدفع اليدوي المتاحة للعميل now sits beside the institute's
+          cash boxes, in الإعدادات ← وسائل الدفع — one screen for both, so
+          nobody has to know which of the two they meant to find it. */}
 
       <Card title="بيانات اعتماد Paymob" hint="القيم السرية لا تظهر مرة أخرى بعد الحفظ؛ اترك الحقل كما هو للحفاظ على السر القديم.">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -169,3 +169,24 @@ test('a settings save cannot report success having sent nothing', () => {
   // And a section that never loaded says so rather than doing nothing silently.
   assert.match(settings, /لم تُحمَّل بعد/);
 });
+
+test('وسائل الدفع is one screen', () => {
+  // Two lists with nearly the same name lived on two screens: the institute's
+  // cash boxes in الإعدادات and the channels a customer may pick in إعدادات
+  // الدفع. They cannot become one value — the first is free text a staff member
+  // reads off a dropdown, the second a fixed set of codes the integration
+  // branches on — but there is no reason to hunt across two screens for it.
+  const settings = codeOnly(read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx'));
+  assert.match(settings, /const CustomerPaymentChannels/);
+  assert.match(settings, /active === 'payment_methods' && \(/);
+
+  const gateway = read('admin/pages/dashboard/tabs/PaymentSettingsTab.tsx');
+  assert.ok(!gateway.includes('title="طرق الدفع اليدوي المتاحة للعميل"'),
+    'the channels card moved out; the gateway screen keeps its credentials');
+
+  // PUT /api/admin/sys-config/:section replaces the section, so a save from here
+  // must not revert a toggle changed on the gateway screen meanwhile.
+  assert.match(settings, /sys-config\?section=payment_gateway/);
+  assert.match(settings, /const merged: GatewayConfig = \{/);
+  assert.match(settings, /\.\.\.\(current\?\.manual \|\| \{\}\),/);
+});
