@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { DiscountRule } from '../../../../types';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useStaticData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../components/shared/confirmDialog';
 
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) {
-  const { discounts, addDiscount, updateDiscount, deleteDiscount, courses, bundles, therapists, content, setContentValue } = useSiteData();
+  const { discounts, addDiscount, updateDiscount, deleteDiscount, courses, bundles, therapists, content, setContentValue } = useStaticData();
   const [discountDraft, setDiscountDraft] = useState<Omit<DiscountRule, 'id' | 'createdAt'>>({ type: 'course', targetId: '', discountPercent: 10, label: '', promoCode: '', active: true, expiresAt: '' });
   const [editingDiscountId, setEditingDiscountId] = useState('');
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);

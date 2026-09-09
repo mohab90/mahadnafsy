@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Settings2, Bot, FileText, AlertCircle, Zap, Save, CheckCircle, Code2, Video } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useStaticData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function AdminAiSettingsTab({ notify }: Props) {
-  const { adminAiConfig, setAdminAiConfig, content, setContentValue } = useSiteData();
+  const { adminAiConfig, setAdminAiConfig, content, setContentValue } = useStaticData();
 
   const [adminAiDraft, setAdminAiDraft] = useState<{
     provider: string; apiKey: string; model: string; temperature: number; maxTokens: number; systemPrompt: string;

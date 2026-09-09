@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, Plus, Save, Users, Video } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useStaticData } from '../../../context/siteDataSlices';
 import type { LiveStream } from '../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -25,7 +25,7 @@ const blankLiveStreamDraft = (): LiveStreamDraft => ({
 });
 
 const LiveStreamsTab: React.FC<Props> = ({ notify }) => {
-  const { liveStreams, addLiveStream, updateLiveStream, deleteLiveStream, courses } = useSiteData();
+  const { liveStreams, addLiveStream, updateLiveStream, deleteLiveStream, courses } = useStaticData();
 
   const [lsEdit, setLsEdit] = useState<LiveStream | null>(null);
   const [lsDraft, setLsDraft] = useState<LiveStreamDraft>(blankLiveStreamDraft());

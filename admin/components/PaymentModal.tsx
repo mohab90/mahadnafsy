@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react';
 import { CreditCard, X } from 'lucide-react';
-import { useSiteData } from '../context/SiteDataContext';
+import { useStaticData } from '../context/siteDataSlices';
 import type {
   PaymentItemType, PaymentHistoryEntry,
   ExtraCertificateRequest,
@@ -226,7 +226,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   requirePaymentApproval, branchOptions = [], instituteName = 'معهد الدراسات النفسية',
   branchLabel,
 }) => {
-  const { courses, bundles, content, authUser } = useSiteData();
+  const { courses, bundles, content, authUser } = useStaticData();
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');

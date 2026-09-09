@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSiteData } from '../context/SiteDataContext';
+import { useStaticData } from '../context/siteDataSlices';
 import { mysqlCatalog } from '../lib/mysqlapi';
 
 export type BranchOption = { id: string; label: string };
@@ -43,7 +43,7 @@ async function loadBranches(): Promise<BranchOption[]> {
  * onto the table yet.
  */
 export function useBranches(): BranchOption[] {
-  const { content } = useSiteData();
+  const { content } = useStaticData();
   const [fetched, setFetched] = useState<BranchOption[]>(() => cachedBranches || []);
 
   useEffect(() => {

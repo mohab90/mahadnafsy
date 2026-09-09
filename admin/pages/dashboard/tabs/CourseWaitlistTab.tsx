@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Clock, Mail, Phone, Send, XCircle, Users, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useStaticData } from '../../../context/siteDataSlices';
 
 type Notify = (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
 interface Props { notify: Notify; }
@@ -34,7 +34,7 @@ const STATUS_COLORS: Record<WaitlistStatus, string> = {
 // auto-notify the top of the queue (SUB-02); this screen covers the rest —
 // browsing the queue per course and manually adding/notifying/cancelling entries.
 export default function CourseWaitlistTab({ notify }: Props) {
-  const { courses } = useSiteData();
+  const { courses } = useStaticData();
   const [courseId, setCourseId] = useState('');
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [enrolled, setEnrolled] = useState(0);

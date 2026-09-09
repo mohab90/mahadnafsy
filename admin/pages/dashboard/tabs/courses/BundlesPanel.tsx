@@ -9,13 +9,13 @@
 
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useStaticData } from '../../../../context/siteDataSlices';
 import type { Bundle } from '../../../../types';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function BundlesPanel({ notify }: { notify: NotifyFn }) {
-  const { bundles, courses, addBundle, updateBundle, deleteBundle, isAdmin } = useSiteData();
+  const { bundles, courses, addBundle, updateBundle, deleteBundle, isAdmin } = useStaticData();
   const [saving, setSaving] = useState(false);
   const [editingBundleId, setEditingBundleId] = useState('');
   const [isBundleFormOpen, setIsBundleFormOpen] = useState(false);

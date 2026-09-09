@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock, Eye, Loader2, Save, Stethoscope, Wallet } from 'lucide-react';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useStaticData } from '../../../../context/siteDataSlices';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -24,7 +24,7 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 export function ConsultationSettingsTab({ notify }: { notify: NotifyFn }) {
-  const { content, setContentValues, therapists } = useSiteData();
+  const { content, setContentValues, therapists } = useStaticData();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 

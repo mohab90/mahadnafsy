@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Send, CheckCircle, Users, Award, BookOpen, Globe, Star, GraduationCap, Heart } from 'lucide-react';
-import { useSiteData } from '../context/SiteDataContext';
+import { useStaticData } from '../context/siteDataSlices';
 
 const JoinUs: React.FC = () => {
   useEffect(() => { document.title = 'انضم إلينا | معهد الدراسات النفسية'; }, []);
-  const { addJoinUsApplication, content } = useSiteData();
+  const { addJoinUsApplication, content } = useStaticData();
   const [form, setForm] = useState({
     name: '',
     email: '',

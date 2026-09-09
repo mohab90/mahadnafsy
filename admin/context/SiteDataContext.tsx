@@ -3,6 +3,7 @@ import { BUNDLES, COURSES, TESTIMONIALS, THERAPISTS } from '../constants';
 import { AuthUser, Bundle, ConsultationItem, ContactMessage, Course, Currency, DaqqiRound, DiscountRule, ExpenseItem, JoinUsApplication, NotificationBroadcast, Therapist, LeadItem, NewLeadDraft, StaffMember, SubscriberItem, CourseLectureItem, CourseChapterItem, OrderItem, TestimonialItem, CommunityPostItem, CommunityLibraryItem, CommunityVideoItem, CommunityEventItem, ActivityLogItem, AutomationWorkflow, AdminAiConfig, AiAgentConfig, MessagingChannelsConfig, InboxConversation, FacebookLeadAdsConfig, CourseQuiz, QuizAttempt, LiveStream, LeadStats } from '../types';
 import { mysqlCatalog, mysqlAdmin, mysqlClient } from '../lib/mysqlapi';
 import { useAuth } from './AuthContext';
+import { StaticDataContext, CrmDataContext, FinanceDataContext } from './siteDataSlices';
 import { useDiscountsState } from './site-data-hooks/useDiscountsState';
 import { useNotificationsState } from './site-data-hooks/useNotificationsState';
 import { useClientCodeIssuance } from './site-data-hooks/useClientCodeIssuance';
@@ -37,7 +38,7 @@ import {
   seedData,
 } from './siteDataSeed';
 
-interface SiteDataShape {
+export interface SiteDataShape {
   courses: Course[];
   bundles: Bundle[];
   therapists: Therapist[];
@@ -750,7 +751,53 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     liveStreams, currency, authUser, isAdmin, remoteReady,
     staffScopedSubscribers, staffScopedLeads]);
 
-  return <SiteDataContext.Provider value={value}>{children}</SiteDataContext.Provider>;
+  // The same values, grouped by how often they change, so a screen that reads
+  // only one group re-renders only when that group does. Provided around the
+  // wide context rather than instead of it: every existing useSiteData() caller
+  // is untouched, and a screen moves across one at a time.
+  // The mutations come along with the data they change: they are stable, so
+  // carrying them costs nothing and saves a screen from subscribing to the wide
+  // context purely to call addBundle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const staticSlice = useMemo(() => ({
+    courses, bundles, therapists, testimonials, lectures, chapters, content, discounts,
+    courseQuizzes, liveStreams, communityPosts, communityLibraryItems, communityVideos,
+    communityEvents, automationWorkflows, adminAiConfig, aiAgentConfig, messagingChannels,
+    fbLeadAdsConfig, currency, authUser, isAdmin,
+    addBundle, updateBundle, deleteBundle,
+    addTestimonial, updateTestimonial, deleteTestimonial,
+    addDiscount, updateDiscount, deleteDiscount,
+    addLiveStream, updateLiveStream, deleteLiveStream,
+    setContentValue, setContentValues, setAdminAiConfig,
+    setMessagingChannels, setAiAgentConfig, addJoinUsApplication,
+  }), [courses, bundles, therapists, testimonials, lectures, chapters, content, discounts,
+    courseQuizzes, liveStreams, communityPosts, communityLibraryItems, communityVideos,
+    communityEvents, automationWorkflows, adminAiConfig, aiAgentConfig, messagingChannels,
+    fbLeadAdsConfig, currency, authUser, isAdmin]);
+
+  const crmSlice = useMemo(() => ({
+    leads, leadStats, subscribers, staffScopedLeads, staffScopedSubscribers, staffMembers,
+    consultations, joinUsApplications, contactMessages, inboxConversations, notifications,
+    activityLogs, daqqiRounds,
+  }), [leads, leadStats, subscribers, staffScopedLeads, staffScopedSubscribers, staffMembers,
+    consultations, joinUsApplications, contactMessages, inboxConversations, notifications,
+    activityLogs, daqqiRounds]);
+
+  const financeSlice = useMemo(
+    () => ({ orders, expenses, quizAttempts }),
+    [orders, expenses, quizAttempts]);
+
+  return (
+    <SiteDataContext.Provider value={value}>
+      <StaticDataContext.Provider value={staticSlice}>
+        <CrmDataContext.Provider value={crmSlice}>
+          <FinanceDataContext.Provider value={financeSlice}>
+            {children}
+          </FinanceDataContext.Provider>
+        </CrmDataContext.Provider>
+      </StaticDataContext.Provider>
+    </SiteDataContext.Provider>
+  );
 };
 
 export const useSiteData = () => {

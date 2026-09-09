@@ -10,12 +10,12 @@
 
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useStaticData } from '../../../../context/siteDataSlices';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function TestimonialsPanel({ notify }: { notify: NotifyFn }) {
-  const { testimonials, addTestimonial, updateTestimonial, deleteTestimonial } = useSiteData();
+  const { testimonials, addTestimonial, updateTestimonial, deleteTestimonial } = useStaticData();
   const [saving, setSaving] = useState(false);
   const [editingTestimonialId, setEditingTestimonialId] = useState<number | null>(null);
   const [isTestimonialFormOpen, setIsTestimonialFormOpen] = useState(false);

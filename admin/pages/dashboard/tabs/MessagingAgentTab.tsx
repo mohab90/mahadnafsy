@@ -1,10 +1,10 @@
 import React from 'react';
 import { Save } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useStaticData } from '../../../context/siteDataSlices';
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
 export default function MessagingAgentTab({ notify }: { notify: NotifyFn }) {
-  const { messagingChannels, setMessagingChannels, aiAgentConfig, setAiAgentConfig } = useSiteData();
+  const { messagingChannels, setMessagingChannels, aiAgentConfig, setAiAgentConfig } = useStaticData();
 
   // Local state for channel config editing
   const [channelTab, setChannelTab] = React.useState<'whatsapp' | 'messenger' | 'instagram' | 'webchat' | 'ai_agent'>('whatsapp');

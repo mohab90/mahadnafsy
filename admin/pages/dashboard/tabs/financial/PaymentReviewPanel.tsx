@@ -6,7 +6,7 @@ import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } from '../../../../types';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
 import { cairoDateOnly } from '../../../../lib/cairoDate';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useStaticData } from '../../../../context/siteDataSlices';
 import { parsePaymentMethods } from '../../../../lib/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -48,7 +48,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
   const [reviewLoading, setReviewLoading] = useState(false);
   // Method chosen at the moment of confirming, for rows stored without one.
   const [approveMethod, setApproveMethod] = useState<Record<string, string>>({});
-  const { content } = useSiteData();
+  const { content } = useStaticData();
   const paymentMethodsRaw = content['finance.payment_methods'];
 
   useEffect(() => {
