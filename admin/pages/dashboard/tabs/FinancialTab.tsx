@@ -11,6 +11,8 @@ import { useFinancialOrdersData } from './financial/useFinancialOrdersData';
 import { usePaymentProofsReview } from './financial/usePaymentProofsReview';
 import { exportCSV, exportExpensesPdfReport, exportFullFinancialReport, exportPaymentsExcelReport } from './financial/financialExports';
 import { useSiteData } from '../../../context/SiteDataContext';
+import { hasPermission } from '../../../constants/permissions';
+import type { PermissionKey, RoleKey } from '../../../constants/permissions';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, ExpenseItem } from '../../../types';
@@ -42,8 +44,23 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const {
     orders: _allOrders, subscribers: _allSubscribers, recordSubscriberPayment, reloadSubscribers, staffMembers,
     expenses: _allExpenses, addExpense, updateExpense, deleteExpense, content, setContentValue, courses,
-    authUser,
+    authUser, isAdmin,
   } = useSiteData();
+
+  // POST /api/admin/fx-rates/refresh is requirePermission('manage_financial'),
+  // and محاسبة الدقي opens on manage_daqqi — so reception_daqqi was shown a
+  // refresh button that answered 403 every time.
+  const currentStaffForFx = useMemo(
+    () => staffMembers.find(member => member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
+    [staffMembers, authUser?.email],
+  );
+  const canManageFinancial = isAdmin || hasPermission(
+    currentStaffForFx ? {
+      role: currentStaffForFx.role as RoleKey,
+      permissions: currentStaffForFx.permissions as PermissionKey[] | undefined,
+    } : null,
+    'manage_financial',
+  );
   // This screen does not load the subscriber table, so counting the array here
   // reported the first page — 500 against a real 1,361.
   const subscriberStats = useSubscriberStats();
@@ -388,12 +405,12 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
             <span className="text-gray-400">|</span>
             <span className="text-gray-500">$ =</span>
             <span className={`font-bold ${fxFresh ? 'text-gray-800' : 'text-red-600'}`}>{fxFresh ? `${usdRate} ج.م` : 'غير متاح'}</span>
-            <button onClick={refreshFxRates} disabled={fxRefreshing} title="تحديث أسعار الصرف من الإنترنت"
+            {canManageFinancial && <button onClick={refreshFxRates} disabled={fxRefreshing} title="تحديث أسعار الصرف من الإنترنت"
               className="mr-1 p-1 rounded-lg hover:bg-gray-200 transition disabled:opacity-50">
               {fxRefreshing
                 ? <span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin inline-block" />
                 : <TrendingUp size={12} className="text-emerald-600" />}
-            </button>
+            </button>}
           </div>
           <button
             onClick={() => { setIsIncomeFormOpen(true); setIncomeDraft(createBlankIncomeDraft()); }}

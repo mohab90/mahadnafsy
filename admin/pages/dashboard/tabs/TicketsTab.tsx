@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
 import { useCrmData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
+import { useStaticData } from '../../../context/siteDataSlices';
 import { confirmDialog } from '../../../components/shared/confirmDialog';
 import { promptDialog } from '../../../components/shared/promptDialog';
 
@@ -86,6 +87,10 @@ const CAT_LABELS: Record<TicketCategory, string> = {
 };
 
 const TicketsTab: React.FC<Props> = ({ notify }) => {
+  // DELETE /api/admin/tickets/:id is requireAdmin, and this screen opens on
+  // manage_inbox — support, sales, collection and three managers all saw a
+  // delete they could never complete. The sibling inbox already gates it.
+  const { isAdmin } = useStaticData();
   const { staffMembers, subscribers } = useCrmData();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -723,8 +728,13 @@ const TicketsTab: React.FC<Props> = ({ notify }) => {
                 className="text-xs px-2 py-1 rounded-lg border border-emerald-200 text-emerald-600 hover:bg-emerald-50 flex items-center gap-1">
                 <ExternalLink size={11} /> ملف العميل
               </button>
-              <button onClick={() => deleteTicketApi(selectedTicket.id)}
-                className="text-xs px-2 py-1 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mr-auto">حذف</button>
+              {/* DELETE /api/admin/tickets/:id is requireAdmin. Every role with
+                  manage_inbox opens this screen — support, sales, collection and
+                  three managers — and saw a delete they could never complete. */}
+              {isAdmin && (
+                <button onClick={() => deleteTicketApi(selectedTicket.id)}
+                  className="text-xs px-2 py-1 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mr-auto">حذف</button>
+              )}
             </div>
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
