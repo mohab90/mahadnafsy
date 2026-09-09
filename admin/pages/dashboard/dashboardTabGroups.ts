@@ -43,7 +43,6 @@ export const contentHubRouteTabs = new Set<string>([
   'financial_reports',
   'recurring_expenses',
   'hr',
-  'staff_management',
   'staff_performance',
   'sales_team',
   'sales_reports',
@@ -57,7 +56,6 @@ export const contentHubRouteTabs = new Set<string>([
   'notif_inbox',
   'waitlist',
   'system_settings',
-  'staff_applications',
   'lecturer_applications',
   // These four are registered in GeneralDashboardTabs' notifyTabs but were
   // never added here, so Dashboard.tsx's `contentHubRouteTabs.has(activeTab)`

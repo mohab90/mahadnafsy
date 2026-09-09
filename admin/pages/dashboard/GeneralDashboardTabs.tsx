@@ -94,7 +94,6 @@ const notifyTabs: NotifyTabEntry[] = [
   { key: 'recurring_expenses', Component: RecurringExpensesTab, spinner: 'primary' },
   { key: 'hr', Component: HrTab, spinner: 'primary' },
   { key: 'hr_analytics', Component: HrAnalyticsTab, spinner: 'primary' },
-  { key: 'staff_management', Component: HrTab, spinner: 'primary' },
   { key: 'staff_performance', Component: StaffPerformanceTab, spinner: 'indigo' },
   { key: 'sales_team', Component: SalesTeamTab, spinner: 'indigo' },
   { key: 'sales_reports', Component: SalesReportsTab, spinner: 'indigo' },
@@ -140,11 +139,13 @@ export function GeneralDashboardTabs({ activeTab, notify }: { activeTab: TabKey;
     );
   }
 
-  if (activeTab === 'staff_applications' || activeTab === 'lecturer_applications') {
+  // 'staff_applications' rendered this with initialType 'all', which is what
+  // 'join_us' already does. Only the instructor-filtered view is its own screen.
+  if (activeTab === 'lecturer_applications') {
     return (
       <Suspense fallback={<LoadingSpinner tone="indigo" />}>
         <TabErrorBoundary>
-          <JoinUsAdminTab initialType={activeTab === 'lecturer_applications' ? 'instructor' : 'all'} />
+          <JoinUsAdminTab initialType="instructor" />
         </TabErrorBoundary>
       </Suspense>
     );

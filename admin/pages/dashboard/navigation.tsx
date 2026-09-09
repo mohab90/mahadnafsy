@@ -50,7 +50,6 @@ export type TabKey =
   | 'sales_planning'
   | 'overview'
   | 'kpi_dashboard'
-  | 'staff_management'
   | 'policies'
   | 'about_page'
   | 'home_offer'
@@ -127,7 +126,6 @@ export type TabKey =
   | 'my_hr'
   | 'enps_dashboard'
   | 'offboarding'
-  | 'staff_applications'
   | 'lecturer_applications'
   | 'interviews'
   | 'settings_hub'
@@ -277,8 +275,8 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
     items: [
       // 'نظام HR' and 'الموظفون' were two menu items rendering the identical
       // component with identical props (HrTab, whose default sub-tab is the staff
-      // directory) — the same page twice. One entry, named for both jobs. The
-      // staff_management key still routes, so links into it keep working.
+      // directory) — the same page twice. One entry, named for both jobs, and the
+      // staff_management key is gone now that the links into it point here.
       { key: 'hr', label: 'نظام HR والموظفون', icon: Briefcase },
       { key: 'hr_analytics', label: 'تقارير وتحليلات HR', icon: BarChart3 },
       { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },

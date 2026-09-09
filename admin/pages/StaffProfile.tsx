@@ -167,7 +167,7 @@ const StaffProfile: React.FC = () => {
       <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4" dir="rtl">
         <p className="text-5xl font-black text-gray-200 mb-4">404</p>
         <h1 className="text-xl font-bold text-gray-700 mb-2">الموظف غير موجود</h1>
-        <button onClick={() => navigate('/dashboard/staff_management')} className="mt-4 bg-primary-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm hover:bg-primary-700 transition">
+        <button onClick={() => navigate('/dashboard/hr')} className="mt-4 bg-primary-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm hover:bg-primary-700 transition">
           العودة للموظفين
         </button>
       </div>
@@ -192,7 +192,7 @@ const StaffProfile: React.FC = () => {
     try {
       const ok = await deleteStaffMember(staff.id);
       if (!ok) throw new Error('تعذر حذف الموظف — قد تحتاج صلاحية سوبر أدمن');
-      navigate('/dashboard/staff_management');
+      navigate('/dashboard/hr');
     } catch (err: unknown) {
       setDeleting(false);
       setSaveMsg(`❌ ${err instanceof Error ? err.message : 'تعذر حذف الموظف'}`);
@@ -226,7 +226,7 @@ const StaffProfile: React.FC = () => {
               title="رجوع">
               <ArrowRight size={15} />
             </button>
-            <button onClick={() => navigate('/dashboard/staff_management')} className="transition hover:text-white">الموظفون</button>
+            <button onClick={() => navigate('/dashboard/hr')} className="transition hover:text-white">الموظفون</button>
             <ChevronRight size={12} className="opacity-40" />
             <span className="truncate font-medium text-white/80">{staff.name}</span>
           </nav>
