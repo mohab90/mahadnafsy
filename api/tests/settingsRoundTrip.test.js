@@ -190,3 +190,23 @@ test('وسائل الدفع is one screen', () => {
   assert.match(settings, /const merged: GatewayConfig = \{/);
   assert.match(settings, /\.\.\.\(current\?\.manual \|\| \{\}\),/);
 });
+
+test('a room added to a branch is a room the schedule can see', () => {
+  // The editor wrote rooms into content['institute.branches'], and rooms moved
+  // to physical_classrooms — so adding one went nowhere and the Daqqi dropdown
+  // stayed empty however many were typed in. Read and write now meet in the
+  // same table.
+  const shared = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
+  assert.match(shared, /adminGet<ClassroomRow\[\]>\('\/admin\/dokki\/classrooms'\)/);
+  assert.match(shared, /saveDokkiClassroom\(\{\s*\n\s*name, capacity/);
+  assert.ok(!shared.includes('rooms: [...rooms, { name: newRoomName.trim()'),
+    'nothing may write rooms back into the branches JSON');
+
+  // physical_classrooms carries branch_id, so a room belongs to a branch — and
+  // the two spell ids differently in places ('daqqi' against 'branch-daqqi').
+  assert.match(read('api/schema.sql'), /CREATE TABLE `physical_classrooms`[\s\S]{0,300}`branch_id`/);
+  assert.match(shared, /replace\(\/\^branch\[-_\]\/, ''\)/);
+
+  // Removing deactivates rather than deletes, so a room with bookings keeps them.
+  assert.match(shared, /is_active: 0,/);
+});

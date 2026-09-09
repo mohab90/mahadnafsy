@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { mysqlAdmin } from '../../lib/mysqlapi';
 import type { LeadItem, LeadStatus, StaffMember, StaffPermission, PaymentItemType } from '../../types';
 import {
   ROLE_DEFAULT_PERMISSIONS as MASTER_ROLE_PERMS,
@@ -438,6 +439,8 @@ function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
 // ── Branch Add Form sub-component (extracted to avoid hooks-in-IIFE rule violation) ──
 type BranchRoom = { name: string; capacity: number };
 type BranchEntry = { id: string; label: string; rooms?: BranchRoom[] };
+/** A row of physical_classrooms, which is where rooms actually live. */
+type ClassroomRow = { id: string; name: string; capacity: number; branch_id?: string | null };
 
 function BranchAddForm({ instituteBranches, setContentValue }: {
   instituteBranches: BranchEntry[];
@@ -448,6 +451,43 @@ function BranchAddForm({ instituteBranches, setContentValue }: {
   const [expandedBranchId, setExpandedBranchId] = React.useState<string>('');
   const [newRoomName, setNewRoomName] = React.useState('');
   const [newRoomCapacity, setNewRoomCapacity] = React.useState('');
+
+  // Rooms live in physical_classrooms, which carries a branch_id. The ids in the
+  // two places are spelt differently in places — 'daqqi' against 'branch-daqqi'
+  // — so they are compared on their bare form.
+  const bareBranchId = (value?: string | null) =>
+    String(value || '').toLowerCase().replace(/^branch[-_]/, '').replace(/[-\s]/g, '_');
+
+  const [classrooms, setClassrooms] = React.useState<ClassroomRow[]>([]);
+  const reloadClassrooms = React.useCallback(async () => {
+    try {
+      const rows = await mysqlAdmin.adminGet<ClassroomRow[]>('/admin/dokki/classrooms');
+      setClassrooms(Array.isArray(rows) ? rows : []);
+    } catch {
+      setClassrooms([]);
+    }
+  }, []);
+  React.useEffect(() => { void reloadClassrooms(); }, [reloadClassrooms]);
+
+  const roomsOf = (branchId: string) =>
+    classrooms.filter(room => bareBranchId(room.branch_id) === bareBranchId(branchId));
+
+  const addRoom = async (branchId: string, name: string, capacity: number) => {
+    await mysqlAdmin.saveDokkiClassroom({
+      name, capacity: Math.max(1, capacity || 1), branch_id: branchId,
+    } as unknown as Record<string, unknown>);
+    await reloadClassrooms();
+  };
+
+  // The upsert deactivates rather than deletes, so a room that has bookings
+  // against it keeps its history.
+  const removeRoom = async (room: ClassroomRow) => {
+    await mysqlAdmin.saveDokkiClassroom({
+      id: room.id, name: room.name, capacity: room.capacity,
+      branch_id: room.branch_id, is_active: 0,
+    } as unknown as Record<string, unknown>);
+    await reloadClassrooms();
+  };
   const saveBranches = (list: BranchEntry[]) => {
     setContentValue('institute.branches', JSON.stringify(list, null, 2));
   };
@@ -484,7 +524,7 @@ function BranchAddForm({ instituteBranches, setContentValue }: {
       <div className="space-y-2">
         {instituteBranches.map((b, i) => {
           const isExpanded = expandedBranchId === b.id;
-          const rooms = b.rooms || [];
+          const rooms = roomsOf(b.id);
           return (
             <div key={b.id} className="border border-gray-200 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between bg-gray-50 px-3 py-2">
@@ -511,11 +551,8 @@ function BranchAddForm({ instituteBranches, setContentValue }: {
                         <div key={ri} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2 py-1.5">
                           <span className="text-sm font-semibold text-gray-800 flex-1">{room.name}</span>
                           {room.capacity > 0 && <span className="text-xs text-gray-500">{room.capacity} فرد</span>}
-                          <button type="button" onClick={() => {
-                            const updated = [...instituteBranches];
-                            updated[i] = { ...b, rooms: rooms.filter((_, rj) => rj !== ri) };
-                            saveBranches(updated);
-                          }} className="p-1 rounded hover:bg-red-100 text-red-500"><X size={12}/></button>
+                          <button type="button" onClick={() => { void removeRoom(room); }}
+                            className="p-1 rounded hover:bg-red-100 text-red-500"><X size={12}/></button>
                         </div>
                       ))}
                     </div>
@@ -537,9 +574,7 @@ function BranchAddForm({ instituteBranches, setContentValue }: {
                     />
                     <button type="button" onClick={() => {
                       if (!newRoomName.trim()) return;
-                      const updated = [...instituteBranches];
-                      updated[i] = { ...b, rooms: [...rooms, { name: newRoomName.trim(), capacity: Number(newRoomCapacity) || 0 }] };
-                      saveBranches(updated);
+                      void addRoom(b.id, newRoomName.trim(), Number(newRoomCapacity) || 0);
                       setNewRoomName('');
                       setNewRoomCapacity('');
                     }} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-bold">إضافة</button>
