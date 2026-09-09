@@ -4,6 +4,7 @@ import { DiscountRule } from '../../../../types';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../components/shared/confirmDialog';
+import { isExpiryActive } from '../../../../../shared/cairoDate';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 type PromoCode = { id: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: number; min_order_amount: number; max_uses: number | null; used_count: number; expires_at: string | null; active: number };
@@ -33,8 +34,12 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
   };
   useEffect(() => { loadPromoCodes(); }, []);
 
-    const activeDiscounts = discounts.filter(d => d.active && (!d.expiresAt || d.expiresAt >= new Date().toISOString().slice(0,10)));
-    const expiredDiscounts = discounts.filter(d => !d.active || (d.expiresAt && d.expiresAt < new Date().toISOString().slice(0,10)));
+    // toISOString() is the UTC day, so between midnight and 02:00 Cairo this
+    // screen thought "today" was yesterday and called a just-expired offer
+    // active. isExpiryActive is the one rule the public route and the two
+    // customer pages now use as well, so all four agree on the same day.
+    const activeDiscounts = discounts.filter(d => d.active && isExpiryActive(d.expiresAt));
+    const expiredDiscounts = discounts.filter(d => !d.active || !isExpiryActive(d.expiresAt));
     const startEdit = (d: DiscountRule) => {
       setEditingDiscountId(d.id);
       setDiscountDraft({ type: d.type, targetId: d.targetId || '', discountPercent: d.discountPercent, label: d.label || '', promoCode: d.promoCode || '', active: d.active, expiresAt: d.expiresAt || '' });
@@ -229,7 +234,7 @@ export function DiscountsView({ notify, policyDrafts, setPolicyDrafts }: Props) 
                 </thead>
                 <tbody>
                   {discounts.map(d => {
-                    const isExpired = d.expiresAt && d.expiresAt < new Date().toISOString().slice(0,10);
+                    const isExpired = !!d.expiresAt && !isExpiryActive(d.expiresAt);
                     const targetName = d.type === 'course' ? (courses.find(c => c.id === d.targetId)?.title || d.targetId) :
                       d.type === 'bundle' ? (bundles.find(b => b.id === d.targetId)?.title || d.targetId) :
                       d.type === 'therapist_consultation' ? (therapists.find(t => t.id === d.targetId)?.name || d.targetId) : '';

@@ -11,6 +11,7 @@ const { loadTemplates } = require('../lib/messageTemplates');
 const { getTenantSetting, setTenantSetting } = require('../lib/tenantSettings');
 const { invalidateFxCache } = require('../lib/finance');
 const { redactSecrets, preserveStoredSecrets } = require('../lib/configSecrets');
+const { dateOnlyInTimeZone } = require('../lib/dates');
 const { loadTenantContext } = require('../lib/tenantScope');
 const { publicLimiter, aiLimiter } = require('../middleware/rateLimits');
 const { generateAdminAi } = require('../lib/adminAi');
@@ -373,9 +374,14 @@ router.post('/api/admin/fx-rates/refresh', requireAuth, requireAdminOrStaff, req
 router.get('/api/discounts', publicLimiter, async (req, res) => {
   try {
     const rules = await getTenantSetting('discounts', { tenantId: req.tenantId, fallback: [] });
-    const now = Date.now();
+    // «تاريخ الانتهاء» is a date an admin picks, and it means the offer runs
+    // through that day. Comparing instants made Date.parse('2026-09-15') into
+    // midnight UTC, so the offer left the site at 02:00 or 03:00 Cairo on the
+    // day it was meant to run — while the admin's own list, which compares the
+    // date strings, still showed it under «الخصومات النشطة».
+    const today = dateOnlyInTimeZone();
     res.json((Array.isArray(rules) ? rules : []).filter(rule => (
-      rule?.active !== false && (!rule?.expiresAt || Date.parse(rule.expiresAt) >= now)
+      rule?.active !== false && (!rule?.expiresAt || String(rule.expiresAt).slice(0, 10) >= today)
     )));
   } catch (e) {
     logger.error('[route]', e.message);

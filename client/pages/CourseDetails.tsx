@@ -15,6 +15,7 @@ import { RelatedCoursesSidebar } from './course-details-sections/RelatedCoursesS
 import { CourseUpsellModal } from './course-details-sections/CourseUpsellModal';
 import { MobileStickyCta } from './course-details-sections/MobileStickyCta';
 import CourseCertificate from '../components/CourseCertificate';
+import { isExpiryActive } from '../../shared/cairoDate';
 
 const CourseDetails: React.FC = () => {
                 const { courses, subscribers, discounts, addPublicLead, getCourseLectures, getCourseChapters, content: globalContent, testimonials, currency, authUser, bundles, mySubscriberId, mySubscriberLoaded, refreshMySubscriber } = useSiteData();
@@ -74,10 +75,12 @@ const CourseDetails: React.FC = () => {
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
 
   // Find applicable discount rule (course-specific takes priority over all_courses)
-  const now = new Date();
+  // Expiry is a date, judged in Cairo: `new Date('2026-09-15')` is midnight UTC,
+  // so an offer set to run through the 15th used to vanish from this page at
+  // 02:00 Cairo that morning while the admin's own list still called it active.
   const applicableDiscount = course
-    ? (discounts.find(d => d.active && d.type === 'course' && d.targetId === course.id && (!d.expiresAt || new Date(d.expiresAt) >= now)) ??
-    discounts.find(d => d.active && d.type === 'all_courses' && (!d.expiresAt || new Date(d.expiresAt) >= now)))
+    ? (discounts.find(d => d.active && d.type === 'course' && d.targetId === course.id && isExpiryActive(d.expiresAt)) ??
+    discounts.find(d => d.active && d.type === 'all_courses' && isExpiryActive(d.expiresAt)))
     : undefined;
   const discountedPrice = applicableDiscount ? Math.round(currentPrice * (1 - applicableDiscount.discountPercent / 100)) : null;
   // Cash discount (applied on checkout for direct online payment)

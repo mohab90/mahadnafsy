@@ -5,6 +5,7 @@ import { LeadItem } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import CourseCard from '../components/CourseCard';
 import { cdnImg } from '../lib/img';
+import { isExpiryActive } from '../../shared/cairoDate';
 
 // Countdown for the 24-hour offer, from the moment the admin started it
 // (offer.timerStartedAt, set by the "إعادة ضبط المؤقت" button on the offer
@@ -296,10 +297,10 @@ const Home: React.FC = () => {
         const origPrice = featuredCourse.price[currency] ?? 0;
         const discountedPrice = Math.round(origPrice * (1 - featuredPct / 100));
         const sym = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-        // Also check active discount rules for this course
-        const now = new Date();
-        const ruleDiscount = discounts.find(d => d.active && d.type === 'course' && d.targetId === featuredId && (!d.expiresAt || new Date(d.expiresAt) >= now))
-          ?? discounts.find(d => d.active && d.type === 'all_courses' && (!d.expiresAt || new Date(d.expiresAt) >= now));
+        // Also check active discount rules for this course. Expiry is a date
+        // judged in Cairo, not an instant — see isExpiryActive.
+        const ruleDiscount = discounts.find(d => d.active && d.type === 'course' && d.targetId === featuredId && isExpiryActive(d.expiresAt))
+          ?? discounts.find(d => d.active && d.type === 'all_courses' && isExpiryActive(d.expiresAt));
         const finalPrice = ruleDiscount ? Math.round(discountedPrice * (1 - ruleDiscount.discountPercent / 100)) : discountedPrice;
         return (
           <section className="py-16 bg-gradient-to-br from-primary-900 via-primary-800 to-red-900 relative overflow-hidden">

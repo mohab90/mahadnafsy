@@ -325,6 +325,15 @@ function mapSubscriber(r) {
       currency: cr.currency || undefined,
       requestedAt: cr.requested_at || cr.requestedAt || null,
       note: cr.note || null,
+      // The three the sibling list above carries and this one dropped. The
+      // customer's certificates screen renders req.adminNote — so every note an
+      // admin wrote them through PATCH /api/admin/certificate-requests/:id
+      // arrived as undefined and the paragraph never drew. issuedAt and
+      // courseTitle are declared on the client's own type and were unreachable
+      // for the same reason.
+      adminNote: cr.admin_note || cr.adminNote || null,
+      issuedAt: cr.issued_at || cr.issuedAt || null,
+      courseTitle: cr.c_title || cr.courseTitle || null,
     })),
   };
 }

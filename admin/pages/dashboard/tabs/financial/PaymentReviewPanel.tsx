@@ -5,7 +5,7 @@ import {
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } from '../../../../types';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
-import { cairoDateOnly } from '../../../../lib/cairoDate';
+import { cairoDateOnly } from '../../../../../shared/cairoDate';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import { parsePaymentMethods } from '../../../../lib/paymentMethods';
 import { paymentMethodLabel } from '../../../../../shared/paymentMethods';
