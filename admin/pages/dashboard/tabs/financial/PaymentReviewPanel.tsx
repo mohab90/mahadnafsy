@@ -5,6 +5,7 @@ import {
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { PaymentHistoryEntry, PaymentItemType, Currency, SubscriberItem } from '../../../../types';
 import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../../lib/paymentOrigin';
+import { cairoDateOnly } from '../../../../lib/cairoDate';
 import { useSiteData } from '../../../../context/SiteDataContext';
 import { parsePaymentMethods } from '../../../../lib/paymentMethods';
 
@@ -130,7 +131,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
 
   const pendingItems = allReview.filter(p => p.status === 'pending');
   const pendingAmt = pendingItems.reduce((s, p) => s + toEGP(p.amount, p.currency), 0);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = cairoDateOnly();
   const todayCount = allReview.filter(p => (p.at || '').slice(0, 10) === todayStr).length;
 
   const handleAction = async (p: ReviewPayment, newStatus: 'paid' | 'failed') => {

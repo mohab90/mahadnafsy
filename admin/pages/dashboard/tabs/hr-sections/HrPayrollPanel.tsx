@@ -43,9 +43,12 @@ type PayrollItem = {
   net_salary?: number;
 };
 
-export default function HrPayrollPanel({ notify, canManageFinance }: {
+export default function HrPayrollPanel({ notify, canManageFinance, canManagePayroll }: {
   notify: Notify;
   canManageFinance: boolean;
+  // The route accepts manage_hr OR manage_financial, so the cancel action needs
+  // its own gate rather than borrowing the finance one.
+  canManagePayroll: boolean;
 }) {
   // ── Server payroll state ─────────────────────────────────────
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
@@ -176,7 +179,7 @@ export default function HrPayrollPanel({ notify, canManageFinance }: {
                       {run.status === 'APPROVED' && canManageFinance && (
                         <button onClick={e => { e.stopPropagation(); updatePayrollRunStatus(run.id, 'PAID'); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition">تأكيد الصرف</button>
                       )}
-                      {(run.status === 'CALCULATED' || (run.status === 'APPROVED' && canManageFinance)) && (
+                      {canManagePayroll && (run.status === 'CALCULATED' || (run.status === 'APPROVED' && canManageFinance)) && (
                         <button onClick={e => { e.stopPropagation(); updatePayrollRunStatus(run.id, 'CANCELLED'); }} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-red-100 hover:text-red-700 transition">إلغاء</button>
                       )}
                     </div>

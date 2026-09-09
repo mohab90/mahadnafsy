@@ -63,7 +63,7 @@ router.get('/api/admin/hr/payroll', requireAuth, requireAdminOrStaff, requirePer
       ORDER BY pr.year DESC, pr.month DESC
       LIMIT 24
     `, [req.tenantId]);
-    res.json(runs);
+    res.json(runs.map(run => toNumbers(run, PAYROLL_RUN_MONEY)));
   } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 

@@ -40,6 +40,14 @@ test('the payroll and expense routes convert their money before answering', () =
   for (const field of ['net_salary', 'commission', 'late_deductions', 'instructor_earnings']) {
     assert.ok(payroll.includes(`'${field}'`), `${field} must be in the money list`);
   }
+  // The run list and the audit log were the two that shipped a raw DECIMAL to
+  // a screen that formats it: toLocaleString on a string returns the string, so
+  // a 185,000 run printed "185000.00 ج.م" right after the same run had rendered
+  // correctly from /calculate.
+  assert.ok(payroll.includes('runs.map(run => toNumbers(run, PAYROLL_RUN_MONEY))'));
+  const payops = codeOnly(read('api/routes/core/payops.js'));
+  assert.ok(payops.includes("rows.map(row => toNumbers(row, ['amount']))"));
+
   const expenses = codeOnly(read('api/routes/admin-operations.js'));
   assert.ok(expenses.includes('toNumbers(row, EXPENSE_MONEY)'));
   assert.ok(expenses.includes('date: safeDateOnly(row.date)'),

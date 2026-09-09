@@ -74,6 +74,12 @@ const HrTab: React.FC<Props> = ({ notify }) => {
     permissions: currentStaff.permissions as PermissionKey[] | undefined,
   }, 'manage_staff'));
 
+  // PUT /api/admin/hr/payroll/:runId/status accepts either permission.
+  const canManagePayroll = canManageFinance || Boolean(currentStaff && hasPermission({
+    role: currentStaff.role as RoleKey,
+    permissions: currentStaff.permissions as PermissionKey[] | undefined,
+  }, 'manage_hr'));
+
   // No gate for deletion, because there is no delete button to gate. The audit
   // report claimed one was visible to anyone holding view_hr; there is none in
   // this screen at all.
@@ -422,7 +428,9 @@ const HrTab: React.FC<Props> = ({ notify }) => {
 
       {subTab === 'leaves' && <HrLeavesPanel notify={notify} staff={safeStaff} />}
 
-      {subTab === 'payroll' && <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} />}
+      {subTab === 'payroll' && (
+        <HrPayrollPanel notify={notify} canManageFinance={canManageFinance} canManagePayroll={canManagePayroll} />
+      )}
 
       <StaffOnboardModal
         open={showAddStaff}

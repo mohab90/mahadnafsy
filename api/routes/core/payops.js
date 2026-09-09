@@ -6,6 +6,7 @@ const logger = require('../../lib/logger');
 const { pool } = require('../../lib/db');
 const { tryJson } = require('../../lib/helpers');
 const { isValidDateOnly } = require('../../lib/dates');
+const { toNumbers } = require('../../lib/mappers');
 const { postPaymentJournal, logPaymentAudit } = require('../../lib/finance');
 const { LIVE_SUBSCRIBER_FOR_LEAD } = require('../../lib/reconcileChecks');
 const { assertWritable } = require('../../lib/periodLock');
@@ -449,7 +450,12 @@ router.get('/api/admin/payment-audit', requireAuth, requireAdmin, async (req, re
         WHERE 1=1${filters} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
-    res.json({ total: Number(count.total) || 0, page, limit, rows });
+    res.json({
+      total: Number(count.total) || 0,
+      page,
+      limit,
+      rows: rows.map(row => toNumbers(row, ['amount'])),
+    });
   } catch (error) {
     logger.error('[payment-audit]', error.message);
     res.status(500).json({ error: 'Internal server error' });
