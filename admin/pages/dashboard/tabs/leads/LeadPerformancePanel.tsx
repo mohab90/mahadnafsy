@@ -1,5 +1,5 @@
 import { Activity, BarChart2, Phone, TrendingUp } from 'lucide-react';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useCrmData } from '../../../../context/siteDataSlices';
 import {
   BarChart,
   Bar,
@@ -39,7 +39,7 @@ export function LeadPerformancePanel({
   sourcesData,
   commsByRep,
 }: LeadPerformancePanelProps) {
-  const { leadStats } = useSiteData();
+  const { leadStats } = useCrmData();
   // Three whole-table counts. leadStats answers each of them without the array;
   // the array arms are what run before the stats request resolves.
   const visibleCount = leadStats ? leadStats.total : leads.filter(l => !l.hidden).length;

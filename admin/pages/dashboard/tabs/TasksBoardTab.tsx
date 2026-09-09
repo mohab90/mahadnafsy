@@ -3,7 +3,7 @@ import {
   CheckSquare, Plus, X, Trash2, 
   User, Calendar, Check,
 } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -41,7 +41,7 @@ const TODAY = new Date().toISOString().slice(0, 10);
 interface Props { notify: NotifyFn; }
 
 const TasksBoardTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers } = useSiteData();
+  const { staffMembers } = useCrmData();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'kanban' | 'list'>('kanban');

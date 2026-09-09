@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { DollarSign, TrendingDown, TrendingUp, PieChart as PieIcon, BarChart3 } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useFinanceData } from '../../../context/siteDataSlices';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { numericTooltip } from '../../../lib/chartFormat';
 
@@ -18,7 +18,7 @@ function getLast6Months() {
 }
 
 export default function ExpenseAnalyticsTab() {
-  const { expenses, orders } = useSiteData();
+  const { expenses, orders } = useFinanceData();
   const [range, setRange] = useState<Range>('month');
   const months = getLast6Months();
 

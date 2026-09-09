@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket, Plus, Search, MessageSquare, Clock, CheckCircle, AlertCircle, XCircle, Star, X, Send, TrendingUp, Zap, ExternalLink, Download } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../components/shared/confirmDialog';
 import { promptDialog } from '../../../components/shared/promptDialog';
@@ -86,7 +86,7 @@ const CAT_LABELS: Record<TicketCategory, string> = {
 };
 
 const TicketsTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, subscribers } = useSiteData();
+  const { staffMembers, subscribers } = useCrmData();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const focusHandledRef = useRef(false);

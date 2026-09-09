@@ -4,7 +4,7 @@ import {
   User, 
   BarChart3,
 } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import { useCrmInsights } from './leads/useCrmInsights';
 import type { LeadItem, LeadStatus } from '../../../types';
 import { toDialable } from '../../../lib/whatsappLink';
@@ -44,7 +44,7 @@ function bucket(lead: LeadItem): 'overdue' | 'today' | 'tomorrow' | 'week' | nul
 }
 
 const FollowupRemindersTab: React.FC<Props> = () => {
-  const { leads, staffMembers } = useSiteData();
+  const { leads, staffMembers } = useCrmData();
   // The server returns exactly this screen's population: open leads with a
   // follow-up date inside the next seven days — 14 rows on production against
   // 26,878 in the table. bucket() below then splits them the way it always did,

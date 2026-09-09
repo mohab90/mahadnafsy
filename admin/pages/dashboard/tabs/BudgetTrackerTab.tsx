@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Target, Edit2, Save, X, AlertTriangle, CheckCircle } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useFinanceData } from '../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -30,7 +30,7 @@ const CAT_COLORS: Record<string, string> = {
 // by FinancialBudgetPanel.tsx elsewhere in the dashboard). Rewired onto that
 // backend instead of building a second one.
 const BudgetTrackerTab: React.FC<Props> = ({ notify }) => {
-  const { orders } = useSiteData();
+  const { orders } = useFinanceData();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const [rows, setRows] = useState<BudgetRow[]>([]);

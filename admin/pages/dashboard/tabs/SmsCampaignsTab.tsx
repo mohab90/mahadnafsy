@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessageSquare, Plus, Send, Trash2, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -29,7 +29,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function SmsCampaignsTab({ notify }: { notify: NotifyFn }) {
-  const { leads, leadStats, subscribers } = useSiteData();
+  const { leads, leadStats, subscribers } = useCrmData();
   // Same as the email screen: both figures are server counts, so neither table
   // has to be in memory to render the picker.
   const subscriberStats = useSubscriberStats();

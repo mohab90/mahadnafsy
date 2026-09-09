@@ -72,7 +72,48 @@ test('every key a slice claims is actually put into it', () => {
   }
 });
 
-test('the screens that moved read only what their slice carries', () => {
+test('every moved screen reads only what its own slice carries', () => {
+  // Checked against the slice each screen actually subscribes to, so a screen
+  // cannot be moved onto a hook that does not supply one of its reads.
+  const keysOf = section => {
+    const start = slices.indexOf(`export type ${section} = Pick<SiteDataShape`);
+    const body = slices.slice(start, slices.indexOf('>;', start));
+    return new Set((body.match(/'([a-zA-Z]+)'/g) || []).map(s => s.replace(/'/g, '')));
+  };
+  const byHook = {
+    useStaticData: keysOf('StaticDataSlice'),
+    useCrmData: keysOf('CrmDataSlice'),
+    useFinanceData: keysOf('FinanceDataSlice'),
+  };
+
+  const root = path.join(__dirname, '..', '..');
+  const walk = dir => fs.readdirSync(dir).flatMap(name => {
+    if (name === 'node_modules' || name === 'dist') return [];
+    const full = path.join(dir, name);
+    if (fs.statSync(full).isDirectory()) return walk(full);
+    return /\.tsx?$/.test(name) ? [full] : [];
+  });
+
+  let checked = 0;
+  for (const file of walk(path.join(root, 'admin'))) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const [hook, allowed] of Object.entries(byHook)) {
+      const destructure = new RegExp('const\\s*\\{([^}]*)\\}\\s*=\\s*' + hook + '\\(\\);');
+      const match = source.match(destructure);
+      if (!match) continue;
+      checked += 1;
+      const rel = path.relative(root, file).split(path.sep).join('/');
+      assert.ok(!/=\s*useSiteData\(\)/.test(source),
+        `${rel} still subscribes to the wide context, so the move bought nothing`);
+      for (const key of match[1].split(',').map(s => s.split(':')[0].trim()).filter(Boolean)) {
+        assert.ok(allowed.has(key), `${rel} reads ${key}, which ${hook} does not carry`);
+      }
+    }
+  }
+  assert.ok(checked >= 27, `expected every moved screen, found ${checked}`);
+});
+
+test('the twelve static screens moved as recorded', () => {
   const staticKeys = (() => {
     const start = slices.indexOf('export type StaticDataSlice = Pick<SiteDataShape');
     const body = slices.slice(start, slices.indexOf('>;', start));

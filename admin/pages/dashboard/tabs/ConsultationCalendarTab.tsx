@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 
 
 // consultations.status is enum('PENDING','CONFIRMED','COMPLETED','CANCELLED'),
@@ -30,7 +30,7 @@ function getFirstDayOfMonth(year: number, month: number) {
 }
 
 export default function ConsultationCalendarTab() {
-  const { consultations, staffMembers } = useSiteData();
+  const { consultations, staffMembers } = useCrmData();
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());

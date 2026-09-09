@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Mail, Plus, Send, Trash2, Eye, RefreshCw, CheckCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -30,7 +30,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function EmailCampaignsTab({ notify }: { notify: NotifyFn }) {
-  const { leads, leadStats, subscribers } = useSiteData();
+  const { leads, leadStats, subscribers } = useCrmData();
   // Both counts come from the server. The arrays behind them are only the first
   // page now — this screen no longer asks for either table in full, because two
   // numbers in a dropdown label were the only thing it wanted them for.

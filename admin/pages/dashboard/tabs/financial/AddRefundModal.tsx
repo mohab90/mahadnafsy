@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Loader2, RotateCcw, Search, X } from 'lucide-react';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useCrmData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { SubscriberItem } from '../../../../types';
 import { useModalKeyboard } from '../../../../components/shared/useModalKeyboard';
@@ -21,7 +21,7 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
   onCreated: () => void;
   notify: NotifyFn;
 }) {
-  const { subscribers } = useSiteData();
+  const { subscribers } = useCrmData();
   const panelRef = useModalKeyboard(onClose);
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');

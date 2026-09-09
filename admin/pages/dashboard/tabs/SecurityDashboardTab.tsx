@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Shield, AlertTriangle, Search, RefreshCw, Activity, Save, Download } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import type { ActivityLogItem } from '../../../types';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import IpWhitelistTab from './IpWhitelistTab';
@@ -43,7 +43,7 @@ function isSuspicious(logs: ActivityLogItem[], actorId: string, windowHours = 1)
 }
 
 const SecurityDashboardTab: React.FC<Props> = ({ notify }) => {
-  const { activityLogs, staffMembers } = useSiteData();
+  const { activityLogs, staffMembers } = useCrmData();
   const [subTab, setSubTab] = useState<'overview' | 'activity' | 'ip' | 'access' | 'mfa' | 'privacy'>('overview');
   const [mfaPolicy, setMfaPolicy] = useState<MfaPolicy>(DEFAULT_MFA_POLICY);
   const [mfaSaving, setMfaSaving] = useState(false);

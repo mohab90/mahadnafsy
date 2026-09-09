@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import { confirmDialog } from '../../../components/shared/confirmDialog';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
@@ -69,7 +69,7 @@ const STATUS_LABEL: Record<EnrollmentStatus, string> = {
 };
 
 export default function DripCampaignsTab({ notify }: { notify: Notify }) {
-  const { leads, subscribers } = useSiteData();
+  const { leads, subscribers } = useCrmData();
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);

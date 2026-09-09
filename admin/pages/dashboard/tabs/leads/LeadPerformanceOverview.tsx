@@ -3,7 +3,7 @@ import type { NavigateFunction } from 'react-router-dom';
 
 import type { LeadItem, LeadStatus, SalesTarget, StaffMember } from '../../../../types';
 import type { NotifyFn } from '../CrmSettingsModal';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useCrmData } from '../../../../context/siteDataSlices';
 import { calcLeadScore } from '../leadUtils';
 import { LEAD_STATUS_CFG, ScoreBadge, crmStatusLabels } from './LeadSubcomponents';
 
@@ -80,7 +80,7 @@ export function LeadPerformanceOverview({
   totalConverted,
   overdueLeads,
 }: LeadPerformanceOverviewProps) {
-  const { leadStats } = useSiteData();
+  const { leadStats } = useCrmData();
   // Both /admin/leads and /admin/leads/stats filter hidden = 0 under the same
   // role scoping, so they describe the same population and this substitution is
   // exact rather than merely close. Falls back to counting the array while the

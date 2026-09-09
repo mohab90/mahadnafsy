@@ -9,7 +9,7 @@ import { AnalyticsTab } from '../lazyTabs';
 import { formatWaPhone } from '../dashboardShared';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { useSubscriberStats } from '../hooks/useSubscriberStats';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useCrmData } from '../../../context/siteDataSlices';
 import type { TabKey } from '../navigation';
 import { toEgp } from '../../../lib/money';
 
@@ -73,7 +73,7 @@ export default function OverviewTab({
               // the whole table, so they come from the database aggregate rather
               // than from however much of the array is loaded. Falls back to the
               // array while the aggregate is in flight — see LeadStats.
-              const { leadStats } = useSiteData();
+              const { leadStats } = useCrmData();
               const leadTotal = leadStats?.total ?? leads.length;
               // Same reasoning for the client tiles, and the same fix: this
               // dashboard is not one of the screens that loads the subscriber
