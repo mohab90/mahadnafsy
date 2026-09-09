@@ -39,6 +39,24 @@ const SCOPED = [
   'client_email', 'author_id', 'requested_by', 'owner_id', 'recipient_staff_id',
 ];
 
+// Narrowing inside the SELECT is one way to tie a record to its owner; loading
+// it and then refusing when it is not theirs is another, and this scan could
+// only see the first. It reported GET /api/me/tickets/:id and its reply route
+// every run — both of which load the ticket and then call ownsTicket(t,
+// subscriber, email) before answering — so the two standing entries in its
+// output were both correct code. A scan whose output is known to be wrong is
+// one nobody reads.
+//
+// The pattern that counts: an ownership predicate whose result gates the
+// response. Naming them explicitly rather than matching anything that looks
+// like a guard, so this cannot quietly start accepting a check that does not
+// decide the answer.
+const OWNERSHIP_GUARDS = [
+  'ownsTicket(',
+  'requireScopedSubscriber(',
+  'assertOwnedByCaller(',
+];
+
 let examined = 0;
 const unscoped = [];
 
@@ -64,8 +82,24 @@ for (const file of files) {
 
     const body = src.slice(bound.start, i + 1 < bounds.length ? bounds[i + 1].start : src.length);
     const knowsCaller = IDENTITY.some((token) => body.includes(token));
-    const narrows = SCOPED.some((column) => body.includes(column));
-    if (!knowsCaller || !narrows) {
+    // Narrowing can also be delegated: GET /api/me/lectures/:lectureId/access
+    // resolves the caller and hands that id to resolveLectureAccess, which is
+    // the access authority for the API and both frontends. No scoped column
+    // appears in the handler because the handler is not the one querying.
+    //
+    // Deliberately narrow: the caller's own resolved id must be an argument to
+    // the resolver. A helper called without it narrows nothing.
+    const delegates = /\b(?:resolve|assert|require|check|ensure)\w*\(\s*\{?[^;]{0,200}?\bsubscriberId\b/.test(body);
+    const narrows = SCOPED.some((column) => body.includes(column)) || delegates;
+    // The guard has to refuse, not merely be called: a predicate whose result
+    // is ignored ties nothing to anyone.
+    const refuses = OWNERSHIP_GUARDS.some((guard) => {
+      const at = body.indexOf(guard);
+      if (at < 0) return false;
+      const line = body.slice(Math.max(0, body.lastIndexOf('\n', at)), body.indexOf('\n', at));
+      return /\bif\s*\(\s*!|return\s+res\.status\(4/.test(line);
+    });
+    if ((!knowsCaller || !narrows) && !refuses) {
       unscoped.push({
         route: bound.verb + ' ' + bound.route,
         file: rel,
