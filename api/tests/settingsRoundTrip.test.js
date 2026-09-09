@@ -131,3 +131,41 @@ test('the Daqqi room list reads the table rooms actually live in', () => {
   const dokki = read('api/routes/dokki-operations.js');
   assert.match(dokki, /router\.get\('\/api\/admin\/dokki\/classrooms', requireAuth, requireAdminOrStaff, requirePermission\('manage_daqqi'\)/);
 });
+
+test('staff can read the institute settings their screens are built from', () => {
+  // GET /api/admin/content is requirePermission('manage_content'), and no role
+  // holds manage_content — so only a super admin ever loaded it and every staff
+  // account ran with content = {}. The production log shows a 403 on it every
+  // two minutes while a staff account was open.
+  //
+  // That is why configured payment methods never reached the booking dialogs:
+  // the methods were saved, and the screens never received them.
+  const permissions = read('admin/constants/permissions.ts');
+  const rolesSection = permissions.slice(permissions.indexOf('ROLE_DEFAULT_PERMISSIONS'));
+  assert.ok(!/'manage_content'/.test(rolesSection),
+    'if a role gains manage_content this fallback can be revisited');
+
+  const config = read('api/routes/config.js');
+  assert.match(config, /router\.get\('\/api\/admin\/content', requireAuth, requireAdminOrStaff, requirePermission\('manage_content'\)/);
+
+  // The public route returns the same object to anonymous callers, so reading it
+  // instead exposes nothing that was not already public.
+  const publicRoutes = read('api/routes/public.js');
+  assert.match(publicRoutes, /router\.get\('\/api\/content', publicLimiter/);
+
+  const api = codeOnly(read('admin/lib/mysqlapi.ts'));
+  assert.match(api, /apiFetch<AR>\('\/content'\)/, 'the admin app falls back to it');
+});
+
+test('a settings save cannot report success having sent nothing', () => {
+  // buildContentPatch answers {} for a key it has no case for, the API merges
+  // that into the content, rewrites it unchanged and returns 200 — so the row's
+  // updated_at moves and the screen says «تم الحفظ» with nothing saved. The
+  // content row was rewritten at 14:54 by a 200 PATCH while the key it was meant
+  // to write still did not exist.
+  const settings = codeOnly(read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx'));
+  assert.match(settings, /if \(!Object\.keys\(patch\)\.length\) \{/);
+  assert.match(settings, /لا يوجد ما يُحفظ/);
+  // And a section that never loaded says so rather than doing nothing silently.
+  assert.match(settings, /لم تُحمَّل بعد/);
+});

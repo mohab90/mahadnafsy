@@ -80,13 +80,21 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
   }, []);
 
   const save = useCallback(async (key: SectionKey) => {
-    const payload = data[key];
-    if (payload === undefined) return;
     const section = SECTIONS.find(s => s.key === key)!;
+    const payload = data[key];
+    if (payload === undefined) {
+      notify('error', `"${section.label}" لم تُحمَّل بعد — أعد فتح الصفحة وحاول تاني`);
+      return;
+    }
     setSaving(s => new Set([...s, key]));
     try {
       if (section.source === 'content') {
         const patch = buildContentPatch(key, payload);
+        // An empty patch is accepted by the API and changes nothing, so sending
+        // it and reporting success is how a setting silently fails to save.
+        if (!Object.keys(patch).length) {
+          throw new Error(`لا يوجد ما يُحفظ في "${section.label}" — أبلغ الدعم بهذه الرسالة`);
+        }
         const res = await fetch('/api/admin/content', {
           method: 'PATCH', credentials: 'include',
           headers: adminHeaders(true),
