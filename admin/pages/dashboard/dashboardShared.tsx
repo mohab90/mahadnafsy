@@ -620,7 +620,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   daqqi_schedule:     'manage_daqqi',
   daqqi_clients:      'manage_daqqi',
   daqqi_team:         'manage_daqqi',
-  daqqi_accounting:   'manage_daqqi',
+  daqqi_accounting:   'view_financial',
   daqqi_stats:        'manage_daqqi',
   daqqi_attendance:   'manage_daqqi',
   waitlist:           'manage_daqqi',

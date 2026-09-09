@@ -1,7 +1,6 @@
 import { FX_FALLBACK } from '../../../lib/money';
 import {
   ArrowLeftRight,
-  Award,
   Building2,
   Clock,
   CreditCard,
@@ -20,9 +19,12 @@ import {
 export const SECTIONS = [
   { key: 'general',            label: 'الإعدادات العامة',    icon: Settings,        color: 'indigo',  source: 'syscfg'  },
   { key: 'branches',           label: 'الفروع',              icon: Building2,       color: 'blue',    source: 'content' },
-  { key: 'payment_methods',    label: 'وسائل الدفع',         icon: CreditCard,      color: 'green',   source: 'content' },
+  // The cash boxes a staff member picks when recording a payment — read by the
+  // booking dialog, both Daqqi dialogs and the payment review screen. Distinct
+  // from إعدادات الدفع ← طرق الدفع اليدوي, which is what the customer may pick
+  // when paying on the site.
+  { key: 'payment_methods',    label: 'وسائل الدفع (خزائن المعهد)', icon: CreditCard, color: 'green', source: 'content' },
   { key: 'exchange_rates',     label: 'أسعار الصرف',         icon: ArrowLeftRight,  color: 'amber',   source: 'content' },
-  { key: 'cert_pricing',       label: 'تسعير الشهادات',      icon: Award,           color: 'purple',  source: 'content' },
   { key: 'financial',          label: 'الإعدادات المالية',   icon: Hash,            color: 'emerald', source: 'syscfg'  },
   { key: 'session_types',      label: 'أنواع الجلسات',       icon: Clock,           color: 'sky',     source: 'syscfg'  },
   { key: 'lead_sources',       label: 'مصادر الليدات',       icon: Tag,             color: 'pink',    source: 'syscfg'  },
@@ -120,34 +122,13 @@ export function parseContentSections(raw: Record<string, string>): Partial<Recor
     is_active: true,
   })).filter(m => m.label);
 
-  let cpMap: Record<string, { egyptianEGP?: number; residentEGP?: number; residentSAR?: number; foreignUSD?: number }> = {};
-  try { cpMap = JSON.parse(raw['extra_cert_pricing'] || '{}'); } catch {}
-  // The saved map decides which certificates exist; CERT_TYPES only seeds the
-  // list before anything has been saved. Built from the constant, this screen
-  // could not show a custom type and could not honour a deleted default.
-  const savedCertKeys = Object.keys(cpMap);
-  const cert_pricing: CertItem[] = (savedCertKeys.length
-    ? savedCertKeys.map(type => ({
-      type,
-      label: String((cpMap[type] as { label?: string })?.label || '').trim()
-        || CERT_TYPES.find(ct => ct.type === type)?.label
-        || type,
-    }))
-    : CERT_TYPES.map(ct => ({ type: ct.type, label: ct.label }))
-  ).map(ct => ({
-    type: ct.type, label: ct.label,
-    egyptianEGP:  cpMap[ct.type]?.egyptianEGP  || 0,
-    residentEGP:  cpMap[ct.type]?.residentEGP  || 0,
-    residentSAR:  cpMap[ct.type]?.residentSAR  || 0,
-    foreignUSD:   cpMap[ct.type]?.foreignUSD   || 0,
-  }));
 
   const exchange_rates: ExchangeRates = {
     sar_to_egp: parseFloat(raw['exchange.sar_to_egp'] || String(FX_FALLBACK.SAR)) || FX_FALLBACK.SAR,
     usd_to_egp: parseFloat(raw['exchange.usd_to_egp'] || String(FX_FALLBACK.USD)) || FX_FALLBACK.USD,
   };
 
-  return { branches, payment_methods, cert_pricing, exchange_rates };
+  return { branches, payment_methods, exchange_rates };
 }
 
 export function buildContentPatch(key: SectionKey, value: SectionData): Record<string, string> {
@@ -159,17 +140,6 @@ export function buildContentPatch(key: SectionKey, value: SectionData): Record<s
     case 'payment_methods': {
       const str = (value as ListItem[]).map(m => m.label).join('||');
       return { 'finance.payment_methods': str };
-    }
-    case 'cert_pricing': {
-      const map: Record<string, object> = {};
-      (value as CertItem[]).forEach(c => {
-        map[c.type] = {
-          label: c.label,
-          egyptianEGP: c.egyptianEGP, residentEGP: c.residentEGP,
-          residentSAR: c.residentSAR, foreignUSD: c.foreignUSD,
-        };
-      });
-      return { 'extra_cert_pricing': JSON.stringify(map) };
     }
     case 'exchange_rates': {
       const er = value as ExchangeRates;

@@ -89,7 +89,10 @@ export default function PaymentSettingsTab({ notify }: { notify: NotifyFn }) {
         </div>
       </Card>
 
-      <Card title="طرق الدفع اليدوي" hint="طرق الدفع اليدوية التي تظهر للعميل أو تستخدم داخل فريق التحصيل.">
+      <Card
+        title="طرق الدفع اليدوي المتاحة للعميل"
+        hint="ما يستطيع العميل اختياره عند الدفع اليدوي من الموقع. خزائن المعهد التي يختار منها الموظف عند تسجيل دفعة تُضبط من الإعدادات ← وسائل الدفع."
+      >
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {methodOptions.map(method => (
             <label key={method} className="flex items-center gap-2 rounded-xl border border-gray-200 p-3 text-sm">

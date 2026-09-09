@@ -35,8 +35,13 @@ test('a certificate keeps its name across a save', () => {
   // then to the code.
   assert.match(shared, /DEFAULT_CERT_TYPES\.find\(d => d\.key === key\)\?\.label/);
 
+  // And there is one editor now. The settings screen carried a second one for
+  // the same key, with its own layout and — until they were found — the same two
+  // bugs, because a fix to one never reached the other.
   const schema = codeOnly(read('admin/pages/dashboard/tabs/systemSettingsSchema.tsx'));
-  assert.match(schema, /label: c\.label,/);
+  assert.ok(!schema.includes('extra_cert_pricing'),
+    'certificate pricing is edited beside the requests, not in the settings screen');
+  assert.ok(!schema.includes("key: 'cert_pricing'"));
 });
 
 test('a deleted certificate stays deleted', () => {
@@ -45,9 +50,31 @@ test('a deleted certificate stays deleted', () => {
     'the defaults were prepended on every read, so a delete could never stick');
   // The saved map is the list; the defaults only seed an empty one.
   assert.match(shared, /if \(!keys\.length\) return DEFAULT_CERT_TYPES;/);
+});
 
-  const schema = codeOnly(read('admin/pages/dashboard/tabs/systemSettingsSchema.tsx'));
-  assert.match(schema, /savedCertKeys\.length/);
+test('each settings section has its own address', () => {
+  // Fourteen sections lived behind /dashboard/system_settings, so none could be
+  // linked to, none could be bookmarked, and the back button left the screen
+  // instead of stepping back one section. The dashboard already routes
+  // /dashboard/:tab/:param and SectionedTab uses it exactly this way.
+  const settings = codeOnly(read('admin/pages/dashboard/tabs/SystemSettingsTab.tsx'));
+  assert.match(settings, /useParams<\{ param\?: string \}>\(\)/);
+  assert.match(settings, /navigate\(`\/dashboard\/system_settings\/\$\{key\}`\)/);
+  // Following a link or pressing back changes the URL; the screen has to follow.
+  assert.match(settings, /useEffect\(\(\) => \{ setActive\(sectionFromUrl\); \}, \[sectionFromUrl\]\)/);
+});
+
+test('the two settings called وسائل الدفع say which is which', () => {
+  // One is the institute's cash boxes, read by every booking and payment dialog.
+  // The other is what a customer may pick when paying manually on the site. The
+  // gateway card claimed the collection team used it, which is not true.
+  const gateway = read('admin/pages/dashboard/tabs/PaymentSettingsTab.tsx');
+  assert.ok(!gateway.includes('تستخدم داخل فريق التحصيل'),
+    'that hint sent admins to edit the list the staff dialogs do not read');
+  assert.match(gateway, /الإعدادات ← وسائل الدفع/, 'and it now names where that list lives');
+
+  const schema = read('admin/pages/dashboard/tabs/systemSettingsSchema.tsx');
+  assert.match(schema, /وسائل الدفع \(خزائن المعهد\)/);
 });
 
 test('adding a name to the stored map does not disturb pricing', () => {

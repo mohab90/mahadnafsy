@@ -165,8 +165,9 @@ const calledPaths = (componentName, seen = new Set()) => {
   ];
 
   const marked = paths.map(markGated);
-  // Panels a screen is assembled from live beside it and carry their own calls.
-  for (const match of source.matchAll(/from '\.\/([A-Za-z][A-Za-z0-9]*)'/g)) {
+  // Panels a screen is assembled from carry their own calls, and they live
+  // beside it or in a subdirectory of their own.
+  for (const match of source.matchAll(/from '\.\/(?:[A-Za-z0-9-]+\/)*([A-Za-z][A-Za-z0-9]*)'/g)) {
     marked.push(...calledPaths(match[1], seen));
   }
   return marked;

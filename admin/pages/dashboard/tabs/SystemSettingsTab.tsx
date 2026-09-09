@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Settings, Save, RotateCcw, Loader2, CheckCircle,
   Shield, Database,
@@ -12,7 +13,6 @@ import {
   COLOR,
   parseContentSections,
   SECTIONS,
-  type CertItem,
   type ExchangeRates,
   type Financial,
   type General,
@@ -41,7 +41,19 @@ function adminHeaders(json = false): HeadersInit {
 
 // ─── Main Component ───────────────────────────────────────────────────────
 const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
-  const [active, setActive]       = useState<SectionKey>('general');
+  // The section comes from the URL, so every one of them can be linked to.
+  const navigate = useNavigate();
+  const { param } = useParams<{ param?: string }>();
+  const sectionFromUrl = SECTIONS.some(s => s.key === param) ? (param as SectionKey) : 'general';
+  const [active, setActive] = useState<SectionKey>(sectionFromUrl);
+
+  // Following a link, or the back button, changes the URL; the screen follows.
+  useEffect(() => { setActive(sectionFromUrl); }, [sectionFromUrl]);
+
+  const openSection = useCallback((key: SectionKey) => {
+    setActive(key);
+    navigate(`/dashboard/system_settings/${key}`);
+  }, [navigate]);
   const [data, setData]           = useState<Partial<Record<SectionKey, SectionData>>>({});
   const [dirty, setDirty]         = useState<Set<SectionKey>>(new Set());
   const [saving, setSaving]       = useState<Set<SectionKey>>(new Set());
@@ -153,7 +165,7 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
               const isActive = active === sec.key;
               const isDirty  = dirty.has(sec.key as SectionKey);
               return (
-                <button key={sec.key} onClick={() => setActive(sec.key as SectionKey)}
+                <button key={sec.key} onClick={() => openSection(sec.key as SectionKey)}
                   className={`w-full text-right px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-all ${
                     isActive ? `${COLOR[sec.color].bg} ${COLOR[sec.color].text} font-bold` : 'text-gray-600 hover:bg-gray-50'
                   }`}>
@@ -212,13 +224,12 @@ const SystemSettingsTab: React.FC<Props> = ({ notify }) => {
         </>}
         {active === 'financial'          && <FinancialSection   data={data.financial as Financial}       mutateField={(f,v) => mutateField('financial', f, v)}/>}
         {active === 'exchange_rates'     && <ExchangeRatesSection data={data.exchange_rates as ExchangeRates} mutateField={(f,v) => mutateField('exchange_rates', f, v)}/>}
-        {active === 'cert_pricing'       && <CertPricingSection  data={data.cert_pricing as CertItem[]}  mutate={v => mutate('cert_pricing', v)} c={c}/>}
         {active === 'currencies'         && <CurrenciesSection   data={data.currencies as ListItem[]}    mutate={v => mutate('currencies', v)} c={c}/>}
         {active === 'countries'          && <CountriesSection    data={data.countries as ListItem[]}     mutate={v => mutate('countries', v)} c={c}/>}
         {active === 'security'           && <Security2FASection  notify={notify} />}
         {active === 'growth'             && <GrowthOpsSection    notify={notify} />}
         {active === 'backups'             && <BackupSection       notify={notify} />}
-        {!['general','financial','exchange_rates','cert_pricing','currencies','countries','security','growth','backups'].includes(active) && (
+        {!['general','financial','exchange_rates','currencies','countries','security','growth','backups'].includes(active) && (
           <ListSection data={data[active] as ListItem[]} mutate={v => mutate(active, v)} c={c} sectionKey={active}/>
         )}
       </main>
@@ -397,49 +408,6 @@ const ExchangeRatesSection: React.FC<{ data: ExchangeRates; mutateField: (f: str
 };
 
 // ─── Certificate Pricing (uses old content format) ────────────────────────
-const CertPricingSection: React.FC<{ data: CertItem[]; mutate: (v: CertItem[]) => void; c: typeof COLOR[string] }> = ({ data, mutate }) => {
-  const items = data || CERT_TYPES.map(ct => ({ type: ct.type, label: ct.label, egyptianEGP: 0, residentEGP: 0, residentSAR: 0, foreignUSD: 0 }));
-  const update = (idx: number, field: keyof CertItem, value: any) =>
-    mutate(items.map((it,i) => i===idx ? { ...it, [field]: typeof it[field]==='number' ? Number(value) : value } : it));
-  return (
-    <div>
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-right text-xs font-bold text-gray-500 border-b border-gray-200">
-                <th className="px-4 py-3">نوع الشهادة</th>
-                <th className="px-3 py-3 text-center text-blue-700">🇪🇬 مصري (ج.م)</th>
-                <th className="px-3 py-3 text-center text-green-700">👤 غير مصري مقيم (ج.م)</th>
-                <th className="px-3 py-3 text-center text-amber-700">🇸🇦 سعودي (ر.س)</th>
-                <th className="px-3 py-3 text-center text-purple-700">✈️ دولي ($)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {items.map((cert, idx) => (
-                <tr key={cert.type} className="hover:bg-gray-50/50">
-                  <td className="px-4 py-2 font-medium text-gray-800 whitespace-nowrap">{cert.label}</td>
-                  {(['egyptianEGP','residentEGP','residentSAR','foreignUSD'] as const).map(f=>(
-                    <td key={f} className="px-3 py-2">
-                      <input type="number" min="0" value={cert[f]||''} onChange={e=>update(idx,f,e.target.value)}
-                        placeholder="0"
-                        className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-          الأسعار صفر تعني مجانية أو تُسعَّر يدوياً · التغييرات تؤثر فوراً على طلبات شهادات المشتركين
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── 2FA Security Section ──────────────────────────────────────────────────
 const Security2FASection: React.FC<{ notify: NotifyFn }> = ({ notify }) => {
   const [status, setStatus]         = useState<'loading' | 'enabled' | 'disabled'>('loading');
   const [step, setStep]             = useState<'idle' | 'setup' | 'enable' | 'disable'>('idle');
