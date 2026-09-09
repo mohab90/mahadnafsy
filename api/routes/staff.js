@@ -13,6 +13,12 @@ const { uuidv4 } = require('../lib/id');
 const { pool } = require('../lib/db');
 const { tryJson } = require('../lib/helpers');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../middleware/auth');
+const { writeAuditEvent } = require('../lib/auditTrail');
+
+// The roles that can administer a tenant. Mirrors SUPER_ADMIN_ROLES in
+// middleware/auth.js — the delete guard below has to know what an owner is in
+// order to refuse removing the last one.
+const SUPER_ADMIN_ROLES = ['admin', 'manager'];
 const { hasPermission, normalizeDataScope, resolvePermissions, PERMISSIONS } = require('../constants/permissions');
 const { requireTenantQuota } = require('../middleware/tenantQuota');
 const { mapTherapist } = require('../lib/mappers');
@@ -124,6 +130,14 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
     const id = s.id || uuidv4();
     const role = ((s.role || 'other').toUpperCase());
 
+    // A staff row with no name or no email is not a record anyone can use: the
+    // email is the login identity and the unique key, and a second row with a
+    // blank one collides with the first.
+    const name = String(s.name || '').trim();
+    const email = String(s.email || '').trim().toLowerCase();
+    if (!name) return res.status(400).json({ error: 'اسم الموظف مطلوب', code: 'NAME_REQUIRED' });
+    if (!email) return res.status(400).json({ error: 'بريد الموظف مطلوب', code: 'EMAIL_REQUIRED' });
+
     // Privilege escalation guard. Without it, manage_staff would be the
     // right to create an ADMIN and take over the tenant.
     const PRIVILEGED_ROLES = ['ADMIN', 'MANAGER'];
@@ -167,14 +181,39 @@ router.post('/api/admin/staff', requireAuth, requireAdminOrStaff, requirePermiss
       return res.status(403).json({ error: 'Staff id belongs to another tenant' });
     }
 
+    // Say which employee already holds this address, and whether they are
+    // simply archived — in which case restoring them is what was meant, and
+    // there is now a route for it.
+    const [[emailOwner]] = await pool.query(
+      `SELECT id, name, deleted_at FROM staff
+        WHERE tenant_id=? AND id<>? AND LOWER(TRIM(email))=? LIMIT 1`,
+      [req.tenantId, id, email]
+    );
+    if (emailOwner) {
+      return res.status(409).json(emailOwner.deleted_at ? {
+        error: `البريد ده مسجّل على ${emailOwner.name || 'موظف'} المحذوف — استعِد حسابه بدل إنشاء واحد جديد`,
+        code: 'EMAIL_BELONGS_TO_DELETED_STAFF',
+        staffId: emailOwner.id,
+      } : {
+        error: `البريد ده مستخدم بالفعل لـ ${emailOwner.name || 'موظف آخر'}`,
+        code: 'EMAIL_TAKEN',
+        staffId: emailOwner.id,
+      });
+    }
+
     await pool.query(
       `INSERT INTO staff (id, tenant_id, branch_id, firebase_uid, name, email, phone, role, image, specialization, joined_at, is_active, notes, commission_rate, permissions_json, data_scope, monthly_target, monthly_target_type, monthly_leads_target, monthly_bonus)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), phone=VALUES(phone), role=VALUES(role), image=VALUES(image), is_active=VALUES(is_active), notes=VALUES(notes), commission_rate=VALUES(commission_rate), permissions_json=VALUES(permissions_json), data_scope=VALUES(data_scope), monthly_target=VALUES(monthly_target), monthly_target_type=VALUES(monthly_target_type), monthly_leads_target=VALUES(monthly_leads_target), monthly_bonus=VALUES(monthly_bonus)`,
-      [id, req.tenantId, s.branch_id || 'branch-other', firebaseUid, s.name || '', s.email || '', s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
+      [id, req.tenantId, s.branch_id || 'branch-other', firebaseUid, name, email, s.phone || '', role, s.image || null, s.specialization || null, joinedAt, isActive, s.notes || null, commissionRate, permissionsJson, dataScope, monthlyTarget, monthlyTargetType, monthlyLeadsTarget, monthlyBonus]
     );
     res.json({ ok: true, id });
   } catch (e) {
+    // The check above catches the ordinary case; this is the race, and it must
+    // still say what happened rather than reporting a server fault.
+    if (e && e.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'البريد ده مستخدم بالفعل لموظف آخر', code: 'EMAIL_TAKEN' });
+    }
     routeError(res, e);
   }
 });
@@ -288,12 +327,93 @@ router.patch('/api/staff/me', requireAuth, async (req, res) => {
 
 router.delete('/api/admin/staff/:id', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const [result] = await pool.query(
-      'UPDATE staff SET is_active=0 WHERE id=? AND tenant_id=?',
+    const [[target]] = await pool.query(
+      'SELECT id, name, email, role, is_active FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NULL LIMIT 1',
       [req.params.id, req.tenantId]
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'Staff not found' });
+    if (!target) return res.status(404).json({ error: 'الموظف غير موجود', code: 'STAFF_NOT_FOUND' });
+
+    // The screen already refuses this; the route has to as well, or a direct
+    // call locks the caller out of their own tenant.
+    if (req.staffRecord?.id && req.staffRecord.id === target.id) {
+      return res.status(409).json({ error: 'لا يمكنك حذف حسابك الخاص', code: 'CANNOT_DELETE_SELF' });
+    }
+
+    // And the last owner standing cannot go either: with no admin or manager
+    // left, nothing in this tenant can create one back.
+    if (SUPER_ADMIN_ROLES.includes(String(target.role || '').toLowerCase())) {
+      const [[owners]] = await pool.query(
+        `SELECT COUNT(*) AS n FROM staff
+           WHERE tenant_id=? AND deleted_at IS NULL AND is_active=1
+             AND LOWER(role) IN (?, ?)`,
+        [req.tenantId, SUPER_ADMIN_ROLES[0], SUPER_ADMIN_ROLES[1]]
+      );
+      if (Number(owners?.n || 0) <= 1) {
+        return res.status(409).json({
+          error: 'دا آخر حساب بصلاحية مدير — عيّن مدير تاني الأول',
+          code: 'LAST_OWNER',
+        });
+      }
+    }
+
+    // deleted_at is what the list filters on. Setting is_active alone left the
+    // person on screen, which is the whole complaint. is_active goes with it so
+    // every reader that checks either one agrees.
+    const [result] = await pool.query(
+      'UPDATE staff SET is_active=0, deleted_at=NOW() WHERE id=? AND tenant_id=? AND deleted_at IS NULL',
+      [req.params.id, req.tenantId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'الموظف غير موجود', code: 'STAFF_NOT_FOUND' });
+
+    await writeAuditEvent({
+      action: 'staff.deleted', entityType: 'staff', entityId: target.id,
+      tenantId: req.tenantId, actorEmail: req.user?.email || null,
+      after: { name: target.name, email: target.email, role: target.role },
+    }).catch(() => {});
+
     res.json({ ok: true });
+  } catch (e) {
+    routeError(res, e);
+  }
+});
+
+// PUT /api/admin/staff/:id/restore — the other half of the promise
+//
+// The delete dialog says «سجله وتاريخه المالي يبقى محفوظًا، ويمكن إعادة تفعيله
+// لاحقًا», and nothing implemented the second half: once removed there was no
+// route and no screen that could bring anyone back.
+router.put('/api/admin/staff/:id/restore', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const [[target]] = await pool.query(
+      'SELECT id, name, email FROM staff WHERE id=? AND tenant_id=? AND deleted_at IS NOT NULL LIMIT 1',
+      [req.params.id, req.tenantId]
+    );
+    if (!target) return res.status(404).json({ error: 'مفيش موظف محذوف بالمعرّف ده', code: 'STAFF_NOT_FOUND' });
+
+    // The email is unique per tenant, so a live row may have taken it since.
+    const [[clash]] = await pool.query(
+      `SELECT id FROM staff
+        WHERE tenant_id=? AND deleted_at IS NULL AND id<>?
+          AND LOWER(TRIM(email))=LOWER(TRIM(?)) LIMIT 1`,
+      [req.tenantId, target.id, target.email || '']
+    );
+    if (clash) {
+      return res.status(409).json({
+        error: 'فيه موظف نشط بنفس البريد — غيّر بريد أحدهما قبل الاستعادة',
+        code: 'EMAIL_TAKEN',
+      });
+    }
+
+    await pool.query(
+      'UPDATE staff SET deleted_at=NULL, is_active=1 WHERE id=? AND tenant_id=?',
+      [req.params.id, req.tenantId]
+    );
+    await writeAuditEvent({
+      action: 'staff.restored', entityType: 'staff', entityId: target.id,
+      tenantId: req.tenantId, actorEmail: req.user?.email || null,
+      after: { name: target.name, email: target.email },
+    }).catch(() => {});
+    res.json({ ok: true, id: target.id });
   } catch (e) {
     routeError(res, e);
   }

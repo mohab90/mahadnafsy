@@ -438,12 +438,18 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         submitLabel="إنشاء الموظف"
         onClose={() => setShowAddStaff(false)}
         notify={notify}
+        canCreateLogin={isAdmin}
         onSubmit={async (result: OnboardResult) => {
+          // Two writes on purpose: the staff row, then the login. Creating the
+          // login is optional — a record can exist before the person has
+          // credentials — so it must not be folded into the staff insert.
+          //
+          // They also carry different permissions, which is why their failures
+          // are reported apart: the staff row succeeding and the login being
+          // refused is not "creating the employee failed", and saying so left
+          // people re-adding someone who already existed.
+          const staffId = `staff-${Date.now()}`;
           try {
-            // Two writes on purpose: the staff row, then the login. Creating the
-            // login is optional — a record can exist before the person has
-            // credentials — so it must not be folded into the staff insert.
-            const staffId = `staff-${Date.now()}`;
             await mysqlAdmin.saveStaff({
               id: staffId,
               name: result.name,
@@ -455,20 +461,34 @@ const HrTab: React.FC<Props> = ({ notify }) => {
               is_active: result.activate ? 1 : 0,
               permissions: result.permissions || undefined,
             } as unknown as Record<string, unknown>);
-            if (result.password) {
+          } catch (error) {
+            // Nothing was created; the message from the API says why — a taken
+            // email, a missing field, a plan limit.
+            notify('error', error instanceof Error ? error.message : 'تعذر إنشاء الموظف');
+            return;
+          }
+
+          if (result.password) {
+            try {
               await mysqlAdmin.createStaffAccount({
                 staffId, name: result.name, email: result.email,
                 role: result.role, password: result.password,
               } as unknown as Record<string, unknown>);
+            } catch (error) {
+              await reloadStaffMembers();
+              setShowAddStaff(false);
+              notify('error', `تم إنشاء ${result.name} لكن حساب الدخول اتفض: ${
+                error instanceof Error ? error.message : 'صلاحية المالك مطلوبة'
+              } — الموظف موجود، محتاج المالك يعمله حساب دخول`);
+              return;
             }
-            await reloadStaffMembers();
-            setShowAddStaff(false);
-            notify('success', result.password
-              ? `تم إنشاء ${result.name} — يقدر يدخل بالإيميل وكلمة المرور`
-              : `تم إنشاء ${result.name} — بدون حساب دخول`);
-          } catch (error) {
-            notify('error', error instanceof Error ? error.message : 'تعذر إنشاء الموظف');
           }
+
+          await reloadStaffMembers();
+          setShowAddStaff(false);
+          notify('success', result.password
+            ? `تم إنشاء ${result.name} — يقدر يدخل بالإيميل وكلمة المرور`
+            : `تم إنشاء ${result.name} — بدون حساب دخول`);
         }}
       />
     </div>

@@ -45,7 +45,7 @@ const strongPassword = () => {
  * three things afterwards — and adding an employee outright had no screen at all.
  */
 export default function StaffOnboardModal({
-  open, title, initial, submitLabel, onClose, onSubmit, notify,
+  open, title, initial, submitLabel, onClose, onSubmit, notify, canCreateLogin = true,
 }: {
   open: boolean;
   title: string;
@@ -54,6 +54,9 @@ export default function StaffOnboardModal({
   onClose: () => void;
   onSubmit: (result: OnboardResult) => Promise<void>;
   notify: Notify;
+  /** Whether the caller may create the login. POST /admin/staff-account is
+   *  super-admin only, while the staff row itself needs manage_staff. */
+  canCreateLogin?: boolean;
 }) {
   const branches = useBranches();
   const panelRef = useModalKeyboard(onClose);
@@ -134,7 +137,7 @@ export default function StaffOnboardModal({
               <input value={form.email} onChange={e => set('email', e.target.value)} dir="ltr"
                 className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
             </div>
-            <div>
+            <div className={canCreateLogin ? '' : 'hidden'}>
               <label className="mb-1 block text-xs font-bold text-gray-600">كلمة المرور</label>
               <div className="flex gap-1.5">
                 <div className="relative flex-1">
