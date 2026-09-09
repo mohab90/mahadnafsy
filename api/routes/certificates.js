@@ -355,9 +355,8 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
     const content = await getTenantSetting('content', { tenantId, fallback: {} });
     const pricingConfig = (() => { try { return JSON.parse(content.extra_cert_pricing || '{}'); } catch { return {}; } })();
     const clientContext = await resolveClientContext(req);
-    if (!clientContext.locationResolved) {
-      return res.status(503).json({ error: 'Customer location could not be verified', code: 'LOCATION_UNAVAILABLE' });
-    }
+    // No country means price by nationality, and if that cannot price it either
+    // the row lands PENDING for an admin — never a refusal.
     const { price, currency, status } = resolveCertificatePrice({
       type, nationality, countryCode: clientContext.countryCode, pricingConfig,
     });
@@ -367,7 +366,13 @@ router.post('/api/me/certificate-request', requireAuth, async (req, res) => {
          (id, subscriber_id, course_id, type, custom_name, name_ar, name_en, nationality, id_number, status, price, currency, note, tenant_id, requested_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [requestId, sub.id, b.courseId, type, b.customName || null, b.nameAr || null, b.nameEn || null,
-       nationality, b.idNumber || null, status, price, currency, b.note || null, tenantId]
+       nationality, b.idNumber || null, status, price, currency,
+       // Say so on the row when the country could not be resolved, so the admin
+       // pricing a PENDING request knows this one was priced by nationality
+       // alone rather than by where the customer actually was.
+       [b.note, clientContext.locationResolved ? '' : 'الموقع الجغرافي غير محدد — التسعير بالجنسية']
+         .filter(Boolean).join(' | ') || null,
+       tenantId]
     );
     res.json({ ok: true, id: requestId, status: status.toLowerCase(), price, currency });
   } catch (e) {
