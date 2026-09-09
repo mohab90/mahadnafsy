@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
  CalendarDays,
@@ -34,7 +34,6 @@ import {
   getCurrentWeekKey,
   normalizeDaqqiBranchId,
   parseDaqqiBranchIds,
-  parseDaqqiRooms,
   type DaqqiDraftType,
 } from './daqqi/daqqiScheduleUtils';
 import { branchMatchesFilter } from '../branchWorkspaceFilters';
@@ -162,7 +161,28 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     return normalizeDaqqiBranchId(rawBranch) === 'DAQQI' || daqqiBranchIds.has(rawBranch);
   });
 
-  const daqqiRooms = parseDaqqiRooms(content);
+  // physical_classrooms is where rooms live. GET /api/admin/dokki/classrooms
+  // is behind manage_daqqi, which is this screen's own gate.
+  const [daqqiRooms, setDaqqiRooms] = useState<{ name: string; capacity: number }[]>([]);
+  const reloadRooms = useCallback(async () => {
+    try {
+      const rows = await mysqlAdmin.adminGet<{ name?: string; capacity?: number }[]>('/admin/dokki/classrooms');
+      setDaqqiRooms((Array.isArray(rows) ? rows : [])
+        .map(row => ({ name: String(row.name || ''), capacity: Number(row.capacity) || 0 }))
+        .filter(room => room.name));
+    } catch {
+      // A room list that cannot be fetched is an empty dropdown, not a broken
+      // screen — the rest of the schedule works without it.
+      setDaqqiRooms([]);
+    }
+  }, []);
+  useEffect(() => { void reloadRooms(); }, [reloadRooms]);
+
+  // Creating a room needs a control on the round dialog, which is a separate
+  // change: physical_classrooms is empty on production and POST
+  // /api/admin/dokki/classrooms has a wrapper that no screen calls, so rooms
+  // still cannot be added from the UI. Reading the right source first means the
+  // list will fill the moment they can be.
 
   const instructorOptions = therapists;
   const receptionOptions = staffMembers.filter(s =>

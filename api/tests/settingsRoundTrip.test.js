@@ -113,3 +113,21 @@ test('the payment methods the settings screen writes are the ones the dialogs re
       `${screen} must not carry its own list`);
   }
 });
+
+test('the Daqqi room list reads the table rooms actually live in', () => {
+  // Rooms used to be parsed out of content['institute.branches'], and the
+  // branches migration retired that key — branches are a table now and the key
+  // is absent on production. So the helper returned [] on every load, the room
+  // dropdown was permanently empty, and nothing could fill it, because rooms had
+  // moved to physical_classrooms.
+  const utils = read('admin/pages/dashboard/tabs/daqqi/daqqiScheduleUtils.ts');
+  assert.ok(!utils.includes('parseDaqqiRooms'),
+    'a helper that can only answer "no rooms" is worse than none');
+
+  const schedule = codeOnly(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'));
+  assert.match(schedule, /adminGet<[^>]*>\('\/admin\/dokki\/classrooms'\)/);
+
+  // And that endpoint is behind the permission this screen is already gated on.
+  const dokki = read('api/routes/dokki-operations.js');
+  assert.match(dokki, /router\.get\('\/api\/admin\/dokki\/classrooms', requireAuth, requireAdminOrStaff, requirePermission\('manage_daqqi'\)/);
+});

@@ -58,19 +58,7 @@ export const parseDaqqiBranchIds = (content: Record<string, string>) => {
   return ids;
 };
 
-export const parseDaqqiRooms = (content: Record<string, string>) => {
-  try {
-    const raw = content['institute.branches'];
-    if (!raw) return [] as { name: string; capacity: number }[];
-    const branches: { id: string; label: string; rooms?: { name: string; capacity: number }[] }[] = JSON.parse(raw);
-    const daqqiBranch = branches.find(branch =>
-      normalizeDaqqiBranchId(branch.id) === 'DAQQI' || (branch.label || '').includes('دق')
-    );
-    return daqqiBranch?.rooms || [] as { name: string; capacity: number }[];
-  } catch {
-    return [] as { name: string; capacity: number }[];
-  }
-};
+
 
 export const isEnrolledInCourse = (bundles: Bundle[], enrolledIds: string[], courseId: string): boolean => {
   if (enrolledIds.includes(courseId)) return true;
