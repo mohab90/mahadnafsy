@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { financialRecordMatches, resolveFinancialScope } = require('../../lib/financialScope');
 const { dateOnlyInTimeZone } = require('../../lib/dates');
@@ -38,7 +38,7 @@ router.get('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requirePe
     sql += ' ORDER BY a.created_at DESC';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Request an advance (any staff for themselves, admin for anyone)
@@ -91,7 +91,7 @@ router.post('/api/admin/hr/advances', requireAuth, requireAdminOrStaff, requireP
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/advances/create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -196,7 +196,7 @@ router.put('/api/admin/hr/advances/:advId/status', requireAuth, requireAdminOrSt
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/advances/status]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -285,7 +285,7 @@ router.put('/api/admin/hr/advances/:advId/disburse', requireAuth, requireAdminOr
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/advances/disburse]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -324,7 +324,7 @@ router.delete('/api/admin/hr/advances/:advId', requireAuth, requireAdminOrStaff,
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/advances/delete]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -352,7 +352,7 @@ router.get('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requi
     sql += ' ORDER BY d.created_at DESC';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.post('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
@@ -403,7 +403,7 @@ router.post('/api/admin/hr/disciplinary', requireAuth, requireAdminOrStaff, requ
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/disciplinary/create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -485,7 +485,7 @@ router.put('/api/admin/hr/disciplinary/:recId', requireAuth, requireAdminOrStaff
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/disciplinary/update]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -524,7 +524,7 @@ router.get('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, requireP
     sql += ' ORDER BY d.created_at DESC';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.post('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
@@ -570,7 +570,7 @@ router.post('/api/admin/hr/documents', requireAuth, requireAdminOrStaff, require
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/documents/create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -606,7 +606,7 @@ router.delete('/api/admin/hr/documents/:docId', requireAuth, requireAdminOrStaff
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/documents/delete]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -624,7 +624,7 @@ router.get('/api/staff/me/advances', requireAuth, async (req, res) => {
       [staff.id, req.tenantId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Self-service: submit own advance request
@@ -666,7 +666,7 @@ router.post('/api/staff/me/advances', requireAuth, async (req, res) => {
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/advances/self-create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -686,7 +686,7 @@ router.get('/api/staff/me/disciplinary', requireAuth, async (req, res) => {
     res.json(rows);
   } catch (e) {
     logger.error('[hr/disciplinary/self-list]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -733,7 +733,7 @@ router.put('/api/staff/me/disciplinary/:recId/acknowledge', requireAuth, async (
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/disciplinary/acknowledge]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -784,7 +784,7 @@ router.put('/api/staff/me/disciplinary/:recId/appeal', requireAuth, async (req, 
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/disciplinary/appeal]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -802,7 +802,7 @@ router.get('/api/staff/me/documents', requireAuth, async (req, res) => {
       [staff.id, req.tenantId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════

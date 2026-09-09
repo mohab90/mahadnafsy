@@ -15,6 +15,7 @@ const router = Router();
 const {
   requireAuth, requireAdminOrStaff, requirePermission, logger, pool, uuidv4,
   createNotification, _resolveStaffByUser,
+  hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
@@ -293,7 +294,7 @@ router.get('/api/admin/hr/staff/:id/profile', requireAuth, requireAdminOrStaff, 
     });
   } catch (e) {
     logger.error('[hr/staff-profile]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -400,7 +401,7 @@ router.get('/api/admin/hr/staff/:id/report', requireAuth, requireAdminOrStaff, r
     res.json(await buildStaffReport(req.tenantId, req.params.id, key));
   } catch (e) {
     logger.error('[hr/staff-report]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -425,7 +426,7 @@ router.get('/api/admin/hr/staff/:id/messages', requireAuth, requireAdminOrStaff,
     res.json(rows);
   } catch (e) {
     logger.error('[hr/staff-messages/list]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -460,7 +461,7 @@ router.post('/api/admin/hr/staff/:id/messages', requireAuth, requireAdminOrStaff
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[hr/staff-messages/send]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -571,7 +572,7 @@ router.post('/api/admin/hr/staff/broadcast', requireAuth, requireAdminOrStaff, r
     res.json({ ok: true, broadcastId, label: audience.label, recipients: audience.rows.length });
   } catch (e) {
     logger.error('[hr/staff-broadcast]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -612,7 +613,7 @@ router.get('/api/admin/hr/staff/broadcast-audiences', requireAuth, requireAdminO
     });
   } catch (e) {
     logger.error('[hr/broadcast-audiences]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -640,7 +641,7 @@ router.get('/api/staff/me/messages', requireAuth, async (req, res) => {
     res.json(rows);
   } catch (e) {
     logger.error('[staff/me/messages/list]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -705,7 +706,7 @@ router.post('/api/staff/me/messages', requireAuth, async (req, res) => {
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[staff/me/messages/send]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -749,7 +750,7 @@ router.get('/api/admin/hr/staff-messages/inbox', requireAuth, requireAdminOrStaf
     res.json({ unread: Number(unread?.n || 0), messages: rows });
   } catch (e) {
     logger.error('[hr/staff-messages/inbox]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -763,7 +764,7 @@ router.post('/api/admin/hr/staff-messages/mark-read', requireAuth, requireAdminO
     res.json({ ok: true });
   } catch (e) {
     logger.error('[hr/staff-messages/mark-read]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -782,7 +783,7 @@ router.get('/api/staff/me/report', requireAuth, async (req, res) => {
     res.json(await buildStaffReport(req.tenantId, me.id, key));
   } catch (e) {
     logger.error('[staff/me/report]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -839,7 +840,7 @@ router.get('/api/staff/me/targets', requireAuth, async (req, res) => {
     }));
   } catch (e) {
     logger.error('[staff/me/targets]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -957,7 +958,7 @@ router.get('/api/staff/me/hr-file', requireAuth, async (req, res) => {
     });
   } catch (e) {
     logger.error('[staff/me/hr-file]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -974,7 +975,7 @@ router.get('/api/staff/me/resignation', requireAuth, async (req, res) => {
     res.json(rows);
   } catch (e) {
     logger.error('[staff/me/resignation/list]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -1011,7 +1012,7 @@ router.post('/api/staff/me/resignation', requireAuth, async (req, res) => {
     res.json({ ok: true, id });
   } catch (e) {
     logger.error('[staff/me/resignation/create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -1030,7 +1031,7 @@ router.get('/api/admin/hr/resignations', requireAuth, requireAdminOrStaff, requi
     res.json(rows);
   } catch (e) {
     logger.error('[hr/resignations/list]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -1050,7 +1051,7 @@ router.put('/api/admin/hr/resignations/:id', requireAuth, requireAdminOrStaff, r
     res.json({ ok: true });
   } catch (e) {
     logger.error('[hr/resignations/decide]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 

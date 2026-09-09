@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
@@ -49,7 +49,7 @@ router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaf
     res.json({ salaries: salaries[0], adjustments: adjustments[0], fees: fees[0], rates: rates[0] });
   } catch (error) {
     logger.error('[hr/compensation/pending]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -61,7 +61,7 @@ router.get('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
        FROM instructor_rates WHERE tenant_id=? AND staff_id=?`, [req.tenantId, req.params.staffId]
     );
     res.json(row || null);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
@@ -118,7 +118,7 @@ router.put('/api/admin/hr/instructors/:staffId/rates', requireAuth, requireAdmin
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/instructor-rates/request]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -179,7 +179,7 @@ router.put('/api/admin/hr/instructor-rate-proposals/:id/status', requireAuth, re
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/instructor-rates/review]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -196,7 +196,7 @@ router.get('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmin
       [req.tenantId, req.params.staffId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
@@ -224,7 +224,7 @@ router.post('/api/admin/hr/employees/:staffId/bonuses', requireAuth, requireAdmi
        FROM employee_bonuses WHERE tenant_id=? AND id=?`, [req.tenantId, id]
     );
     res.json(row);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.put('/api/admin/hr/bonuses/:id/status', requireAuth, requireAdminOrStaff, requirePermission('manage_hr'), async (req, res) => {
@@ -272,7 +272,7 @@ router.put('/api/admin/hr/bonuses/:id/status', requireAuth, requireAdminOrStaff,
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/bonuses/status]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally { conn.release(); }
 });
 
@@ -284,7 +284,7 @@ router.delete('/api/admin/hr/bonuses/:id', requireAuth, requireAdminOrStaff, req
     );
     if (!deleted.affectedRows) return res.status(404).json({ error: 'Bonus record not found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -313,7 +313,7 @@ router.get('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, re
     sql += ' ORDER BY f.period_year DESC, f.period_month DESC, f.created_at DESC';
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // POST /api/admin/hr/instructor-fees — create a fee record
@@ -347,7 +347,7 @@ router.post('/api/admin/hr/instructor-fees', requireAuth, requireAdminOrStaff, r
        FROM instructor_fees WHERE tenant_id=? AND id=?`, [req.tenantId, id]
     );
     res.json(row);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // PATCH /api/admin/hr/instructor-fees/:id — update status (approve/mark paid)
@@ -409,7 +409,7 @@ router.patch('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdminOrSta
     res.json(row);
   } catch (e) {
     await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -450,7 +450,7 @@ router.delete('/api/admin/hr/instructor-fees/:id', requireAuth, requireAdminOrSt
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -473,7 +473,7 @@ router.get('/api/staff/me/leaves', requireAuth, async (req, res) => {
       [req.tenantId, staff.id]
     );
     res.json(rows.map(row => toNumbers(row, ["total_days"])));
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.post('/api/staff/me/leaves', requireAuth, async (req, res) => {
@@ -527,7 +527,7 @@ router.get('/api/staff/me/payslip', requireAuth, async (req, res) => {
     `, [req.tenantId, staff.id, m, y]);
     if (!item) return res.json(null);
     res.json(item);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/staff/me/commissions', requireAuth, async (req, res) => {
@@ -548,7 +548,7 @@ router.get('/api/staff/me/commissions', requireAuth, async (req, res) => {
     const [rows] = await pool.query(sql, params);
     const total = rows.reduce((s, r) => s + parseFloat(r.commission_amount || 0), 0);
     res.json({ commissions: rows, total_pending: parseFloat(total.toFixed(2)) });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/staff/me/schedule', requireAuth, async (req, res) => {
@@ -560,7 +560,7 @@ router.get('/api/staff/me/schedule', requireAuth, async (req, res) => {
       [req.tenantId, staff.id]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/admin/hr/appraisals', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -583,7 +583,7 @@ router.get('/api/admin/hr/appraisals', requireAuth, requireAdminOrStaff, require
     })));
   } catch (error) {
     logger.error('[hr/appraisals]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -638,7 +638,7 @@ router.post('/api/admin/hr/appraisals', requireAuth, requireAdminOrStaff, requir
     res.json({ ok: true, id, status: 'draft', overall_score: overall, grade });
   } catch (error) {
     logger.error('[hr/appraisals/create]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -698,7 +698,7 @@ router.put('/api/admin/hr/appraisals/:id/status', requireAuth, requireAdminOrSta
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/appraisals/status]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally { conn.release(); }
 });
 
@@ -719,7 +719,7 @@ router.get('/api/staff/me/appraisals', requireAuth, async (req, res) => {
       kpi_scores: tryJson(r.kpi_scores, []),
       evidence_json: tryJson(r.evidence_json, []),
     })));
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -801,7 +801,7 @@ router.get('/api/admin/hr/attendance-report', requireAuth, requireAdminOrStaff, 
     });
 
     res.json({ month, workDays, staff: report });
-  } catch (e) { logger.error('[hr/attendance-report]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/attendance-report]', e.message); hrError(res, e); }
 });
 
 module.exports = router;

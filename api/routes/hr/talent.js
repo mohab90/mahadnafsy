@@ -7,6 +7,7 @@ const router = Router();
 const {
   requirePermission, pool, uuidv4, requireAuth, requireAdminOrStaff,
   createNotification, logger,
+  hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { requireTenantQuota } = require('../../middleware/tenantQuota');
@@ -131,7 +132,7 @@ router.get('/api/admin/hr/talent-pool', requireAuth, requireAdminOrStaff, requir
     res.json(rows);
   } catch (error) {
     logger.error('[hr/talent-pool]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -161,7 +162,7 @@ router.post('/api/admin/hr/join-us/:id/to-applicant', requireAuth, requireAdminO
     res.json({ ok: true, applicant: app });
   } catch (error) {
     logger.error('[hr/to-applicant]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -260,7 +261,7 @@ router.post('/api/admin/hr/join-us/:id/to-interview', requireAuth, requireAdminO
   } catch (error) {
     await conn.rollback().catch(() => {});
     logger.error('[hr/to-interview]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally {
     conn.release();
   }
@@ -416,7 +417,7 @@ router.post(
   } catch (error) {
     await conn.rollback();
     logger.error('[hr/hire]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally {
     conn.release();
   }

@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, requireAnyPermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { hasPermission } = require('../../constants/permissions');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { getFxToEgp, getFxSnapshot, isFxSnapshotUsable } = require('../../lib/finance');
@@ -64,7 +64,7 @@ router.get('/api/admin/hr/payroll', requireAuth, requireAdminOrStaff, requirePer
       LIMIT 24
     `, [req.tenantId]);
     res.json(runs.map(run => toNumbers(run, PAYROLL_RUN_MONEY)));
-  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });
 
 // POST /api/admin/hr/payroll/calculate — calculate payroll for a month
@@ -411,7 +411,7 @@ router.post('/api/admin/hr/payroll/calculate', requireAuth, requireAdminOrStaff,
     });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[hr/payroll]', e.message); hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -441,7 +441,7 @@ router.get('/api/admin/hr/payroll/:runId', requireAuth, requireAdminOrStaff, req
       ORDER BY s.name
     `, [runId, req.tenantId]);
     res.json({ run: toNumbers(run, PAYROLL_RUN_MONEY), items: items.map(item => toNumbers(item, PAYROLL_ITEM_MONEY)) });
-  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });
 
 // PUT /api/admin/hr/payroll/:runId/status — approve/pay/cancel run
@@ -614,7 +614,7 @@ router.put('/api/admin/hr/payroll/:runId/status', requireAuth, requireAdminOrSta
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[hr/payroll]', e.message); hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -708,7 +708,7 @@ router.put('/api/admin/hr/payroll/items/:itemId', requireAuth, requireAdminOrSta
     res.json({ ok: true, net_salary: net });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' });
+    logger.error('[hr/payroll]', e.message); hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -903,7 +903,7 @@ router.post('/api/admin/hr/attendance/import', requireAuth, requireAdminOrStaff,
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/payroll]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -928,7 +928,7 @@ router.get('/api/admin/hr/attendance/summary', requireAuth, requireAdminOrStaff,
       GROUP BY s.id ORDER BY s.name
     `, [m, y, req.tenantId]);
     res.json(rows);
-  } catch (e) { logger.error('[hr/payroll]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/payroll]', e.message); hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════

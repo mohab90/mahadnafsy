@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 const { toNumbers } = require('../../lib/mappers');
@@ -65,7 +65,7 @@ router.get('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requirePe
     })));
   } catch (error) {
     logger.error('[hr/policies]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -138,7 +138,7 @@ router.post('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requireP
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/policies]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally {
     conn.release();
   }
@@ -172,7 +172,7 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
     sql += ' ORDER BY l.created_at DESC LIMIT 200';
     const [rows] = await pool.query(sql, params);
     res.json(rows.map(row => toNumbers(row, ["total_days"])));
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // POST /api/admin/hr/leaves — submit leave or permission request
@@ -315,7 +315,7 @@ router.put('/api/admin/hr/leaves/:id/status', requireAuth, requireAdminOrStaff, 
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -381,7 +381,7 @@ router.post('/api/admin/hr/salary', requireAuth, requireAdminOrStaff, requirePer
     res.json({ ok: true, id, status: 'PENDING' });
   } catch (e) {
     await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -438,7 +438,7 @@ router.put('/api/admin/hr/salary/:id/status', requireAuth, requireAdminOrStaff, 
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/salary/status]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally { conn.release(); }
 });
 
@@ -455,7 +455,7 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
       [staffId, req.tenantId, range.start, range.end]
     );
     res.json(rows.map(row => toNumbers(row, ["total_hours"])));
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // POST /api/admin/hr/attendance — manual attendance entry
@@ -526,7 +526,7 @@ router.post('/api/admin/hr/attendance', requireAuth, requireAdminOrStaff, requir
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -543,7 +543,7 @@ router.get('/api/me/hr/attendance/today', requireAuth, async (req, res) => {
     const [[row]] = await pool.query(
       'SELECT check_in, check_out, status, total_hours, late_minutes FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date=CURDATE() LIMIT 1', [st.id, req.tenantId]);
     res.json({ isStaff: true, staffName: st.name, today: row || null });
-  } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[route]', e.message); hrError(res, e); }
 });
 router.post('/api/me/hr/attendance/check-in', requireAuth, async (req, res) => {
   const conn = await pool.getConnection();
@@ -590,7 +590,7 @@ router.post('/api/me/hr/attendance/check-in', requireAuth, async (req, res) => {
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -634,7 +634,7 @@ router.post('/api/me/hr/attendance/check-out', requireAuth, async (req, res) => 
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[route]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -695,7 +695,7 @@ router.get('/api/admin/hr/kpi/:staffId', requireAuth, requireAdminOrStaff, requi
     };
 
     res.json({ actuals, targets, history, cs });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

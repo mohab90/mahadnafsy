@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
@@ -99,7 +99,7 @@ router.get('/api/admin/hr/branches', requireAuth, requireAdminOrStaff, requirePe
       [req.tenantId]
     );
     res.json(rows.map(r => ({ ...r, internal_only: Boolean(r.internal_only) })));
-  } catch (e) { logger.error('[hr/branches]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/branches]', e.message); hrError(res, e); }
 });
 
 router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -115,7 +115,7 @@ router.get('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermis
       ORDER BY j.created_at DESC
     `, [req.tenantId]);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Create job posting
@@ -152,7 +152,7 @@ router.post('/api/admin/hr/jobs', requireAuth, requireAdminOrStaff, requirePermi
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/jobs/create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -219,7 +219,7 @@ router.put('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, requir
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/jobs/update]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -261,7 +261,7 @@ router.delete('/api/admin/hr/jobs/:jobId', requireAuth, requireAdminOrStaff, req
     res.json({ ok: true });
   } catch (e) {
     await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -301,7 +301,7 @@ router.get('/api/admin/hr/applicants', requireAuth, requireAdminOrStaff, require
       params
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -313,7 +313,7 @@ router.get('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrSt
       [req.params.jobId, req.tenantId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Add applicant
@@ -384,7 +384,7 @@ router.post('/api/admin/hr/jobs/:jobId/applicants', requireAuth, requireAdminOrS
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/applicant/create]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -463,7 +463,7 @@ router.put('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaff, 
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/applicant/update]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -484,7 +484,7 @@ router.delete('/api/admin/hr/applicants/:appId', requireAuth, requireAdminOrStaf
       return res.status(404).json({ error: 'Applicant not found' });
     }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -501,7 +501,7 @@ router.get('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrStaf
       GROUP BY t.id ORDER BY t.name
     `, [req.tenantId]);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Create template
@@ -526,7 +526,7 @@ router.post('/api/admin/hr/onboarding/templates', requireAuth, requireAdminOrSta
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -556,7 +556,7 @@ router.put('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireAdmi
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -592,7 +592,7 @@ router.delete('/api/admin/hr/onboarding/templates/:tplId', requireAuth, requireA
       conn.release();
     }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Get tasks for template
@@ -604,7 +604,7 @@ router.get('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requi
       [req.params.tplId, req.tenantId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Add task to template
@@ -639,7 +639,7 @@ router.post('/api/admin/hr/onboarding/templates/:tplId/tasks', requireAuth, requ
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -671,7 +671,7 @@ router.put('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdminOr
     res.json(row);
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -693,7 +693,7 @@ router.delete('/api/admin/hr/onboarding/tasks/:taskId', requireAuth, requireAdmi
     res.json({ ok: true });
   } catch (e) {
     if (transactionStarted) await conn.rollback().catch(() => {});
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally { conn.release(); }
 });
 
@@ -722,7 +722,7 @@ router.get('/api/admin/hr/onboarding/employees', requireAuth, requireAdminOrStaf
       GROUP BY s.id, eo.id ORDER BY s.name
     `, [req.tenantId]);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Get onboarding items for an employee onboarding
@@ -735,7 +735,7 @@ router.get('/api/admin/hr/onboarding/:onboardingId/items', requireAuth, requireA
       [req.params.onboardingId, req.tenantId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Start onboarding for employee (from template or custom)
@@ -841,7 +841,7 @@ router.post('/api/admin/hr/onboarding/start', requireAuth, requireAdminOrStaff, 
     } finally {
       conn.release();
     }
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // Toggle onboarding item complete/incomplete
@@ -910,7 +910,7 @@ router.put('/api/admin/hr/onboarding/items/:itemId', requireAuth, requireAdminOr
     } finally {
       conn.release();
     }
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════

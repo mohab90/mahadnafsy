@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 
 router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -64,7 +64,7 @@ router.get('/api/admin/hr/reports/summary', requireAuth, requireAdminOrStaff, re
     `, [req.tenantId]);
 
     res.json({ headcount, salStats, leaveStats, attStats, recruitStats, onboardStats });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/admin/hr/reports/payroll-trend', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -78,7 +78,7 @@ router.get('/api/admin/hr/reports/payroll-trend', requireAuth, requireAdminOrSta
       GROUP BY pr.id ORDER BY pr.year, pr.month
     `, [req.tenantId]);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/admin/hr/reports/department-stats', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -103,7 +103,7 @@ router.get('/api/admin/hr/reports/department-stats', requireAuth, requireAdminOr
       GROUP BY d.id ORDER BY headcount DESC
     `, [req.tenantId]);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
@@ -169,7 +169,7 @@ router.get('/api/admin/hr/reports/performance', requireAuth, requireAdminOrStaff
     }));
   } catch (e) {
     logger.error('[hr/performance]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   }
 });
 
@@ -295,7 +295,7 @@ router.get('/api/staff/me/hr', requireAuth, async (req, res) => {
         revenue_generated: Number(kpi?.revenue_generated || 0),
       },
     });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // ══════════════════════════════════════════════════════════════

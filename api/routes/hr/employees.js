@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { PERMISSIONS, normalizeDataScope } = require('../../constants/permissions');
 const { writeAuditEvent } = require('../../lib/auditTrail');
@@ -23,7 +23,7 @@ router.get('/api/admin/hr/employees', requireAuth, requireAdminOrStaff, requireP
       ORDER BY s.name ASC
     `, [req.tenantId]);
     res.json(employees);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // GET /api/admin/hr/employees/:id — full employee profile
@@ -191,7 +191,7 @@ router.get('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
       pendingLeaves,
       kpi: kpi || {},
     });
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // PUT /api/admin/hr/employees/:id — update employee HR info
@@ -373,7 +373,7 @@ router.put('/api/admin/hr/employees/:id', requireAuth, requireAdminOrStaff, requ
     if (transactionStarted) await conn.rollback().catch(() => {});
     if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Email already belongs to another account' });
     logger.error('[hr/employees/update]', e.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, e);
   } finally {
     conn.release();
   }
@@ -387,7 +387,7 @@ router.get('/api/admin/hr/departments', requireAuth, requireAdminOrStaff, requir
       [req.tenantId]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { hrError(res, e); }
 });
 
 // GET /api/admin/hr/leaves — all leaves for HR/manager (with filters)

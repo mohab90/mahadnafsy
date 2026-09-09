@@ -1,7 +1,7 @@
 'use strict';
 const { Router } = require('express');
 const router = Router();
-const { requirePermission, logger, pool, requireAuth, requireAdminOrStaff, _resolveStaffByUser } = require('./_shared');
+const { hrError, requirePermission, logger, pool, requireAuth, requireAdminOrStaff, _resolveStaffByUser } = require('./_shared');
 
 const enpsPeriod = () => new Date().toISOString().slice(0, 7); // YYYY-MM
 const MIN_ANONYMOUS_COHORT = 5;
@@ -16,7 +16,7 @@ router.get('/api/staff/me/enps', requireAuth, async (req, res) => {
       [req.tenantId, staff.id, enpsPeriod()]
     );
     res.json({ period: enpsPeriod(), responded: !!row, score: row ? row.score : null });
-  } catch (e) { logger.error('[hr/enps]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/enps]', e.message); hrError(res, e); }
 });
 
 // Staff: submit eNPS for the current period (one per staff per period, editable)
@@ -36,7 +36,7 @@ router.post('/api/staff/me/enps', requireAuth, async (req, res) => {
       [req.tenantId, staff.id, numScore, comment ? String(comment).slice(0, 2000) : null, enpsPeriod()]
     );
     res.json({ ok: true });
-  } catch (e) { logger.error('[hr/enps]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/enps]', e.message); hrError(res, e); }
 });
 
 // Admin: eNPS aggregate + anonymized comments (individual identity withheld by design)
@@ -77,7 +77,7 @@ router.get('/api/admin/hr/enps', requireAuth, requireAdminOrStaff, requirePermis
       minimumCohort: MIN_ANONYMOUS_COHORT,
       periods: periods.map(p => p.period),
     });
-  } catch (e) { logger.error('[hr/enps]', e.message); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (e) { logger.error('[hr/enps]', e.message); hrError(res, e); }
 });
 
 module.exports = router;

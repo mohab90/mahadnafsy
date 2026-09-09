@@ -4,6 +4,7 @@ const router = Router();
 const {
   requirePermission, logger, pool, requireAuth, requireAdminOrStaff,
   uuidv4, invalidateIdentity,
+  hrError,
 } = require('./_shared');
 const { writeAuditEvent } = require('../../lib/auditTrail');
 
@@ -36,7 +37,7 @@ router.get('/api/admin/hr/offboarding', requireAuth, requireAdminOrStaff, requir
     res.json(rows.map(row => ({ ...row, checklist: parseChecklist(row.checklist) })));
   } catch (error) {
     logger.error('[hr/offboarding]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -95,7 +96,7 @@ router.post('/api/admin/hr/offboarding', requireAuth, requireAdminOrStaff, requi
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/offboarding]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally {
     conn.release();
   }
@@ -355,7 +356,7 @@ router.put('/api/admin/hr/offboarding/:id', requireAuth, requireAdminOrStaff, re
   } catch (error) {
     if (transactionStarted) await conn.rollback().catch(() => {});
     logger.error('[hr/offboarding]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally {
     conn.release();
   }

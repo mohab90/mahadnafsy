@@ -12,6 +12,7 @@
  * behind a status — and the person behind the reason — survives the next edit.
  */
 const express = require('express');
+const { hrError } = require('./_shared');
 const router = express.Router();
 const logger = require('../../lib/logger').child({ module: 'recruitment-workflow' });
 const { pool } = require('../../lib/db');
@@ -50,7 +51,7 @@ router.get('/api/admin/hr/notes/:refType/:refId', ...view, async (req, res) => {
     res.json(rows);
   } catch (error) {
     logger.error('[notes/list]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -65,7 +66,7 @@ router.post('/api/admin/hr/notes/:refType/:refId', ...manage, async (req, res) =
     res.json({ ok: true });
   } catch (error) {
     logger.error('[notes/create]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   }
 });
 
@@ -101,7 +102,7 @@ router.post('/api/admin/join-us/:id/contact', ...manage, async (req, res) => {
   } catch (error) {
     await conn.rollback().catch(() => {});
     logger.error('[join-us/contact]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally { conn.release(); }
 });
 
@@ -146,7 +147,7 @@ router.post('/api/admin/join-us/:id/evaluate', ...manage, async (req, res) => {
   } catch (error) {
     await conn.rollback().catch(() => {});
     logger.error('[join-us/evaluate]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally { conn.release(); }
 });
 
@@ -188,7 +189,7 @@ router.post('/api/admin/hr/applicants/:id/grade', ...manage, async (req, res) =>
   } catch (error) {
     await conn.rollback().catch(() => {});
     logger.error('[applicants/grade]', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    hrError(res, error);
   } finally { conn.release(); }
 });
 
