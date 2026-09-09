@@ -3,6 +3,7 @@
 const { tryJson, parseCrm } = require('./helpers');
 const { pool } = require('./db');
 const { safeDateOnly } = require('./dates');
+const { uuidv4 } = require('./id');
 const { mapInstallmentPlan } = require('./installmentMath');
 
 // ── Column lists for hot-path queries ────────────────────────────────────────
@@ -22,7 +23,65 @@ const COURSE_LIST_COLS = `id, course_code, slug, title, title_en, title_ar,
   price_egp, price_sar, price_usd, orig_price_egp, orig_price_sar, orig_price_usd,
   rating, students, duration, level, hours, is_published, sort_order, created_at`;
 
-function mapCourse(r) {
+/**
+ * The PDFs attached to a set of courses, as a Map of course id to the array the
+ * screens expect.
+ *
+ * course_materials has existed since the schema was written, with exactly the
+ * columns the course editor collects — and no route had ever read or written
+ * it. So «المادة العلمية (ملفات PDF)» saved, reported «تم حفظ الكورس بنجاح»,
+ * and came back empty; and every enrolled student's المادة العلمية tab said
+ * «لا توجد مادة علمية متاحة حاليا», for every course, permanently.
+ *
+ * Batched rather than per-course: the enrolled-courses read hands this every
+ * course a student is on at once.
+ */
+async function loadCourseMaterials(db, courseIds) {
+  const ids = [...new Set((courseIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const [rows] = await db.query(
+    `SELECT id, course_id, title, url, access_level, sort_order
+       FROM course_materials WHERE course_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY sort_order ASC, title ASC`,
+    ids
+  );
+  const byCourse = new Map();
+  for (const row of rows) {
+    if (!byCourse.has(row.course_id)) byCourse.set(row.course_id, []);
+    byCourse.get(row.course_id).push({
+      id: row.id,
+      title: row.title,
+      url: row.url,
+      // The column is an ENUM of PARTIAL/FULL; both screens compare lowercase.
+      accessLevel: String(row.access_level || 'full').toLowerCase(),
+    });
+  }
+  return byCourse;
+}
+
+/** Replace a course's materials with exactly what was submitted. */
+async function saveCourseMaterials(db, courseId, materials) {
+  if (!Array.isArray(materials)) return;
+  await db.query('DELETE FROM course_materials WHERE course_id=?', [courseId]);
+  const rows = materials
+    .filter(item => String(item?.title || '').trim() && String(item?.url || '').trim())
+    .slice(0, 200);
+  if (!rows.length) return;
+  await db.query(
+    `INSERT INTO course_materials (id, course_id, title, url, access_level, sort_order)
+     VALUES ${rows.map(() => '(?,?,?,?,?,?)').join(',')}`,
+    rows.flatMap((item, index) => [
+      uuidv4(),
+      courseId,
+      String(item.title).trim().slice(0, 500),
+      String(item.url).trim(),
+      String(item.accessLevel || item.access_level || 'full').toUpperCase() === 'PARTIAL' ? 'PARTIAL' : 'FULL',
+      Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index,
+    ])
+  );
+}
+
+function mapCourse(r, materials) {
   return {
     id: r.id,
     courseCode: r.course_code,
@@ -59,6 +118,9 @@ function mapCourse(r) {
     galleryImages: tryJson(r.gallery_images_json, []),
     detailsContent: tryJson(r.details_content_json, {}),
     courseModules: tryJson(r.course_modules_json, []),
+    // Only attached where the caller loaded them: a screen that did not ask for
+    // materials should see the field absent rather than wrongly empty.
+    ...(materials ? { materials } : {}),
     createdAt: r.created_at,
   };
 }
@@ -314,4 +376,4 @@ function toNumbers(row, fields) {
   return out;
 }
 
-module.exports = { toNumbers, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz };
+module.exports = { toNumbers, loadCourseMaterials, saveCourseMaterials, COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, getNextClientCode, mapQuiz };

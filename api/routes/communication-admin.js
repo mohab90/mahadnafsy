@@ -51,11 +51,20 @@ router.get('/api/admin/whatsapp-config', requireAuth, requireAdmin, async (req, 
 router.get('/api/admin/facebook-lead-ads-config', requireAuth, requireAdmin, async (req, res) => {
   try {
     const cfg = await getFbLeadConfig(scopedTenantId(req));
-    // redactSecrets() strips appSecret/verifyToken (not editable via this UI —
-    // never round-tripped back on save) fully; pageAccessToken keeps its own
-    // masked-placeholder convention since the save flow depends on it to
+    // redactSecrets() strips appSecret fully; pageAccessToken keeps its own
+    // masked-placeholder convention, since the save flow depends on it to
     // detect "unchanged" vs "user typed a new token".
-    res.json({ ...redactSecrets(cfg), pageAccessToken: cfg.pageAccessToken ? '••••••••' : '', hasToken: !!(cfg.pageAccessToken) });
+    //
+    // verifyToken is deliberately returned as it is. The screen offers an input
+    // for it and instructs the admin to paste it into Facebook's webhook form,
+    // so a blanked value is not a protected value — it is a broken field, and
+    // that is exactly what it was.
+    res.json({
+      ...redactSecrets(cfg),
+      verifyToken: cfg.verifyToken || '',
+      pageAccessToken: cfg.pageAccessToken ? '••••••••' : '',
+      hasToken: !!(cfg.pageAccessToken),
+    });
   } catch (e) { routeError(res, e); }
 });
 

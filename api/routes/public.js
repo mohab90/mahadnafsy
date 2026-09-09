@@ -12,7 +12,7 @@ const { pool, cached, cacheInvalidate } = require('../lib/db');
 const { parseLimit, parseOffset, sanitize, tryJson, validate } = require('../lib/helpers');
 const { getBrandSettings } = require('../lib/brandSettings');
 const { getTenantSetting } = require('../lib/tenantSettings');
-const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz } = require('../lib/mappers');
+const { COURSE_COLS, COURSE_LIST_COLS, mapCourse, mapBundle, mapTherapist, mapLecture, mapChapter, mapSubscriber, mapQuiz, loadCourseMaterials } = require('../lib/mappers');
 const { recordQuizAttempt } = require('../lib/quizAttempts');
 const { sendEmail, htmlEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
@@ -1022,7 +1022,8 @@ router.get('/api/me/subscriber', requireAuth, async (req, res) => {
       const placeholders = allEnrolledIds.map(() => '?').join(',');
       const [courseRows] = await pool.query(
         `SELECT ${COURSE_COLS} FROM courses WHERE tenant_id=? AND id IN (${placeholders})`, [req.tenantId, ...allEnrolledIds]);
-      enrolledCoursesData = courseRows.map(mapCourse);
+      const materialsByCourse = await loadCourseMaterials(pool, courseRows.map(row => row.id));
+      enrolledCoursesData = courseRows.map(row => mapCourse(row, materialsByCourse.get(row.id) || []));
     }
     res.json({ ...mapped, enrolledCoursesData });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }

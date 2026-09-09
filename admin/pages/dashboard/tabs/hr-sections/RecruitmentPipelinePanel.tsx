@@ -89,6 +89,8 @@ export default function RecruitmentPipelinePanel({ notify }: { notify: Notify })
         method: 'POST', credentials: 'include', headers: adminAuthHeaders(true),
         body: JSON.stringify({
           branch_id: result.branchId || hireTarget.job_branch || undefined,
+          name: result.name || undefined,
+          phone: result.phone || undefined,
           email: result.email,
           password: result.password || undefined,
           role: result.role,

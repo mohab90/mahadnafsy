@@ -892,7 +892,8 @@ router.patch('/api/admin/courses/:courseId/waitlist/:id', requireAuth, requireAd
         [status, status, 'notified', req.params.id, req.params.courseId, req.tenantId]
       );
     }
-    if (notify && entry.email) {
+    const notified = Boolean(notify && entry.email);
+    if (notified) {
       await outbox.enqueue({
         channel: 'email', recipient: entry.email, subject: `متاح مقعد في كورس ${entry.title || ''}`,
         payload: { html: `<div dir="rtl"><p>مرحباً ${escapeHtml(entry.name)}،</p><p>توفر مقعد في كورس <strong>${escapeHtml(entry.title)}</strong>.</p><p>يرجى التواصل معنا لتأكيد التسجيل.</p></div>` },
@@ -901,7 +902,13 @@ router.patch('/api/admin/courses/:courseId/waitlist/:id', requireAuth, requireAd
       await conn.query('UPDATE course_waitlist SET status=?,notified_at=NOW() WHERE id=? AND tenant_id=?', ['notified', entry.id, req.tenantId]);
     }
     await conn.commit(); conn.release(); conn = null;
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      notified,
+      // Named so the screen can say why nothing went out rather than claiming
+      // it did. A waitlist entry may legitimately hold only a phone.
+      reason: notify && !notified ? 'no_email' : undefined,
+    });
   } catch (e) { if (conn) { await conn.rollback().catch(() => {}); conn.release(); } res.status(500).json({ error: 'Internal server error' }); }
 });
 

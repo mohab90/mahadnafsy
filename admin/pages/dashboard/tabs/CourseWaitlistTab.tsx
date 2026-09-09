@@ -84,8 +84,18 @@ export default function CourseWaitlistTab({ notify }: Props) {
   const updateStatus = async (id: string, status: WaitlistStatus, alsoNotify = false) => {
     setBusyId(id);
     try {
-      await mysqlAdmin.adminPatch(`/admin/courses/${encodeURIComponent(courseId)}/waitlist/${id}`, { status, notify: alsoNotify });
-      notify('success', alsoNotify ? 'تم إرسال إشعار توفر مقعد' : `تم تحديث الحالة إلى: ${STATUS_LABELS[status]}`);
+      const result = await mysqlAdmin.adminPatch<{ ok: boolean; notified?: boolean; reason?: string }>(
+        `/admin/courses/${encodeURIComponent(courseId)}/waitlist/${id}`, { status, notify: alsoNotify });
+      // Only claim it was sent when the server says it queued something. An
+      // entry with a phone and no email is legitimate, and this used to report
+      // success and mark them contacted with nothing sent.
+      if (!alsoNotify) {
+        notify('success', `تم تحديث الحالة إلى: ${STATUS_LABELS[status]}`);
+      } else if (result?.notified) {
+        notify('success', 'تم إرسال إشعار توفر مقعد');
+      } else {
+        notify('error', 'لا يوجد بريد إلكتروني لهذا الاسم — تواصل معه يدويًا');
+      }
       load();
     } catch { notify('error', 'فشل التحديث'); }
     finally { setBusyId(null); }

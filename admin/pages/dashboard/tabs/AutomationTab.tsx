@@ -92,7 +92,7 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
   };
   useEffect(() => {
     mysqlAdmin.getFbLeadConfig().then((cfg: any) => {
-      if (cfg.webhookVerifyToken) setFbToken(cfg.webhookVerifyToken);
+      if (cfg.verifyToken) setFbToken(cfg.verifyToken);
       if (cfg.hasToken) setFbPageToken('••••••••');
       if (cfg.defaultBranch) setFbDefaultBranch(cfg.defaultBranch);
       if (cfg.defaultInterestedCourseId) setFbDefaultCourseId(cfg.defaultInterestedCourseId);
@@ -103,7 +103,9 @@ const AutomationTab: React.FC<Props> = ({ notify, setActiveTab }) => {
     setFbSaving(true);
     try {
       await mysqlAdmin.saveFbLeadConfig({
-        webhookVerifyToken: fbToken.trim(),
+        // The key the webhook actually compares against. This used to be
+        // webhookVerifyToken, which nothing reads.
+        verifyToken: fbToken.trim(),
         pageAccessToken: fbPageToken.trim(),
         enabled: true,
         defaultBranch: fbDefaultBranch || null,

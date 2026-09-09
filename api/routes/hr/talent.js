@@ -352,7 +352,14 @@ router.post(
          (id, tenant_id, branch_id, name, email, phone, role, is_active, employment_type,
           hire_date, joined_at, specialization, permissions_json)
        VALUES (?,?,?,?,?,?,?,?, 'FULL_TIME', CURDATE(), NOW(), ?, ?)`,
-      [staffId, req.tenantId, branch.id, a.name, loginEmail, toIdentity(a.phone) || '', role,
+      [staffId, req.tenantId, branch.id,
+        // The applicant row is the default, not the authority: the hire dialog
+        // shows both fields as editable so HR can correct a misspelled name or
+        // supply a phone the web form never collected.
+        String(req.body.name || '').trim() || a.name,
+        loginEmail,
+        toIdentity(req.body.phone || a.phone) || '',
+        role,
         activate ? 1 : 0, position,
         requestedPermissions ? JSON.stringify(requestedPermissions) : null]
     );

@@ -9,7 +9,7 @@ const { pool, autoAssignStaff, cacheInvalidate } = require('../../lib/db');
 const { mailer } = require('../../lib/email');
 const { sendWhatsApp } = require('../../lib/whatsapp');
 const { tryJson, sanitize, parseLimit, parseOffset, parseCrm, calcLeadScoreServer } = require('../../lib/helpers');
-const { COURSE_COLS, mapCourse, getNextClientCode } = require('../../lib/mappers');
+const { COURSE_COLS, mapCourse, getNextClientCode, loadCourseMaterials, saveCourseMaterials } = require('../../lib/mappers');
 const { createNotification } = require('../../lib/notification');
 const { logLeadEvent } = require('../../lib/crm');
 const { enqueueEmailSequence } = require('../../lib/emailSequence');
@@ -50,7 +50,8 @@ router.get('/api/admin/courses', requireAuth, requireAdminOrStaff, requirePermis
         ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
       scopedInstructor ? [req.tenantId, scopedInstructor, limit, offset] : [req.tenantId, limit, offset]
     );
-    res.json(rows.map(mapCourse));
+    const materialsByCourse = await loadCourseMaterials(pool, rows.map(row => row.id));
+    res.json(rows.map(row => mapCourse(row, materialsByCourse.get(row.id) || [])));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -168,6 +169,10 @@ router.post('/api/admin/courses', requireAuth, requireAdmin, requireTenantQuota(
         seoTitle, seoDesc, seoKeywords,
       ]
     );
+    // The course row was just written under this tenant, so the id is proven
+    // to belong to it — course_materials is scoped through the course FK and
+    // carries no tenant column of its own.
+    if (c.materials !== undefined) await saveCourseMaterials(pool, id, c.materials);
     cacheInvalidate('courses', 'bundles');
     res.json({ ok: true, id });
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
