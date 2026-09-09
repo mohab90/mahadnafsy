@@ -47,12 +47,12 @@ const WORKSPACE_TABS = new Set(['staff_home', 'staff_settings', 'my_hr']);
 // section, and the rest are one click away rather than one URL away.
 const SCREENS = [
   'overview', 'kpi_dashboard', 'activity', 'tasks_board', 'analytics_hub', 'ask_ai',
-  'leads', 'sales_hub', 'sales_planning',
-  'online_clients', 'client', 'archived_clients', 'online_hub', 'installment_plans', 'subscriptions',
+  'leads', 'sales_hub', 'sales_planning', 'sales_reports', 'sales_team',
+  'online_clients', 'client', 'archived_clients', 'online_hub', 'online_team', 'installment_plans', 'subscriptions',
   'daqqi_schedule', 'daqqi_clients', 'daqqi_team', 'daqqi_accounting', 'daqqi_stats', 'waitlist',
   'customer_inbox', 'service_hub', 'refund_requests', 'consultations', 'cert_requests',
   'financial', 'orders', 'financial_reports', 'recurring_expenses',
-  'hr', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'interviews',
+  'hr', 'staff_performance', 'hr_analytics', 'enps_dashboard', 'offboarding', 'instructors', 'join_us', 'interviews',
   'marketing_hub', 'campaigns', 'notif_inbox',
   'content_hub', 'courses', 'lectures', 'bundles', 'quizzes', 'course_waitlist',
   'live_streams', 'community',

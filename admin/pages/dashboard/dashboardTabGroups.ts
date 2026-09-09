@@ -168,7 +168,22 @@ export const fullLeadArraySubTabs = new Set<string>([
  *                          gone. That lookup never worked: orders has no
  *                          lead_id column and the mapper never set leadId, so
  *                          every order fell into the 'مباشر' bucket. */
-export const fullLeadTabs = new Set<string>([]);
+export const fullLeadTabs = new Set<string>([
+  // These two were unreachable until they were put in the menu, and both count
+  // per-rep leads out of the array: sales_team builds the monthly table from
+  // l.assignedSalesId, sales_reports the status breakdown and the range filter.
+  // Reachable and unlisted, they would have counted the 500-row bootstrap page
+  // and shown it as the pipeline — the fault this file already documents for
+  // marketing_hub and analytics_hub.
+  //
+  // Listed rather than rewritten: the direction above is toward server
+  // aggregates, and both are candidates for it — sales_reports wants a status
+  // breakdown, sales_team a per-rep monthly roll-up, and the staff-performance
+  // endpoint already returns byStatus per rep. Until someone does that, they
+  // read the table, which is at least true.
+  'sales_reports',
+  'sales_team',
+]);
 
 /** Reads every subscriber, no leads. */
 export const fullSubscriberTabs = new Set<string>([
@@ -209,4 +224,8 @@ export const fullCrmDataTabs = new Set<string>([
   // keyed on the tab the URL names, so it has to name the tab.
   'campaigns',
   'ask_ai',
+  // Assignment and workload rather than money: who carries which leads and which
+  // subscribers. It reads both tables and filters each by branch, so both have
+  // to be the real ones.
+  'online_team',
 ]);

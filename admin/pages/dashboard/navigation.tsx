@@ -197,6 +197,14 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // They carry four different permissions, kept per section.
       // See tabs/SalesPlanningTab.tsx.
       { key: 'sales_planning', label: 'التخطيط والمتابعة', icon: Target },
+      // Reporting rather than team management: lead status, revenue by course
+      // and revenue by product. view_reports, not view_staff.
+      { key: 'sales_reports', label: 'تقارير المبيعات', icon: BarChart3 },
+      // Overlaps the hub above, which shows the same per-rep leads, conversions,
+      // revenue and monthly target in a fuller form. Listed because it was asked
+      // for; if the team finds it says nothing the hub does not, this is the
+      // entry to drop.
+      { key: 'sales_team', label: 'أداء فريق المبيعات', icon: Users },
     ],
   },
   {
@@ -211,6 +219,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // now nothing could show what was in there or bring one back.
       { key: 'archived_clients', label: 'أرشيف العملاء', icon: Archive },
       { key: 'online_hub', label: 'فريق الأونلاين والتحصيل', icon: Monitor },
+      // The hub beside it is about money — collected, outstanding, targets.
+      // This one is about who carries what: assigned leads, the subscribers each
+      // person is responsible for, and the courses running.
+      { key: 'online_team', label: 'إدارة فريق الأونلاين', icon: Users },
       { key: 'installment_plans', label: 'خطط التقسيط', icon: CreditCard },
       { key: 'subscriptions', label: 'الاشتراكات المتكررة', icon: RotateCcw },
     ],
@@ -278,6 +290,10 @@ export const DASHBOARD_MENU_GROUPS: DashboardMenuGroup[] = [
       // directory) — the same page twice. One entry, named for both jobs, and the
       // staff_management key is gone now that the links into it point here.
       { key: 'hr', label: 'نظام HR والموظفون', icon: Briefcase },
+      // Ranks every role against leads, conversions and revenue, with a role
+      // filter — wider than the performance section inside the HR screen, which
+      // reads the HR record alone.
+      { key: 'staff_performance', label: 'أداء الموظفين', icon: TrendingUp },
       { key: 'hr_analytics', label: 'تقارير وتحليلات HR', icon: BarChart3 },
       { key: 'enps_dashboard', label: 'رضا الموظفين (eNPS)', icon: Smile },
       { key: 'offboarding', label: 'إنهاء الخدمة', icon: UserMinus },
