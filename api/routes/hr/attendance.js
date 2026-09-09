@@ -4,6 +4,7 @@ const router = Router();
 const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy, leaveAllowance } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { toNumbers } = require('../../lib/mappers');
 const dateOnly = value => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
@@ -56,7 +57,7 @@ router.get('/api/admin/hr/policies', requireAuth, requireAdminOrStaff, requirePe
       [req.tenantId]
     );
     res.json(rows.map(row => ({
-      ...row,
+      ...toNumbers(row, ['annual_leave_days', 'sick_leave_days', 'overtime_multiplier', 'work_days_per_month']),
       weekend_days_json: (() => {
         try { return typeof row.weekend_days_json === 'string' ? JSON.parse(row.weekend_days_json) : row.weekend_days_json; }
         catch { return [5, 6]; }
@@ -170,7 +171,7 @@ router.get('/api/admin/hr/leaves', requireAuth, requireAdminOrStaff, requirePerm
     }
     sql += ' ORDER BY l.created_at DESC LIMIT 200';
     const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    res.json(rows.map(row => toNumbers(row, ["total_days"])));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -453,7 +454,7 @@ router.get('/api/admin/hr/attendance/:staffId', requireAuth, requireAdminOrStaff
        FROM attendance_logs WHERE staff_id=? AND tenant_id=? AND date>=? AND date<? ORDER BY date`,
       [staffId, req.tenantId, range.start, range.end]
     );
-    res.json(rows);
+    res.json(rows.map(row => toNumbers(row, ["total_hours"])));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

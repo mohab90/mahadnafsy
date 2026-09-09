@@ -4,6 +4,7 @@ const router = Router();
 const { requirePermission, logger, pool, getStaffIdByEmail, tryJson, requireAuth, requireAdmin, requireAdminOrStaff, createNotification, uuidv4, postJournalEntry, toEgp, getFxToEgp, logFinancialAudit, _resolveStaffByUser } = require('./_shared');
 const { createLeaveRequest, getEffectiveHrPolicy } = require('../../lib/hrPolicy');
 const { writeAuditEvent } = require('../../lib/auditTrail');
+const { toNumbers } = require('../../lib/mappers');
 
 router.get('/api/admin/hr/compensation/pending', requireAuth, requireAdminOrStaff, requirePermission('view_hr'), async (req, res) => {
   try {
@@ -471,7 +472,7 @@ router.get('/api/staff/me/leaves', requireAuth, async (req, res) => {
        WHERE l.tenant_id=? AND l.staff_id=? ORDER BY l.created_at DESC LIMIT 50`,
       [req.tenantId, staff.id]
     );
-    res.json(rows);
+    res.json(rows.map(row => toNumbers(row, ["total_days"])));
   } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -576,7 +577,7 @@ router.get('/api/admin/hr/appraisals', requireAuth, requireAdminOrStaff, require
     sql += ' ORDER BY p.period_year DESC,p.period_month DESC,p.created_at DESC LIMIT 300';
     const [rows] = await pool.query(sql, params);
     res.json(rows.map(row => ({
-      ...row,
+      ...toNumbers(row, ['overall_score']),
       kpi_scores: tryJson(row.kpi_scores, []),
       evidence_json: tryJson(row.evidence_json, []),
     })));

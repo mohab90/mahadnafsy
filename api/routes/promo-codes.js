@@ -6,6 +6,7 @@ const router = express.Router();
 const logger = require('../lib/logger').child({ module: 'promo-codes-route' });
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
+const { toNumbers } = require('../lib/mappers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { publicLimiter } = require('../middleware/rateLimits');
 
@@ -41,7 +42,7 @@ router.get('/api/admin/promo-codes', requireAuth, requireAdmin, async (_req, res
       `SELECT id, code, description, discount_type, discount_value, min_order_amount, max_uses,
        used_count, expires_at, active, created_by, created_at
        FROM promo_codes ORDER BY created_at DESC`);
-    res.json(rows);
+    res.json(rows.map(row => toNumbers(row, ["discount_value","min_order_amount"])));
   } catch (e) { routeError(res, e); }
 });
 
