@@ -16,6 +16,10 @@ const STATUS_COLOR: Record<string, string> = {
   inactive: 'bg-gray-100 text-gray-500',
 };
 
+// Who is on the sales team. Everyone else has no leads assigned and no sales
+// target, so ranking them by conversion rate said nothing true about them.
+const SALES_ROLES = new Set(['sales', 'sales_collection_manager']);
+
 export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: {
   notify: NotifyFn;
   salesTargets?: SalesTarget[];
@@ -30,6 +34,7 @@ export default function SalesTeamTab({ salesTargets = [], onOpenStaffProfile }: 
 
   const filtered = useMemo(() =>
     staffMembers.filter(s =>
+      SALES_ROLES.has(String(s.role || '').toLowerCase()) &&
       (roleFilter === 'all' || s.role === roleFilter) &&
       (!searchQ || s.name.toLowerCase().includes(searchQ.toLowerCase()) || s.email?.toLowerCase().includes(searchQ.toLowerCase()))
     ),

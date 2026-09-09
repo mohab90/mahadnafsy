@@ -19,6 +19,14 @@ function getLast6Months() {
   return ms;
 }
 
+// Who staffs the online operation. This used to name online_manager, support
+// and consultant — and the institute has one of the first and none of the other
+// two, so the screen showed a single row while the collection desk that works
+// the pipeline every day was left out.
+const ONLINE_ROLES = new Set([
+  'online_manager', 'collection', 'sales_collection_manager', 'support', 'consultant',
+]);
+
 export default function OnlineTeamMgmtTab() {
   const { staffMembers, subscribers, leads, courses } = useSiteData();
   const months = useMemo(getLast6Months, []);
@@ -26,8 +34,8 @@ export default function OnlineTeamMgmtTab() {
   const onlineLeads = useMemo(() => leads.filter(lead => isOnlineBranch(lead.branch)), [leads]);
 
   const onlineTeam = useMemo(() =>
-    staffMembers.filter(s => s.status === 'active' &&
-      ['online_manager', 'support', 'consultant'].includes(s.role)),
+    staffMembers.filter(s => s.status === 'active'
+      && ONLINE_ROLES.has(String(s.role || '').toLowerCase())),
     [staffMembers]
   );
 

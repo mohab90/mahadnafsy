@@ -558,8 +558,12 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // The company-wide overview, not a personal home page — every employee has
   // view_dashboard, so mapping it there put the whole الإدارة group in every
   // staff member's sidebar. Personal landing pages are staff_home / my_hr.
-  overview:           'view_reports',
-  kpi_dashboard:      'view_reports',
+  // Institute-wide money and targets. GET /api/admin/kpi/summary is
+  // requireAdmin and the overview's collection target comes from
+  // /api/admin/sales-targets — an HR manager holds view_reports for HR's own
+  // reports and was shown both, then refused by the server.
+  overview:           'view_financial',
+  kpi_dashboard:      'view_financial',
   analytics:          'view_reports',
   ask_ai:             'ask_ai',
   ai_dev:             'ai_dev',
@@ -624,12 +628,12 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   enps_dashboard:      'view_hr',
   offboarding:         'manage_hr',
   activity:           'view_activity',
-  staff_performance:  'view_reports',
-  sales_team:         'view_staff',
-  sales_reports:      'view_reports',
+  staff_performance:  'view_leads',
+  sales_team:         'view_leads',
+  sales_reports:      'view_leads',
   // Writing targets is a manager action (see POST /api/admin/sales-targets):
   // matched to the API gate so a sales rep doesn't see a tab that 403s.
-  online_team:        'view_staff',
+  online_team:        'view_subscribers',
   subscriptions:     'view_financial',
   consultation_calendar: 'view_consultations',
   automation:         'manage_automation',
@@ -643,14 +647,14 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // The security dashboard, the IP allowlist, the server monitor and the
   // database migration in one entry — see SECURITY_SECTIONS for the gate each
   // section keeps, which for the last two is stricter than this list.
-  security_center:    ['view_security', 'manage_security', 'manage_staff'],
+  security_center:    ['view_security', 'manage_security'],
   // The four analyses and the four campaign channels were each uniform, so
   // these keep the single permission every one of them already had.
   analytics_hub:      'view_reports',
   campaigns:          'manage_channel_settings',
   // Sales planning is the mixed one: follow-ups on view_leads, scoring on
   // manage_leads, the forecast on view_reports and targets on manage_sales_team.
-  sales_planning:     ['view_leads', 'manage_leads', 'view_reports', 'manage_sales_team'],
+  sales_planning:     ['view_leads', 'manage_leads', 'manage_sales_team'],
   // Managing the notification inbox is a marketing/ops tool, not something every
   // employee who can receive notifications should see — manage_notifications is
   // held by sales reps and support, which would have put the whole التسويق group

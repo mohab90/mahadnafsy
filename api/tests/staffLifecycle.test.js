@@ -76,20 +76,34 @@ test('a create that fails says why', () => {
   assert.match(create, /ER_DUP_ENTRY/);
 });
 
-test('the two calls behind "add employee" are reported apart', () => {
-  // POST /admin/staff needs manage_staff; POST /admin/staff-account is super
-  // admin only. An HR manager created the row, had the login refused, and was
-  // told the whole thing failed — while the employee existed.
+test('onboarding an employee with a login is an HR action, not an owner-only one', () => {
+  // Both calls behind "add employee" now need manage_staff. Requiring the owner
+  // for the login is what broke the flow: HR created the staff row, the login
+  // was refused, and nothing could finish it — and hiding the password field
+  // made it worse, because the form still demanded one it no longer offered.
   const auth = read('api/routes/auth.js');
-  assert.match(auth, /router\.post\('\/api\/admin\/staff-account', requireAuth, requireSuperAdmin/);
+  assert.match(auth, /router\.post\('\/api\/admin\/staff-account', requireAuth, requireAdminOrStaff, requirePermission\('manage_staff'\)/);
   assert.match(route, /router\.post\('\/api\/admin\/staff', requireAuth, requireAdminOrStaff, requirePermission\('manage_staff'\)/);
+
+  // Under the same escalation guard the staff row already carries: manage_staff
+  // is the right to onboard staff, not to mint an account that can take the
+  // tenant over.
+  assert.match(auth, /OWNER_REQUIRED_FOR_PRIVILEGED_ROLE/);
+  assert.match(auth, /\['ADMIN', 'MANAGER'\]\.includes\(requestedRole\)/);
 
   const tab = codeOnly(read('admin/pages/dashboard/tabs/HRTab.tsx'));
   assert.match(tab, /تم إنشاء \$\{result\.name\} لكن حساب الدخول اتفض/,
     'a created employee with no login is not a failed creation');
-  assert.match(tab, /canCreateLogin=\{isAdmin\}/,
-    'and the password field is not offered to someone who cannot use it');
+  assert.match(tab, /canCreateLogin=\{canAddStaff\}/,
+    'the field is offered to exactly the people who can complete it');
+});
 
+test('the form never demands a password it does not offer', () => {
   const modal = codeOnly(read('admin/pages/dashboard/tabs/hr-sections/StaffOnboardModal.tsx'));
   assert.match(modal, /canCreateLogin \? '' : 'hidden'/);
+  // The warning «لازم تحدد كلمة مرور» appeared whether or not the field was
+  // shown, so someone without the field was told to do something impossible.
+  assert.match(modal, /\{canCreateLogin && form\.activate && !form\.password && \(/);
+  assert.match(modal, /الموظف هيتسجل من غير حساب دخول/,
+    'and when it is hidden, the form says what will happen instead');
 });

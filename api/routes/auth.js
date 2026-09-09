@@ -22,7 +22,7 @@ const {
 } = require('../lib/token');
 const {
   ADMIN_EMAILS, ADMIN_UIDS, requireAuth, requireAdmin, requireSuperAdmin,
-  requireAdminOrOnlineManager, invalidateIdentity,
+  requireAdminOrOnlineManager, requireAdminOrStaff, requirePermission, invalidateIdentity,
 } = require('../middleware/auth');
 const { registerLimiter, loginLimiter, otpLimiter, forgotPasswordLimiter, bulkOperationLimiter } = require('../middleware/rateLimits');
 const { isString, isEmail, validateBody } = require('../middleware/validate');
@@ -278,7 +278,7 @@ router.post('/api/user/signup', registerLimiter, requireDb, requireTenantQuota('
 
 // POST /api/admin/staff-account — create login account for a staff member (admin only)
 // Creates the user in `users` table + inserts/updates `staff` table
-router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin, requireTenantQuota('staff'),
+router.post('/api/admin/staff-account', requireAuth, requireAdminOrStaff, requirePermission('manage_staff'), requireTenantQuota('staff'),
   validateBody({
     email:    v => isEmail(v)            || 'Email address is invalid',
     password: v => isString(v, 200) && (v || '').length >= 8 || 'Password must be at least 8 characters',
@@ -286,6 +286,18 @@ router.post('/api/admin/staff-account', requireAuth, requireSuperAdmin, requireT
   }),
   async (req, res) => {
   const { email, password, name, phone, role, staffId } = req.body || {};
+
+  // The same guard POST /api/admin/staff carries: manage_staff is the right to
+  // onboard staff, not the right to create an account that can take the tenant
+  // over. Checked before any connection is taken.
+  const requestedRole = String(role || 'other').toUpperCase();
+  if (!req.isSuperAdmin && ['ADMIN', 'MANAGER'].includes(requestedRole)) {
+    return res.status(403).json({
+      error: 'إنشاء حساب دخول بصلاحية مدير أو أدمن يحتاج صلاحية المالك',
+      code: 'OWNER_REQUIRED_FOR_PRIVILEGED_ROLE',
+    });
+  }
+
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {

@@ -232,9 +232,14 @@ export default function StaffOnboardModal({
             تنشيط الحساب فورًا
             <span className="text-xs font-normal text-gray-400">(بدون تنشيط لن يستطيع الدخول)</span>
           </label>
-          {form.activate && !form.password && (
+          {canCreateLogin && form.activate && !form.password && (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
               لازم تحدد كلمة مرور عشان الموظف يقدر يدخل فعلًا.
+            </p>
+          )}
+          {!canCreateLogin && form.activate && (
+            <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-bold text-sky-800">
+              الموظف هيتسجل من غير حساب دخول — محتاج المالك يعمله حساب بعد كده.
             </p>
           )}
 

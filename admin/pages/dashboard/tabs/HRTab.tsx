@@ -438,7 +438,7 @@ const HrTab: React.FC<Props> = ({ notify }) => {
         submitLabel="إنشاء الموظف"
         onClose={() => setShowAddStaff(false)}
         notify={notify}
-        canCreateLogin={isAdmin}
+        canCreateLogin={canAddStaff}
         onSubmit={async (result: OnboardResult) => {
           // Two writes on purpose: the staff row, then the login. Creating the
           // login is optional — a record can exist before the person has
