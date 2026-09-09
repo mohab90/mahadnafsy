@@ -122,7 +122,19 @@ export function parseContentSections(raw: Record<string, string>): Partial<Recor
 
   let cpMap: Record<string, { egyptianEGP?: number; residentEGP?: number; residentSAR?: number; foreignUSD?: number }> = {};
   try { cpMap = JSON.parse(raw['extra_cert_pricing'] || '{}'); } catch {}
-  const cert_pricing: CertItem[] = CERT_TYPES.map(ct => ({
+  // The saved map decides which certificates exist; CERT_TYPES only seeds the
+  // list before anything has been saved. Built from the constant, this screen
+  // could not show a custom type and could not honour a deleted default.
+  const savedCertKeys = Object.keys(cpMap);
+  const cert_pricing: CertItem[] = (savedCertKeys.length
+    ? savedCertKeys.map(type => ({
+      type,
+      label: String((cpMap[type] as { label?: string })?.label || '').trim()
+        || CERT_TYPES.find(ct => ct.type === type)?.label
+        || type,
+    }))
+    : CERT_TYPES.map(ct => ({ type: ct.type, label: ct.label }))
+  ).map(ct => ({
     type: ct.type, label: ct.label,
     egyptianEGP:  cpMap[ct.type]?.egyptianEGP  || 0,
     residentEGP:  cpMap[ct.type]?.residentEGP  || 0,
@@ -151,7 +163,11 @@ export function buildContentPatch(key: SectionKey, value: SectionData): Record<s
     case 'cert_pricing': {
       const map: Record<string, object> = {};
       (value as CertItem[]).forEach(c => {
-        map[c.type] = { egyptianEGP: c.egyptianEGP, residentEGP: c.residentEGP, residentSAR: c.residentSAR, foreignUSD: c.foreignUSD };
+        map[c.type] = {
+          label: c.label,
+          egyptianEGP: c.egyptianEGP, residentEGP: c.residentEGP,
+          residentSAR: c.residentSAR, foreignUSD: c.foreignUSD,
+        };
       });
       return { 'extra_cert_pricing': JSON.stringify(map) };
     }

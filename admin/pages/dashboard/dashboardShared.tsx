@@ -237,7 +237,13 @@ const LEAD_STATUS_CFG: Record<LeadStatus, { label: string; color: string; colCol
 };
 
 // ── Cert Pricing sub-component (extracted to avoid hooks-in-IIFE rule violation) ──
-type CertPricingMap = Record<string, { egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number }>;
+// The name belongs with the prices. Without it the map could only say what a
+// certificate costs, never what it is called — so every custom type came back
+// as its own code.
+type CertPricingMap = Record<string, {
+  label?: string;
+  egyptianEGP: number; residentEGP: number; residentSAR: number; foreignUSD: number;
+}>;
 
 function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
   certPricingMap: CertPricingMap;
@@ -256,11 +262,24 @@ function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
     { key: 'other', label: 'شهادة أخرى' },
   ];
 
-  // Build initial type list: defaults + any extra keys from saved map
-  const buildTypes = (map: CertPricingMap) => {
-    const base = DEFAULT_CERT_TYPES.map(t => t.key);
-    const extra = Object.keys(map).filter(k => !base.includes(k)).map(k => ({ key: k, label: k }));
-    return [...DEFAULT_CERT_TYPES, ...extra];
+  // The saved map is the list. It used to be "the eight defaults, plus the
+  // map's extra keys", which meant deleting a default could not stick — it was
+  // put back on every read — and a custom type's name was replaced by its code,
+  // because the name was never in the map to begin with.
+  //
+  // The defaults seed the list only when nothing has been saved yet.
+  const buildTypes = (map: CertPricingMap): { key: string; label: string }[] => {
+    const keys = Object.keys(map || {});
+    if (!keys.length) return DEFAULT_CERT_TYPES;
+    return keys.map(key => ({
+      key,
+      // The name as saved; for a default that predates labels being stored, its
+      // own Arabic name; and only then the code, which is what every custom
+      // type was reduced to.
+      label: String((map[key] as { label?: string })?.label || '').trim()
+        || DEFAULT_CERT_TYPES.find(d => d.key === key)?.label
+        || key,
+    }));
   };
 
   const [certTypes, setCertTypes] = React.useState(() => buildTypes(certPricingMap));
@@ -321,7 +340,13 @@ function CertPricingTab({ certPricingMap, saveCertPricingMap, notify }: {
           onClick={() => {
             // Only save types that are in current certTypes list
             const mapToSave: CertPricingMap = {};
-            certTypes.forEach(t => { mapToSave[t.key] = localMap[t.key] || { egyptianEGP: 0, residentEGP: 0, residentSAR: 0, foreignUSD: 0 }; });
+            certTypes.forEach(t => {
+              mapToSave[t.key] = {
+                ...(localMap[t.key] || { egyptianEGP: 0, residentEGP: 0, residentSAR: 0, foreignUSD: 0 }),
+                // Stored with the prices so the name survives the round trip.
+                label: t.label,
+              };
+            });
             saveCertPricingMap(mapToSave);
             notify('success', 'تم حفظ الأسعار بنجاح.');
           }}
