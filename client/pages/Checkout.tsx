@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Check, AlertCircle, LogIn, MessageCircle, Banknote, Loader2, CreditCard } from 'lucide-react';
 import { useSiteData } from '../context/SiteDataContext';
-import { usePaymentAvailability } from '../lib/usePaymentAvailability';
+import { usePaymentAvailability, useManualPaymentMethods } from '../lib/usePaymentAvailability';
+import { paymentMethodLabel } from '../../shared/paymentMethods';
 import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
 import { toDialable } from '../lib/whatsappLink';
@@ -48,6 +49,12 @@ const Checkout: React.FC = () => {
   // Whether cards can actually be taken right now, asked of the server rather
   // than assumed. Null while unknown, so neither claim is made until it lands.
   const onlinePayEnabled = usePaymentAvailability();
+  // The channels the institute actually takes, from الإعدادات ← وسائل الدفع.
+  // This list was four hardcoded Arabic strings, so an admin could tick a
+  // channel off and the customer would still be offered it — and the value it
+  // sent was that Arabic label, while /my-account sent a code for the same
+  // channel. One vocabulary now: the code travels, Arabic is the label.
+  const manualMethods = useManualPaymentMethods();
   const [cardRedirecting, setCardRedirecting] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState('');
@@ -60,7 +67,7 @@ const Checkout: React.FC = () => {
   const [serverPlanTotal, setServerPlanTotal] = useState<number | null>(null);
   // Self-service receipt upload (after order is placed)
   const [proofImage, setProofImage] = useState('');
-  const [proofMethod, setProofMethod] = useState('انستا باي');
+  const [proofMethod, setProofMethod] = useState('');
   const [proofSubmitting, setProofSubmitting] = useState(false);
   const [proofDone, setProofDone] = useState(false);
   const [proofError, setProofError] = useState('');
@@ -299,7 +306,10 @@ const Checkout: React.FC = () => {
         body: JSON.stringify({
           order_id: orderId,
           payment_intent_id: intent.id,
-          payment_method: proofMethod, proof_image: proofImage,
+          // Matches the select's own fallback, so the value sent is the one the
+          // customer was looking at rather than an empty string.
+          payment_method: proofMethod || manualMethods[0] || 'other',
+          proof_image: proofImage,
           note: `طلب ذاتي: ${itemTitle}`,
         }),
       });
@@ -428,9 +438,10 @@ const Checkout: React.FC = () => {
 
                       {/* Receipt upload */}
                       <label className="block text-xs font-semibold text-gray-600 mb-1">طريقة الدفع</label>
-                      <select value={proofMethod} onChange={e => setProofMethod(e.target.value)}
+                      <select value={proofMethod || manualMethods[0] || ''} onChange={e => setProofMethod(e.target.value)}
                         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-3">
-                        {['انستا باي', 'فودافون كاش', 'تحويل بنكي', 'اخرى'].map(m => <option key={m} value={m}>{m}</option>)}
+                        {manualMethods.map(m => <option key={m} value={m}>{paymentMethodLabel(m)}</option>)}
+                        <option value="other">{paymentMethodLabel('other')}</option>
                       </select>
                       <label className="block text-xs font-semibold text-gray-600 mb-1">صورة الإيصال</label>
                       <input type="file" accept="image/*" onChange={e => onProofFile(e.target.files?.[0])}
@@ -502,7 +513,10 @@ const Checkout: React.FC = () => {
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm text-blue-800 space-y-1">
                         <p className="font-bold flex items-center gap-1"><Banknote size={15}/> طرق الدفع المتاحة:</p>
                         {onlinePayEnabled && <p>• بطاقة بنكية أو محفظة إلكترونية — الوصول يُفعَّل فوراً</p>}
-                        <p>• تحويل بنكي / إنستاباي / فودافون كاش</p>
+                        {/* Listed what the institute takes regardless of what it
+                            had been configured to take. Same source as the
+                            receipt picker below, so the two cannot disagree. */}
+                        <p>• {manualMethods.map(m => paymentMethodLabel(m)).join(' / ')}</p>
                         <p>• بعد إرسال الطلب سنرسل لك تفاصيل الحساب</p>
                       </div>
 

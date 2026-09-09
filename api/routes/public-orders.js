@@ -144,6 +144,32 @@ function buildBillingData(input = {}) {
   };
 }
 
+/**
+ * Which manual channels the institute takes, for the customer screens.
+ *
+ * The admin edits this in الإعدادات ← وسائل الدفع, it is stored under
+ * manual.supported_methods, and until now nothing customer-facing read it:
+ * /checkout and /my-account each hardcoded their own list, in two different
+ * vocabularies. Ticking a channel off changed nothing anyone could see.
+ *
+ * An empty stored list means the section has never been configured, not that
+ * the institute refuses transfers — which is how most of its money arrives —
+ * so it falls back to the defaults rather than leaving a customer with no way
+ * to say how they paid. `manual.methods` is read too: it is the key
+ * DEFAULT_PAYMENT_GATEWAY in lib/saasSettings.js seeds, and the merge leaves
+ * both spellings on the stored object.
+ */
+function manualMethodsFor(config) {
+  const manual = config?.manual || {};
+  const stored = Array.isArray(manual.supported_methods) ? manual.supported_methods
+    : Array.isArray(manual.methods) ? manual.methods : [];
+  const known = ['cash', 'instapay', 'bank_transfer', 'vodafone_cash'];
+  const clean = [...new Set(stored
+    .map(entry => String(entry || '').trim().toLowerCase())
+    .filter(entry => known.includes(entry)))];
+  return clean.length ? clean : ['instapay', 'bank_transfer', 'vodafone_cash'];
+}
+
 // GET /api/public/payment-availability — can a visitor pay online right now?
 // The customer-facing pages carried a hardcoded "الدفع الإلكتروني متوقف مؤقتاً"
 // notice, so they told every customer online payment was off even once the
@@ -158,12 +184,18 @@ router.get('/api/public/payment-availability', publicLimiter, async (req, res) =
       online: paymobReady(config),
       provider: paymobReady(config) ? 'paymob' : null,
       mode: config?.mode || 'sandbox',
+      manualMethods: manualMethodsFor(config),
     });
   } catch (e) {
     // A settings lookup that fails must not read as "we take cards" — fall
     // closed so the customer is offered the manual route that always works.
+    // Which is also why the manual channels fall *open* here: a lookup failure
+    // must not leave the only working payment path without a way to name it.
     logger.warn('[payment-availability]', e.message);
-    res.json({ online: false, provider: null, mode: 'sandbox' });
+    res.json({
+      online: false, provider: null, mode: 'sandbox',
+      manualMethods: manualMethodsFor(null),
+    });
   }
 });
 

@@ -1,7 +1,10 @@
 import { Camera, Calendar, CheckCircle, CreditCard, DollarSign, Loader2, Plus } from 'lucide-react';
 import type React from 'react';
+import { useEffect } from 'react';
 
 import type { Course, PaymentProof, SubscriberItem } from '../../types';
+import { paymentMethodLabel } from '../../../shared/paymentMethods';
+import { useManualPaymentMethods } from '../../lib/usePaymentAvailability';
 
 type CoursePaymentSummary = {
   paidEGP: number;
@@ -9,7 +12,11 @@ type CoursePaymentSummary = {
 };
 
 type ProofCurrency = 'EGP' | 'SAR' | 'USD';
-type ProofMethod = 'instapay' | 'bank_transfer' | 'vodafone_cash' | 'fawry' | 'other';
+// The five choices this screen offered were hardcoded here, /checkout hardcoded
+// four Arabic labels of its own, and the admin's «طرق الدفع اليدوي المتاحة
+// للعميل» setting reached neither. The channels now come from that setting, so
+// the type is whatever it holds rather than a list that has to be kept in step.
+type ProofMethod = string;
 
 type InstallmentModalState = {
   courseId: string;
@@ -84,6 +91,15 @@ export function StudentPaymentsTab({
   handleProofImageChange,
   handleSubmitProof,
 }: Props) {
+  // Asked for here rather than threaded through UserDashboard: this is the only
+  // component that renders the picker, and the answer is cached per page load.
+  const manualMethods = useManualPaymentMethods();
+  // The picker highlights the first configured channel before anyone clicks;
+  // this makes the submitted value the one being looked at, rather than an
+  // empty string the server would silently turn into 'instapay'.
+  useEffect(() => {
+    if (!proofMethod && manualMethods.length) setProofMethod(manualMethods[0]);
+  }, [proofMethod, manualMethods, setProofMethod]);
   const history = subscriber?.paymentHistory ?? [];
   // status is undefined/missing for older rows written before the field
   // existed — treat that the same as 'paid' (backward compat); only exclude
@@ -98,7 +114,10 @@ export function StudentPaymentsTab({
   const methodMap: Record<string, number> = {};
 
   paidHistory.filter(payment => payment.currency === 'EGP').forEach(payment => {
-    const method = payment.paymentMethod || 'غير محدد';
+    // Grouped on the raw stored value, so a customer who paid once from
+    // /checkout and once from here saw «انستا باي» and a bare `instapay` listed
+    // as two different channels. Both spellings resolve to one label now.
+    const method = paymentMethodLabel(payment.paymentMethod) || 'غير محدد';
     methodMap[method] = (methodMap[method] || 0) + payment.amount;
   });
   const methodEntries = Object.entries(methodMap).sort((a, b) => b[1] - a[1]);
@@ -276,7 +295,7 @@ export function StudentPaymentsTab({
             {history.slice().reverse().map(payment => (
               <tr key={payment.id} className="border-b border-gray-50 transition hover:bg-gray-50">
                 <td className="whitespace-nowrap px-4 py-3 font-bold text-primary-700">{payment.amount.toLocaleString()} {moneySuffix(payment.currency)}</td>
-                <td className="px-4 py-3 text-xs text-gray-600">{payment.paymentMethod || <span className="text-gray-300">-</span>}</td>
+                <td className="px-4 py-3 text-xs text-gray-600">{paymentMethodLabel(payment.paymentMethod) || <span className="text-gray-300">-</span>}</td>
                 <td className="px-4 py-3">
                   <PaymentTypeBadge paymentType={payment.paymentType} isInstallment={payment.isInstallment} />
                 </td>
@@ -330,15 +349,9 @@ export function StudentPaymentsTab({
             <div>
               <label className="mb-1 block text-xs font-bold text-gray-600">طريقة الدفع</label>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {([
-                  { val: 'instapay', label: 'انستا باي' },
-                  { val: 'bank_transfer', label: 'تحويل بنكي' },
-                  { val: 'vodafone_cash', label: 'فودافون كاش' },
-                  { val: 'fawry', label: 'فوري' },
-                  { val: 'other', label: 'أخرى' },
-                ] as const).map(method => (
-                  <button key={method.val} type="button" onClick={() => setProofMethod(method.val)} className={`rounded-lg border-2 py-1.5 text-xs font-medium transition ${proofMethod === method.val ? 'border-emerald-500 bg-white text-emerald-700' : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200'}`}>
-                    {method.label}
+                {[...manualMethods, 'other'].map(method => (
+                  <button key={method} type="button" onClick={() => setProofMethod(method)} className={`rounded-lg border-2 py-1.5 text-xs font-medium transition ${(proofMethod || manualMethods[0]) === method ? 'border-emerald-500 bg-white text-emerald-700' : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200'}`}>
+                    {paymentMethodLabel(method)}
                   </button>
                 ))}
               </div>
@@ -429,7 +442,7 @@ function SubmittedProofs({ proofsLoaded, myProofs, loadMyProofs }: { proofsLoade
         <div key={proof.id} className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2.5 text-xs">
           <div className="min-w-0 flex-1">
             <p className="font-bold text-gray-700">{proof.amount.toLocaleString()} {moneySuffix(proof.currency)}</p>
-            <p className="truncate text-gray-400">{proof.payment_method} · {proof.submitted_at.slice(0, 10)}{proof.note ? ` · ${proof.note}` : ''}</p>
+            <p className="truncate text-gray-400">{paymentMethodLabel(proof.payment_method)} · {proof.submitted_at.slice(0, 10)}{proof.note ? ` · ${proof.note}` : ''}</p>
             {proof.reviewer_note && proof.status !== 'PENDING' && (
               <p className="mt-0.5 text-gray-500">رد الإدارة: {proof.reviewer_note}</p>
             )}

@@ -6,7 +6,12 @@ const { getTenantSetting } = require('./tenantSettings');
 const DEFAULT_PAYMENT_GATEWAY = {
   active_provider: 'manual',
   mode: 'sandbox',
-  manual: { enabled: true, instructions: '', methods: ['bank_transfer', 'vodafone_cash', 'instapay'] },
+  // supported_methods, not methods: that is the key the settings screen reads
+  // and writes, and the key routes/misc/_shared.js declares for the section.
+  // Under the old spelling the merge left both on the stored object, so a
+  // reader that happened to pick `methods` got this frozen default forever and
+  // never saw a single thing the admin had ticked.
+  manual: { enabled: true, instructions: '', supported_methods: ['bank_transfer', 'vodafone_cash', 'instapay'] },
   paymob: {
     enabled: false,
     merchant_id: '',

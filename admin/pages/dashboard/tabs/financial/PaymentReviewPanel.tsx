@@ -8,6 +8,7 @@ import { paymentOrigin, PAYMENT_ORIGIN, PAYMENT_ORIGIN_CLASS } from '../../../..
 import { cairoDateOnly } from '../../../../lib/cairoDate';
 import { useStaticData } from '../../../../context/siteDataSlices';
 import { parsePaymentMethods } from '../../../../lib/paymentMethods';
+import { paymentMethodLabel } from '../../../../../shared/paymentMethods';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -277,7 +278,7 @@ export function PaymentReviewPanel({ notify, branchFilter, subscribers, reloadSu
                     {p.amount.toLocaleString('ar-EG-u-nu-latn')} <span className="text-xs font-normal text-gray-500">{p.currency}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-xs text-gray-700">{p.paymentMethod || '—'}</div>
+                    <div className="text-xs text-gray-700">{paymentMethodLabel(p.paymentMethod) || '—'}</div>
                     {p.fromAccountNumber && <div className="text-[11px] text-gray-400 font-mono">{p.fromAccountNumber}</div>}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{p.staffName || '—'}</td>

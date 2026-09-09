@@ -146,7 +146,11 @@ const UserDashboard: React.FC = () => {
   const [showProofForm, setShowProofForm] = useState(false);
   const [proofAmount, setProofAmount] = useState('');
   const [proofCurrency, setProofCurrency] = useState<'EGP' | 'SAR' | 'USD'>('EGP');
-  const [proofMethod, setProofMethod] = useState<'instapay' | 'bank_transfer' | 'vodafone_cash' | 'fawry' | 'other'>('instapay');
+  // Which channels exist is the admin's setting, read by the tab that renders
+  // the picker; this only carries the customer's pick. It was a fixed union
+  // that had to be kept in step with a second hardcoded list on /checkout, and
+  // was not.
+  const [proofMethod, setProofMethod] = useState('');
   const [proofCourseId, setProofCourseId] = useState('');
   const [proofNote, setProofNote] = useState('');
   const [proofImage, setProofImage] = useState<string | null>(null);

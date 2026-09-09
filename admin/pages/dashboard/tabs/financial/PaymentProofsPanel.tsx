@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle, Clock, Eye, Receipt, RefreshCw, XCircle } from 'lucide-react';
 import type { PaymentProof } from '../../../../types';
+import { paymentMethodLabel } from '../../../../../shared/paymentMethods';
 
 type ProofFilter = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
 
@@ -142,7 +143,7 @@ export function PaymentProofsPanel({
                         <td className="p-3 font-extrabold text-emerald-700">
                           {Number(proof.amount || 0).toLocaleString()} {currencyLabel(proof.currency)}
                         </td>
-                        <td className="p-3 text-xs text-gray-600">{proof.payment_method || '-'}</td>
+                        <td className="p-3 text-xs text-gray-600">{paymentMethodLabel(proof.payment_method) || '-'}</td>
                         <td className="p-3 text-xs text-primary-700">{proof.course_title || '-'}</td>
                         <td className="p-3">
                           <span className={`rounded-full px-2 py-1 text-xs font-bold ${STATUS_CLASS[proof.status] || STATUS_CLASS.PENDING}`}>
