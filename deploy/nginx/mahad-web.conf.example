@@ -11,6 +11,19 @@ server {
     ssl_certificate     /etc/ssl/mahad/fullchain.pem;
     ssl_certificate_key /etc/ssl/mahad/privkey.pem;
 
+    # Debian ships nginx.conf with "gzip on;" and every gzip_types line
+    # commented out, and nginx's own default type list is text/html alone — so
+    # the HTML compresses and the JavaScript and CSS it pulls do not. Measured
+    # on production before this was set: a first visit downloaded 579 KB of
+    # assets for the public site and 795 KB for the admin, against 154 KB and
+    # 223 KB compressed.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml application/manifest+json font/ttf font/otf;
+
     location /api/ {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
@@ -43,6 +56,19 @@ server {
 
     ssl_certificate     /etc/ssl/mahad/fullchain.pem;
     ssl_certificate_key /etc/ssl/mahad/privkey.pem;
+
+    # Debian ships nginx.conf with "gzip on;" and every gzip_types line
+    # commented out, and nginx's own default type list is text/html alone — so
+    # the HTML compresses and the JavaScript and CSS it pulls do not. Measured
+    # on production before this was set: a first visit downloaded 579 KB of
+    # assets for the public site and 795 KB for the admin, against 154 KB and
+    # 223 KB compressed.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml application/manifest+json font/ttf font/otf;
 
     location /api/ {
         proxy_set_header X-Forwarded-For $remote_addr;
