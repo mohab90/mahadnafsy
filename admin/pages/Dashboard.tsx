@@ -52,7 +52,8 @@ import {
   DashboardSalesFollowupPanel,
   OverviewTab,
 } from './dashboard/lazyDashboardComponents';
-import { DashboardMyWorkspace, isWorkspaceTab } from './dashboard/DashboardMyWorkspace';
+import { DashboardMyWorkspace, DashboardMyHr, isWorkspaceTab } from './dashboard/DashboardMyWorkspace';
+import { tabForUrl, urlForTab, urlToTabAlias } from './dashboard/tabUrlAliases';
 import { useDashboardBadges } from './dashboard/useDashboardBadges';
 import { useNotificationsBell } from './dashboard/useNotificationsBell';
 import { useStaffOwnData } from './dashboard/useStaffOwnData';
@@ -336,8 +337,8 @@ const Dashboard: React.FC = () => {
     if (['balance_sheet', 'cash_flow', 'budget_tracker', 'recurring_expenses'].includes(String(urlTab))) {
       navigate('/dashboard/financial_reports', { replace: true }); return;
     }
-    const resolved = urlTab === 'subscribers' ? 'online_clients' : urlTab;
-    if (resolved !== urlTab) { navigate(`/dashboard/online_clients`, { replace: true }); return; }
+    const resolved = tabForUrl(urlTab);
+    if (urlToTabAlias(urlTab) !== urlTab) { navigate(`/dashboard/${urlForTab(resolved)}`, { replace: true }); return; }
     if (resolved !== activeTabState) setActiveTabState(resolved as TabKey);
   }, [urlTab]);
 
@@ -351,7 +352,7 @@ const Dashboard: React.FC = () => {
   }, [isAdmin]);
   const setActiveTab = useCallback((tab: TabKey) => {
     setActiveTabState(tab);
-    navigate(`/dashboard/${tab}`);
+    navigate(`/dashboard/${urlForTab(tab)}`);
   }, [navigate]);
   const activeTab = activeTabState;
 
@@ -1077,7 +1078,8 @@ const Dashboard: React.FC = () => {
               </Suspense>
             )}
 
-            {/* ---- MY WORKSPACE: الرئيسية + ملفي الشخصي + ملفي الوظيفي ---- */}
+            {/* ---- ملفي الشخصي: the employee's own numbers and their own
+                 details, one page. ملفي الوظيفي is separate, below. ---- */}
             {isWorkspaceTab(activeTab) && currentStaff && (
               <Suspense fallback={<div className="flex items-center justify-center p-16"><span className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" /></div>}>
                 <DashboardMyWorkspace
@@ -1135,9 +1137,14 @@ const Dashboard: React.FC = () => {
                 users row without one — so «مساحتي» rendered nothing at all:
                 no message, no spinner, an empty page. Three tabs behaved that
                 way. A screen that cannot draw has to say why. */}
-            {isWorkspaceTab(activeTab) && !currentStaff && (
+            {/* ---- ملفي الوظيفي: contract, leave and payroll. Its own tab and
+                 its own URL — a different subject from the page above, with a
+                 different audience. ---- */}
+            {activeTab === 'my_hr' && currentStaff && <DashboardMyHr notify={notify} />}
+
+            {(isWorkspaceTab(activeTab) || activeTab === 'my_hr') && !currentStaff && (
               <div className="mx-auto max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center">
-                <h3 className="mb-2 text-base font-bold text-gray-900">مساحة الموظف غير متاحة لحسابك</h3>
+                <h3 className="mb-2 text-base font-bold text-gray-900">صفحات الموظف غير متاحة لحسابك</h3>
                 <p className="text-sm leading-relaxed text-gray-500">
                   الصفحات دي بتعرض ملفك الوظيفي وبياناتك كموظف، وحسابك الحالي مش مربوط بسجل موظف.
                   لو المفروض يكون مربوط، أضف السجل من الموارد البشرية ← الموظفين بنفس البريد.

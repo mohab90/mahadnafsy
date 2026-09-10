@@ -286,7 +286,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
 
   const { weeklyScorecard, smartRedistCandidates } = useLeadOpsInsights(leads, salesReps, smartIdleDays, crmInsights);
 
-  const { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads } = useLeadFilteringData({
+  const {
+    activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads,
+    matchesFilters,
+  } = useLeadFilteringData({
     effectiveLeads,
     leads,
     salesReps,
@@ -430,8 +433,10 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
       {/* ─── border separator under the top row ─── */}
       <div className="border-b border-gray-100 -mt-1" />
 
+      {/* The archive views render the same table with the same actions, so
+          they get the same controls — they had none at all. */}
       <LeadFilterBar
-        visible={subTab === 'pipeline' || subTab === 'table'}
+        visible={subTab === 'pipeline' || subTab === 'table' || ['archive', 'dawliOld', 'localNew'].includes(subTab)}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         isSalesOnly={isSalesOnly}
@@ -739,6 +744,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
         <LeadArchiveViews
           subTab={subTab}
           leads={leads}
+          matchesFilters={matchesFilters}
           staffMembers={staffMembers}
           addLead={addLead}
           updateLead={updateLead}

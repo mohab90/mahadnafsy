@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import type { StaffMember, StaffPermission } from '../../types';
 import { mysqlAdmin, mysqlAuth } from '../../lib/mysqlapi';
 import { ROLE_LABELS, PERMISSION_LABELS, ROLE_OPTIONS, ROLE_PRESETS, PERM_CATEGORIES, ACCESS_PREVIEW_TABS, ROLE_DEFAULT_PERMISSIONS } from './staffProfileConstants';
+import { ROLE_DATA_SCOPE } from '../../constants/permissions';
 
 const createStaffAccount = async (staff: StaffMember, password: string): Promise<void> => {
   await mysqlAdmin.createStaffAccount({ ...staff, staffId: staff.id, password } as unknown as Record<string, unknown>);
@@ -381,6 +382,31 @@ export default function StaffSettingsPanel({
                 through the single `role` column, so a hybrid job (HR lead who
                 also runs sales) got HR's scope — 'none' — and every sales
                 screen came back empty or 403. */}
+            {/* A permission that cannot return a row is worse than one that was
+                never granted: the tab appears, the screen opens, and it is
+                empty with nothing to explain why. That is what happens when an
+                HR employee is given the sales or online permissions — role 'hr'
+                carries scope 'none', so every query is scoped to nobody. Said
+                here, next to the control that fixes it. */}
+            {(() => {
+              const perms = draft.permissions || [];
+              const needsRows = ['view_leads', 'manage_leads', 'view_subscribers', 'manage_subscribers', 'view_client_db', 'view_orders', 'view_financial'];
+              const granted = needsRows.filter(p => perms.includes(p as StaffPermission));
+              const effectiveScope = draft.dataScope || ROLE_DATA_SCOPE[draft.role as keyof typeof ROLE_DATA_SCOPE] || 'none';
+              if (!granted.length || effectiveScope !== 'none') return null;
+              return (
+                <div className="px-6 py-4 border-b border-red-100 bg-red-50">
+                  <p className="text-[11px] font-bold text-red-700 mb-1">⚠️ الصلاحيات دي مش هتعرض أي بيانات</p>
+                  <p className="text-[11px] text-red-600 leading-relaxed">
+                    الموظف عنده {granted.length} صلاحية بتفتح شاشات عملاء، بس نطاق بياناته
+                    {draft.dataScope ? ' متظبط على ' : ' الافتراضي حسب وظيفة '}
+                    <strong>{draft.dataScope ? '«لا يرى أي داتا عملاء»' : (ROLE_LABELS[draft.role] || draft.role)}</strong>
+                    {draft.dataScope ? '' : ' هو «لا يرى أي داتا عملاء»'} — يعني التابات هتظهر له والصفحات هتفتح فاضية.
+                    اختار نطاق بيانات من تحت.
+                  </p>
+                </div>
+              );
+            })()}
             <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/50">
               <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wide mb-2">
                 🎯 نطاق البيانات — الصفوف اللي الموظف يشوفها فعلاً

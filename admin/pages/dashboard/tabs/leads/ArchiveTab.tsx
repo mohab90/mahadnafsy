@@ -101,8 +101,12 @@ export interface ArchiveTabProps {
    * to someone who could not open it before.
    */
   panels?: { import?: boolean; distribute?: boolean; data?: boolean };
+  /** What the shared filter bar is currently asking for. Applied on top of this
+   *  view's own source filter, so «محلي قديم» and «دولي» search, filter and sort
+   *  exactly like the table view does. */
+  matchesFilters?: (lead: LeadItem) => boolean;
 }
-export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels }: ArchiveTabProps) {
+export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLeads, notify, courses, bundles, navigate, deleteLead, addSubscriber, updateSubscriber, subscribers, salesReps, isSalesOnly, canManageLeads, onBook, branchOptions, sources, title = 'محلي قديم — الاستيراد والتعيين الجماعي', defaultSource = 'محلي قديم', customFilter, hideImport = false, panels, matchesFilters }: ArchiveTabProps) {
   const [archiveParsed, setArchiveParsed] = useState<Record<string, string>[]>([]);
   const [archiveParseErr, setArchiveParseErr] = useState('');
   const [archiveImporting, setArchiveImporting] = useState(false);
@@ -220,7 +224,10 @@ export function ArchiveTab({ leads, staffMembers, addLead, updateLead, reloadLea
     }
   };
 
-  const archiveLeads = leads.filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource));
+  // The view's own source filter, then whatever the filter bar is asking for.
+  const archiveLeads = leads
+    .filter(l => !l.hidden && (customFilter ? customFilter(l) : l.source === archiveSource))
+    .filter(l => (matchesFilters ? matchesFilters(l) : true));
   const totalArchivePages = Math.ceil(archiveLeads.length / ARCHIVE_PAGE_SIZE);
   // Narrow the pool to leads interested in one course before assigning. A rep
   // handed a mixed bag calls about whatever is on the row; a rep handed forty

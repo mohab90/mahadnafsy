@@ -270,6 +270,12 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_leads', 'manage_leads', 'export_leads', 'bulk_whatsapp',
     'view_subscribers',
     'view_orders',
+    // Mirrors api/constants/permissions.js — see the note there for why a rep
+    // can hold this without manage_financial. The two lists must stay
+    // identical; api/tests/permissionMatrixParity.test.js fails if they drift,
+    // because a menu built from one and a route guarded by the other is how a
+    // tab opens and the server refuses.
+    'manage_payments',
     'view_consultations',
     'manage_inbox', 'manage_notifications',
     'ask_ai',

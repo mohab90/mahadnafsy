@@ -32,9 +32,27 @@ const RANK_ICONS = [Trophy, Award, Star];
 const RANK_COLORS = ['text-yellow-500', 'text-slate-400', 'text-amber-600'];
 
 export default function StaffPerformanceTab() {
-  const { staffMembers, leads, orders } = useSiteData();
+  const { staffMembers, leads, orders, authUser, isAdmin } = useSiteData();
   const [range, setRange] = useState<TimeRange>('month');
   const [roleFilter, setRoleFilter] = useState('all');
+
+  // Whose rows to draw.
+  //
+  // This screen is «إحصائياتي» in the sales and collection bars and «أداء
+  // الموظفين» in the management menu — one screen, two audiences. The bars used
+  // to point at `overview`, which is gated on view_financial, so a rep clicking
+  // their own statistics got «غير مصرح بالوصول»; view_leads opens this one, and
+  // the server already returns only the leads they own.
+  //
+  // But the rows are built from the staff list, not from the aggregate — so
+  // without this a rep would see every colleague listed at zero, which is both
+  // a roster they should not have and a set of numbers that are not true.
+  const myStaffId = useMemo(() => {
+    const email = String(authUser?.email || '').toLowerCase().trim();
+    if (!email) return '';
+    return staffMembers.find(s => String(s.email || '').toLowerCase().trim() === email)?.id || '';
+  }, [authUser?.email, staffMembers]);
+  const selfOnly = !isAdmin && Boolean(myStaffId);
 
   // Per-rep lead counts from the database. The range boundary is computed here,
   // where the range labels are defined, and sent as a plain date — the server
@@ -57,8 +75,10 @@ export default function StaffPerformanceTab() {
 
   const frontlineRoles = ['sales', 'collection', 'support', 'consultant', 'online_manager', 'sales_collection_manager'];
   const staff = useMemo(() =>
-    staffMembers.filter(s => s.status === 'active' && (roleFilter === 'all' || s.role === roleFilter)),
-    [staffMembers, roleFilter]
+    staffMembers.filter(s =>
+      s.status === 'active'
+      && (selfOnly ? s.id === myStaffId : roleFilter === 'all' || s.role === roleFilter)),
+    [staffMembers, roleFilter, selfOnly, myStaffId]
   );
 
   const stats = useMemo(() => {
@@ -108,8 +128,12 @@ export default function StaffPerformanceTab() {
       <div className="bg-gradient-to-l from-indigo-600 to-violet-600 rounded-2xl p-5 text-white">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h2 className="text-xl font-bold flex items-center gap-2"><BarChart3 size={22} /> أداء فريق العمل</h2>
-            <p className="text-indigo-200 text-sm mt-1">تتبع أداء كل موظف — ليدات وتحويلات وإيرادات</p>
+            {/* One screen, two audiences: «إحصائياتي» in the sales and
+                collection bars, «أداء الموظفين» in the management menu. */}
+            <h2 className="text-xl font-bold flex items-center gap-2"><BarChart3 size={22} /> {selfOnly ? 'إحصائياتي' : 'أداء فريق العمل'}</h2>
+            <p className="text-indigo-200 text-sm mt-1">
+              {selfOnly ? 'أرقامك أنت — ليداتك وتحويلاتك وإيراداتك' : 'تتبع أداء كل موظف — ليدات وتحويلات وإيرادات'}
+            </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex gap-1 bg-white/10 rounded-xl p-1">
@@ -117,10 +141,13 @@ export default function StaffPerformanceTab() {
                 <button key={k} onClick={() => setRange(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${range === k ? 'bg-white text-indigo-700' : 'text-white hover:bg-white/20'}`}>{l}</button>
               ))}
             </div>
-            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="bg-white/20 text-white border-0 rounded-xl px-3 py-2 text-sm">
-              <option value="all" className="text-gray-800">كل الأدوار</option>
-              {roles.map(r => <option key={r} value={r} className="text-gray-800">{ROLE_LABEL[r] || r}</option>)}
-            </select>
+            {/* A role filter over a list of one is a control that does nothing. */}
+            {!selfOnly && (
+              <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="bg-white/20 text-white border-0 rounded-xl px-3 py-2 text-sm">
+                <option value="all" className="text-gray-800">كل الأدوار</option>
+                {roles.map(r => <option key={r} value={r} className="text-gray-800">{ROLE_LABEL[r] || r}</option>)}
+              </select>
+            )}
           </div>
         </div>
       </div>

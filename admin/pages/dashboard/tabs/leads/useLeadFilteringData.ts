@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { BranchOption } from '../../../../hooks/useBranches';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { DEFAULT_SOURCES, isOnlineSource } from '../crmConstants';
@@ -72,10 +72,14 @@ export function useLeadFilteringData({
     .map((staff) => ({ id: staff.id, name: staff.name }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ar')), [salesReps]);
 
-  const visibleLeads = useMemo(() => effectiveLeads.filter((lead) =>
-    (showHiddenLeads ? lead.hidden === true : !lead.hidden) &&
-    (isSalesOnly || !isOnlineSource(lead.source)) &&
-    !['converted', 'lost'].includes((lead.status || '').toLowerCase()) &&
+  // What the filter bar asks for, on its own.
+  //
+  // Kept separate from the three exclusions below it — hidden, online sources
+  // and converted/lost — because those belong to the pipeline and table views,
+  // not to the archive ones, which exist precisely to work through old
+  // converted data. Exported so «محلي قديم» and «دولي» can honour the same
+  // filters without a second copy of this predicate drifting from it.
+  const matchesFilters = useCallback((lead: LeadItem) => (
     (isSalesOnly || sourceFilter.size === 0 || sourceFilter.has(lead.source || '')) &&
     (isSalesOnly || assignFilter.size === 0 || (() => {
       if (assignFilter.has('__none__')) return !lead.assignedSalesId && !lead.assignedSalesName;
@@ -132,7 +136,14 @@ export function useLeadFilteringData({
       return lead.name.toLowerCase().includes(query) || phoneMatch || (lead.email || '').toLowerCase().includes(query)
         || (lead.notes || '').toLowerCase().includes(query);
     })())
-  ), [effectiveLeads, isSalesOnly, assignFilter, searchTerm, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus, showHiddenLeads, rottenFilter, salesSourceFilter, leadsFollowupFilter, instituteBranches]);
+  ), [isSalesOnly, assignFilter, searchTerm, tagFilter, sourceFilter, courseFilter, branchFilter, singleStatus, rottenFilter, salesSourceFilter, leadsFollowupFilter, instituteBranches]);
+
+  const visibleLeads = useMemo(() => effectiveLeads.filter((lead) =>
+    (showHiddenLeads ? lead.hidden === true : !lead.hidden) &&
+    (isSalesOnly || !isOnlineSource(lead.source)) &&
+    !['converted', 'lost'].includes((lead.status || '').toLowerCase()) &&
+    matchesFilters(lead)
+  ), [effectiveLeads, showHiddenLeads, isSalesOnly, matchesFilters]);
 
   const scoredLeads = useMemo(() =>
     [...visibleLeads]
@@ -160,5 +171,5 @@ export function useLeadFilteringData({
     return Array.from(new Set([...DEFAULT_SOURCES, ...fromLeads]));
   }, [effectiveLeads]);
 
-  return { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads, sourceOptions, today };
+  return { activeLead, assignedReps, visibleLeads, scoredLeads, activeStatusCols, overdueLeads, sourceOptions, today, matchesFilters };
 }

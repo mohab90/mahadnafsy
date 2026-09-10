@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { ROLE_PERMS } = require('../constants/permissions');
 const {
   resolveDepartment, defaultPriority, slaHoursFor, computeSlaDue, pickAssignee, CATEGORY_META,
   DEPARTMENT_ROLES,
@@ -77,15 +78,18 @@ test('staff and client replies persist timeline and outbox atomically', () => {
 
 test('support queues are department scoped and customer ownership follows canonical subscriber identity', () => {
   const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'support.js'), 'utf8');
-  const permissions = fs.readFileSync(path.join(__dirname, '..', 'constants', 'permissions.js'), 'utf8');
   const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'admin', 'pages', 'dashboard', 'tabs', 'TicketsTab.tsx'), 'utf8');
   assert.match(route, /const ticketScope =/);
   assert.match(route, /canAccessTicket\(req,/);
   assert.match(route, /findSubscriberForIdentity\(req\.tenantId, req\.user/);
   assert.match(route, /Staff role is not compatible with the ticket department/);
-  assert.match(permissions, /\[ROLES\.SALES\][\s\S]{0,500}'manage_inbox'/);
-  assert.match(permissions, /\[ROLES\.COLLECTION\][\s\S]{0,500}'manage_inbox'/);
-  assert.match(permissions, /\[ROLES\.ACCOUNTANT\][\s\S]{0,500}'manage_inbox'/);
+  // Asserted on the exported matrix rather than on the distance between two
+  // strings in its source: a comment added inside a role's list would push the
+  // token out of a character window and fail a matrix that is correct.
+  for (const role of ['sales', 'collection', 'accountant']) {
+    assert.ok(ROLE_PERMS[role].includes('manage_inbox'),
+      `${role} can no longer open the support queue`);
+  }
   assert.match(ui, /urgent: 2, high: 4, medium: 24, low: 72/);
   assert.match(ui, /closed_reason: closedReason/);
 });

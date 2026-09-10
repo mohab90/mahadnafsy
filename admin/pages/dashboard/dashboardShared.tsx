@@ -688,6 +688,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   enps_dashboard:      'view_hr',
   offboarding:         'manage_hr',
   activity:           'view_activity',
+  // view_leads alone, matching GET /api/admin/leads/staff-performance. Adding
+  // view_reports here to let the collection bar in would have put this tab in
+  // the HR sidebar as well — HR holds view_reports and not view_leads — where
+  // it opens onto a 403. The collection bar points at a screen it can open
+  // instead; see DashboardNavigation.
   staff_performance:  'view_leads',
   sales_team:         'view_leads',
   sales_reports:      'view_leads',

@@ -163,6 +163,16 @@ const ROLE_PERMS = Object.freeze({
     'view_leads', 'manage_leads', 'export_leads', 'bulk_whatsapp',
     'view_subscribers',
     'view_orders',
+    // Closing a lead and registering the money is the job. Without this,
+    // booking a client failed outright with "Permission denied: manage_payments"
+    // — the modal collected everything and the save was refused.
+    //
+    // Safe to hold without manage_financial, and deliberately so: the route
+    // stores a payment as PENDING for anyone who cannot approve one (see
+    // subscriber-payments.js, "Recording and approving money are separate
+    // responsibilities"), and orders.js refuses to let the employee who recorded
+    // an order confirm its own payment. A rep records; accounts approve.
+    'manage_payments',
     'view_consultations',
     'manage_inbox', 'manage_notifications',
     'ask_ai',

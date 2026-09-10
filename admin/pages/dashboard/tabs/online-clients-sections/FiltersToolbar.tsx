@@ -1,4 +1,5 @@
 import { Download, Eye, Search } from 'lucide-react';
+import { BRANCHES, BRANCH_LABELS_AR } from '../../../../constants/branches';
 import type { Bundle, Course, DaqqiRound, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
 
@@ -17,6 +18,10 @@ interface Props {
   housingMap: Map<string, HousingInfo>;
   daqqiReceptionFilter: string;
   setDaqqiReceptionFilter: (v: string) => void;
+  // عملائي spans every branch, so which one is a filter rather than a hidden
+  // exclusion. Empty means all of them.
+  clientBranchFilter: string;
+  setClientBranchFilter: (value: string) => void;
   collOnlineStatusFilter: string;
   setCollOnlineStatusFilter: (v: string) => void;
   collOnlineRemainingFilter: 'all'|'has_remaining'|'paid';
@@ -47,6 +52,7 @@ export function FiltersToolbar({
   isDaqqiClientsTab, collOnlineSearch, setCollOnlineSearch, setCollOnlinePage,
   daqqiHousingFilter, setDaqqiHousingFilter, daqqiRoundFilter, setDaqqiRoundFilter,
   salesOwnDaqqiRounds, housingMap, daqqiReceptionFilter, setDaqqiReceptionFilter,
+  clientBranchFilter, setClientBranchFilter,
   collOnlineStatusFilter, setCollOnlineStatusFilter, collOnlineRemainingFilter, setCollOnlineRemainingFilter,
   collOnlineCollectionFilter, setCollOnlineCollectionFilter, isOnlineManager, isAdmin,
   onlineTeamMembers, staffMembers, collOnlineCertFilter, setCollOnlineCertFilter,
@@ -93,6 +99,13 @@ export function FiltersToolbar({
             })()}
           </>
         )}
+        {!isDaqqiClientsTab && (
+          <select value={clientBranchFilter} onChange={e=>{setClientBranchFilter(e.target.value);setCollOnlinePage(1);}}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="الفرع">
+            <option value="">كل الفروع</option>
+            {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS_AR[b]}</option>)}
+          </select>
+        )}
         <select value={collOnlineStatusFilter} onChange={e=>{setCollOnlineStatusFilter(e.target.value);setCollOnlinePage(1);}}
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none">
           <option value="">كل الحالات</option>
@@ -135,8 +148,8 @@ export function FiltersToolbar({
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="من تاريخ" />
         <input type="date" value={collOnlineDateTo} onChange={e=>{setCollOnlineDateTo(e.target.value);setCollOnlinePage(1);}}
           className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" title="إلى تاريخ" />
-        {(collOnlineSearch||collOnlineStatusFilter||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
-          <button onClick={()=>{setCollOnlineSearch('');setCollOnlineStatusFilter('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
+        {(collOnlineSearch||clientBranchFilter||collOnlineStatusFilter||collOnlineRemainingFilter!=='all'||collOnlineCourseFilter||collOnlineDateFrom||collOnlineDateTo||collOnlineCollectionFilter||collOnlineCertFilter!=='all'||daqqiHousingFilter!=='all'||daqqiRoundFilter||daqqiReceptionFilter) && (
+          <button onClick={()=>{setCollOnlineSearch('');setClientBranchFilter('');setCollOnlineStatusFilter('');setCollOnlineRemainingFilter('all');setCollOnlineCourseFilter('');setCollOnlineDateFrom('');setCollOnlineDateTo('');setCollOnlineCollectionFilter('');setCollOnlineCertFilter('all');setDaqqiHousingFilter('all');setDaqqiRoundFilter('');setDaqqiReceptionFilter('');setCollOnlinePage(1);}}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 text-gray-500 hover:bg-gray-100">مسح الفلاتر</button>
         )}
         {/* ── Export CSV (للأونلاين فقط — الدقي في الإعدادات) ── */}

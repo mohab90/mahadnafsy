@@ -104,9 +104,15 @@ export default function OnlineClientsTab({
   const [collOnlineRemainingFilter, setCollOnlineRemainingFilter] = useState<'all'|'has_remaining'|'paid'>('all');
   const [collOnlineCourseFilter, setCollOnlineCourseFilter] = useState('');
   const [collOnlineVisibleCols, setCollOnlineVisibleCols] = useState<Record<string,boolean>>({
+    // branch: the list holds every branch now, so which one a client belongs to
+    // has to be readable on the row rather than implied by the tab you opened.
+    branch: true,
     courses: true, value: true, paid: true, remaining: true, installments: true,
     status: true, sales: true, followup: true, contact: true, createdAt: true, certificates: true,
   });
+  // Which branch to show. Empty means all of them, which is the point of the
+  // screen — عملائي is every client the employee is responsible for.
+  const [clientBranchFilter, setClientBranchFilter] = useState('');
   const [collOnlineColWidths, setCollOnlineColWidths] = useState<Record<string,number>>(() => {
     try { return JSON.parse(localStorage.getItem('collOnlineColWidths') || '{}'); } catch { return {}; }
   });
@@ -224,10 +230,18 @@ export default function OnlineClientsTab({
                 ? masterList.filter(s => branchMatchesFilter(s.branch, branchFilter))
                 : masterList;
               const mineSubsAll = branchScopedMasterList.filter(s => s.leadId && myCollLeadIds.has(s.leadId));
-              // For allOnline KPI tiles — subscribers with explicit online branch
+              // عملاء الدقي is the Daqqi desk and stays Daqqi-only. عملائي is
+              // every client the employee is responsible for, whichever branch
+              // they belong to — it used to exclude DAQQI outright, so a rep
+              // who had signed up a Daqqi client could not see them anywhere on
+              // their own screen. The branch is a column and a filter now
+              // instead of a hidden exclusion.
+              const branchFiltered = clientBranchFilter
+                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === clientBranchFilter)
+                : branchScopedMasterList;
               const allCombined = isDaqqiClientsTab
-                ? branchScopedMasterList.filter(s => normBranchId(s.branch) === 'DAQQI')
-                : branchScopedMasterList.filter(s => normBranchId(s.branch) !== 'DAQQI');
+                ? branchFiltered.filter(s => normBranchId(s.branch) === 'DAQQI')
+                : branchFiltered;
               // For local/intl real tabs, always draw from allCombined
               const tabFiltered =
                 collOnlineViewTab === 'real-local'      ? allCombined.filter(s => !isIntlSub(s)) :
@@ -407,6 +421,8 @@ export default function OnlineClientsTab({
                     housingMap={housingMap}
                     daqqiReceptionFilter={daqqiReceptionFilter}
                     setDaqqiReceptionFilter={setDaqqiReceptionFilter}
+                    clientBranchFilter={clientBranchFilter}
+                    setClientBranchFilter={setClientBranchFilter}
                     collOnlineStatusFilter={collOnlineStatusFilter}
                     setCollOnlineStatusFilter={setCollOnlineStatusFilter}
                     collOnlineRemainingFilter={collOnlineRemainingFilter}

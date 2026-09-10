@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, CalendarDays,
+  Activity, AlarmClock, Banknote, BarChart3, Bell, BookOpen, Briefcase, CalendarDays,
   ChevronDown, CreditCard, FileText, FolderKanban, Image, ListOrdered,
   LogOut, Monitor, RotateCcw, Shield, Tag, TrendingUp,
   UserCheck, UserCog, UserPlus, UserSearch, Users, Video, Wallet, MessageSquareText,
@@ -311,8 +311,9 @@ export function DashboardNavigation(props: Props) {
                   { key: 'leads', label: 'العملاء المحتملون', icon: UserPlus },
                   { key: 'online_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
-                  { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
+                  { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
+                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -332,7 +333,8 @@ export function DashboardNavigation(props: Props) {
                   { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
                   { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
+                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -351,8 +353,9 @@ export function DashboardNavigation(props: Props) {
                   { key: 'daqqi_clients', label: 'عملائي', icon: UserCheck },
                   { key: 'leads', label: 'العملاء المحتملين', icon: UserSearch },
                   { key: 'orders', label: 'مدفوعاتي', icon: CreditCard },
-                  { key: 'overview', label: 'إحصائياتي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
+                  { key: 'staff_performance', label: 'إحصائياتي', icon: BarChart3 },
+                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-primary-600 text-white shadow-md shadow-primary-200"
@@ -373,7 +376,8 @@ export function DashboardNavigation(props: Props) {
                   { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                   { key: 'daqqi_accounting', label: 'حسابات الدقي', icon: Wallet },
                   { key: 'daqqi_stats', label: 'إحصائيات فريق الدقي', icon: BarChart3 },
-                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
+                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-purple-600 text-white shadow-md shadow-purple-200"
@@ -397,7 +401,8 @@ export function DashboardNavigation(props: Props) {
                   { key: 'financial', label: 'التقارير المالية', icon: BarChart3 },
                   { key: 'activity', label: 'سجل النشاط', icon: Activity },
                   { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
-                  { key: 'staff_home', label: 'مساحتي', icon: UserCog },
+                  { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                 ]}
                 activeTab={activeTab} setActiveTab={setActiveTab}
                 activeButtonClass="bg-indigo-600 text-white shadow-md shadow-indigo-200"
@@ -422,7 +427,8 @@ export function DashboardNavigation(props: Props) {
                     { key: 'refund_requests', label: 'طلبات الاسترداد', icon: RotateCcw },
                     { key: 'orders', label: 'الطلبات والمدفوعات', icon: CreditCard },
                     { key: 'overview', label: 'إحصائيات', icon: BarChart3 },
-                    { key: 'staff_home', label: 'مساحتي', icon: UserCog },
+                    { key: 'staff_home', label: 'ملفي الشخصي', icon: UserCog },
+                  { key: 'my_hr', label: 'ملفي الوظيفي', icon: Briefcase },
                   ]}
                   activeTab={activeTab} setActiveTab={setActiveTab}
                   activeButtonClass="bg-emerald-600 text-white shadow-md shadow-emerald-200"
