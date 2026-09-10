@@ -213,21 +213,32 @@ export function DashboardNavigation(props: Props) {
                     <UserCheck size={15} />
                   </button>
                 )}
-                {/* One icon for the employee's own space. الرئيسية, ملفي الشخصي
-                    and ملفي الوظيفي are all about the person signed in, and
-                    three separate icons for one subject read as three unrelated
-                    places. They are sections inside the page now, so every tab
-                    key still resolves and old links still land. */}
+                {/* Two icons, two subjects. ملفي الشخصي is the person signed in —
+                    their numbers, their follow-ups and their details, one page.
+                    ملفي الوظيفي is contract, leave and payroll, which is a different
+                    thing with a different audience and has its own URL rather than
+                    living as a section inside the other. */}
                 <button
                   onClick={() => setActiveTab('staff_home')}
                   className={`w-8 h-8 rounded-xl grid place-items-center transition ${
-                    ['staff_home', 'staff_settings', 'my_hr'].includes(activeTab)
+                    ['staff_home', 'staff_settings'].includes(activeTab)
                       ? 'bg-indigo-600 text-white'
                       : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
                   }`}
-                  title="مساحتي — الرئيسية وملفي الشخصي وملفي الوظيفي"
+                  title="ملفي الشخصي"
                 >
                   <UserCog size={15} />
+                </button>
+                <button
+                  onClick={() => setActiveTab('my_hr')}
+                  className={`w-8 h-8 rounded-xl grid place-items-center transition ${
+                    activeTab === 'my_hr'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 text-gray-500'
+                  }`}
+                  title="ملفي الوظيفي"
+                >
+                  <Briefcase size={15} />
                 </button>
                 {/* Staff messages used to be visible one employee at a time,
                     inside each profile page — so an incoming message went unseen

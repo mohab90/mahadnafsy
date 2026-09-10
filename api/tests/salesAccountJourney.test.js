@@ -100,6 +100,11 @@ test('the personal page is one page, not a sub-nav', () => {
   // And the role bars call it what it is.
   const nav = codeOnly(read('admin/pages/dashboard/DashboardNavigation.tsx'));
   assert.ok(!nav.includes("label: 'مساحتي'"), 'the bars still say مساحتي');
+  // The top-bar icon too: one string-replace attempt on that block matched
+  // nothing and said nothing, so the old tooltip survived a whole deploy.
+  assert.ok(!nav.includes('title="مساحتي'), 'the workspace icon still calls itself مساحتي');
+  assert.match(nav, /title="ملفي الشخصي"/);
+  assert.match(nav, /title="ملفي الوظيفي"/);
   assert.match(nav, /\{ key: 'staff_home', label: 'ملفي الشخصي'/);
   assert.match(nav, /\{ key: 'my_hr', label: 'ملفي الوظيفي'/);
 });
