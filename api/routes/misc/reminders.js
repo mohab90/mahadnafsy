@@ -8,8 +8,9 @@ const outbox = require('../../lib/outbox');
 const { filterSuppressed } = require('../../lib/marketingConsent');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
 const { resolveDataScope } = require('../../constants/permissions');
-const { bulkOperationLimiter } = require('../../middleware/rateLimits');
+const { financialScopeClause, resolveFinancialScope } = require('../../lib/financialScope');
 const { leadScope } = require('../../lib/leadAccess');
+const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const express = require('express');
 const router = express.Router();
 const { logLogin, sendDailyReport, scheduleDailyReport, pushAdminNotif, runFollowUpReminders, scheduleFollowUpReminders, runPaymentDueReminders, schedulePaymentReminders, getSysConfig, setSysConfig, SYS_DEFAULTS, KV_ALLOWED_KEYS } = require('./_shared');
@@ -193,27 +194,46 @@ router.get('/api/admin/search', requireAuth, requireAdminOrStaff, requirePermiss
     if (q.length < 2) return res.json({ subscribers: [], leads: [], consultations: [] });
     const like = `%${q}%`;
 
+    // Whose customers the caller may find. A search that ignores this is the
+    // widest read in the system: it takes a phone number and returns anybody.
+    // 'all' scopes get an empty clause and keep searching everything.
+    const subScope = financialScopeClause(
+      resolveFinancialScope(req, { allowAssigned: true }),
+      { branchColumn: 'branch_id', subscriberAlias: 'subscribers' }
+    );
+    const leadRange = leadScope(req, 'leads');
+    if (leadRange.none && subScope.sql === ' AND 1=0') {
+      return res.json({ subscribers: [], leads: [], consultations: [] });
+    }
+
     const [subscribers] = await pool.query(
       `SELECT id, client_code, name, email, phone, branch, is_active, created_at
-       FROM subscribers WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?)
+       FROM subscribers WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?)${subScope.sql}
        ORDER BY created_at DESC LIMIT 10`,
-      [req.tenantId, like, like, like, like]
+      [req.tenantId, like, like, like, like, ...subScope.params]
     );
 
     const [leads] = await pool.query(
       `SELECT id, client_code, name, email, phone, status, source, created_at
-       FROM leads WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?) AND hidden=0
+       FROM leads WHERE tenant_id = ? AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR client_code LIKE ?) AND hidden=0${leadRange.sql}
        ORDER BY created_at DESC LIMIT 10`,
-      [req.tenantId, like, like, like, like]
+      [req.tenantId, like, like, like, like, ...leadRange.params]
     );
 
+    // Consultations carry the customer on subscriber_id, so the same subscriber
+    // scope applies through it. A booking with no subscriber row yet belongs to
+    // nobody in particular and is left to the 'all' scopes.
+    const consultScope = subScope.sql
+      ? { sql: ' AND c.subscriber_id IN (SELECT id FROM subscribers WHERE tenant_id=?' + subScope.sql.replace(/\bsubscribers\./g, '') + ')',
+        params: [req.tenantId, ...subScope.params] }
+      : { sql: '', params: [] };
     const [consultations] = await pool.query(
       `SELECT c.id, c.client_name, c.client_email, c.client_phone, c.session_date, c.status,
               t.name AS therapist_name
        FROM consultations c LEFT JOIN therapists t ON t.id=c.therapist_id
-       WHERE c.tenant_id = ? AND (c.client_name LIKE ? OR c.client_email LIKE ? OR c.client_phone LIKE ?)
+       WHERE c.tenant_id = ? AND (c.client_name LIKE ? OR c.client_email LIKE ? OR c.client_phone LIKE ?)${consultScope.sql}
        ORDER BY c.session_date DESC LIMIT 5`,
-      [req.tenantId, like, like, like]
+      [req.tenantId, like, like, like, ...consultScope.params]
     );
 
     res.json({ subscribers, leads, consultations });

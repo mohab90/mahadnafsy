@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { BookOpen, Download, FileText, Save, Sparkles } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import type { Course, CourseLectureItem, CourseQuiz, QuizAttempt, QuizQuestion } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -82,6 +82,9 @@ ${htmlContent}
 const QuizzesTab: React.FC<Props> = ({ notify }) => {
   const { courses, lectures: allLectures, courseQuizzes, quizAttempts,
     addCourseQuiz, updateCourseQuiz, deleteCourseQuiz, updateLecture } = useSiteData();
+
+  // Lectures are not loaded at login any more — a quiz is attached to a lecture, picked from this list.
+  useEnsureLectures();
 
   const [mainTab, setMainTab] = useState<'quiz' | 'content'>('quiz');
   const [selectedCourseId, setSelectedCourseId] = useState('');

@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { Plus, Save, Radio } from 'lucide-react';
-import { useSiteData } from '../../../../context/SiteDataContext';
+import { useSiteData, useEnsureLectures } from '../../../../context/SiteDataContext';
 import { CoursePrerequisitesPanel } from './CoursePrerequisitesPanel';
 import { CourseCohortsPanel } from './CourseCohortsPanel';
 import { CourseLectureList } from './CourseLectureList';
@@ -32,6 +32,9 @@ export default function LecturesPanel({ lectureCourseId, setLectureCourseId, not
   const { courses, lectures, addLecture, updateLecture, deleteLecture, getCourseLectures,
     chapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
     updateCourse, isAdmin, subscribers } = useSiteData();
+
+  // Lectures are not loaded at login any more — this screen is the lectures table.
+  useEnsureLectures();
   const [saving, setSaving] = useState(false);
   const [expandedLectureCourses, setExpandedLectureCourses] = useState<Record<string, boolean>>({});
   const [expandedLectureChapters, setExpandedLectureChapters] = useState<Record<string, boolean>>({});

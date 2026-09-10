@@ -193,6 +193,8 @@ export interface SiteDataShape {
   remoteReady: boolean;
   mySubscriberLoaded: boolean;
   reloadLectures: () => Promise<void>;
+  /** Fetch lectures+chapters once, for a screen that reads them. See useEnsureLectures. */
+  ensureLectures: () => Promise<void>;
   reloadLeads: () => Promise<void>;
   reloadSubscribers: () => Promise<void>;
   reloadStaffMembers: () => Promise<void>;
@@ -252,7 +254,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { courses, setCourses, addCourse, updateCourse, deleteCourse, bundles, setBundles, addBundle, updateBundle, deleteBundle, therapists, setTherapists, addTherapist, updateTherapist, deleteTherapist, testimonials, setTestimonials, addTestimonial, updateTestimonial, deleteTestimonial } =
     useCatalogState(initial.courses, initial.bundles, initial.therapists, initial.testimonials, lastLocalConfigWriteRef, track);
   const {
-    lectures, setLectures, addLecture, updateLecture, deleteLecture, reloadLectures, getCourseLectures,
+    lectures, setLectures, addLecture, updateLecture, deleteLecture, reloadLectures, ensureLectures, getCourseLectures,
     chapters, setChapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
   } = useLecturesChaptersState(initial.lectures || defaultLectures, initial.chapters || [], lastLocalConfigWriteRef, track);
   const { expenses, setExpenses, addExpense, updateExpense, deleteExpense } =
@@ -449,7 +451,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
-    setContent, setCourses, setBundles, setLectures, setChapters, setTherapists,
+    setContent, setCourses, setBundles, setTherapists,
     setTestimonials, setCourseQuizzes, setLiveStreams, setExpenses, setActivityLogs,
     setOrders, setJoinUsApplications, setContactMessages, setDaqqiRounds,
     setAutomationWorkflows, setDiscounts, setNotifications, setAdminAiConfigLocal,
@@ -504,16 +506,13 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (testRes.status === 'fulfilled' && testRes.value.length > 0)
             setTestimonials(testRes.value as unknown as TestimonialItem[]);
 
-          // ── Batch B: lectures/chapters (deferred 500ms) ───────────────────────
-          await new Promise(r => setTimeout(r, 500));
-          const [lRes, chRes] = await Promise.allSettled([
-            mysqlCatalog.listLectures(2000),
-            mysqlCatalog.listChapters(),
-          ]);
-          if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
-            setLectures(lRes.value as unknown as CourseLectureItem[]);
-          if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
-            setChapters(chRes.value as unknown as CourseChapterItem[]);
+          // Lectures and chapters used to be fetched here, half a second after
+          // login, for everybody. That is 508 KB and ~600 ms on the wire for
+          // every employee on every page load, to serve five screens: the
+          // courses editor, its lectures panel, quizzes, the activity export
+          // and the migration counter — plus the client page's lecture counts.
+          //
+          // Those screens call ensureLectures() now. Everyone else never asks.
         } catch { /* ignore — graceful degradation */ }
       })();
     }
@@ -731,6 +730,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     remoteReady,
     mySubscriberLoaded,
     reloadLectures,
+    ensureLectures,
     reloadLeads,
     reloadSubscribers,
     reloadStaffMembers,
@@ -806,6 +806,21 @@ export const useSiteData = () => {
     throw new Error('useSiteData must be used inside SiteDataProvider');
   }
   return ctx;
+};
+
+/**
+ * Call this in any screen that reads `lectures`, `chapters`,
+ * `getCourseLectures` or `getCourseChapters`.
+ *
+ * They are no longer loaded at login — that was half a megabyte on every page
+ * load for everyone, to serve five screens. A screen that reads them without
+ * calling this does not fail; it renders the seed rows, so a course shows a
+ * handful of invented lectures and a client's progress reads "0 من 0".
+ * api/tests/lectureOnDemandLoading.test.js asserts that every reader calls it.
+ */
+export const useEnsureLectures = () => {
+  const { ensureLectures } = useSiteData();
+  useEffect(() => { void ensureLectures(); }, [ensureLectures]);
 };
 
 

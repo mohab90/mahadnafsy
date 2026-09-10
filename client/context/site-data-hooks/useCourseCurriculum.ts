@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { CourseLectureItem, CourseChapterItem } from '../../types';
 import { mysqlCatalog } from '../../lib/mysqlapi';
+import { fetchAllPages } from '../../../shared/fetchAllPages';
 
 /** Lectures + chapters: course curriculum content, fetched together with the catalog. */
 export function useCourseCurriculum(
@@ -14,7 +15,7 @@ export function useCourseCurriculum(
   const reloadLectures = useCallback(async () => {
     try {
       const [lRes, chRes] = await Promise.allSettled([
-        mysqlCatalog.listLectures(2000),
+        fetchAllPages<unknown>((limit, offset) => mysqlCatalog.listLectures(limit, offset)),
         mysqlCatalog.listChapters(1000),
       ]);
       if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)

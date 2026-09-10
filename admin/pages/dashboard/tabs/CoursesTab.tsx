@@ -3,7 +3,7 @@ import {
   Plus, Radio, Save, Upload, Users, Video, X,
 } from 'lucide-react';
 import { Course } from '../../../types';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
 import { SafeHtml } from '../../../../shared/ui/SafeHtml';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { compressImageFile } from '../../../lib/imageBudget';
@@ -77,6 +77,9 @@ export default function CoursesTab({
     content,
     isAdmin,
   } = useSiteData();
+
+  // Lectures are not loaded at login any more — the course cards count lectures, and the editor lists the recorded ones.
+  useEnsureLectures();
 
   // The same content key Dashboard used to parse and hand down. Parsed where it
   // is read instead, so the value has one owner per reader rather than a prop

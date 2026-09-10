@@ -3,7 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { mysqlAdmin, mysqlCatalog } from '../../lib/mysqlapi';
 import type {
   ActivityLogItem, AdminAiConfig, AiAgentConfig, AutomationWorkflow, Bundle,
-  ConsultationItem, ContactMessage, Course, CourseChapterItem, CourseLectureItem,
+  ConsultationItem, ContactMessage, Course,
   CourseQuiz, DaqqiRound, DiscountRule, ExpenseItem, FacebookLeadAdsConfig,
   JoinUsApplication, LeadItem, LeadStatus, LiveStream, MessagingChannelsConfig,
   NotificationBroadcast, OrderItem, StaffMember, SubscriberItem, TestimonialItem,
@@ -32,8 +32,6 @@ interface RuntimeState {
   setContent: Setter<Record<string, string>>;
   setCourses: Setter<Course[]>;
   setBundles: Setter<Bundle[]>;
-  setLectures: Setter<CourseLectureItem[]>;
-  setChapters: Setter<CourseChapterItem[]>;
   setTherapists: Setter<Therapist[]>;
   setTestimonials: Setter<TestimonialItem[]>;
   setCourseQuizzes: Setter<CourseQuiz[]>;
@@ -154,7 +152,7 @@ export function useAdminDataRuntime(state: RuntimeState): {
     authUser, isHydratingRef, dbContentLoadedRef, lastCRMWriteRef,
     subscribersRef, leadsRef, staffMembersRef, contentRef,
     setRemoteReady, setSubscribers, setLeads, setStaffMembers, setConsultations,
-    setContent, setCourses, setBundles, setLectures, setChapters, setTherapists,
+    setContent, setCourses, setBundles, setTherapists,
     setTestimonials, setCourseQuizzes, setLiveStreams, setExpenses, setActivityLogs,
     setOrders, setJoinUsApplications, setContactMessages, setDaqqiRounds,
     setAutomationWorkflows, setDiscounts, setNotifications, setAdminAiConfigLocal,
@@ -232,11 +230,14 @@ export function useAdminDataRuntime(state: RuntimeState): {
 
         await new Promise(resolve => setTimeout(resolve, 300));
         if (disposed) return;
-        const [coursesRes, bundlesRes, lecturesRes, chaptersRes, therapistsRes] = await Promise.allSettled([
+        // Lectures and chapters were pulled here too — listLectures() with no
+        // argument, which is the 5000 default: every lecture of every course,
+        // half a megabyte, for every account on every page load. Five screens
+        // read them. Those five call ensureLectures() now; see
+        // useLecturesChaptersState.
+        const [coursesRes, bundlesRes, therapistsRes] = await Promise.allSettled([
           mysqlAdmin.listAllCourses(),
           mysqlAdmin.listAllBundles(500),
-          mysqlCatalog.listLectures(),
-          mysqlCatalog.listChapters(),
           mysqlAdmin.listAllTherapists(),
         ]);
         if (disposed) return;
@@ -245,8 +246,6 @@ export function useAdminDataRuntime(state: RuntimeState): {
             .sort((a, b) => (b.createdAt || b.id || '').localeCompare(a.createdAt || a.id || '')));
         }
         if (bundlesRes.status === 'fulfilled' && bundlesRes.value.length > 0) setBundles(bundlesRes.value as unknown as Bundle[]);
-        if (lecturesRes.status === 'fulfilled' && lecturesRes.value.length > 0) setLectures(lecturesRes.value as unknown as CourseLectureItem[]);
-        if (chaptersRes.status === 'fulfilled' && chaptersRes.value.length > 0) setChapters(chaptersRes.value as unknown as CourseChapterItem[]);
         if (therapistsRes.status === 'fulfilled' && therapistsRes.value.length > 0) setTherapists(therapistsRes.value as unknown as Therapist[]);
 
         await new Promise(resolve => setTimeout(resolve, 300));

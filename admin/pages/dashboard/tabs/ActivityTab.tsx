@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Activity, Database, Download, Search, Trash2 } from 'lucide-react';
-import { useSiteData } from '../../../context/SiteDataContext';
+import { useSiteData, useEnsureLectures } from '../../../context/SiteDataContext';
 import { DataTable, type Column } from '../../../components/shared/DataTable';
 import type { ActivityLogItem } from '../../../types';
 import { confirmDialog } from '../../../components/shared/confirmDialog';
@@ -79,6 +79,9 @@ const ActivityTab: React.FC<Props> = ({ isSalesOnly }) => {
     discounts,
     content,
   } = useSiteData();
+
+  // Lectures are not loaded at login any more — the backup export writes the lectures and chapters into the file.
+  useEnsureLectures();
 
   const [search, setSearch] = useState('');
   const [actor, setActor] = useState('');

@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { CourseLectureItem, CourseChapterItem } from '../../types';
 import { mysqlAdmin, mysqlCatalog } from '../../lib/mysqlapi';
+import { fetchAllPages } from '../../../shared/fetchAllPages';
 
 type Track = (action: string, entity: string, label: string) => void;
 export function useLecturesChaptersState(
@@ -13,19 +14,52 @@ export function useLecturesChaptersState(
   const [lectures, setLectures] = useState<CourseLectureItem[]>(initialLectures);
   const [chapters, setChapters] = useState<CourseChapterItem[]>(initialChapters);
 
-  // Reload lectures + chapters from API (called when VideoPlayer opens without lectures loaded)
+  // The lectures table is the heaviest thing the admin can ask for — every
+  // lecture of every course, half a megabyte of it — and five screens out of
+  // roughly ninety read it. It used to be fetched on every login, by everyone,
+  // including the sales rep who will never open a course.
+  //
+  // Now the screens that need it ask, through ensureLectures() below. This
+  // stays as the unconditional refetch for after a write.
+  //
+  // The flat limit is gone with it. It was 2000 against 2392 published
+  // lectures, and the endpoint orders by course, so the last courses in the
+  // list had no lectures at all — silently, on every screen that counted them.
+  const lecturesLoaded = useRef(false);
   const reloadLectures = useCallback(async () => {
     try {
       const [lRes, chRes] = await Promise.allSettled([
-        mysqlCatalog.listLectures(2000),
+        fetchAllPages<unknown>((limit, offset) => mysqlCatalog.listLectures(limit, offset)),
         mysqlCatalog.listChapters(1000),
       ]);
       if (lRes.status === 'fulfilled' && (lRes.value as unknown[]).length > 0)
         setLectures(lRes.value as unknown as CourseLectureItem[]);
       if (chRes.status === 'fulfilled' && (chRes.value as unknown[]).length > 0)
         setChapters(chRes.value as unknown as CourseChapterItem[]);
+      // Only a request the server actually answered counts as loaded. This
+      // swallows its own errors, so without the flag a failed fetch is
+      // indistinguishable from a successful one and would leave the screen
+      // showing the seed rows for the rest of the session.
+      lecturesLoaded.current = lRes.status === 'fulfilled';
     } catch { /* silent */ }
   }, []);
+
+  // Fetch once per session, and only for a screen that actually reads the
+  // rows. Concurrent callers share the one request — the courses screen and
+  // its lectures panel both ask on the same mount — and a screen opened again
+  // later does not refetch, because a write already updates the arrays in
+  // place. A failed fetch clears the flag so the next screen retries rather
+  // than inheriting an empty table.
+  const lecturesRequest = useRef<Promise<void> | null>(null);
+  const ensureLectures = useCallback(() => {
+    if (lecturesLoaded.current) return Promise.resolve();
+    if (!lecturesRequest.current) {
+      lecturesRequest.current = reloadLectures().finally(() => {
+        if (!lecturesLoaded.current) lecturesRequest.current = null;
+      });
+    }
+    return lecturesRequest.current;
+  }, [reloadLectures]);
 
   // The server's own explanation is carried through. A save rejected because a
   // recorded lecture has no video yet, or because the course id is unknown,
@@ -112,7 +146,7 @@ export function useLecturesChaptersState(
   };
 
   return {
-    lectures, setLectures, addLecture, updateLecture, deleteLecture, reloadLectures, getCourseLectures,
+    lectures, setLectures, addLecture, updateLecture, deleteLecture, reloadLectures, ensureLectures, getCourseLectures,
     chapters, setChapters, addChapter, updateChapter, deleteChapter, getCourseChapters,
   };
 }
