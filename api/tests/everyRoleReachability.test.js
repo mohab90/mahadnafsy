@@ -83,6 +83,40 @@ test('every role reaches at least one screen, and the ones that run a team are t
   }
 });
 
+test('every quick action on the landing page opens for the role it is offered to', () => {
+  // The third navigation surface. StaffHomeTab draws a row of buttons on
+  // «ملفي الشخصي» — the page every employee lands on — and each navigates to a
+  // tab key. The sidebar is filtered at render time and the role bars have
+  // their own scan; this list had neither, so «لوحة المهام» sat on the landing
+  // page of five roles that could not open it, and «ليداتي» on خدمة العملاء's.
+  const { base, extra, findings } = run('quick-action-gate-scan.mjs');
+  assert.ok(base.length >= 2, `expected the base actions, parsed ${base.length}`);
+  assert.ok(extra >= 3, `expected the role-conditional actions, parsed ${extra}`);
+  assert.deepEqual(findings, [], 'these are dead buttons on the page every employee lands on');
+});
+
+test('the task board is offered only to whoever can open it', () => {
+  // GET /api/admin/tasks asks only for view_dashboard and scopes a non-manager
+  // to their own rows, so the tab could in principle be that loose — but it
+  // lives in the الإدارة group, and a group appears when any one of its items
+  // does. Loosening the gate would have put الإدارة in every employee's
+  // sidebar, which staffAccessControlPersistence.test.js exists to prevent.
+  //
+  // So the gate stays and the button is conditional. The employee's own tasks
+  // are on «ملفي الشخصي» either way: the panel above loads them with ?my=true.
+  const fsSync = require('node:fs');
+  const gates = fsSync.readFileSync(path.join(ROOT, 'admin/pages/dashboard/dashboardShared.tsx'), 'utf8');
+  assert.ok(gates.includes("tasks_board:        'view_reports',"),
+    'loosening this puts the الإدارة group in every employee sidebar');
+
+  const home = fsSync.readFileSync(path.join(ROOT, 'admin/pages/dashboard/tabs/StaffHomeTab.tsx'), 'utf8');
+  assert.ok(home.includes("hasPermission(staff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'view_reports')"),
+    'the quick action is offered again to roles that cannot open it');
+  // And the page still shows them their own tasks regardless.
+  assert.ok(home.includes("'/api/admin/tasks?limit=5&my=true'"),
+    'the employee lost the only view of their own tasks');
+});
+
 test('a collection officer can open the leads screen in their own bar', () => {
   const { ROLE_PERMS, DATA_SCOPE } = require('../constants/permissions');
   assert.ok(ROLE_PERMS.collection.includes('view_leads'),

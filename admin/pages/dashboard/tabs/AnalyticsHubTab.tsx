@@ -11,6 +11,10 @@ import { SectionedTab, type TabSection } from './SectionedTab';
  * one against another meant navigating between them and holding the numbers in
  * your head.
  *
+ * All four are gated on view_financial now, tab and sections together: they are
+ * the institute's revenue and expenses, and view_reports is what lets an HR
+ * manager read HR reports and a consultant read their own.
+ *
  * Named AnalyticsHubTab because AnalyticsTab is already a screen of its own.
  */
 
@@ -20,10 +24,10 @@ const RevenueSourcesTab = lazy(() => import('./RevenueSourcesTab'));
 const ExpenseAnalyticsTab = lazy(() => import('./ExpenseAnalyticsTab'));
 
 export const ANALYTICS_SECTIONS: TabSection[] = [
-  { id: 'retention', label: 'الاستبقاء', icon: Users, permission: 'view_reports', Component: RetentionTab },
-  { id: 'cohort', label: 'تحليل Cohort', icon: Layers, permission: 'view_reports', Component: CohortAnalysisTab },
-  { id: 'revenue', label: 'مصادر الإيراد', icon: PieChart, permission: 'view_reports', Component: RevenueSourcesTab },
-  { id: 'expenses', label: 'تحليل المصروفات', icon: TrendingDown, permission: 'view_reports', Component: ExpenseAnalyticsTab },
+  { id: 'retention', label: 'الاستبقاء', icon: Users, permission: 'view_financial', Component: RetentionTab },
+  { id: 'cohort', label: 'تحليل Cohort', icon: Layers, permission: 'view_financial', Component: CohortAnalysisTab },
+  { id: 'revenue', label: 'مصادر الإيراد', icon: PieChart, permission: 'view_financial', Component: RevenueSourcesTab },
+  { id: 'expenses', label: 'تحليل المصروفات', icon: TrendingDown, permission: 'view_financial', Component: ExpenseAnalyticsTab },
 ];
 
 /** The retired menu keys, and the section each one now opens. */

@@ -9,6 +9,7 @@ import {
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import type { LeadItem, SubscriberItem, StaffMember } from '../../../types';
 import { toDialable } from '../../../lib/whatsappLink';
+import { hasPermission, type PermissionKey, type RoleKey } from '../../../constants/permissions';
 import SalesMotivationCard from './staff-home/SalesMotivationCard';
 import { SalesOffersStrip, type SalesOffer } from './leads/SalesOffersPanel';
 
@@ -218,8 +219,16 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
     const base = [
       { label: 'بياناتي وطلباتي', icon: UserCog, tab: 'staff_settings', color: 'bg-sky-50 text-sky-600 border-sky-200' },
       { label: 'ملفي الوظيفي', icon: Briefcase, tab: 'my_hr', color: 'bg-violet-50 text-violet-600 border-violet-200' },
-      { label: 'لوحة المهام', icon: CheckCircle, tab: 'tasks_board', color: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
     ];
+    // Only for whoever can open it. «لوحة المهام» is in the الإدارة group, so
+    // it is gated on view_reports — and this row was offering it to every
+    // employee, which meant sales, reception, trainers, instructors and «موظف»
+    // clicked it on their own landing page and got «غير مصرح بالوصول». Their
+    // own tasks are on this page regardless: the panel above loads them with
+    // ?my=true.
+    if (hasPermission(staff as unknown as { role: RoleKey; permissions?: PermissionKey[] }, 'view_reports')) {
+      base.push({ label: 'لوحة المهام', icon: CheckCircle, tab: 'tasks_board', color: 'bg-indigo-50 text-indigo-600 border-indigo-200' });
+    }
     if (['sales', 'sales_collection_manager', 'support', 'consultant'].includes(role)) {
       base.unshift({ label: 'ليداتي', icon: UserPlus, tab: 'leads', color: 'bg-amber-50 text-amber-600 border-amber-200' });
     }
@@ -233,7 +242,7 @@ export default function StaffHomeTab({ staff, leads, subscribers, notify, onNavi
       base.unshift({ label: 'فريق العمل', icon: User, tab: 'hr', color: 'bg-purple-50 text-purple-600 border-purple-200' });
     }
     return base.slice(0, 5);
-  }, [staff.role]);
+  }, [staff]);
 
   const isSalesRole = ['sales', 'consultant', 'sales_collection_manager'].includes((staff.role || '').toLowerCase());
   const isCollectionRole = ['collection', 'online_manager', 'sales_collection_manager'].includes((staff.role || '').toLowerCase());

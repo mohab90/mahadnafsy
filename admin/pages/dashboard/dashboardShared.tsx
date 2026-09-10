@@ -627,6 +627,16 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   analytics:          'view_reports',
   ask_ai:             'ask_ai',
   ai_dev:             'ai_dev',
+  // Stays on view_reports even though GET /api/admin/tasks asks only for
+  // view_dashboard. This tab sits in the الإدارة group, and a group is shown
+  // when any one of its items is — so view_dashboard here would put الإدارة in
+  // every employee's sidebar, which is the leak
+  // staffAccessControlPersistence.test.js exists to prevent.
+  //
+  // The employee's own tasks are not lost by that: «ملفي الشخصي» loads them
+  // itself through ?my=true and lists them on the page. It is the quick action
+  // to the full board that is now conditional, rather than offered to everyone
+  // and refusing five roles.
   tasks_board:        'view_reports',
   // Running the online-clients desk, not merely reading a subscriber record:
   // sales reps hold view_subscribers so they can see who a lead converted into,
@@ -728,7 +738,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   security_center:    ['view_security', 'manage_security'],
   // The four analyses and the four campaign channels were each uniform, so
   // these keep the single permission every one of them already had.
-  analytics_hub:      'view_reports',
+  // الاحتفاظ بالعملاء، تحليل Cohort، مصادر الإيراد، تحليل المصروفات — the
+  // institute's revenue and where it goes. view_reports is held by HR, support,
+  // the consultants and the experts so that each can read the reports of their
+  // own job, and it was handing all four of them the company's finances.
+  analytics_hub:      'view_financial',
   campaigns:          'manage_channel_settings',
   // Sales planning is the mixed one: follow-ups on view_leads, scoring on
   // manage_leads, the forecast on view_reports and targets on manage_sales_team.

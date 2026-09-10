@@ -201,6 +201,12 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.SUPPORT]: [
     'view_dashboard',
+    // view_leads, because «ليداتي» is a quick action on this role's own landing
+    // page and it answered «غير مصرح بالوصول». Scoped, not open: the data scope
+    // is 'assigned_cs', so leadAccess narrows every query to the leads of
+    // customers assigned to them — the record behind a ticket they are working,
+    // which is the whole reason the button is there.
+    'view_leads',
     'view_subscribers', 'manage_subscribers',
     'view_orders',
     'manage_inbox', 'manage_notifications',
