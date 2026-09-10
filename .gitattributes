@@ -7,6 +7,22 @@
 # test fails against code that is perfectly correct.
 * text=auto eol=lf
 
+# Shell scripts, spelled out rather than left to `text=auto`.
+#
+# A CRLF shell script does not fail loudly on Linux — it fails on its first
+# line, in a way that reads like a different problem entirely. api/watchdog.sh
+# shipped with CRLF and every run since it was installed died with
+# `set: usage: set [-abefhkmnptuvxBCEHPT]` and `curl: (3) URL rejected`, once a
+# minute, into a log nobody reads. The health check that exists to notice the
+# API being down had never once checked it.
+#
+# The release tarball is packed from the working tree, not from git, so a
+# Windows checkout's line endings reach the server as-is — which is why the
+# `* text=auto` line above was not enough on its own. api/tests/shellScriptLineEndings.test.js
+# fails the build rather than trusting this file to have been applied.
+*.sh    text eol=lf
+*.bash  text eol=lf
+
 # Binary assets must never be touched.
 *.png   binary
 *.jpg   binary

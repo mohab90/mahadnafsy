@@ -43,6 +43,48 @@ TABLES=$(gunzip -c "$OUT" | grep -c '^CREATE TABLE' || true)
 
 log "backup ok: $OUT ($(du -h "$OUT" | cut -f1), ${TABLES} tables)"
 
+# ── Off-site copy ────────────────────────────────────────────────────────────
+#
+# Everything above this line protects against exactly one thing: someone
+# destroying data inside the database. It protects against none of the events
+# that end a business, because the backup lands on the same disk, in the same
+# VM, as the database it is a copy of — and that VM also runs the API, both
+# public sites, staging, and nginx. Disk failure, a suspended account, a lapsed
+# card, a compromise, or one `rm -rf` takes the database and all 23 copies of it
+# in the same instant.
+#
+# So the copy has to leave the machine. Configure MAHAD_BACKUP_REMOTE to an
+# rclone destination ("remote:bucket/path") and this ships each verified dump
+# there and confirms it arrived. Set MAHAD_BACKUP_REMOTE_REQUIRED=1 once that is
+# working, and a failure to reach the destination becomes a failed backup rather
+# than a line in a log — because a backup nobody can reach is not a backup, and
+# the point of failing loudly is that somebody finds out on the night it breaks
+# rather than on the morning they need it.
+REMOTE="${MAHAD_BACKUP_REMOTE:-}"
+REMOTE_REQUIRED="${MAHAD_BACKUP_REMOTE_REQUIRED:-0}"
+
+offsite_fail() {
+  if [ "$REMOTE_REQUIRED" = "1" ]; then fail "off-site copy: $*"; fi
+  log "WARNING off-site copy skipped or failed: $* (set MAHAD_BACKUP_REMOTE_REQUIRED=1 to treat this as fatal)"
+}
+
+if [ -z "$REMOTE" ]; then
+  offsite_fail "MAHAD_BACKUP_REMOTE is not set — this backup exists only on the machine it was taken from"
+elif ! command -v rclone >/dev/null 2>&1; then
+  offsite_fail "rclone is not installed"
+elif ! rclone copy --no-traverse "$OUT" "$REMOTE" >>"$LOG" 2>&1; then
+  offsite_fail "rclone copy to $REMOTE returned non-zero"
+else
+  # Confirmed by asking the destination, not by trusting the exit status —
+  # the same reasoning as the three local checks above.
+  REMOTE_SIZE=$(rclone size --json "$REMOTE/$(basename "$OUT")" 2>>"$LOG" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')
+  if [ "${REMOTE_SIZE:-0}" -ne "$SIZE" ]; then
+    offsite_fail "destination reports ${REMOTE_SIZE:-0} bytes, local copy is ${SIZE}"
+  else
+    log "off-site ok: $REMOTE/$(basename "$OUT") (${REMOTE_SIZE} bytes)"
+  fi
+fi
+
 # Retention. -mtime is only applied once the backup above has been verified, so
 # a run of failures can never delete the last good copy.
 find "$DIR" -name "${DB}_*.sql.gz" -mtime "+${KEEP_DAYS}" -delete
