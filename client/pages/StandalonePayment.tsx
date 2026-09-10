@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CreditCard, Loader2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { usePaymentAvailability } from '../lib/usePaymentAvailability';
+import { useSiteData } from '../context/SiteDataContext';
+import { toDialable } from '../lib/whatsappLink';
 
 type PayStatus = 'idle' | 'reserving' | 'redirecting';
 
@@ -19,6 +22,13 @@ const StandalonePayment: React.FC = () => {
   const [phone, setPhone] = useState(searchParams.get('phone') || '');
   const [status, setStatus] = useState<PayStatus>('idle');
   const [error, setError] = useState('');
+  // This page has only one way to pay, and POST /api/orders/reserve refuses
+  // outright when the gateway is off. Asking first means a customer is told
+  // before they fill five fields, and is given the number to call instead of a
+  // dead button — the same thing every other payment surface does.
+  const onlinePayEnabled = usePaymentAvailability();
+  const { content } = useSiteData();
+  const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
 
   const numericAmount = Number(amount);
   const canPay = useMemo(
@@ -93,6 +103,24 @@ const StandalonePayment: React.FC = () => {
           <p className="mt-1 text-sm text-gray-500">رابط مخصص لتحصيل أي مبلغ خارج صفحات الاشتراك العادية.</p>
         </div>
 
+        {onlinePayEnabled === false && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="flex items-start gap-2">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span><strong>الدفع الإلكتروني متوقف مؤقتاً.</strong> تواصل معنا وهنبعتلك تفاصيل التحويل ونسجّل دفعتك.</span>
+            </p>
+            {whatsapp && (
+              <a
+                href={`https://wa.me/${toDialable(whatsapp)}?text=${encodeURIComponent(`مرحباً، أريد سداد ${purpose.trim() || 'مبلغ'}${numericAmount > 0 ? ` بمبلغ ${numericAmount} ج.م` : ''}`)}`}
+                target="_blank" rel="noreferrer"
+                className="mt-3 flex w-full items-center justify-center rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700"
+              >
+                تواصل معنا عبر واتساب
+              </a>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -162,7 +190,7 @@ const StandalonePayment: React.FC = () => {
 
           <button
             type="submit"
-            disabled={status !== 'idle'}
+            disabled={status !== 'idle' || onlinePayEnabled === false}
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 text-sm font-bold text-white shadow-lg shadow-primary-600/20 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status !== 'idle' && <Loader2 size={18} className="animate-spin" />}

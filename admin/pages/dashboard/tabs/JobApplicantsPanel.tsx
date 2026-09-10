@@ -88,7 +88,12 @@ export const JobApplicantsPanel: React.FC<{
   const active = rows.filter(r => r.stage !== 'rejected' && r.stage !== 'hired');
   const closed = rows.filter(r => r.stage === 'rejected' || r.stage === 'hired');
 
-  const Card = ({ row }: { row: Applicant }) => {
+  // A function, not a component: React compares element types by identity, so a
+  // component declared in another component's body is a new function on every
+  // render and its whole subtree is remounted rather than reconciled. The
+  // interview-date field lives in here, so picking or typing a date lost focus
+  // after every character. Called rather than rendered, it reconciles normally.
+  const applicantCard = (row: Applicant) => {
     const busy = busyId === row.id;
     const stage = STAGES[row.stage] || STAGES.applied;
     const decided = row.stage === 'rejected' || row.stage === 'hired' || row.stage === 'offer';
@@ -206,7 +211,7 @@ export const JobApplicantsPanel: React.FC<{
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              {active.map(row => <Card key={row.id} row={row} />)}
+              {active.map(row => <React.Fragment key={row.id}>{applicantCard(row)}</React.Fragment>)}
               {!active.length && (
                 <p className="text-xs text-gray-400 text-center py-4">مفيش متقدمين مستنيين قرار</p>
               )}
@@ -217,7 +222,7 @@ export const JobApplicantsPanel: React.FC<{
                   المرفوضون والمعيَّنون ({closed.length})
                 </summary>
                 <div className="space-y-2 mt-2 opacity-70">
-                  {closed.map(row => <Card key={row.id} row={row} />)}
+                  {closed.map(row => <React.Fragment key={row.id}>{applicantCard(row)}</React.Fragment>)}
                 </div>
               </details>
             )}

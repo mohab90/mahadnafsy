@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Star, CheckCircle } from 'lucide-react';
 
+// Declared here, not inside TicketRating. React compares element types by
+// identity: a component defined in another component's body is a new function
+// on every render, so React unmounted this whole card and mounted a fresh one
+// each time — and the note field is inside it, which meant typing a comment
+// lost focus and the cursor after every single character.
+const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="bg-gray-50 min-h-screen flex items-center justify-center py-16 px-4" dir="rtl">
+    <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-8 w-full max-w-md text-center">{children}</div>
+  </div>
+);
+
 const TicketRating: React.FC = () => {
   const [subject, setSubject] = useState('');
   const [loading, setLoading] = useState(true);
@@ -43,12 +54,6 @@ const TicketRating: React.FC = () => {
     } catch { setError('تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مرة أخرى.'); }
     finally { setSubmitting(false); }
   };
-
-  const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="bg-gray-50 min-h-screen flex items-center justify-center py-16 px-4" dir="rtl">
-      <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-8 w-full max-w-md text-center">{children}</div>
-    </div>
-  );
 
   if (loading) return <Card><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto" /></Card>;
   if (notFound) return <Card><p className="text-gray-500">الرابط غير صالح أو انتهت صلاحيته.</p></Card>;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Radio, Plus, Star, Power, Trash2, Send, Loader2, CheckCircle2, AlertTriangle, Building2, User, Pencil,
 } from 'lucide-react';
@@ -138,7 +138,12 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
     setEdit({ label: '', displayNumber: '', instance: '', apiKey: '' });
   };
 
-  const ChannelRow = ({ channel }: { channel: MessagingChannel }) => {
+  // A function, not a component: React compares element types by identity, and
+  // a component declared in another component's body is a new function on every
+  // render — so this whole row was unmounted and remounted on each keystroke and
+  // the four edit fields inside lost focus after every character. Called rather
+  // than rendered, its elements reconcile against the previous ones normally.
+  const channelRow = (channel: MessagingChannel) => {
     const limit = channel.daily_send_limit || 0;
     const usedPct = limit ? Math.min(100, Math.round((channel.sent_today / limit) * 100)) : 0;
     const busy = busyId === channel.id;
@@ -498,7 +503,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               <p className="text-sm text-gray-400 bg-white border border-gray-100 rounded-xl p-6 text-center">
                 لا توجد قنوات بعد — أضف قناة الشركة الرئيسية عشان الرسايل تبدأ تخرج منها
               </p>
-            ) : company.map(c => <ChannelRow key={c.id} channel={c} />)}
+            ) : company.map(c => <Fragment key={c.id}>{channelRow(c)}</Fragment>)}
           </section>
 
           <section className="space-y-3">
@@ -510,7 +515,7 @@ export function MessagingChannelsPanel({ notify }: { notify: NotifyFn }) {
               <p className="text-sm text-gray-400 bg-white border border-gray-100 rounded-xl p-6 text-center">
                 محدش من الموظفين ربط رقمه لسه — كل موظف بيربط رقمه بنفسه من صفحة حسابه
               </p>
-            ) : staff.map(c => <ChannelRow key={c.id} channel={c} />)}
+            ) : staff.map(c => <Fragment key={c.id}>{channelRow(c)}</Fragment>)}
           </section>
         </>
       )}

@@ -215,7 +215,12 @@ ${lectureList}
   };
 
   // ── Course sidebar ──
-  const CourseSidebar = () => (
+  // A function, not a component: a component declared in another component's
+  // body is a new function on every render, so React remounts its subtree
+  // instead of reconciling it. This one scrolls (overflow-y-auto), and picking
+  // a course sets state — so the list jumped back to the top every time anyone
+  // chose a course from far down it.
+  const courseSidebar = () => (
     <div className="w-64 flex-shrink-0 space-y-1 max-h-[640px] overflow-y-auto pr-1">
       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pb-1.5">الكورسات ({courses.length})</p>
       {courses.map((course: Course) => {
@@ -245,7 +250,7 @@ ${lectureList}
 
   return (
     <div className="flex gap-4 min-h-96" dir="rtl">
-      <CourseSidebar />
+      {courseSidebar()}
 
       <div className="flex-1 min-w-0">
         {!selectedCourseId ? (
