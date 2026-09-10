@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Star, Shield, Users, BookOpen, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
 import { instituteWhatsApp } from '../lib/whatsappLink';
+import { cairoDateOnly } from '../../shared/cairoDate';
 import CourseCard from '../components/CourseCard';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
@@ -77,7 +78,10 @@ const InstructorDetails: React.FC = () => {
                   <label className="block font-bold mb-2 text-gray-800 text-sm">التاريخ</label>
                   <div className="relative">
                     <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input type="date" className="w-full border border-gray-300 rounded-xl px-10 py-3" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(''); }} />
+                    {/* The other entry point to the same booking. Same min, for
+                        the same reason: the date travels to /checkout in the
+                        URL, and a day that has already gone is not bookable. */}
+                    <input type="date" min={cairoDateOnly()} className="w-full border border-gray-300 rounded-xl px-10 py-3" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(''); }} />
                   </div>
                 </div>
               </div>

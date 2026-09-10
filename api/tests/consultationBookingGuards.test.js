@@ -43,9 +43,13 @@ test('a session date in the past is refused, on the Cairo day', () => {
   assert.match(route, /require\('\.\.\/lib\/dates'\)/);
 });
 
-test('the booking page will not offer a day that has already gone', () => {
-  const page = codeOnly(read('client/pages/Consultations.tsx'));
-  assert.match(page, /<input type="date" min=\{cairoDateOnly\(\)\}/);
+test('neither booking page offers a day that has already gone', () => {
+  // Two entry points reach the same booking — the clinic list and an
+  // instructor's own page — and both hand the date to /checkout in the URL.
+  for (const page of ['client/pages/Consultations.tsx', 'client/pages/InstructorDetails.tsx']) {
+    assert.match(codeOnly(read(page)), /<input type="date" min=\{cairoDateOnly\(\)\}/,
+      `${page} still offers a past day`);
+  }
 });
 
 test('the date the customer picks still reaches the order untouched', () => {
