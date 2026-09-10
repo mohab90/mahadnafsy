@@ -54,18 +54,6 @@ export const findTherapistSlot = (therapist: Therapist, slotId?: string) => {
   return therapist.consultationSettings?.availableSlots?.find((slot) => slot.id === slotId);
 };
 
-export const buildConsultationMeetingLink = (therapist: Therapist, consultationId: string, slot?: TherapistAvailabilitySlot) => {
-  if (slot?.meetingLink?.trim()) return slot.meetingLink.trim();
-
-  const settings = therapist.consultationSettings;
-  if (!settings?.enabled) return '';
-  if (!settings.autoCreateMeetingLink) return settings.providerBaseUrl || '';
-
-  const baseUrl = (settings.providerBaseUrl || defaultMeetingBaseUrls[settings.meetingProvider]).replace(/\/+$/, '');
-  const slug = encodeURIComponent(`${therapist.id}-${consultationId}`.toLowerCase());
-  return `${baseUrl}/${slug}`;
-};
-
 export const isConsultationEnabled = (therapist: Therapist) => Boolean(therapist.consultationSettings?.enabled);
 
 export const sortConsultationsByDate = (rows: ConsultationItem[]) =>

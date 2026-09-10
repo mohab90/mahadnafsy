@@ -145,7 +145,12 @@ function mapBundle(r, allCourses = []) {
   };
 }
 
-function mapTherapist(r) {
+/**
+ * @param r therapist row, optionally carrying `slots`
+ * @param includeMeetingLinks pass true only from an authenticated route — see
+ *        availableSlots below for why the default is off.
+ */
+function mapTherapist(r, includeMeetingLinks = false) {
   const priceEgp = r.price_egp || 0;
   const priceSar = r.price_sar || 0;
   const priceUsd = r.price_usd || 0;
@@ -178,9 +183,18 @@ function mapTherapist(r) {
       autoCreateMeetingLink: true,
       intakeFormUrl: '',
       bookingNotes: '',
+      // meetingLink is the real join URL for a session and is opt-in, because
+      // this mapper serves GET /api/therapists — public, unauthenticated and
+      // answered with `Cache-Control: public, max-age=600`. Every therapist's
+      // join link for every active slot was on the open internet, on the site
+      // of a psychology institute whose own booking page promises «سرية تامة».
+      //
+      // The booking pages only ever needed the day, the time and the id. The
+      // admin editor and the therapist's own portal ask for it explicitly.
       availableSlots: (r.slots || []).map(s => ({
         id: s.id, day: s.day, startTime: s.start_time, endTime: s.end_time,
-        timezone: s.timezone || '', label: s.label || '', meetingLink: s.meeting_link || '',
+        timezone: s.timezone || '', label: s.label || '',
+        ...(includeMeetingLinks ? { meetingLink: s.meeting_link || '' } : {}),
         isActive: !!s.is_active,
       })),
       portal: { username: '', password: '', temporaryPassword: true },

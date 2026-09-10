@@ -743,8 +743,12 @@ router.get('/api/therapists', publicLimiter, async (req, res) => {
           FROM therapists WHERE is_active = 1 AND tenant_id=? ORDER BY sort_order ASC LIMIT ?`, [req.tenantId, limit]);
       if (therapists.length > 0) {
         const ids = therapists.map(t => t.id);
+        // No meeting_link: this route is public, unauthenticated and cached
+        // with `Cache-Control: public`, and the booking picker needs only the
+        // day, the time and the id. It is not selected at all rather than
+        // dropped later, so it cannot reach the cache entry either.
         const [slots] = await pool.query(
-          `SELECT id, therapist_id, day, start_time, end_time, timezone, label, meeting_link, is_active
+          `SELECT id, therapist_id, day, start_time, end_time, timezone, label, is_active
            FROM therapist_slots WHERE therapist_id IN (${ids.map(() => '?').join(',')}) AND is_active = 1`, ids);
         const slotMap = {};
         slots.forEach(s => { (slotMap[s.therapist_id] = slotMap[s.therapist_id] || []).push(s); });

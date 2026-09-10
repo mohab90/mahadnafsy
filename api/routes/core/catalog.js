@@ -198,7 +198,9 @@ router.get('/api/admin/therapists', requireAuth, requireAdmin, async (req, res) 
       slots.forEach(s => { (slotMap[s.therapist_id] = slotMap[s.therapist_id] || []).push(s); });
       therapists.forEach(t => { t.slots = slotMap[t.id] || []; });
     }
-    res.json(therapists.map(mapTherapist));
+    // Authenticated and admin-only: the editor on this screen is where a
+    // meeting link is set, so it has to be able to read the current one.
+    res.json(therapists.map(row => mapTherapist(row, true)));
   } catch (e) {
     logger.error('[route]', e.message);
     res.status(e.statusCode || 500).json({ error: e.statusCode ? e.message : 'Internal server error' });

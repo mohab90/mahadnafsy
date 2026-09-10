@@ -50,7 +50,8 @@ router.get('/api/staff/therapist-portal', requireAuth, requireAdminOrStaff, requ
       [req.tenantId, therapist.id]
     );
     res.json({
-      therapist: mapTherapist(therapist),
+      // The therapist's own portal — their own slots, their own links.
+      therapist: mapTherapist(therapist, true),
       consultations: consultations.map(row => ({
         id: row.id,
         clientName: row.client_name,
