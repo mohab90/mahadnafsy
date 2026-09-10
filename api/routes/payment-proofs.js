@@ -474,11 +474,21 @@ router.patch('/api/admin/payment-proofs/:id', requireAuth, requireAdminOrStaff, 
         // «الأحد • 18:00 - 19:00», their card read 00:00, and the desk had no
         // record of the time they had agreed. The slot carries it; the booking
         // pages have always put its id in the URL.
+        // Scoped to the therapist on the order, to this tenant, and to an active
+        // slot. Looked up by id alone, any slot id at all was accepted — and its
+        // meeting_link was copied onto the customer's consultation and handed
+        // back to them by GET /api/me/consultations. A booking made with someone
+        // else's slot id therefore returned that session's private join URL,
+        // across therapists and across tenants.
         let bookedSlot = null;
-        if (extra.slotId) {
+        if (extra.slotId && extra.therapistId) {
           [[bookedSlot]] = await conn.query(
-            'SELECT id, start_time, timezone, meeting_link FROM therapist_slots WHERE id=? LIMIT 1',
-            [extra.slotId]
+            `SELECT s.id, s.start_time, s.timezone, s.meeting_link
+               FROM therapist_slots s
+               JOIN therapists t ON t.id = s.therapist_id
+              WHERE s.id=? AND s.therapist_id=? AND s.is_active=1 AND t.tenant_id=?
+              LIMIT 1`,
+            [extra.slotId, extra.therapistId, tenantId]
           );
         }
         const sessionDateTime = extra.sessionDate && bookedSlot?.start_time

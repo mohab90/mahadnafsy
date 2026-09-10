@@ -9,6 +9,7 @@ const logger = require('../lib/logger').child({ module: 'lead-capture-crm-route'
 const { pool } = require('../lib/db');
 const { uuidv4 } = require('../lib/id');
 const { getNextClientCode } = require('../lib/mappers');
+const { dateOnlyInTimeZone } = require('../lib/dates');
 const { normalizePhone } = require('../lib/helpers');
 const { LEAD_STATUSES, isOpenLeadStatus } = require('../lib/leadStatuses');
 const { branchIdForBranch, normalizeBranch } = require('../lib/branches');
@@ -426,6 +427,20 @@ router.post('/api/public/checkout-intent', requireAuth, publicLimiter, async (re
           [therapistId, tenantId]
         );
         if (!therapist) return res.status(404).json({ error: 'Therapist not available' });
+        // The booking page uses <input type="date"> and the date arrives in the
+        // URL, so nothing stopped a session being booked for a date that has
+        // already passed — it was stored verbatim and the desk found a
+        // consultation in its past. Judged on the Cairo day, which is the day
+        // the desk and the customer are both looking at.
+        const sessionDate = String(req.body?.sessionDate || '').trim();
+        if (sessionDate) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
+            return res.status(400).json({ error: 'تاريخ الجلسة غير صالح', code: 'SESSION_DATE_INVALID' });
+          }
+          if (sessionDate < dateOnlyInTimeZone()) {
+            return res.status(400).json({ error: 'لا يمكن حجز جلسة في تاريخ مضى', code: 'SESSION_DATE_PAST' });
+          }
+        }
         expectedAmount = Number(therapist[`price_${expectedCurrency.toLowerCase()}`]) || 0;
         canonicalTitle = `Consultation - ${therapist.name}`;
       } else if (String(req.body?.subtype || '').toLowerCase() === 'express') {

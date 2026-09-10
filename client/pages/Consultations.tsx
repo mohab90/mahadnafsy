@@ -5,6 +5,7 @@ import { Therapist } from '../types';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
+import { cairoDateOnly } from '../../shared/cairoDate';
 
 const Consultations: React.FC = () => {
     const navigate = useNavigate();
@@ -152,7 +153,12 @@ const Consultations: React.FC = () => {
                                         <label className="block font-bold mb-2 text-gray-800">اختر التاريخ</label>
                                         <div className="relative">
                                             <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                            <input type="date" className="w-full border border-gray-300 rounded-xl px-10 py-3" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(''); }} />
+                                            {/* min, so the picker cannot offer a day that has
+                                                already gone — the date travels to /checkout in
+                                                the URL and was stored verbatim, so a session
+                                                could be booked into the past. The route refuses
+                                                it too; this is the courtesy, not the guard. */}
+                                            <input type="date" min={cairoDateOnly()} className="w-full border border-gray-300 rounded-xl px-10 py-3" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(''); }} />
                                         </div>
                                     </div>
                                 </div>

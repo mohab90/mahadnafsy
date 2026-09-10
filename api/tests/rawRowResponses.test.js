@@ -177,7 +177,10 @@ test('a consultation is booked at the hour the customer picked', () => {
   }
 
   const proofs = codeOnly(read('api/routes/payment-proofs.js'));
-  assert.match(proofs, /SELECT id, start_time, timezone, meeting_link FROM therapist_slots/);
+  // The lookup is scoped now — see consultationBookingGuards.test.js, which
+  // owns that guard. What matters here is that the slot's start_time is still
+  // read at all, since that is the hour the booking is stored with.
+  assert.match(proofs, /s\.id, s\.start_time, s\.timezone, s\.meeting_link[\s\S]{0,80}FROM therapist_slots/);
   assert.match(proofs, /\$\{extra\.sessionDate\} \$\{String\(bookedSlot\.start_time\)\.slice\(0, 5\)\}:00/);
   assert.match(proofs, /slot_id, timezone, meeting_link/, 'the slot must be recorded, not just used');
 });
