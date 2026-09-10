@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { mysqlAuth, mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
+import { adminDashboardUrl } from '../lib/adminDashboard';
 
 const Auth: React.FC = () => {
   useEffect(() => { document.title = 'تسجيل الدخول | معهد الدراسات النفسية'; }, []);
@@ -61,12 +62,18 @@ const Auth: React.FC = () => {
         if (authUser === undefined) return; // still loading
         if (!authUser) return;
         if (safeRedirect) { navigate(safeRedirect, { replace: true }); return; }
-        if (isAdmin) { navigate('/dashboard'); return; }
+        // The dashboard is a separate app on a separate host, so it is a page
+        // load, not a route change. navigate('/dashboard') stayed inside this
+        // router — which registers /dashboard as `<Navigate to="/" replace />`
+        // — so every staff member who signed in here was bounced silently to
+        // the home page. The check that identified them worked; the
+        // destination was simply not somewhere this router could go.
+        if (isAdmin) { window.location.assign(adminDashboardUrl()); return; }
         // Non-admin: check if this user is a staff member (sales, admin role, etc.)
         if (staffCheckDoneRef.current) return;
         staffCheckDoneRef.current = true;
         mysqlClient.checkIsStaff()
-            .then(r => navigate(r.isStaff ? '/dashboard' : '/'))
+            .then(r => { if (r.isStaff) window.location.assign(adminDashboardUrl()); else navigate('/'); })
             .catch(() => navigate('/'));
     }, [authUser, isAdmin, navigate, safeRedirect]);
 
@@ -284,9 +291,13 @@ const Auth: React.FC = () => {
           <form className="space-y-4 animate-fade-in" onSubmit={handleVerify2fa}>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
               <div className="text-3xl mb-2">🔐</div>
-              <p className="text-amber-800 font-bold text-sm">تم إرسال رمز التحقق إلى</p>
+              {/* This said «تم إرسال رمز التحقق إلى {email}» — nothing is sent.
+                  The second line, telling them to open their authenticator, was
+                  right; the headline above it had people waiting for an email
+                  that was never going to arrive. */}
+              <p className="text-amber-800 font-bold text-sm">هذا الحساب محمي بالتحقق الثنائي</p>
               <p className="text-amber-700 font-mono text-sm mt-1">{twoFaEmail}</p>
-              <p className="text-xs text-gray-500 mt-1">هذا الحساب محمي بالتحقق الثنائي — افتح تطبيق المصادقة وأدخل الرمز الحالي</p>
+              <p className="text-xs text-gray-500 mt-1">افتح تطبيق المصادقة (Google Authenticator أو ما شابه) وأدخل الرمز المعروض الآن</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">رمز التحقق (6 أرقام)</label>
@@ -383,7 +394,7 @@ const Auth: React.FC = () => {
                 <button type="submit" disabled={loading || otpCode.length !== 6} className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-bold py-3 rounded-lg transition">
                   {loading ? 'جارٍ التحقق...' : 'تحقق من الكود'}
                 </button>
-                <button type="button" onClick={() => { setOtpStep(0); setOtpCode(''); setNotice(null); }} className="w-full text-sm text-gray-500 hover:text-gray-700 py-2">← تغيير البريد الإلكتروني</button>
+                <button type="button" onClick={() => { setOtpStep(0); setOtpCode(''); setNotice(null); }} className="w-full text-sm text-gray-500 hover:text-gray-700 py-2">← تغيير البيانات</button>
               </form>
             ) : (
               /* ── Step 3: Enter new password ── */
@@ -399,7 +410,7 @@ const Auth: React.FC = () => {
                       className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 outline-none pr-10"
                       placeholder="8 أحرف على الأقل"
                       required
-                      minLength={6}
+                      minLength={8}
                     />
                     <button type="button" onClick={() => setShowNewPassword(v => !v)} className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 hover:text-gray-600" tabIndex={-1}>
                       {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}

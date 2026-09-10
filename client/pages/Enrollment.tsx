@@ -5,11 +5,11 @@ import { mysqlAuth, mysqlForms } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
 import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { cdnImg } from '../lib/img';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 // The cash / instalment rates live in shared/enrollmentPricing so the server
 // applies exactly the same ones. They used to be defined here only, which is
 // how a customer could be shown a discount the server had never heard of.
-import { CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT } from '../../shared/enrollmentPricing';
+import { CASH_DISCOUNT, INSTALL_DISCOUNT, INSTALL_FIRST_PCT, amountDueNow, installmentTotal } from '../../shared/enrollmentPricing';
 
 // ── Payment type ──────────────────────────────────────────────────────────────
 type PayType = 'cash' | 'installment';
@@ -84,19 +84,18 @@ const Enrollment: React.FC = () => {
   }, [authUser]);
 
   const currencySymbol = currency === 'EGP' ? 'ج.م' : currency === 'SAR' ? 'ر.س' : '$';
-  const whatsappNumber = (content['footer.whatsapp'] || '201096203090').replace(/\D/g, '');
+  const whatsappNumber = instituteWhatsApp(content);
 
   const getItem = (key: string) => allOptions.find(x => x.key === key) ?? null;
   // Never fall back to Egypt pricing for a Saudi/international visitor.
   // The server independently resolves and validates the same location currency.
   const getBasePrice = (item: SelItem) => Number(item.price[currency]) || 0;
-  const getInstallPrice = (item: SelItem) => Math.round(getBasePrice(item) * (1 - INSTALL_DISCOUNT));
-
-  // cash → 15% off; installment → 7% off total, then 25% first installment
-  const getCharged = (item: SelItem) =>
-    payType === 'cash'
-      ? Math.round(getBasePrice(item) * (1 - CASH_DISCOUNT))
-      : Math.round(getInstallPrice(item) * INSTALL_FIRST_PCT);
+  // Both from shared/enrollmentPricing, which exists so a rate change cannot
+  // apply to one side and not the other — this page had re-derived the same two
+  // formulas from the raw constants, which is a second copy of the rule under a
+  // different name and the exact thing that module was extracted to prevent.
+  const getInstallPrice = (item: SelItem) => installmentTotal(getBasePrice(item));
+  const getCharged = (item: SelItem) => amountDueNow(getBasePrice(item), payType);
 
   // Deduplicated chosen items (ignore empty slots)
   const chosenCourses = useMemo(
@@ -492,7 +491,7 @@ const Enrollment: React.FC = () => {
                 )}
 
                 <a
-                  href={`https://wa.me/${toDialable(whatsappNumber)}?text=${registeredWhatsapp}`}
+                  href={`https://wa.me/${whatsappNumber}?text=${registeredWhatsapp}`}
                   target="_blank"
                   rel="noreferrer"
                   className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition text-sm ${

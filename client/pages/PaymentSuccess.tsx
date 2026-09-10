@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Home, MessageCircle, Upload, Clock, LayoutDashboard, Receipt, XCircle, CreditCard } from 'lucide-react';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 import { useSiteData } from '../context/SiteDataContext';
 
 /**
@@ -47,7 +47,7 @@ const PaymentSuccess: React.FC = () => {
       : 'تم استلام طلبك | معهد الدراسات النفسية';
   }, [outcome]);
 
-  const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
+  const whatsapp = instituteWhatsApp(content);
 
   if (outcome === 'declined') {
     return (
@@ -80,7 +80,7 @@ const PaymentSuccess: React.FC = () => {
             </Link>
             {whatsapp && (
               <a
-                href={`https://wa.me/${toDialable(whatsapp)}`}
+                href={`https://wa.me/${whatsapp}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition"
@@ -147,7 +147,7 @@ const PaymentSuccess: React.FC = () => {
           </Link>
           {whatsapp && (
             <a
-              href={`https://wa.me/${toDialable(whatsapp)}`}
+              href={`https://wa.me/${whatsapp}`}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition"

@@ -6,7 +6,7 @@ import { usePaymentAvailability, useManualPaymentMethods } from '../lib/usePayme
 import { paymentMethodLabel } from '../../shared/paymentMethods';
 import { getTherapistSessionPrice } from '../lib/consultations';
 import { cdnImg } from '../lib/img';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 import { amountDueNow, installmentTotal, type PayMode } from '../../shared/enrollmentPricing';
 
 const Checkout: React.FC = () => {
@@ -153,7 +153,7 @@ const Checkout: React.FC = () => {
   const displayAmount = discountable ? amountDueNow(itemPrice, payMode) : itemPrice;
   const finalAmount = serverAmount ?? displayAmount;
   const planTotal = serverPlanTotal ?? (discountable && payMode === 'installment' ? installmentTotal(itemPrice) : null);
-  const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
+  const whatsapp = instituteWhatsApp(content);
 
   const canPay = !!customerName.trim() && customerEmail.includes('@') && !!customerPhone.trim() && itemFound && itemPrice > 0;
 
@@ -460,7 +460,7 @@ const Checkout: React.FC = () => {
 
                       {whatsapp && (
                         <a
-                          href={`https://wa.me/${toDialable(whatsapp)}?text=${encodeURIComponent(`مرحباً، حوّلت لاشتراك: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}`)}`}
+                          href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، حوّلت لاشتراك: ${itemTitle} (${finalAmount} ${currencySymbol})\nالاسم: ${customerName}\nالهاتف: ${customerPhone}`)}`}
                           target="_blank" rel="noreferrer"
                           className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"
                         >
@@ -571,7 +571,7 @@ const Checkout: React.FC = () => {
                             <div className="flex-1 h-px bg-gray-200" />
                           </div>
                           <a
-                            href={`https://wa.me/${toDialable(whatsapp)}?text=${encodeURIComponent(`مرحباً، أريد الاشتراك في: ${itemTitle} — ${finalAmount} ${currencySymbol}`)}`}
+                            href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد الاشتراك في: ${itemTitle} — ${finalAmount} ${currencySymbol}`)}`}
                             target="_blank"
                             rel="noreferrer"
                             className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm"

@@ -2,7 +2,7 @@ import React from 'react';
 import { Facebook, Youtube, Instagram, Mail, Phone, MapPin, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 
 const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
   const { content, bundles } = useSiteData();
@@ -14,7 +14,7 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
   const facebook = content['footer.facebook'] || '';
   const instagram = content['footer.instagram'] || '';
   const youtube = content['footer.youtube'] || '';
-  const whatsapp = content['footer.whatsapp'] || '';
+  const whatsapp = instituteWhatsApp(content);
   const description = content['footer.description'] || 'نعمل تحت شعار "رحلة علم ووعي، تغير حياتك للأفضل". نقدم دبلومات معتمدة في الصحة النفسية والعلاج النفسي للمتخصصين وغير المتخصصين.';
 
   // ── Mini footer (2 lines) — shown in dashboard / payment pages ─────────
@@ -34,7 +34,7 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
           {whatsapp && (
             <>
               <span className="opacity-30">|</span>
-              <a href={`https://wa.me/${toDialable(whatsapp)}`} target="_blank" rel="noreferrer" className="text-green-500 hover:text-green-400 transition">واتساب</a>
+              <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="text-green-500 hover:text-green-400 transition">واتساب</a>
             </>
           )}
         </p>
@@ -58,7 +58,7 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
               {facebook && <a href={facebook} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-gray-800 hover:bg-blue-600 flex items-center justify-center transition"><Facebook size={16} /></a>}
               {instagram && <a href={instagram} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-gray-800 hover:bg-pink-600 flex items-center justify-center transition"><Instagram size={16} /></a>}
               {youtube && <a href={youtube} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-gray-800 hover:bg-red-600 flex items-center justify-center transition"><Youtube size={16} /></a>}
-              {whatsapp && <a href={`https://wa.me/${toDialable(whatsapp)}`} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-gray-800 hover:bg-green-600 flex items-center justify-center transition"><MessageCircle size={16} /></a>}
+              {whatsapp && <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-gray-800 hover:bg-green-600 flex items-center justify-center transition"><MessageCircle size={16} /></a>}
             </div>
           </div>
 

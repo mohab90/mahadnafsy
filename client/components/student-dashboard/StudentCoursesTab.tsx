@@ -54,7 +54,7 @@ export function StudentCoursesTab({
         <p className="mb-2 text-lg font-bold text-gray-700">لم يتم تفعيل اشتراكك بعد</p>
         <p className="mb-6 text-sm text-gray-400">تواصل مع الإدارة لتفعيل حسابك وإضافة الكورسات المشترك بها</p>
         <a
-          href={`https://wa.me/${toDialable(contentWhatsapp || '201096203090')}`}
+          href={`https://wa.me/${toDialable(contentWhatsapp)}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-6 py-3 font-bold text-white transition hover:bg-green-600"

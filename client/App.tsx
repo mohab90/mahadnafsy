@@ -44,7 +44,7 @@ import { SiteDataProvider, useSiteData } from './context/SiteDataContext';
 import { AuthProvider } from './context/AuthContext';
 import ErrorBoundary from '../shared/ui/ErrorBoundary';
 import { ToastProvider } from '../shared/ui/Toast';
-import { toDialable } from './lib/whatsappLink';
+import { instituteWhatsApp } from './lib/whatsappLink';
 import { useArabicValidation } from './lib/useArabicValidation';
 
 const ENQUIRY_TOKEN_KEY = 'mahad-enquiry-token';
@@ -270,11 +270,11 @@ const LeadCaptureWidget: React.FC = () => {
 
 const WaFloat: React.FC = () => {
   const { content, isStaff, isAdmin } = useSiteData();
-  const phone = (content['footer.whatsapp'] || '201096203090').replace(/\D/g, '');
+  const phone = instituteWhatsApp(content);
   if (isAdmin || isStaff) return null;
   return (
     <a
-      href={`https://wa.me/${toDialable(phone)}`}
+      href={`https://wa.me/${phone}`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="تواصل عبر واتساب"

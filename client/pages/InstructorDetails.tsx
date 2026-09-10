@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Star, Shield, Users, BookOpen, MessageCircle, X, CalendarDays, Globe2, BriefcaseBusiness } from 'lucide-react';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 import CourseCard from '../components/CourseCard';
 import { useSiteData } from '../context/SiteDataContext';
 import { formatAvailabilitySlot, getTherapistActiveSlots, getTherapistSessionPrice, isConsultationEnabled, meetingProviderLabels } from '../lib/consultations';
@@ -130,7 +130,7 @@ const InstructorDetails: React.FC = () => {
                     fields, so they could never have linked anywhere. Replaced with
                     the one contact route that does exist and does work. */}
                 <div className="flex gap-3">
-                  <a href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}?text=${encodeURIComponent(`مرحباً، أود الاستفسار عن ${instructor.name}`)}`}
+                  <a href={`https://wa.me/${instituteWhatsApp(content)}?text=${encodeURIComponent(`مرحباً، أود الاستفسار عن ${instructor.name}`)}`}
                     target="_blank" rel="noopener noreferrer"
                     className="bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 px-4 py-2 rounded-full transition text-sm font-bold flex items-center gap-2">
                     <MessageCircle size={18} /> استفسار عن المحاضر

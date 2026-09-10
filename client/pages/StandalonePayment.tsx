@@ -3,7 +3,7 @@ import { AlertCircle, CreditCard, Loader2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { useSiteData } from '../context/SiteDataContext';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 
 type PayStatus = 'idle' | 'reserving' | 'redirecting';
 
@@ -28,7 +28,7 @@ const StandalonePayment: React.FC = () => {
   // dead button — the same thing every other payment surface does.
   const onlinePayEnabled = usePaymentAvailability();
   const { content } = useSiteData();
-  const whatsapp = (content['footer.whatsapp'] || '').replace(/\D/g, '');
+  const whatsapp = instituteWhatsApp(content);
 
   const numericAmount = Number(amount);
   const canPay = useMemo(
@@ -111,7 +111,7 @@ const StandalonePayment: React.FC = () => {
             </p>
             {whatsapp && (
               <a
-                href={`https://wa.me/${toDialable(whatsapp)}?text=${encodeURIComponent(`مرحباً، أريد سداد ${purpose.trim() || 'مبلغ'}${numericAmount > 0 ? ` بمبلغ ${numericAmount} ج.م` : ''}`)}`}
+                href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`مرحباً، أريد سداد ${purpose.trim() || 'مبلغ'}${numericAmount > 0 ? ` بمبلغ ${numericAmount} ج.م` : ''}`)}`}
                 target="_blank" rel="noreferrer"
                 className="mt-3 flex w-full items-center justify-center rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700"
               >

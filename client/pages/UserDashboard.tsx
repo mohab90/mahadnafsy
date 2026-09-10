@@ -14,8 +14,9 @@ import { usePaymentAvailability } from '../lib/usePaymentAvailability';
 import { StudentJourneyTimeline } from '../components/student-dashboard/StudentJourneyTimeline';
 import StudentEngagementHero from '../components/student-dashboard/StudentEngagementHero';
 import { StudentDashboardSectionNav } from '../components/student-dashboard/StudentDashboardSectionNav';
-import { toDialable } from '../lib/whatsappLink';
+import { instituteWhatsApp } from '../lib/whatsappLink';
 import { isCertificateEarned } from '../lib/certificateStatus';
+import { adminDashboardUrl } from '../lib/adminDashboard';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -262,9 +263,7 @@ const UserDashboard: React.FC = () => {
 
   const displayName = authUser.displayName || authUser.email?.split('@')[0] || 'مستخدم';
   const avatarBg = pickColor(authUser.email || '');
-  const adminDashboardUrl = ['127.0.0.1', 'localhost'].includes(window.location.hostname)
-    ? 'http://127.0.0.1:4100'
-    : 'https://admin.mahadnafsy.com';
+  const adminUrl = adminDashboardUrl();
 
   // If the user is authenticated but has no subscriber record, their account was deleted
   // from the CRM. Show a clear message.
@@ -296,7 +295,7 @@ const UserDashboard: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-800">أهلاً {authUser.displayName || authUser.email?.split('@')[0]}</h2>
           <p className="text-gray-500 max-w-sm">حسابك كموظف — اللوحة الإدارية هي مكانك!</p>
           <button
-            onClick={() => { window.location.href = adminDashboardUrl; }}
+            onClick={() => { window.location.href = adminUrl; }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl font-bold transition"
           >انتقل للوحة الإدارية</button>
           <button
@@ -318,7 +317,7 @@ const UserDashboard: React.FC = () => {
         </p>
         <p className="text-xs text-gray-400">{authUser.email}</p>
         <a
-          href={`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}`}
+          href={`https://wa.me/${instituteWhatsApp(content)}`}
           target="_blank"
           rel="noopener noreferrer"
           className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold transition flex items-center gap-2"
@@ -415,7 +414,7 @@ const UserDashboard: React.FC = () => {
       `الاسم: ${subscriber.name || ''}\n` +
       `البريد الإلكتروني: ${subscriber.email || ''}`
     );
-    window.open(`https://wa.me/${toDialable(content['footer.whatsapp'] || '201096203090')}?text=${msg}`, '_blank', 'noopener,noreferrer');
+    window.open(`https://wa.me/${instituteWhatsApp(content)}?text=${msg}`, '_blank', 'noopener,noreferrer');
     setInstallIframeUrl('whatsapp_sent');
   };
 
@@ -861,7 +860,7 @@ const UserDashboard: React.FC = () => {
               enrolledCourses={enrolledCourses}
               subscriber={subscriber}
               coursePayMap={coursePayMap}
-              contentWhatsapp={content['footer.whatsapp'] || '201096203090'}
+              contentWhatsapp={content['footer.whatsapp']}
               getCourseLectures={(id) => getCourseLectures(String(id))}
               onOpenPlayer={(courseId) => setPlayerCourseId(courseId)}
               onOpenCertificates={() => { setLearningSection('certificates'); }}

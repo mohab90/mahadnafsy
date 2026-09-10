@@ -58,3 +58,19 @@ export function toDisplay(input: string | null | undefined): string {
   const dialable = toDialable(input);
   return dialable ? `+${dialable}` : '';
 }
+
+/**
+ * The institute's own WhatsApp number, from settings.
+ *
+ * Eight call sites wrote `content['footer.whatsapp'] || '201096203090'`, each
+ * carrying its own copy of the number — even though content already seeds that
+ * exact default, so none of those fallbacks could ever fire. Harmless today and
+ * eight things to find and change the day the institute gets a new number.
+ *
+ * Returns '' when there is genuinely nothing to dial, which is what the pages
+ * that already guard on it expect: hide the button rather than open a chat with
+ * a number nobody answers.
+ */
+export function instituteWhatsApp(content: Record<string, string>): string {
+  return toDialable(content['footer.whatsapp']);
+}
