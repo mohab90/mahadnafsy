@@ -1,0 +1,21 @@
+# Line-ending rules for the API subtree, repeated here on purpose.
+#
+# The release bundle is built with `git archive <commit>:api` — a *subtree*
+# archive. Git resolves .gitattributes relative to the tree being archived, so
+# the root .gitattributes is invisible to it, and `core.autocrlf=true` on a
+# Windows checkout converts every text file on the way out.
+#
+# That is how api/watchdog.sh reached production with CRLF and died on its first
+# line — `set: usage: set [-abefhkmnptuvxBCEHPT]`, then `curl: (3) URL rejected`
+# — every minute since it was installed, so the health check that exists to
+# notice the API being down had never once checked it.
+#
+# Verifiable in one line:
+#   git archive HEAD api/watchdog.sh | tar -xO | file -    → LF
+#   git archive HEAD:api watchdog.sh | tar -xO | file -    → CRLF
+#
+# api/tests/shellScriptLineEndings.test.js asserts the shipped bundle, not just
+# the working tree, so this file cannot quietly stop being applied.
+* text=auto eol=lf
+*.sh    text eol=lf
+*.bash  text eol=lf

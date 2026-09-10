@@ -67,3 +67,32 @@ test('.gitattributes pins shell scripts to LF explicitly', () => {
   const attrs = fs.readFileSync(path.join(ROOT, '.gitattributes'), 'utf8');
   assert.match(attrs, /^\*\.sh\s+text eol=lf$/m);
 });
+
+test('the api subtree carries its own rule, because the release archives it alone', () => {
+  // tools/prepare-release.mjs builds the API bundle with `git archive
+  // <commit>:api`. Git resolves .gitattributes relative to the tree being
+  // archived, so the root file is invisible to a subtree archive and
+  // core.autocrlf converts on the way out. That is exactly how watchdog.sh
+  // reached production with CRLF while the working tree had LF.
+  const attrs = fs.readFileSync(path.join(ROOT, 'api', '.gitattributes'), 'utf8');
+  assert.match(attrs, /^\*\.sh\s+text eol=lf$/m);
+});
+
+test('the bundle the release actually ships has LF, not just the working tree', () => {
+  // The check that matters. The working tree was already LF when watchdog.sh
+  // shipped broken — asserting on it would have passed and proved nothing.
+  const { execFileSync } = require('node:child_process');
+  let packed;
+  try {
+    packed = execFileSync('git', ['archive', 'HEAD:api', 'watchdog.sh'], {
+      cwd: ROOT, maxBuffer: 8 * 1024 * 1024,
+    });
+  } catch {
+    // No git, or watchdog.sh not committed yet — nothing to assert against.
+    return;
+  }
+  // tar payload: the file content sits after the 512-byte header block.
+  const text = packed.toString('latin1');
+  const crlf = (text.match(/\r\n/g) || []).length;
+  assert.equal(crlf, 0, 'the api bundle ships watchdog.sh with CRLF — it will die on its first line');
+});
