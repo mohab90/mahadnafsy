@@ -236,7 +236,9 @@ router.get('/api/admin/bundles', requireAuth, requireAdmin, async (req, res) => 
        ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
     );
     const [courses] = await pool.query(`SELECT ${COURSE_COLS} FROM courses WHERE is_published = 1 AND tenant_id = ?`, [req.tenantId]);
-    const mappedCourses = courses.map(mapCourse);
+    // See the note in routes/public.js: passing mapCourse straight to map
+    // hands it the index as `materials`.
+    const mappedCourses = courses.map(row => mapCourse(row));
     res.json(rows.map(r => mapBundle(r, mappedCourses)));
   } catch (e) { logger.error('[route]', e.message); res.status(500).json({ error: 'Internal server error' }); }
 });

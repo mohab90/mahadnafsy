@@ -137,7 +137,10 @@ router.get('/api/courses', publicLimiter, async (req, res) => {
          ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?`,
         [req.tenantId, limit, offset]
       );
-      return rows.map(mapCourse);
+      // One argument on purpose: map would otherwise pass the index as
+      // mapCourse's `materials`, and every course after the first shipped
+      // `materials: <index>` — a number — to screens that iterate it.
+      return rows.map(row => mapCourse(row));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -680,7 +683,7 @@ router.get('/api/bundles', publicLimiter, async (req, res) => {
          ORDER BY b.sort_order ASC, b.created_at DESC LIMIT ?`, [req.tenantId, limit]
       );
       const [courses] = await pool.query(`SELECT ${COURSE_LIST_COLS} FROM courses WHERE is_published = 1 AND tenant_id=?`, [req.tenantId]);
-      return rows.map(r => mapBundle(r, courses.map(mapCourse)));
+      return rows.map(r => mapBundle(r, courses.map(row => mapCourse(row))));
     });
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(data);
@@ -754,7 +757,12 @@ router.get('/api/therapists', publicLimiter, async (req, res) => {
         slots.forEach(s => { (slotMap[s.therapist_id] = slotMap[s.therapist_id] || []).push(s); });
         therapists.forEach(t => { t.slots = slotMap[t.id] || []; });
       }
-      return therapists.map(mapTherapist);
+      // Called with one argument on purpose. `map` passes (element, index,
+      // array), so passing mapTherapist directly handed the index to
+      // includeMeetingLinks — falsy for the first therapist and truthy for
+      // every one after it, which put the join links back on this public
+      // response for all but one of them.
+      return therapists.map(row => mapTherapist(row));
     });
     res.set('Cache-Control', 'public, max-age=600, stale-while-revalidate=60');
     res.json(data);

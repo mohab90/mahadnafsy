@@ -47,7 +47,27 @@ test('the public route does not even select the column', () => {
   const query = route.slice(route.indexOf('FROM therapist_slots') - 300, route.indexOf('FROM therapist_slots'));
   assert.ok(!query.includes('meeting_link'),
     'the public therapist feed still reads meeting_link into a publicly cached response');
-  assert.match(route, /therapists\.map\(mapTherapist\)/);
+});
+
+test('the public route calls the mapper with one argument', () => {
+  // `map` passes (element, index, array). Handing it mapTherapist directly gave
+  // includeMeetingLinks the index — 0 for the first therapist and truthy for
+  // every one after it — so the links came back on the public response for all
+  // but one of them. The unit test above passed throughout, because it calls
+  // the mapper directly rather than the way the route does.
+  const route = codeOnly(read('api/routes/public.js'));
+  assert.ok(!/\.map\(mapTherapist\)/.test(route),
+    'mapTherapist is passed straight to map, so the index becomes includeMeetingLinks');
+  assert.match(route, /therapists\.map\(row => mapTherapist\(row\)\)/);
+});
+
+test('mapping a list the way the route does withholds every link, not just the first', () => {
+  const rows = [row(), { ...row(), id: 't2' }, { ...row(), id: 't3' }];
+  const mapped = rows.map(r => mapTherapist(r));
+  for (const [index, therapist] of mapped.entries()) {
+    const [slot] = therapist.consultationSettings.availableSlots;
+    assert.ok(!('meetingLink' in slot), `therapist at index ${index} still carries the join link`);
+  }
 });
 
 test('the two routes that legitimately need it ask for it', () => {
