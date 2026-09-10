@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   CheckCircle, Award, ArrowRight, PlayCircle, Briefcase, TrendingUp,
   Send, Star, Clock, Shield, X, Play,
@@ -137,18 +137,31 @@ const BundleDetails: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
-                  className="bg-primary-500 hover:bg-primary-400 text-white font-bold px-8 py-3.5 rounded-xl shadow-xl shadow-primary-900/40 transition text-base"
-                >
-                  {content['bundleDetails.hero.ctaPay'] || 'احجز مكانك الآن'}
-                </button>
-                <a
-                  href={`/enroll?bundle=${bundle.id}`}
-                  className="border-2 border-white/60 hover:border-white text-white font-bold px-6 py-3.5 rounded-xl transition text-sm flex items-center gap-2"
-                >
-                  💳 ادفع أونلاين مباشرة
-                </a>
+                {/* Gated on the price the way the sidebar already was. A bundle
+                    priced in EGP only still showed a visitor browsing in USD
+                    the big «احجز مكانك الآن» here — and checkout then disabled
+                    its own pay button on a zero price with nothing said. The
+                    sidebar said «السعر غير متاح في دولتك حالياً»; the hero,
+                    which is what people actually click, did not. */}
+                {priceAvailable && (
+                  <>
+                    <button
+                      onClick={() => navigate(`/checkout?type=bundle&id=${bundle.id}`)}
+                      className="bg-primary-500 hover:bg-primary-400 text-white font-bold px-8 py-3.5 rounded-xl shadow-xl shadow-primary-900/40 transition text-base"
+                    >
+                      {content['bundleDetails.hero.ctaPay'] || 'احجز مكانك الآن'}
+                    </button>
+                    {/* Link, not <a href>: a raw anchor leaves the router, so it
+                        reloads the whole app and re-fetches every list on the
+                        way to a page this build already has. */}
+                    <Link
+                      to={`/enroll?bundle=${bundle.id}`}
+                      className="border-2 border-white/60 hover:border-white text-white font-bold px-6 py-3.5 rounded-xl transition text-sm flex items-center gap-2"
+                    >
+                      💳 ادفع أونلاين مباشرة
+                    </Link>
+                  </>
+                )}
                 <button
                   onClick={() => document.getElementById('register-form')?.scrollIntoView({ behavior: 'smooth' })}
                   className="border-2 border-white/30 hover:border-white/60 text-white font-bold px-8 py-3.5 rounded-xl transition text-base"
@@ -455,12 +468,12 @@ const BundleDetails: React.FC = () => {
                   >
                     {content['bundleDetails.sidebar.cta'] || 'احجز الآن'}
                   </button>
-                  <a
-                    href={`/enroll?bundle=${bundle.id}`}
+                  <Link
+                    to={`/enroll?bundle=${bundle.id}`}
                     className="w-full flex items-center justify-center gap-2 border-2 border-primary-500 text-primary-700 hover:bg-primary-50 font-bold py-2.5 rounded-xl mb-3 transition text-sm"
                   >
                     💳 ادفع أونلاين مباشرة (كاش أو قسط)
-                  </a>
+                  </Link>
                 </>
               )}
               <button

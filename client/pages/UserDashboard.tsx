@@ -325,12 +325,14 @@ const UserDashboard: React.FC = () => {
         >
           <span>💬</span> تواصل معنا على واتساب
         </a>
-        <a
-          href="/courses"
+        {/* Link, not <a href>: a raw anchor leaves the router and reloads the
+            whole app to reach a page this build already has. */}
+        <Link
+          to="/courses"
           className="bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl font-bold transition"
         >
           استعرض كورساتنا
-        </a>
+        </Link>
         <button
           onClick={() => { logout(); navigate('/'); }}
           className="text-sm text-gray-400 hover:text-gray-600 underline"

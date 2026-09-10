@@ -95,6 +95,10 @@ const Courses: React.FC = () => {
                 <option value="Therapy">{content['courses.categories.therapy'] || 'علاج نفسي'}</option>
                 <option value="Child">{content['courses.categories.child'] || 'أطفال ومراهقين'}</option>
                 <option value="Diagnosis">{content['courses.categories.diagnosis'] || 'تشخيص'}</option>
+                {/* 'General' is the default the API writes and the largest group
+                    on the site, and it was the one category with no way to
+                    filter to it. */}
+                <option value="General">{content['courses.categories.general'] || 'عام'}</option>
               </select>
             </div>
           </div>

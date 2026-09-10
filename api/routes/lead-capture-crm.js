@@ -73,8 +73,23 @@ router.post('/api/registrations', publicLimiter, async (req, res) => {
     }
     let code = existing?.client_code || null;
     if (!code) code = await getNextClientCode(conn);
-    const { id: _id, email, source, status, notes, branch: _branch, createdAt, created_at, ...crmData } = item;
-    const branchVal = clientContext.branch;
+    const { id: _id, email, source, status, notes, branch: pickedBranch, createdAt, created_at, ...crmData } = item;
+    // The branch the visitor actually chose, when they chose a real one.
+    //
+    // Every public form on the site offers «فرع الدقي» and «فرع التجمع» in a
+    // dropdown labelled «الفرع الأقرب إليك», and this route discarded the
+    // answer and filed the lead under a branch derived from their IP —
+    // branchForCountry only ever answers ONLINE_EGYPT, ONLINE_SAUDI or
+    // ONLINE_ABROAD, so it can never name a physical branch. Someone asking for
+    // Daqqi was recorded as an online-Egypt lead, the Daqqi team never saw them,
+    // and the branch filter in the CRM showed no walk-in interest from the site
+    // at all. /api/leads-public, the other public lead route, has always
+    // honoured it.
+    //
+    // Geo remains the fallback for a visitor who picked nothing, and still
+    // decides currency and pricing — which are resolved from clientContext
+    // elsewhere and are not touched by this.
+    const branchVal = normalizeBranch(pickedBranch, null) || clientContext.branch;
     let salesId = existing?.assigned_sales_id || null;
     let salesName = existing?.assigned_sales_name || null;
     if (!salesId) {

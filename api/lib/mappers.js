@@ -81,6 +81,18 @@ async function saveCourseMaterials(db, courseId, materials) {
   );
 }
 
+/** The spellings client/types.ts and admin/types.ts both declare for a course. */
+const COURSE_TYPES = Object.freeze({ RECORDED: 'Recorded', LIVE: 'Live', MIX: 'Mix' });
+const COURSE_CATEGORIES = Object.freeze({
+  THERAPY: 'Therapy', DIAGNOSIS: 'Diagnosis', CHILD: 'Child', GENERAL: 'General',
+});
+
+const canonicalCourseType = value =>
+  COURSE_TYPES[String(value || '').trim().toUpperCase()] || 'Recorded';
+
+const canonicalCourseCategory = value =>
+  COURSE_CATEGORIES[String(value || '').trim().toUpperCase()] || 'General';
+
 function mapCourse(r, materials) {
   return {
     id: r.id,
@@ -94,8 +106,21 @@ function mapCourse(r, materials) {
     instructor: r.instructor,
     instructorId: r.instructor_id || undefined,
     thumbnail: r.thumbnail,
-    category: r.category,
-    type: r.type,
+    // Spelled the way both apps declare them, not the way the column stores
+    // them. courses.type and courses.category are ENUMs whose members are
+    // upper case, and MySQL stores the *declared* spelling — so the admin form
+    // sends 'Mix' and the row comes back 'MIX'. Every screen compares the
+    // declared spelling with ===, which is case-sensitive, so:
+    //
+    //   • both filters on /courses matched nothing — picking any type or any
+    //     category emptied the page
+    //   • every course card read «مسجل», including all 20 'MIX' ones
+    //   • the admin's own type dropdown showed no selection
+    //
+    // Normalised here rather than at each comparison, so there is one spelling
+    // on the wire and the screens keep the vocabulary their types declare.
+    category: canonicalCourseCategory(r.category),
+    type: canonicalCourseType(r.type),
     price:         { EGP: r.price_egp     || 0, SAR: r.price_sar     || 0, USD: r.price_usd     || 0 },
     originalPrice: { EGP: r.orig_price_egp|| 0, SAR: r.orig_price_sar|| 0, USD: r.orig_price_usd|| 0 },
     rating: r.rating,
