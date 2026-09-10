@@ -9,6 +9,7 @@ const { tryJson } = require('../lib/helpers');
 const { sendEmail } = require('../lib/email');
 const { sendWhatsApp } = require('../lib/whatsapp');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission, requireAdminOrOnlineManagerOrCollection, requireAdminOrOnlineManager } = require('../middleware/auth');
+const { financialScopeClause, resolveFinancialScope } = require('../lib/financialScope');
 const { DEFAULT_TENANT_ID, resolveTenantId } = require('../lib/tenantScope');
 const { bulkOperationLimiter } = require('../middleware/rateLimits');
 const { leadScope } = require('../lib/leadAccess');
@@ -709,6 +710,12 @@ router.get('/api/admin/refund-requests', requireAuth, requireAdminOrStaff, requi
       WHERE r.tenant_id=? AND s.tenant_id=r.tenant_id
     `;
     const params = [tenantId];
+    // Narrowed to whose customers they are. The 'all' roles — accountant, the
+    // managers — get an empty clause and keep the whole queue.
+    const refundScope = resolveFinancialScope(req, { allowAssigned: true });
+    const scoped = financialScopeClause(refundScope, { branchColumn: 's.branch_id', subscriberAlias: 's' });
+    sql += scoped.sql;
+    params.push(...scoped.params);
     if (status && status !== 'all') { sql += ' AND r.status = ?'; params.push(status); }
     sql += ' ORDER BY r.created_at DESC LIMIT 500';
     const [rows] = await pool.query(sql, params);

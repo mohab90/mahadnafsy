@@ -5,6 +5,7 @@ const router  = express.Router();
 
 const { pool, cached } = require('../../lib/db');
 const { requireAuth, requireAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { resolveDataScope } = require('../../constants/permissions');
 const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -13,8 +14,30 @@ const { dateOnlyInTimeZone, addDaysToDateOnly } = require('../../lib/dates');
 
 // GET /api/admin/dashboard/kpi — single endpoint with all key metrics
 // Optimized: parallel queries, cached totals, month-over-month delta
-router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, requirePermission('view_dashboard'), async (req, res) => {
+// view_financial, not view_dashboard.
+//
+// This answers the institute's revenue this month, last month and all time,
+// alongside every lead, subscriber, enrolment and pending payment it has —
+// unscoped, because a summary of the whole business is what it is for. It was
+// gated on view_dashboard, which is the permission that merely means "is
+// staff": every role holds it, down to «موظف». A trainer's session cookie was
+// enough to read the books.
+//
+// Nothing in either app calls this route, so tightening it costs no screen.
+router.get('/api/admin/dashboard/kpi', requireAuth, requireAdminOrStaff, requirePermission('view_financial'), async (req, res) => {
   try {
+    // Institute-wide by definition, so only a caller entitled to institute-wide
+    // rows may have it. view_financial alone is not that: a collection officer
+    // holds it and is scoped to the customers assigned to them, and the Daqqi
+    // manager to one branch. There is no way to narrow a total, so the answer
+    // is to refuse rather than to hand over a figure that is not theirs.
+    const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin, fallback: 'none' });
+    if (scope !== 'all') {
+      return res.status(403).json({
+        error: 'هذه الأرقام على مستوى المعهد كله، وصلاحيتك على بيانات محددة',
+        code: 'INSTITUTE_WIDE_SCOPE_REQUIRED',
+      });
+    }
     const now    = new Date();
     const ym     = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     const curM   = ym(now);

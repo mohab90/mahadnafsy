@@ -7,6 +7,7 @@ const { sendWhatsApp } = require('../../lib/whatsapp');
 const outbox = require('../../lib/outbox');
 const { filterSuppressed } = require('../../lib/marketingConsent');
 const { requireAuth, requireAdmin, requireSuperAdmin, requireAdminOrStaff, requirePermission } = require('../../middleware/auth');
+const { resolveDataScope } = require('../../constants/permissions');
 const { bulkOperationLimiter } = require('../../middleware/rateLimits');
 const { leadScope } = require('../../lib/leadAccess');
 const express = require('express');
@@ -224,10 +225,22 @@ router.get('/api/admin/search', requireAuth, requireAdminOrStaff, requirePermiss
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/api/admin/consultations/calendar', requireAuth, requireAdminOrStaff, requirePermission('view_consultations'), async (req, res) => {
   try {
+    // view_consultations is held by eight roles, three of which — trainer,
+    // expert, instructor — carry data scope 'none': the system's way of saying
+    // they see no customer rows at all. They were reading every therapy
+    // client's name and session for the month.
+    const scope = resolveDataScope(req.staffRecord, { isSuperAdmin: req.isSuperAdmin, fallback: 'none' });
+    if (scope === 'none') return res.json({ month: req.query.month || '', grouped: {}, total: 0 });
+
     const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
+    // No meeting_link. This is a scheduling view — who is booked, when, with
+    // whom — and a join link is not part of that. The two places that need one
+    // have it: the therapist's own portal, and the customer's dashboard through
+    // GET /api/me/consultations. A month of live join links handed to everyone
+    // who can read a schedule is the same leak the public therapist feed had.
     const [rows] = await pool.query(
       `SELECT c.id, c.client_name, c.session_date, c.status, c.session_type,
-              c.amount, c.currency, c.meeting_link,
+              c.amount, c.currency,
               t.name AS therapist_name, t.image AS therapist_image
        FROM consultations c
        LEFT JOIN therapists t ON t.id = c.therapist_id
