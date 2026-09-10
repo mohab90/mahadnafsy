@@ -180,6 +180,15 @@ const ROLE_PERMS = Object.freeze({
 
   [ROLES.COLLECTION]: [
     'view_dashboard',
+    // view_leads, because «العملاء المحتملين» is one of the seven screens in
+    // this role's own nav bar and it answered «غير مصرح بالوصول» — the same
+    // defect «إحصائياتي» had in the sales bar, in a different account.
+    //
+    // Scoped, not open: DATA_SCOPE for this role is 'assigned_cs', so
+    // leadAccess.js narrows every lead query to the leads of customers assigned
+    // to them. A collection officer looking up the original record of a client
+    // they are chasing is the whole point; they do not get the pipeline.
+    'view_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
@@ -246,7 +255,10 @@ const ROLE_PERMS = Object.freeze({
     'view_dashboard',
     'view_courses',
     'view_consultations',
-    'view_subscribers',
+    // No view_subscribers. DATA_SCOPE for this role is 'none', so it returned
+    // nothing at all — the grant did not open the customer list, it put an
+    // empty «عملاء الأونلاين» in the sidebar. Its sibling roles, trainer and
+    // instructor, never had it.
     'view_reports',
   ],
 

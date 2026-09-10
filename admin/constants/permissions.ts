@@ -283,6 +283,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
 
   collection: [
     'view_dashboard',
+    // Mirrors api/constants/permissions.js — see the note there.
+    'view_leads',
     'view_subscribers', 'manage_subscribers', 'export_subscribers',
     'view_orders', 'manage_orders', 'manage_payments', 'approve_refunds',
     'view_financial', 'manage_financial',
@@ -349,7 +351,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<RoleKey, PermissionKey[] | '*'> = 
     'view_dashboard',
     'view_courses',
     'view_consultations',
-    'view_subscribers',
+    // No view_subscribers — mirrors api/constants/permissions.js. The role's
+    // data scope is 'none', so it returned nothing and only put an empty
+    // «عملاء الأونلاين» in the sidebar.
     'view_reports',
   ],
 

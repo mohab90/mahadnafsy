@@ -642,7 +642,7 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   branches_settings: 'manage_settings',
   registrations:      'view_leads',
   leads:              'view_leads',
-  sales_hub:          'view_leads',
+  sales_hub:          'manage_sales_team',
   // Both live under التسويق. marketing_hub on view_leads and messaging_hub on
   // view_dashboard meant every sales rep — and every employee at all — saw a
   // marketing section they have no business in. Campaign tooling and channel
@@ -694,11 +694,24 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   // it opens onto a 403. The collection bar points at a screen it can open
   // instead; see DashboardNavigation.
   staff_performance:  'view_leads',
-  sales_team:         'view_leads',
-  sales_reports:      'view_leads',
+  // Running the sales team, not reading a lead. These three were gated on
+  // view_leads — which means "may read a lead record" and nothing more — so a
+  // consultant, whose job is therapy sessions, was shown the sales hub, the
+  // sales reports and the sales team's performance. That is the same fault the
+  // note above records for view_reports and view_staff standing in for
+  // "management": one permission acting as a department.
+  //
+  // manage_sales_team exists for exactly this and says so in its own comment.
+  // It is held by online_manager, daqqi_manager and sales_collection_manager —
+  // whose bar already lists sales_hub, so nothing they use moves.
+  sales_team:         'manage_sales_team',
+  sales_reports:      'manage_sales_team',
   // Writing targets is a manager action (see POST /api/admin/sales-targets):
   // matched to the API gate so a sales rep doesn't see a tab that 403s.
-  online_team:        'view_subscribers',
+  // إدارة فريق الأونلاين is a team screen too, and view_subscribers is what
+  // every customer-facing role holds — so support and consultant were both
+  // offered the online team's assignments.
+  online_team:        'manage_sales_team',
   subscriptions:     'view_financial',
   consultation_calendar: 'view_consultations',
   automation:         'manage_automation',
@@ -719,7 +732,11 @@ const TAB_PERMISSION_MAP: Partial<Record<TabKey, StaffPermission | StaffPermissi
   campaigns:          'manage_channel_settings',
   // Sales planning is the mixed one: follow-ups on view_leads, scoring on
   // manage_leads, the forecast on view_reports and targets on manage_sales_team.
-  sales_planning:     ['view_leads', 'manage_leads', 'manage_sales_team'],
+  // Not view_leads. Reading a lead record is not the same as planning the
+  // quarter, and it was letting a consultant into the targets and forecast
+  // screen. Anyone who works the pipeline (manage_leads) or runs the team
+  // (manage_sales_team) still opens it.
+  sales_planning:     ['manage_leads', 'manage_sales_team'],
   // Managing the notification inbox is a marketing/ops tool, not something every
   // employee who can receive notifications should see — manage_notifications is
   // held by sales reps and support, which would have put the whole التسويق group
