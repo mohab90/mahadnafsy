@@ -921,7 +921,11 @@ router.post('/api/join-us', contactLimiter, async (req, res) => {
     let targetJobId = null;
     if (jobId) {
       const [[job]] = await pool.query(
-        `SELECT id FROM job_postings WHERE id=? AND tenant_id=? AND status='open' AND id <> 'job-talent-pool' LIMIT 1`,
+        // NOT LIKE 'talent-%', matching how talentPoolJobId() in hr/talent.js
+        // actually builds the id. The literal 'job-talent-pool' this used never
+        // matched anything, so the exclusion did nothing — the same stale
+        // spelling GET /api/jobs was already corrected for, left behind here.
+        `SELECT id FROM job_postings WHERE id=? AND tenant_id=? AND status='open' AND id NOT LIKE 'talent-%' LIMIT 1`,
         [jobId, req.tenantId]
       ).catch(() => [[null]]);
       if (job) targetJobId = job.id;

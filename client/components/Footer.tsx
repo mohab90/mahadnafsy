@@ -70,7 +70,12 @@ const Footer: React.FC<{ mini?: boolean }> = ({ mini }) => {
               <li><Link to="/institute-gallery" className="hover:text-primary-500 transition">معرض صور المعهد</Link></li>
               <li><Link to="/policies" className="hover:text-primary-500 transition">سياسات المعهد</Link></li>
               <li><Link to="/contact" className="hover:text-primary-500 transition">تواصل معنا</Link></li>
-              <li><Link to="/join" className="hover:text-primary-500 transition">انضم إلينا</Link></li>
+              {/* Two separate tracks: /join is the lecturer and consultant one,
+                  /join-us is the jobs board. Only the first was in the footer,
+                  so the open postings had no route in from any page a visitor
+                  is likely to be on. */}
+              <li><Link to="/join" className="hover:text-primary-500 transition">انضم كمحاضر أو مستشار</Link></li>
+              <li><Link to="/join-us" className="hover:text-primary-500 transition">الوظائف المتاحة</Link></li>
             </ul>
           </div>
 

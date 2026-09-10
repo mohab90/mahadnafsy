@@ -145,8 +145,17 @@ const JoinStaff: React.FC = () => {
                       {j.department && <span className="px-1.5 py-0.5 rounded bg-slate-100">{j.department}</span>}
                     </div>
                     {j.description && <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{j.description}</p>}
-                    {(j.salary_min || j.salary_max) && (
-                      <p className="text-xs text-emerald-700 font-bold mt-2">{j.salary_min || '?'}–{j.salary_max || '?'} ج.م</p>
+                    {/* Number(), because salary_min/max are DECIMAL columns and
+                        arrive as strings: "0.00" is truthy, so a posting with
+                        no salary set advertised «0.00–0.00 ج.م» — and the ones
+                        that do have a salary read «5000.00–15000.00» on a job
+                        ad rather than «5,000 – 15,000». */}
+                    {(Number(j.salary_min) > 0 || Number(j.salary_max) > 0) && (
+                      <p className="text-xs text-emerald-700 font-bold mt-2">
+                        {Number(j.salary_min) > 0 ? Number(j.salary_min).toLocaleString('ar-EG-u-nu-latn') : '?'}
+                        {' – '}
+                        {Number(j.salary_max) > 0 ? Number(j.salary_max).toLocaleString('ar-EG-u-nu-latn') : '?'} ج.م
+                      </p>
                     )}
                   </button>
                 ))}
