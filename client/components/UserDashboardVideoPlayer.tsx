@@ -274,9 +274,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) =
         if (data?.event === 'onStateChange' && data?.info === 0 && selectedId) {
           markLectureComplete(selectedId);
         }
-        // YouTube sends infoDelivery with currentTime when enablejsapi=1
+        // YouTube sends infoDelivery with currentTime when enablejsapi=1.
+        //
+        // The duration has to go with it. saveTime computes the percentage from
+        // seconds/duration and, with no duration, falls back to whatever is
+        // already stored — so a YouTube lecture's progress never moved: it sat
+        // at 0% until the video ended and the completion handler flipped it
+        // straight to 100. That is the same defect the comment inside saveTime
+        // records as fixed; it was only ever fixed for the native player, which
+        // passes its own duration, and most lectures here are YouTube.
         if (data?.event === 'infoDelivery' && typeof data?.info?.currentTime === 'number' && selectedId) {
-          saveTime(selectedId, data.info.currentTime);
+          const duration = typeof data.info.duration === 'number'
+            ? data.info.duration
+            : Number(data.info.progressState?.duration) || undefined;
+          saveTime(selectedId, data.info.currentTime, duration);
+          // Complete at 80%, the same rule the native player uses. Marking a
+          // YouTube lecture complete only when the video reaches its very end
+          // meant a learner who watched almost all of it and stopped kept an
+          // unfinished lecture — and an unfinished course, and no certificate —
+          // while the same lecture hosted natively would have counted.
+          if (duration && duration > 0 && data.info.currentTime / duration >= 0.8) {
+            markLectureComplete(selectedId, data.info.currentTime);
+          }
         }
       } catch { /* ignore non-JSON messages */ }
     };

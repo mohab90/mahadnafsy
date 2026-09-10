@@ -11,6 +11,10 @@ const Bundles: React.FC = () => {
 
   useEffect(() => { document.title = 'المسارات والباقات | معهد الدراسات النفسية'; }, []);
 
+  // A bundle with no courses attached has nothing to show, so the list skips
+  // it. The empty-state check below uses the same list for the same reason.
+  const visibleBundles = bundles.filter(b => b.courses && b.courses.length > 0);
+
   return (
     <div className="bg-gray-50 min-h-screen">
       {/* Hero */}
@@ -21,7 +25,7 @@ const Bundles: React.FC = () => {
         <div className="container mx-auto px-4 relative z-10 text-center">
           <div className="inline-flex items-center gap-2 bg-violet-600/30 border border-violet-400/30 rounded-full px-4 py-1.5 text-sm font-medium mb-5">
             <Map size={14} className="text-violet-300" />
-            <span>{bundles.length} مسار تعليمي وباقة متاحة</span>
+            <span>{visibleBundles.length} مسار تعليمي وباقة متاحة</span>
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4">{content['bundles.title'] || 'المسارات التعليمية والباقات'}</h1>
           <p className="text-gray-300 text-lg max-w-2xl mx-auto leading-relaxed">
@@ -72,7 +76,11 @@ const Bundles: React.FC = () => {
         {/* An empty list is not the same thing as a list that has not arrived.
             Keyed on length alone, the spinner never stopped for an institute
             with no bundles published: the page said "loading" forever. */}
-        {bundles.length === 0 && (
+        {/* Checked against the list that is actually drawn, not the raw one. The
+            list below hides any bundle with no courses attached, so a set of
+            bundles that were all still empty produced neither the list nor this
+            message — just a hero, two info cards and nothing else. */}
+        {visibleBundles.length === 0 && (
           remoteReady ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
               <p className="text-gray-500 font-bold">لا توجد مسارات متاحة حالياً</p>
@@ -86,7 +94,7 @@ const Bundles: React.FC = () => {
           )
         )}
         <div className="space-y-12">
-            {bundles.filter(b => b.courses && b.courses.length > 0).map(bundle => (
+            {visibleBundles.map(bundle => (
                 <div key={bundle.id} className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden flex flex-col lg:flex-row group hover:shadow-xl transition duration-300">
                     <div className="lg:w-1/3 bg-gray-900 relative">
                         <div className="absolute inset-0 bg-gradient-to-br from-primary-600 to-primary-900 opacity-90"></div>

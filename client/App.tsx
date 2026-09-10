@@ -304,13 +304,28 @@ const NotFound: React.FC = () => (
 const LocaleRoute: React.FC<{ locale: 'EGP' | 'SAR' | 'USD' }> = () => <Navigate to="/" replace />;
 
 const ScrollToTop = () => {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const prevPathnameRef = React.useRef(pathname);
   useEffect(() => {
     const prev = prevPathnameRef.current;
     prevPathnameRef.current = pathname;
-    if (prev !== pathname) window.scrollTo(0, 0);
-  }, [pathname]);
+    if (prev === pathname) return;
+    // A link that names a section goes to that section. react-router does not
+    // scroll to a hash on its own, and this used to force 0 regardless — so
+    // «سجل بياناتك للتواصل» on /bundles, which points at #register-form, landed
+    // the visitor at the top of a long page with the form far below and nothing
+    // to say it was there.
+    //
+    // Looked up after paint, because the target belongs to the page being
+    // navigated to and that page has not mounted while this effect runs.
+    if (!hash) { window.scrollTo(0, 0); return; }
+    const id = decodeURIComponent(hash.slice(1));
+    requestAnimationFrame(() => {
+      const target = document.getElementById(id);
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+      else window.scrollTo(0, 0);
+    });
+  }, [pathname, hash]);
   return null;
 };
 
