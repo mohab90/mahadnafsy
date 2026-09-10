@@ -17,6 +17,7 @@ import { StudentDashboardSectionNav } from '../components/student-dashboard/Stud
 import { instituteWhatsApp } from '../lib/whatsappLink';
 import { isCertificateEarned } from '../lib/certificateStatus';
 import { adminDashboardUrl } from '../lib/adminDashboard';
+import { cairoDateOnly } from '../../shared/cairoDate';
 
 const CourseCertificate = React.lazy(() => import('../components/CourseCertificate'));
 const StudentCoursesTab = React.lazy(() => import('../components/student-dashboard/StudentCoursesTab').then((module) => ({ default: module.StudentCoursesTab })));
@@ -512,8 +513,11 @@ const UserDashboard: React.FC = () => {
   /* ── Installment due alerts (for Bell count + Notifications tab) ── */
   const installmentAlerts = (() => {
     if (!subscriber?.installmentPlans?.length) return [];
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const next7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    // Both were the UTC day, which decides whether the bell shows an
+    // instalment as overdue — so for the first two or three hours of
+    // every Cairo day it was still reporting yesterday.
+    const todayStr = cairoDateOnly();
+    const next7 = cairoDateOnly(Date.now() + 7 * 86400000);
     return subscriber.installmentPlans.flatMap(plan =>
       plan.entries
         .filter(e => !e.paidAt && e.dueDate <= next7)

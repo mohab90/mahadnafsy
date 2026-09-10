@@ -255,6 +255,7 @@ export const defaultContent: Record<string, string> = {
   'joinus.form.title': 'قدّم طلبك الآن',
   'joinus.form.subtitle': 'سيتواصل معك فريقنا خلال 3–5 أيام عمل لمراجعة طلبك.',
   'community.heroTitle': 'المجتمع النفسي المتخصص',
+  'community.memberCount': '847',
   'community.heroSubtitle': 'مساحة آمنة ومتخصصة لتبادل الخبرات ومناقشة الحالات والنمو المهني بين المتخصصين في الصحة النفسية',
   'community.discussions.title': 'ساحة النقاش',
   'community.library.title': 'المكتبة الرقمية',

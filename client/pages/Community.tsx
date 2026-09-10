@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useSiteData } from '../context/SiteDataContext';
 import { cdnImg } from '../lib/img';
+import { cairoDateOnly } from '../../shared/cairoDate';
 import type { CommunityEventItem } from '../types';
 
 const TAG_COLORS: Record<string, string> = {
@@ -84,7 +85,16 @@ const Community: React.FC = () => {
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const totalMembers = 847 + communityPosts.length;
+  // The headline the community page leads with. It was `847 + posts.length` —
+  // a number invented in source and shown to every visitor as a fact, alongside
+  // a «متصل الآن» figure derived from it by multiplying by 0.07, which nothing
+  // measures: there is no presence data behind it at all.
+  //
+  // The count is now the institute's to state, the way home.stats.* already
+  // works, seeded with the figure the page has been showing so nothing changes
+  // until someone decides otherwise. The invented "online now" line is gone —
+  // it could not be made true, only removed.
+  const totalMembers = Number(content['community.memberCount'] || 847) + communityPosts.length;
 
   const getEmbedUrl = (url: string) => {
     const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
@@ -104,7 +114,9 @@ const Community: React.FC = () => {
     const jsDay = new Date(calendarYear, calendarMonth, 1).getDay();
     return (jsDay + 1) % 7; // Sat=0, Sun=1, ..., Fri=6
   })();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // The calendar highlights today. toISOString() is the UTC day, so
+  // between midnight and 02:00 Cairo it highlighted yesterday.
+  const todayStr = cairoDateOnly();
 
   const handleLike = async (id: string) => {
     if (actionPending) return;
@@ -560,7 +572,10 @@ const Community: React.FC = () => {
           {/* Right Sidebar */}
           <div className="lg:col-span-1 space-y-5">
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2"><Users size={16} className="text-primary-500" />أعضاء نشطون الآن</h3>
+              {/* «أعضاء نشطون الآن» promised live presence the site does not
+                  track. The panel is a member count and five decorative
+                  initials, so it now says what it actually is. */}
+              <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2"><Users size={16} className="text-primary-500" />أعضاء المجتمع</h3>
               <div className="flex -space-x-2 rtl:space-x-reverse mb-3 py-1">
                 {['أ','ب','ج','د','ه'].map((letter, i) => {
                   const colors = ['bg-violet-500','bg-emerald-500','bg-sky-500','bg-amber-500','bg-rose-500'];
@@ -568,7 +583,7 @@ const Community: React.FC = () => {
                 })}
                 <div className="w-9 h-9 rounded-full border-2 border-white bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700">+{totalMembers - 5}</div>
               </div>
-              <div className="text-xs text-gray-500">{totalMembers.toLocaleString('ar-EG-u-nu-latn')} عضو • {Math.floor(totalMembers * 0.07)} متصل الآن</div>
+              <div className="text-xs text-gray-500">{totalMembers.toLocaleString('ar-EG-u-nu-latn')} عضو</div>
             </div>
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">

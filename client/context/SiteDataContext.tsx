@@ -132,6 +132,7 @@ const defaultContent: Record<string, string> = {
   'footer.instagram': '',
   'footer.youtube': '',
   'footer.whatsapp': '201096203090',
+  'community.memberCount': '847',
   'footer.description': 'نعمل تحت شعار “رحلة علم ووعي، تغير حياتك للأفضل”. نقدم دبلومات معتمدة في الصحة النفسية والعلاج النفسي.',
   'home.testimonials.title': 'ماذا يقول عملاؤنا؟',
   'home.testimonials.subtitle': 'قصص نجاح حقيقية من خريجي المعهد',

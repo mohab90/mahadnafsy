@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import type { Course, PaymentProof, SubscriberItem } from '../../types';
 import { paymentMethodLabel } from '../../../shared/paymentMethods';
 import { useManualPaymentMethods } from '../../lib/usePaymentAvailability';
+import { cairoDateOnly } from '../../../shared/cairoDate';
 
 type CoursePaymentSummary = {
   paidEGP: number;
@@ -222,7 +223,10 @@ export function StudentPaymentsTab({
             {subscriber!.installmentPlans!.map(plan => {
               const paidTotal = plan.entries.reduce((sum, entry) => sum + (entry.paidAt ? (entry.paidAmount ?? entry.amount) : 0), 0);
               const remaining = plan.totalAmount - paidTotal;
-              const todayStr = new Date().toISOString().slice(0, 10);
+              // Decides whether an instalment reads as متأخر. On the UTC
+              // day, one that fell due yesterday in Cairo still showed as
+              // not yet due until 02:00 the next morning.
+              const todayStr = cairoDateOnly();
 
               return (
                 <div key={plan.id} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">

@@ -173,6 +173,9 @@ export const pageJoinUsFields: ContentField[] = [
 
 export const pageCommunityFields: ContentField[] = [
   { key: 'community.heroTitle', label: 'عنوان الهيرو', multiline: false },
+  // The page led with «847 عضو» hardcoded in the client's source. The number
+  // the institute wants to state belongs to the institute, not to a build.
+  { key: 'community.memberCount', label: 'عدد أعضاء المجتمع (يُضاف إليه عدد المشاركات)', multiline: false },
   { key: 'community.heroSubtitle', label: 'وصف الهيرو', multiline: true },
   { key: 'community.discussions.title', label: 'عنوان قسم النقاشات', multiline: false },
   { key: 'community.library.title', label: 'عنوان مكتبة الحالات', multiline: false },
