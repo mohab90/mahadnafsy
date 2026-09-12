@@ -18,6 +18,7 @@ import { useActivityLogState } from './site-data-hooks/useActivityLogState';
 import { useAiMessagingConfigState } from './site-data-hooks/useAiMessagingConfigState';
 import { useCatalogState } from './site-data-hooks/useCatalogState';
 import { useLecturesChaptersState } from './site-data-hooks/useLecturesChaptersState';
+import { useSignedInStaff } from './site-data-hooks/useSignedInStaff';
 import { useExpensesState } from './site-data-hooks/useExpensesState';
 import { useDaqqiRoundsState } from './site-data-hooks/useDaqqiRoundsState';
 import { useStaffState } from './site-data-hooks/useStaffState';
@@ -190,6 +191,11 @@ export interface SiteDataShape {
   issueClientCode: () => string;
   issueClientCodeAsync: () => Promise<string>;
   isAdmin: boolean;
+  /** The signed-in employee's staff record, or null. See the note by its resolution. */
+  currentStaff: StaffMember | null;
+  /** The server's own answer to "am I staff", independent of the staff list. */
+  staffSelf: StaffMember | null;
+  staffSelfLoading: boolean;
   remoteReady: boolean;
   mySubscriberLoaded: boolean;
   reloadLectures: () => Promise<void>;
@@ -340,6 +346,9 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const isAdmin = Boolean(authUser?.isAdmin);
 
+  // Who is signed in, as a staff record — resolved once for every screen.
+  // See useSignedInStaff for why the fallback matters.
+  const { currentStaff, staffSelf, staffSelfLoading } = useSignedInStaff(isAdmin, authUser?.email, staffMembers);
 
 
   // ── Per-user subscriber loaded flag ─────────────────────────────────────────────────────────
@@ -727,6 +736,9 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrency,
     authUser,
     isAdmin,
+    currentStaff,
+    staffSelf,
+    staffSelfLoading,
     remoteReady,
     mySubscriberLoaded,
     reloadLectures,
@@ -748,7 +760,7 @@ export const SiteDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     communityEvents, content, activityLogs, discounts, notifications, expenses, daqqiRounds,
     joinUsApplications, contactMessages, automationWorkflows, adminAiConfig, aiAgentConfig,
     messagingChannels, inboxConversations, fbLeadAdsConfig, courseQuizzes, quizAttempts,
-    liveStreams, currency, authUser, isAdmin, remoteReady,
+    liveStreams, currency, authUser, isAdmin, currentStaff, staffSelf, staffSelfLoading, remoteReady,
     staffScopedSubscribers, staffScopedLeads]);
 
   // The same values, grouped by how often they change, so a screen that reads

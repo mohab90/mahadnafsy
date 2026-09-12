@@ -121,7 +121,7 @@ type CannedResponse = { id: string; title: string; body: string; category: strin
 
 export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const navigate = useNavigate();
-  const { joinUsApplications, isAdmin, authUser, staffMembers } = useSiteData();
+  const { joinUsApplications, isAdmin, authUser, staffMembers, currentStaff } = useSiteData();
   const [tickets, setTickets] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
@@ -130,9 +130,8 @@ export default function CustomerInboxTab({ notify }: { notify: NotifyFn }) {
   const [sourceFilter, setSourceFilter] = useState<'all' | InboxSource>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | InboxStatus>('all');
   const [statusOverrides, setStatusOverrides] = useState<Record<string, { status: InboxStatus; originalStatus: string }>>({});
-  const currentStaff = staffMembers.find(member =>
-    String(member.email || '').toLowerCase() === String(authUser?.email || '').toLowerCase()
-  );
+  // From the context: staffMembers is empty for the ten roles that cannot read
+  // the staff list, and this used to search it alone.
   const permissionSubject = currentStaff ? {
     role: currentStaff.role as RoleKey,
     permissions: currentStaff.permissions as PermissionKey[] | undefined,

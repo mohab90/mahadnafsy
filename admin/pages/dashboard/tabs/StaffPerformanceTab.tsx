@@ -32,7 +32,7 @@ const RANK_ICONS = [Trophy, Award, Star];
 const RANK_COLORS = ['text-yellow-500', 'text-slate-400', 'text-amber-600'];
 
 export default function StaffPerformanceTab() {
-  const { staffMembers, leads, orders, authUser, isAdmin } = useSiteData();
+  const { staffMembers, leads, orders, authUser, isAdmin, currentStaff } = useSiteData();
   const [range, setRange] = useState<TimeRange>('month');
   const [roleFilter, setRoleFilter] = useState('all');
 
@@ -48,10 +48,11 @@ export default function StaffPerformanceTab() {
   // without this a rep would see every colleague listed at zero, which is both
   // a roster they should not have and a set of numbers that are not true.
   const myStaffId = useMemo(() => {
-    const email = String(authUser?.email || '').toLowerCase().trim();
-    if (!email) return '';
-    return staffMembers.find(s => String(s.email || '').toLowerCase().trim() === email)?.id || '';
-  }, [authUser?.email, staffMembers]);
+    // From the context, which falls back to /api/staff/me — staffMembers is
+    // empty for a sales rep, and an empty id here turned selfOnly off and
+    // showed them the whole team.
+    return currentStaff?.id || '';
+  }, [currentStaff]);
   const selfOnly = !isAdmin && Boolean(myStaffId);
 
   // Per-rep lead counts from the database. The range boundary is computed here,

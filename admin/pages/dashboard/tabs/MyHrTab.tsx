@@ -64,7 +64,7 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default function MyHrTab({ notify }: { notify: NotifyFn }) {
-  const { staffMembers, activityLogs, authUser } = useSiteData();
+  const { activityLogs, authUser, currentStaff } = useSiteData();
   const [activeSection, setActiveSection] = useState<MyHrSection>('overview');
   const [hrSnapshot, setHrSnapshot] = useState<HrSnapshot | null>(null);
 
@@ -126,9 +126,10 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
     REJECTED: 'bg-red-100 text-red-700', CANCELLED: 'bg-gray-100 text-gray-500',
   };
 
-  const me = useMemo<StaffMember | undefined>(() =>
-    staffMembers.find((staff) => staff.id === authUser?.uid || staff.email === authUser?.email),
-    [staffMembers, authUser]
+  // From the context, which falls back to /api/staff/me. Searching the staff
+  // list alone left an employee's own record undefined on their own page.
+  const me = useMemo<StaffMember | undefined>(() => currentStaff ?? undefined,
+    [currentStaff]
   );
 
   const myLogs = useMemo(() =>

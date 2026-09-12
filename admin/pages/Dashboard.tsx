@@ -137,6 +137,9 @@ const Dashboard: React.FC = () => {
     removeContentKey,
     authUser,
     remoteReady,
+    currentStaff,
+    staffSelf,
+    staffSelfLoading,
     setStaffScopedSubscribers,
     setStaffScopedLeads,
   } = useSiteData();
@@ -406,16 +409,13 @@ const Dashboard: React.FC = () => {
   const filteredContent = Object.entries(content).filter(([key, value]) => `${key} ${value}`.toLowerCase().includes(searchText.toLowerCase()));
 
   const {
-    staffSelf,
-    staffSelfLoading,
-    currentStaff,
     isSalesOnly,
     isCollectionRole,
     isReceptionDaqqi,
     isDaqqiManager,
     isOnlineManager,
     isSalesCollectionManager,
-  } = useCurrentStaff({ isAdmin, authUser, staffMembers });
+  } = useCurrentStaff({ currentStaff });
   useStaffRoleRedirects({ isAdmin, currentStaff, urlTab, setActiveTabState });
 
   // -- URL: when staff_settings tab is active, reflect username in URL ------

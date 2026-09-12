@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { mysqlAdmin, mysqlClient } from '../../../../lib/mysqlapi';
+import { mysqlAdmin } from '../../../../lib/mysqlapi';
+import { useSiteData } from '../../../../context/SiteDataContext';
 import type { StaffMember } from '../../../../types';
 import {
   DEFAULT_CRM_SETTINGS,
@@ -9,16 +10,16 @@ import {
   type NotifyFn,
 } from '../CrmSettingsModal';
 
-type StaffSelfSnapshot = { id?: string; role?: string; name?: string };
-
 export function useLeadCrmBootstrap(notify: NotifyFn) {
+  // Who I am, from the one place that resolves it. This hook used to ask
+  // /api/staff/me itself — the third component on the same page load to do so,
+  // and the answer decides whose leads the screen is scoped to.
+  const { currentStaff } = useSiteData();
   const [crmSettings, setCrmSettings] = useState<CrmSettings>(DEFAULT_CRM_SETTINGS);
   const [pipelineStages, setPipelineStages] = useState<CrmPipelineStage[]>([]);
-  const [selfStaff, setSelfStaff] = useState<{
-    id: string;
-    role: StaffMember['role'];
-    name: string;
-  } | null>(null);
+  const selfStaff = currentStaff
+    ? { id: currentStaff.id, role: currentStaff.role, name: currentStaff.name || '' }
+    : null;
 
   const reloadPipeline = useCallback(async () => {
     try {
@@ -30,19 +31,6 @@ export function useLeadCrmBootstrap(notify: NotifyFn) {
   }, []);
 
   useEffect(() => { void reloadPipeline(); }, [reloadPipeline]);
-  useEffect(() => {
-    void mysqlClient.getStaffSelf()
-      .then((staff: StaffSelfSnapshot) => {
-        if (staff?.id) {
-          setSelfStaff({
-            id: staff.id,
-            role: (staff.role || 'other') as StaffMember['role'],
-            name: staff.name || '',
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
   useEffect(() => {
     void mysqlAdmin.getCrmSettings()
       .then(data => {

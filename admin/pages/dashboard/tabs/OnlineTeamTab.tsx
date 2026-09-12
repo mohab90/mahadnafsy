@@ -134,16 +134,14 @@ const MiniBarChart: React.FC<{
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const OnlineTeamTab: React.FC<Props> = ({ notify }) => {
-  const { staffMembers, subscribers, authUser, isAdmin } = useSiteData();
+  const { staffMembers, subscribers, authUser, isAdmin, currentStaff } = useSiteData();
   // POST /api/admin/sales-targets is behind manage_sales_team; this tab's gate
   // is manage_subscribers. support, collection and reception_daqqi all hold the
   // second without the first — and a collection officer is this tab's core
   // audience, so the person most likely to press تعديل الأهداف was the one
   // guaranteed to have every save rejected.
-  const currentStaff = useMemo(
-    () => staffMembers.find(member => member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
-    [staffMembers, authUser?.email],
-  );
+  // From the context: staffMembers is empty for the ten roles that cannot read
+  // the staff list, and this used to search it alone.
   const canManageTargets = isAdmin || hasStaffPermission(
     currentStaff ? {
       role: currentStaff.role as RoleKey,

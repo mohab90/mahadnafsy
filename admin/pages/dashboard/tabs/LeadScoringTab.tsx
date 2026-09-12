@@ -135,16 +135,14 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
 }
 
 export default function LeadScoringTab({ notify }: { notify: NotifyFn }) {
-  const { leads, leadStats, staffMembers, authUser, isAdmin } = useSiteData();
+  const { leads, leadStats, staffMembers, authUser, isAdmin, currentStaff } = useSiteData();
   // The section gate here is manage_leads; POST /api/admin/leads/bulk-whatsapp
   // is behind bulk_whatsapp. reception_daqqi holds the first and not the
   // second, so it selected fifty leads, wrote a message, and got the raw
   // English "Permission denied: bulk_whatsapp" in an Arabic screen. LeadsTab
   // gates the identical action; this copy did not.
-  const currentStaff = useMemo(
-    () => staffMembers.find(member => member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
-    [staffMembers, authUser?.email],
-  );
+  // From the context: staffMembers is empty for the ten roles that cannot read
+  // the staff list, and this used to search it alone.
   const canBulkWhatsApp = isAdmin || hasStaffPermission(
     currentStaff ? {
       role: currentStaff.role as RoleKey,

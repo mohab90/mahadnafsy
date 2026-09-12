@@ -1,33 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
-import { mysqlClient } from '../../lib/mysqlapi';
 import type { StaffMember } from '../../types';
 import { hasPermission, type PermissionKey, type RoleKey } from '../../constants/permissions';
 
-type AuthUser = { email?: string | null } | null | undefined;
-
+/**
+ * What this screen's viewer may do to a client's record.
+ *
+ * `currentStaff` comes from the context, which resolves it once: the staff list
+ * first, and GET /api/staff/me when that list is empty — which it is for the
+ * ten roles out of sixteen that do not hold view_staff. This hook used to fetch
+ * /staff/me itself, one of three components doing so on the same page load.
+ */
 export function useUnifiedClientPermissions(params: {
   isAdmin: boolean;
-  authUser: AuthUser;
-  staffMembers: StaffMember[];
+  currentStaff: StaffMember | null;
 }) {
-  const { isAdmin, authUser, staffMembers } = params;
-  const [staffSelfRecord, setStaffSelfRecord] = useState<StaffMember | null>(null);
-
-  useEffect(() => {
-    if (isAdmin || !authUser?.email) return;
-    mysqlClient.getStaffSelf()
-      .then((record: unknown) => {
-        if (record && typeof record === 'object') setStaffSelfRecord(record as StaffMember);
-      })
-      .catch(() => {});
-  }, [isAdmin, authUser?.email]);
-
-  const currentStaff = useMemo(
-    () => staffMembers.find(s => s.email?.toLowerCase() === (authUser?.email ?? '').toLowerCase())
-      ?? staffSelfRecord
-      ?? null,
-    [staffMembers, staffSelfRecord, authUser?.email],
-  );
+  const { isAdmin, currentStaff } = params;
 
   const isOnlineManager = currentStaff?.role === 'online_manager';
   const isCollectionManager = currentStaff?.role === 'collection' || currentStaff?.role === 'manager';

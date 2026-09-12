@@ -69,7 +69,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   // Same list every other screen shows — see hooks/useBranches.
   const branchOptions = useBranches();
   const {
-    courses, bundles, staffMembers, subscribers, leads, isAdmin, authUser,
+    courses, bundles, staffMembers, subscribers, leads, isAdmin, authUser, currentStaff,
     updateLead, deleteLead, addSubscriber, updateSubscriber, deleteSubscriber,
     recordSubscriberPayment, reloadLeads, reloadSubscribers,
     getCourseLectures, daqqiRounds, consultations, content,
@@ -78,11 +78,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   // Lectures are not loaded at login any more — the client's progress is «شاهد N من M محاضرة», and M comes from here.
   useEnsureLectures();
 
-  const { isOnlineManager, canManageCourseAccess } = useUnifiedClientPermissions({
-    isAdmin,
-    authUser,
-    staffMembers,
-  });
+  const { isOnlineManager, canManageCourseAccess } = useUnifiedClientPermissions({ isAdmin, currentStaff });
 
   const isSub = !!subscriber;
   const clientName   = subscriber?.name   ?? lead?.name   ?? '';
@@ -128,7 +124,7 @@ const UnifiedClientPage: React.FC<UnifiedClientPageProps> = ({ lead, subscriber 
   });
 
   const paymentState = useUnifiedClientPayments({
-    lead, subscriber, subscribers, staffMembers, authUser, courses, bundles,
+    lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,
     isSaving, setIsSaving, addSubscriber, recordSubscriberPayment,
     reloadLeads, reloadSubscribers,
   });

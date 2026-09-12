@@ -48,11 +48,13 @@ export function SectionedTab({
 }) {
   const navigate = useNavigate();
   const { param } = useParams<{ param?: string }>();
-  const { isAdmin, staffMembers, authUser } = useSiteData();
+  const { isAdmin, currentStaff } = useSiteData();
 
   const allowed = useMemo(() => {
-    const self = staffMembers.find(member =>
-      String(member.email || '').toLowerCase() === String(authUser?.email || '').toLowerCase());
+    // From the context. staffMembers is empty for the ten roles that cannot
+    // read the staff list, and searching it alone meant this returned no
+    // sections at all for them.
+    const self = currentStaff;
     const subject = self
       ? { role: self.role as RoleKey, permissions: self.permissions as PermissionKey[] | undefined }
       : null;
@@ -61,7 +63,7 @@ export function SectionedTab({
       if (s.adminOnly) return false;
       return hasPermission(subject, s.permission as PermissionKey);
     });
-  }, [sections, isAdmin, staffMembers, authUser]);
+  }, [sections, isAdmin, currentStaff]);
 
   const active = useMemo(
     () => allowed.find(s => s.id === param) ?? allowed[0],

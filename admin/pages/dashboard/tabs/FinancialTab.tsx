@@ -45,16 +45,15 @@ export default function FinancialTab({ notify, branchFilter }: { notify: NotifyF
   const {
     orders: _allOrders, subscribers: _allSubscribers, recordSubscriberPayment, reloadSubscribers, staffMembers,
     expenses: _allExpenses, addExpense, updateExpense, deleteExpense, content, setContentValue, courses,
-    authUser, isAdmin,
+    authUser, isAdmin, currentStaff,
   } = useSiteData();
 
   // POST /api/admin/fx-rates/refresh is requirePermission('manage_financial'),
   // and محاسبة الدقي opens on manage_daqqi — so reception_daqqi was shown a
   // refresh button that answered 403 every time.
-  const currentStaffForFx = useMemo(
-    () => staffMembers.find(member => member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
-    [staffMembers, authUser?.email],
-  );
+  // From the context: staffMembers is empty for the ten roles that cannot read
+  // the staff list, and this used to search it alone.
+  const currentStaffForFx = currentStaff;
   const canManageFinancial = isAdmin || hasPermission(
     currentStaffForFx ? {
       role: currentStaffForFx.role as RoleKey,

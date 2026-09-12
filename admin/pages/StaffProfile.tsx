@@ -60,7 +60,7 @@ type Tab = 'overview' | 'reports' | 'messages' | 'tasks' | 'attendance' | 'activ
 const StaffProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin } = useSiteData();
+  const { staffMembers, leads, subscribers, reloadStaffMembers, deleteStaffMember, authUser, isAdmin, currentStaff } = useSiteData();
 
   const [searchParams, setSearchParams] = useSearchParams();
   // ?tab= decides which tab opens, so a link can point at one. Anything
@@ -100,10 +100,8 @@ const StaffProfile: React.FC = () => {
   }, []);
 
   const staff = useMemo(() => staffMembers.find(s => s.id === id), [staffMembers, id]);
-  const currentStaff = useMemo(
-    () => staffMembers.find(row => row.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
-    [staffMembers, authUser?.email],
-  );
+  // From the context: staffMembers is empty for the ten roles that cannot read
+  // the staff list, and this used to search it alone.
 
 
 

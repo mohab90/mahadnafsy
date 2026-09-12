@@ -51,11 +51,9 @@ function getMonthsOfService(joinedAt: string) {
 
 const HrTab: React.FC<Props> = ({ notify }) => {
   const navigate = useNavigate();
-  const { staffMembers, reloadStaffMembers, authUser, isAdmin } = useSiteData();
-  const currentStaff = useMemo(
-    () => staffMembers.find(row => row.email?.toLowerCase() === (authUser?.email || '').toLowerCase()) || null,
-    [staffMembers, authUser?.email],
-  );
+  const { staffMembers, reloadStaffMembers, authUser, isAdmin, currentStaff } = useSiteData();
+  // From the context: staffMembers is empty for the ten roles that cannot read
+  // the staff list, and this used to search it alone.
   const canManageFinance = isAdmin || Boolean(currentStaff && hasPermission({
     role: currentStaff.role as RoleKey,
     permissions: currentStaff.permissions as PermissionKey[] | undefined,

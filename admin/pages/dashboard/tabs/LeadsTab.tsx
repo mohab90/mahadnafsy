@@ -84,13 +84,13 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
     leads, leadStats, loadFullCrmData, staffMembers, subscribers, courses, bundles, updateLead, addLead,
     reloadLeads, reloadSubscribers, deleteLead, addSubscriber, updateSubscriber,
     authUser, isAdmin, recordSubscriberPayment, bulkRedistributeLeads,
+    currentStaff: contextStaff,
   } = useSiteData();
   const instituteBranches = useBranches();
   const navigate = useNavigate();
-  const currentStaff = useMemo(() =>
-    staffMembers.find(s => s.email?.toLowerCase() === (authUser?.email ?? '').toLowerCase()) ?? staffSelfProp ?? null,
-    [staffMembers, staffSelfProp, authUser]
-  );
+  // From the context. This one already had the staffSelfProp fallback and so
+  // was correct, but it was still a twelfth answer to the same question.
+  const currentStaff = contextStaff ?? staffSelfProp ?? null;
   const branchLabelMap = useMemo(() =>
     Object.fromEntries(instituteBranches.flatMap(b => [[b.id, b.label], [normBranchId(b.id), b.label]])),
     [instituteBranches]

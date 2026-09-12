@@ -14,6 +14,8 @@ interface Params {
   subscriber?: SubscriberItem;
   subscribers: SubscriberItem[];
   staffMembers: StaffMember[];
+  /** Resolved once in the context; staffMembers alone is empty for most roles. */
+  currentStaff: StaffMember | null;
   authUser?: AuthUser | null;
   courses: Course[];
   bundles: Bundle[];
@@ -47,7 +49,7 @@ function persistenceError(field: string, error: unknown) {
 
 export function useUnifiedClientPayments(params: Params) {
   const {
-    lead, subscriber, subscribers, staffMembers, authUser, courses, bundles,
+    lead, subscriber, subscribers, staffMembers, currentStaff, authUser, courses, bundles,
     isSaving, setIsSaving, addSubscriber, recordSubscriberPayment,
     reloadLeads, reloadSubscribers,
   } = params;
@@ -177,9 +179,9 @@ export function useUnifiedClientPayments(params: Params) {
         });
         if (!added) throw new Error('يوجد مشترك بنفس الهاتف أو البريد. حدّث الصفحة ثم أعد المحاولة.');
       }
-      const recorder = staffMembers.find(member =>
-        member.email?.toLowerCase() === (authUser?.email || '').toLowerCase()
-      );
+      // Who recorded it. staffMembers is empty for the ten roles that cannot
+      // read the staff list — every payment they took was stamped with nobody.
+      const recorder = currentStaff;
       await recordSubscriberPayment(subscriberId, {
         id: `pay-${Date.now()}`,
         amount,
