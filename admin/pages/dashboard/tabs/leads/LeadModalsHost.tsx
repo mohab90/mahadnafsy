@@ -29,6 +29,7 @@ interface LeadModalsHostProps {
   salesNotifOpen: boolean;
   leads: LeadItem[];
   isSalesOnly: boolean;
+  salesOwnLeads?: LeadItem[];
   currentStaff: StaffMember | null;
   setSalesNotifOpen: (open: boolean) => void;
   setLeadsFollowupFilter: (filter: 'all' | 'today' | 'overdue') => void;
@@ -66,6 +67,7 @@ export function LeadModalsHost({
   salesNotifOpen,
   leads,
   isSalesOnly,
+  salesOwnLeads,
   currentStaff,
   setSalesNotifOpen,
   setLeadsFollowupFilter,
@@ -120,6 +122,7 @@ export function LeadModalsHost({
       <LeadSalesNotificationsPanel
         open={salesNotifOpen}
         leads={leads}
+        salesOwnLeads={salesOwnLeads ?? leads}
         isSalesOnly={isSalesOnly}
         currentStaff={currentStaff}
         onClose={() => setSalesNotifOpen(false)}

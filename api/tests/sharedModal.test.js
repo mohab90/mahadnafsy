@@ -101,8 +101,14 @@ test('only the twelve named surfaces build their own overlay', () => {
 
   // The shared one is actually in use, so the list is not being satisfied by
   // deleting dialogs rather than migrating them.
+  //
+  // 49, not the 50 this reached: DashboardSalesFollowupPanel was a second copy
+  // of «متابعات السيلز» and merging it into the leads-tab one removed an
+  // adopter. That is the good case for a number going down — see
+  // api/tests/salesFollowupDrawer.test.js — and it is why this is a floor with
+  // a reason rather than a number nudged whenever it complains.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 50, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 49, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {

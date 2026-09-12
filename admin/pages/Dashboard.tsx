@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+const LeadSalesNotificationsPanel = React.lazy(() => import('./dashboard/tabs/leads/LeadSalesNotificationsPanel').then(m => ({ default: m.LeadSalesNotificationsPanel })));
 import { adminAuthHeaders } from '../lib/adminAuthHeaders';
 
 import {
@@ -49,7 +50,6 @@ import {
   DashboardGrowthOpsTabs,  DashboardOnlineManagerPanels,
   DashboardQuickBooking,
   DashboardSaasOpsTabs,
-  DashboardSalesFollowupPanel,
   OverviewTab,
 } from './dashboard/lazyDashboardComponents';
 import { DashboardMyWorkspace, DashboardMyHr, isWorkspaceTab } from './dashboard/DashboardMyWorkspace';
@@ -973,17 +973,17 @@ const Dashboard: React.FC = () => {
             )}
             {salesNotifOpen && (
               <Suspense fallback={null}>
-                <DashboardSalesFollowupPanel
+                {/* The same drawer the leads tab opens. There were two, and they
+                    disagreed about whose follow-ups you see. */}
+                <LeadSalesNotificationsPanel
                   open={salesNotifOpen}
-                  isAdmin={isAdmin}
-                  isNonAdminStaff={isNonAdminStaff}
-                  isSalesOnly={isSalesOnly}
-                  currentStaff={currentStaff}
                   leads={leads}
                   salesOwnLeads={salesOwnLeads}
-                  setOpen={setSalesNotifOpen}
-                  setActiveTab={setActiveTab}
-                  setLeadsFollowupFilter={setLeadsFollowupFilter}
+                  isSalesOnly={isSalesOnly}
+                  currentStaff={currentStaff}
+                  onClose={() => setSalesNotifOpen(false)}
+                  onShowOverdue={() => { setLeadsFollowupFilter('overdue'); setSalesNotifOpen(false); setActiveTab('leads'); }}
+                  onShowToday={() => { setLeadsFollowupFilter('today'); setSalesNotifOpen(false); setActiveTab('leads'); }}
                 />
               </Suspense>
             )}

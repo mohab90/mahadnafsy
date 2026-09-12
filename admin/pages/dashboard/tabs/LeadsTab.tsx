@@ -796,6 +796,7 @@ export default function LeadsTab({ notify, staffSelf: staffSelfProp, salesOwnLea
           instituteBranches={instituteBranches}
           salesNotifOpen={salesNotifOpen}
           leads={leads}
+          salesOwnLeads={salesOwnLeads}
           isSalesOnly={isSalesOnly}
           currentStaff={currentStaff}
           setSalesNotifOpen={setSalesNotifOpen}

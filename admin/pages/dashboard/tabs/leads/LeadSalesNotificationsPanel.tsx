@@ -4,10 +4,32 @@ import { Modal } from '../../../../../shared/ui/Modal';
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { LEAD_STATUS_CFG } from './LeadSubcomponents';
 import { toDialable } from '../../../../lib/whatsappLink';
+import { useSiteData } from '../../../../context/SiteDataContext';
 
+/**
+ * «متابعات السيلز» — the one follow-up drawer.
+ *
+ * There were two, opened from the leads tab and from the dashboard, and they
+ * did not agree about whose follow-ups you see:
+ *
+ *   the leads tab   scoped on isSalesOnly, so a collection officer, support and
+ *                   reception saw every rep's follow-ups
+ *   the dashboard   scoped on isNonAdminStaff to salesOwnLeads — the
+ *                   server-scoped list — and returned an empty array when
+ *                   currentStaff was null, which it was for ten roles of
+ *                   sixteen until GET /api/admin/staff stopped being the only
+ *                   way a screen could learn who it was talking to
+ *
+ * The dashboard's rule is the right one: salesOwnLeads is scoped by the server
+ * rather than by a role name the browser guessed at. It is the rule here now,
+ * for both callers.
+ */
 type Props = {
   open: boolean;
+  /** Every lead the session can see. Used when the caller is not sales-scoped. */
   leads: LeadItem[];
+  /** The server-scoped list for a non-admin employee. */
+  salesOwnLeads: LeadItem[];
   isSalesOnly: boolean;
   currentStaff: StaffMember | null;
   onClose: () => void;
@@ -65,18 +87,22 @@ function LeadNotificationRow({
 export function LeadSalesNotificationsPanel({
   open,
   leads,
+  salesOwnLeads,
   isSalesOnly,
   currentStaff,
   onClose,
   onShowOverdue,
   onShowToday,
 }: Props) {
+  const { isAdmin } = useSiteData();
   if (!open) return null;
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const scopedLeads = isSalesOnly && currentStaff
-    ? leads.filter(l => l.assignedSalesId === currentStaff.id && !['converted', 'lost'].includes(l.status))
-    : leads.filter(l => !['converted', 'lost'].includes(l.status));
+  // Read from the context rather than taken as a prop: neither caller had it to
+  // hand, and a rule about who you are belongs where that is known.
+  const isNonAdminStaff = !isAdmin && !!currentStaff;
+  const scopedLeads = (isNonAdminStaff ? salesOwnLeads : leads)
+    .filter(lead => !(['converted', 'lost'] as string[]).includes(lead.status));
   const overdue = scopedLeads
     .filter(l => l.nextFollowUpDate && l.nextFollowUpDate < todayStr)
     .sort((a, b) => (a.nextFollowUpDate || '').localeCompare(b.nextFollowUpDate || ''));
