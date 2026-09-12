@@ -48,9 +48,9 @@ test('AddLeadModal uses it and gives it the panel', () => {
 const WIRED = [
   'pages/dashboard/tabs/financial/AddRefundModal.tsx',
   'pages/dashboard/tabs/financial/IncomeModal.tsx',
-  'pages/dashboard/tabs/daqqi/DaqqiPayModal.tsx',
   'pages/dashboard/tabs/hr-sections/StaffOnboardModal.tsx',
   'pages/dashboard/tabs/interviews-sections/HireModal.tsx',
+  'components/PaymentModal.tsx',
   'pages/dashboard/tabs/CrmSettingsModal.tsx',
 ];
 
@@ -72,18 +72,27 @@ test('the hook is generic, so a form panel can hold the ref too', () => {
 });
 
 test('a dialog that returns early calls the hook before it does', () => {
-  // DaqqiPayModal opens with an early return when it has nothing to show. A
-  // hook placed after that runs on some renders and not others, which React
-  // forbids — the active flag exists so it can be called unconditionally.
+  // PaymentModal returns the printed receipt instead of the form once a payment
+  // is saved. A hook placed after that return runs on some renders and not
+  // others, which React forbids — the active flag exists so it can be called
+  // unconditionally.
+  //
+  // This was asserted against DaqqiPayModal, the Daqqi desk's own copy of the
+  // payment screen. That copy is gone and the desk opens the shared one, so
+  // this is where the keyboard handling moved to — and where every other
+  // payment screen gains it, having had none.
+  //
   // Comments are stripped first: the one explaining this rule quotes the early
   // return verbatim, and it sits above the hook call — matched against the raw
-  // source, the comment is what indexOf finds, and the check inverts.
-  const source = read('pages/dashboard/tabs/daqqi/DaqqiPayModal.tsx')
+  // source, the comment is what indexOf finds, and the check inverts. The line
+  // pattern is [^\n]* rather than .*$ because `.` does not match \r, so on a
+  // CRLF file .*$ never matches and nothing is stripped at all.
+  const source = read('components/PaymentModal.tsx')
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
   const hookAt = source.indexOf('useModalKeyboard(onClose');
-  const returnAt = source.indexOf('return null');
+  const returnAt = source.indexOf('if (printData) {');
   assert.ok(hookAt > 0 && returnAt > 0, 'expected both the hook call and the early return');
   assert.ok(hookAt < returnAt, 'the hook must be called before the early return');
-  assert.match(source, /useModalKeyboard\(onClose, !!modal\)/);
+  assert.match(source, /useModalKeyboard\(onClose, !printData\)/);
 });

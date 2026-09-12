@@ -22,7 +22,7 @@ const read = rel => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8
 const codeOnly = source => source
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/.*$/, '$1'))
+  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
   .join('\n');
 
 test('geolocation cannot name a physical branch, which is why the answer mattered', () => {

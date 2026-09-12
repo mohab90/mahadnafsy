@@ -18,7 +18,7 @@ const { ROLE_PERMS, FULL_ACCESS_ROLES } = require_(path.join(ROOT, 'api/constant
 const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const codeOnly = s => s.replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
-  .split('\n').map(l => l.replace(/(^|\s)\/\/.*$/, '$1')).join('\n');
+  .split('\n').map(l => l.replace(/(^|\s)\/\/[^\n]*/, '$1')).join('\n');
 
 const gates = codeOnly(read('admin/pages/dashboard/dashboardShared.tsx'));
 const home = codeOnly(read('admin/pages/dashboard/tabs/StaffHomeTab.tsx'));

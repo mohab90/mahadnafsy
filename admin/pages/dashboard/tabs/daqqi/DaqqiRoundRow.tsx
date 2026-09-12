@@ -11,7 +11,7 @@ import type { Course, Bundle, SubscriberItem, DaqqiRound } from '../../../../typ
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { toDialable } from '../../../../lib/whatsappLink';
 import type { DaqqiPayModalState } from './useDaqqiPaymentState';
-import type { DaqqiPayDraft } from './DaqqiPayModal';
+import type { PaymentDraft } from '../../../../components/PaymentModal';
 import { calcCurrentLecture, getCurrentWeekKey, courseBundles } from './daqqiScheduleUtils';
 import { DAQQI_TIME_SLOT_COLORS as timeSlotColors, DAQQI_STATUS_COLORS as statusColorsMap } from './daqqiScheduleConfig';
 
@@ -42,7 +42,7 @@ export function DaqqiRoundRow({
   notify,
 }: {
   isAdmin: boolean;
-  resetDaqqiPayDraft: (overrides?: Partial<DaqqiPayDraft>) => void;
+  resetDaqqiPayDraft: (overrides?: Partial<PaymentDraft>) => void;
   setDaqqiCommModal: (value: { subscriberId: string; subscriberName: string; phone: string } | null) => void;
   setDaqqiToskeenSubId: (id: string | null) => void;
   deleteDaqqiRound: (id: string) => Promise<boolean>;

@@ -67,7 +67,13 @@ router.get('/api/admin/subscribers/:id/course-access', requireAuth, requireAdmin
   } catch (e) { logger.error("[course-access]", e.message); res.status(500).json({ error: "Internal server error" }); }
 });
 
-router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
+// manage_courses means "author the catalogue", and only the online manager
+// holds it. Changing how many videos one customer may watch is not authoring
+// anything — it is the access that customer paid for, so it belongs with the
+// money. The unified client page already showed these buttons to the
+// collection manager, who then got «Permission denied: manage_courses»:
+// the screen offered an action the server refused.
+router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   try {
     const tenantId = req.tenantId || DEFAULT_TENANT_ID;
     const { expiresAt, addMonths } = req.body || {};
@@ -100,7 +106,9 @@ router.put('/api/admin/subscribers/:id/course-access/:enrollmentId', requireAuth
   } catch (e) { logger.error("[course-access-update]", e.message); res.status(500).json({ error: "Internal server error" }); }
 });
 
-router.post('/api/admin/enrollments', requireAuth, requireAdminOrStaff, requirePermission('manage_courses'), async (req, res) => {
+// Same permission, same reason: enrolling a customer and setting their video
+// count is a client action, not a catalogue one.
+router.post('/api/admin/enrollments', requireAuth, requireAdminOrStaff, requirePermission('manage_financial'), async (req, res) => {
   const conn = await pool.getConnection();
   let transactionStarted = false;
   try {

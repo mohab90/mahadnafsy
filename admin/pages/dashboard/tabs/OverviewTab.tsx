@@ -90,13 +90,27 @@ export default function OverviewTab({
               const subscriberStats = useSubscriberStats();
               const subscriberTotal = subscriberStats?.total ?? subscribers.length;
               const targetPeriod = new Date().toISOString().slice(0, 7);
+              // The collection target is read for the «تقدمك نحو هدف التحصيل
+              // الشهري» section, which only renders for a collection role (see
+              // the isCollectionRole branch below). The fetch was not scoped to
+              // it: it ran for everyone who opened الرئيسية, and
+              // GET /api/admin/sales-targets needs view_leads — which HR, the
+              // accountant, trainers, experts, instructors and «موظف» do not
+              // hold. Six roles got a red «تعذر تحميل هدف التحصيل الشهري» every
+              // single time they opened the dashboard, about a number their
+              // screen never shows.
+              const needsCollectionTarget = isCollectionRole || isAdmin || isOnlineManager;
               const [collectionMonthlyTarget, setCollectionMonthlyTarget] = useState(160000);
               useEffect(() => {
+                if (!needsCollectionTarget) return;
                 mysqlAdmin.listSalesTargets(targetPeriod).then((rows) => {
                   const target = rows.find((row) => row.staffId === '__collection__');
                   if (target) setCollectionMonthlyTarget(Math.max(1, Number(target.revenueTarget) || 160000));
-                }).catch(() => notify('error', 'تعذر تحميل هدف التحصيل الشهري'));
-              }, [notify, targetPeriod]);
+                }).catch(() => {
+                  // The default of 160,000 stands. Nothing here is actionable by
+                  // the person reading it, so it does not become a toast.
+                });
+              }, [needsCollectionTarget, targetPeriod]);
 
               const { totalRevenue, leadsBySource, courseEnrollments, consultsByStatus, salesStats, recentLeads, paidOrders, todayRevenue, todayNewSubscribers, todayNewLeads, monthRevenue } = overviewStats;
 

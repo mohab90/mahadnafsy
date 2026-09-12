@@ -20,6 +20,7 @@ import {
   type DaqqiNewClientDraft,
   type DaqqiNewClientReceipt,
 } from './daqqi/DaqqiNewClientModals';
+import type { PaymentDraft } from '../../../components/PaymentModal';
 import { useDaqqiPaymentState } from './daqqi/useDaqqiPaymentState';
 import { useDaqqiViewFilters } from './daqqi/useDaqqiViewFilters';
 import {
@@ -44,8 +45,9 @@ import { DaqqiNewRoundModal } from './daqqi/DaqqiNewRoundModal';
 import { DaqqiAddClientsModal } from './daqqi/DaqqiAddClientsModal';
 import { DaqqiRoundRow } from './daqqi/DaqqiRoundRow';
 import { confirmDialog } from '../../../components/shared/confirmDialog';
-const DaqqiPayModal = React.lazy(() => import('./daqqi/DaqqiPayModal').then(module => ({ default: module.DaqqiPayModal })));
-const DaqqiPaymentReceiptModal = React.lazy(() => import('./daqqi/DaqqiPaymentReceiptModal').then(module => ({ default: module.DaqqiPaymentReceiptModal })));
+// The same payment screen as everywhere else. A booking taken at the Daqqi
+// desk used to open a separate 623-line copy of it.
+const PaymentModal = React.lazy(() => import('../../../components/PaymentModal'));
 const DaqqiPostponeRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiPostponeRoundModal })));
 const DaqqiToskeenRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiToskeenRoundModal })));
 const DaqqiTransferRoundModal = React.lazy(() => import('./daqqi/DaqqiRoundActionModals').then(module => ({ default: module.DaqqiTransferRoundModal })));
@@ -144,8 +146,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     daqqiPayDraft,
     setDaqqiPayDraft,
     resetDaqqiPayDraft,
-    daqqiPayPrintData,
-    setDaqqiPayPrintData,
   } = useDaqqiPaymentState();
   const [daqqiTransferModal, setDaqqiTransferModal] = useState<{ subscriberId: string; fromRoundId: string } | null>(null);
   const [daqqiPostponeModal, setDaqqiPostponeModal] = useState<{ roundId: string; newDate: string } | null>(null);
@@ -314,8 +314,9 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
     }
   };
 
-  const handleDaqqiPay = async (shouldPrint = false) => {
+  const handleDaqqiPay = async (submitted: PaymentDraft, shouldPrint = false) => {
     if (!daqqiPayModal) return;
+    const daqqiPayDraft = submitted;
     const amount = Number(daqqiPayDraft.amount);
     if (!amount || amount <= 0) return;
     const sub = subscribers.find(s => s.id === daqqiPayModal.subscriberId);
@@ -382,49 +383,10 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
         notify('error', 'تم تسجيل الدفعة، لكن تعذر تحديث إجمالي العميل داخل الروند.');
       }
     }
-    if (shouldPrint && !requirePaymentApproval) {
-      const _extraTotalPrint = (daqqiPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).reduce((s, i) => s + Number(i.amount), 0);
-      const _courseNamePrint = (() => {
-        const cid = daqqiPayDraft.courseId;
-        if (!cid) return daqqiPayDraft.paymentType;
-        if (cid.startsWith('bundle:')) {
-          const bid = cid.replace('bundle:', '');
-          const b = bundles.find(bx => bx.id === bid) || (bundles_ref.find((bx: Bundle) => bx.id === bid));
-          return b?.title || cid;
-        }
-        const c = courses.find(cx => cx.id === cid) || (courses_ref.find((cx: Course) => cx.id === cid));
-        return (c as Course | undefined)?.titleAr || (c as Course | undefined)?.title || cid;
-      })();
-      // Compute paid before this payment (for remaining calculation)
-      const _prevPaid = (sub.paymentHistory || [])
-        .filter(p => p.currency === daqqiPayDraft.currency && (!p.status || p.status === 'paid') && (!p.courseId || p.courseId === daqqiPayDraft.courseId))
-        .reduce((s, p) => s + Number(p.amount), 0);
-      const _newTotal = _prevPaid + amount + _extraTotalPrint;
-      const _remaining = Math.max(0, _courseExpected - _newTotal);
-      const _staffNamePrint = authUser?.displayName || authUser?.email?.split('@')[0] || 'الاستقبال';
-      setDaqqiPayPrintData({
-        subName: daqqiPayModal.subscriberName,
-        phone: sub?.phone || '',
-        courseName: _courseNamePrint,
-        items: [
-          { label: _courseNamePrint, amount, currency: daqqiPayDraft.currency },
-          ...(daqqiPayDraft.extraItems || []).filter(i => i.amount && Number(i.amount) > 0).map(i => ({ label: i.label || i.type, amount: Number(i.amount), currency: daqqiPayDraft.currency })),
-        ],
-        total: amount + _extraTotalPrint,
-        currency: daqqiPayDraft.currency,
-        method: daqqiPayDraft.paymentMethod,
-        date: daqqiPayDraft.date,
-        note: daqqiPayDraft.note || undefined,
-        bookingType: daqqiPayDraft.bookingType,
-        courseExpected: _courseExpected,
-        prevPaid: _prevPaid,
-        remaining: _remaining,
-        staffName: _staffNamePrint,
-        transactionId: daqqiPayDraft.transactionId || undefined,
-      });
-    }
-    setDaqqiPayModal(null);
-    resetDaqqiPayDraft();
+    // No receipt built here and no closing here. PaymentModal builds the
+    // same receipt from the same draft — including prevPaid, remaining and
+    // the expected total — and calls onClose once it is dismissed. Closing
+    // from this handler unmounted the modal before the receipt could show.
     notify(requirePaymentApproval ? 'info' : 'success',
       requirePaymentApproval ? 'تم إرسال الدفعة للمراجعة ✓ — بانتظار موافقة المدير' : 'تم تسجيل الدفعة بنجاح.'
     );
@@ -896,12 +858,6 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       />
 
 
-      <DaqqiPaymentReceiptModal
-        data={daqqiPayPrintData}
-        content={content}
-        onClose={() => setDaqqiPayPrintData(null)}
-      />
-
       <DaqqiRoundEditorModal
         open={!!daqqiEditRoundId}
         roundCode={daqqiRounds.find((round) => round.id === daqqiEditRoundId)?.code}
@@ -918,18 +874,29 @@ const DaqqiScheduleTab: React.FC<Props> = ({ notify, subscribersOverride, rounds
       />
 
       {/* Pay Modal */}
-      <DaqqiPayModal
-        modal={daqqiPayModal}
-        draft={daqqiPayDraft}
-        setDraft={setDaqqiPayDraft}
-        onClose={() => setDaqqiPayModal(null)}
-        onSubmit={handleDaqqiPay}
-        subscribers={subscribers}
-        courses={courses}
-        bundles={bundles}
-        content={content}
-        requirePaymentApproval={requirePaymentApproval}
-      />
+      {daqqiPayModal && (() => {
+        const paySubject = subscribers.find(s => s.id === daqqiPayModal.subscriberId);
+        return (
+          <PaymentModal
+            mode="subscriber"
+            subject={{
+              id: daqqiPayModal.subscriberId,
+              name: paySubject?.name || daqqiPayModal.subscriberName,
+              phone: paySubject?.phone,
+              email: paySubject?.email,
+              branch: paySubject?.branch,
+              enrolledCourseIds: paySubject?.enrolledCourseIds,
+              paymentHistory: paySubject?.paymentHistory,
+              extraCertificateRequests: paySubject?.extraCertificateRequests,
+            }}
+            draft={daqqiPayDraft}
+            setDraft={setDaqqiPayDraft}
+            onClose={() => { setDaqqiPayModal(null); resetDaqqiPayDraft(); }}
+            onSubmit={handleDaqqiPay}
+            requirePaymentApproval={requirePaymentApproval}
+          />
+        );
+      })()}
 
       <DaqqiTransferRoundModal
         modal={daqqiTransferModal}

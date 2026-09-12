@@ -36,7 +36,7 @@ const walk = (dir, out = []) => {
 const codeOnly = source => source
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n')
-  .map(line => line.replace(/(^|\s)\/\/.*$/, '$1'))
+  .map(line => line.replace(/(^|\s)\/\/[^\n]*/, '$1'))
   .join('\n');
 
 /** Tables whose rows belong to a particular employee's book of business. */

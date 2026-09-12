@@ -10,6 +10,8 @@ import type {
   ExtraCertificateRequest,
 } from '../types';
 import { parsePaymentMethods } from '../lib/paymentMethods';
+import { isCollected } from '../lib/money';
+import { useModalKeyboard } from './shared/useModalKeyboard';
 
 // ── Shared draft type ──────────────────────────────────────────────────────
 export interface PaymentDraft {
@@ -228,6 +230,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 }) => {
   const { courses, bundles, content, authUser } = useStaticData();
   const [printData, setPrintData] = useState<PrintData | null>(null);
+  // Escape closes the dialog and focus starts inside it. The Daqqi desk had
+  // this on its own copy of this modal and every other payment screen did not;
+  // now they are the same screen, it belongs here. Called before the printData
+  // early return below, and told whether it is live — a hook after a return
+  // runs on some renders and not others.
+  const panelRef = useModalKeyboard(onClose, !printData);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -263,7 +271,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const _remaining = _effPx > 0 && _amtPaid > 0 ? Math.max(0, _effPx - _amtPaid) : 0;
 
   // Payment history stats (subscriber only)
-  const payHistory: PaymentHistoryEntry[] = subject.paymentHistory || [];
+  // Refunds stay in this list. lib/refunds.js flips the same payments row to
+  // 'refunded' and leaves its positive amount, so every sum below has to say
+  // so — otherwise a customer who was refunded reads as having paid it, «مدفوع
+  // سابقاً» is too high, «المتبقي» is too low, and the desk under-charges them.
+  //
+  // Four sums here had no status filter. The Daqqi desk's own copy of this
+  // modal did guard its one, so the fault was in every payment taken anywhere
+  // else; it surfaced when that copy was folded into this one.
+  const payHistory: PaymentHistoryEntry[] = (subject.paymentHistory || []).filter(isCollected);
   const payTotalPaid = payHistory.filter(p => p.currency === d.currency).reduce((s, p) => s + Number(p.amount), 0);
   const coursePayMap: Record<string, { paid: number; expected: number }> = {};
   payHistory.forEach(p => {
@@ -434,6 +450,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[95vh] overflow-auto"
         dir="rtl"
         onClick={e => e.stopPropagation()}

@@ -35,15 +35,27 @@ test('a refunded payment is never counted as money collected', () => {
   }
 
   // The Dokki roster writes its figure onto the round attendee, so a wrong one
-  // survives the click. All four of its sums are guarded.
+  // survives the click. Each of its sums is guarded.
   const daqqi = codeOnly(read('admin/pages/dashboard/tabs/DaqqiScheduleTab.tsx'));
-  // The window runs past reduce( on purpose: two of these guard inside the
-  // filter and two inside the reduce body.
+  // The window runs past reduce( on purpose: some of these guard inside the
+  // filter and some inside the reduce body.
   const sums = daqqi.match(/paymentHistory \|\| \[\]\)[\s\S]{0,320}/g) || [];
-  assert.ok(sums.length >= 4, `expected the roster's payment sums, found ${sums.length}`);
+  assert.ok(sums.length >= 3, `expected the roster's payment sums, found ${sums.length}`);
   for (const sum of sums) {
     assert.ok(sum.includes("p.status === 'paid'"), 'every roster sum must exclude refunds');
   }
+
+  // There was a fourth here, computing «مدفوع سابقاً» for the printed receipt.
+  // The Daqqi desk opens the shared PaymentModal now and that modal builds the
+  // receipt — so the guard has to live there, and it did not: four sums in
+  // PaymentModal counted refunded payments as money already collected. That is
+  // every payment screen in the admin except this one desk, which had its own
+  // copy of the modal and did guard. Filtered once, where the list is read.
+  const paymentModal = codeOnly(read('admin/components/PaymentModal.tsx'));
+  assert.ok(paymentModal.includes('(subject.paymentHistory || []).filter(isCollected)'),
+    'the payment screen counts refunds as money the customer already paid');
+  assert.ok(paymentModal.includes("import { isCollected } from '../lib/money'"),
+    'it must use the one predicate, not a second spelling of it');
 });
 
 test('one predicate decides what "collected" means', () => {

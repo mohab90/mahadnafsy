@@ -20,6 +20,7 @@ const { getNextSalesRep } = require('../../lib/leadAssignment');
 const { appendLeadInteraction, queueLeadWhatsAppBatch } = require('../../lib/leadInteractions');
 const { grantCourseEntitlement } = require('../../lib/entitlements');
 const { leadScope, branchesFromScope } = require('../../lib/leadAccess');
+const { claimWhatsAppIdentity, findAccountByPhone } = require('../../lib/whatsappOtp');
 const {
   archiveLead,
   communicationsByLead,
@@ -864,9 +865,34 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     }
 
     // 3. Validate required fields
-    if (!lead.email || !lead.name) {
+    //
+    // This demanded an email. 26,816 of the 27,236 live leads do not have one —
+    // the institute takes almost every lead over WhatsApp — so «تحويل لعميل»
+    // answered «يجب أن يكون للليد بريد إلكتروني» to 98% of the people it was
+    // built for, and the desk had to invent an address to get past it.
+    //
+    // Nothing downstream actually needed the address. users.email is nullable,
+    // users.phone carries its own unique key, and signing in by number is the
+    // main route in (see POST /api/auth/login, which resolves a non-email
+    // identifier through normalizeWhatsAppNumber). What is required is a name
+    // and *some* identity, so the customer can be reached and can log in.
+    const normEmail = String(lead.email || '').toLowerCase().trim();
+    if (!lead.name || !String(lead.name).trim()) {
       await conn.rollback(); transactionStarted = false;
-      return res.status(400).json({ error: 'يجب أن يكون للليد بريد إلكتروني واسم قبل التحويل' });
+      return res.status(400).json({ error: 'يجب أن يكون للّيد اسم قبل التحويل' });
+    }
+    // Reserved before the INSERT: users.phone is UNIQUE per tenant, and a
+    // number already linked to somebody else comes back null rather than
+    // taking the whole conversion down on a duplicate key.
+    const phoneForUser = await claimWhatsAppIdentity(conn, { tenantId, phone: lead.phone });
+    if (!normEmail && !phoneForUser) {
+      await conn.rollback(); transactionStarted = false;
+      const owned = await findAccountByPhone(conn, { tenantId, phone: lead.phone });
+      return res.status(400).json({
+        error: owned
+          ? 'رقم الواتساب ده مربوط بحساب تاني بالفعل — راجع العميل الموجود أو غيّر الرقم'
+          : 'محتاج إيميل أو رقم واتساب صحيح قبل التحويل',
+      });
     }
 
     // 4. Generate subscriber ID + ensure client_code
@@ -876,17 +902,25 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       try { clientCode = await getNextClientCode(conn); } catch (_) {}
     }
 
-    // 4b. Create user account so the subscriber can log in
-    const normEmail = lead.email.toLowerCase().trim();
+    // 4b. Create user account so the subscriber can log in.
+    //
+    // Either identity finds an existing account, and either is enough to make
+    // a new one. The email column stays NULL rather than empty for a
+    // phone-only customer: the unique key is on (tenant_id, email), so a
+    // second empty string would collide with the first.
     let tempPass = null;
     let isNewUser = false;
-    const [[existingUser]] = await conn.query('SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, normEmail]);
+    let existingUser = null;
+    if (normEmail) {
+      [[existingUser]] = await conn.query('SELECT id FROM users WHERE tenant_id=? AND LOWER(TRIM(email))=? LIMIT 1', [req.tenantId, normEmail]);
+    }
+    if (!existingUser) existingUser = await findAccountByPhone(conn, { tenantId, phone: lead.phone });
     if (!existingUser) {
       tempPass = generateTemporaryPassword();
       const hash = await bcrypt.hash(tempPass, 12);
       await conn.query(
-        'INSERT INTO users (id, tenant_id, email, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,1)',
-        [uuidv4(), req.tenantId, normEmail, hash, sanitize(lead.name, 300), 'user']
+        'INSERT INTO users (id, tenant_id, email, phone, password_hash, name, role, is_active) VALUES (?,?,?,?,?,?,?,1)',
+        [uuidv4(), req.tenantId, normEmail || null, phoneForUser, hash, sanitize(lead.name, 300), 'user']
       );
       isNewUser = true;
     }
@@ -932,7 +966,7 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
       [
         subId, clientCode, leadId,
         sanitize(lead.name, 300),
-        normEmail,
+        normEmail || null,
         ((lead.phone || '').replace(/[^\d+\-\s()]/g, '').trim().substring(0, 30)) || null,
         branch,
         lead.assigned_sales_id || null, lead.assigned_sales_name || null,
@@ -990,8 +1024,10 @@ router.post('/api/admin/leads/:id/convert', requireAuth, requireAdminOrStaff, re
     if (lead.email) {
       enqueueEmailSequence({ tenantId, triggerEvent: 'enrollment', recipientEmail: lead.email, recipientName: lead.name }).catch(error => logger.warn('[lead-convert] sequence enqueue failed', { error: error.message }));
     }
-    // Send login credentials email if new user account was created
-    if (isNewUser && tempPass) {
+    // Send login credentials email if new user account was created.
+    // Only where there is an address to send it to — a phone-only customer
+    // signs in with the number, and mailing an empty recipient throws.
+    if (isNewUser && tempPass && normEmail) {
       mailer.sendMail({
         tenantId,
         from: `"معهد الدراسات النفسية" <${process.env.SMTP_USER || 'info@mahadnafsy.com'}>`,

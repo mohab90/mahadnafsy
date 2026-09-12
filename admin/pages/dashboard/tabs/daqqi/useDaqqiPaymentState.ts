@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
-import type { PaymentItemType } from '../../../../types';
-import type { DaqqiPayDraft } from './DaqqiPayModal';
+import { blankPaymentDraft, type PaymentDraft } from '../../../../components/PaymentModal';
 
 export type DaqqiPayModalState = {
   subscriberId: string;
@@ -10,51 +9,26 @@ export type DaqqiPayModalState = {
   attendeeAmountPaid?: number;
 } | null;
 
-export type DaqqiPayPrintData = {
-  subName: string;
-  phone: string;
-  courseName: string;
-  items: Array<{ label: string; amount: number; currency: string }>;
-  total: number;
-  currency: string;
-  method: string;
-  date: string;
-  note?: string;
-  bookingType: string;
-  courseExpected: number;
-  prevPaid: number;
-  remaining: number;
-  staffName: string;
-  transactionId?: string;
-};
 
-export const createDaqqiPayDraft = (overrides: Partial<DaqqiPayDraft> = {}): DaqqiPayDraft => ({
-  bookingType: 'new_booking',
-  paymentType: 'course',
-  courseId: '',
-  courseExpected: '',
-  bookingDiscount: '',
-  customExpected: '',
-  discountPct: '',
-  certType: '',
-  certReqId: '',
-  amount: '',
-  currency: 'EGP',
-  paymentMethod: '',
-  transactionId: '',
-  fromAccountNumber: '',
-  date: new Date().toISOString().slice(0, 10),
-  note: '',
-  extraItems: [] as { type: PaymentItemType; label: string; amount: string }[],
+// The Daqqi desk had its own draft shape and its own 623-line modal, a copy of
+// components/PaymentModal made when the shared one was extracted *from* this
+// screen. The two then drifted, so a booking taken at Daqqi opened a different
+// form from the same booking taken online.
+//
+// The two fields that were only here are gone with it: bookingDiscount was
+// never read anywhere, and courseExpected is not a draft field at all — it is
+// computed at submit from the price, the discount and any override, exactly as
+// PaymentModal already computes it.
+export const createDaqqiPayDraft = (overrides: Partial<PaymentDraft> = {}): PaymentDraft => ({
+  ...blankPaymentDraft(),
   ...overrides,
 });
 
 export const useDaqqiPaymentState = () => {
   const [daqqiPayModal, setDaqqiPayModal] = useState<DaqqiPayModalState>(null);
-  const [daqqiPayDraft, setDaqqiPayDraft] = useState<DaqqiPayDraft>(createDaqqiPayDraft());
-  const [daqqiPayPrintData, setDaqqiPayPrintData] = useState<DaqqiPayPrintData | null>(null);
+  const [daqqiPayDraft, setDaqqiPayDraft] = useState<PaymentDraft>(createDaqqiPayDraft());
 
-  const resetDaqqiPayDraft = (overrides: Partial<DaqqiPayDraft> = {}) => {
+  const resetDaqqiPayDraft = (overrides: Partial<PaymentDraft> = {}) => {
     setDaqqiPayDraft(createDaqqiPayDraft(overrides));
   };
 
@@ -64,7 +38,5 @@ export const useDaqqiPaymentState = () => {
     daqqiPayDraft,
     setDaqqiPayDraft,
     resetDaqqiPayDraft,
-    daqqiPayPrintData,
-    setDaqqiPayPrintData,
   };
 };
