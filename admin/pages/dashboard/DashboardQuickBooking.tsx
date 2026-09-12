@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from '../../../shared/ui/Modal';
 import { ExternalLink, Search, X } from 'lucide-react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { LeadItem, SubscriberItem } from '../../types';
@@ -100,18 +101,15 @@ function QuickBookingModal({
   const hasResults = matchedLeads.length > 0 || matchedSubs.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl" dir="rtl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-100">
-          <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-            <Search size={20} className="text-emerald-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-extrabold text-gray-900 text-lg">البحث داخل قاعدة العملاء</h3>
-            <p className="text-xs text-gray-400 mt-0.5">ابحث بالاسم أو رقم الهاتف أو الإيميل لحجز أو تسجيل دفعة</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 rounded-lg p-1.5"><X size={20} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="البحث داخل قاعدة العملاء"
+      subtitle="ابحث بالاسم أو رقم الهاتف"
+      icon={<div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Search size={20} className="text-emerald-600" /></div>}
+      size="lg"
+      align="sheet"
+    >
 
         <div className="px-6 pt-5 pb-3">
           <div className="relative">
@@ -153,8 +151,7 @@ function QuickBookingModal({
             />
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

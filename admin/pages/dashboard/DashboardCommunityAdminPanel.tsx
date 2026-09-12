@@ -1,4 +1,5 @@
 import { DashboardCommunityShell } from './DashboardCommunityShell';
+import { Modal } from '../../../shared/ui/Modal';
 import type { CommunityEventItem, CommunityLibraryItem, CommunityPostItem, CommunityVideoItem } from '../../types';
 import { useCommunityDrafts } from './hooks/useCommunityDrafts';
 import { confirmDialog } from '../../../shared/ui/confirmDialog';
@@ -171,9 +172,11 @@ export function DashboardCommunityAdminPanel({
                     )}
                     {/* Post form modal */}
                     {isCommunityPostFormOpen && (
-                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsCommunityPostFormOpen(false)}>
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
-                          <h3 className="text-lg font-bold mb-4">{editingCommunityPostId ? 'تعديل المنشور' : 'إضافة منشور'}</h3>
+    <Modal
+      open
+      onClose={() => setIsCommunityPostFormOpen(false)}
+      title={editingCommunityPostId ? 'تعديل المنشور' : 'إضافة منشور'}
+    >
                           <div className="space-y-3">
                             <div><label className="text-xs text-gray-600 mb-1 block">العنوان *</label><input value={communityPostDraft.title} onChange={e => setCommunityPostDraft(d => ({ ...d, title: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
                             <div><label className="text-xs text-gray-600 mb-1 block">المحتوى *</label><textarea rows={4} value={communityPostDraft.body} onChange={e => setCommunityPostDraft(d => ({ ...d, body: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" /></div>
@@ -199,8 +202,7 @@ export function DashboardCommunityAdminPanel({
                               className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 disabled:opacity-50">حفظ</button>
                             <button onClick={() => setIsCommunityPostFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>
-                        </div>
-                      </div>
+    </Modal>
                     )}
                   </div>
                 )}
@@ -233,9 +235,12 @@ export function DashboardCommunityAdminPanel({
                       ))}
                     </div>
                     {isCommunityLibraryFormOpen && (
-                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsCommunityLibraryFormOpen(false)}>
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-                          <h3 className="text-lg font-bold mb-4">{editingCommunityLibraryId ? 'تعديل الملف' : 'إضافة ملف'}</h3>
+    <Modal
+      open
+      onClose={() => setIsCommunityLibraryFormOpen(false)}
+      title={editingCommunityLibraryId ? 'تعديل الملف' : 'إضافة ملف'}
+      size="sm"
+    >
                           <div className="space-y-3">
                             <div><label className="text-xs text-gray-600 mb-1 block">الاسم *</label><input value={communityLibraryDraft.title} onChange={e => setCommunityLibraryDraft(d => ({ ...d, title: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
                             <div><label className="text-xs text-gray-600 mb-1 block">الوصف</label><input value={communityLibraryDraft.description} onChange={e => setCommunityLibraryDraft(d => ({ ...d, description: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
@@ -255,8 +260,7 @@ export function DashboardCommunityAdminPanel({
                             }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
                             <button onClick={() => setIsCommunityLibraryFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>
-                        </div>
-                      </div>
+    </Modal>
                     )}
                   </div>
                 )}
@@ -288,9 +292,12 @@ export function DashboardCommunityAdminPanel({
                       ))}
                     </div>
                     {isCommunityVideoFormOpen && (
-                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsCommunityVideoFormOpen(false)}>
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-                          <h3 className="text-lg font-bold mb-4">{editingCommunityVideoId ? 'تعديل الفيديو' : 'إضافة فيديو'}</h3>
+    <Modal
+      open
+      onClose={() => setIsCommunityVideoFormOpen(false)}
+      title={editingCommunityVideoId ? 'تعديل الفيديو' : 'إضافة فيديو'}
+      size="sm"
+    >
                           <div className="space-y-3">
                             <div><label className="text-xs text-gray-600 mb-1 block">العنوان *</label><input value={communityVideoDraft.title} onChange={e => setCommunityVideoDraft(d => ({ ...d, title: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
                             <div className="grid grid-cols-2 gap-3">
@@ -310,8 +317,7 @@ export function DashboardCommunityAdminPanel({
                             }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
                             <button onClick={() => setIsCommunityVideoFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>
-                        </div>
-                      </div>
+    </Modal>
                     )}
                   </div>
                 )}
@@ -347,9 +353,12 @@ export function DashboardCommunityAdminPanel({
                       ))}
                     </div>
                     {isCommunityEventFormOpen && (
-                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsCommunityEventFormOpen(false)}>
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-                          <h3 className="text-lg font-bold mb-4">{editingCommunityEventId ? 'تعديل الفعالية' : 'إضافة فعالية'}</h3>
+    <Modal
+      open
+      onClose={() => setIsCommunityEventFormOpen(false)}
+      title={editingCommunityEventId ? 'تعديل الفعالية' : 'إضافة فعالية'}
+      size="sm"
+    >
                           <div className="space-y-3">
                             <div><label className="text-xs text-gray-600 mb-1 block">عنوان الفعالية *</label><input value={communityEventDraft.title} onChange={e => setCommunityEventDraft(d => ({ ...d, title: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" /></div>
                             <div className="grid grid-cols-2 gap-3">
@@ -370,8 +379,7 @@ export function DashboardCommunityAdminPanel({
                             }} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">حفظ</button>
                             <button onClick={() => setIsCommunityEventFormOpen(false)} className="px-5 bg-gray-200 text-gray-700 rounded-xl">إلغاء</button>
                           </div>
-                        </div>
-                      </div>
+    </Modal>
                     )}
                   </div>
                 )}

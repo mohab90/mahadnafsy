@@ -5,6 +5,7 @@
 // import from it are untouched.
 
 import React, { useEffect, useState } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { Inbox, Link2, MessageSquare, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { LeadItem, LeadStatus, CommunicationRecord, Course, Bundle } from '../../../../types';
@@ -49,14 +50,12 @@ export function BulkWhatsAppModal({ selectedLeads, onClose, notify }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-emerald-50">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2">
-            💬 إرسال واتساب جماعي ({selectedLeads.length} عميل)
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={`💬 إرسال واتساب جماعي (${selectedLeads.length} عميل)`}
+      size="sm"
+    >
         <div className="p-5 space-y-4">
           {result ? (
             <div className="text-center py-4">
@@ -91,8 +90,7 @@ export function BulkWhatsAppModal({ selectedLeads, onClose, notify }: {
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -160,21 +158,14 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-l from-emerald-50 to-white flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center">
-              <MessageSquare size={18} className="text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">واتساب شخصي — {rep.name}</h3>
-              <p className="text-xs text-gray-500">إرسال واستقبال من رقمك الخاص</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1"><X size={18} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="واتساب شخصي"
+      subtitle="إرسال واستقبال الرسائل"
+      icon={<div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center"><MessageSquare size={18} className="text-emerald-600" /></div>}
+      size="lg"
+    >
 
         {/* Sub-tabs */}
         <div className="flex border-b border-gray-100 flex-shrink-0">
@@ -308,8 +299,7 @@ export function WhatsAppRepModal({ rep, leads, onClose, notify }: {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

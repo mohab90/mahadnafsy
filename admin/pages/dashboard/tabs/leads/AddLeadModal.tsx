@@ -5,10 +5,10 @@
 // import from it are untouched.
 
 import { useState } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { Plus, Tag, UserPlus, X } from 'lucide-react';
 import type { LeadItem, LeadStatus, CommunicationRecord, Course, Bundle } from '../../../../types';
 import { EMPTY_LEAD_DRAFT } from '../crmConstants';
-import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
 import { courseBadgeLabel, isRawCourse } from './leadCourseLabel';
 import {
   BRANCH_ENUM_LABELS,
@@ -30,7 +30,6 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
 }) {
   // Escape closes, and focus starts on the first field instead of behind the
   // overlay on <body>.
-  const panelRef = useModalKeyboard(onClose);
   const [draft, setDraft] = useState({ ...EMPTY_LEAD_DRAFT });
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -69,16 +68,13 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div ref={panelRef} className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-l from-primary-50 to-white">
-          <div className="flex items-center gap-2">
-            <UserPlus size={18} className="text-primary-600" />
-            <h3 className="font-bold text-gray-900">إضافة ليد جديد</h3>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1"><X size={18} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="إضافة ليد جديد"
+      icon={<UserPlus size={18} className="text-primary-600" />}
+      size="sm"
+    >
 
         {/* Body */}
         <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -256,8 +252,7 @@ export function AddLeadModal({ courses, bundles, salesReps, leads, sources, bran
           </button>
           <button onClick={onClose} className="px-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">إلغاء</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

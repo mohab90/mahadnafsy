@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { Star, MessageSquare, Send, X, Zap } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -80,12 +81,12 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" dir="rtl">
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2"><MessageSquare size={18} className="text-green-600" />إرسال واتساب جماعي</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="إرسال واتساب جماعي"
+      icon={<MessageSquare size={18} />}
+    >
         <div className="p-5 space-y-4">
           <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-800 font-medium">
             📋 سيتم الإرسال لـ <span className="font-bold">{leads.length} ليد</span>
@@ -129,8 +130,7 @@ function BulkWaModal({ leads, onClose, notify }: { leads: any[]; onClose: () => 
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

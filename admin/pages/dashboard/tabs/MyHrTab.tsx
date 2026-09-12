@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { User, FileText, Activity, Calendar, Star, Plus, X, CheckCircle, XCircle, MessageSquare, Send, RefreshCw } from 'lucide-react';
 import { adminAuthHeaders } from '../../../lib/adminAuthHeaders';
 import { useSiteData } from '../../../context/SiteDataContext';
@@ -443,12 +444,13 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
 
           {/* Leave form modal */}
           {showLeaveForm && (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowLeaveForm(false)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-gray-800 flex items-center gap-2"><Calendar size={16}/> طلب إجازة جديدة</h3>
-                  <button onClick={() => setShowLeaveForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-                </div>
+    <Modal
+      open
+      onClose={() => setShowLeaveForm(false)}
+      title="طلب إجازة"
+      icon={<Calendar size={16} />}
+      size="sm"
+    >
                 <div className="space-y-3">
                   <select value={leaveForm.type} onChange={e => setLeaveForm(f => ({ ...f, type: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">
                     {Object.entries(LEAVE_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -463,8 +465,7 @@ export default function MyHrTab({ notify }: { notify: NotifyFn }) {
                   <button onClick={submitLeave} disabled={!leaveForm.start_date || !leaveForm.end_date} className="flex-1 py-2 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-800 transition disabled:opacity-50">إرسال الطلب</button>
                   <button onClick={() => setShowLeaveForm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">إلغاء</button>
                 </div>
-              </div>
-            </div>
+    </Modal>
           )}
         </div>
       )}

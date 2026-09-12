@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import React from 'react';
 import { ArrowLeftRight, BookOpen, X } from 'lucide-react';
 
@@ -48,12 +49,13 @@ export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
   const available = rounds.filter(r => r.id !== modal.fromRoundId && !r.attendees.find(a => a.subscriberId === modal.subscriberId));
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="font-extrabold text-gray-900 text-lg flex items-center gap-2"><ArrowLeftRight size={18} className="text-amber-500" />نقل لروند أخرى</h4>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="نقل لروند أخرى"
+      icon={<ArrowLeftRight size={18} className="text-amber-500" />}
+      size="sm"
+    >
         <div className="bg-gray-50 rounded-xl p-3 mb-4">
           <p className="font-bold text-gray-800 text-sm">{subscriber?.name || modal.subscriberId}</p>
           <p className="text-xs text-gray-500 mt-0.5">من: {fromRound?.code} - {courseTitle(courses, fromRound?.courseId)}</p>
@@ -82,8 +84,7 @@ export const DaqqiTransferRoundModal: React.FC<TransferModalProps> = ({
           <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
           <button onClick={() => onConfirm(targetId)} disabled={!targetId} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">تأكيد النقل</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -114,12 +115,13 @@ export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
   const available = rounds.filter(r => !r.attendees.find(a => a.subscriberId === subscriberId));
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="font-extrabold text-gray-900 text-lg flex items-center gap-2"><BookOpen size={18} className="text-amber-500" /> تسكين في روند</h4>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="تسكين في روند"
+      icon={<BookOpen size={18} className="text-amber-500" />}
+      size="sm"
+    >
         {subscriber && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
             <div className="flex items-center gap-2 mb-2">
@@ -179,8 +181,7 @@ export const DaqqiToskeenRoundModal: React.FC<ToskeenModalProps> = ({
           <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
           <button onClick={() => onConfirm(targetRoundId)} disabled={!targetRoundId} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition">تأكيد التسكين</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -211,12 +212,12 @@ export const DaqqiPostponeRoundModal: React.FC<PostponeModalProps> = ({
   const isPostponedThisWeek = (round?.postponedWeeks || []).includes(thisWeek);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="font-extrabold text-gray-900 text-lg flex items-center gap-2">تأجيل الروند</h4>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="تأجيل الروند"
+      size="sm"
+    >
         {round && <p className="text-xs text-gray-500 mb-4 bg-gray-50 rounded-xl px-3 py-2">الروند: <span className="font-bold text-gray-800">#{round.code}</span> - {courseTitle(courses, round.courseId)}</p>}
         <div className="space-y-4">
           <div>
@@ -251,7 +252,6 @@ export const DaqqiPostponeRoundModal: React.FC<PostponeModalProps> = ({
           )}
           <button onClick={onClose} className="w-full py-2 bg-gray-100 text-gray-700 rounded-xl text-sm hover:bg-gray-200">إلغاء</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

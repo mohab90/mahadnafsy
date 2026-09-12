@@ -37,11 +37,14 @@ test('it prefers a form field over the close button', () => {
   assert.match(body, /\(field \|\| fallback\)\?\.focus/);
 });
 
-test('AddLeadModal uses it and gives it the panel', () => {
+test('إضافة ليد جديد opens the shared dialog', () => {
+  // This was the proven pattern for the hook and the first dialog to get it.
+  // It is on shared/ui/Modal now, which is where that pattern ended up.
   const modal = read('pages/dashboard/tabs/leads/AddLeadModal.tsx');
-  assert.match(modal, /import \{ useModalKeyboard \}/);
-  assert.match(modal, /const panelRef = useModalKeyboard\(onClose\)/);
-  assert.match(modal, /<div ref=\{panelRef\}/);
+  assert.match(modal, /import \{ Modal \} from '[^']*shared\/ui\/Modal'/);
+  assert.match(modal, /<Modal/);
+  assert.doesNotMatch(modal, /useModalKeyboard/,
+    'two Escape handlers on one dialog: Modal already calls the hook');
 });
 
 // ── Rolled out to the dialogs a desk opens all day ────────────────────────
