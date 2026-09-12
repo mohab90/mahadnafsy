@@ -1,4 +1,5 @@
 import { AlarmClock, Banknote } from 'lucide-react';
+import { Modal } from '../../../shared/ui/Modal';
 import type { InstallmentEntry, InstallmentPlan, PaymentHistoryEntry, SubscriberItem } from '../../types';
 import type { TabKey } from './navigation';
 import { toDialable } from '../../lib/whatsappLink';
@@ -86,19 +87,15 @@ function OnlineManagerFollowupPanel({
   upcomingEntries.sort((a, b) => a.entry.dueDate.localeCompare(b.entry.dueDate));
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end" onClick={onClose}>
-      <div className="bg-white h-full w-full max-w-md shadow-2xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gradient-to-l from-teal-50 to-white">
-          <div>
-            <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-              <AlarmClock size={18} className="text-teal-600" /> متابعات التحصيل والأقساط
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {overdueEntries.length} قسط متأخر · {upcomingEntries.length} قسط قادم خلال 7 أيام
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="متابعات التحصيل والأقساط"
+      subtitle={`${overdueEntries.length} قسط متأخر · ${upcomingEntries.length} قسط قادم خلال 7 أيام`}
+      icon={<AlarmClock size={18} className="text-teal-600" />}
+      align="drawer"
+      bodyClassName="p-0"
+    >
         <div className="grid grid-cols-2 gap-0 border-b border-gray-100">
           {[
             { label: 'متأخرة', val: overdueEntries.length, color: overdueEntries.length > 0 ? 'text-red-600 bg-red-50' : 'text-gray-400 bg-gray-50' },
@@ -129,8 +126,7 @@ function OnlineManagerFollowupPanel({
             عرض عملاء الاونلاين
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -192,17 +188,15 @@ function OnlineManagerNewEventsPanel({
     .sort((a, b) => (b.payment.at || '').localeCompare(a.payment.at || ''));
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end" onClick={onClose}>
-      <div className="bg-white h-full w-full max-w-md shadow-2xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gradient-to-l from-emerald-50 to-white">
-          <div>
-            <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-              <Banknote size={18} className="text-emerald-600" /> مشتركين جدد ومدفوعات
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">آخر 7 أيام · {newSubs.length} مشترك جديد · {newPayments.length} دفعة</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="مشتركين جدد ومدفوعات"
+      subtitle={`آخر 7 أيام · ${newSubs.length} مشترك جديد · ${newPayments.length} دفعة`}
+      icon={<Banknote size={18} className="text-emerald-600" />}
+      align="drawer"
+      bodyClassName="p-0"
+    >
         <div className="grid grid-cols-2 gap-0 border-b border-gray-100">
           {[
             { label: 'عملاء أونلاين جدد', val: newSubs.length, color: newSubs.length > 0 ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-50' },
@@ -229,8 +223,7 @@ function OnlineManagerNewEventsPanel({
             عرض عملاء الاونلاين
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

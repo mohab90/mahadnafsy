@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { ModalFallback } from '../../../shared/ui/ModalFallback';
 import type { LeadItem, SubscriberItem } from '../../types';
 import type { PaymentDraft } from '../../components/PaymentModal';
 import { PaymentModal } from './lazyDashboardComponents';
@@ -40,7 +41,7 @@ export function DashboardPaymentOverlays({
   return (
     <>
       {lead && (
-        <Suspense fallback={<div className="fixed inset-0 z-[60] bg-black/20" />}>
+        <Suspense fallback={<ModalFallback />}>
           <PaymentModal
             mode="lead"
             subject={{
@@ -61,7 +62,7 @@ export function DashboardPaymentOverlays({
       )}
 
       {subscriber && (
-        <Suspense fallback={<div className="fixed inset-0 z-[60] bg-black/20" />}>
+        <Suspense fallback={<ModalFallback />}>
           <PaymentModal
             mode="subscriber"
             subject={{

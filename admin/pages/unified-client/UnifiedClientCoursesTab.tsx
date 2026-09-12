@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Modal } from '../../../shared/ui/Modal';
 import { BookOpen, Plus, X } from 'lucide-react';
 
 import type { Course, SubscriberItem } from '../../types';
@@ -84,12 +85,13 @@ export function UnifiedClientCoursesTab({
                         <Plus size={16} /> إضافة كورس جديد
                       </button>
                       {showGrantFromCourses && (
-                        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => { setShowGrantFromCourses(false); setGrantFromCourseId(''); }}>
-                          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5" dir="rtl" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between mb-4">
-                              <p className="font-extrabold text-gray-900">+ إضافة كورس</p>
-                              <button onClick={() => { setShowGrantFromCourses(false); setGrantFromCourseId(''); }} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"><X size={16} /></button>
-                            </div>
+    <Modal
+      open
+      onClose={() => { setShowGrantFromCourses(false); setGrantFromCourseId(''); }}
+      title="إضافة كورس"
+      size="sm"
+      layer="over"
+    >
                             <select value={grantFromCourseId} onChange={e => setGrantFromCourseId(e.target.value)}
                               className="w-full border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm mb-3">
                               <option value="">اختر كورساً...</option>
@@ -112,8 +114,7 @@ export function UnifiedClientCoursesTab({
                               <button onClick={() => { setShowGrantFromCourses(false); setGrantFromCourseId(''); }}
                                 className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm">إلغاء</button>
                             </div>
-                          </div>
-                        </div>
+    </Modal>
                       )}
 
                       {subscriber.enrolledCourseIds.length === 0 ? (

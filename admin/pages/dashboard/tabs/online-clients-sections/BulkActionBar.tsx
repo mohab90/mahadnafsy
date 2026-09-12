@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import type { Course, StaffMember, SubscriberItem } from '../../../../types';
 import { paymentAmountInEGP } from '../onlineClientsUtils';
 
@@ -57,14 +58,18 @@ export function BulkActionBar({
         </div>
       )}
       {collOnlineBulkConfirm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" dir="rtl">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
-            <div className="text-lg font-bold mb-3 text-gray-800">
-              {collOnlineBulkConfirm === 'delete' ? '🗑 حذف العملاء المحددين'
-                : collOnlineBulkConfirm === 'pause' ? '⏸ وقف العملاء المحددين'
-                : collOnlineBulkConfirm === 'assign' ? '👤 تعيين مسئول تحصيل'
-                : '✅ إنهاء العملاء المحددين'}
-            </div>
+        // No header row to lift: this dialog had its title as a plain div and no
+        // close button at all. The title moves to Modal, which also gives it the ×
+        // it never had.
+        <Modal
+          open
+          onClose={() => setCollOnlineBulkConfirm(null)}
+          title={collOnlineBulkConfirm === 'delete' ? '🗑 حذف العملاء المحددين'
+            : collOnlineBulkConfirm === 'pause' ? '⏸ وقف العملاء المحددين'
+            : collOnlineBulkConfirm === 'assign' ? '👤 تعيين مسئول تحصيل'
+            : '✅ إنهاء العملاء المحددين'}
+          size="sm"
+        >
             <p className="text-sm text-gray-600 mb-4">
               {collOnlineBulkConfirm === 'delete'
                 ? `هل أنت متأكد من حذف ${collOnlineSelected.size} عميل؟ هذا الإجراء لا يمكن التراجع عنه.`
@@ -130,8 +135,7 @@ export function BulkActionBar({
                   collOnlineBulkConfirm==='assign'?'bg-purple-600 hover:bg-purple-700':
                   'bg-blue-600 hover:bg-blue-700'}`}>تأكيد</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   );

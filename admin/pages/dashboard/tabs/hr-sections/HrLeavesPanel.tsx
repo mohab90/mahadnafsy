@@ -3,6 +3,7 @@
 // Lifted out of HRTab.tsx with its own state — the filter, the list and the
 // request form were read by this tab and nothing else.
 import { useCallback, useEffect, useState } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { X, Plus, Calendar, CheckCircle, XCircle } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import type { StaffMember } from '../../../../types';
@@ -124,12 +125,13 @@ export default function HrLeavesPanel({ notify, staff }: {
 
         {/* Leave request form modal */}
         {showLeaveForm && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowLeaveForm(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-800 flex items-center gap-2"><Calendar size={16}/> طلب إجازة جديدة</h3>
-                <button onClick={() => setShowLeaveForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-              </div>
+    <Modal
+      open
+      onClose={() => setShowLeaveForm(false)}
+      title="طلب إجازة جديد"
+      icon={<Calendar size={16} />}
+      size="sm"
+    >
               <div className="space-y-3">
                 <select value={leaveForm.staff_id} onChange={e => setLeaveForm(f => ({ ...f, staff_id: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">
                   <option value="">اختر موظف</option>
@@ -148,8 +150,7 @@ export default function HrLeavesPanel({ notify, staff }: {
                 <button onClick={submitLeaveRequest} disabled={!leaveForm.staff_id || !leaveForm.start_date || !leaveForm.end_date} className="flex-1 py-2 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-800 transition disabled:opacity-50">إرسال الطلب</button>
                 <button onClick={() => setShowLeaveForm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">إلغاء</button>
               </div>
-            </div>
-          </div>
+    </Modal>
         )}
       </div>
   );

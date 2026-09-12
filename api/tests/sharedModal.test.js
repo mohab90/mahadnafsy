@@ -26,7 +26,7 @@ const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  * Where the count stood when the ratchet was set. Lower it as dialogs move
  * across; never raise it. Raising it is the one edit this test exists to stop.
  */
-const HAND_ROLLED_CEILING = 42;
+const HAND_ROLLED_CEILING = 29;
 
 /** Dialogs still on a stacking level they invented. Same rule: down, never up. */
 const OWN_STACKING_CEILING = 6;
@@ -62,7 +62,7 @@ test('the count of hand-rolled dialogs only goes down', () => {
   // And the shared one is actually in use, so the ceiling is not being met by
   // deleting dialogs instead of migrating them.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 21, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 31, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {
@@ -88,9 +88,15 @@ test('the shared dialog does what the hand-rolled ones mostly did not', () => {
   assert.match(modal, /aria-labelledby=\{title \? titleId : undefined\}/);
   assert.match(modal, /aria-label="إغلاق"/);
 
-  // Two stacking levels, named. z-[300] existed because two screens needed to
-  // sit above another dialog and each invented a number for it.
-  assert.match(modal, /layer === 'over' \? 'z-\[60\]' : 'z-50'/);
+  // The whole stacking scale, in one place and named. z-[300] existed because
+  // two screens needed to sit above another dialog and each invented a number
+  // for it; z-[80] because the confirm and prompt primitives have to sit above
+  // whatever asked the question, including an `over` dialog.
+  assert.match(modal, /const LAYER = \{ base: 'z-50', over: 'z-\[60\]', top: 'z-\[80\]' \} as const;/);
+  assert.match(modal, /\$\{LAYER\[layer\]\}/);
+  // Three is the whole scale. A fourth means the flow is wrong.
+  const levels = /const LAYER = \{([^}]*)\}/.exec(modal)[1].split(',').filter(part => part.trim());
+  assert.equal(levels.length, 3, 'a fourth stacking level was added instead of fixing the flow');
 });
 
 test('no dialog invents its own stacking level any more', () => {

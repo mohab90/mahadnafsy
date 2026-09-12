@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import {
   X, Loader2, Phone, PhoneOff, CalendarPlus, Check, Ban,
   GraduationCap, Building2, Briefcase, Mail, FileText,
@@ -190,12 +191,12 @@ export const JobApplicantsPanel: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto p-5" dir="rtl">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="font-extrabold text-gray-800">المتقدمون — {jobTitle}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={`المتقدمون — ${jobTitle}`}
+      size="lg"
+    >
         <p className="text-[11px] text-gray-500 mb-4">
           تحديد موعد مقابلة بينقل المتقدم لصفحة المقابلات ويختفي من هنا.
         </p>
@@ -228,8 +229,7 @@ export const JobApplicantsPanel: React.FC<{
             )}
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 };
 

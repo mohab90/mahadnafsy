@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 
 import type { LeadItem, LeadStatus, StaffMember } from '../../../../types';
 import { LEAD_STATUS_CFG } from './LeadSubcomponents';
@@ -87,17 +88,14 @@ export function LeadSalesNotificationsPanel({
     .sort((a, b) => b.createdAt?.localeCompare(a.createdAt || '') || 0);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end" onClick={onClose}>
-      <div className="bg-white h-full w-full max-w-md shadow-2xl flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gradient-to-l from-primary-50 to-white">
-          <div>
-            <h2 className="font-bold text-gray-900 text-lg">🔔 متابعات السيلز</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {isSalesOnly ? `قائمتك — ${scopedLeads.length} عميل` : `جميع السيلز — ${scopedLeads.length} عميل`}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title="🔔 متابعات السيلز"
+      subtitle={isSalesOnly ? `قائمتك — ${scopedLeads.length} عميل` : `جميع السيلز — ${scopedLeads.length} عميل`}
+      align="drawer"
+      bodyClassName="p-0"
+    >
 
         <div className="grid grid-cols-3 gap-0 border-b border-gray-100">
           {[
@@ -192,7 +190,6 @@ export function LeadSalesNotificationsPanel({
             >عرض اليوم</button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -4,6 +4,7 @@
 // Lifted out of HRTab.tsx with its own state — the month, the summary rows and
 // both modals were read by this tab and nothing else.
 import { useCallback, useEffect, useState } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { X, Plus, Calendar, Clock, Upload } from 'lucide-react';
 import { adminAuthHeaders } from '../../../../lib/adminAuthHeaders';
 import type { StaffMember } from '../../../../types';
@@ -143,12 +144,13 @@ export default function HrAttendancePanel({ notify, staff }: {
 
         {/* Manual entry modal */}
         {showManualEntry && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowManualEntry(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-800 flex items-center gap-2"><Calendar size={16}/> تسجيل حضور يدوي</h3>
-                <button onClick={() => setShowManualEntry(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-              </div>
+    <Modal
+      open
+      onClose={() => setShowManualEntry(false)}
+      title="تسجيل حضور يدوي"
+      icon={<Calendar size={16} />}
+      size="sm"
+    >
               <div className="space-y-3">
                 <select value={manualEntry.staff_id} onChange={e => setManualEntry(m => ({ ...m, staff_id: e.target.value }))} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">
                   <option value="">اختر موظف</option>
@@ -171,18 +173,17 @@ export default function HrAttendancePanel({ notify, staff }: {
                 <button onClick={submitManualAttendance} disabled={!manualEntry.staff_id || !manualEntry.date} className="flex-1 py-2 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-800 transition disabled:opacity-50">حفظ</button>
                 <button onClick={() => setShowManualEntry(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">إلغاء</button>
               </div>
-            </div>
-          </div>
+    </Modal>
         )}
 
         {/* CSV Import modal */}
         {showCsvImport && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowCsvImport(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" dir="rtl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-800 flex items-center gap-2"><Upload size={16}/> استيراد CSV من جهاز البصمة</h3>
-                <button onClick={() => { setShowCsvImport(false); setImportResult(null); setCsvText(''); }} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-              </div>
+    <Modal
+      open
+      onClose={() => { setShowCsvImport(false); setImportResult(null); setCsvText(''); }}
+      title="استيراد الحضور من CSV"
+      icon={<Upload size={16} />}
+    >
               <div className="space-y-3">
                 <div className="bg-blue-50 text-blue-700 text-xs rounded-xl p-3">
                   <p className="font-bold mb-1">تنسيق الأعمدة المطلوب:</p>
@@ -201,8 +202,7 @@ export default function HrAttendancePanel({ notify, staff }: {
                 <button onClick={submitCsvImport} disabled={!csvText.trim()} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"><Upload size={14}/> استيراد</button>
                 <button onClick={() => { setShowCsvImport(false); setImportResult(null); setCsvText(''); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition">إغلاق</button>
               </div>
-            </div>
-          </div>
+    </Modal>
         )}
       </div>
   );

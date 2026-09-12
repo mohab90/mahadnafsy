@@ -5,6 +5,7 @@
 // import from it are untouched.
 
 import { useState } from 'react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { MessageCircle, Phone, Plus, Tag, X } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { LeadItem, LeadStatus, CommunicationRecord, Course, Bundle } from '../../../../types';
@@ -65,15 +66,14 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-end" onClick={onClose}>
-      <div className="bg-white h-full w-full max-w-md shadow-2xl overflow-y-auto flex flex-col" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-100 flex items-center justify-between px-5 py-4 z-10">
-          <div>
-            <h3 className="font-bold text-gray-900">{draft.name}</h3>
-            <p className="text-xs text-gray-500">{draft.phone} · <ScoreBadge score={calcLeadScore(draft)} /></p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1"><X size={20} /></button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={draft.name}
+      subtitle={<>{draft.phone} · <ScoreBadge score={calcLeadScore(draft)} /></>}
+      align="drawer"
+      bodyClassName="p-0"
+    >
 
         <div className="p-5 space-y-4 flex-1">
           {/* Status */}
@@ -287,8 +287,7 @@ export function QuickEditPanel({ lead, onClose, onSave, courses, bundles, notify
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

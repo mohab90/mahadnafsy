@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Modal } from '../../../../shared/ui/Modal';
 import { UserMinus, Plus, X, Check, RefreshCw } from 'lucide-react';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
 import { confirmDialog } from '../../../../shared/ui/confirmDialog';
@@ -154,12 +155,13 @@ export default function OffboardingTab({ notify }: { notify: NotifyFn }) {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" dir="rtl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900">بدء إنهاء خدمة</h3>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
+    <Modal
+      open
+      onClose={() => setShowForm(false)}
+      title="بدء إنهاء خدمة"
+      size="sm"
+      layer="over"
+    >
             <div className="p-5 space-y-3">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">الموظف</label>
@@ -188,8 +190,7 @@ export default function OffboardingTab({ notify }: { notify: NotifyFn }) {
               </div>
               <button onClick={startOffboarding} className="w-full bg-gray-800 text-white py-2 rounded-xl text-sm hover:bg-gray-900">بدء الإجراء</button>
             </div>
-          </div>
-        </div>
+    </Modal>
       )}
     </div>
   );

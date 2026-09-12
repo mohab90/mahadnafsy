@@ -45,11 +45,12 @@ export interface ModalProps {
   size?: ModalSize;
   align?: ModalAlign;
   /**
-   * `over` puts the dialog above another dialog. Two layers is the limit on
-   * purpose — a third dialog on top of a second is a sign the flow is wrong,
-   * not that another z-index is needed.
+   * `over` puts a dialog above another dialog. `top` is reserved for the
+   * confirm and prompt primitives, which have to sit above whatever asked the
+   * question — including an `over` dialog. Three named levels is the whole
+   * scale; a fourth means the flow is wrong, not that another number is needed.
    */
-  layer?: 'base' | 'over';
+  layer?: 'base' | 'over' | 'top';
   /** Footer row, pinned below the scrolling body. */
   footer?: ReactNode;
   /** Hide the × — only for a dialog whose own body carries the way out. */
@@ -94,10 +95,13 @@ const CLOSE_TONE: Record<ModalTone, string> = {
   violet: 'bg-white/20 hover:bg-white/30 text-white',
 };
 
+/** The whole stacking scale, named. Nothing else may invent a number. */
+const LAYER = { base: 'z-50', over: 'z-[60]', top: 'z-[80]' } as const;
+
 const BACKDROP: Record<ModalAlign, string> = {
   center: 'flex items-center justify-center p-4',
   sheet: 'flex items-end sm:items-center justify-center p-0 sm:p-4',
-  drawer: 'flex items-stretch justify-start',
+  drawer: 'flex items-stretch justify-end',
 };
 
 const PANEL: Record<ModalAlign, string> = {
@@ -136,7 +140,7 @@ export function Modal({
 
   return (
     <div
-      className={`fixed inset-0 bg-black/50 backdrop-blur-sm ${layer === 'over' ? 'z-[60]' : 'z-50'} ${BACKDROP[align]}`}
+      className={`fixed inset-0 bg-black/50 backdrop-blur-sm ${LAYER[layer]} ${BACKDROP[align]}`}
       onClick={closeOnBackdrop ? (event) => { if (event.target === event.currentTarget) onClose(); } : undefined}
       dir="rtl"
     >

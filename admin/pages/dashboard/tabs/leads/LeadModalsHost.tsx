@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import { ModalFallback } from '../../../../../shared/ui/ModalFallback';
 import type { Bundle, Course, LeadItem, StaffMember } from '../../../../types';
 import type { PaymentDraft } from '../../../../components/PaymentModal';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
@@ -96,7 +97,7 @@ export function LeadModalsHost({
       />
 
       {leadPayRow && (
-        <Suspense fallback={<div className="fixed inset-0 z-[60] bg-black/20" />}>
+        <Suspense fallback={<ModalFallback />}>
           <PaymentModal
             mode="lead"
             subject={{

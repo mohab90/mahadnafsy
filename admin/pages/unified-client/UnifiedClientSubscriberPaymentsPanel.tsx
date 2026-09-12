@@ -1,4 +1,5 @@
 import React, { Suspense, type Dispatch, type SetStateAction } from 'react';
+import { ModalFallback } from '../../../shared/ui/ModalFallback';
 import { CreditCard, Plus, Printer, RefreshCw } from 'lucide-react';
 
 import type { PaymentDraft } from '../../components/PaymentModal';
@@ -86,7 +87,7 @@ export function UnifiedClientSubscriberPaymentsPanel({
         <Plus size={18} /> حجز أو دفع جديد
       </button>
       {showSubPayForm && subscriber && (
-        <Suspense fallback={<div className="fixed inset-0 z-[60] bg-black/20" />}>
+        <Suspense fallback={<ModalFallback />}>
           <PaymentModal
             mode="subscriber"
             subject={{ id: subscriber.id, name: subscriber.name, phone: subscriber.phone, enrolledCourseIds: subscriber.enrolledCourseIds, paymentHistory: subscriber.paymentHistory || [], extraCertificateRequests: subscriber.extraCertificateRequests || [] }}

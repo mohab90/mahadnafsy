@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Modal } from './Modal';
 
 /**
  * A styled replacement for window.prompt.
@@ -56,16 +56,23 @@ const PromptModal: React.FC<PromptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-      onClick={() => (busy ? undefined : onCancel())} dir="rtl">
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+    // closeOnBackdrop={!busy}: a stray click must not throw away a save in
+    // flight. This dialog had no role="dialog" and no aria-modal, while the two
+    // primitives sitting beside it did.
+    <Modal open onClose={onCancel} title={title} layer="over" size="sm" closeOnBackdrop={!busy}
+      footer={(
+        <>
           <button onClick={onCancel} disabled={busy}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-40">
-            <X size={16} />
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+            إلغاء
           </button>
-        </div>
+          <button onClick={submit} disabled={busy}
+            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-40">
+            {busy ? 'جارٍ الحفظ…' : confirmLabel}
+          </button>
+        </>
+      )}
+    >
 
         {hint && <p className="mb-3 rounded-xl bg-gray-50 p-2.5 text-xs text-gray-600">{hint}</p>}
 
@@ -91,18 +98,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
 
         {error && <p className="mt-2 text-xs font-bold text-red-600">{error}</p>}
 
-        <div className="mt-4 flex gap-2">
-          <button onClick={submit} disabled={busy}
-            className="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-40">
-            {busy ? 'جارٍ الحفظ…' : confirmLabel}
-          </button>
-          <button onClick={onCancel} disabled={busy}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-            إلغاء
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
