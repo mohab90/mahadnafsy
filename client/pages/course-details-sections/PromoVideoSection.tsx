@@ -1,6 +1,7 @@
 import React from 'react';
 import { Play } from 'lucide-react';
 import { cdnImg } from '../../lib/img';
+import { useEscapeKey } from '../../../shared/ui/useEscapeKey';
 
 interface PromoVideoSectionProps {
   thumbnail: string;
@@ -19,6 +20,11 @@ export const PromoVideoSection: React.FC<PromoVideoSectionProps> = ({
   setShowPromoModal,
   getEmbedUrl,
 }) => {
+  // A lightbox is not a dialog and should not be dressed as one — but Escape
+  // closes it, which it did not before: you could open the promo video and only
+  // get out again with the mouse.
+  useEscapeKey(() => setShowPromoModal(false), showPromoModal);
+
   return (
     <>
       <section

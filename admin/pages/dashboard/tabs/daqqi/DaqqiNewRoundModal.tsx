@@ -6,6 +6,7 @@
 
 import type { Course, Bundle, SubscriberItem, DaqqiRound, DaqqiDayOfWeek, DaqqiTimeSlot } from '../../../../types';
 import { ChevronRight } from 'lucide-react';
+import { Modal } from '../../../../../shared/ui/Modal';
 import { DAQQI_DAYS_OF_WEEK as daysOfWeek, DAQQI_TIME_SLOTS as timeSlotsList } from './daqqiScheduleConfig';
 import type { DaqqiDraftType } from './daqqiScheduleUtils';
 import { isEnrolledInCourse } from './daqqiScheduleUtils';
@@ -56,11 +57,11 @@ export function DaqqiNewRoundModal({
   handleSaveNewRound: () => void | Promise<void>;
 }) {
   return (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setDaqqiFormOpen(false); setDaqqiStep('form'); }}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto p-6" dir="rtl" onClick={e => e.stopPropagation()}>
+      // No Modal footer: this is a two-step dialog and each step carries its
+      // own buttons.
+      <Modal open onClose={() => { setDaqqiFormOpen(false); setDaqqiStep('form'); }} title="إنشاء روند جديدة">
           {daqqiStep === 'form' ? (
             <>
-              <h4 className="font-extrabold text-gray-900 text-lg mb-4">إنشاء روند جديدة</h4>
               <div className="space-y-3">
                 <div>
                   <label className="text-xs text-gray-600 font-bold mb-1 block">الكورس <span className="text-red-500">*</span></label>
@@ -202,7 +203,6 @@ export function DaqqiNewRoundModal({
               </>
             );
           })() : null}
-        </div>
-      </div>
+      </Modal>
   );
 }

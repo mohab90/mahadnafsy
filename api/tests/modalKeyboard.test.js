@@ -50,9 +50,8 @@ test('AddLeadModal uses it and gives it the panel', () => {
 // sixty overlays.
 // Shrinking on purpose: as dialogs move to shared/ui/Modal they reach the hook
 // through it and drop off this list. تعيين الموظف and نموذج تعيين الموظف left
-// that way.
+// that way, and إضافة استرداد with them.
 const WIRED = [
-  'pages/dashboard/tabs/financial/AddRefundModal.tsx',
   'components/PaymentModal.tsx',
   'pages/dashboard/tabs/CrmSettingsModal.tsx',
 ];

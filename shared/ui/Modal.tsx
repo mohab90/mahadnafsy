@@ -58,6 +58,12 @@ export interface ModalProps {
   closeOnBackdrop?: boolean;
   /** Extra classes for the panel, for the rare dialog that needs one. */
   panelClassName?: string;
+  /**
+   * Replaces the body's padding. For a dialog whose content runs edge to edge
+   * — a full-bleed header image, a celebration banner — pass 'p-0' and let the
+   * content own its own spacing. Everything else should leave this alone.
+   */
+  bodyClassName?: string;
   children: ReactNode;
 }
 
@@ -116,6 +122,7 @@ export function Modal({
   hideClose = false,
   closeOnBackdrop = true,
   panelClassName = '',
+  bodyClassName = 'p-5',
   children,
 }: ModalProps) {
   // Called before the early return and told whether it is live: a hook placed
@@ -166,7 +173,7 @@ export function Modal({
           </div>
         )}
 
-        <div className="p-5 overflow-y-auto grow">{children}</div>
+        <div className={`overflow-y-auto grow ${bodyClassName}`}>{children}</div>
 
         {footer && (
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 flex items-center gap-2 justify-end">

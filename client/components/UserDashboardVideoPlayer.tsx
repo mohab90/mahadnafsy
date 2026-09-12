@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Lock, NotebookPen, Play, X } from 'lucide-react
 import type HlsType from 'hls.js';
 import { mysqlClient } from '../lib/mysqlapi';
 import { useSiteData } from '../context/SiteDataContext';
+import { useEscapeKey } from '../../shared/ui/useEscapeKey';
 
 // The key the admin panel encodes lecture URLs with. It read VITE_VIDEO_KEY
 // alone, and that variable is defined nowhere — no client .env sets it — so the
@@ -95,6 +96,10 @@ interface VideoPlayerProps {
 }
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, onClose }) => {
   const { getCourseLectures, getCourseChapters, subscribers, mySubscriberId, refreshMySubscriber } = useSiteData();
+  // The fullscreen player is a surface, not a dialog — no white panel, no
+  // header — so it does not go through shared/ui/Modal. Escape still closes it,
+  // which it did not before.
+  useEscapeKey(onClose);
   const [selectedId, setSelectedId] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);

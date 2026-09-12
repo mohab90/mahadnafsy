@@ -26,10 +26,10 @@ const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  * Where the count stood when the ratchet was set. Lower it as dialogs move
  * across; never raise it. Raising it is the one edit this test exists to stop.
  */
-const HAND_ROLLED_CEILING = 45;
+const HAND_ROLLED_CEILING = 42;
 
 /** Dialogs still on a stacking level they invented. Same rule: down, never up. */
-const OWN_STACKING_CEILING = 7;
+const OWN_STACKING_CEILING = 6;
 
 function componentFiles() {
   const out = [];
@@ -62,7 +62,7 @@ test('the count of hand-rolled dialogs only goes down', () => {
   // And the shared one is actually in use, so the ceiling is not being met by
   // deleting dialogs instead of migrating them.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 18, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 21, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {
@@ -119,4 +119,28 @@ test('both apps can reach it, and the keyboard hook lives with it', () => {
   assert.ok(!fs.existsSync(path.join(ROOT, 'admin', 'components', 'shared', 'useModalKeyboard.ts')),
     'two copies of the hook is how the two apps drift apart again');
   assert.match(read('shared/ui/Modal.tsx'), /from '\.\/useModalKeyboard'/);
+});
+
+test('the surfaces that are not dialogs still close on Escape', () => {
+  // A video lightbox, an image gallery and the fullscreen player are not
+  // dialogs and should not be dressed as one — shared/ui/Modal gives a white
+  // panel with a header row, which is right for a form and wrong for a photo on
+  // a black ground. But all three had no key handling at all: you could open one
+  // and only get out again with the mouse.
+  //
+  // useEscapeKey is the half of useModalKeyboard that applies without a panel.
+  const hook = read('shared/ui/useEscapeKey.ts');
+  assert.match(hook, /event\.key !== 'Escape'/);
+  assert.match(hook, /document\.removeEventListener\('keydown', onKey\)/,
+    'the listener outlives the component and closes something that is already gone');
+  assert.match(hook, /const latest = useRef\(onEscape\);/,
+    'without the ref an inline arrow re-binds the listener on every render');
+
+  for (const rel of [
+    'client/pages/course-details-sections/PromoVideoSection.tsx',
+    'client/pages/course-details-sections/GallerySection.tsx',
+    'client/components/UserDashboardVideoPlayer.tsx',
+  ]) {
+    assert.match(read(rel), /useEscapeKey\(/, `${rel} has no way out but the mouse`);
+  }
 });

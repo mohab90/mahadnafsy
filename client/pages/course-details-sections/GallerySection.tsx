@@ -1,5 +1,6 @@
 import React from 'react';
 import { Award, FileText, Star } from 'lucide-react';
+import { useEscapeKey } from '../../../shared/ui/useEscapeKey';
 
 interface GallerySectionProps {
   content: Record<string, string>;
@@ -18,6 +19,9 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
   galleryLightboxIdx,
   setGalleryLightboxIdx,
 }) => {
+  // Escape closes the lightbox. It had no key handling at all.
+  useEscapeKey(() => setGalleryLightboxIdx(null), galleryLightboxIdx !== null);
+
   let galleryImgs: string[] = [];
   try { galleryImgs = JSON.parse(globalContent['institute.gallery.images'] || '[]'); } catch {}
 

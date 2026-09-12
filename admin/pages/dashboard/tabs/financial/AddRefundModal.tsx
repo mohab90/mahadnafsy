@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Loader2, RotateCcw, Search, X } from 'lucide-react';
+import { Loader2, RotateCcw, Search } from 'lucide-react';
 import { useCrmData } from '../../../../context/siteDataSlices';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import type { SubscriberItem } from '../../../../types';
-import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
+import { Modal } from '../../../../../shared/ui/Modal';
 
 type NotifyFn = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -22,7 +22,6 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
   notify: NotifyFn;
 }) {
   const { subscribers } = useCrmData();
-  const panelRef = useModalKeyboard(onClose);
   const [branch, setBranch] = useState<'DAQQI' | 'ONLINE' | ''>('');
   const [search, setSearch] = useState('');
   const [subscriberId, setSubscriberId] = useState('');
@@ -74,14 +73,22 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div ref={panelRef} className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" dir="rtl" onClick={event => event.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gradient-to-l from-rose-50 to-white">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><RotateCcw size={17} className="text-rose-600" />إضافة استرداد</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1"><X size={18} /></button>
-        </div>
-
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+    <Modal
+      open
+      onClose={onClose}
+      title="إضافة استرداد"
+      icon={<RotateCcw size={17} className="text-rose-600" />}
+      footer={(
+        <>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-bold border border-gray-200 text-gray-600 hover:bg-white">إلغاء</button>
+          <button onClick={() => void submit()} disabled={saving || !payment || !reason.trim()}
+            className="px-5 py-2 rounded-xl text-sm font-bold bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-50 flex items-center gap-2">
+            {saving && <Loader2 size={14} className="animate-spin" />}تسجيل الاسترداد
+          </button>
+        </>
+      )}
+    >
+        <div className="space-y-4">
           <div>
             <label className="text-xs text-gray-600 font-bold mb-1 block">الفرع <span className="text-red-500">*</span></label>
             <div className="flex gap-2">
@@ -164,14 +171,6 @@ export function AddRefundModal({ onClose, onCreated, notify }: {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-bold border border-gray-200 text-gray-600 hover:bg-white">إلغاء</button>
-          <button onClick={() => void submit()} disabled={saving || !payment || !reason.trim()}
-            className="px-5 py-2 rounded-xl text-sm font-bold bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-50 flex items-center gap-2">
-            {saving && <Loader2 size={14} className="animate-spin" />}تسجيل الاسترداد
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

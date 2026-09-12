@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { X, Gift } from 'lucide-react';
+import { Modal } from '../../../shared/ui/Modal';
 import type { Bundle, Currency } from '../../types';
 import { cdnImg } from '../../lib/img';
 
@@ -14,8 +15,11 @@ interface CourseUpsellModalProps {
 
 export const CourseUpsellModal: React.FC<CourseUpsellModalProps> = ({ courseTitle, completionCert, relatedBundles, currency, onClose }) => {
   return (
-    <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+    // hideClose + bodyClassName="p-0": this is a celebration, not a form. Its
+    // gradient header runs edge to edge and carries its own ×, so Modal supplies
+    // the shell — Escape, focus, the backdrop, the layer — and nothing else.
+    // It was on z-[200], a level invented for this one dialog.
+    <Modal open onClose={onClose} hideClose bodyClassName="p-0" layer="over">
         {/* Header */}
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 text-white text-center relative">
           <button onClick={onClose} className="absolute top-3 left-3 w-7 h-7 rounded-full bg-white/20 hover:bg-white/40 grid place-items-center transition"><X size={14} /></button>
@@ -56,7 +60,6 @@ export const CourseUpsellModal: React.FC<CourseUpsellModalProps> = ({ courseTitl
             إغلاق
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
