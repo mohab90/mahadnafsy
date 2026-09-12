@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Modal } from '../../../../shared/ui/Modal';
 import type React from 'react';
 import type { Bundle, Course, SubscriberItem } from '../../../types';
 import { mysqlAdmin } from '../../../lib/mysqlapi';
@@ -84,16 +84,21 @@ export function OnlineClientCourseDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-indigo-50">
-          <div>
-            <h3 className="font-extrabold text-gray-900">📋 تفاصيل الكورسات</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{row.name}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
-        </div>
-        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+    <Modal
+      open
+      onClose={onClose}
+      title="📋 تفاصيل الكورسات"
+      subtitle={row.name}
+      footer={(
+        <>
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
+          <button disabled={saving} onClick={saveDetails} className="px-5 py-2 text-sm rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50">
+            {saving ? '...' : 'حفظ'}
+          </button>
+        </>
+      )}
+    >
+        <div className="space-y-4">
           {draft.map((item, index) => (
             <div key={item.courseId} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
               <p className="font-bold text-gray-800 text-sm mb-3 truncate">{titleForCourse(item.courseId)}</p>
@@ -116,13 +121,6 @@ export function OnlineClientCourseDetailsModal({
           ))}
           {draft.length === 0 && <p className="text-sm text-gray-400 text-center py-4">لا يوجد كورسات مسجلة</p>}
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl border border-gray-200 hover:bg-gray-100">إلغاء</button>
-          <button disabled={saving} onClick={saveDetails} className="px-5 py-2 text-sm rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50">
-            {saving ? '...' : 'حفظ'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

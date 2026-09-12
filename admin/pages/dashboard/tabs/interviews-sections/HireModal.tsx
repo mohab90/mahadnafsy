@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { UserCheck, X } from 'lucide-react';
+import { UserCheck } from 'lucide-react';
 import { mysqlAdmin } from '../../../../lib/mysqlapi';
 import { ROLE_LABELS } from '../../../../constants/permissions';
-import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
+import { Modal } from '../../../../../shared/ui/Modal';
 
 /**
  * The hire form.
@@ -29,7 +29,6 @@ interface Props {
 
 const HireModal: React.FC<Props> = ({ applicant, notify, onClose, onHired }) => {
   const [email, setEmail] = useState(applicant.email || '');
-  const panelRef = useModalKeyboard<HTMLFormElement>(onClose);
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('SUPPORT');
   const [saving, setSaving] = useState(false);
@@ -67,22 +66,16 @@ const HireModal: React.FC<Props> = ({ applicant, notify, onClose, onHired }) => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <form
-        ref={panelRef}
-        onClick={event => event.stopPropagation()}
-        onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-2xl"
-        dir="rtl"
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-base font-bold text-gray-900">
-            <UserCheck size={18} className="text-emerald-600" /> تعيين {applicant.name}
-          </h3>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-            <X size={16} />
-          </button>
-        </div>
+    // The form stays inside the body rather than becoming the panel, so its
+    // submit button keeps working — Modal's footer renders outside the form.
+    <Modal
+      open
+      onClose={onClose}
+      title={`تعيين ${applicant.name}`}
+      icon={<UserCheck size={18} className="text-emerald-600" />}
+      size="sm"
+    >
+      <form onSubmit={submit} className="space-y-3">
 
         {applicant.stage !== 'offer' && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -136,7 +129,7 @@ const HireModal: React.FC<Props> = ({ applicant, notify, onClose, onHired }) => 
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 };
 

@@ -18,10 +18,11 @@ import { useEffect, useRef } from 'react';
  * boundary and mishandles the browser's own UI; the two problems staff actually
  * hit are getting in and getting out, and those are what this fixes.
  */
-// Generic over the panel element: most dialogs wrap their content in a div, but
-// several are a <form> that submits itself, and those need the ref just as much.
-export function useModalKeyboard<T extends HTMLElement = HTMLDivElement>(onClose: () => void, active = true) {
-  const panelRef = useRef<T | null>(null);
+// The panel is a div. This was generic over the element because HireModal made
+// its <form> the panel; that dialog uses shared/ui/Modal now, which always
+// wraps its children in a div, and no caller was left needing the parameter.
+export function useModalKeyboard(onClose: () => void, active = true) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
   // Kept in a ref so a caller passing a fresh arrow function on every render
   // does not re-bind the listener each time.
   const closeRef = useRef(onClose);

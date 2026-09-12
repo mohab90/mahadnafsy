@@ -48,10 +48,11 @@ test('AddLeadModal uses it and gives it the panel', () => {
 // Money, hiring and CRM configuration. Each needs its own onClose and its own
 // panel element, so they go one at a time rather than as a sweep across all
 // sixty overlays.
+// Shrinking on purpose: as dialogs move to shared/ui/Modal they reach the hook
+// through it and drop off this list. تعيين الموظف and نموذج تعيين الموظف left
+// that way.
 const WIRED = [
   'pages/dashboard/tabs/financial/AddRefundModal.tsx',
-  'pages/dashboard/tabs/hr-sections/StaffOnboardModal.tsx',
-  'pages/dashboard/tabs/interviews-sections/HireModal.tsx',
   'components/PaymentModal.tsx',
   'pages/dashboard/tabs/CrmSettingsModal.tsx',
 ];
@@ -65,12 +66,14 @@ for (const file of WIRED) {
   });
 }
 
-test('the hook is generic, so a form panel can hold the ref too', () => {
-  // HireModal's dialog is the form element itself; a ref pinned to
-  // HTMLDivElement could not be attached to it without a cast.
-  assert.match(hook, /export function useModalKeyboard<T extends HTMLElement = HTMLDivElement>/);
-  assert.match(hook, /useRef<T \| null>\(null\)/);
-  assert.match(read('pages/dashboard/tabs/interviews-sections/HireModal.tsx'), /useModalKeyboard<HTMLFormElement>\(onClose\)/);
+test('most dialogs reach the hook through the shared Modal, not directly', () => {
+  // The hook was generic over the panel element because HireModal made its
+  // <form> the panel. That dialog is on shared/ui/Modal now, and Modal always
+  // wraps its children in a div, so the type parameter had no user left.
+  assert.match(hook, /export function useModalKeyboard\(onClose: \(\) => void, active = true\)/);
+  assert.match(hook, /useRef<HTMLDivElement \| null>\(null\)/);
+  const sharedModal = fs.readFileSync(path.join(ROOT, 'shared', 'ui', 'Modal.tsx'), 'utf8');
+  assert.match(sharedModal, /const panelRef = useModalKeyboard\(onClose, open\);/);
 });
 
 test('a dialog that returns early calls the hook before it does', () => {

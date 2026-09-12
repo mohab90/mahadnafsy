@@ -26,7 +26,10 @@ const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  * Where the count stood when the ratchet was set. Lower it as dialogs move
  * across; never raise it. Raising it is the one edit this test exists to stop.
  */
-const HAND_ROLLED_CEILING = 54;
+const HAND_ROLLED_CEILING = 50;
+
+/** Dialogs still on a stacking level they invented. Same rule: down, never up. */
+const OWN_STACKING_CEILING = 7;
 
 function componentFiles() {
   const out = [];
@@ -59,7 +62,7 @@ test('the count of hand-rolled dialogs only goes down', () => {
   // And the shared one is actually in use, so the ceiling is not being met by
   // deleting dialogs instead of migrating them.
   const adopters = files.filter(rel => /from ['"][^'"]*shared\/ui\/Modal['"]/.test(read(rel)));
-  assert.ok(adopters.length >= 9, `expected the migrated dialogs, saw ${adopters.length}`);
+  assert.ok(adopters.length >= 13, `expected the migrated dialogs, saw ${adopters.length}`);
 });
 
 test('the shared dialog does what the hand-rolled ones mostly did not', () => {
@@ -85,9 +88,28 @@ test('the shared dialog does what the hand-rolled ones mostly did not', () => {
   assert.match(modal, /aria-labelledby=\{title \? titleId : undefined\}/);
   assert.match(modal, /aria-label="إغلاق"/);
 
-  // Two stacking levels, named. z-[300] existed because one screen needed to
-  // sit above another dialog and invented a number for it.
+  // Two stacking levels, named. z-[300] existed because two screens needed to
+  // sit above another dialog and each invented a number for it.
   assert.match(modal, /layer === 'over' \? 'z-\[60\]' : 'z-50'/);
+});
+
+test('no dialog invents its own stacking level any more', () => {
+  // Only full-screen dialog backdrops. A toast, a notifications bell and a nav
+  // dropdown all legitimately sit high — the first version of this flagged all
+  // ten of them, which would have been a rule about the wrong thing.
+  //
+  // And matched inside a className rather than anywhere in the file: the two
+  // comments explaining why z-[300] is gone quote it, so a plain includes()
+  // would fail on the explanation instead of on a use.
+  // A ratchet, like the one above, because this is pre-existing: three dialogs
+  // in تبويب الطلبات sit at z-[9999], the course upsell at z-[200], and the
+  // fullscreen video player at z-[100] — that last one is arguably right, being
+  // a fullscreen surface rather than a dialog. A new one may not join them.
+  const offenders = componentFiles().filter(rel =>
+    /className=.fixed inset-0[^"`]*z-\[[1-9]\d\d/.test(read(rel)));
+  assert.ok(offenders.length <= OWN_STACKING_CEILING,
+    `${offenders.length} files put a dialog on a stacking level of their own, up from `
+    + `${OWN_STACKING_CEILING}: ${offenders.join(', ')}. Use Modal's layer prop.`);
 });
 
 test('both apps can reach it, and the keyboard hook lives with it', () => {

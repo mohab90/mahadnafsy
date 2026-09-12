@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { Eye, EyeOff, RefreshCw, ShieldCheck } from 'lucide-react';
 import {
   PERMISSION_CATEGORIES, PERMISSION_LABELS, ROLE_LABELS, getDefaultPermsArray,
   type PermissionKey, type RoleKey,
 } from '../../../../constants/permissions';
 import { useBranches } from '../../../../hooks/useBranches';
-import { useModalKeyboard } from '../../../../../shared/ui/useModalKeyboard';
+import { Modal } from '../../../../../shared/ui/Modal';
 
 type Notify = (type: 'success' | 'error' | 'info', text: string) => void;
 
@@ -59,7 +59,6 @@ export default function StaffOnboardModal({
   canCreateLogin?: boolean;
 }) {
   const branches = useBranches();
-  const panelRef = useModalKeyboard(onClose);
   const blankForm = useCallback((): OnboardResult => ({
     name: initial?.name || '', email: initial?.email || '', phone: initial?.phone || '',
     password: '', role: initial?.role || 'SALES', position: initial?.position || '',
@@ -108,17 +107,30 @@ export default function StaffOnboardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4" dir="rtl"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={panelRef} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-100 bg-indigo-50 px-5 py-4">
-          <h3 className="flex items-center gap-2 font-extrabold text-gray-900">
-            <ShieldCheck size={17} className="text-indigo-600" /> {title}
-          </h3>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
-        </div>
-
-        <div className="space-y-4 p-5">
+    // layer="over": this opens from inside the staff directory, which is a
+    // dialog itself. It used z-[300] — the same invented third level the
+    // lesson-analytics screen had.
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      icon={<ShieldCheck size={17} className="text-indigo-600" />}
+      size="lg"
+      layer="over"
+      footer={(
+        <>
+          <button type="button" onClick={onClose}
+            className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition">
+            إلغاء
+          </button>
+          <button type="button" disabled={busy} onClick={submit}
+            className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60 transition">
+            {busy ? 'جارٍ الحفظ…' : (submitLabel || 'تأكيد')}
+          </button>
+        </>
+      )}
+    >
+        <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-bold text-gray-600">الاسم</label>
@@ -243,19 +255,8 @@ export default function StaffOnboardModal({
             </p>
           )}
 
-          <div className="flex gap-2 border-t border-gray-100 pt-4">
-            <button type="button" disabled={busy} onClick={submit}
-              className="flex-1 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60 transition">
-              {busy ? 'جارٍ الحفظ…' : (submitLabel || 'تأكيد')}
-            </button>
-            <button type="button" onClick={onClose}
-              className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200 transition">
-              إلغاء
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
